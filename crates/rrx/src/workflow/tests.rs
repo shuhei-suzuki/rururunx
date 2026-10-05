@@ -1206,19 +1206,53 @@ async fn project_minimum_and_rule_refresh_override_defaults_and_force_new_genera
 #[test]
 fn ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected() {
     let fixture = Fixture::new(WorkflowClass::Quick);
-    let db = fixture.dir.path().join("state.db");
+    let db = fixture.dir.path().join("legacy-v2.db");
     let connection = rusqlite::Connection::open(&db).unwrap();
+    // Build the historical SQL layout, rather than relabelling a schema-v4
+    // database whose execution tables and writer guards already exist.
+    connection
+        .execute_batch(include_str!("../state/schema.sql"))
+        .unwrap();
+    connection
+        .execute(
+            "ATTACH DATABASE ?1 AS current_fixture",
+            [fixture.dir.path().join("state.db").to_str().unwrap()],
+        )
+        .unwrap();
+    for table in [
+        "projects",
+        "goals",
+        "tasks",
+        "records",
+        "context_versions",
+        "usage",
+        "audit",
+    ] {
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO {table} SELECT * FROM current_fixture.{table}"
+            ))
+            .unwrap();
+    }
+    connection
+        .pragma_update(None, "application_id", crate::state::APPLICATION_ID)
+        .unwrap();
     connection.pragma_update(None, "user_version", 2).unwrap();
     drop(connection);
     let restored = Store::open(&db).unwrap();
-    assert_eq!(restored.schema_version().unwrap(), 3);
+    assert_eq!(
+        restored.schema_version().unwrap(),
+        crate::state::SCHEMA_VERSION
+    );
     assert_eq!(
         restored.task(fixture.task.id).unwrap().unwrap().scope(),
         fixture.task.scope()
     );
     drop(restored);
     let connection = rusqlite::Connection::open(&db).unwrap();
-    connection.pragma_update(None, "user_version", 4).unwrap();
+    connection
+        .pragma_update(None, "user_version", crate::state::SCHEMA_VERSION + 1)
+        .unwrap();
     drop(connection);
     assert!(Store::open(&db).is_err());
 }
@@ -3397,7 +3431,8 @@ async fn native_gate_requires_persisted_owned_status_and_sessionless_completion_
         })
         .await
         .unwrap();
-    let connection = rusqlite::Connection::open(fixture.dir.path().join("state.db")).unwrap();
+    let connection =
+        crate::state::current_test_writer(&fixture.dir.path().join("state.db")).unwrap();
     connection
         .execute("DELETE FROM records WHERE id=?1", [id.to_string()])
         .unwrap();

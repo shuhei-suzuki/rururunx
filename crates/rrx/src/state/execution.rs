@@ -369,24 +369,35 @@ impl Store {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
         let epoch = old.checked_add(1).context("owner epoch overflow")?;
-        let mut statement=tx.prepare("SELECT body FROM execution_units WHERE native_effects_open=1 OR result_finalization_open=1")?;
+        let mut statement=tx.prepare("SELECT id FROM execution_units WHERE native_effects_open=1 OR result_finalization_open=1")?;
         let units = statement
             .query_map([], |r| r.get::<_, String>(0))?
             .map(|r| {
                 r.map_err(anyhow::Error::from)
-                    .and_then(decode::<ExecutionUnit>)
+                    .and_then(|id| unit_tx(&tx, id.parse()?))
             })
             .collect::<Result<Vec<_>>>()?;
         drop(statement);
         for mut unit in units {
             unit.native_effects_open = false;
             unit.result_finalization_open = false;
-            unit.state = UnitState::WorkUnknown;
-            unit.disposition = Disposition::Lost;
             if unit.work.is_none() {
                 unit.work = Some(WorkOutcome::Unknown);
+                unit.disposition = Disposition::Lost;
             }
+            unit.state = if matches!(unit.work, Some(WorkOutcome::Success | WorkOutcome::Failure)) {
+                UnitState::WorkKnown
+            } else {
+                UnitState::WorkUnknown
+            };
             write_unit(&tx, &mut unit)?;
+            if unit.kind == UnitKind::Executor {
+                let next = unit
+                    .generation
+                    .checked_add(1)
+                    .context("generation overflow")?;
+                tx.execute("UPDATE task_execution SET generation=?1,active_unit=NULL WHERE task_id=?2 AND active_unit=?3 AND generation=?4",params![next,unit.scope.task_id.context("executor Task missing")?.to_string(),unit.id.to_string(),unit.generation])?;
+            }
             tx.execute("INSERT INTO cleanup_jobs(unit_id,next_due,attempts,version) VALUES(?1,?2,0,1) ON CONFLICT(unit_id) DO UPDATE SET next_due=excluded.next_due,version=cleanup_jobs.version+1",params![unit.id.to_string(),now_ms()])?;
             append_event(
                 &tx,
@@ -395,12 +406,18 @@ impl Store {
                 json!({"unit":unit.id,"work":unit.work,"cleanup":unit.cleanup}),
             )?;
         }
+        // A stopped/cancelled unit can still have a native transport or an
+        // unacknowledged tool effect when Runtime disappears. Reconcile all
+        // managed bindings, including units whose authority was already closed.
+        sessions::fence_epoch_sessions(&tx)?;
+        effects::fence_epoch_effects(&tx)?;
         tx.execute(
             "UPDATE runtime_epoch SET epoch=?1 WHERE singleton=1",
             [epoch],
         )?;
         tx.execute("UPDATE quota_leases SET active=0 WHERE active=1", [])?;
         tx.execute("UPDATE quota_pools SET probe_unit=NULL", [])?;
+        tx.execute("DELETE FROM quota_waiters", [])?;
         tx.commit()?;
         Ok((instance, epoch))
     }
@@ -589,6 +606,15 @@ impl Store {
         work: WorkOutcome,
         disposition: Disposition,
     ) -> Result<ExecutionUnit> {
+        self.finish_execution_with_failure(authority, work, disposition, None)
+    }
+    pub(crate) fn finish_execution_with_failure(
+        &mut self,
+        authority: &ExecutionAuthority,
+        work: WorkOutcome,
+        disposition: Disposition,
+        failure: Option<NativeFailure>,
+    ) -> Result<ExecutionUnit> {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -617,7 +643,7 @@ impl Store {
             &tx,
             &unit.scope,
             "execution.work_terminal",
-            json!({"unit":unit.id,"work":unit.work,"disposition":unit.disposition}),
+            json!({"unit":unit.id,"work":unit.work,"disposition":unit.disposition,"native_failure":failure}),
         )?;
         tx.commit()?;
         Ok(unit)

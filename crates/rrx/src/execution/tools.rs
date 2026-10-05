@@ -333,7 +333,6 @@ fn owned_branch_form(unit: &ExecutionUnit, command: &str, args: &[String]) -> Re
             own(name) && start(oid)
         }
         ("switch" | "checkout", [name]) => own(name),
-        ("switch" | "checkout", [flag, oid]) if flag == "--detach" => start(oid),
         ("switch", [flag, name]) if matches!(flag.as_str(), "-c" | "-C") => own(name),
         ("switch", [flag, name, oid]) if matches!(flag.as_str(), "-c" | "-C") => {
             own(name) && start(oid)

@@ -187,6 +187,48 @@ fn checked_session_record(
     Ok(record)
 }
 
+pub(super) fn fence_epoch_sessions(tx: &Transaction<'_>) -> Result<()> {
+    let mut statement = tx.prepare("SELECT session_id FROM session_units ORDER BY rowid")?;
+    let ids = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    for id in ids {
+        let id: SessionId = id.parse()?;
+        let unit = session_unit_tx(tx, id)?.context("managed Session unit missing")?;
+        let record: Record =
+            read_tx(tx, "records", &id.to_string())?.context("managed Session record missing")?;
+        let mut session: Session = serde_json::from_value(record.data.clone())?;
+        ensure!(
+            record.id.0 == id.0
+                && record.kind == RecordKind::Session
+                && record.scope == unit.scope
+                && session.id == id
+                && session.scope == unit.scope
+                && session.provider == unit.provider
+                && session.worktree == unit.worktree,
+            "managed Session recovery identity mismatch"
+        );
+        if session_terminal(session.state) {
+            continue;
+        }
+        session.state = SessionState::Lost;
+        let record = checked_session_record(tx, &unit, &session, record.version)?;
+        write_record_tx(tx, &record)?;
+        tx.execute(
+            "UPDATE session_units SET dispatch_state='unknown' WHERE session_id=?1 AND unit_id=?2",
+            params![id.to_string(), unit.id.to_string()],
+        )?;
+        append_event(
+            tx,
+            &unit.scope,
+            "execution.session_epoch_lost",
+            json!({"unit":unit.id,"session":id}),
+        )?;
+    }
+    Ok(())
+}
+
 /// Unknown legacy dispatch remains a hold; logical managed retirement can proceed.
 pub(in crate::state) fn logically_retired_session(
     tx: &Connection,

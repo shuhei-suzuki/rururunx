@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use rrx::{domain::*, state::Store};
 use serde_json::json;
+#[path = "support/current_writer.rs"]
+mod current_writer;
 
 fn project(store: &mut Store, name: &str, root: &std::path::Path) -> Project {
     let mut project = Project::new(
@@ -302,7 +304,7 @@ fn append_only_audit_and_failed_journal_write_roll_back_snapshot() {
     let project = project(&mut store, "one", dir.path());
     let goal = goal(&mut store, &project);
     let mut task = task(&mut store, &project, &goal);
-    let raw = rusqlite::Connection::open(&db).unwrap();
+    let raw = current_writer::open(&db).unwrap();
     assert!(raw.execute("UPDATE audit SET kind='forged'", []).is_err());
     assert!(raw.execute("DELETE FROM audit", []).is_err());
     raw.execute_batch("CREATE TRIGGER fail_task_audit BEFORE INSERT ON audit WHEN NEW.kind='task.saved' BEGIN SELECT RAISE(ABORT,'injected journal failure'); END;").unwrap();
@@ -400,7 +402,7 @@ fn usage_missing_is_explicit_and_session_ownership_is_enforced() {
 fn future_schema_is_rejected_without_rewriting_database() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("future.db");
-    let raw = rusqlite::Connection::open(&db).unwrap();
+    let raw = current_writer::open(&db).unwrap();
     raw.pragma_update(None, "application_id", rrx::state::APPLICATION_ID)
         .unwrap();
     raw.pragma_update(None, "user_version", 999).unwrap();
@@ -409,7 +411,7 @@ fn future_schema_is_rejected_without_rewriting_database() {
     let error = Store::open(&db).err().unwrap();
     assert!(error.to_string().contains("unsupported state schema 999"));
     assert_eq!(std::fs::read(&db).unwrap(), before);
-    let raw = rusqlite::Connection::open(db).unwrap();
+    let raw = current_writer::open(db).unwrap();
     let version: i64 = raw
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .unwrap();
@@ -449,7 +451,7 @@ fn audit_replacement_upsert_and_backdated_sequence_are_rejected() {
     let db = dir.path().join("state.db");
     let mut store = Store::open(&db).unwrap();
     let project = project(&mut store, "one", dir.path());
-    let raw = rusqlite::Connection::open(&db).unwrap();
+    let raw = current_writer::open(&db).unwrap();
     for sql in [
         "REPLACE INTO audit(sequence,project_id,kind,at,data) VALUES(1,?1,'forged',0,'{}')",
         "INSERT OR REPLACE INTO audit(sequence,project_id,kind,at,data) VALUES(1,?1,'forged',0,'{}')",
@@ -527,7 +529,7 @@ fn foreign_databases_and_unknown_snapshots_are_rejected_without_data_loss() {
     let dir = tempfile::tempdir().unwrap();
     for (table, version) in [("other_app", 0), ("other_app", 1), ("sqlite3_data", 0)] {
         let db = dir.path().join(format!("foreign-{table}-{version}.db"));
-        let raw = rusqlite::Connection::open(&db).unwrap();
+        let raw = current_writer::open(&db).unwrap();
         raw.execute_batch(&format!(
             "CREATE TABLE {table}(value TEXT); INSERT INTO {table} VALUES('keep');"
         ))
@@ -541,7 +543,7 @@ fn foreign_databases_and_unknown_snapshots_are_rejected_without_data_loss() {
     let db = dir.path().join("state.db");
     let mut store = Store::open(&db).unwrap();
     let project = project(&mut store, "one", dir.path());
-    let raw = rusqlite::Connection::open(&db).unwrap();
+    let raw = current_writer::open(&db).unwrap();
     raw.execute(
         "UPDATE projects SET body=json_set(body,'$.future_secret_field','preserve') WHERE id=?1",
         [project.id.to_string()],
@@ -574,7 +576,7 @@ fn context_versions_reject_sql_update_delete_and_replace() {
         data: json!({}),
     };
     store.put_context(&context).unwrap();
-    let raw = rusqlite::Connection::open(&db).unwrap();
+    let raw = current_writer::open(&db).unwrap();
     assert!(
         raw.execute("UPDATE context_versions SET body='{}'", [])
             .is_err()
@@ -775,7 +777,7 @@ fn legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes(
             json!([valid])
         );
     }
-    let raw = rusqlite::Connection::open(&db).unwrap();
+    let raw = current_writer::open(&db).unwrap();
     let snapshot = || {
         json!({"persisted_rows":legacy_usage_rows_snapshot(&raw),"project":store.project(p.id).unwrap(),
             "goal":store.goal(g.id).unwrap(),"task":store.task(t.id).unwrap(),
@@ -894,7 +896,7 @@ fn legacy_usage_query_preserves_null_scopes_and_refuses_null_column_wildcards() 
         sessions.push(s);
         valid.push(usage);
     }
-    let raw = rusqlite::Connection::open(&db).unwrap();
+    let raw = current_writer::open(&db).unwrap();
     let snapshot = || {
         json!({
             "persisted_rows":legacy_usage_rows_snapshot(&raw),
@@ -1009,7 +1011,7 @@ fn legacy_usage_query_redacts_malformed_body_decode_chain_without_writes() {
         missing_reason: Some("legacy history is unqualified".into()),
     };
     store.put_usage(&valid).unwrap();
-    let raw = rusqlite::Connection::open(&db).unwrap();
+    let raw = current_writer::open(&db).unwrap();
     let snapshot = || {
         json!({
             "persisted_rows":legacy_usage_rows_snapshot(&raw),

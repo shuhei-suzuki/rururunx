@@ -27,6 +27,8 @@ struct ToolRequest {
     args: Vec<String>,
     cwd: PathBuf,
     git_parent: Option<OperationId>,
+    #[serde(default)]
+    git_index: Option<PathBuf>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
@@ -51,6 +53,7 @@ struct Grant {
     program: PathBuf,
     args: Vec<String>,
     environment: BTreeMap<String, String>,
+    tool_bin: PathBuf,
 }
 async fn write_frame<T: Serialize>(
     stream: &mut (impl AsyncWrite + Unpin),
@@ -179,8 +182,19 @@ async fn serve(owner: Arc<RuntimeOwner>, mut stream: UnixStream) -> Result<()> {
                 ensure!(Path::new(&top).canonicalize()?==unit.worktree,"nested/foreign review Git namespace");
             }
         }
-        let _git=if plan.serialized_git {Some(owner.git_lease(unit.id,request.git_parent).await?)}else{None};
+        ensure!(request.git_index.is_none() || (request.tool=="git" && request.git_parent.is_some()),"candidate index requires a live Git hook chain");
+        let _git=if plan.serialized_git || request.git_index.is_some() {Some(owner.git_lease(unit.id,request.git_parent).await?)}else{None};
         if let Some(lease)=&_git {plan.environment.insert("RRX_GIT_GATE_TOKEN".into(),lease.id.to_string());}
+        if let Some(index)=&request.git_index {
+            let index=if index.is_absolute(){index.clone()}else{request.cwd.join(index)};
+            let admin=super::git_io::UnitGit::new(owner.clone(),&unit,true)?.text(&unit.worktree,["rev-parse","--absolute-git-dir"]).await?;
+            let admin=Path::new(&admin).canonicalize()?;
+            ensure!(index.canonicalize()?==index && index.parent()==Some(admin.as_path()) && index.is_file(),"candidate index is outside the owned Git administration directory");
+            let name=index.file_name().and_then(|s|s.to_str()).context("candidate index name missing")?;
+            let generated=name.strip_prefix("next-index-").map(|s|s.strip_suffix(".lock").unwrap_or(s));
+            ensure!(matches!(name,"index"|"index.lock") || generated.is_some_and(|s|!s.is_empty() && s.bytes().all(|b|b.is_ascii_digit())),"unsupported native candidate index");
+            plan.environment.insert("GIT_INDEX_FILE".into(),index.to_str().context("candidate index UTF-8")?.into());
+        }
         // Runtime admits and journals; the shim executes in its inherited native sandbox.
         // No credentials, stdin, stdout or stderr are transported through Runtime.
         {
@@ -192,7 +206,9 @@ async fn serve(owner: Arc<RuntimeOwner>, mut stream: UnixStream) -> Result<()> {
                 state:EffectState::Pending,receipt:BTreeMap::new(),version:1})?;
         }
         let exchanged=async {
-            write_frame(&mut stream,&Frame::Granted(Grant {operation,program:plan.program,args:plan.args,environment:plan.environment})).await?;
+            let mut environment=profile.namespace_environment(&unit.cookie,owner.ipc_path());
+            environment.extend(plan.environment);
+            write_frame(&mut stream,&Frame::Granted(Grant {operation,program:plan.program,args:plan.args,environment,tool_bin:profile.tool_bin.clone()})).await?;
             let (mut reader,mut writer)=stream.split();
             let mut decoder=Decoder::default();let mut started=false;let mut cancelled=false;
             let mut deadline=tokio::time::Instant::now()+Duration::from_secs(1800);
@@ -249,6 +265,11 @@ pub fn tool_entry() -> Result<Option<i32>> {
     ) {
         return Ok(None);
     }
+    let git_index = if name == "git" {
+        std::env::var_os("GIT_INDEX_FILE").map(PathBuf::from)
+    } else {
+        None
+    };
     let request = ToolRequest {
         unit: std::env::var("RRX_UNIT_ID")?.parse()?,
         cookie: std::env::var("RRX_PROCESS_COOKIE")?,
@@ -266,6 +287,7 @@ pub fn tool_entry() -> Result<Option<i32>> {
             .ok()
             .map(|s| s.parse())
             .transpose()?,
+        git_index,
     };
     let socket =
         std::env::var_os("RRX_RUNTIME_SOCKET").context("Runtime IPC missing; refusing tool")?;
@@ -312,11 +334,16 @@ async fn execute(
         rustix::io::fcntl_getfd(&*stream)?.contains(rustix::io::FdFlags::CLOEXEC),
         "tool IPC fd is inheritable"
     );
+    let mut paths = vec![grant.tool_bin];
+    paths.extend(std::env::split_paths(
+        &std::env::var_os("PATH").context("native PATH missing")?,
+    ));
+    let path = std::env::join_paths(paths)?;
     let mut command = Command::new(&grant.program);
+    command.env("PATH", path);
     command
         .args(&grant.args)
         .current_dir(cwd)
-        .envs(&grant.environment)
         .stdin(Stdio::inherit())
         .stdout(stdout)
         .stderr(Stdio::inherit());
@@ -331,6 +358,9 @@ async fn execute(
     ] {
         command.env_remove(key);
     }
+    // Only the admitted live same-unit hook chain may restore a native candidate
+    // index. Arbitrary inherited Git namespace overrides remain removed.
+    command.envs(&grant.environment);
     let mut child = process::OwnedProcess::spawn(&mut command)?;
     let stdout = child.child.stdout.take();
     let drain = tokio::spawn(async move {
@@ -394,6 +424,7 @@ mod tests {
                 args: args.iter().map(|a| (*a).into()).collect(),
                 cwd: unit.worktree.clone(),
                 git_parent: None,
+                git_index: None,
             },
         )
         .await?;
@@ -560,6 +591,7 @@ mod tests {
             ],
             cwd: unit.worktree.clone(),
             git_parent: None,
+            git_index: None,
         })
         .unwrap();
         let socket = serde_json::to_string(&owner.ipc_path()).unwrap();

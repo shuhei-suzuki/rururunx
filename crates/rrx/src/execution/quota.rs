@@ -109,8 +109,8 @@ pub fn codex_windows(value: &Value, at: i64) -> Result<Vec<QuotaObservation>> {
                 .as_i64()
                 .context("native quota percentage missing")?;
             ensure!(
-                (0..=100).contains(&percent),
-                "native quota percentage out of range"
+                i32::try_from(percent).is_ok(),
+                "native quota percentage is outside its int32 wire contract"
             );
             let reset = match w.get("resetsAt") {
                 None | Some(Value::Null) => None,
@@ -128,16 +128,20 @@ pub fn codex_windows(value: &Value, at: i64) -> Result<Vec<QuotaObservation>> {
                 bucket: format!("{bucket}/{window}"),
                 window_id: reset
                     .map_or_else(|| format!("unknown-{bucket}-{window}"), |r| r.to_string()),
-                status: if reached || percent == 100 {
+                status: if reached || percent >= 100 {
                     QuotaStatus::Exhausted
+                } else if percent < 0 {
+                    QuotaStatus::Unknown
                 } else {
                     QuotaStatus::Available
                 },
-                used_percent: Some(percent as f64),
+                // The wire schema has no 0..100 constraint. Keep an out-of-range
+                // fraction unknown rather than fabricating or clamping capacity.
+                used_percent: (0..=100).contains(&percent).then_some(percent as f64),
                 resets_at: reset,
                 observed_at: at,
                 source_version: "codex-cli 0.160.0/account.rateLimits".into(),
-                confirmed_subscription: reached || percent == 100,
+                confirmed_subscription: reached || percent >= 100,
             });
         }
     }
@@ -234,7 +238,16 @@ mod tests {
         assert_eq!(values[0].status, QuotaStatus::Exhausted);
         assert_eq!(values[0].resets_at, Some(123000));
         assert_eq!(values[1].resets_at, None);
-        assert!(codex_windows(&json!({"rateLimits":{"primary":{"usedPercent":101}}}), 1).is_err());
+        let excess =
+            codex_windows(&json!({"rateLimits":{"primary":{"usedPercent":101}}}), 1).unwrap();
+        assert_eq!(excess[0].status, QuotaStatus::Exhausted);
+        assert_eq!(excess[0].used_percent, None);
+        assert!(excess[0].confirmed_subscription);
+        let negative =
+            codex_windows(&json!({"rateLimits":{"primary":{"usedPercent":-1}}}), 1).unwrap();
+        assert_eq!(negative[0].status, QuotaStatus::Unknown);
+        assert_eq!(negative[0].used_percent, None);
+        assert!(!negative[0].confirmed_subscription);
         let c=claude_window(&json!({"type":"rate_limit_event","rate_limit_info":{"status":"rejected","rateLimitType":"five_hour","resetsAt":123}}),1).unwrap().unwrap();
         assert_eq!(c.used_percent, None);
         assert_eq!(c.status, QuotaStatus::Exhausted);

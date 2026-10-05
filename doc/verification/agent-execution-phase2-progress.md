@@ -15,6 +15,29 @@ changes. Their reports certify neither complete Phase2 nor native compatibility.
 Earlier rounds were also preliminary; their findings are not erased by this
 checkpoint. A final coordinated source review remains required.
 
+The two [round4 reports](agent-execution-phase2-preliminary4-reviews.json) examined
+`061c7914f8b21bc54f58b429a7d6fbe1104e5d8a` independently. Both requested changes;
+their earlier reported dispatch/probe/reentry/quota defects are statically closed
+for the reviewed paths. The subsequent component correction includes:
+
+- A M1: grants now restore the owner's finite resource namespace, including TMPDIR
+  and build output paths, while preserving the shim caller's native authentication,
+  settings, Git overlay and inherited PATH after the managed tool prefix.
+- B H1: a live same-unit Git chain may forward a canonical candidate index in its
+  own Git administration directory. Arbitrary, foreign and stale index contexts
+  refuse. Native `commit -a` and partial-commit pre-commit hooks read the actual
+  candidate index through the built rrx shim.
+- B M1: executor detached checkout/switch refuses before effects until an owned
+  detached-state binding is implemented. Readonly reviewer snapshots remain a
+  separate explicitly bound detached input.
+- B M2: finite nonsecret native failure categories survive status and terminal
+  audit persistence. Auth/capability/metadata refusal uses `refused`; malformed
+  protocol uses `protocol_error`; genuine missing transport uses `lost`. Work
+  remains unknown when no reliable terminal work result exists. No raw native
+  error, authentication value or provider output is serialized as a diagnostic.
+
+These corrections still require independent re-review on a fixed commit.
+
 | Finding | Current correction; independent re-review remains pending |
 | --- | --- |
 | A C-H1: native input/ALLOW retirement race | Private scoped producer journals a digest-only effect intent transactionally before wire dispatch. Cancellation-first rejects admission; intent-first is issued/uncertain and never replayed. Bootstrap checks and cancellation use a persistent timer. |
@@ -55,6 +78,47 @@ The native plan-mode flag is visible in installed Claude `--help`. Current
 describe plan mode routing writes to permission handling. The fixture verifies
 selected arguments, source permissions and transport; actual pinned provider
 behavior with user settings and required hooks remains unverified.
+
+The subsequent macOS regression run passed 371 library tests with zero failures
+and 24 ignored test-child entry points. Six initial failures were corrected by
+giving current-writer corruption fixtures the existing connection-local writer
+contract, and constructing an actual historical SQL layout for schema-v2
+migration rather than relabelling a v4 database. The old-writer negative controls
+remain active; the production writer guards were not relaxed.
+
+An additional built-binary integration control uses the actual rrx Git entry point,
+not the protocol peer: an unstaged FORBIDDEN change is refused by a managed
+pre-commit hook for both `commit -a` and partial commit. A SAFE change commits.
+The hook's temporary file and build target use its own Task's paths even when the
+caller supplies sibling paths; the sibling's worktree and output remain intact.
+This is not a `cargo install`, authenticated Agent, native sandbox, or both-OS
+conformance claim.
+
+New controls cover bootstrap cancellation for both protocol fixtures and seven
+separate Codex bootstrap failure categories without retaining a private error
+sentinel. Component selection passed 38 tests after those additions. Restart
+recovery now validates indexed identities before mutation, preserves known work,
+fences managed Sessions including already-retired units, marks unacknowledged
+effects unknown without replay, clears old quota waiters/leases, and admits fresh
+attempt identities. Pure SQLite controls exercise successful reconciliation and
+full rollback on a redirected body; Runtime SIGKILL and escaped processes remain
+Phase3 cases. Native quota decoding uses the installed CLI-generated int32 schema;
+out-of-range fractions remain unknown, with percentages above 100 retaining an
+exhaustion observation rather than a fabricated capacity fraction.
+
+After the restart/quota corrections, `cargo test --workspace --no-fail-fast
+--offline` passed on this macOS host: 374 library tests, 112 primary integration
+tests and two doctests, with zero failures. Child-entry test runs are not counted
+twice. The 27 primary ignored cases include explicit child-only fixture entry
+points and opt-in real native tests; they are not acceptance evidence. Subsequent
+targeted built-binary testing also passed a SAFE partial commit, so the candidate
+index control covers both rejection and successful consumption. Formatting,
+review JSON parsing and diff whitespace checks passed. Three dead-code warnings
+still reflect unconnected finalization/reclamation APIs. Earlier failed full
+regression attempts remain acknowledged: integration corruption canaries needed
+the current-writer contract, and schema-v1 Project migration needed a genuine
+historical SQL layout. The append-only/immutable-record and old-writer negative
+controls remain enabled.
 
 ## Required work still outstanding
 

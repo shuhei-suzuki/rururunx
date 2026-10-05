@@ -78,8 +78,36 @@ states!(Disposition {
     Cancelled,
     QuotaInterrupted,
     Lost,
+    Refused,
+    ProtocolError,
     Legacy
 });
+states!(NativeFailure {
+    AuthenticationUnavailable,
+    UnsupportedCapability,
+    MetadataUnavailable,
+    ProtocolFailure,
+    TransportLost,
+    AuthorityUnavailable
+});
+impl NativeFailure {
+    pub fn diagnostic(self) -> &'static str {
+        match self {
+            Self::AuthenticationUnavailable => "native subscription authentication unavailable",
+            Self::UnsupportedCapability => "native capability unavailable",
+            Self::MetadataUnavailable => "native quota metadata unavailable",
+            Self::ProtocolFailure => "native protocol failure",
+            Self::TransportLost => "native transport lost",
+            Self::AuthorityUnavailable => "native execution authority unavailable",
+        }
+    }
+}
+impl std::fmt::Display for NativeFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.diagnostic())
+    }
+}
+impl std::error::Error for NativeFailure {}
 states!(ArtifactState {
     Staging,
     Ready,

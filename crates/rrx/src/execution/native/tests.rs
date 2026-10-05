@@ -480,3 +480,147 @@ async fn native_dispatch_admission_has_a_durable_winner_against_retirement() {
         );
     }
 }
+
+#[tokio::test]
+async fn cancellation_during_bootstrap_closes_the_session_without_waiting_for_rpc_deadline() {
+    for provider in ["claude", "codex"] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, provider, "Implement", None)
+            .await
+            .unwrap();
+        let path = program(dir.path(), provider);
+        let script = std::fs::read_to_string(&path).unwrap().replace(
+            "# Local protocol fixture only:",
+            "BOOTSTRAP_HOLD = True\n# Local protocol fixture only:",
+        );
+        std::fs::write(&path, script).unwrap();
+        let NativeStart::Launched(handle) = sessions
+            .start_inner(input(&unit, "cancel-me"), None, None, Some(path))
+            .await
+            .unwrap()
+        else {
+            panic!("fixture queued")
+        };
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !owner
+                .root
+                .join("units")
+                .join(unit.id.to_string())
+                .join("output/fixture-bootstrap-ready")
+                .is_file()
+            {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        sessions.cancel(&handle).await.unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(5), terminal(&sessions, &handle))
+            .await
+            .unwrap();
+        assert_eq!(result.disposition, Disposition::Cancelled);
+        assert_eq!(result.work, Some(WorkOutcome::Unknown));
+        assert!(
+            !owner
+                .store
+                .lock()
+                .unwrap()
+                .execution_unit(unit.id)
+                .unwrap()
+                .native_effects_open
+        );
+        assert!(
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(unit.id)
+                .unwrap()
+                .iter()
+                .all(|e| e.kind != "native_input")
+        );
+    }
+}
+
+#[tokio::test]
+async fn bootstrap_failure_categories_survive_without_retaining_native_error_payloads() {
+    for (case, expected, disposition) in [
+        (
+            "auth",
+            NativeFailure::AuthenticationUnavailable,
+            Disposition::Refused,
+        ),
+        (
+            "api",
+            NativeFailure::AuthenticationUnavailable,
+            Disposition::Refused,
+        ),
+        (
+            "environment",
+            NativeFailure::UnsupportedCapability,
+            Disposition::Refused,
+        ),
+        (
+            "rpc-unsupported",
+            NativeFailure::UnsupportedCapability,
+            Disposition::Refused,
+        ),
+        (
+            "metadata",
+            NativeFailure::MetadataUnavailable,
+            Disposition::Refused,
+        ),
+        (
+            "protocol",
+            NativeFailure::ProtocolFailure,
+            Disposition::ProtocolError,
+        ),
+        ("transport", NativeFailure::TransportLost, Disposition::Lost),
+    ] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, "codex", "Implement", None)
+            .await
+            .unwrap();
+        let path = program(dir.path(), "codex");
+        let script = std::fs::read_to_string(&path).unwrap().replace(
+            "# Local protocol fixture only:",
+            &format!("BOOTSTRAP_CASE = {case:?}\n# Local protocol fixture only:"),
+        );
+        std::fs::write(&path, script).unwrap();
+        let NativeStart::Launched(handle) = sessions
+            .start_inner(input(&unit, "must not dispatch"), None, None, Some(path))
+            .await
+            .unwrap()
+        else {
+            panic!("fixture queued")
+        };
+        let status = terminal(&sessions, &handle).await;
+        assert_eq!(status.failure, Some(expected), "{case}");
+        assert_eq!(status.diagnostic, Some(expected.diagnostic()), "{case}");
+        assert_eq!(status.disposition, disposition, "{case}");
+        assert_eq!(status.work, Some(WorkOutcome::Unknown));
+        let store = owner.store.lock().unwrap();
+        let events = store.events(&unit.scope, 0, 1000).unwrap();
+        let event = events
+            .iter()
+            .find(|event| event.kind == "execution.work_terminal")
+            .unwrap();
+        assert_eq!(event.data["native_failure"], json!(expected), "{case}");
+        assert!(
+            !serde_json::to_string(&events)
+                .unwrap()
+                .contains("PRIVATE_FIXTURE_ERROR_MUST_NOT_PERSIST")
+        );
+        assert!(
+            store
+                .managed_effects(unit.id)
+                .unwrap()
+                .iter()
+                .all(|e| e.kind != "native_input")
+        );
+    }
+}

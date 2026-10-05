@@ -1,6 +1,8 @@
 use rrx::{domain::*, state::Store};
 use serde_json::to_value;
 use uuid::Uuid;
+#[path = "support/current_writer.rs"]
+mod current_writer;
 
 fn id(value: u128) -> TaskId {
     TaskId(Uuid::from_u128(value))
@@ -232,7 +234,7 @@ fn legacy_invalid_graph_hold_and_terminal_refusals_preserve_original_history() {
         edges: vec![edge(a, b, true)],
     };
     store.put_goal(&mut goal).unwrap();
-    let connection = rusqlite::Connection::open(&path).unwrap();
+    let connection = current_writer::open(&path).unwrap();
     for (legacy_edge, expected_error) in [
         (edge(b, a, true), "hard dependency cycle"),
         (edge(a, a, false), "self edge"),

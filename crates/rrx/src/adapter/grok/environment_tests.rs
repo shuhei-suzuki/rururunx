@@ -1029,7 +1029,7 @@ fn mutation_hook(
                         store.put_project(&mut foreign).unwrap();
                     }
                     8 => {
-                        let connection = rusqlite::Connection::open(&database).unwrap();
+                        let connection = crate::state::current_test_writer(&database).unwrap();
                         connection.execute("UPDATE projects SET body=json_set(body,'$.root',json('null')) WHERE id=?1",[foreign.id.to_string()]).unwrap();
                     }
                     _ => unreachable!(),
@@ -1295,7 +1295,8 @@ async fn reference_child() {
         rejected_start(&adapter, &fixture).await.kind,
         ErrorKind::InvalidConfiguration
     );
-    let connection = rusqlite::Connection::open(fixture.directory.path().join("state.db")).unwrap();
+    let connection =
+        crate::state::current_test_writer(&fixture.directory.path().join("state.db")).unwrap();
     let mut oversized = vec!["INVALID-NAME".to_owned(); 3000];
     oversized.push("GROK_SYNTHETIC_AUTH".into());
     for projection in [json!(oversized), json!({}), json!([{}])] {

@@ -1,5 +1,32 @@
 use super::*;
 
+pub(super) fn fence_epoch_effects(tx: &Transaction<'_>) -> Result<()> {
+    let mut statement =
+        tx.prepare("SELECT id FROM managed_effects WHERE state='pending' ORDER BY rowid")?;
+    let ids = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    for id in ids {
+        let mut effect = effect_tx(tx, id.parse()?)?;
+        let unit = unit_tx(tx, effect.unit_id)?;
+        ensure!(effect.scope == unit.scope, "effect recovery scope mismatch");
+        let prior = effect.version;
+        effect.version = prior.checked_add(1).context("effect version overflow")?;
+        effect.state = EffectState::Unknown;
+        effect.receipt = BTreeMap::from([("transport".into(), "runtime_epoch_lost".into())]);
+        ensure!(tx.execute("UPDATE managed_effects SET state='unknown',version=?1,body=?2 WHERE id=?3 AND version=?4 AND state='pending'",
+            params![effect.version,serde_json::to_string(&effect)?,effect.id.to_string(),prior])?==1,"effect recovery CAS mismatch");
+        append_event(
+            tx,
+            &unit.scope,
+            "execution.effect_epoch_unknown",
+            json!({"unit":unit.id,"operation":effect.id}),
+        )?;
+    }
+    Ok(())
+}
+
 impl Store {
     pub(crate) fn reserve_execution_helper(
         &mut self,

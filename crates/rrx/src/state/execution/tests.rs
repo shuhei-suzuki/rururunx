@@ -59,6 +59,254 @@ fn draft(task: &Task, epoch: u64) -> ExecutionUnit {
     }
 }
 
+fn session(unit: &ExecutionUnit) -> Session {
+    Session {
+        id: SessionId::new(),
+        scope: unit.scope.clone(),
+        agent: unit.provider.clone(),
+        provider: unit.provider.clone(),
+        role: SessionRole::Executor,
+        native_ref: None,
+        pid: None,
+        worktree: unit.worktree.clone(),
+        state: SessionState::Starting,
+        model: None,
+        effort: None,
+        recovery: json!({}),
+        started_at: now_ms(),
+    }
+}
+
+#[test]
+fn epoch_recovery_preserves_known_work_and_fences_live_and_already_retired_transports() {
+    let (mut store, task, epoch) = fixture();
+    let mut units = Vec::new();
+    let mut sessions = Vec::new();
+    for index in 0..3 {
+        let task = if index == 0 {
+            task.clone()
+        } else {
+            let mut sibling = Task::new(
+                task.project_id,
+                task.goal_id,
+                format!("sibling-{index}"),
+                "codex".into(),
+            );
+            store.put_task(&mut sibling).unwrap();
+            sibling
+        };
+        let unit = store
+            .reserve_execution(draft(&task, epoch), task.version)
+            .unwrap();
+        let unit = store
+            .transition_execution(&unit.authority(), UnitState::Preparing)
+            .unwrap();
+        assert_eq!(
+            store
+                .reserve_execution_quota(&unit.authority(), "codex", "unknown", 6, 2, 3, now_ms())
+                .unwrap(),
+            QuotaAdmission::Admitted
+        );
+        let unit = store.execution_unit(unit.id).unwrap();
+        let mut session = session(&unit);
+        let unit = store
+            .register_execution_session(&unit.authority(), &session)
+            .unwrap();
+        session.state = SessionState::Running;
+        session.native_ref = Some(format!("fixture-{index}"));
+        session.pid = Some(424242 + index);
+        let (unit, version) = store
+            .update_execution_session(&unit.authority(), &session, 1)
+            .unwrap();
+        store
+            .reserve_managed_effect(
+                &unit.authority(),
+                &ManagedEffect {
+                    id: OperationId::new(),
+                    unit_id: unit.id,
+                    scope: unit.scope.clone(),
+                    kind: "docker".into(),
+                    idempotency_key: format!("fixture-{index}"),
+                    expected_target: format!("container-{index}"),
+                    state: EffectState::Pending,
+                    receipt: BTreeMap::new(),
+                    version: 1,
+                },
+            )
+            .unwrap();
+        let unit = match index {
+            0 => {
+                let unit = store
+                    .finish_execution(
+                        &unit.authority(),
+                        WorkOutcome::Success,
+                        Disposition::Completed,
+                    )
+                    .unwrap();
+                session.state = SessionState::Exited;
+                store
+                    .close_execution_session(unit.id, &session, version)
+                    .unwrap();
+                unit
+            }
+            2 => store.retire_execution(&unit.authority(), false).unwrap(),
+            _ => unit,
+        };
+        units.push(unit);
+        sessions.push(session);
+    }
+    let mut waiter_task = Task::new(
+        task.project_id,
+        task.goal_id,
+        "waiting-capacity".into(),
+        "codex".into(),
+    );
+    store.put_task(&mut waiter_task).unwrap();
+    let waiter = store
+        .reserve_execution(draft(&waiter_task, epoch), waiter_task.version)
+        .unwrap();
+    assert!(matches!(
+        store
+            .reserve_execution_quota(&waiter.authority(), "codex", "unknown", 1, 2, 3, now_ms())
+            .unwrap(),
+        QuotaAdmission::Waiting {
+            reason: WaitReason::Capacity,
+            ..
+        }
+    ));
+    assert_eq!(
+        store
+            .connection
+            .query_row("SELECT COUNT(*) FROM quota_waiters", [], |row| row
+                .get::<_, u64>(0))
+            .unwrap(),
+        1
+    );
+    let (_, next_epoch) = store.begin_execution_epoch().unwrap();
+    assert_eq!(next_epoch, epoch + 1);
+    for (index, prior) in units.iter().enumerate() {
+        let recovered = store.execution_unit(prior.id).unwrap();
+        assert!(!recovered.native_effects_open && !recovered.result_finalization_open);
+        assert_eq!(
+            recovered.work,
+            Some(if index == 0 {
+                WorkOutcome::Success
+            } else {
+                WorkOutcome::Unknown
+            })
+        );
+        assert_eq!(
+            recovered.disposition,
+            [
+                Disposition::Completed,
+                Disposition::Lost,
+                Disposition::Cancelled
+            ][index]
+        );
+        assert_eq!(
+            recovered.state,
+            if index == 0 {
+                UnitState::WorkKnown
+            } else if index == 1 {
+                UnitState::WorkUnknown
+            } else {
+                UnitState::Retired
+            }
+        );
+        let record = store
+            .record(RecordId(sessions[index].id.0))
+            .unwrap()
+            .unwrap();
+        let session: Session = serde_json::from_value(record.data).unwrap();
+        assert_eq!(
+            session.state,
+            if index == 0 {
+                SessionState::Exited
+            } else {
+                SessionState::Lost
+            }
+        );
+        assert_eq!(
+            session.pid, sessions[index].pid,
+            "historical PID is diagnostic, never a recovery signal authority"
+        );
+        let effect = store.managed_effects(prior.id).unwrap().remove(0);
+        assert_eq!(effect.state, EffectState::Unknown);
+        assert_eq!(effect.receipt["transport"], "runtime_epoch_lost");
+        assert!(
+            store
+                .validate_execution(&prior.authority(), true, false)
+                .is_err()
+        );
+        let task = store.task(prior.scope.task_id.unwrap()).unwrap().unwrap();
+        let retry = store
+            .reserve_execution(draft(&task, next_epoch), task.version)
+            .unwrap();
+        assert_ne!(retry.worktree, prior.worktree);
+        assert!(retry.generation > prior.generation);
+    }
+    assert_eq!(
+        store
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM quota_leases WHERE active=1",
+                [],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        store
+            .connection
+            .query_row("SELECT COUNT(*) FROM quota_waiters", [], |r| r
+                .get::<_, u64>(0))
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn epoch_recovery_rolls_back_if_a_body_redirects_an_indexed_unit() {
+    let (mut store, task, epoch) = fixture();
+    let first = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    let mut sibling = Task::new(
+        task.project_id,
+        task.goal_id,
+        "sibling".into(),
+        "codex".into(),
+    );
+    store.put_task(&mut sibling).unwrap();
+    let second = store
+        .reserve_execution(draft(&sibling, epoch), sibling.version)
+        .unwrap();
+    store
+        .connection
+        .execute(
+            "UPDATE execution_units SET body=?1 WHERE id=?2",
+            params![
+                serde_json::to_string(&second).unwrap(),
+                first.id.to_string()
+            ],
+        )
+        .unwrap();
+    assert!(store.begin_execution_epoch().is_err());
+    assert_eq!(store.connection_epoch_for_test(), epoch);
+    let second_after = store.execution_unit(second.id).unwrap();
+    assert_eq!(second_after.version, second.version);
+    assert!(second_after.native_effects_open && second_after.result_finalization_open);
+    assert_eq!(
+        store
+            .connection
+            .query_row("SELECT COUNT(*) FROM cleanup_jobs", [], |row| row
+                .get::<_, u64>(0))
+            .unwrap(),
+        0
+    );
+}
+
 #[test]
 fn normal_terminal_cleanup_keeps_finalization_and_result_publication_races_cancel() {
     let (mut store, t, epoch) = fixture();

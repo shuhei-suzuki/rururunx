@@ -67,6 +67,27 @@ pub struct Store {
     connection: Connection,
 }
 
+fn register_writer_contract(connection: &Connection) -> Result<()> {
+    connection.create_scalar_function(
+        "rrx_writer_contract_version",
+        0,
+        rusqlite::functions::FunctionFlags::SQLITE_UTF8
+            | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC
+            | rusqlite::functions::FunctionFlags::SQLITE_INNOCUOUS,
+        |_| Ok(SCHEMA_VERSION),
+    )?;
+    Ok(())
+}
+
+/// Corruption fixtures model a current writer, rather than an incompatible
+/// legacy connection. Production callers must use Store's transactional API.
+#[cfg(test)]
+pub(crate) fn current_test_writer(path: &Path) -> Result<Connection> {
+    let connection = Connection::open(path)?;
+    register_writer_contract(&connection)?;
+    Ok(connection)
+}
+
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
         let connection = Connection::open(path)
@@ -79,14 +100,7 @@ impl Store {
     }
 
     fn initialize(mut connection: Connection) -> Result<Self> {
-        connection.create_scalar_function(
-            "rrx_writer_contract_version",
-            0,
-            rusqlite::functions::FunctionFlags::SQLITE_UTF8
-                | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC
-                | rusqlite::functions::FunctionFlags::SQLITE_INNOCUOUS,
-            |_| Ok(SCHEMA_VERSION),
-        )?;
+        register_writer_contract(&connection)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
         ensure!(

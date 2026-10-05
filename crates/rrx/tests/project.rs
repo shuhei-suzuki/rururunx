@@ -843,8 +843,33 @@ fn schema_one_project_migrates_without_changing_identity_or_history() {
     let p = f.add(&mut store, &f.a);
     let events = store.events(&Scope::project(p.id), 0, 100).unwrap();
     drop(store);
-    let old = rusqlite::Connection::open(&f.db).unwrap();
-    // Version 1 has the same SQL tables, and Project JSON without blocked_reason.
+    let legacy = f.root.join("state-v1.db");
+    let old = rusqlite::Connection::open(&legacy).unwrap();
+    // Reconstruct the actual historical layout; schema-v4 guards/tables must
+    // not be relabelled as v1. The Project JSON lacks blocked_reason.
+    old.execute_batch(include_str!("../src/state/schema.sql"))
+        .unwrap();
+    old.execute(
+        "ATTACH DATABASE ?1 AS current_fixture",
+        [f.db.to_str().unwrap()],
+    )
+    .unwrap();
+    for table in [
+        "projects",
+        "goals",
+        "tasks",
+        "records",
+        "context_versions",
+        "usage",
+        "audit",
+    ] {
+        old.execute_batch(&format!(
+            "INSERT INTO {table} SELECT * FROM current_fixture.{table}"
+        ))
+        .unwrap();
+    }
+    old.pragma_update(None, "application_id", rrx::state::APPLICATION_ID)
+        .unwrap();
     old.execute(
         "UPDATE projects SET body=json_remove(body,'$.blocked_reason')",
         [],
@@ -852,7 +877,7 @@ fn schema_one_project_migrates_without_changing_identity_or_history() {
     .unwrap();
     old.pragma_update(None, "user_version", 1).unwrap();
     drop(old);
-    let reopened = Store::open(&f.db).unwrap();
+    let reopened = Store::open(&legacy).unwrap();
     assert_eq!(
         reopened.schema_version().unwrap(),
         rrx::state::SCHEMA_VERSION

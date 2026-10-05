@@ -12,6 +12,12 @@ if sys.argv[1:] == ["--version"]:
 def send(value):
     print(json.dumps(value), flush=True)
 
+def hold_bootstrap():
+    if globals().get("BOOTSTRAP_HOLD", False):
+        with open(os.path.join(os.environ["RRX_OUTPUT_DIR"], "fixture-bootstrap-ready"), "w") as ready:
+            ready.write("ready")
+        while True: time.sleep(0.02)
+
 def complete(payload):
     if payload == "readonly-review":
         if PROVIDER == "claude":
@@ -41,16 +47,26 @@ for line in sys.stdin:
     value = json.loads(line)
     if PROVIDER == "codex":
         method = value.get("method")
+        failure = globals().get("BOOTSTRAP_CASE")
+        if method == "initialize" and failure == "transport":
+            sys.exit(0)
+        if method == "initialize" and failure == "protocol":
+            print("fixture deliberately malformed JSON",flush=True)
+            continue
+        if method == "environment/status" and failure == "rpc-unsupported":
+            send({"id":value["id"],"error":{"code":-32601,"message":"PRIVATE_FIXTURE_ERROR_MUST_NOT_PERSIST"}})
+            continue
         if method == "initialized":
             continue
         if method == "initialize":
+            hold_bootstrap()
             result = {"codexHome": "/fixture/native-home", "userAgent": "fixture", "platformFamily": "unix", "platformOs": "macos" if sys.platform == "darwin" else "linux"}
         elif method == "account/read":
-            result = {"account": {"type": "chatgpt", "planType": "pro"}}
+            result = {"account": None if failure == "auth" else {"type": "apiKey" if failure == "api" else "chatgpt", "planType": "pro"}}
         elif method == "environment/status":
-            result = {"status": "ready"}
+            result = {"status": "unsupported" if failure == "environment" else "ready"}
         elif method == "account/rateLimits/read":
-            result = {"rateLimits": {"limitId": "fixture", "primary": {"usedPercent": 20}, "secondary": None}}
+            result = {} if failure == "metadata" else {"rateLimits": {"limitId": "fixture", "primary": {"usedPercent": 20}, "secondary": None}}
         elif method == "thread/start":
             NATIVE_SANDBOX = value["params"].get("sandbox")
             result = {"thread": {"id": os.environ["RRX_UNIT_ID"]}, "cwd": os.getcwd(), "modelProvider": "openai"}
@@ -73,6 +89,7 @@ for line in sys.stdin:
     else:
         native = sys.argv[sys.argv.index("--session-id") + 1]
         if value["type"] == "control_request":
+            hold_bootstrap()
             send({"type": "control_response", "response": {"subtype": "success", "request_id": value["request_id"], "response": {}}})
         elif value["type"] == "user":
             send({"type": "system", "subtype": "init", "session_id": native, "cwd": os.getcwd(), "tools": ["Bash"], "mcp_servers": []})

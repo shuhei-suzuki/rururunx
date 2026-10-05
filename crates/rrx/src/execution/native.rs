@@ -48,6 +48,7 @@ pub struct NativeStatus {
     pub result: Option<Value>,
     pub metrics: Option<Value>,
     pub diagnostic: Option<&'static str>,
+    pub failure: Option<NativeFailure>,
 }
 pub enum NativeStart {
     Launched(ManagedSessionRef),
@@ -359,6 +360,7 @@ impl NativeSessions {
             result: None,
             metrics: None,
             diagnostic: None,
+            failure: None,
         };
         let (update, status) = watch::channel(initial);
         let (control, receiver) = mpsc::channel(16);
@@ -505,7 +507,7 @@ impl Lines {
     async fn line(&mut self) -> Result<Value> {
         loop {
             let chunk = self.stdout.fill_buf().await?;
-            ensure!(!chunk.is_empty(), "native output ended without terminal");
+            ensure!(!chunk.is_empty(), NativeFailure::TransportLost);
             let newline = chunk.iter().position(|b| *b == b'\n');
             let n = newline.map_or(chunk.len(), |i| i + 1);
             ensure!(
@@ -549,7 +551,10 @@ impl Lines {
         tokio::time::timeout(Duration::from_secs(30),async {loop {
             let value=self.line().await?;crate::codex::managed::frame(&value)?;
             if value.get("method").is_none() && value["id"]==id {
-                ensure!(value.get("error").is_none(),"native bootstrap RPC failed");return Ok(value["result"].clone());
+                if value.get("error").is_some() {
+                    anyhow::bail!(if value["error"]["code"] == -32601 {NativeFailure::UnsupportedCapability}else{NativeFailure::ProtocolFailure});
+                }
+                return Ok(value["result"].clone());
             }
             if value.get("id").is_some() && value.get("method").is_some(){
                 self.send(&json!({"id":value["id"],"error":{"code":-32601,"message":"No native turn established"}})).await?;
@@ -647,6 +652,7 @@ struct Core {
 impl Core {
     fn authority(&self) -> Result<ExecutionAuthority> {
         native_authority(&self.owner, &self.unit, self.session.id)
+            .context(NativeFailure::AuthorityUnavailable)
     }
     async fn send_effect(
         &mut self,
@@ -777,9 +783,26 @@ impl Core {
         } else {
             self.claude(&input).await
         };
-        let (work, disposition, output) = match result {
-            Ok(value) => (value.0, value.1, value.2),
-            Err(_) => (WorkOutcome::Unknown, Disposition::Lost, None),
+        let (work, disposition, output, failure) = match result {
+            Ok(value) => (value.0, value.1, value.2, None),
+            Err(error) => {
+                // Never retain raw native errors, output or credentials. Only
+                // finite nonsecret categories survive the supervisor.
+                let category = if let Some(category) = error.downcast_ref::<NativeFailure>() {
+                    *category
+                } else if error.is::<std::io::Error>() || error.is::<tokio::time::error::Elapsed>()
+                {
+                    NativeFailure::TransportLost
+                } else {
+                    NativeFailure::ProtocolFailure
+                };
+                let disposition = match category {
+                    NativeFailure::TransportLost => Disposition::Lost,
+                    NativeFailure::ProtocolFailure => Disposition::ProtocolError,
+                    _ => Disposition::Refused,
+                };
+                (WorkOutcome::Unknown, disposition, None, Some(category))
+            }
         };
         // Persist work before hygiene; late completions cannot reopen a cancelled generation.
         let persisted = (|| {
@@ -790,7 +813,12 @@ impl Core {
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
             let current = store.execution_unit(self.unit.id)?;
             if current.native_effects_open {
-                if let Err(e) = store.finish_execution(&current.authority(), work, disposition) {
+                if let Err(e) = store.finish_execution_with_failure(
+                    &current.authority(),
+                    work,
+                    disposition,
+                    failure,
+                ) {
                     let current = store.execution_unit(self.unit.id)?;
                     if current.native_effects_open || current.result_finalization_open {
                         store.retire_execution(&current.authority(), false)?;
@@ -812,7 +840,7 @@ impl Core {
         };
         self.session.state = if current.disposition == Disposition::Cancelled {
             SessionState::Stopped
-        } else if current.work == Some(WorkOutcome::Unknown) {
+        } else if current.disposition == Disposition::Lost {
             SessionState::Lost
         } else {
             SessionState::Exited
@@ -856,7 +884,14 @@ impl Core {
             s.cleanup = CleanupOutcome::Unknown;
             s.pending.clear();
             s.result = output;
-            s.diagnostic = if persisted.is_err() || session_result.is_err() {
+            s.failure = if current.disposition == Disposition::Cancelled {
+                None
+            } else {
+                failure
+            };
+            s.diagnostic = if let Some(failure) = s.failure {
+                Some(failure.diagnostic())
+            } else if persisted.is_err() || session_result.is_err() {
                 Some("terminal persistence conflict")
             } else if group_error {
                 Some("owned group cleanup incomplete")
@@ -874,7 +909,8 @@ impl Core {
     ) -> Result<(WorkOutcome, Disposition, Option<Value>)> {
         self.authority()?;
         let init=self.boot_call("initialize",json!({"clientInfo":{"name":"rururunx","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}}),None).await?;
-        crate::codex::managed::initialization(&init)?;
+        crate::codex::managed::initialization(&init)
+            .context(NativeFailure::UnsupportedCapability)?;
         self.wire
             .send(&json!({"method":"initialized","params":{}}))
             .await?;
@@ -883,14 +919,14 @@ impl Core {
             .await?;
         ensure!(
             account["account"]["type"] == "chatgpt",
-            "native subscription authentication unavailable; no paid API fallback"
+            NativeFailure::AuthenticationUnavailable
         );
         let environment = self
             .boot_call("environment/status", json!({"environmentId":"local"}), None)
             .await?;
         ensure!(
             environment["status"] == "ready",
-            "native local environment is not ready"
+            NativeFailure::UnsupportedCapability
         );
         let quota = self
             .boot_call("account/rateLimits/read", json!({}), None)
@@ -901,7 +937,8 @@ impl Core {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .execution_is_quota_probe(self.unit.id, "codex", "unknown")?;
-        let observations = quota::codex_windows(&quota, now_ms())?;
+        let observations =
+            quota::codex_windows(&quota, now_ms()).context(NativeFailure::MetadataUnavailable)?;
         let exhausted = observations
             .iter()
             .any(|o| o.status == QuotaStatus::Exhausted);
@@ -930,7 +967,7 @@ impl Core {
         ensure!(
             thread["cwd"].as_str() == self.unit.worktree.to_str()
                 && thread["modelProvider"] == "openai",
-            "native local workspace/provider mismatch"
+            NativeFailure::UnsupportedCapability
         );
         let thread_id = claude_wire::bounded_id(&thread["thread"]["id"])?;
         self.ack(thread_id.clone())?;
@@ -1015,18 +1052,26 @@ impl Core {
         self.wire
             .send(&claude_wire::control("initialize", "rrx-initialize"))
             .await?;
-        tokio::time::timeout(Duration::from_secs(30), async {
-            loop {
-                let frame = self.wire.line().await?;
-                if frame["type"] == "control_response" {
-                    claude_wire::control_result(&frame, "rrx-initialize")?;
-                    break;
-                }
-                self.wire.queue(frame)?;
-            }
-            Ok::<_, anyhow::Error>(())
-        })
-        .await??;
+        let owner = self.owner.clone();
+        let pinned = self.unit.clone();
+        let session = self.session.id;
+        let mut fence = tokio::time::interval(Duration::from_millis(100));
+        tokio::time::timeout(Duration::from_secs(30),async {
+            loop {tokio::select! {
+                frame=self.wire.line()=>{
+                    let frame=frame?;
+                    if frame["type"]=="control_response" {
+                        claude_wire::control_result(&frame,"rrx-initialize")?;break;
+                    }
+                    self.wire.queue(frame)?;
+                },
+                control=self.controls.recv()=>match control {
+                    Some(Control::Approval {response,..})=>{let _=response.send(Err(anyhow::anyhow!("native input not established")));},
+                    _=>anyhow::bail!("native bootstrap cancelled")
+                },
+                _=fence.tick()=>{native_authority(&owner,&pinned,session)?;}
+            }}Ok::<_,anyhow::Error>(())
+        }).await??;
         self.authority()?;
         self.send_effect(&json!({"type":"user","session_id":self.native,"parent_tool_use_id":null,"message":{"role":"user","content":input.payload}}),None,"native_input").await?;
         let mut state = claude_wire::RunState::default();

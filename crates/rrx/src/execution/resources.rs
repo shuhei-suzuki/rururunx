@@ -40,8 +40,37 @@ impl ResourceProfile {
         let path = std::env::join_paths(paths)?
             .into_string()
             .map_err(|_| anyhow::anyhow!("PATH must be UTF-8"))?;
-        let mut overlay = BTreeMap::from([
-            ("PATH".into(), path),
+        let mut overlay = self.namespace_environment(cookie, ipc);
+        overlay.insert("PATH".into(), path);
+        // Preserve inherited config entries, including required hooks, without reading/copying their values.
+        let count = std::env::var("GIT_CONFIG_COUNT")
+            .ok()
+            .map(|s| s.parse::<usize>())
+            .transpose()?
+            .unwrap_or(0);
+        ensure!(count <= 128, "inherited Git config overlay exceeds bound");
+        overlay.insert("GIT_CONFIG_COUNT".into(), (count + 3).to_string());
+        for (i, (key, value)) in [
+            ("gc.auto", "0"),
+            ("maintenance.auto", "false"),
+            ("core.fsmonitor", "false"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            overlay.insert(format!("GIT_CONFIG_KEY_{}", count + i), key.into());
+            overlay.insert(format!("GIT_CONFIG_VALUE_{}", count + i), value.into());
+        }
+        Ok(overlay)
+    }
+    /// Non-secret owner-assigned resource values only. Auth, native settings and
+    /// Git overlay entries stay inherited in the shim's actual native context.
+    pub(crate) fn namespace_environment(
+        &self,
+        cookie: &str,
+        ipc: &Path,
+    ) -> BTreeMap<String, String> {
+        BTreeMap::from([
             ("RRX_UNIT_ID".into(), self.unit.to_string()),
             ("RRX_PROCESS_COOKIE".into(), cookie.into()),
             (
@@ -71,27 +100,7 @@ impl ResourceProfile {
                 "SCCACHE_DIR".into(),
                 self.cache.join("sccache").to_string_lossy().into(),
             ),
-        ]);
-        // Preserve inherited config entries, including required hooks, without reading/copying their values.
-        let count = std::env::var("GIT_CONFIG_COUNT")
-            .ok()
-            .map(|s| s.parse::<usize>())
-            .transpose()?
-            .unwrap_or(0);
-        ensure!(count <= 128, "inherited Git config overlay exceeds bound");
-        overlay.insert("GIT_CONFIG_COUNT".into(), (count + 3).to_string());
-        for (i, (key, value)) in [
-            ("gc.auto", "0"),
-            ("maintenance.auto", "false"),
-            ("core.fsmonitor", "false"),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            overlay.insert(format!("GIT_CONFIG_KEY_{}", count + i), key.into());
-            overlay.insert(format!("GIT_CONFIG_VALUE_{}", count + i), value.into());
-        }
-        Ok(overlay)
+        ])
     }
     pub(crate) fn validate(&self, owner: &RuntimeOwner, unit: &ExecutionUnit) -> Result<()> {
         ensure!(
