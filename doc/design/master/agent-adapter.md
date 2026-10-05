@@ -443,6 +443,29 @@ effort have not been changed. Whole-workload containment/settlement, actual owni
 approval broker, both-host provider and four-plus concurrency acceptance remain
 mandatory/open. See [issue design](../issue-6-design.md).
 
+### Private preparation job custody (Issue #19)
+
+The private Codex Control can retain an actor handle, a custodian thread and a
+closed resource worker outside the waiting adapter future. The selected component
+uses a bounded 64-job pool, three declared slots per preparation, a 64-request
+inbox and a 4096-byte encoded metadata limit. Actual join observations refund
+eligible slots; opaque construction errors and unknown frames retain their
+unproved reservations. Caller Drop revokes mechanical callbacks independently of
+the native cancellation latch.
+
+An error with a created resource retains the exact registry entry and deferred
+original disposition. Only observed complete joins without unknown/outstanding
+work permit removing a fresh unpublished entry or restoring the exact previous
+Control. A genuine no-created-resource outcome may restore/remove registry
+bookkeeping while fixed metadata drains; that does not refund unfinished jobs.
+
+The resource factory is cfg(test)-only and ordinary custody selection returns
+None. Public Codex availability stays EMPTY. Existing Git/preparation consumers
+are not migrated to this pool. No native subprocess, cohort containment, managed
+admission, persistent owner recovery, Context Pack producer or settlement
+certificate is supplied. See the [selected component design](../issue-19-lifetime-component-design.md)
+and [curated integration evidence](../../verification/issue-19-native-custody.md).
+
 ## 17. Native workload ownership limit
 
 Section16 records the selected-process-group component baseline. Current native
