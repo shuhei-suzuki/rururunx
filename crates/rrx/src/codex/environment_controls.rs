@@ -285,7 +285,15 @@ async fn real_stop_at_pre_and_post_cas_cannot_spawn_selected_child() {
                 )
             };
             let before = no_effect_snapshot(&adapter, &owned.request.scope);
-            let mut stop = Box::pin(adapter.stop(reference));
+            let before_version = adapter
+                .store
+                .lock()
+                .unwrap()
+                .session(reference.id)
+                .unwrap()
+                .unwrap()
+                .1;
+            let mut stop = Box::pin(adapter.stop(reference.clone()));
             tokio::select! {
                 result=&mut stop => panic!("stop unexpectedly finished while selected spawn hook retained: {result:?}"),
                 _=control.preparation.wait_cancelled()=>{},
@@ -307,6 +315,149 @@ async fn real_stop_at_pre_and_post_cas_cannot_spawn_selected_child() {
             }
             assert!(adapter.environment_hooks.counts(attempt_id, site) == (0, 0));
             assert!(started.is_err() && stopped.is_ok());
+            let final_version = adapter
+                .store
+                .lock()
+                .unwrap()
+                .session(reference.id)
+                .unwrap()
+                .unwrap()
+                .1;
+            assert!(
+                final_version == before_version + 1,
+                "cancelled pre-exec performed an extra Session write"
+            );
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn checkpoint_roster_changes_are_own_only_and_resume_refuses_initially() {
+    for relevant in [false, true] {
+        let owned = Fixture::new(false);
+        let (executable, directory) = wire_fixture(&owned, "complete");
+        let adapter = synthetic_adapter(&owned, executable);
+        let session = bounded(adapter.start(owned.request.clone())).await.unwrap();
+        let reference = SessionRef::from(&session);
+        let original = terminal_status(&adapter, &reference).await;
+        let gate = adapter.gates.install(TestPoint::BeforeInitialPersist);
+        let mut input = owned.request.input.clone();
+        input.version += 1;
+        input.payload = "fresh synthetic continuation".into();
+        let actor = adapter.clone();
+        let target = reference.clone();
+        let checkpoint = tokio::spawn(async move { actor.checkpoint(target, input).await });
+        bounded(gate.reached()).await;
+        let mut writer = writer(&owned);
+        foreign(
+            &mut writer,
+            if relevant {
+                "OPENAI_API_KEY"
+            } else {
+                "IRRELEVANT_SYNTHETIC"
+            },
+        );
+        gate.release();
+        bounded(checkpoint).await.unwrap().unwrap();
+        let current = adapter.current(&reference).unwrap();
+        assert!(
+            serde_json::to_value(&current.session).unwrap()
+                == serde_json::to_value(&original.session).unwrap()
+        );
+        let before = no_effect_snapshot(&adapter, &owned.request.scope);
+        let journal_before = journal_values(&directory);
+        let resumed = bounded(adapter.resume(reference.clone())).await;
+        if relevant {
+            let error = match resumed {
+                Err(error) => error,
+                Ok(session) => {
+                    terminal_status(&adapter, &SessionRef::from(&session)).await;
+                    panic!("relevant foreign conflict permitted resume")
+                }
+            };
+            assert!(error.kind == ErrorKind::InvalidConfiguration);
+            let after = no_effect_snapshot(&adapter, &owned.request.scope);
+            assert!(
+                before["sessions"] == after["sessions"]
+                    && before["events"] == after["events"]
+                    && before["sites"] == after["sites"]
+            );
+            assert!(journal_values(&directory) == journal_before);
+            let control = adapter
+                .registry()
+                .unwrap()
+                .get(&reference.id)
+                .unwrap()
+                .control
+                .clone();
+            assert!(matches!(&*control.subscribe().borrow(), Phase::Finished(_)));
+        } else {
+            let resumed = resumed.unwrap();
+            assert!(resumed.native_ref == original.session.native_ref);
+            let status = terminal_status(&adapter, &reference).await;
+            assert!(status.session.state == SessionState::Exited);
+            assert!(
+                journal_values(&directory)
+                    .iter()
+                    .filter(|v| v["method"] == "turn/start")
+                    .count()
+                    == 2
+            );
+        }
+        assert_leader_reaped(&directory.join("leader"));
+    }
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn both_config_consumers_refuse_references_before_policy_and_account() {
+    for (filename, main) in [("discovery-config", false), ("main-config", true)] {
+        for malformed in [false, true] {
+            let owned = Fixture::new(false);
+            let (executable, directory) = wire_fixture(&owned, "complete");
+            let adapter = synthetic_adapter(&owned, executable);
+            let overrides = if malformed {
+                json!({"web_search":"invalid","mcp_servers":17,"model_provider":17})
+            } else {
+                json!({"web_search":"invalid","model_provider":"custom","model_providers":{"custom":{"env_key":"AMBIENT_ONLY_SYNTHETIC"}}})
+            };
+            std::fs::write(
+                directory.join(filename),
+                serde_json::to_vec(&overrides).unwrap(),
+            )
+            .unwrap();
+            let started = bounded(adapter.start(owned.request.clone())).await;
+            if let Ok(session) = &started {
+                terminal_status(&adapter, &SessionRef::from(session)).await;
+            }
+            let error = match started {
+                Err(error) => error,
+                Ok(_) => panic!("unpermitted provider reference reached a model frame"),
+            };
+            assert!(
+                error.kind
+                    == if malformed {
+                        ErrorKind::ParseFailure
+                    } else {
+                        ErrorKind::UnsupportedCapability
+                    }
+            );
+            assert!(
+                error.message
+                    == if malformed {
+                        "invalid native provider environment references"
+                    } else {
+                        "unsupported native provider environment reference"
+                    }
+            );
+            let journal = journal_values(&directory);
+            assert!(!journal.iter().any(|v| matches!(
+                v["method"].as_str(),
+                Some("account/read" | "thread/start" | "turn/start")
+            )));
+            assert!(
+                adapter.environment_hooks.total(ExecSite::Main)
+                    == if main { (1, 1) } else { (0, 0) }
+            );
+            assert_leader_reaped(&directory.join("leader"));
         }
     }
 }

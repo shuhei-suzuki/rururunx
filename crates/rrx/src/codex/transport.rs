@@ -133,6 +133,8 @@ impl NativeServer {
             pid,
         })
     }
+    // Keep existing ownership/preparation inputs explicit at this private effect boundary.
+    #[allow(clippy::too_many_arguments)]
     pub(super) async fn launch_preparing(
         availability: &Availability,
         executable: &Path,

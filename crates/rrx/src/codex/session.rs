@@ -5634,7 +5634,19 @@ mod tests {
                     json!({"userAgent":"synthetic-codex","codexHome":directory,"platformFamily":"unix","platformOs":std::env::consts::OS})
                 }
                 "initialized" => continue,
-                "config/read" => json!({"config":config}),
+                "config/read" => {
+                    let selected = if args.contains(&"--disable") {
+                        "main-config"
+                    } else {
+                        "discovery-config"
+                    };
+                    let mut effective = config.clone();
+                    if let Ok(bytes) = std::fs::read(directory.join(selected)) {
+                        let overrides: Value = serde_json::from_slice(&bytes).unwrap();
+                        synthetic_merge(&mut effective, overrides);
+                    }
+                    json!({"config":effective})
+                }
                 "account/read" => json!({"requiresOpenaiAuth":false,"account":null}),
                 "environment/status" => json!({"status":"ready"}),
                 "thread/start" | "thread/resume" => {
