@@ -290,7 +290,7 @@ not merely trigger an unrelated lifecycle/currency guard. Managed producer and
 native previous-snapshot provenance remain unavailable.
 
 Cleanup results are fixed typed std worker return values stored until join. New-effect
-requests check revocation BEFORE enqueue and again at handler effect. Fill the inbox
+requests check revocation BEFORE enqueue and before handling each request. Fill the inbox
 with refused/optional requests while the worker finishes: its join result still
 carries cleanup, no dropped fact or spurious Unknown. Counters for accepted requests
 retire only after handling. Detached-before-install handle loss is explicitly
