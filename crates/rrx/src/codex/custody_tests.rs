@@ -306,16 +306,30 @@ mod custody_mechanics {
             .unwrap();
         let handle = runtime.handle().clone();
         drop(runtime);
-        let _entered = handle.enter();
         let (control, _) = Control::new(None);
         let pool = Pool::isolated();
-        control.install_custody(pool.clone()).unwrap();
-        let guard = TaskGuard(control.clone());
-        control
-            .spawn(async move {
+        let owner = control.clone();
+        let reserved = pool.clone();
+        let (sent, received) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let _entered = handle.enter();
+            owner.install_custody(reserved).unwrap();
+            let guard = TaskGuard(owner.clone());
+            let result = owner.spawn(async move {
                 let _guard = guard;
                 std::future::pending::<()>().await;
-            })
+            });
+            sent.send(result).unwrap();
+        });
+        // Exercise the actual custodied spawn/drop consumer. A deadlock mutant
+        // must fail within the existing bound instead of hanging the test suite.
+        // This closed-runtime fixture never queues a file or starts an OS child.
+        let result = received.recv_timeout(Duration::from_secs(2));
+        if result.is_ok() {
+            worker.join().unwrap();
+        }
+        result
+            .expect("closed scheduler cannot deadlock custodied task installation")
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
         while pool.used() != 1 {
