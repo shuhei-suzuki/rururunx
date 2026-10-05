@@ -75,7 +75,7 @@ impl PreparedExecutor {
                 ["status", "--porcelain", "--untracked-files=all"]
             )
             .await?
-            .len() <= usize::MAX,
+            .is_empty(),
             "prepared worktree changed before initial gate"
         );
         self.owner
