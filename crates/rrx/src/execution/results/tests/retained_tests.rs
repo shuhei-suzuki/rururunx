@@ -1,5 +1,6 @@
 use super::*;
 use crate::execution::retained_io::RetainedGit;
+mod routing_tests;
 
 async fn captured(owner: &Arc<RuntimeOwner>, task: &Task) -> (ExecutionUnit, ResultArtifact) {
     let attempts = crate::execution::attempts::AttemptManager::new(owner.clone());

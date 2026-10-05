@@ -1,10 +1,9 @@
 //! Owned-child hygiene, without process census or a descendant-death claim.
 use anyhow::{Context, Result, ensure};
 use rustix::process::{Pid, Signal, WaitId, WaitIdOptions, kill_process_group, waitid};
-use std::{
-    process::{ExitStatus, Stdio},
-    time::Duration,
-};
+#[cfg(test)]
+use std::process::Stdio;
+use std::{process::ExitStatus, time::Duration};
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     process::{Child, Command},
