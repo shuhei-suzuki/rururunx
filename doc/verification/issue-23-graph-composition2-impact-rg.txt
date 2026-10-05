@@ -1,3 +1,5 @@
+Command: rg -n 'hard_order|put_goal\\(|validate_goal_references|TaskDag|\\.dag\\.nodes|\\.dag\\.edges|goal_terminal|GoalState::(Paused|Blocked|WaitingHuman|Cancelled|Failed)' crates/rrx/src crates/rrx/tests
+
 crates/rrx/tests/context.rs:85:        store.put_goal(&mut goal).unwrap();
 crates/rrx/tests/context.rs:569:        store.put_goal(&mut other_goal).unwrap();
 crates/rrx/tests/context.rs:798:    f.store.lock().unwrap().put_goal(&mut goal).unwrap();
@@ -28,20 +30,15 @@ crates/rrx/tests/goal_graph.rs:222:    store.put_goal(&mut goal).unwrap();
 crates/rrx/tests/goal_graph.rs:230:    goal.dag = TaskDag {
 crates/rrx/tests/goal_graph.rs:234:    store.put_goal(&mut goal).unwrap();
 crates/rrx/tests/goal_graph.rs:244:        legacy.dag.edges.push(legacy_edge);
+crates/rrx/tests/goal_graph.rs:261:                GoalState::Paused,
+crates/rrx/tests/goal_graph.rs:262:                GoalState::Blocked,
+crates/rrx/tests/goal_graph.rs:263:                GoalState::WaitingHuman,
 crates/rrx/tests/goal_graph.rs:264:                GoalState::Cancelled,
 crates/rrx/tests/goal_graph.rs:265:                GoalState::Failed,
 crates/rrx/tests/goal_graph.rs:271:                let error = store.put_goal(&mut requested).unwrap_err().to_string();
-crates/rrx/tests/support/grok_fixture.rs:87:        store.put_goal(&mut goal).unwrap();
-crates/rrx/tests/git.rs:61:        store.put_goal(&mut goal).unwrap();
-crates/rrx/tests/git.rs:411:    separate.put_goal(&mut goal).unwrap();
-crates/rrx/tests/git.rs:530:    fixture.store.put_goal(&mut fixture.goal).unwrap();
-crates/rrx/tests/adapter.rs:98:        store.put_goal(&mut goal).unwrap();
-crates/rrx/tests/adapter.rs:719:        store.put_goal(&mut goal).unwrap();
-crates/rrx/src/goal.rs:6:use crate::domain::{TaskDag, TaskId};
-crates/rrx/src/goal.rs:8:impl TaskDag {
-crates/rrx/src/goal.rs:18:    pub fn hard_order(&self) -> Result<Vec<TaskId>> {
 crates/rrx/src/workflow.rs:16:    state::{StateGuardError, Store, WorkflowAccess, goal_terminal, task_terminal},
 crates/rrx/src/workflow.rs:2635:        !goal_terminal(goal.state)
+crates/rrx/tests/support/grok_fixture.rs:87:        store.put_goal(&mut goal).unwrap();
 crates/rrx/tests/state.rs:27:    store.put_goal(&mut goal).unwrap();
 crates/rrx/tests/state.rs:125:    goal.dag.nodes.push(task.id);
 crates/rrx/tests/state.rs:127:    store.put_goal(&mut goal).unwrap();
@@ -59,31 +56,20 @@ crates/rrx/tests/state.rs:515:    goal_one.dag.edges.push(Dependency {
 crates/rrx/tests/state.rs:520:    assert!(store.put_goal(&mut goal_one).is_err());
 crates/rrx/tests/state.rs:521:    goal_one.dag.edges.clear();
 crates/rrx/tests/state.rs:522:    store.put_goal(&mut goal_one).unwrap();
-crates/rrx/src/adapter.rs:1085:        GoalState::Paused | GoalState::Completed | GoalState::Cancelled | GoalState::Failed
-crates/rrx/src/adapter.rs:1836:        state.put_goal(&mut goal).unwrap();
-crates/rrx/src/adapter.rs:1988:            state.put_goal(&mut goal).unwrap();
-crates/rrx/src/adapter.rs:2038:            store.put_goal(&mut goal).unwrap();
-crates/rrx/src/project.rs:6:    state::{Store, goal_terminal, task_terminal},
-crates/rrx/src/project.rs:274:                .filter(|g| !goal_terminal(g.state))
-crates/rrx/tests/project.rs:100:    store.put_goal(&mut g).unwrap();
-crates/rrx/tests/project.rs:424:    s.put_goal(&mut g).unwrap();
-crates/rrx/tests/project.rs:472:    assert!(reopened.put_goal(&mut next).is_err());
-crates/rrx/tests/project.rs:734:    s.put_goal(&mut g).unwrap();
-crates/rrx/tests/project.rs:748:    assert!(s.put_goal(&mut g).is_err());
-crates/rrx/tests/project.rs:829:        s.put_goal(&mut g).is_ok()
-crates/rrx/tests/project.rs:926:    assert!(store.put_goal(&mut changed).is_err());
-crates/rrx/tests/project.rs:963:    store.put_goal(&mut g).unwrap();
-crates/rrx/tests/project.rs:965:    assert!(store.put_goal(&mut g).is_err());
-crates/rrx/tests/project.rs:972:    store.put_goal(&mut historical).unwrap();
-crates/rrx/tests/project.rs:977:    assert!(store.put_goal(&mut historical).is_err());
+crates/rrx/tests/git.rs:61:        store.put_goal(&mut goal).unwrap();
+crates/rrx/tests/git.rs:411:    separate.put_goal(&mut goal).unwrap();
+crates/rrx/tests/git.rs:530:    fixture.store.put_goal(&mut fixture.goal).unwrap();
 crates/rrx/src/workflow/tests.rs:424:        store.put_goal(&mut goal).unwrap();
+crates/rrx/src/workflow/tests.rs:944:        goal.state = GoalState::Paused;
 crates/rrx/src/workflow/tests.rs:945:        store.put_goal(&mut goal).unwrap();
 crates/rrx/src/workflow/tests.rs:1846:        store.put_goal(&mut goal).unwrap();
 crates/rrx/src/workflow/tests.rs:2587:                store.put_goal(&mut goal).unwrap();
+crates/rrx/src/workflow/tests.rs:2640:                    goal.state = GoalState::Paused;
 crates/rrx/src/workflow/tests.rs:2641:                    store.put_goal(&mut goal).unwrap();
 crates/rrx/src/workflow/tests.rs:2686:                store.put_goal(&mut goal).unwrap();
 crates/rrx/src/workflow/tests.rs:2922:        goal.state = GoalState::Cancelled;
 crates/rrx/src/workflow/tests.rs:2924:        store.put_goal(&mut goal).unwrap();
+crates/rrx/src/workflow/tests.rs:3172:                    GoalState::Paused
 crates/rrx/src/workflow/tests.rs:3174:                    GoalState::Cancelled
 crates/rrx/src/workflow/tests.rs:3176:                store.put_goal(&mut goal).unwrap();
 crates/rrx/src/workflow/tests.rs:3428:            store.put_goal(&mut goal).unwrap();
@@ -93,20 +79,50 @@ crates/rrx/src/workflow/tests.rs:3541:    store.put_goal(&mut goal).unwrap();
 crates/rrx/src/workflow/tests.rs:3815:    goal.state = GoalState::Cancelled;
 crates/rrx/src/workflow/tests.rs:3816:    store.put_goal(&mut goal).unwrap();
 crates/rrx/src/workflow/tests.rs:4072:        store.put_goal(&mut goal).unwrap();
+crates/rrx/src/workflow/tests.rs:4295:                fixture.set_goal(GoalState::Paused);
+crates/rrx/src/workflow/tests.rs:4360:        fixture.set_goal(GoalState::Paused);
 crates/rrx/src/workflow/tests.rs:4400:                    store.put_goal(&mut goal).unwrap();
-crates/rrx/src/state/native_dispatch_tests.rs:23:    store.put_goal(&mut goal).unwrap();
-crates/rrx/src/state/native_dispatch_tests.rs:61:                other.put_goal(&mut goal).unwrap();
+crates/rrx/src/workflow/tests.rs:4641:                fixture.set_goal(GoalState::Paused);
+crates/rrx/src/project.rs:6:    state::{Store, goal_terminal, task_terminal},
+crates/rrx/src/project.rs:274:                .filter(|g| !goal_terminal(g.state))
+crates/rrx/tests/adapter.rs:98:        store.put_goal(&mut goal).unwrap();
+crates/rrx/tests/adapter.rs:718:        goal.state = GoalState::Paused;
+crates/rrx/tests/adapter.rs:719:        store.put_goal(&mut goal).unwrap();
 crates/rrx/src/domain.rs:215:pub struct TaskDag {
 crates/rrx/src/domain.rs:244:    pub dag: TaskDag,
 crates/rrx/src/domain.rs:268:            dag: TaskDag::default(),
+crates/rrx/src/goal.rs:6:use crate::domain::{TaskDag, TaskId};
+crates/rrx/src/goal.rs:8:impl TaskDag {
+crates/rrx/src/goal.rs:18:    pub fn hard_order(&self) -> Result<Vec<TaskId>> {
+crates/rrx/src/state/native_dispatch_tests.rs:23:    store.put_goal(&mut goal).unwrap();
+crates/rrx/src/state/native_dispatch_tests.rs:61:                other.put_goal(&mut goal).unwrap();
 crates/rrx/src/adapter/grok/ownership.rs:255:                GoalState::Paused | GoalState::Completed | GoalState::Cancelled | GoalState::Failed
-crates/rrx/src/codex/ownership.rs:190:                GoalState::Paused | GoalState::Completed | GoalState::Cancelled | GoalState::Failed
-crates/rrx/src/codex/ownership.rs:696:                store.put_goal(&mut goal).unwrap();
+crates/rrx/src/adapter.rs:1085:        GoalState::Paused | GoalState::Completed | GoalState::Cancelled | GoalState::Failed
+crates/rrx/src/adapter.rs:1836:        state.put_goal(&mut goal).unwrap();
+crates/rrx/src/adapter.rs:1988:            state.put_goal(&mut goal).unwrap();
+crates/rrx/src/adapter.rs:2037:            goal.state = crate::domain::GoalState::Paused;
+crates/rrx/src/adapter.rs:2038:            store.put_goal(&mut goal).unwrap();
+crates/rrx/tests/project.rs:100:    store.put_goal(&mut g).unwrap();
+crates/rrx/tests/project.rs:424:    s.put_goal(&mut g).unwrap();
+crates/rrx/tests/project.rs:472:    assert!(reopened.put_goal(&mut next).is_err());
+crates/rrx/tests/project.rs:732:    g.state = GoalState::Blocked;
+crates/rrx/tests/project.rs:734:    s.put_goal(&mut g).unwrap();
+crates/rrx/tests/project.rs:748:    assert!(s.put_goal(&mut g).is_err());
+crates/rrx/tests/project.rs:829:        s.put_goal(&mut g).is_ok()
+crates/rrx/tests/project.rs:926:    assert!(store.put_goal(&mut changed).is_err());
+crates/rrx/tests/project.rs:963:    store.put_goal(&mut g).unwrap();
+crates/rrx/tests/project.rs:964:    g.state = GoalState::Blocked;
+crates/rrx/tests/project.rs:965:    assert!(store.put_goal(&mut g).is_err());
+crates/rrx/tests/project.rs:972:    store.put_goal(&mut historical).unwrap();
+crates/rrx/tests/project.rs:976:    historical.state = GoalState::Paused;
+crates/rrx/tests/project.rs:977:    assert!(store.put_goal(&mut historical).is_err());
 crates/rrx/src/adapter/grok/mod.rs:1641:        store.put_goal(&mut goal).unwrap();
 crates/rrx/src/state/mod.rs:261:    pub fn put_goal(&mut self, goal: &mut Goal) -> Result<()> {
 crates/rrx/src/state/mod.rs:269:        if !goal_terminal(goal.state) {
 crates/rrx/src/state/mod.rs:275:                !goal_terminal(old.state)
+crates/rrx/src/state/mod.rs:279:                            GoalState::Blocked | GoalState::WaitingHuman | GoalState::Paused
 crates/rrx/src/state/mod.rs:293:        validate_goal_references(&tx, goal)?;
+crates/rrx/src/state/mod.rs:774:                    GoalState::Paused
 crates/rrx/src/state/mod.rs:776:                        | GoalState::Cancelled
 crates/rrx/src/state/mod.rs:777:                        | GoalState::Failed
 crates/rrx/src/state/mod.rs:1374:pub(crate) fn goal_terminal(state: GoalState) -> bool {
@@ -114,4 +130,7 @@ crates/rrx/src/state/mod.rs:1377:        GoalState::Completed | GoalState::Cance
 crates/rrx/src/state/mod.rs:1416:                "goals" => goal_terminal(decode::<Goal>(body)?.state),
 crates/rrx/src/state/mod.rs:1448:fn validate_goal_references(tx: &Transaction<'_>, goal: &Goal) -> Result<()> {
 crates/rrx/src/state/mod.rs:1450:    let mut references: BTreeSet<_> = goal.dag.hard_order()?.into_iter().collect();
+crates/rrx/src/codex/ownership.rs:190:                GoalState::Paused | GoalState::Completed | GoalState::Cancelled | GoalState::Failed
+crates/rrx/src/codex/ownership.rs:696:                store.put_goal(&mut goal).unwrap();
+crates/rrx/src/codex/session.rs:4320:                    goal.state = crate::domain::GoalState::Paused;
 crates/rrx/src/codex/session.rs:4321:                    store.put_goal(&mut goal).unwrap();

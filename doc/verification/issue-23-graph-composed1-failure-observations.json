@@ -82,7 +82,7 @@
     ],
     "same_head_debug_passed": true,
     "static_facts": [
-      "actual grok_fixture.rs70\u201387 calls Goal::new -> TaskDag::default; no DAG edit in environment cases",
+      "environment_tests.rs2 uses super::fixture_support::Fixture; grok/mod.rs9-11 cfg(test) #[path=\"../../../tests/support/grok_fixture.rs\"] includes actual support fixture70-87 Goal::new -> TaskDag::default; no DAG edit in these cases. Separate inline mod.rs1641 is another test fixture.",
       "hard_order has no profile branch/native I/O; counted-hard-edge decrements only",
       "both old/new structural validators accept empty fixture graph; not cause or regression proof"
     ]

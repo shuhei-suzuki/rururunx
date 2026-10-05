@@ -1,8 +1,9 @@
 # Issue 23 verification
 
-Current limited component: structural graph validation implemented, with two prior
-source approvals at7c1fd88. Latest maincf8 composition364139d verification is
-recorded below; independent current-composition review remains required.
+Current limited component: structural graph validation implemented. TWO current
+composition2 source reviews at6fac07f APPROVE with zero Critical/High/Medium and
+verified selected-group cleanup. Verified Low evidence fixes are recorded below;
+final metadata-head CI/root checks precede limited merge.
 Whole23/managed authority/evaluation/native/MVP remain OPEN.
 
 Historical requirements baseline4851fcd (the following chronology is retained). Current domain.rs:195–287 has
@@ -170,7 +171,7 @@ fixture obligation. Managed model, native admission, settlement, completion and
 full Issue23 remain pending.
 
 
-## Current structural-component composition364139d
+## Historical structural-component composition364139d
 
 Normal main478 then maincf8 integration completed without conflicts; all original
 goal.rs and goal_graph.rs bytes equal prior reviewed7c1fd88. Store's validator
@@ -207,18 +208,21 @@ review ownership assertion saw PS332580us. Linux passed both. The current and PR
 green runs neither explain nor erase these failures. Do not certify the observer,
 reader custody or all-native cleanup.
 
-Current [impact inventory](issue-23-graph-composed1-impact-rg.txt) covers every
-put_goal/validator/TaskDag consumer and actual Goal lifecycle/graph readers. The
+Current [impact inventory and exact command](issue-23-graph-composition2-impact-rg.txt)
+includes hard_order, put_goal/validator/TaskDag, graph fields and named hold/terminal
+states. The historical composed1 inventory omitted hard_order and is superseded.
+These are explicit text matches, not a complete semantic call graph. The
 put_goal public library API is defined at Store261 with NO in-crate production
 caller; all current call sites are tests, with external composition possible; native/Workflow raw Goal scope/version checks remain. All
 production changes stay inside structural validation. Previously accepted invalid
-legacy graph Cancel/Fail saves still reject: prior verified Low G23-SRC-L1 remains
+legacy graphs refuse EVERY unchanged save, including holds, blockers/metadata and
+Cancel/Fail: prior verified Low G23-SRC-L1 remains
 a disclosed limitation of this component, with the typed frozen-history closure
 fixture obligation in the complete managed design. No completion/dispatch is
 exposed and in-memory caps do not certify bounded DB deserialization.
 
-Current independent source/composition review and final metadata-head CI are
-required before any limited merge. Complete23,19 settlement,43 binding,14/27
+Current independent source/composition reviews are recorded below. Final metadata-head
+CI and root checks remain required before limited merge. Complete23,19 settlement,43 binding,14/27
 scheduling,24CLI and16dogfood remain OPEN. Existing Issue6 historical private
 harness ownership hold is unchanged; selected normal verification closures do not
 certify all native jobs.
@@ -264,7 +268,9 @@ Failure owners: Grok release checkpoint/resume watchdogs remain with open
 with open [Issue60](https://github.com/shuhei-suzuki/rururunx/issues/60) and
 [Issue6](https://github.com/shuhei-suzuki/rururunx/issues/6). The same two Grok tests
 passed default debug at364139d. Actual environment fixture uses
-tests/support/grok_fixture.rs70–87 Goal::new then put_goal; Goal::new initializes
+environment_tests.rs2 imports super::fixture_support::Fixture; grok/mod.rs9–11
+explicitly includes tests/support/grok_fixture.rs with cfg(test) #[path]. That actual
+fixture at70–87 calls Goal::new then put_goal; Goal::new initializes
 TaskDag::default, and neither the fixture nor these environment cases constructs
 DAG edges. Both validators accept that empty graph. No profile-dependent graph
 logic, no native/process I/O in hard_order, and no fixture DAG edits are static
@@ -274,4 +280,16 @@ non-interaction facts; cause and regression of the failures remain UNKNOWN.
 
 At clean `153376548a94fd7482e4c9969ce2a8c064ab597b`, affected Debug and Release each pass all four graph controls and all 17 State integration controls with default test parallelism. Formatting, all-target Clippy with warnings denied, and both Debug and Release all-target builds pass. Full workspace Release is not repeated: its prior two isolated Grok watchdog failures and unknown cause remain recorded in the composed1 failure observations, assigned to #51/#67; separate main CI failures remain assigned to #60/#6. This is no full Release suite qualification.
 
-Two additional compiled endpoint operators now fail the actual Store consumer at `goal_graph.rs:148`, where an invalid graph was committed and the expected refusal becomes `Ok`. G07 checks the hard-only endpoint bypass against soft missing endpoints; G08 checks skipping a missing prerequisite. Both isolated mutant commits are restored and the complete restored tree equals the clean tested head; all four graph controls then pass. These are two new distinct operators, alongside the six previously qualified operators, not 14 operators or native acceptance. Exact patches and hashes are retained in JSON. Production source is unchanged from composed1; the verified Medium finding was a missing causal test, now addressed pending two independent delta reviews.
+Two additional compiled endpoint operators now fail the actual Store consumer at `goal_graph.rs:148`, where an invalid graph was committed and the expected refusal becomes `Ok`. G07 checks the hard-only endpoint bypass against soft missing endpoints; G08 checks skipping a missing prerequisite. Both isolated mutant commits are restored and the complete restored tree equals the clean tested head; all four graph controls then pass. These are two new distinct operators, alongside the six previously qualified operators, not 14 operators or native acceptance. Exact patches and hashes are retained in JSON. Production source is unchanged from composed1; the verified Medium finding was a missing causal test, now addressed and approved by two independent delta reviews recorded below.
+
+## Current composition2 source outcome and finite Low fixes
+
+[Two actual independent source results/dispositions](issue-23-graph-composition2-reviews.json): both APPROVE at `6fac07feb6c794a66be8e3898f1115c2104fe5b5`, zero Critical/High/Medium and no unresolved blockers; selected native review process groups are closed and cleanup verified. Their resumed metering remains raw and unattributed, never added or differenced. All production source/Cargo/CI bytes are unchanged from reviewed composed1; all source/control bytes equal tested clean153. Only finite documentation/evidence corrections follow those approvals.
+
+Current [affected Debug/Release gates](issue-23-graph-composition2-quality.json), [two endpoint operators](issue-23-graph-composition2-mutants.json), [exact endpoint patches](issue-23-graph-composition2-mutant-patches.json) and [impact inventory with exact command](issue-23-graph-composition2-impact-rg.txt) supersede the earlier current-link wording. Every unchanged invalid legacy graph save refuses, including holds, blockers/metadata and Cancel/Fail; no successful safehold, typed closure or repair authority is implied.
+
+The additional [compiled legacy-ratification operator G09](issue-23-graph-legacy-mutant.json) skips structural checks only when incoming/persisted DAG serialization is equal. Actual Store commits the invalid legacy hold and the new characterization consumer fails `unwrap_err` at goal_graph271. Complete restored tree equals reviewed6fac, and all four graph controls pass. Total NINE distinct compiled operators: six original (four Store/two API), two new endpoint Store operators and one new legacy Store operator. No duplicate-run, text-only, native or lifecycle acceptance credit. Two initial private driver source-anchor assertions aborted before source mutation, compilation or test; no mutation credit for those setup attempts.
+
+[Clean test-head CI37247009571 proof](issue-23-graph-composition2-code-ci.json) and [review-head CI37247597481 proof](issue-23-graph-composition2-ci.json) show EVERY step successful on Linux/macOS. Actual checkouts405e7f03/418c62ef have parentscf8/153 andcf8/6fac respectively; complete trees and all254/257 tracked blobs match. CI tests Debug and builds Release; neither certifies full Release tests or establishes cause of retained failures. Final metadata CI must independently prove its actual complete tree before limited merge.
+
+The fixture citation hypothesis is resolved by the explicit cfg(test) #[path] include at grok/mod.rs9–11. The separate inline put_goal at1641 belongs to another test. These static facts do not establish watchdog/ProcessStatus cause or non-regression. Whole23/19/43/14/24/27/native/F1/MVP remain OPEN; old Issue6 retained harness ownership hold is untouched.

@@ -1,6 +1,7 @@
 # Issue 23: Goal authority, DAG and completion
 
-Status: Design4 f4b4926 approved with no Critical/High/Medium; source gates pending. Requirements3 `1fc82b1` independently approved.
+Status: Design4 f4b4926 approved with no Critical/High/Medium. Limited structural
+source composition2 has two approvals; complete managed source gates remain pending. Requirements3 `1fc82b1` independently approved.
 The initial structural graph component is implemented and independently reviewed
 with its controls/mutations below; complete authority/evaluation integration remains
 pending. Baseline main4851fcd and integrated main80452f4 have schema3 and generic Goal snapshots; the native
