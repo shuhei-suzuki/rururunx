@@ -179,7 +179,10 @@ fn schema5_replaces_contract4_guards_and_fences_already_open_writer() {
         [Uuid::new_v4().to_string()],
     )
     .unwrap();
-    for table in MUTABLE_TABLES {
+    for table in MUTABLE_TABLES
+        .iter()
+        .filter(|table| !matches!(**table, "native_invocations" | "native_results"))
+    {
         for action in ["INSERT", "UPDATE", "DELETE"] {
             old.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>4 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
         }
@@ -192,7 +195,7 @@ fn schema5_replaces_contract4_guards_and_fences_already_open_writer() {
         .unwrap();
     cached.execute([]).unwrap();
     let mut current = Store::open(&path).unwrap();
-    assert_eq!(current.schema_version().unwrap(), 5);
+    assert_eq!(current.schema_version().unwrap(), SCHEMA_VERSION);
     assert!(cached.execute([]).is_err());
     assert!(
         old.execute(
@@ -208,7 +211,7 @@ fn schema5_replaces_contract4_guards_and_fences_already_open_writer() {
         1
     );
     assert_eq!(current.begin_execution_epoch().unwrap().1, 2);
-    let guards: u64 = current.connection.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND name LIKE 'writer_%' AND sql LIKE '%<>5%'", [], |r| r.get(0)).unwrap();
+    let guards: u64 = current.connection.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND name LIKE 'writer_%' AND sql LIKE '%<>6%'", [], |r| r.get(0)).unwrap();
     assert_eq!(guards, (MUTABLE_TABLES.len() * 3) as u64);
     // The unrelated append-only guard remains installed across the upgrade.
     assert!(current.connection.query_row("SELECT 1 FROM sqlite_schema WHERE type='trigger' AND name='cleanup_observation_no_update'", [], |r| r.get::<_, i64>(0)).is_ok());

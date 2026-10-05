@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 mod execution;
 pub(crate) use execution::QuotaAdmission;
 pub(crate) use execution::cleanup::CleanupClaim;
@@ -151,11 +151,22 @@ impl Store {
                 ensure!(application == APPLICATION_ID, "not an rrx state database");
                 // Ordered JSON-format migrations; SQL layout and ownership/audit stay intact.
                 // v2 adds Project blocked_reason; v3 adds authoritative Workflow records.
+                if locked_version < 6 {
+                    execution::native_results::validate_legacy_namespace(&tx)?;
+                }
                 for next in (locked_version + 1)..=SCHEMA_VERSION {
                     if next == 4 {
                         execution::install_schema(&tx)?;
                     }
                     if next == 5 {
+                        // The ordered upgrade is one atomic transaction. Prepare
+                        // the new tables before installing this binary's guards;
+                        // no intermediate schema5+native layout is published.
+                        execution::native_results::install_schema(&tx)?;
+                        execution::install_writer_guards(&tx)?;
+                    }
+                    if next == 6 {
+                        execution::native_results::install_schema(&tx)?;
                         execution::install_writer_guards(&tx)?;
                     }
                     tx.pragma_update(None, "user_version", next)?;
