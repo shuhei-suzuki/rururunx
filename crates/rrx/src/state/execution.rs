@@ -955,6 +955,7 @@ impl Store {
     ) -> Result<ExecutionUnit> {
         self.finish_execution_with_failure(authority, work, disposition, None)
     }
+    #[cfg(test)]
     pub(crate) fn finish_execution_with_failure(
         &mut self,
         authority: &ExecutionAuthority,
@@ -965,42 +966,7 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut unit = validate_authority(&tx, authority, false, true)?;
-        ensure!(unit.work.is_none(), "work terminal already recorded");
-        ensure!(
-            !matches!(
-                disposition,
-                Disposition::QuotaInterrupted | Disposition::CapacityInterrupted
-            ) || work == WorkOutcome::Unknown,
-            "interrupted native work cannot be known"
-        );
-        unit.native_effects_open = false;
-        unit.work = Some(work);
-        unit.disposition = disposition;
-        unit.capacity_retry_at = (disposition == Disposition::CapacityInterrupted)
-            .then(|| now_ms().saturating_add(60_000));
-        unit.wait_reason = match disposition {
-            Disposition::QuotaInterrupted => Some(WaitReason::Quota),
-            Disposition::CapacityInterrupted => Some(WaitReason::Capacity),
-            _ => None,
-        };
-        unit.state = if work == WorkOutcome::Unknown {
-            UnitState::WorkUnknown
-        } else {
-            UnitState::WorkKnown
-        };
-        if disposition != Disposition::Completed {
-            unit.result_finalization_open = false;
-        }
-        write_unit(&tx, &mut unit)?;
-        tx.execute("INSERT INTO cleanup_jobs(unit_id,next_due,attempts,version) VALUES(?1,?2,0,1) ON CONFLICT(unit_id) DO NOTHING",params![unit.id.to_string(),now_ms()])?;
-        quotas::release_quota_tx(&tx, unit.id)?;
-        append_event(
-            &tx,
-            &unit.scope,
-            "execution.work_terminal",
-            json!({"unit":unit.id,"work":unit.work,"disposition":unit.disposition,"native_failure":failure}),
-        )?;
+        let unit = finish_execution_tx(&tx, authority, work, disposition, failure)?;
         tx.commit()?;
         Ok(unit)
     }
@@ -1268,3 +1234,49 @@ pub(super) use sessions::logically_retired_session;
 mod native_results_tests;
 #[cfg(test)]
 mod tests;
+
+fn finish_execution_tx(
+    tx: &Transaction<'_>,
+    authority: &ExecutionAuthority,
+    work: WorkOutcome,
+    disposition: Disposition,
+    failure: Option<NativeFailure>,
+) -> Result<ExecutionUnit> {
+    let mut unit = validate_authority(tx, authority, false, true)?;
+    ensure!(unit.work.is_none(), "work terminal already recorded");
+    ensure!(
+        !matches!(
+            disposition,
+            Disposition::QuotaInterrupted | Disposition::CapacityInterrupted
+        ) || work == WorkOutcome::Unknown,
+        "interrupted native work cannot be known"
+    );
+    unit.native_effects_open = false;
+    unit.work = Some(work);
+    unit.disposition = disposition;
+    unit.capacity_retry_at =
+        (disposition == Disposition::CapacityInterrupted).then(|| now_ms().saturating_add(60_000));
+    unit.wait_reason = match disposition {
+        Disposition::QuotaInterrupted => Some(WaitReason::Quota),
+        Disposition::CapacityInterrupted => Some(WaitReason::Capacity),
+        _ => None,
+    };
+    unit.state = if work == WorkOutcome::Unknown {
+        UnitState::WorkUnknown
+    } else {
+        UnitState::WorkKnown
+    };
+    if disposition != Disposition::Completed {
+        unit.result_finalization_open = false;
+    }
+    write_unit(tx, &mut unit)?;
+    tx.execute("INSERT INTO cleanup_jobs(unit_id,next_due,attempts,version) VALUES(?1,?2,0,1) ON CONFLICT(unit_id) DO NOTHING",params![unit.id.to_string(),now_ms()])?;
+    quotas::release_quota_tx(tx, unit.id)?;
+    append_event(
+        tx,
+        &unit.scope,
+        "execution.work_terminal",
+        json!({"unit":unit.id,"work":unit.work,"disposition":unit.disposition,"native_failure":failure}),
+    )?;
+    Ok(unit)
+}

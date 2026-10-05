@@ -81,6 +81,16 @@ pub struct PrefixEvidence {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct WireEvidence {
+    pub observed_sha256: String,
+    pub observed_bytes: u64,
+    /// false means only a bounded observed prefix was hashed; never the full frame.
+    pub exact_length: bool,
+    pub category: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NativeResultReceipt {
     pub id: NativeResultId,
     pub invocation_id: NativeInvocationId,
@@ -99,6 +109,8 @@ pub struct NativeResultReceipt {
     pub prefix: Option<PrefixEvidence>,
     pub answer_sha256: Option<String>,
     pub terminal_sha256: Option<String>,
+    #[serde(default)]
+    pub wire: Option<WireEvidence>,
     pub observed_work: WorkOutcome,
     pub disposition: Disposition,
     pub diagnostics: Vec<String>,
@@ -194,6 +206,11 @@ impl NativeInvocation {
     }
 }
 impl NativeResultReceipt {
+    pub(crate) fn projection(&self) -> serde_json::Value {
+        serde_json::json!({"schema":"native_answer_v1","receipt_id":self.id,"acquisition":self.acquisition,
+            "authority_class":self.authority,"work":self.observed_work,"disposition":self.disposition,
+            "text":self.text,"prefix_evidence":self.prefix})
+    }
     pub(crate) fn validate(&self) -> Result<()> {
         ensure!(
             self.scope.goal_id.is_some()
@@ -228,6 +245,26 @@ impl NativeResultReceipt {
             self.structured_output.is_none(),
             "structured native content profile is unsupported"
         );
+        if let Some(wire) = &self.wire {
+            ensure!(
+                sha(&wire.observed_sha256)
+                    && wire.observed_bytes <= (4 * 1024 * 1024 + 8192)
+                    && matches!(
+                        wire.category.as_str(),
+                        "frame_bytes"
+                            | "invalid_json"
+                            | "depth"
+                            | "nodes"
+                            | "string_bytes"
+                            | "total_string_bytes"
+                            | "object_entries"
+                            | "array_entries"
+                            | "duplicate_key"
+                            | "eof"
+                    ),
+                "invalid native wire evidence"
+            );
+        }
         if let Some(prefix) = &self.prefix {
             ensure!(
                 prefix.prefix.len() <= PREFIX_BYTES
@@ -264,5 +301,294 @@ impl NativeResultReceipt {
             "native receipt encoding limit"
         );
         Ok(())
+    }
+}
+
+/// Pure bounded content collector. Only the native supervisor supplies owned frames;
+/// neither this content nor its projection constitutes review authority.
+#[derive(Default)]
+pub(super) struct Collector {
+    items: BTreeMap<String, (String, String)>,
+    final_text: Option<String>,
+    final_id: Option<String>,
+    draft: String,
+    observed: u64,
+    observed_complete: bool,
+    events: usize,
+    status: Option<AcquisitionStatus>,
+    terminal: Option<String>,
+    diagnostics: Vec<String>,
+}
+pub(super) struct Content {
+    pub acquisition: AcquisitionStatus,
+    pub text: Option<String>,
+    pub prefix: Option<PrefixEvidence>,
+    pub answer_sha256: Option<String>,
+    pub terminal_sha256: Option<String>,
+    pub diagnostics: Vec<String>,
+}
+impl Collector {
+    fn poison(&mut self, status: AcquisitionStatus, diagnostic: &str) {
+        // Overflow and ambiguity are sticky; no subsequent successful frame repairs them.
+        if !matches!(
+            self.status,
+            Some(AcquisitionStatus::Overflow | AcquisitionStatus::Ambiguous)
+        ) {
+            self.status = Some(status);
+        }
+        if self.diagnostics.len() < 16 && !self.diagnostics.iter().any(|d| d == diagnostic) {
+            self.diagnostics.push(diagnostic.into());
+        }
+    }
+    fn event(&mut self) -> bool {
+        self.events = self.events.saturating_add(1);
+        if self.events > 1024 {
+            self.poison(AcquisitionStatus::Overflow, "answer_event_limit");
+            false
+        } else {
+            true
+        }
+    }
+    fn prefix(&mut self, text: &str, append: bool) {
+        self.observed_complete = !append;
+        if !append {
+            self.draft.clear();
+            self.observed = 0;
+        }
+        self.observed = self.observed.saturating_add(text.len() as u64);
+        let available = PREFIX_BYTES.saturating_sub(self.draft.len());
+        let mut n = text.len().min(available);
+        while !text.is_char_boundary(n) {
+            n -= 1;
+        }
+        self.draft.push_str(&text[..n]);
+    }
+    pub(super) fn wire_failed(&mut self, wire: &WireEvidence) {
+        let status = if matches!(
+            wire.category.as_str(),
+            "frame_bytes"
+                | "string_bytes"
+                | "total_string_bytes"
+                | "nodes"
+                | "object_entries"
+                | "array_entries"
+        ) {
+            AcquisitionStatus::Overflow
+        } else if wire.category == "duplicate_key" {
+            AcquisitionStatus::Ambiguous
+        } else {
+            AcquisitionStatus::Partial
+        };
+        self.poison(status, "native_wire_rejected");
+    }
+    pub(super) fn protocol_lost(&mut self) {
+        self.poison(AcquisitionStatus::Partial, "native_protocol_incomplete");
+    }
+    pub(super) fn discard_sensitive(&mut self) {
+        self.final_text = None;
+        self.draft.clear();
+        self.observed = 0;
+        self.status = Some(AcquisitionStatus::Missing);
+        self.terminal = None;
+        self.diagnostics = vec!["native_sensitive_failure".into()];
+    }
+    pub(super) fn codex_item(&mut self, item: &serde_json::Value, completed: bool) {
+        if !self.event() {
+            return;
+        }
+        let Some(id) = item["id"].as_str().filter(|id| native_id(id)) else {
+            self.poison(AcquisitionStatus::Ambiguous, "answer_item_identity_missing");
+            return;
+        };
+        let Some(kind) = item["type"].as_str() else {
+            self.poison(AcquisitionStatus::Ambiguous, "answer_item_type_missing");
+            return;
+        };
+        if self.items.get(id).is_some_and(|(old, _)| old != kind) {
+            self.poison(AcquisitionStatus::Ambiguous, "answer_item_type_changed");
+            return;
+        }
+        if !self.items.contains_key(id) && self.items.len() >= 256 {
+            self.poison(AcquisitionStatus::Overflow, "answer_item_limit");
+            return;
+        }
+        if kind != "agentMessage" || !completed {
+            self.items
+                .entry(id.into())
+                .or_insert((kind.into(), String::new()));
+            return;
+        }
+        let signature = digest(&serde_json::to_vec(item).expect("Value encoding"));
+        if let Some((_, old)) = self.items.get(id)
+            && !old.is_empty()
+        {
+            if old != &signature {
+                self.poison(AcquisitionStatus::Ambiguous, "answer_item_changed");
+            }
+            return;
+        }
+        self.items.insert(id.into(), (kind.into(), signature));
+        let Some(text) = item["text"].as_str() else {
+            self.poison(AcquisitionStatus::Ambiguous, "answer_text_missing");
+            return;
+        };
+        if text.len() > ANSWER_BYTES {
+            self.prefix(text, false);
+            self.poison(AcquisitionStatus::Overflow, "answer_byte_limit");
+            return;
+        }
+        if item.get("delivery").is_some_and(|v| !v.is_null())
+            || item
+                .get("questions")
+                .is_some_and(|v| !v.is_null() && v.as_array().is_none_or(|a| !a.is_empty()))
+        {
+            self.poison(
+                AcquisitionStatus::Unsupported,
+                "answer_delivery_unsupported",
+            );
+            return;
+        }
+        match item["phase"].as_str() {
+            Some("commentary") => {}
+            Some("final_answer") => {
+                if self.final_id.as_deref().is_some_and(|old| old != id) {
+                    self.poison(AcquisitionStatus::Ambiguous, "answer_multiple_finals");
+                    return;
+                }
+                self.prefix(text, false);
+                self.final_id = Some(id.into());
+                self.final_text = Some(text.into());
+            }
+            _ => {
+                self.prefix(text, false);
+                self.poison(AcquisitionStatus::Unsupported, "answer_phase_unsupported");
+            }
+        }
+    }
+    pub(super) fn codex_delta(&mut self, params: &serde_json::Value) {
+        if !self.event() {
+            return;
+        }
+        let Some(delta) = params["delta"].as_str() else {
+            self.poison(AcquisitionStatus::Ambiguous, "answer_delta_invalid");
+            return;
+        };
+        // Drafts never become complete answers, even if a terminal later succeeds.
+        if self.final_text.is_none() {
+            self.prefix(delta, true);
+        }
+        if self.observed > ANSWER_BYTES as u64 {
+            self.poison(AcquisitionStatus::Overflow, "answer_byte_limit");
+        }
+    }
+    pub(super) fn codex_terminal(&mut self, turn: &serde_json::Value) {
+        self.terminal = Some(digest(&serde_json::to_vec(turn).expect("Value encoding")));
+        let Some(items) = turn["items"].as_array() else {
+            self.poison(
+                AcquisitionStatus::Ambiguous,
+                "answer_terminal_items_missing",
+            );
+            return;
+        };
+        if turn.get("itemsView").is_none_or(|v| v == "full") {
+            for item in items {
+                if item["type"] != "agentMessage" {
+                    continue;
+                }
+                let Some(id) = item["id"].as_str() else {
+                    self.poison(
+                        AcquisitionStatus::Ambiguous,
+                        "answer_terminal_identity_missing",
+                    );
+                    continue;
+                };
+                if self.items.get(id).is_none_or(|(_, signature)| {
+                    signature.is_empty()
+                        || signature != &digest(&serde_json::to_vec(item).expect("Value encoding"))
+                }) {
+                    self.poison(
+                        AcquisitionStatus::Ambiguous,
+                        "answer_terminal_unobserved_or_changed",
+                    );
+                }
+            }
+            if let Some(id) = &self.final_id
+                && !items.iter().any(|item| item["id"] == *id)
+            {
+                self.poison(
+                    AcquisitionStatus::Ambiguous,
+                    "answer_terminal_final_missing",
+                );
+            }
+        } else if !matches!(turn["itemsView"].as_str(), Some("summary" | "notLoaded")) {
+            self.poison(
+                AcquisitionStatus::Unsupported,
+                "answer_terminal_view_unsupported",
+            );
+        }
+    }
+    pub(super) fn claude_terminal(&mut self, frame: &serde_json::Value) {
+        self.terminal = Some(digest(&serde_json::to_vec(frame).expect("Value encoding")));
+        if frame["subtype"] != "success" {
+            self.poison(
+                AcquisitionStatus::Unsupported,
+                "answer_error_representation_unsupported",
+            );
+            return;
+        }
+        if frame.get("structured_output").is_some_and(|v| !v.is_null()) {
+            if let Some(text) = frame["result"].as_str() {
+                self.prefix(text, false);
+            }
+            self.poison(
+                AcquisitionStatus::Unsupported,
+                "answer_structured_profile_unsupported",
+            );
+            return;
+        }
+        match frame["result"].as_str() {
+            Some(text) if text.len() <= ANSWER_BYTES => {
+                self.prefix(text, false);
+                self.final_text = Some(text.into());
+            }
+            Some(text) => {
+                self.prefix(text, false);
+                self.poison(AcquisitionStatus::Overflow, "answer_byte_limit");
+            }
+            None => self.poison(AcquisitionStatus::Missing, "answer_text_missing"),
+        }
+    }
+    pub(super) fn content(&self) -> Content {
+        let status =
+            self.status
+                .unwrap_or(if self.final_text.is_some() && self.terminal.is_some() {
+                    AcquisitionStatus::Complete
+                } else if self.observed > 0 {
+                    AcquisitionStatus::Partial
+                } else {
+                    AcquisitionStatus::Missing
+                });
+        let text = (status == AcquisitionStatus::Complete)
+            .then(|| self.final_text.clone())
+            .flatten();
+        let prefix = (status != AcquisitionStatus::Complete
+            && status != AcquisitionStatus::Missing
+            && self.observed > 0)
+            .then(|| PrefixEvidence {
+                prefix: self.draft.clone(),
+                prefix_sha256: digest(self.draft.as_bytes()),
+                observed_bytes: self.observed,
+                exact_length: self.observed_complete,
+                unseen_suffix: !self.observed_complete || self.observed > self.draft.len() as u64,
+            });
+        let hash = text.as_ref().map(|t| digest(t.as_bytes()));
+        Content {
+            acquisition: status,
+            text,
+            prefix,
+            answer_sha256: hash,
+            terminal_sha256: self.terminal.clone(),
+            diagnostics: self.diagnostics.clone(),
+        }
     }
 }

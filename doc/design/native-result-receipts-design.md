@@ -92,7 +92,7 @@ allowed. After an ambiguous/overflow flag, later well-formed text cannot clear i
 
 On exact `turn/completed` bind to that turn's native status. Terminal full items
 may corroborate previously observed completed candidates; they never mint an
-unobserved final item. Where itemsView is partial/notLoaded, absence from the
+unobserved final item. Where itemsView is summary/notLoaded, absence from the
 terminal list does not retract an observed candidate. A full view containing the
 same final ID with changed content or extra final candidates is ambiguous.
 Do not require terminal.items to contain all observed items when the pinned
@@ -125,8 +125,8 @@ Value reserialization cannot prove original duplicate-key absence.
 
 ## 3. Bounded acquisition and privacy
 
-Initial finite limits: native wire frames retain their existing 4MiB ceiling
-(including framing); bound before JSON allocation. Keep at most 256 observed
+Initial finite limits: native wire frames retain their existing ceilings, Claude
+2MiB and Codex 4MiB (including framing); bound before JSON allocation. Keep at most 256 observed
 answer-related item identities, 1024 relevant candidate/delta events and 1MiB
 decoded answer bytes per invocation. Completed response parsing has depth32 and
 finite provider field/ID bounds. At overflow stop collecting/stop the owned native
@@ -278,3 +278,24 @@ model output phase, subscription recovery, authentication/settings/hooks or full
 N-member review. Actor private grants, native qualification/admission envelopes,
 readonly review completion, full-round integration and final acceptance remain
 separate required work.
+
+
+## 8. Initial implementation profile mapping
+
+The first producer implements text_v1 only. Unqualified structured_output is
+rejected as Unsupported and is never persisted, including non-complete receipts.
+An ordinary Claude success-shaped result (`subtype=success`) supplies model text;
+its `is_error` flag remains independent native Failure. Error-subtype/error-only
+strings do not have a qualified model-content interpretation and are unavailable
+content, with a finite Unsupported reason. Authentication classification runs
+before this extraction; no auth/error arrays or stderr enter a receipt. A future
+structured or error-subtype content profile requires its own bounded decoder and
+consumer controls. This stage does not claim such native profile qualification.
+
+The pinned Codex TurnItemsView enum is full/summary/notLoaded; "partial" above is
+a descriptive loaded-view category, not a supported wire enum. Claude's existing
+2MiB raw frame ceiling is retained, alongside Codex's 4MiB ceiling. Raw malformed
+or overflowing frames retain only a hash of observed bytes, length, exact/lower-
+bound flag and finite category. No raw credential-bearing prefix is persisted.
+The receipt reference and compatibility projection follow durable typed reads;
+no plain DTO or projection supplies reviewer, member or round permission.
