@@ -848,7 +848,10 @@ async fn spawned_initializer_failure_and_unknown_cleanup_keep_actual_anchor_and_
         .await
         .unwrap_err();
     assert_eq!(failure.kind, ErrorKind::SessionLost);
-    plan.assert_diagnostics_transport(&failure.message);
+    assert_eq!(plan.original_error_kind(), Some(io::ErrorKind::InvalidData));
+    assert!(failure.message.contains("inspection_facts{"));
+    assert!(failure.message.contains("site=frame_validation"));
+    assert!(failure.message.contains("validation=invalid_identifier"));
     assert!(flag.load(Ordering::SeqCst));
     assert_eq!(context.held_jobs(), 4);
     let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
