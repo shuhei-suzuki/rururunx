@@ -1394,6 +1394,46 @@ fn expansion_paths(map: &RepositoryMap, expansion: &Expansion) -> Result<BTreeSe
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn opaque_attempted_git_error_keeps_original_cause_and_context_latch() {
+        let directory = tempfile::tempdir().unwrap();
+        let context = crate::adapter::TestGitContext::missing_executable();
+        let latch = Arc::new(AtomicBool::new(false));
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        let result = git_value_owned(
+            Path::new("/usr/bin/git"),
+            directory.path(),
+            &["--version"],
+            deadline,
+            latch.clone(),
+            Some(context.clone()),
+        )
+        .await;
+        let cause = format!("{:#}", result.unwrap_err());
+        assert!(cause.contains("ProcessFailure"), "{cause}");
+        assert!(latch.load(Ordering::SeqCst));
+        assert_eq!(context.held_jobs(), 4);
+        let subsequent = git_value_owned(
+            Path::new("/usr/bin/git"),
+            directory.path(),
+            &["--version"],
+            deadline,
+            latch,
+            Some(context.clone()),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            subsequent
+                .to_string()
+                .contains("earlier context Git cleanup uncertain")
+        );
+        assert_eq!(
+            context.held_jobs(),
+            4,
+            "latch must refuse before another job"
+        );
+    }
     #[cfg(target_os = "macos")]
     #[tokio::test]
     async fn real_git_unknown_cleanup_preserves_cause_and_latches_later_context_launches() {

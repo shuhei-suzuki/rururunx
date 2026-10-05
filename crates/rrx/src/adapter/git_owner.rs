@@ -169,6 +169,9 @@ impl GitPool {
     fn release(&self, record: &Arc<OpRecord>) {
         // Bookkeeping poison after actual settlement holds slots without fabricating
         // native Unknown. Caller flag/result remain governed by own settlement.
+        if record.ticket.publication.is_poisoned() || record.ticket.lost.load(Ordering::SeqCst) {
+            return;
+        }
         if let Ok(mut pool) = self.state.lock() {
             pool.records.retain(|entry| !Arc::ptr_eq(entry, record));
             self.available.notify_waiters();
@@ -211,6 +214,27 @@ impl TestGitContext {
             context: Context::default(),
         }
     }
+    pub(crate) fn missing_executable() -> Self {
+        let mut context = Self::isolated();
+        context.context.hooks.missing_executable = true;
+        context
+    }
+    pub(crate) fn initializer_failure() -> Self {
+        let mut context = Self::isolated();
+        context.context.hooks.initialized_error = true;
+        context
+    }
+    pub(crate) fn held_jobs(&self) -> usize {
+        self.pool
+            .as_ref()
+            .unwrap()
+            .state
+            .lock()
+            .unwrap()
+            .records
+            .len()
+            * JOBS
+    }
     #[cfg(target_os = "macos")]
     pub(crate) fn with_plan(plan: ProcessInspectionPlan) -> Self {
         let mut context = Self::isolated();
@@ -229,6 +253,7 @@ struct TestHooks {
     after_reap_send: Option<Arc<TestPause>>,
     after_primary_panic: bool,
     pending_stderr: bool,
+    missing_executable: bool,
 }
 #[cfg(test)]
 #[derive(Default)]
@@ -340,14 +365,24 @@ struct Ticket {
     result_wake: Notify,
     cancel_wake: Notify,
     commands: OnceLock<std_mpsc::SyncSender<NativeCommand>>,
+    cancel_sent: AtomicBool,
 }
 impl Ticket {
     fn command(&self, command: NativeCommand) {
         if let Some(sender) = self.commands.get() {
+            if matches!(command, NativeCommand::Cancel)
+                && self.cancel_sent.swap(true, Ordering::SeqCst)
+            {
+                return;
+            }
             let _ = sender.try_send(command);
         }
     }
     fn cancel(&self) {
+        if self.publication.is_poisoned() {
+            self.owner_loss();
+            return;
+        }
         if !self.cancel.swap(true, Ordering::SeqCst) {
             let mut publication = self.publication.lock().unwrap_or_else(|p| p.into_inner());
             match publication.state {
@@ -405,6 +440,10 @@ impl Ticket {
         }
     }
     fn publish(&self, outcome: Outcome) {
+        if self.publication.is_poisoned() {
+            self.owner_loss();
+            return;
+        }
         let mut publication = self.publication.lock().unwrap_or_else(|p| p.into_inner());
         if publication.result.is_none() && publication.state != State::ReturnedSettled {
             if !outcome.settled && publication.state != State::CancelledBeforeSpawn {
@@ -467,6 +506,7 @@ impl OpRecord {
                 result_wake: Notify::new(),
                 cancel_wake: Notify::new(),
                 commands: OnceLock::new(),
+                cancel_sent: AtomicBool::new(false),
             }),
             _context: context,
             supervisor: Mutex::new(None),
@@ -486,6 +526,8 @@ struct NativeAssets {
     signal_issued: bool,
     cleanup: Option<io::Result<()>>,
     reaped: bool,
+    #[cfg(test)]
+    signals: usize,
 }
 #[derive(Default)]
 struct Readers {
@@ -980,7 +1022,15 @@ fn native_worker(
                         }
                         return;
                     }
-                    let mut command = StdCommand::new(&request.executable);
+                    #[cfg(test)]
+                    let executable = if record._context.hooks.missing_executable {
+                        Path::new("/rrx-synthetic-missing-git-executable")
+                    } else {
+                        &request.executable
+                    };
+                    #[cfg(not(test))]
+                    let executable = &request.executable;
+                    let mut command = StdCommand::new(executable);
                     command
                         .args(&request.args)
                         .current_dir(&request.cwd)
@@ -1079,9 +1129,10 @@ fn first_cleanup(_record: &OpRecord, native: &mut NativeAssets) {
         return;
     }
     native.signal_issued = true;
+
     #[cfg(test)]
-    if _record._context.hooks.worker_panic {
-        panic!("synthetic Git native worker panic");
+    {
+        native.signals += 1;
     }
     let result = match native.group {
         None => Err(io::Error::other("Git child group binding unavailable")),
@@ -1093,6 +1144,10 @@ fn first_cleanup(_record: &OpRecord, native: &mut NativeAssets) {
             };
             #[cfg(not(all(test, target_os = "macos")))]
             let signal = kill_process_group(pid, Signal::KILL);
+            #[cfg(test)]
+            if _record._context.hooks.worker_panic {
+                panic!("synthetic Git native worker panic after signal");
+            }
             #[cfg(target_os = "macos")]
             let result = resolve_macos_signal_result(signal, || {
                 #[cfg(test)]

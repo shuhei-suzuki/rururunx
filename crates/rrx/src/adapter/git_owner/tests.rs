@@ -313,3 +313,185 @@ async fn actual_stdout_cap_failure_aborts_and_observes_pending_peer() {
     assert!(!flag.load(Ordering::SeqCst));
     released(&context).await;
 }
+
+#[tokio::test]
+async fn post_signal_worker_panic_retains_child_without_a_second_signal() {
+    let mut context = TestGitContext::isolated();
+    context.context.hooks.worker_panic = true;
+    let flag = Arc::new(AtomicBool::new(false));
+    let error = tokio::time::timeout(
+        Duration::from_secs(3),
+        shell(context.clone(), "exit 0", flag.clone()),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::SessionLost);
+    assert!(flag.load(Ordering::SeqCst));
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    let native = record.native.lock().unwrap_or_else(|p| p.into_inner());
+    assert!(native.child.is_some());
+    assert!(native.signal_issued);
+    assert_eq!(native.signals, 1);
+    assert!(native.cleanup.is_none());
+}
+#[tokio::test]
+async fn bookkeeping_poison_after_settlement_holds_slots_without_false_native_unknown() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_reap_send = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(shell(context.clone(), "printf settled", flag.clone()));
+    pause.reached().await;
+    let pool = context.pool.as_ref().unwrap();
+    assert!(
+        catch_unwind(AssertUnwindSafe(|| {
+            let _guard = pool.state.lock().unwrap();
+            panic!("synthetic bookkeeping poison");
+        }))
+        .is_err()
+    );
+    drop(release);
+    assert_eq!(task.await.unwrap().unwrap(), b"settled");
+    assert!(!flag.load(Ordering::SeqCst));
+    assert_eq!(
+        pool.state.lock().err().unwrap().into_inner().records.len() * JOBS,
+        4
+    );
+    let refused_flag = Arc::new(AtomicBool::new(false));
+    assert_eq!(
+        shell(context, "exit 0", refused_flag.clone())
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::LaunchFailure
+    );
+    assert!(!refused_flag.load(Ordering::SeqCst));
+}
+#[tokio::test]
+async fn active_ticket_poison_returns_unknown_without_releasing_its_record() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_spawn = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(shell(context.clone(), "exit 0", flag.clone()));
+    pause.reached().await;
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    assert!(
+        catch_unwind(AssertUnwindSafe(|| {
+            let _guard = record.ticket.publication.lock().unwrap();
+            panic!("synthetic active ticket poison");
+        }))
+        .is_err()
+    );
+    drop(release);
+    let error = tokio::time::timeout(Duration::from_secs(3), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::SessionLost);
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(
+        context
+            .pool
+            .as_ref()
+            .unwrap()
+            .state
+            .lock()
+            .unwrap()
+            .records
+            .len()
+            * JOBS,
+        4
+    );
+}
+
+#[tokio::test]
+async fn caller_runtime_shutdown_keeps_independent_owner_and_frozen_flag() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_spawn = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let own_context = context.clone();
+    let own_flag = flag.clone();
+    let own_pause = pause.clone();
+    let (finished, observed) = oneshot::channel();
+    // One explicitly bounded fixture caller thread; this is not a component job.
+    let caller = thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.spawn(shell(own_context, "exec /bin/sleep 30", own_flag));
+        runtime.block_on(own_pause.reached());
+        drop(runtime); // This drops the CALLER future, never the owner's runtime.
+        let _ = finished.send(());
+    });
+    pause.reached().await;
+    tokio::time::timeout(Duration::from_secs(3), observed)
+        .await
+        .unwrap()
+        .unwrap();
+    caller.join().unwrap();
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    assert!(flag.load(Ordering::SeqCst));
+    drop(release);
+    released(&context).await;
+    assert!(flag.load(Ordering::SeqCst));
+    assert!(record.runtime.lock().unwrap().is_none());
+    assert!(record.worker.lock().unwrap().is_none());
+    assert!(record.native.lock().unwrap().child.is_none());
+}
+#[tokio::test]
+async fn generic_live_launch_error_uses_actual_git_flag_without_retyping_error() {
+    for unknown in [false, true] {
+        let (_directory, store, project, task, worktree) = super::super::tests::preflight_fixture();
+        let context = if unknown {
+            TestGitContext::missing_executable()
+        } else {
+            TestGitContext::initializer_failure()
+        };
+        let mut adapter =
+            GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone()).unwrap();
+        adapter.git_context = Some(context.clone());
+        let result = adapter
+            .start(super::super::tests::fixture_request(
+                project, &task, worktree,
+            ))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            result.kind,
+            if unknown {
+                ErrorKind::ProcessFailure
+            } else {
+                ErrorKind::LaunchFailure
+            }
+        );
+        let state = store.lock().unwrap();
+        let records = state.records(&task.scope(), RecordKind::Session).unwrap();
+        assert_eq!(records.len(), 1);
+        let session: Session = serde_json::from_value(records[0].data.clone()).unwrap();
+        assert_eq!(
+            session.state,
+            if unknown {
+                SessionState::Lost
+            } else {
+                SessionState::Failed
+            }
+        );
+        assert!(session.pid.is_none());
+        assert!(session.native_ref.is_none());
+        assert_eq!(crate::git::executor_reserved(&session), unknown);
+        drop(state);
+        if unknown {
+            assert_eq!(context.held_jobs(), 4);
+        } else {
+            released(&context).await;
+        }
+    }
+}

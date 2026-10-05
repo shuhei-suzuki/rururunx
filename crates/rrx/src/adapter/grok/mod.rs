@@ -12,6 +12,8 @@ mod fixture_support;
 mod ownership;
 mod protocol;
 #[cfg(test)]
+mod reader_tests;
+#[cfg(test)]
 #[path = "../../../tests/support/grok_receipt.rs"]
 mod receipt_support;
 #[cfg(all(test, target_os = "macos"))]
