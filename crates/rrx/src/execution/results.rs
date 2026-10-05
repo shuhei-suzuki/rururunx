@@ -73,6 +73,7 @@ impl ResultStore {
         process::capture(&mut command).await?;
         git(&repository,["fsck","--full","--strict","--no-dangling"]).await?;
         for oid in [revision,unit.base_sha.as_str()] {git(&repository,["rev-list","--objects","--missing=error",oid]).await?;}
+        std::fs::create_dir_all(directory.parent().context("artifact root missing")?)?;
         std::fs::create_dir(&directory)?;
         let bytes=serde_json::to_vec(&ResultManifest{artifact:id,unit:unit.id,revision:revision.into(),base:unit.base_sha.clone(),object_format:format,sources})?;
         durable_file(&artifact.manifest,&bytes)?;
