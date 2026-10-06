@@ -40,7 +40,7 @@ enum RetainedStart {
         _handle: ManagedSessionRef,
         binding: Arc<NativePhaseBinding>,
     },
-    Waiting(NativePhaseStart),
+    Waiting(Box<NativePhaseStart>),
 }
 struct Job {
     allocation: Arc<NativeAllocation>,
@@ -187,7 +187,9 @@ impl PhaseJobs {
                         _handle: handle,
                         binding: Arc::new(binding),
                     },
-                    waiting @ NativePhaseStart::Waiting { .. } => RetainedStart::Waiting(waiting),
+                    waiting @ NativePhaseStart::Waiting { .. } => {
+                        RetainedStart::Waiting(Box::new(waiting))
+                    }
                 });
             let (observation, binding) = match &outcome {
                 Ok(RetainedStart::Launched { binding, .. }) => {
