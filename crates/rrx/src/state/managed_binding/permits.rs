@@ -297,7 +297,7 @@ impl PrivatePermitManager {
                     .iter()
                     .chain(&row.new)
                     .enumerate()
-                    .all(|(i, v)| equal(v, ctx.get_raw(i + 2)))
+                    .all(|(i, v)| i % cols.len() == cols.len() - 1 || equal(v, ctx.get_raw(i + 2)))
             {
                 *slot = None;
                 return true;
