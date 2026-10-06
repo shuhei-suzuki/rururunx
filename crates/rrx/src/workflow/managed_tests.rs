@@ -587,15 +587,21 @@ async fn managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_i
                         (Category::Tests, Applicability::Required),
                         (
                             Category::Typecheck,
-                            Applicability::NotApplicable("fixture has no typed sources".into()),
+                            Applicability::NotApplicable {
+                                reason: "fixture has no typed sources".into(),
+                            },
                         ),
                         (
                             Category::Lint,
-                            Applicability::NotApplicable("fixture has no lint toolchain".into()),
+                            Applicability::NotApplicable {
+                                reason: "fixture has no lint toolchain".into(),
+                            },
                         ),
                         (
                             Category::Build,
-                            Applicability::NotApplicable("fixture contains data only".into()),
+                            Applicability::NotApplicable {
+                                reason: "fixture contains data only".into(),
+                            },
                         ),
                     ]),
                 },
