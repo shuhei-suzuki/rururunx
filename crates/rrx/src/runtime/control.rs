@@ -1,8 +1,9 @@
 //! Dedicated local controls. Public DTOs contain neither principal nor authority.
 use super::{Runtime, goal::GoalPlan};
-use crate::domain::{GoalId, ProjectId, Scope};
+use crate::domain::{GoalId, ProjectId, ProjectState, Scope};
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
+use std::{collections::BTreeSet, path::PathBuf, time::Duration};
 use tokio::net::UnixStream;
 use uuid::Uuid;
 
@@ -17,6 +18,10 @@ pub enum GoalControl {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ControlAction {
+    ResolveProject {
+        selector: Option<String>,
+        cwd: PathBuf,
+    },
     CreateGoal {
         project: ProjectId,
         expected_project: u64,
@@ -62,6 +67,13 @@ pub struct ControlRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ControlResponse {
+    /// Routing metadata only; actual source identity is checked before effects.
+    ProjectResolved {
+        project: ProjectId,
+        version: u64,
+        display_name: String,
+        state: ProjectState,
+    },
     /// Interim metadata only; operational status requires the schema9 Store consumer.
     RuntimeMetadata {
         instance: String,
@@ -121,6 +133,87 @@ impl Runtime {
     ) -> Result<ControlResponse> {
         let ingress = HumanIngress::from_connection(self, accepted)?;
         ingress.check(&request)?;
+        if let ControlAction::ResolveProject { selector, cwd } = &request.action {
+            ensure!(cwd.as_os_str().len() <= 4096, "routing CWD exceeds bound");
+            let cwd = tokio::time::timeout(Duration::from_secs(10), tokio::fs::canonicalize(cwd))
+                .await??;
+            ensure!(cwd.is_dir(), "routing CWD must be a directory");
+            let snapshot = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .runtime_project_routes(
+                    selector.as_deref(),
+                    &cwd,
+                    self.owner.instance_id(),
+                    self.owner.epoch(),
+                )?;
+            let mut matches = BTreeSet::new();
+            for project in &snapshot.projects {
+                if selector.is_some() {
+                    matches.insert(project.id);
+                    continue;
+                }
+                if project.state == ProjectState::Removed {
+                    continue;
+                }
+                // Canonicalize physical routing boundaries only off the Store lock.
+                if cwd.starts_with(&project.root)
+                    && !cwd.starts_with(&project.worktree_root)
+                    && !cwd.starts_with(project.root.join(".git"))
+                {
+                    let root = tokio::time::timeout(
+                        Duration::from_secs(10),
+                        tokio::fs::canonicalize(&project.root),
+                    )
+                    .await??;
+                    ensure!(root == project.root, "registered Project root moved");
+                    matches.insert(project.id);
+                }
+                for task in snapshot.tasks.iter().filter(|t| t.project_id == project.id) {
+                    let path = task
+                        .worktree
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("registered Task worktree missing"))?;
+                    if cwd.starts_with(path) {
+                        let actual = tokio::time::timeout(
+                            Duration::from_secs(10),
+                            tokio::fs::canonicalize(path),
+                        )
+                        .await??;
+                        ensure!(actual == *path, "registered Task worktree moved");
+                        matches.insert(project.id);
+                    }
+                }
+            }
+            ensure!(
+                matches.len() == 1,
+                "unknown or ambiguous registered Project routing"
+            );
+            let selected = snapshot
+                .projects
+                .iter()
+                .find(|p| matches.contains(&p.id))
+                .ok_or_else(|| anyhow::anyhow!("Project routing missing"))?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .recheck_runtime_project_routes(
+                    selector.as_deref(),
+                    &cwd,
+                    self.owner.instance_id(),
+                    self.owner.epoch(),
+                    &snapshot,
+                )?;
+            return Ok(ControlResponse::ProjectResolved {
+                project: selected.id,
+                version: selected.version,
+                display_name: selected.name.clone(),
+                state: selected.state,
+            });
+        }
         if let ControlAction::CreateGoal { plan, .. } = &request.action {
             plan.clone().validate(&self.config)?;
         }

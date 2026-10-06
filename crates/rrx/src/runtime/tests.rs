@@ -182,3 +182,170 @@ async fn actual_local_ingress_checks_epoch_and_never_mints_goal_before_schema9()
     ));
     assert!(owner.store().lock().unwrap().projects().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn actual_service_resolves_names_uuid_and_cwd_without_source_grant() {
+    use crate::domain::{Project, ProjectState};
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+    let root = dir.path().join("source");
+    std::fs::create_dir_all(root.join("sub")).unwrap();
+    let root = root.canonicalize().unwrap();
+    let mut project = Project::new(
+        "route".into(),
+        root.clone(),
+        "main".into(),
+        "routing-metadata-fixture".into(),
+    );
+    owner
+        .store()
+        .lock()
+        .unwrap()
+        .put_project(&mut project)
+        .unwrap();
+    let runtime = Runtime::new(owner.clone(), config()).unwrap();
+    let (server, _client) = tokio::net::UnixStream::pair().unwrap();
+    for selector in [Some("route".into()), Some(project.id.to_string()), None] {
+        let request = ControlRequest {
+            request_id: Uuid::new_v4(),
+            instance: owner.instance_id().into(),
+            epoch: owner.epoch(),
+            action: ControlAction::ResolveProject {
+                selector,
+                cwd: root.join("sub"),
+            },
+        };
+        match runtime.handle_control(&server, request).await.unwrap() {
+            ControlResponse::ProjectResolved {
+                project: id,
+                version,
+                display_name,
+                state,
+            } => {
+                assert_eq!(id, project.id);
+                assert_eq!(version, project.version);
+                assert_eq!(display_name, "route");
+                assert_eq!(state, ProjectState::Registered);
+            }
+            _ => panic!("actual service routing result missing"),
+        }
+    }
+    std::fs::create_dir_all(project.worktree_root.join("unregistered")).unwrap();
+    let request = ControlRequest {
+        request_id: Uuid::new_v4(),
+        instance: owner.instance_id().into(),
+        epoch: owner.epoch(),
+        action: ControlAction::ResolveProject {
+            selector: None,
+            cwd: project.worktree_root.join("unregistered"),
+        },
+    };
+    assert!(
+        runtime.handle_control(&server, request).await.is_err(),
+        "unregistered worktree namespace must not route as source"
+    );
+    assert!(
+        owner
+            .store()
+            .lock()
+            .unwrap()
+            .goals(project.id)
+            .unwrap()
+            .is_empty(),
+        "routing must not create a Goal/Source/Unit grant"
+    );
+}
+
+#[tokio::test]
+async fn actual_routing_refuses_ambiguity_stale_snapshot_and_body_index_corruption() {
+    use crate::domain::Project;
+    let dir = tempfile::tempdir().unwrap();
+    let state = dir.path().join("state.db");
+    let owner = RuntimeOwner::open(&state).unwrap();
+    let mut projects = Vec::new();
+    for index in 0..2 {
+        let root = dir.path().join(format!("source{index}"));
+        std::fs::create_dir(&root).unwrap();
+        let mut project = Project::new(
+            "duplicate".into(),
+            root.canonicalize().unwrap(),
+            "main".into(),
+            format!("routing-metadata-fixture-{index}"),
+        );
+        owner
+            .store()
+            .lock()
+            .unwrap()
+            .put_project(&mut project)
+            .unwrap();
+        projects.push(project);
+    }
+    let runtime = Runtime::new(owner.clone(), config()).unwrap();
+    let (server, _client) = tokio::net::UnixStream::pair().unwrap();
+    let request = ControlRequest {
+        request_id: Uuid::new_v4(),
+        instance: owner.instance_id().into(),
+        epoch: owner.epoch(),
+        action: ControlAction::ResolveProject {
+            selector: Some("duplicate".into()),
+            cwd: projects[0].root.clone(),
+        },
+    };
+    assert!(runtime.handle_control(&server, request).await.is_err());
+    let id = projects[0].id.to_string();
+    {
+        let store = owner.store();
+        let mut store = store.lock().unwrap();
+        let snapshot = store
+            .runtime_project_routes(
+                Some(&id),
+                &projects[0].root,
+                owner.instance_id(),
+                owner.epoch(),
+            )
+            .unwrap();
+        projects[0].name = "changed".into();
+        store.put_project(&mut projects[0]).unwrap();
+        assert!(
+            store
+                .recheck_runtime_project_routes(
+                    Some(&id),
+                    &projects[0].root,
+                    owner.instance_id(),
+                    owner.epoch(),
+                    &snapshot
+                )
+                .is_err()
+        );
+        assert!(
+            store
+                .runtime_project_routes(
+                    Some(&id),
+                    &projects[0].root,
+                    owner.instance_id(),
+                    owner.epoch() + 1
+                )
+                .is_err()
+        );
+    }
+    let connection = crate::state::current_test_writer(&state).unwrap();
+    connection
+        .execute(
+            "UPDATE projects SET body=json_set(body,'$.version',version+1) WHERE id=?1",
+            [&id],
+        )
+        .unwrap();
+    let request = ControlRequest {
+        request_id: Uuid::new_v4(),
+        instance: owner.instance_id().into(),
+        epoch: owner.epoch(),
+        action: ControlAction::ResolveProject {
+            selector: Some(id),
+            cwd: projects[0].root.clone(),
+        },
+    };
+    assert!(
+        runtime.handle_control(&server, request).await.is_err(),
+        "routing body/index mismatch cannot be returned as current metadata"
+    );
+}
