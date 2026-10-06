@@ -20,10 +20,11 @@ pub const MAX_CONNECTIONS: usize = 64;
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub async fn serve(state: &Path, config: Config) -> Result<()> {
-    let owner = RuntimeOwner::open(state)?;
-    let runtime = Arc::new(Runtime::new(owner.clone(), config)?);
-    let endpoint = ControlEndpoint::bind(owner)?;
-    runtime.start().await?;
+    let owner = RuntimeOwner::open(state).context("Open explicit Runtime service owner")?;
+    let runtime =
+        Arc::new(Runtime::new(owner.clone(), config).context("Construct Runtime service")?);
+    let endpoint = ControlEndpoint::bind(owner).context("Bind private Runtime control endpoint")?;
+    runtime.start().await.context("Start Runtime service")?;
     let stop = Arc::new(Notify::new());
     let permits = Arc::new(Semaphore::new(MAX_CONNECTIONS));
     let mut connections = JoinSet::new();

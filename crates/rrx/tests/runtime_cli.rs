@@ -106,7 +106,7 @@ impl Fixture {
             self.command()
                 .arg("serve")
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
+                .stderr(Stdio::inherit())
                 .spawn()
                 .unwrap(),
         );
@@ -378,14 +378,25 @@ async fn compiled_server_refuses_raw_frames_and_old_identity_then_keeps_serving(
     let mut f = Fixture::new();
     f.start().await;
     let before = rows(&f.state);
+    let (identity, connection) = endpoint::connect(&f.state).await.unwrap();
+    drop(connection);
+    let nominal = serde_json::to_string(&ControlRequest {
+        request_id: Uuid::new_v4(),
+        instance: identity.instance.clone(),
+        epoch: identity.epoch,
+        action: ControlAction::RuntimeStatus,
+    })
+    .unwrap();
+    // Each nominal frame is otherwise accepted: one rejection condition is added.
+    let object = nominal.strip_suffix('}').unwrap();
     for bytes in [
-        b"{\"action\":\"runtime_status\",\"action\":\"runtime_stop\"}\n".as_slice(),
-        b"{\"principal\":\"administrator\"}\n",
-        b"{} {}\n",
-        b"\xff\n",
+        format!("{object},\"epoch\":{}}}\n", identity.epoch).into_bytes(),
+        format!("{object},\"principal\":\"administrator\"}}\n").into_bytes(),
+        format!("{nominal} {{}}\n").into_bytes(),
+        vec![0xff, b'\n'],
     ] {
         let (_, mut connection) = endpoint::connect(&f.state).await.unwrap();
-        connection.get_mut().write_all(bytes).await.unwrap();
+        connection.get_mut().write_all(&bytes).await.unwrap();
         assert!(matches!(
             transport::receive::<ControlResponse>(&mut connection, transport::RESPONSE_BYTES)
                 .await

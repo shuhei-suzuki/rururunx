@@ -397,6 +397,20 @@ The Cargo workspace contains `crates/rrx` with a library and a CLI binary.
 Implemented library modules are `config`, `domain`, and `state`; CLI help and config validation
 do not construct an async runtime or start native agents.
 
+The compiled CLI also composes `rrx serve` as a foreground Runtime owner and
+private Unix control service. It accepts real same-UID peers, emits exact current
+instance/epoch Hello and retains bounded connection tasks through shutdown.
+`rrx status [--all]`, `rrx goal status` and `rrx goal tasks` connect as clients;
+Project routing precedes scoped Goal reads. These clients never create state,
+start an owner, advance an epoch, acknowledge controls or remove stale discovery.
+Absent/refused discovery directs the user to explicit `rrx serve`.
+
+Status is explicitly incomplete Runtime metadata; each bounded Goal Task page
+is an independent observation, not an aggregated complete snapshot. Native
+dispatch remains unavailable and no output establishes effective execution
+capacity. CLI creation/lifecycle/logs/attach, complete operational Goal execution
+and TUI remain unfinished; source presence alone is not operational acceptance.
+
 Initial dependencies are clap, serde/serde_json, TOML and anyhow. Config loading
 accepts explicit runtime and single-project inputs, validates typed limits and
 does not act as a native permission grant. A separate ProjectOverlay schema

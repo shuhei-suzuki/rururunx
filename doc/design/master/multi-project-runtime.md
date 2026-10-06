@@ -143,6 +143,15 @@ MVP fairness may be implemented with a simple bounded round-robin / weighted-rea
 
 Runtime-wide status groups work by Project, then Goal.
 
+The current compiled `rrx status [--all]` consumes real Runtime metadata through
+the private control endpoint and explicitly reports an incomplete observation.
+Grouped hierarchy, attention/wait detail and requested-versus-effective capacity
+remain unavailable. `rrx goal status/tasks --project` resolves the Project through
+the service and rejects foreign Goal/Task/cursor scope. These new Runtime reads
+never open a Store or owner, start a service, advance an epoch or acknowledge
+controls; absent discovery requires explicit `rrx serve`. The existing legacy
+Project registry commands retain their reconciliation behavior described below.
+
 Example:
 
 ```text
