@@ -2,6 +2,7 @@
 pub mod control;
 pub(crate) mod driver;
 pub mod goal;
+mod phase_jobs;
 pub(crate) mod phase_supervisor;
 mod service;
 mod task_driver;
@@ -17,6 +18,7 @@ pub struct Runtime {
     config: Config,
     _drivers: Arc<driver::DriverRegistry>,
     phases: Arc<phase_supervisor::PhaseSupervisor>,
+    phase_jobs: phase_jobs::PhaseJobs,
     started: AtomicBool,
     running: Arc<AtomicBool>,
     stopping: AtomicBool,
@@ -42,6 +44,7 @@ impl Runtime {
             config,
             _drivers: drivers,
             phases,
+            phase_jobs: phase_jobs::PhaseJobs::default(),
             started: AtomicBool::new(false),
             running: Arc::new(AtomicBool::new(false)),
             stopping: AtomicBool::new(false),

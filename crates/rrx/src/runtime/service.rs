@@ -101,7 +101,8 @@ impl Runtime {
         Ok(())
     }
     /// Cooperative shutdown retains the JoinHandle on timeout/caller Drop.
-    /// No child/native work is owned by this initial control-service loop.
+    /// Marked Native jobs remain held until their genuine terminal/handoff;
+    /// this initial stop path cannot report their completion.
     pub async fn shutdown(&self) -> Result<()> {
         let _admission =
             tokio::time::timeout(Duration::from_secs(5), self.control_admission.lock())
@@ -130,6 +131,7 @@ impl Runtime {
             );
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
+        self.phase_jobs.ensure_shutdown_complete()?;
         Ok(())
     }
 }

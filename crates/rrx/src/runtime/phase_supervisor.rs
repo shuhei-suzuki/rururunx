@@ -70,6 +70,9 @@ pub(crate) struct PhaseLaunchParts {
     retention: MarkerPublicationRetention,
 }
 impl PhaseLaunch {
+    pub(super) fn parts(&self) -> &Arc<PhaseLaunchParts> {
+        &self.parts
+    }
     pub(crate) fn into_parts(self) -> Arc<PhaseLaunchParts> {
         self.parts
     }
@@ -534,8 +537,9 @@ impl super::Runtime {
         &self,
         retention: MarkerPublicationRetention,
         marker: Arc<crate::state::managed_binding::OriginalMarker>,
-    ) -> Result<PhaseLaunch> {
+    ) -> Result<super::phase_jobs::PhaseInvocation> {
         let slot = &retention.capacity.slot;
+        self.phase_jobs.ready(&slot.allocation)?;
         let q = self
             .phases
             .queue
@@ -591,9 +595,9 @@ impl super::Runtime {
         drop(plan);
         drop(state);
         drop(q);
-        Ok(PhaseLaunch {
+        Ok(self.phase_jobs.start(PhaseLaunch {
             parts: Arc::new(PhaseLaunchParts { marker, retention }),
-        })
+        }))
     }
 
     /// An operation ID is a wake hint only. Authority comes from the SAME
@@ -603,7 +607,7 @@ impl super::Runtime {
     pub(crate) async fn reconcile_phase_marker(
         &self,
         operation: OperationId,
-    ) -> Result<PhaseLaunch> {
+    ) -> Result<super::phase_jobs::PhaseInvocation> {
         let _admission = self.control_admission.lock().await;
         ensure!(
             self.service_running(),
@@ -672,7 +676,7 @@ impl super::Runtime {
         capacity: PendingPhaseCapacity,
         ticket: crate::state::DriverReadTicket,
         workflow: crate::domain::RecordId,
-    ) -> Result<PhaseLaunch> {
+    ) -> Result<super::phase_jobs::PhaseInvocation> {
         let plan = crate::state::managed_binding::plan_marker_publication(
             self.owner.clone(),
             capacity.slot.allocation.clone(),
@@ -685,6 +689,8 @@ impl super::Runtime {
             "Runtime stopped before marker admission"
         );
         let retention = self.phases.begin_publication(capacity)?;
+        self.phase_jobs
+            .reserve(&retention.capacity.slot.allocation)?;
         {
             let q = self
                 .phases
@@ -727,7 +733,10 @@ impl super::Runtime {
             self.service_running(),
             "Runtime is not accepting marker publication"
         );
-        self.phases.begin_publication(capacity)
+        let retention = self.phases.begin_publication(capacity)?;
+        self.phase_jobs
+            .reserve(&retention.capacity.slot.allocation)?;
+        Ok(retention)
     }
     /// Roll back only after an actual current Immediate establishes no marker,
     /// allocated Session or invocation. Any error keeps the same slot protected.
@@ -753,6 +762,8 @@ impl super::Runtime {
         // Store guard above is gone before queue changes or preparation Drop.
         self.phases
             .restore_unpublished(&publication.capacity.slot, proof)?;
+        self.phase_jobs
+            .remove_unstarted(&publication.capacity.slot.allocation)?;
         if self.phases.closed.load(Ordering::SeqCst) {
             self.phases.remove_unmarked(&publication.capacity.slot)?;
         }

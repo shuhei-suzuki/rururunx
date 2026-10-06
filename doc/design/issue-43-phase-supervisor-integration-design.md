@@ -109,3 +109,41 @@ does not mint OriginalMarker or PhaseLaunch. SourceRecovery7 original-pin
 successor recognition, genuine native private start/binding ports and all protected
 writers are not yet composed. These are explicit readiness gates; this real
 retained queue alone does not make an Agent runnable or complete Phase2.
+
+
+## 5. Concrete Runtime-owned Native invocation custody
+
+The next private increment implements Binding10 §5.1 start-future ownership. A
+separate `PhaseJobs` registry belongs to the SAME Runtime beside PhaseSupervisor;
+it is not stored inside a pending slot or the supervisor. The actual Native
+binding/launch parts retain that supervisor, so storing them in its own slot would
+create a permanent strong-reference cycle. The job registry contains at most128
+entries and reserves the SAME actual allocation before the marker transaction.
+The existing actual pending slot remains the global/per-Project capacity owner.
+No job reservation mints an OriginalMarker, Native owner or input admission.
+
+Known marker commit/confirmation hands off once directly into a Runtime-owned
+Tokio task. It borrows `selected_port()` from the SAME original allocation and
+calls its concrete private `start_phase(launch)`; no alias lookup, copied port,
+arbitrary callback or fabricated proof participates. Before spawning, the job
+retains the SAME launch parts. The registry owns the actual JoinHandle and the
+job retains the actual typed returned Native result or error. Engine callers get
+only a nongrant level observation; dropping or cancelling that waiter neither
+aborts the start future nor consumes its binding proof. Waiting/error/panic are
+held observations, never NoCurrentDispatch, Task failure, retry or cleanup proof.
+
+Commit uncertainty retains the original pre-transaction plan and reserved job.
+Only confirmation of that SAME actual plan can perform the first handoff. A known
+unpublished rollback may remove only its matching unstarted job reservation;
+no launched or returned job has a generic ID-based removal path. Shutdown refuses
+to report completion while jobs remain held. This increment does not provide
+actual Native cancellation/terminal/binder handoff, job retirement, restart
+reconstruction or process-reclamation guarantees. Those remain composition gates,
+and the installation issuer continues to refuse Agent execution.
+
+Qualification must distinguish compilation and nongrant regression controls from
+actual producer-backed future-cancellation, error/wait/proof retention and panic
+controls. Genuine positive qualification remains unavailable while the composed
+Driver/Native producer is incomplete; no Fake or SQL-seeded authority substitutes
+for it. This design is an implementation step of the existing approved custody
+contract, not a relaxation of preflight or a declaration of Phase2 completion.
