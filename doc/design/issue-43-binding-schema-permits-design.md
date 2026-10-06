@@ -66,3 +66,13 @@ owner/input/admission or stand in for actual producer qualification. The isolate
 future11 contract control tests cached/current rejection without installing a fake
 production ReviewRound11 migration. Actual8→9→10 composition, future real11, Native
 and Driver integration, and all original Runtime9 regression failures remain gates.
+
+The initializer also handles a competing successful initializer explicitly: after
+acquiring Immediate it rereads the schema. Exact current10 with the correct
+application ID takes a no-install/no-legacy-classification branch. A deterministic
+private observation control holds an actual initial0/9 version read, lets another
+Store complete initialization, then releases the waiter and checks unchanged schema
+objects and no operations. The observation callback is private, cannot alter the
+observed version and production always supplies a no-op; it is no authority issuer.
+Historical schema6/7 fixtures exclude future Binding10 tables from their original
+writer-trigger inventories, preserving old layout and all expected legacy fences.

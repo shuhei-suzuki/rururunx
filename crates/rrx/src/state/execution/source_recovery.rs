@@ -548,6 +548,7 @@ mod tests {
         .unwrap();
         for table in MUTABLE_TABLES.iter().filter(|t| {
             !crate::state::runtime::TABLES.contains(t)
+                && !crate::state::managed_binding::TABLES.contains(t)
                 && !matches!(
                     **t,
                     "source_recoveries"

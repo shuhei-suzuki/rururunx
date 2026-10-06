@@ -10,9 +10,9 @@ mod schema;
 mod schema_tests;
 mod snapshot;
 pub(super) use permits::{PrivatePermitManager, register_permit_function};
-pub(super) use schema::{
-    TABLES, hold_existing_workflows, install_schema, validate_legacy_namespace,
-};
+#[cfg(test)]
+pub(super) use schema::TABLES;
+pub(super) use schema::{hold_existing_workflows, install_schema, validate_legacy_namespace};
 
 pub(crate) use snapshot::plan_scope;
 

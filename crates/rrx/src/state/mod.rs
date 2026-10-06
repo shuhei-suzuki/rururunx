@@ -117,7 +117,16 @@ impl Store {
         Self::initialize(Connection::open_in_memory()?)
     }
 
-    fn initialize(mut connection: Connection) -> Result<Self> {
+    fn initialize(connection: Connection) -> Result<Self> {
+        Self::initialize_observed(connection, |_| {})
+    }
+
+    // Private deterministic initialization observation seam. Production passes
+    // only a no-op; it cannot create an authority or change the observed version.
+    fn initialize_observed(
+        mut connection: Connection,
+        after_read: impl FnOnce(i64),
+    ) -> Result<Self> {
         let binding_permits = register_writer_contract(&connection)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
@@ -125,6 +134,7 @@ impl Store {
             (0..=SCHEMA_VERSION).contains(&version),
             "unsupported state schema {version}, supported {SCHEMA_VERSION}"
         );
+        after_read(version);
         let application: i64 =
             connection.pragma_query_value(None, "application_id", |row| row.get(0))?;
         ensure!(
@@ -137,7 +147,14 @@ impl Store {
             // Recheck under the write lock: another runtime may have initialized it.
             let locked_version: i64 =
                 tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
-            if locked_version == 0 {
+            if locked_version == SCHEMA_VERSION {
+                // A concurrent initializer completed while this connection waited
+                // for Immediate. Recheck its application, then do not reinstall
+                // or classify the already-complete current namespace as legacy.
+                let application: i64 =
+                    tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
+                ensure!(application == APPLICATION_ID, "not an rrx state database");
+            } else if locked_version == 0 {
                 let application: i64 =
                     tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
                 let objects: i64 = tx.query_row(

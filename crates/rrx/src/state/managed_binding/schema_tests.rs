@@ -486,3 +486,59 @@ fn fresh_private_tables_have_complete_column_images_and_domain_guards() {
         .is_err()
     );
 }
+
+#[test]
+fn initializer_rechecks_current_after_initial_observation_without_reinstalling() {
+    for initial in [0, 9] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("concurrent.db");
+        if initial == 9 {
+            drop(old9(&path));
+        }
+        let (observed_send, observed_receive) = std::sync::mpsc::sync_channel(0);
+        let (release_send, release_receive) = std::sync::mpsc::sync_channel(0);
+        let worker_path = path.clone();
+        let worker = std::thread::spawn(move || {
+            let connection = Connection::open(worker_path).unwrap();
+            Store::initialize_observed(connection, |version| {
+                // This is the actual first read inside the production initializer.
+                observed_send.send(version).unwrap();
+                release_receive
+                    .recv_timeout(std::time::Duration::from_secs(10))
+                    .unwrap();
+            })
+        });
+        assert_eq!(
+            observed_receive
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .unwrap(),
+            initial
+        );
+        // Complete the competing initializer BEFORE releasing the first reader.
+        let winner = Store::open(&path).unwrap();
+        assert_eq!(winner.schema_version().unwrap(), SCHEMA_VERSION);
+        let schema_before: i64 = winner
+            .connection
+            .query_row("SELECT count(*) FROM sqlite_schema", [], |r| r.get(0))
+            .unwrap();
+        release_send.send(()).unwrap();
+        let late = worker.join().unwrap().expect("late initializer must accept the completed current schema without reinstalling Binding10");
+        assert_eq!(late.schema_version().unwrap(), SCHEMA_VERSION);
+        assert_eq!(
+            late.connection
+                .query_row("SELECT count(*) FROM sqlite_schema", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            schema_before
+        );
+        assert_eq!(
+            late.connection
+                .query_row("SELECT count(*) FROM managed_phase_operations", [], |r| r
+                    .get::<_, i64>(
+                    0
+                ))
+                .unwrap(),
+            0
+        );
+    }
+}
