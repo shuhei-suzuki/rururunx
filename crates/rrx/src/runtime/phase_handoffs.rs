@@ -130,7 +130,7 @@ struct IngressSlot {
 /// reference is Weak: another Task's marker can retain the whole Driver registry.
 struct PreOfferConsumer {
     owner: Arc<RuntimeOwner>,
-    dispatcher: Arc<PhaseDispatcher>,
+    dispatcher: Weak<PhaseDispatcher>,
     selected: Weak<NativePhasePort>,
     control: Arc<tokio::sync::Mutex<()>>,
     running: Arc<AtomicBool>,
@@ -329,7 +329,10 @@ impl PreOfferConsumer {
             self.accepting(),
             "Runtime stopped before Source installation"
         );
-        let dispatcher = self.dispatcher.clone();
+        let dispatcher = self
+            .dispatcher
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("original phase dispatcher ended"))?;
         let phases = dispatcher.supervisor().clone();
         let selected = self
             .selected
@@ -632,7 +635,7 @@ impl super::Runtime {
     fn source_consumer(&self, selected: &Arc<NativePhasePort>) -> PreOfferConsumer {
         PreOfferConsumer {
             owner: self.owner.clone(),
-            dispatcher: self.phase_dispatcher.clone(),
+            dispatcher: Arc::downgrade(&self.phase_dispatcher),
             selected: Arc::downgrade(selected),
             control: self.control_admission.clone(),
             running: self.running.clone(),
