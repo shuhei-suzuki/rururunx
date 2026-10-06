@@ -498,3 +498,36 @@ official CLI qualification. Full Phase3/native four-Task/hook/subscription and
 Linux/macOS qualification remain required independently. Source review and fixed
 control/mutation handles are supplied separately; this description is not their
 acceptance result.
+
+### 11.1. Shared resource selection/admission interval
+
+The first actual four-command-Task control exposed a production race: independent
+`ResourceManager::draft` calls selected the same currently free port range before
+either registered Unit reserved its leases. SQL's overlap trigger correctly
+refused the loser; the run conservatively waited, so the original concurrent
+control result was seven passing controls and one failed barrier. This was not
+a cleanup failure or an accepted result corruption, and is retained as a failing
+control rather than called a timeout qualification.
+
+All three actual producers now share one RuntimeOwner resource-admission gate:
+AttemptManager Executor preparation, its read-only native snapshot preparation,
+and command-only ManagedVerifier. They retain it only from off-Store profile/port
+selection through exact registered Unit and durable resource-lease reservation.
+Existing SQL overlap checks, Unit/profile/Scope/epoch/version checks and private
+Workflow bindings remain authoritative. Waiting acquires no Unit or resource
+permit, and cancellation/Drop releases the gate. Current Task/claim checks after
+waiting refuse a cancelled/stale caller before its registered effect. Once a Unit
+exists its actual preparation/abandonment guards preserve conservative disposition.
+The interval is released before filesystem materialization, Git awaits or command
+execution; it is neither a new native semaphore nor a Task lifetime lock. Slow
+program/tool preflight is off SharedStore/SQL locks. Host ports remain cooperative
+assigned ranges, not sockets reserved against arbitrary external processes.
+
+This gate coordinates the actual producers of one live RuntimeOwner. Public row
+inspection or a mutex handle cannot become execution/verification authority. The
+component controls exercise actual concurrent production paths, drop a waiting
+native-snapshot producer and cancel an actual Workflow admission waiter; fixture
+serialization does not replace the four Task control. Runtime accounting/fair
+native admission and physical resource pressure/recovery remain their independent
+contracts. The source baseline has no new process census, kill guarantee, license
+change or fabricated approval.

@@ -918,3 +918,127 @@ async fn four_actual_command_tasks_cancel_one_preserving_sibling_artifacts_and_r
             .unwrap();
     }
 }
+
+#[tokio::test]
+async fn actual_resource_admission_waiter_drop_and_task_cancel_create_no_unit_or_command() {
+    let (f, engine, _, artifact) = ready("codex", Some(profile("print('must not start')"))).await;
+    let engine = Arc::new(engine);
+    let manager = execution::resources::ResourceManager::new(f.owner.clone());
+    let before = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .execution_units(Some(&f.task.scope()))
+        .unwrap()
+        .len();
+    let admission = manager.admission().await;
+    let owner = f.owner.clone();
+    let task = f.task.id;
+    let dropped = tokio::spawn(async move {
+        execution::attempts::AttemptManager::new(owner)
+            .prepare_snapshot(
+                task,
+                artifact,
+                execution::UnitKind::Reviewer,
+                "codex",
+                "Review",
+            )
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!dropped.is_finished());
+    assert_eq!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_units(Some(&f.task.scope()))
+            .unwrap()
+            .len(),
+        before
+    );
+    dropped.abort();
+    assert!(dropped.await.unwrap_err().is_cancelled());
+    drop(admission);
+    drop(
+        tokio::time::timeout(Duration::from_secs(1), manager.admission())
+            .await
+            .unwrap(),
+    );
+
+    let admission = manager.admission().await;
+    let running_engine = engine.clone();
+    let cancelled = tokio::spawn(async move { running_engine.step(task, BTreeMap::new()).await });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let workflow = engine.snapshot(task).unwrap();
+            if workflow
+                .history
+                .iter()
+                .any(|a| a.phase == Phase::Tests && a.state == AttemptState::Evaluating)
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(!cancelled.is_finished());
+    assert_eq!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_units(Some(&f.task.scope()))
+            .unwrap()
+            .len(),
+        before
+    );
+    engine
+        .cancel(task, "cancel during actual resource admission wait".into())
+        .unwrap();
+    drop(admission);
+    let _conservative = tokio::time::timeout(Duration::from_secs(5), cancelled)
+        .await
+        .unwrap()
+        .unwrap();
+    let workflow = engine.snapshot(task).unwrap();
+    assert!(!workflow.completed.contains_key(&Phase::Tests));
+    assert!(
+        workflow
+            .history
+            .iter()
+            .find(|a| a.phase == Phase::Tests)
+            .unwrap()
+            .unit
+            .is_none()
+    );
+    assert_eq!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .task(task)
+            .unwrap()
+            .unwrap()
+            .state,
+        TaskState::Cancelled
+    );
+    assert_eq!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_units(Some(&f.task.scope()))
+            .unwrap()
+            .len(),
+        before
+    );
+    drop(
+        tokio::time::timeout(Duration::from_secs(1), manager.admission())
+            .await
+            .unwrap(),
+    );
+}

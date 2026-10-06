@@ -319,6 +319,7 @@ impl ManagedVerifier {
         );
         let id = UnitId::new();
         let manager = resources::ResourceManager::new(self.owner.clone());
+        let admission = manager.admission().await;
         let path = self
             .owner
             .root
@@ -361,7 +362,9 @@ impl ManagedVerifier {
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .reserve_verification(&invocation, &claim, draft, &admitted)?;
         // From this point every return carries the authorized successor version.
-        let result = self.run(&grant, &admitted, &manager, &profile).await;
+        let result = self
+            .run(&grant, &admitted, &manager, &profile, admission)
+            .await;
         match result {
             Ok((run, snapshot)) => {
                 if !run.certifying {
@@ -470,9 +473,11 @@ impl ManagedVerifier {
         admitted: &AdmittedProfile,
         manager: &resources::ResourceManager,
         profile: &resources::ResourceProfile,
+        admission: tokio::sync::OwnedMutexGuard<()>,
     ) -> Result<(VerificationRun, results::ResultSnapshot)> {
         let mut preparation = owner::PreparationGuard::new(self.owner.clone(), grant.unit());
         manager.reserve(grant.unit(), profile)?;
+        drop(admission);
         manager.materialize(profile)?;
         let snapshot = results::ResultStore::new(self.owner.clone())
             .snapshot(grant.unit())

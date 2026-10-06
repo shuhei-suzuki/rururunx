@@ -151,6 +151,12 @@ impl ResourceManager {
     pub fn new(owner: Arc<RuntimeOwner>) -> Self {
         Self { owner }
     }
+    /// One owner-wide short admission interval across every actual Unit producer.
+    /// Selection is off Store locks; SQL lease overlap checks still authorize the
+    /// result. Drop/cancellation releases this interval, never native capacity.
+    pub(crate) async fn admission(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        self.owner.resource_admission.clone().lock_owned().await
+    }
     pub(crate) fn draft(
         &self,
         id: UnitId,

@@ -289,6 +289,7 @@ impl AttemptManager {
             !path.exists() && path.symlink_metadata().is_err(),
             "fresh worktree path already exists"
         );
+        let admission = self.resources.admission().await;
         let profile = self.resources.draft(id, &task.scope(), &path)?;
         let branch = format!("rrx/{}/{id}", task.id);
         let at = crate::domain::now_ms();
@@ -333,6 +334,7 @@ impl AttemptManager {
         let mut preparation_guard = owner::PreparationGuard::new(self.owner.clone(), &unit);
         let prepared = async {
             self.resources.reserve(&unit, &profile)?;
+            drop(admission);
             self.resources.materialize(&profile)?;
             let mut preparing = self
                 .owner
@@ -487,6 +489,7 @@ impl AttemptManager {
             .join("units")
             .join(id.to_string())
             .join("source");
+        let admission = self.resources.admission().await;
         let profile = self.resources.draft(id, &task.scope(), &path)?;
         let at = crate::domain::now_ms();
         let unit = ExecutionUnit {
@@ -529,6 +532,7 @@ impl AttemptManager {
         };
         let prepared = (|| {
             self.resources.reserve(&unit, &profile)?;
+            drop(admission);
             self.resources.materialize(&profile)?;
             Ok::<_, anyhow::Error>(())
         })();

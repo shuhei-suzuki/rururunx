@@ -18,6 +18,9 @@ pub struct RuntimeOwner {
     pub(crate) instance: String,
     pub(crate) epoch: u64,
     pub(crate) git_gate: Arc<tokio::sync::Mutex<()>>,
+    /// Serialize cooperative namespace selection through durable lease admission;
+    /// never held while materializing files, awaiting Git or running native work.
+    pub(crate) resource_admission: Arc<tokio::sync::Mutex<()>>,
     git_leases: Mutex<BTreeMap<OperationId, Weak<GitLease>>>,
     _ipc: tempfile::TempDir,
     pub(crate) socket: PathBuf,
@@ -188,6 +191,7 @@ impl RuntimeOwner {
             instance,
             epoch,
             git_gate: Arc::new(tokio::sync::Mutex::new(())),
+            resource_admission: Arc::new(tokio::sync::Mutex::new(())),
             git_leases: Mutex::new(BTreeMap::new()),
             _ipc: ipc,
             socket,
