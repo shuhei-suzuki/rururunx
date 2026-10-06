@@ -474,9 +474,10 @@ The earlier TerminalRecovery fence independently protects that access mode. The
 genuine original-attempt recovery producer and whole Issue #14 remain open; ordinary
 observation never replays.
 The native Session-binding integration gap remains explicit.
-The current successful native Session-binding publication writes an unchanged
-Task via the coordinated transition and increments its raw version. Providers
-admitted under that Task version can then reject their own completion/approval.
-A separate atomic Record-only binding contract (#43) must preserve exact owner/context/
-Session identity guards without incrementing unchanged Task fields; Issue #41
-does not introduce that shared integration API.
+Ordinary legacy Session binding writes an unchanged Task via the coordinated
+transition and increments its raw version. Providers admitted under that Task
+version can then reject their own completion/approval. The implemented private
+Record-only binder writes Workflow plus its reserved factual audit, preserving
+Task bytes/version and exact owner/context/Session guards. Its genuine composed
+normal/late binding and terminal consumers remain unavailable; ordinary legacy
+binding is not a fallback for that protected route.

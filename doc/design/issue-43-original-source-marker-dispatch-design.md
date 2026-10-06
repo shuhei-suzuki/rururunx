@@ -15,6 +15,12 @@ prepared proof, new schema, Session binding rule or successful-work projection.
 The full managed binding and preparation contracts remain mandatory. Actual
 helper/transport and the installed composition issuer remain separate open work.
 
+The connection is implemented at `ec5cc6e1a3cd7a234ccec810b597c008a6f93842`.
+Its closed three-family design review found publication-outcome and shutdown
+retention gaps. Section 7 specifies their proposed correction. The repaired
+ordering and retention below are requirements, not claims that those corrections
+already run. The installed issuer, full regression and lint remain open gates.
+
 ## 2. Specific original dispatcher, without a Runtime return edge
 
 The actual Runtime creates one private `PhaseDispatcher` from its SAME owner,
@@ -60,20 +66,24 @@ The independent concrete invocation has this order:
    admission await. The actual envelope still strongly retains its original
    ticket. No new ticket/Source offer/capacity/allocation is captured. Duplicate
    original plan installation is an error, never replacement with current rows.
-4. Move the actual original capacity to `publish_planned_marker(capacity, plan)`
-   on that SAME dispatcher. It acquires the original control admission, checks
-   accepting state, exact original Source linkage and plan/capacity pointers,
-   enters actual publication retention, reserves the real Native job and its
-   EMPTY preparation custody, and saves SAME plan in the original queue slot.
-5. Call the unchanged private `publish_managed_marker` under SharedStore. The
+4. Save original publication custody beside the SAME plan before the second
+   admission await. On that SAME dispatcher, acquire the original admission and
+   check accepting state, original Source linkage and plan/capacity pointers.
+   Validate and save the SAME slot plan and reserve the real unstarted Native
+   job/EMPTY preparation custody before latching Publishing. Retain the resulting
+   SAME publication retention before any marker transaction; a partial refusal
+   preserves its actual owned assets and never deletes a pre-existing job.
+5. Call the private `publish_managed_marker` with unchanged exact SQL guards
+   under SharedStore. The
    actual exact-image permissions and current/Driver/Unit/input/owner conditions
    remain conjunctions. Release Store before known-marker handoff. Save first
-   genuine known marker in the original slot, obtain SAME real job preparation
-   custody, and create the original one-time launch with Weak custody linkage.
+   genuine known marker in independent original publication custody before any
+   fallible handoff lookup; retain it in the original slot, obtain SAME real job
+   preparation custody, and create the one-time launch with Weak custody linkage.
 6. Call actual PhaseJobs start, whose original registry owns its real handle and
    whose eager guard/result cells preserve launch/Native actor/plan/error. Save
-   the returned nongrant PhaseInvocation observation in Handoff assets. Engine
-   observes this handoff and remains Waiting until genuine binding/terminal
+   only the observation needed by its actual consumer. Engine currently observes
+   handoff transfer state and remains Waiting until genuine binding/terminal
    consumers supply their own result; no label creates a Workflow success.
 
 Proposed specific private seams are:
@@ -83,7 +93,7 @@ PhaseDispatcher::plan_original_marker(
     SAME allocation Arc, SAME Source origin Arc, SAME ticket Arc, workflow)
     -> Result<Arc<MarkerPublicationPlan>>
 PhaseDispatcher::publish_planned_marker(
-    original PendingPhaseCapacity, SAME saved plan Arc)
+    independently retained original publication custody)
     -> Result<PhaseInvocation>
 PhaseDispatcher::reconcile_phase_marker(operation_hint)
     -> Result<PhaseInvocation>
@@ -104,8 +114,9 @@ This increment adds no scheduler that automatically replans or replays effects.
 | Actual queue refusal | Existing original restoration/boxed custody, no publication |
 | Planning fails | Original envelope, accepted origin and queue allocation/guard remain; no marker effect |
 | Cancellation during publication admission | Independently saved SAME plan remains; queue still owns actual originals; no inferred rollback/no-dispatch |
-| Job full, origin/plan mismatch or stopped admission | Refuse before marker SQL; retain originals and any genuine unstarted job |
-| Marker commit returns error/unknown | SAME plan in Handoff/queue; no fresh publication or automatic retry |
+| Job full, origin/plan mismatch or stopped admission | Refuse before marker SQL; preserve actual stage/assets; do not leave Publishing without its plan |
+| Definitive refusal before marker commit | SAME custody/plan; existing successful original unpublished proof may restore Unmarked and remove only SAME unstarted job |
+| Commit or postcommit-cache result is uncertain | SAME custody/plan and actual outcome; reconcile exact original postimages, never infer rollback from error text |
 | Known marker, handoff error | Preserve SAME known marker/job/plan; existing original reconciliation only |
 | Native start returns error, Waiting or is unpolled/aborted | Existing actual job/preparation custody; no Task failure or new source offer from the observation |
 
@@ -114,7 +125,8 @@ Source map/slot/assets locks and first control guard are absent before readonly
 planning and the second admission await. No publisher awaits child I/O. The
 selected Native job owns its own async preparation and actual permission checks.
 
-Filled/held handoffs, marked capacity and Native jobs remain charged pending
+Accepted-Unmarked slots, filled/held handoffs, marked capacity and Native jobs
+remain charged pending
 their genuine logical closure. No observer, future exit, ID or generic cleanup
 call retires them. Cooperative shutdown reports pending; Runtime/process/all-owner
 loss still has the documented uncertainty and best-effort hygiene limitations.
@@ -170,3 +182,81 @@ data never grant Native or Session/input permission. Current positive compositio
 is unavailable, so this source-level analysis is not empirical security approval.
 UI/browser/STG verification is inapplicable to this internal backend-only change;
 authenticated CLI/both-OS qualification and regression remain open gates.
+
+## 7. Publication outcome and accepted-custody amendment
+
+The verified review groups are publication outcome loss, pre-latch partial
+installation, first known-marker loss, accepted-Unmarked shutdown drainage,
+unused diagnostic/wrapper surfaces, and contradictory legacy-binder wording.
+This amendment fixes those contracts together. It does not introduce a new
+allocation, marker permission, schema, capability or host ownership guarantee.
+
+**Independent originals.** Before the second admission await, the Handoff saves
+one private publication custody containing its actual capacity, SAME plan and
+original origin. A typed stage records no transaction attempted, transaction
+attempted/uncertain, committed/cache pending, known marker, or handed off. The
+actual producer advances the stage; error text and persisted rows cannot
+construct it. The private Store producer preserves the observed successful
+commit in that independently retained cell before fallible Driver-cache
+publication. This adds no arbitrary callback or permission exemption. SQL
+guards and mutations remain unchanged; the outcome API retains these facts
+instead of reducing every boundary to one unqualified `anyhow` error.
+This custody retains an actual unstarted-job reservation, publication retention
+and first genuine marker as they become available. It has no strong Runtime,
+Handoff registry, own handle or return edge to its owning Handoff. Do not put a
+strong retention back inside its own queue slot. No custody/queue/job mutex spans
+Store access, readonly planning, child I/O or an await.
+
+**Pre-latch order.** Under SAME control admission, validate the original slot,
+origin and plan, install its SAME plan, and reserve the actual unstarted job and
+EMPTY preparation custody before changing Unmarked to Publishing. Save that
+original retention synchronously before entering Store. If any earlier step
+fails, preserve its actual stage and assets, without falsely entering Publishing
+or deleting a previously existing job. Apply this order to the test-only
+retained-publication port as well. Narrow the unused Runtime publication wrapper
+to its real scope; future reconciliation still requires the saved originals.
+
+**Actual outcomes and rollback.** Publication distinguishes its observed
+precommit, commit-attempt and postcommit-cache boundaries. A known precommit
+refusal permits an attempt at the existing same-original unpublished protocol;
+it is not itself a rollback proof. `plan_unpublished_marker` uses the retained
+allocation's original Unit snapshot. Its successfully ended Immediate checks
+SAME owner/epoch/generation, exact original open Unit and absence of the allocated
+operation/pair/Session/invocation. Goal-row drift alone is not one of those
+predicates. Only that private proof can restore the SAME Unmarked capacity.
+Remove only its genuine unstarted job; preserve partial rollback/removal failures.
+The restored accepted Source and its stale plan remain Held. This does not refresh
+pins, reoffer Source, replay publication, authorize a new dispatch, settle a Task
+or prove process death. Commit uncertainty, Unit drift, known marker or Native
+history never becomes rollback from a label. They retain originals for exact
+postimage confirmation, with no replacement plan or fresh start.
+
+**Known marker.** Save the first returned genuine marker Arc in independent
+original custody in the same synchronous return path, before fallible origin,
+queue, job or preparation lookup. Poison recovery is allowed only to preserve
+this factual object, never to authorize handoff. All existing original/current/
+Driver/Unit/permission checks and the once-only launch CAS still precede start.
+The queue preserves that first marker when confirmation revisits its SAME plan.
+
+**Accepted-Unmarked shutdown.** The actual transfer mechanically preserves its
+original slot/armed guard under accepted custody before `finish_accepted`, under
+the first control admission. This cannot rely only on subsequent origin
+installation, which can fail. Shutdown may drain never-accepted legacy Unmarked
+slots, but retains accepted-Unmarked, Publishing and marked slots pending genuine
+closure and reports that pending state. Driver stop, guard Drop, missing rows or
+a shutdown error does not release that responsibility or declare completion.
+Runtime/all-owner loss retains the documented uncertainty; recovery is a separate
+required MVP gate, not supplied by this amendment.
+
+**Actual consumers and qualification.** Remove the unused Handoff invocation
+receiver; PhaseJobs already owns the launch and results. Engine's handoff state
+is a transfer diagnostic and stays Waiting, not an Agent success or complete
+launch observer. Fix the master binder paragraph to distinguish the implemented
+private Task-preserving binder from ordinary legacy Task-writing binding.
+Inspect all publication/retention callers and the accepted-slot shutdown consumer
+when implementing these changes. Required genuine controls cover Goal drift plus
+original unpublished rollback, failure before Publishing, known-marker lookup
+failure, and shutdown before/after Publishing, with causal compiled omissions.
+EMPTY graph evidence does not qualify them. Composition, full native preparation,
+normal/late binding, terminal recovery, lint/regression, real Agents and four-Task
+both-OS validation remain required before MVP completion or merge.
