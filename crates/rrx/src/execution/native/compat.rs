@@ -93,3 +93,33 @@ fn check_overlay(env: &BTreeMap<String, String>) -> Result<()> {
     ensure!(env.keys().all(|k| expected.contains(k)), "native overlay changes inherited settings or hooks");
     Ok(())
 }
+
+#[cfg(test)]
+mod primitive_tests {
+    use super::*;
+    fn declaration(writes:NativeHookWrites)->NativeCompatConfig {
+        NativeCompatConfig {profile:"rrx-native-inherited-v1".into(),cli_version:"2.1.283".into(),settings:"inherited".into(),user_hooks:vec![crate::config::NativeUserHook {label:"hook".into(),reference:"opaque/settings#hook".into(),writes}]}
+    }
+    #[test]
+    fn nongrant_native_role_hooks_include_user_and_committed_project() {
+        for writes in [NativeHookWrites::None,NativeHookWrites::Worktree] {
+            let config=declaration(writes);
+            assert!(qualify_role_hooks(SessionRole::Executor,&config,&[]).is_ok());
+            assert_eq!(qualify_role_hooks(SessionRole::Reviewer,&config,&[]).is_ok(),writes==NativeHookWrites::None);
+            let config=declaration(NativeHookWrites::None);
+            let required=[NativeRequiredHook {path:"hook.sh".into(),writes}];
+            assert!(qualify_role_hooks(SessionRole::Executor,&config,&required).is_ok());
+            assert_eq!(qualify_role_hooks(SessionRole::Reviewer,&config,&required).is_ok(),writes==NativeHookWrites::None);
+        }
+    }
+    #[test]
+    fn nongrant_native_overlay_preserves_native_roots_and_required_hooks() {
+        let mut env=BTreeMap::from([("GIT_CONFIG_COUNT".into(),"3".into())]);
+        for (n,(key,value)) in [("gc.auto","0"),("maintenance.auto","false"),("core.fsmonitor","false")].into_iter().enumerate() {env.insert(format!("GIT_CONFIG_KEY_{n}"),key.into());env.insert(format!("GIT_CONFIG_VALUE_{n}"),value.into());}
+        check_overlay(&env).unwrap();
+        for key in ["HOME","CODEX_HOME","CLAUDE_CONFIG_DIR","XDG_CONFIG_HOME","GIT_CONFIG_GLOBAL","GIT_CONFIG_SYSTEM","GIT_CONFIG_NOSYSTEM","UNKNOWN"] {
+            let mut mutated=env.clone();mutated.insert(key.into(),"opaque".into());assert!(check_overlay(&mutated).is_err(),"{key}");
+        }
+        env.insert("GIT_CONFIG_KEY_0".into(),"core.hooksPath".into());assert!(check_overlay(&env).is_err());
+    }
+}

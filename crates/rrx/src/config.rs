@@ -387,4 +387,28 @@ mod tests {
             assert!(toml::from_str::<ProjectOverlay>(input).is_err(), "{input}");
         }
     }
+    #[test]
+    fn nongrant_native_declaration_placement_closed_writes_and_canonical_bounds() {
+        for input in ["[agents.a.compatibility]\nprofile='rrx-native-inherited-v1'\ncli_version='2.1.283'\nsettings='inherited'","[[native.required_hooks]]\npath='hook.sh'\nwrites='output_only'","[[native.required_hooks]]\npath='hook.sh'\nwrites='none'\nextra=true"] {
+            assert!(toml::from_str::<ProjectOverlay>(input).is_err(),"{input}");
+        }
+        let mut config=Config::default();
+        for path in ["/absolute","../parent","a/./b","a//b","a\\b",""] {
+            assert!(config.with_project_text(&format!("[[native.required_hooks]]\npath='{path}'\nwrites='none'")).is_err(),"{path}");
+        }
+        config=config.with_project_text("[[native.required_hooks]]\npath='hooks/project.sh'\nwrites='none'").unwrap();
+        assert_eq!(config.native.required_hooks.len(),1);
+        let dir=tempfile::tempdir().unwrap();let path=dir.path().join("runtime.toml");
+        std::fs::write(&path,"[[native.required_hooks]]\npath='hook.sh'\nwrites='none'").unwrap();
+        assert!(Config::load(Some(&path),None).is_err());
+        let raw="profile='rrx-native-inherited-v1'\ncli_version='2.1.283'\nsettings='inherited'\n[[user_hooks]]\nlabel='ok'\nreference='opaque'\nwrites='none'";
+        let mut declaration:NativeCompatConfig=toml::from_str(raw).unwrap();
+        let bytes=declaration.canonical().unwrap();assert_eq!(bytes,declaration.clone().canonical().unwrap());
+        declaration.user_hooks[0].reference="x".repeat(1024);assert!(declaration.canonical().is_ok());
+        declaration.user_hooks[0].reference.push('x');assert!(declaration.canonical().is_err());
+        declaration.user_hooks[0].reference="opaque".into();declaration.user_hooks[0].label="x".repeat(64);assert!(declaration.canonical().is_ok());
+        declaration.user_hooks[0].label.push('x');assert!(declaration.canonical().is_err());
+        for n in 0..16 {declaration.user_hooks.push(NativeUserHook {label:format!("hook{n}"),reference:"opaque".into(),writes:NativeHookWrites::None});}
+        assert!(declaration.canonical().is_err());
+    }
 }

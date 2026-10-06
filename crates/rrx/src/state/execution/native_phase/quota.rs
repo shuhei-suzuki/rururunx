@@ -6,7 +6,6 @@ use crate::execution::native::{NativePreparationActor, prepared::PreparedPhaseNo
 use crate::runtime::phase_effect_admission::PhaseEffectAdmissionGuard;
 use crate::state::managed_binding::Body;
 use super::super::quota_policy::{self, CandidateClass, Decision, QuotaSnapshot};
-use rusqlite::types::ValueRef;
 
 const LEASES: &str = "SELECT l.unit_id,l.provider,l.account_key,l.role,l.epoch,l.active,u.project_id,u.task_id,u.kind FROM quota_leases l JOIN execution_units u ON u.id=l.unit_id WHERE l.active=1 ORDER BY l.unit_id LIMIT 4097";
 const WAITERS: &str = "SELECT w.unit_id,w.provider,w.account_key,w.reason,w.next_due,w.fairness_sequence,w.resume_state,u.kind,u.project_id,u.task_id,u.native_effects_open,u.version,COALESCE(json_extract(u.body,'$.state'),''),COALESCE(json_extract(u.body,'$.wait_reason'),''),EXISTS(SELECT 1 FROM managed_phase_operations o WHERE o.unit_id=u.id AND o.phase_open=1),EXISTS(SELECT 1 FROM managed_phase_operations o JOIN managed_phase_readiness r ON r.operation_id=o.operation_id WHERE o.unit_id=u.id AND o.phase_open=1 AND r.state='parked' AND r.parking_version=r.version),json_extract(p.body,'$.max_tasks') FROM quota_waiters w JOIN execution_units u ON u.id=w.unit_id JOIN projects p ON p.id=u.project_id WHERE w.provider=?1 AND w.account_key='unknown' AND w.next_due<=?2 AND u.native_effects_open=1 ORDER BY CASE WHEN (u.kind='executor')=(?3='executor') THEN 1 ELSE 0 END,w.fairness_sequence,w.unit_id LIMIT 4097";
@@ -59,13 +58,18 @@ fn rows(tx: &Transaction<'_>, sql: &str, values: &[SqlValue], limit: usize, body
     let mut statement = tx.prepare(sql)?;
     let n = statement.column_count();
     {
-        let mut cursor = statement.query(params_from_iter(values))?;
+        let columns=(0..n).map(|i|format!("c{i}")).collect::<Vec<_>>();
+        let projection=columns.iter().map(|c|format!("typeof({c}),length(CAST({c} AS BLOB))")).collect::<Vec<_>>().join(",");
+        let mut shapes=tx.prepare(&format!("WITH selected({}) AS ({sql}) SELECT {projection} FROM selected",columns.join(",")))?;
+        let mut cursor = shapes.query(params_from_iter(values))?;
         let mut count = 0;
         while let Some(row) = cursor.next()? {
             count += 1; ensure!(count <= limit, "complete private quota inventory exceeds row bound");
             for i in 0..n {
                 let (charge,max) = if body_column.is_some_and(|(c,_)| c==i) { (true,body_column.expect("checked body column").1) } else { (false,4096) };
-                let bytes = match row.get_ref(i)? { ValueRef::Text(v) => { ensure!(v.len() <= max, "private quota column exceeds bound"); std::str::from_utf8(v)?; v.len() }, ValueRef::Integer(_) | ValueRef::Null => 8, _ => anyhow::bail!("private quota column type differs") };
+                let kind:String=row.get(i*2)?;
+                let length:Option<usize>=row.get(i*2+1)?;
+                let bytes=match kind.as_str() { "text"=>{let length=length.context("quota shape text length absent")?;ensure!(length<=max,"private quota column exceeds bound");length},"integer"|"null" if !charge=>8,_=>anyhow::bail!("private quota column type differs") };
                 let total = if charge { &mut *body_bytes } else { &mut *scalar_bytes };
                 *total = total.checked_add(bytes).context("private quota inventory byte overflow")?;
                 ensure!(*scalar_bytes <= 4*1024*1024 && *body_bytes <= 72*1024*1024, "private quota complete inventory byte bound exceeded");
@@ -158,7 +162,7 @@ fn read_snapshot(tx: &Transaction<'_>, lineage:&NativeReadyLineage, at:i64, lega
         }
     }
     ensure!(scalar_bytes.checked_add(body_bytes).is_some_and(|n|n<=8*1024*1024), "private quota owned plan exceeds 8-MiB profile");
-    if pool.is_none() { ensure!(windows.is_empty() && waiters.is_empty() && leases.iter().all(|l|text(l,1).ok()!=Some(provider.as_str())), "cold pool has FK-dependent inventory"); }
+    if pool.is_none() { ensure!(windows.is_empty() && waiters.is_empty() && leases.iter().all(|l|text(l,1).ok()!=Some(provider.as_str()) || text(l,2).ok()!=Some("unknown")), "cold pool has FK-dependent inventory"); }
     Ok(Snapshot { images:Images { pool,waiter,lease },leases,waiters,windows,history,legacy:candidates })
 }
 
@@ -317,9 +321,7 @@ fn apply_images(tx:&Transaction<'_>,plan:&NativeQuotaPlan)->Result<()> {
     let f=plan.actor.launch().allocation().facts();
     if plan.before.images.pool.is_none() {
         // Exact absence, no ON CONFLICT fallback. Required before every FK row.
-        let default=default_pool(f.provider);
-        let n=tx.execute("INSERT INTO quota_pools(provider,account_key,next_probe_at,probe_unit,backoff,last_role) SELECT ?1,?2,?3,?4,?5,?6 WHERE NOT EXISTS(SELECT 1 FROM quota_pools WHERE provider=?1 AND account_key=?2)",params_from_iter(&default))?;
-        ensure!(n==1,"cold private quota pool absence changed");
+        let default=insert_cold_pool(tx,f.provider)?;
         write_image(tx,"quota_pools",POOL_COLUMNS,&Some(default),&plan.after.pool)?;
     } else { write_image(tx,"quota_pools",POOL_COLUMNS,&plan.before.images.pool,&plan.after.pool)?; }
     write_image(tx,"quota_waiters",WAITER_COLUMNS,&plan.before.images.waiter,&plan.after.waiter)?;
@@ -330,6 +332,71 @@ fn apply_images(tx:&Transaction<'_>,plan:&NativeQuotaPlan)->Result<()> {
         ensure!(n==1,"quota complete Unit CAS changed");
     }
     Ok(())
+}
+fn insert_cold_pool(tx:&Transaction<'_>,provider:&str)->Result<Row> {
+    let default=default_pool(provider);
+    let n=tx.execute("INSERT INTO quota_pools(provider,account_key,next_probe_at,probe_unit,backoff,last_role) SELECT ?1,?2,?3,?4,?5,?6 WHERE NOT EXISTS(SELECT 1 FROM quota_pools WHERE provider=?1 AND account_key=?2)",params_from_iter(&default))?;
+    ensure!(n==1,"cold private quota pool absence changed");Ok(default)
+}
+
+#[cfg(test)]
+mod primitive_tests {
+    use super::*;
+    fn db()->Connection {let c=Connection::open_in_memory().unwrap();c.execute_batch("PRAGMA foreign_keys=ON;CREATE TABLE quota_pools(provider TEXT,account_key TEXT,next_probe_at INTEGER,probe_unit TEXT,backoff INTEGER,last_role TEXT,PRIMARY KEY(provider,account_key));CREATE TABLE quota_waiters(unit_id TEXT PRIMARY KEY,provider TEXT,account_key TEXT,reason TEXT,next_due INTEGER,fairness_sequence INTEGER,resume_state TEXT,FOREIGN KEY(provider,account_key) REFERENCES quota_pools(provider,account_key));").unwrap();c}
+    #[test]
+    fn nongrant_native_cold_pool_is_complete_exact_absence_and_preserves_foreign_accounts() {
+        let mut c=db();let tx=c.transaction().unwrap();
+        tx.execute("INSERT INTO quota_pools VALUES('claude','other',9,'foreign',120000,'executor')",[]).unwrap();
+        let image=insert_cold_pool(&tx,"claude").unwrap();assert_eq!(image,vec![t("claude"),t("unknown"),i(0),SqlValue::Null,i(60000),t("reviewer")]);
+        let mut s=0;let mut b=0;assert_eq!(rows(&tx,POOL,&[t("claude")],1,None,&mut s,&mut b).unwrap(),[image]);
+        assert!(insert_cold_pool(&tx,"claude").is_err());
+        let waiter=vec![t("unit"),t("claude"),t("unknown"),t("capacity"),i(1000),i(0),t("preparing")];
+        write_image(&tx,"quota_waiters",WAITER_COLUMNS,&None,&Some(waiter)).unwrap();
+        assert_eq!(tx.query_row("SELECT next_probe_at FROM quota_pools WHERE account_key='other'",[],|r|r.get::<_,i64>(0)).unwrap(),9);
+        tx.commit().unwrap();
+    }
+    #[test]
+    fn nongrant_native_pool_cas_matches_every_column_without_partial_write() {
+        for column in 0..6 {
+            let mut c=db();let tx=c.transaction().unwrap();let before=insert_cold_pool(&tx,"claude").unwrap();
+            let replacement=match column {0=>t("codex"),1=>t("other"),2=>i(1),3=>t("foreign"),4=>i(120000),_=>t("executor")};
+            let mut actual=before.clone();actual[column]=replacement.clone();
+            tx.execute(&format!("UPDATE quota_pools SET {}=?1",POOL_COLUMNS[column]),[replacement]).unwrap();
+            let mut after=before.clone();after[5]=t("executor");
+            assert!(write_image(&tx,"quota_pools",POOL_COLUMNS,&Some(before),&Some(after)).is_err(),"column {column}");
+            assert!(image_matches(&tx,"quota_pools",POOL_COLUMNS,&actual[0],&Some(actual)).unwrap());
+        }
+    }
+    #[test]
+    fn nongrant_native_waiter_delete_requires_complete_seven_column_image() {
+        for column in 0..7 {
+            let mut c=db();let tx=c.transaction().unwrap();insert_cold_pool(&tx,"claude").unwrap();
+            let before=vec![t("unit"),t("claude"),t("unknown"),t("capacity"),i(1000),i(1),t("preparing")];
+            write_image(&tx,"quota_waiters",WAITER_COLUMNS,&None,&Some(before.clone())).unwrap();
+            // provider/account changes need another legitimate FK pool.
+            tx.execute("INSERT INTO quota_pools VALUES('codex','other',0,NULL,60000,'reviewer')",[]).unwrap();
+            tx.execute("INSERT INTO quota_pools VALUES('codex','unknown',0,NULL,60000,'reviewer')",[]).unwrap();
+            tx.execute("INSERT INTO quota_pools VALUES('claude','other',0,NULL,60000,'reviewer')",[]).unwrap();
+            let replacement=match column {0=>t("other-unit"),1=>t("codex"),2=>t("other"),3=>t("quota"),4=>i(2000),5=>i(2),_=>t("running")};
+            tx.execute(&format!("UPDATE quota_waiters SET {}=?1",WAITER_COLUMNS[column]),[replacement]).unwrap();
+            assert!(write_image(&tx,"quota_waiters",WAITER_COLUMNS,&Some(before),&None).is_err(),"column {column}");
+            assert_eq!(tx.query_row("SELECT count(*) FROM quota_waiters",[],|r|r.get::<_,usize>(0)).unwrap(),1);
+        }
+    }
+    #[test]
+    fn nongrant_native_quota_inventory_limit_plus_one_and_byte_bounds_refuse() {
+        let mut c=Connection::open_in_memory().unwrap();c.execute_batch("CREATE TABLE inventory(id INTEGER,body TEXT)").unwrap();
+        let tx=c.transaction().unwrap();
+        for limit in [64usize,256,4096] {
+            tx.execute("DELETE FROM inventory",[]).unwrap();
+            for n in 0..limit {tx.execute("INSERT INTO inventory VALUES(?1,'x')",[n]).unwrap();}
+            let mut s=0;let mut b=0;assert_eq!(rows(&tx,"SELECT id,body FROM inventory",&[],limit,Some((1,8192)),&mut s,&mut b).unwrap().len(),limit);
+            tx.execute("INSERT INTO inventory VALUES(?1,'x')",[limit]).unwrap();let mut s=0;let mut b=0;assert!(rows(&tx,"SELECT id,body FROM inventory",&[],limit,Some((1,8192)),&mut s,&mut b).is_err());
+        }
+        tx.execute("DELETE FROM inventory",[]).unwrap();tx.execute("INSERT INTO inventory VALUES(1,?1)",["x".repeat(8192)]).unwrap();
+        let mut s=0;let mut b=0;assert!(rows(&tx,"SELECT id,body FROM inventory",&[],1,Some((1,8192)),&mut s,&mut b).is_ok());
+        tx.execute("UPDATE inventory SET body=?1",["x".repeat(8193)]).unwrap();let mut s=0;let mut b=0;assert!(rows(&tx,"SELECT id,body FROM inventory",&[],1,Some((1,8192)),&mut s,&mut b).is_err());
+    }
 }
 impl Store {
     pub(crate) fn plan_phase_quota_closure(owner:&Arc<crate::execution::RuntimeOwner>,actor:Arc<NativePreparationActor>,no_dispatch:Arc<PreparedPhaseNoCurrentDispatch>,lineage:Arc<NativeReadyLineage>,at:i64)->Result<Arc<NativeQuotaClosurePlan>> {

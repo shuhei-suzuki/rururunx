@@ -169,3 +169,26 @@ pub(super) fn plan_native_command(owner: &Arc<RuntimeOwner>, actor: &Arc<NativeP
     compat.check_command(&command)?;
     Ok(command)
 }
+
+#[cfg(test)]
+mod primitive_tests {
+    use super::*;
+    #[test]
+    fn nongrant_native_command_keeps_exact_permission_vector_and_bounded_values() {
+        let session=Some(uuid::Uuid::new_v4());
+        let executor=command_argv("claude",SessionRole::Executor,Some("model"),Some("high"),session).unwrap();
+        let reviewer=command_argv("claude",SessionRole::Reviewer,Some("model"),Some("high"),session).unwrap();
+        assert_eq!(executor.len(),16);assert_eq!(reviewer.len(),18);
+        assert_eq!(&reviewer[..16],&executor);assert_eq!(&reviewer[16..],["--permission-mode","plan"]);
+        assert_eq!(&executor[8..12],["--permission-prompt-tool","stdio","--settings","{\"forceLoginMethod\":\"claudeai\"}"]);
+        assert_eq!(command_argv("codex",SessionRole::Reviewer,None,None,None).unwrap(),["app-server","--listen","stdio://"]);
+        for value in ["", "--bare", "line\nbreak"] {assert!(command_argv("claude",SessionRole::Executor,Some(value),None,session).is_err());}
+        assert!(command_argv("claude",SessionRole::Executor,Some(&"x".repeat(128)),None,session).is_ok());
+        assert!(command_argv("claude",SessionRole::Executor,Some(&"x".repeat(129)),None,session).is_err());
+    }
+    #[test]
+    fn nongrant_native_codex_pin_allows_only_single_line_ending() {
+        for text in ["codex-cli 0.160.0","codex-cli 0.160.0\n","codex-cli 0.160.0\r\n"] { assert!(version::qualified_codex_phase_version(text)); }
+        for text in ["codex-cli 0.160.1","codex-cli 0.160.0 \n"," codex-cli 0.160.0","codex-cli 0.160.0\n\n","codex-cli 0.160.0\r","codex-cli 0.160.0\ntrailer"] { assert!(!version::qualified_codex_phase_version(text),"{text:?}"); }
+    }
+}
