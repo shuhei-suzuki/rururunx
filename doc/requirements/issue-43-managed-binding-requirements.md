@@ -1,7 +1,10 @@
 # Issue 43: managed native Session binding requirements
 
-Risk: STRICT. Status: proposal for independent requirements review; no binder,
-allocation producer, migration or native qualification is delivered by this file.
+Risk: STRICT. Status: requirements approved by two independent round2 reviews
+of `7e47421a24225583795245b307e574fb3156dd7e`; see the
+[review evidence](../verification/issue-43-managed-binding-requirements-round2.json).
+No binder, allocation producer, migration or native qualification is delivered
+by this file.
 Source baseline: `5b6e8a8152926b643c6926b87e853de12b9319fc`. The reviewed legacy
 contract is [Requirements9](https://github.com/shuhei-suzuki/rururunx/blob/b191b466d5dea303585cfaf6968c6fb178be79cd/doc/requirements/issue-43-requirements.md)
 and [Design10](https://github.com/shuhei-suzuki/rururunx/blob/b191b466d5dea303585cfaf6968c6fb178be79cd/doc/design/issue-43-binding-mechanics.md).
