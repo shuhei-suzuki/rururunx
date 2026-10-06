@@ -441,6 +441,58 @@ async fn compiled_server_refuses_raw_frames_and_old_identity_then_keeps_serving(
 }
 
 #[tokio::test]
+async fn actual_service_loop_failure_is_refused_and_exits_unsuccessfully() {
+    let mut f = Fixture::new();
+    f.start().await;
+    // Destructive fault in this isolated fixture only. This installs no Goal,
+    // driver, native capability or acceptance evidence.
+    rusqlite::Connection::open(&f.state)
+        .unwrap()
+        .execute_batch("DROP TABLE scheduler_tasks")
+        .unwrap();
+    let until = Instant::now() + Duration::from_secs(5);
+    loop {
+        if matches!(
+            client::request(&f.state, ControlAction::RuntimeStatus)
+                .await
+                .unwrap(),
+            ControlResponse::RuntimeMetadata {
+                service_running: false,
+                ..
+            }
+        ) {
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "faulted service loop remained running"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(
+        client::request(&f.state, ControlAction::RuntimeStop)
+            .await
+            .is_err()
+    );
+    loop {
+        if let Some(status) = f.child.as_mut().unwrap().try_wait().unwrap() {
+            assert!(
+                !status.success(),
+                "initial shutdown error was erased by repeated shutdown"
+            );
+            f.child.take();
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "failed service shutdown exceeded deadline"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(!descriptor(&f.state).exists());
+}
+
+#[tokio::test]
 async fn actual_connection_limit_and_idle_shutdown_are_bounded() {
     let mut f = Fixture::new();
     f.start().await;

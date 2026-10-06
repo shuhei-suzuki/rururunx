@@ -8,8 +8,15 @@ use crate::{
         control::{ControlAction, ControlRequest, ControlResponse},
     },
 };
-use anyhow::{Context, Result};
-use std::{path::Path, sync::Arc, time::Duration};
+use anyhow::{Context, Result, ensure};
+use std::{
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 use tokio::{
     io::BufReader,
     sync::{Notify, Semaphore},
@@ -26,6 +33,7 @@ pub async fn serve(state: &Path, config: Config) -> Result<()> {
     let endpoint = ControlEndpoint::bind(owner).context("Bind private Runtime control endpoint")?;
     runtime.start().await.context("Start Runtime service")?;
     let stop = Arc::new(Notify::new());
+    let stop_failed = Arc::new(AtomicBool::new(false));
     let permits = Arc::new(Semaphore::new(MAX_CONNECTIONS));
     let mut connections = JoinSet::new();
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
@@ -53,6 +61,7 @@ pub async fn serve(state: &Path, config: Config) -> Result<()> {
                 };
                 let runtime = runtime.clone();
                 let stop = stop.clone();
+                let stop_failed = stop_failed.clone();
                 connections.spawn(async move {
                     let _permit = permit;
                     let mut reader = BufReader::new(accepted);
@@ -66,7 +75,13 @@ pub async fn serve(state: &Path, config: Config) -> Result<()> {
                             let id = request.request_id;
                             let is_stop = matches!(request.action, ControlAction::RuntimeStop);
                             let response = runtime.handle_control(reader.get_ref().stream(), request).await;
-                            (response.unwrap_or(ControlResponse::Rejected { request_id: Some(id) }), is_stop && runtime.is_stopping())
+                            let stopping = is_stop && runtime.is_stopping();
+                            if stopping && response.is_err() {
+                                // A repeated shutdown may retire the original error; retain
+                                // failure so the foreground process cannot claim success.
+                                stop_failed.store(true, Ordering::SeqCst);
+                            }
+                            (response.unwrap_or(ControlResponse::Rejected { request_id: Some(id) }), stopping)
                         }
                         Err(_) => (ControlResponse::Rejected { request_id: None }, false),
                     };
@@ -95,5 +110,9 @@ pub async fn serve(state: &Path, config: Config) -> Result<()> {
     drop(endpoint); // Removes only the descriptor belonging to this retained owner.
     result?;
     shutdown?;
+    ensure!(
+        !stop_failed.load(Ordering::SeqCst),
+        "Runtime control shutdown failed"
+    );
     Ok(())
 }
