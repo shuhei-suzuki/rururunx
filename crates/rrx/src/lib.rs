@@ -9,5 +9,6 @@ pub mod execution;
 pub mod git;
 mod goal;
 pub mod project;
+pub mod runtime;
 pub mod state;
 pub mod workflow;
