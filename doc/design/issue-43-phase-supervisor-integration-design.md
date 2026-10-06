@@ -210,3 +210,24 @@ Root must retain the actual capacity, original ticket, attempted plan and invoca
 before returning an observation, as required by the Source handoff design. No
 positive Native path, cancellation control or authenticated execution is qualified
 by this representation change or a successful compile.
+
+## 9. Driver composition has a Weak queue origin
+
+The actual Driver worker retains its PendingDriverClaim and therefore its
+InstalledDriverComposition throughout its Sources/Engine loop. A published queue
+slot retains the OriginalMarker's Driver advance, whose original ticket retains
+the actual DriverRegistry association. A strong phase supervisor in the worker's
+composition would add the return edge `queue slot → marker → ticket → registry →
+worker claim → composition → queue` once the future installation producer exists.
+
+Composition therefore retains a Weak reference to the SAME phase supervisor.
+Admission upgrades that original Weak reference only for its synchronous exact
+Runtime/queue/owner validation. An ended supervisor refuses; no replacement queue,
+identifier lookup or new Runtime is accepted. Actual phase capacity/launch retains
+its supervisor separately through the existing genuine reservation. Driver
+composition neither owns nor releases it. The Runtime reference was already Weak.
+
+This representation prevents the composition's return edge. It does not issue
+composition, qualify a real worker/marker lifecycle, retire a held operation or
+prove all reference graphs cycle-free. Actual handoff jobs, Source origins and
+Native actors require their separate original-object custody and Drop controls.

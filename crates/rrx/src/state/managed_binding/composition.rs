@@ -16,7 +16,7 @@ use std::sync::{Arc, Weak};
 pub(crate) struct InstalledDriverComposition {
     runtime: Weak<Runtime>,
     owner: Arc<RuntimeOwner>,
-    phases: Arc<PhaseSupervisor>,
+    phases: Weak<PhaseSupervisor>,
     original_task: Task,
     sources: Arc<ManagedWorkflowSources>,
     engine: Arc<WorkflowEngine>,
@@ -28,10 +28,14 @@ impl InstalledDriverComposition {
             .runtime
             .upgrade()
             .ok_or_else(|| anyhow::anyhow!("installed Runtime composition ended"))?;
+        let phases = self
+            .phases
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("installed phase supervisor ended"))?;
         ensure!(
             std::ptr::eq(self.owner.as_ref(), owner)
-                && runtime.composition_is_current(&self.phases)
-                && self.phases.belongs_to(&self.owner)
+                && runtime.composition_is_current(&phases)
+                && phases.belongs_to(&self.owner)
                 && std::ptr::eq(self.selected.owner(), owner)
                 && matches!(self.selected.provider(), "claude" | "codex")
                 && task.executor == self.selected.alias()
