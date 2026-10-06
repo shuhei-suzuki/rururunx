@@ -141,73 +141,122 @@ impl NativeChildCell {
 #[cfg(test)]
 mod native_child_cell_tests {
     use super::*;
-    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     async fn spawned() -> NativeChildCell {
-        let mut command=Command::new("/bin/sleep");
-        command.arg("30").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).process_group(0).kill_on_drop(true);
-        let mut cell=NativeChildCell::Empty;
-        let child=command.spawn().unwrap();
+        let mut command = Command::new("/bin/sleep");
+        command
+            .arg("30")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .process_group(0)
+            .kill_on_drop(true);
+        let mut cell = NativeChildCell::Empty;
+        let child = command.spawn().unwrap();
         cell.adopt(child);
         cell
     }
-    async fn closed(cell:&mut NativeChildCell) {
+    async fn closed(cell: &mut NativeChildCell) {
         cell.hygiene();
-        tokio::time::timeout(Duration::from_secs(10),async {
-            loop { if cell.try_reap().unwrap().is_some() { return; } tokio::time::sleep(Duration::from_millis(20)).await; }
-        }).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if cell.try_reap().unwrap().is_some() {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
     }
     #[tokio::test]
     async fn raw_upgrade_refuses_without_releasing_original_child() {
-        let mut cell=spawned().await;
-        let refused=cell.upgrade_in_place().is_err();
-        let retained=matches!(&cell,NativeChildCell::Raw(raw) if raw.has_child() && raw.pid.is_none());
+        let mut cell = spawned().await;
+        let refused = cell.upgrade_in_place().is_err();
+        let retained =
+            matches!(&cell,NativeChildCell::Raw(raw) if raw.has_child() && raw.pid.is_none());
         closed(&mut cell).await;
         assert!(refused && retained);
     }
     #[tokio::test]
     async fn missing_pipe_refuses_before_taking_any_other_pipe() {
-        let mut cell=spawned().await;
-        cell.qualify().unwrap();cell.upgrade_in_place().unwrap();
-        let NativeChildCell::Owned(process)=&mut cell else {panic!()};
-        let stderr=process.child.stderr.take();
-        let refused=cell.take_native_pipes().is_err();
-        let intact=matches!(&cell,NativeChildCell::Owned(p) if p.child.stdin.is_some() && p.child.stdout.is_some());
-        drop(stderr);closed(&mut cell).await;
+        let mut cell = spawned().await;
+        cell.qualify().unwrap();
+        cell.upgrade_in_place().unwrap();
+        let NativeChildCell::Owned(process) = &mut cell else {
+            panic!()
+        };
+        let stderr = process.child.stderr.take();
+        let refused = cell.take_native_pipes().is_err();
+        let intact = matches!(&cell,NativeChildCell::Owned(p) if p.child.stdin.is_some() && p.child.stdout.is_some());
+        drop(stderr);
+        closed(&mut cell).await;
         assert!(refused && intact);
     }
     struct Shell(Arc<AtomicUsize>);
-    impl Drop for Shell { fn drop(&mut self) {self.0.fetch_add(1,Ordering::SeqCst);} }
-    fn build(shell:Shell,process:OwnedProcess)->(Shell,OwnedProcess) {(shell,process)}
+    impl Drop for Shell {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    fn build(shell: Shell, process: OwnedProcess) -> (Shell, OwnedProcess) {
+        (shell, process)
+    }
     #[tokio::test]
     async fn refused_transfer_returns_same_shell_and_keeps_child_in_cell() {
-        let mut cell=spawned().await;cell.qualify().unwrap();cell.upgrade_in_place().unwrap();
-        let pipes=cell.take_native_pipes().unwrap();
-        let drops=Arc::new(AtomicUsize::new(0));
-        let shell=Shell(drops.clone());
-        let refused=match cell.transfer_with(false,shell,build) {
-            Err(refused)=>refused,
-            Ok((shell,mut process))=>{process.stop_and_reap().await.unwrap();drop(pipes);drop(shell);panic!("closed handoff transferred child");},
+        let mut cell = spawned().await;
+        cell.qualify().unwrap();
+        cell.upgrade_in_place().unwrap();
+        let pipes = cell.take_native_pipes().unwrap();
+        let drops = Arc::new(AtomicUsize::new(0));
+        let shell = Shell(drops.clone());
+        let refused = match cell.transfer_with(false, shell, build) {
+            Err(refused) => refused,
+            Ok((shell, mut process)) => {
+                process.stop_and_reap().await.unwrap();
+                drop(pipes);
+                drop(shell);
+                panic!("closed handoff transferred child");
+            }
         };
-        assert_eq!(drops.load(Ordering::SeqCst),0);
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
         assert!(matches!(&cell,NativeChildCell::Owned(p) if p.unreaped));
-        drop(refused.shell);assert_eq!(drops.load(Ordering::SeqCst),1);
-        drop(pipes);closed(&mut cell).await;
+        drop(refused.shell);
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+        drop(pipes);
+        closed(&mut cell).await;
     }
     #[tokio::test]
     async fn transfer_requires_all_pipes_taken_and_moves_original_once() {
-        let mut cell=spawned().await;cell.qualify().unwrap();cell.upgrade_in_place().unwrap();
-        let original=match &cell {NativeChildCell::Owned(p)=>p.child.id(),_=>None};
-        let drops=Arc::new(AtomicUsize::new(0));
-        let shell=Shell(drops.clone());
-        let refused=cell.transfer_with(true,shell,build).err().unwrap();
-        assert_eq!(drops.load(Ordering::SeqCst),0);
-        let pipes=cell.take_native_pipes().unwrap();
-        let (shell,mut process)=match cell.transfer_with(true,refused.shell,build) {Ok(value)=>value,Err(_)=>panic!("qualified transfer refused")};
-        assert_eq!(process.child.id(),original);
-        assert!(matches!(cell,NativeChildCell::Transferred));
-        assert!(cell.transfer_with(true,Shell(drops.clone()),build).is_err());
-        process.stop_and_reap().await.unwrap();drop(pipes);drop(shell);
+        let mut cell = spawned().await;
+        cell.qualify().unwrap();
+        cell.upgrade_in_place().unwrap();
+        let original = match &cell {
+            NativeChildCell::Owned(p) => p.child.id(),
+            _ => None,
+        };
+        let drops = Arc::new(AtomicUsize::new(0));
+        let shell = Shell(drops.clone());
+        let refused = cell.transfer_with(true, shell, build).err().unwrap();
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        let pipes = cell.take_native_pipes().unwrap();
+        let (shell, mut process) = match cell.transfer_with(true, refused.shell, build) {
+            Ok(value) => value,
+            Err(_) => panic!("qualified transfer refused"),
+        };
+        assert_eq!(process.child.id(), original);
+        assert!(matches!(cell, NativeChildCell::Transferred));
+        assert!(
+            cell.transfer_with(true, Shell(drops.clone()), build)
+                .is_err()
+        );
+        process.stop_and_reap().await.unwrap();
+        drop(pipes);
+        drop(shell);
     }
 }
 /// Empty nongrant custody allocated before spawn. Adoption is infallible and

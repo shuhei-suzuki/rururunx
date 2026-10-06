@@ -17,10 +17,17 @@ impl NativeTransportSettlementPlan {
     fn validate_original(&self) -> Result<()> {
         self.observation.validate_original()?;
         self.observation.phase().validate_known_registration()?;
-        self.observation.plan().launch().validate_preparation_original()
+        self.observation
+            .plan()
+            .launch()
+            .validate_preparation_original()
     }
     fn exact_effect(&self, tx: &Transaction<'_>, after: bool) -> Result<bool> {
-        let values=if after { &self.after_values } else { &self.before_values };
+        let values = if after {
+            &self.after_values
+        } else {
+            &self.before_values
+        };
         Ok(tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE id IS ?1 AND unit_id IS ?2 AND project_id IS ?3 AND goal_id IS ?4 AND task_id IS ?5 AND idempotency_key IS ?6 AND state IS ?7 AND body IS ?8 AND version IS ?9)",params_from_iter(values),|r|r.get(0))?)
     }
 }
@@ -44,7 +51,10 @@ impl Store {
         closure: bool,
     ) -> Result<Arc<NativeTransportSettlementPlan>> {
         observation.validate_original()?;
-        observation.plan().launch().validate_preparation_original()?;
+        observation
+            .plan()
+            .launch()
+            .validate_preparation_original()?;
         let phase = observation.phase();
         phase.validate_known_registration()?;
         let normal = if closure {
@@ -88,13 +98,28 @@ impl Store {
             after_raw.len() <= 8192,
             "transport observation exceeds bound"
         );
-        let values=|effect:&ManagedEffect,raw:&str|->Result<Vec<SqlValue>> {
-            let (p,g,t)=scope_keys(&effect.scope)?;
-            Ok(vec![SqlValue::Text(effect.id.to_string()),SqlValue::Text(effect.unit_id.to_string()),SqlValue::Text(p),SqlValue::Text(g),SqlValue::Text(t),SqlValue::Text(effect.idempotency_key.clone()),SqlValue::Text(key(effect.state)),SqlValue::Text(raw.into()),SqlValue::Integer(i64::try_from(effect.version)?)])
+        let values = |effect: &ManagedEffect, raw: &str| -> Result<Vec<SqlValue>> {
+            let (p, g, t) = scope_keys(&effect.scope)?;
+            Ok(vec![
+                SqlValue::Text(effect.id.to_string()),
+                SqlValue::Text(effect.unit_id.to_string()),
+                SqlValue::Text(p),
+                SqlValue::Text(g),
+                SqlValue::Text(t),
+                SqlValue::Text(effect.idempotency_key.clone()),
+                SqlValue::Text(key(effect.state)),
+                SqlValue::Text(raw.into()),
+                SqlValue::Integer(i64::try_from(effect.version)?),
+            ])
         };
-        let before_values=values(origin.transport_intent(),origin.transport_intent_raw())?;
-        let after_values=values(&after,&after_raw)?;
-        let update_values=vec![SqlValue::Text(key(after.state)),SqlValue::Text(after_raw.clone()),before_values[0].clone(),before_values[7].clone()];
+        let before_values = values(origin.transport_intent(), origin.transport_intent_raw())?;
+        let after_values = values(&after, &after_raw)?;
+        let update_values = vec![
+            SqlValue::Text(key(after.state)),
+            SqlValue::Text(after_raw.clone()),
+            before_values[0].clone(),
+            before_values[7].clone(),
+        ];
         Ok(Arc::new(NativeTransportSettlementPlan {
             observation,
             owner: normal,
