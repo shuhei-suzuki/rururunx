@@ -63,6 +63,8 @@ pub enum Capability {
     UsageTelemetry,
     PromptCacheTelemetry,
     ContextCheckpoint,
+    /// Advertise only after the actual private prepared-input admission is wired.
+    PreparedInputAdmission,
     NativeGoal,
     NativeGoalStatus,
     NativeGoalResume,
