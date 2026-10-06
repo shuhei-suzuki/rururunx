@@ -100,7 +100,12 @@ while the SAME start future remains retained. Nongrant revoked closure can compa
 the latest factual same-owner Unit, leaves that Unit untouched and releases only
 the own lease, waiter and probe. It cannot refresh a grant lineage.
 
-Full Prepared issuance remains refused at provider effect-budget qualification.
+The private Prepared issuer retains all SAME custody conjuncts and checks a fixed
+provider/role budget before returning the original Prepared value. Version and
+Git planners check the same table before their intents; registration checks the
+same Prepared bound. Codex reserves transport, six setup effects and input within
+256 rows; Claude reserves transport, one setup effect and input within 255 rows.
+The actual producer chain and these journalled dispatches remain unqualified.
 The private quota commit also refuses unresolved Legacy candidates ahead until
 its writer-connection head validator is supplied. Public registration, transport,
 composition remain unavailable. A separate bounded nongrant waiting reader joins

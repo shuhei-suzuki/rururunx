@@ -194,8 +194,9 @@ Successful correspondence remains a retained nongrant fact. The continuation
 retains installed compatibility, one checked nongrant command, a no-dispatch
 value and private pre-Session quota plans. Quota parking retains the SAME input,
 helpers and operation; own known postimages supply due-claim lineage. Revoked
-closure never refreshes that lineage from rows. Full Prepared issuance still
-refuses provider budget qualification, and unresolved Legacy heads still refuse
+closure never refreshes that lineage from rows. Private Prepared issuance checks
+the SAME allocation's fixed provider/role budget at version, Git, Prepared and
+registration, and unresolved Legacy heads still refuse
 the private commit. Session, transport, public composition and Native capability
 advertisement remain unavailable. Component source
 and primitive real-Git controls do not qualify the actual installed actor chain,

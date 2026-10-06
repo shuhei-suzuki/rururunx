@@ -18,7 +18,9 @@ use tokio::{
     process::{ChildStdin, ChildStdout, Command},
     sync::{mpsc, watch},
 };
+mod budget;
 pub(crate) mod compat;
+pub(crate) use budget::{NativeEffectBudget, native_effect_budget};
 #[cfg(test)]
 mod phase_fence_tests;
 mod phase_protocol;
@@ -207,10 +209,8 @@ impl NativeSessions {
         launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
         custody: Arc<NativePreparationCustody>,
     ) -> Result<NativePhaseStart> {
-        let _helper_completion = self.begin_phase_preparation(launch, custody).await?;
-        anyhow::bail!(
-            "actual private Native helper history retained; full preparation/registration/quota/transport composition unavailable"
-        )
+        let _prepared = self.begin_phase_preparation(launch, custody).await?;
+        anyhow::bail!("actual Prepared Native input retained; transport composition unavailable")
     }
     async fn start_legacy(
         &self,

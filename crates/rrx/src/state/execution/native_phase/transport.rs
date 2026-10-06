@@ -134,6 +134,9 @@ impl NativeTransportStartPlan {
         self.prepared.lineage().validate_registration_tx(tx)?;
         self.prepared.quota().validate_registration_tx(tx)?;
         self.prepared.history().validate_inventory(tx)?;
+        let facts = self.launch.allocation().facts();
+        crate::execution::native::native_effect_budget(facts.provider, facts.role)?
+            .check_prepared(self.prepared.history().len())?;
         registration_unit(self.current.unit(), &self.launch)?;
         ensure!(
             !verification::is_command_unit(tx, self.current.unit().id)?,
@@ -329,10 +332,8 @@ fn plan_prepared_transport(
         crate::state::managed_binding::Body::decode(unit_raw.clone(), 16 * 1024)?,
     ))?;
     let registered_inventory = prepared.history().registration_inventory(&effect)?;
-    ensure!(
-        prepared.history().len() <= 252,
-        "prepared effect reserve exhausted"
-    );
+    crate::execution::native::native_effect_budget(f.provider, f.role)?
+        .check_prepared(prepared.history().len())?;
     Ok(Arc::new(NativeTransportStartPlan {
         prepared,
         governing_digest,

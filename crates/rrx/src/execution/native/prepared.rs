@@ -232,9 +232,10 @@ impl NativeSessions {
         );
         value.compat.check_command(&value.command)?;
         value.quota.lineage().validate_prepared_shape()?;
-        // Budget qualification remains refused pending the reviewed provider
-        // setup-effect arithmetic correction. No transport consumes this yet.
-        anyhow::bail!("prepared provider effect-budget qualification pending")
+        let facts = value.actor.launch().allocation().facts();
+        let budget = super::native_effect_budget(facts.provider, facts.role)?;
+        budget.check_prepared(value.completion.commit.len())?;
+        custody.retain_prepared(Arc::new(value))
     }
 }
 

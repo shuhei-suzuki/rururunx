@@ -278,9 +278,12 @@ impl Inventory {
         next.validate_bound()?;
         Ok(next)
     }
-    fn reserve_git_batch(&self) -> Result<()> {
+    fn reserve_git_batch(
+        &self,
+        budget: crate::execution::native::NativeEffectBudget,
+    ) -> Result<()> {
         ensure!(
-            self.rows.len() <= 239,
+            self.rows.len() <= budget.git,
             "Git batch reserves 13 rows and future native input"
         );
         let maximum = shape(&[36, 36, 36, 36, 36, 256, 9, BODY_BYTES], i64::MAX as u64)?;
@@ -303,9 +306,13 @@ impl Inventory {
         );
         self.with(image)
     }
-    fn with_version_intent(&self, image: EffectImage) -> Result<Self> {
+    fn with_version_intent(
+        &self,
+        image: EffectImage,
+        budget: crate::execution::native::NativeEffectBudget,
+    ) -> Result<Self> {
         ensure!(
-            self.rows.len() <= 238,
+            self.rows.len() <= budget.version,
             "version helper reserves one future input slot"
         );
         self.with(image)
@@ -579,7 +586,8 @@ impl Store {
             receipt: BTreeMap::new(),
             version: 1,
         })?;
-        let pending = Arc::new(before.with_version_intent(effect.clone())?);
+        let budget = crate::execution::native::native_effect_budget(facts.provider, facts.role)?;
+        let pending = Arc::new(before.with_version_intent(effect.clone(), budget)?);
         Ok(Arc::new(NativeVersionHelperPlan {
             ready,
             before: Arc::new(before),
@@ -617,7 +625,10 @@ impl Store {
                         && previous.original.observation.qualified_profile().is_some(),
                     "Git requires SAME actual qualified version predecessor"
                 );
-                previous.original.after.reserve_git_batch()?;
+                let facts = original.actor().launch().allocation().facts();
+                previous.original.after.reserve_git_batch(
+                    crate::execution::native::native_effect_budget(facts.provider, facts.role)?,
+                )?;
             }
             NativePhaseHelperAction::Git(last) => ensure!(
                 action.ordinal() == last.ordinal() + 1
@@ -844,18 +855,82 @@ impl Store {
 #[cfg(test)]
 mod inventory_tests {
     use super::*;
+    fn tested_budget() -> crate::execution::native::NativeEffectBudget {
+        crate::execution::native::native_effect_budget(
+            "claude",
+            crate::domain::SessionRole::Reviewer,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn nongrant_provider_role_budgets_gate_each_actual_inventory_consumer() {
+        use crate::{
+            domain::SessionRole::{ApprovalReviewer, Consultant, Executor, Reviewer},
+            execution::native::native_effect_budget,
+        };
+        for (provider, role, version, git, prepared, setup, helpers) in [
+            ("codex", Executor, 234, 235, 248, 6, 13),
+            ("codex", Reviewer, 238, 239, 248, 6, 9),
+            ("claude", Executor, 238, 239, 252, 1, 13),
+            ("claude", Reviewer, 242, 243, 252, 1, 9),
+        ] {
+            let budget = native_effect_budget(provider, role).unwrap();
+            let row = image(UnitId::new());
+            let before = Inventory {
+                rows: vec![row.clone(); version],
+            };
+            assert_eq!(
+                before
+                    .with_version_intent(row.clone(), budget)
+                    .unwrap()
+                    .rows
+                    .len(),
+                git
+            );
+            let too_many = Inventory {
+                rows: vec![row.clone(); version + 1],
+            };
+            assert!(too_many.with_version_intent(row.clone(), budget).is_err());
+            assert_eq!(too_many.rows.len(), version + 1);
+            let before = Inventory {
+                rows: vec![row.clone(); git],
+            };
+            before.reserve_git_batch(budget).unwrap();
+            let too_many = Inventory {
+                rows: vec![row.clone(); git + 1],
+            };
+            assert!(too_many.reserve_git_batch(budget).is_err());
+            assert_eq!(git + helpers, prepared);
+            budget.check_prepared(prepared).unwrap();
+            assert!(budget.check_prepared(prepared + 1).is_err());
+            assert!(prepared + 1 + setup <= 255);
+            assert_eq!(
+                prepared + 1 + setup + 1,
+                if provider == "codex" { 256 } else { 255 }
+            );
+        }
+        for role in [Executor, Reviewer, Consultant, ApprovalReviewer] {
+            assert!(native_effect_budget("unknown", role).is_err());
+        }
+        for provider in ["codex", "claude"] {
+            for role in [Consultant, ApprovalReviewer] {
+                assert!(native_effect_budget(provider, role).is_err());
+            }
+        }
+    }
 
     #[test]
     fn nongrant_git_inventory_reserves_13_rows_and_maximal_bytes() {
         let row = image(UnitId::new());
         let mut inventory = Inventory {
-            rows: vec![row.clone(); 242],
+            rows: vec![row.clone(); 243],
         };
-        inventory.reserve_git_batch().unwrap();
+        inventory.reserve_git_batch(tested_budget()).unwrap();
         inventory.rows.push(row.clone());
-        assert!(inventory.reserve_git_batch().is_err());
+        assert!(inventory.reserve_git_batch(tested_budget()).is_err());
         let mut inventory = Inventory {
-            rows: vec![row.clone(); 242],
+            rows: vec![row.clone(); 243],
         };
         for row in &mut inventory.rows {
             row.text[7] = "x".repeat(7900);
@@ -875,7 +950,7 @@ mod inventory_tests {
             remaining -= extra;
         }
         assert_eq!(remaining, 0);
-        inventory.reserve_git_batch().unwrap();
+        inventory.reserve_git_batch(tested_budget()).unwrap();
         inventory
             .rows
             .iter_mut()
@@ -883,13 +958,13 @@ mod inventory_tests {
             .unwrap()
             .text[7]
             .push('x');
-        assert!(inventory.reserve_git_batch().is_err());
+        assert!(inventory.reserve_git_batch(tested_budget()).is_err());
         let full = Inventory {
             rows: vec![row.clone(); 255],
         };
         assert!(full.with_git_intent(row.clone()).is_err());
         let before = Inventory {
-            rows: vec![row.clone(); 254],
+            rows: vec![row.clone(); 242],
         };
         assert_eq!(before.with_git_intent(row).unwrap().rows.len(), 255);
     }
@@ -1069,20 +1144,23 @@ mod inventory_tests {
         let unit = UnitId::new();
         let row = image(unit);
         let baseline = Inventory {
-            rows: vec![row.clone(); 254],
+            rows: vec![row.clone(); 242],
         };
         assert_eq!(
             baseline
-                .with_version_intent(row.clone())
+                .with_version_intent(row.clone(), tested_budget())
                 .unwrap()
                 .rows
                 .len(),
-            255
+            243
         );
         let full = Inventory {
             rows: vec![row.clone(); 255],
         };
-        assert!(full.with_version_intent(row.clone()).is_err());
+        assert!(
+            full.with_version_intent(row.clone(), tested_budget())
+                .is_err()
+        );
         let mut baseline = baseline;
         for row in &mut baseline.rows {
             row.text[7] = "x".repeat(7900);
@@ -1102,10 +1180,20 @@ mod inventory_tests {
         }
         assert_eq!(remaining, 0);
         assert!(baseline.validate_bound().is_ok());
-        assert!(baseline.with_version_intent(row.clone()).is_err());
+        assert!(
+            baseline
+                .with_version_intent(row.clone(), tested_budget())
+                .is_err()
+        );
         baseline.rows.last_mut().unwrap().text[7].pop();
-        assert!(baseline.with_version_intent(row.clone()).is_ok());
-        let pending = baseline.with_version_intent(row.clone()).unwrap();
+        assert!(
+            baseline
+                .with_version_intent(row.clone(), tested_budget())
+                .is_ok()
+        );
+        let pending = baseline
+            .with_version_intent(row.clone(), tested_budget())
+            .unwrap();
         let mut receipt_postimage = row;
         receipt_postimage.text[7].push('x');
         assert!(baseline.with(receipt_postimage).is_err());

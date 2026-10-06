@@ -761,7 +761,7 @@ impl NativeSessions {
         &self,
         launch: Arc<PhaseLaunchParts>,
         custody: Arc<NativePreparationCustody>,
-    ) -> Result<Arc<super::version::NativeReadonlyHelperCompletion>> {
+    ) -> Result<Arc<super::prepared::PreparedNativePhase>> {
         let adapter = launch.allocation().selected_port().selected_adapter()?;
         ensure!(
             std::ptr::eq(adapter.sessions.as_ref(), self)
@@ -848,11 +848,6 @@ impl NativeSessions {
         custody.retain_compatible_command(compat, command)?;
         self.issue_no_current_dispatch(&custody).await?;
         self.prepare_phase_quota(&custody).await?;
-        self.issue_prepared(&custody)?;
-        // The readonly fact is deliberately nongrant. Full prepared input,
-        // artifact lease, hooks, quota and transport issuers remain absent.
-        anyhow::bail!(
-            "original Native readonly Git observations retained; full preparation and transport unavailable"
-        )
+        self.issue_prepared(&custody)
     }
 }
