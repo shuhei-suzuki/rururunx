@@ -156,34 +156,12 @@ impl SourceNativePreparationSeal {
                 "original config unexpectedly present"
             );
         }
-        for (path, entry) in inventory {
-            let tree = self
-                .frame
-                .native_tree
-                .get(path)
-                .context("original tree entry absent")?;
-            ensure!(
-                entry.skipped.as_deref() != Some(UNSUPPORTED_ENTRY)
-                    && matches!(tree.mode.as_str(), "100644" | "100755")
-                    && tree.kind == "blob"
-                    && tree.oid == entry.oid
-                    && entry.oid.len() == self.frame.revision.len()
-                    && valid_oid(&entry.oid)
-                    && (entry.bytes.is_none() || entry.bytes == tree.size),
-                "original physical tree/inventory differs"
-            );
-            if let Some(size) = entry.bytes {
-                let bytes = self
-                    .frame
-                    .native_bytes
-                    .get(path)
-                    .context("original Source bytes absent")?;
-                ensure!(
-                    bytes.len() == size && entry.sha256.as_deref() == Some(digest(bytes).as_str()),
-                    "original Source bytes/hash/size differs"
-                );
-            }
-        }
+        qualify_git_corpus(
+            &self.frame.revision,
+            inventory,
+            &self.frame.native_tree,
+            &self.frame.native_bytes,
+        )?;
         for path in &self.frame.native_mandatory {
             let entry = inventory
                 .get(path)
@@ -206,6 +184,43 @@ impl SourceNativePreparationSeal {
         Ok(())
     }
 }
+// Nongrant corpus validation. Only the enclosing SAME Source seal checks
+// original operation/pair/input/Frame identity; equal maps cannot create it.
+fn qualify_git_corpus(
+    revision: &str,
+    inventory: &BTreeMap<String, crate::context::committed::InventoryEntry>,
+    tree: &BTreeMap<String, CommittedTreeEntry>,
+    bytes_by_path: &BTreeMap<String, Vec<u8>>,
+) -> Result<()> {
+    ensure!(
+        valid_oid(revision) && inventory.len() <= 4096 && tree.len() == inventory.len(),
+        "original corpus shape differs"
+    );
+    for (path, entry) in inventory {
+        let tree = tree.get(path).context("original tree entry absent")?;
+        ensure!(
+            entry.skipped.as_deref() != Some(UNSUPPORTED_ENTRY)
+                && matches!(tree.mode.as_str(), "100644" | "100755")
+                && tree.kind == "blob"
+                && tree.oid == entry.oid
+                && entry.oid.len() == revision.len()
+                && valid_oid(&entry.oid)
+                && (entry.bytes.is_none() || entry.bytes == tree.size),
+            "original physical tree/inventory differs"
+        );
+        if let Some(size) = entry.bytes {
+            let bytes = bytes_by_path
+                .get(path)
+                .context("original Source bytes absent")?;
+            ensure!(
+                bytes.len() == size && entry.sha256.as_deref() == Some(digest(bytes).as_str()),
+                "original Source bytes/hash/size differs"
+            );
+        }
+    }
+    Ok(())
+}
+
 /// A transient borrow origin, never embedded in a Source slot/custody/plan.
 pub(crate) struct SourceNativeOrigin {
     producer: Arc<ManagedWorkflowSources>,
@@ -600,6 +615,60 @@ impl ManagedWorkflowSources {
 #[cfg(test)]
 mod seal_identity_tests {
     use super::*;
+    #[test]
+    fn nongrant_original_corpus_checks_bytes_hash_tree_type_oid_path_and_size() {
+        use crate::context::committed::InventoryEntry;
+        let r = "a".repeat(40);
+        let tree = parse_committed_tree(
+            format!("100644 blob {} 3\tfile.txt\0", "b".repeat(40)).as_bytes(),
+        )
+        .unwrap();
+        let index = BTreeMap::from([(
+            "file.txt".into(),
+            InventoryEntry {
+                oid: "b".repeat(40),
+                sha256: Some(digest(b"abc")),
+                bytes: Some(3),
+                skipped: None,
+            },
+        )]);
+        let bytes = BTreeMap::from([("file.txt".into(), b"abc".to_vec())]);
+        qualify_git_corpus(&r, &index, &tree, &bytes).unwrap();
+        for mutate in 0..7 {
+            let mut changed = tree.clone();
+            let entry = changed.get_mut("file.txt").unwrap();
+            match mutate {
+                0 => entry.oid = "c".repeat(40),
+                1 => entry.mode = "120000".into(),
+                2 => entry.mode = "160000".into(),
+                3 => entry.kind = "commit".into(),
+                4 => entry.size = Some(4),
+                5 => {
+                    let entry = changed.remove("file.txt").unwrap();
+                    changed.insert("other.txt".into(), entry);
+                }
+                _ => changed.clear(),
+            }
+            assert!(qualify_git_corpus(&r, &index, &changed, &bytes).is_err());
+        }
+        let mut changed_bytes = bytes.clone();
+        changed_bytes.insert("file.txt".into(), b"xyz".to_vec());
+        assert!(qualify_git_corpus(&r, &index, &tree, &changed_bytes).is_err());
+        changed_bytes.insert("file.txt".into(), b"abcd".to_vec());
+        assert!(qualify_git_corpus(&r, &index, &tree, &changed_bytes).is_err());
+        let mut changed = index.clone();
+        changed.get_mut("file.txt").unwrap().sha256 = Some("c".repeat(64));
+        assert!(qualify_git_corpus(&r, &changed, &tree, &bytes).is_err());
+        let mut large = index.clone();
+        let entry = large.get_mut("file.txt").unwrap();
+        entry.bytes = None;
+        entry.sha256 = None;
+        entry.skipped = Some("file exceeds 256 KiB".into());
+        qualify_git_corpus(&r, &large, &tree, &BTreeMap::new()).unwrap();
+        large.get_mut("file.txt").unwrap().skipped = Some(UNSUPPORTED_ENTRY.into());
+        assert!(qualify_git_corpus(&r, &large, &tree, &BTreeMap::new()).is_err());
+        assert!(qualify_git_corpus(&"a".repeat(64), &index, &tree, &bytes).is_err());
+    }
     #[test]
     fn nongrant_seal_scalar_original_operation_pair_and_full_encoded_bytes() {
         let operation = OperationId::new();

@@ -218,6 +218,58 @@ fn nongrant_git_one_line_and_oid_frames_are_exact() {
     assert!(oid_lines(format!("{r}\n").as_bytes(), 64).is_err());
 }
 
+#[test]
+fn nongrant_git_pathset_inclusive_mib_and_4096_entry_limits() {
+    let mut index = BTreeMap::new();
+    let mut output = Vec::new();
+    for i in 0..256 {
+        let path = format!("{i:03}{}", "x".repeat(4092));
+        output.extend_from_slice(path.as_bytes());
+        output.push(0);
+        index.insert(
+            path,
+            InventoryEntry {
+                oid: "b".repeat(40),
+                sha256: None,
+                bytes: None,
+                skipped: None,
+            },
+        );
+    }
+    assert_eq!(output.len(), GIT_BYTES);
+    qualify_pathset(&output, &index).unwrap();
+    output.push(0);
+    assert!(qualify_pathset(&output, &index).is_err());
+    index.clear();
+    output.clear();
+    for i in 0..4096 {
+        let path = format!("p{i}");
+        output.extend_from_slice(path.as_bytes());
+        output.push(0);
+        index.insert(
+            path,
+            InventoryEntry {
+                oid: "b".repeat(40),
+                sha256: None,
+                bytes: None,
+                skipped: None,
+            },
+        );
+    }
+    qualify_pathset(&output, &index).unwrap();
+    output.extend_from_slice(b"extra\0");
+    index.insert(
+        "extra".into(),
+        InventoryEntry {
+            oid: "b".repeat(40),
+            sha256: None,
+            bytes: None,
+            skipped: None,
+        },
+    );
+    assert!(qualify_pathset(&output, &index).is_err());
+}
+
 struct GitFixture {
     temp: tempfile::TempDir,
     root: PathBuf,

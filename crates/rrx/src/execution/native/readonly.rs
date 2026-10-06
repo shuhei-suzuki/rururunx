@@ -142,7 +142,7 @@ impl PhaseGitAction {
         };
         Ok(args.into_iter().map(str::to_owned).collect())
     }
-    pub(super) fn cwd<'a>(self, actor: &'a Arc<NativePreparationActor>) -> &'a Path {
+    pub(super) fn cwd(self, actor: &Arc<NativePreparationActor>) -> &Path {
         if self.ordinal() < Self::TaskTop.ordinal() {
             &actor.launch().marker().original_plan().project().0.root
         } else {
