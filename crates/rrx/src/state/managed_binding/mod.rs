@@ -2,6 +2,7 @@
 //!
 //! The marker/binding producer and Native protocol are not yet composed. These
 //! bounded read primitives must not enable Workflow or replace its private proof.
+mod binding;
 mod canonical;
 mod composition;
 mod marker_plan;
@@ -12,6 +13,7 @@ mod publication;
 mod schema;
 #[cfg(test)]
 mod schema_tests;
+mod session_identity;
 mod snapshot;
 mod successor;
 mod unpublished;
@@ -26,6 +28,7 @@ pub(super) use schema::{
 };
 
 pub(crate) use crate::runtime::phase_supervisor::{PhaseLaunch, PhaseLaunchParts};
+pub(crate) use binding::{ManagedBindingOutcome, ManagedBindingPlan, plan_managed_binding};
 pub(crate) use composition::InstalledDriverComposition;
 pub(crate) use marker_plan::{ManagedMarkerPlan, plan_marker};
 pub(crate) use publication::{MarkerPublicationPlan, OriginalMarker, plan_marker_publication};

@@ -37,6 +37,17 @@ impl CurrentWorkflowSuccessor {
     pub(crate) fn workflow(&self) -> &Record {
         self.workflow.parsed()
     }
+    pub(super) fn workflow_raw(&self) -> &str {
+        self.workflow.raw()
+    }
+    pub(super) fn sole_binding_link(&self) -> Option<&AuditEvent> {
+        self.head
+            .as_ref()
+            .filter(|link| {
+                self.count == 1 && link.event.kind == "rrx.private.workflow.session_bound"
+            })
+            .map(|link| &link.event)
+    }
     /// Current factual projection, never a live owner or input admission proof.
     pub(crate) fn unit(&self) -> &ExecutionUnit {
         self.unit.parsed()
