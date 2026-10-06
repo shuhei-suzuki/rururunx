@@ -64,6 +64,13 @@ impl Runtime {
     fn service_running(&self) -> bool {
         self.running.load(Ordering::SeqCst) && !self.stopping.load(Ordering::SeqCst)
     }
+    /// Actual retained service/supervisor identity, not Native admission.
+    pub(crate) fn composition_is_current(
+        &self,
+        phases: &Arc<phase_supervisor::PhaseSupervisor>,
+    ) -> bool {
+        self.service_running() && Arc::ptr_eq(&self.phases, phases)
+    }
 }
 #[cfg(test)]
 mod tests;

@@ -8,8 +8,8 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     adapter::{
-        AgentRegistry, Capability, InputKind, LaunchMode, LaunchRequest, PreparedInput, SessionRef,
-        SessionStatus, SharedStore,
+        AgentAdapter, AgentRegistry, Capability, InputKind, LaunchMode, LaunchRequest,
+        PreparedInput, SessionRef, SessionStatus, SharedStore,
     },
     config::{Config, WorkflowClass},
     domain::*,
@@ -17,6 +17,35 @@ use crate::{
 };
 
 pub type WorkflowFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
+
+/// A pre-reservation configuration refusal; callers must not hot-retry it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum NativePreflightRefusal {
+    MissingReviewer,
+    AdapterUnavailable,
+    MissingCapability(Capability),
+    IdentityMismatch,
+    ProbeFailed,
+    ManagedBindingUnavailable,
+}
+impl std::fmt::Display for NativePreflightRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingReviewer => f.write_str("reviewer not configured"),
+            Self::AdapterUnavailable => f.write_str("selected adapter unavailable"),
+            Self::MissingCapability(capability) => {
+                write!(f, "missing prepared native phase capability {capability:?}")
+            }
+            Self::IdentityMismatch => f.write_str("selected adapter probe identity mismatch"),
+            Self::ProbeFailed => f.write_str("selected adapter probe failed"),
+            Self::ManagedBindingUnavailable => {
+                f.write_str("managed native binding and private admission are not composed")
+            }
+        }
+    }
+}
+impl std::error::Error for NativePreflightRefusal {}
 
 pub(crate) const UNBOUND_NATIVE_RECOVERY_REQUIRED: &str = "native launch outcome unknown; launch may or may not have begun; original-attempt recovery required (#14)";
 
@@ -486,6 +515,22 @@ struct AgentPreparation {
     context: ContextVersion,
     config: Config,
     environment: BTreeMap<String, String>,
+    selected: NativeAdapterSelection,
+}
+struct NativeAdapterSelection {
+    adapter: Arc<dyn AgentAdapter>,
+    agent: String,
+    provider: String,
+}
+enum PhaseAdapterSelection {
+    EvidencePort,
+    Native(NativeAdapterSelection),
+}
+fn require_managed_native_binding_composed() -> Result<()> {
+    // Capability metadata cannot authorize the legacy Task-rewriting binder.
+    // Replace this refusal only when the actual private admission and record-only
+    // binding producers are composed, with genuine positive controls.
+    Err(NativePreflightRefusal::ManagedBindingUnavailable.into())
 }
 #[cfg(test)]
 #[derive(Default)]
@@ -519,6 +564,26 @@ pub struct WorkflowEngine {
     hooks: EngineHooks,
 }
 impl WorkflowEngine {
+    /// Pure identity checks against the real retained producer/vtable. Public
+    /// trait callbacks, capability descriptors and ledger DTOs are not consulted.
+    pub(crate) fn matches_composition(
+        &self,
+        owner: &Arc<crate::execution::RuntimeOwner>,
+        sources: &Arc<crate::execution::workflow_source::ManagedWorkflowSources>,
+        selected: &Arc<crate::adapter::native::NativePhasePort>,
+    ) -> bool {
+        let erased: Arc<dyn WorkflowSources> = sources.clone();
+        Arc::ptr_eq(&self.store, &owner.store())
+            && Arc::ptr_eq(&self.sources, &erased)
+            && self
+                .registry
+                .managed_owner()
+                .is_some_and(|o| Arc::ptr_eq(&o, owner))
+            && self
+                .registry
+                .native_phase_port(selected.alias())
+                .is_ok_and(|p| Arc::ptr_eq(&p, selected))
+    }
     pub fn new(
         store: SharedStore,
         registry: Arc<AgentRegistry>,
@@ -1039,6 +1104,13 @@ impl WorkflowEngine {
             self.persist(&mut snapshot, None)?;
             return Ok(StepResult::Finished);
         };
+        // Refuse before source capture: managed Sources can admit Git helpers.
+        // Metadata is not the missing private composition or prepared owner proof.
+        let selected = if phase.actor() == Actor::EvidencePort {
+            PhaseAdapterSelection::EvidencePort
+        } else {
+            PhaseAdapterSelection::Native(self.preflight_native_adapter(&snapshot.task, phase)?)
+        };
         let (config, source, selected_budget) = self
             .inputs(
                 &snapshot.project,
@@ -1180,9 +1252,12 @@ impl WorkflowEngine {
             }
         }
         self.reserve(&mut snapshot, &context, phase)?;
-        if phase.actor() == Actor::EvidencePort {
-            return self.evaluate(snapshot, index, None).await;
-        }
+        let selected = match selected {
+            PhaseAdapterSelection::EvidencePort => {
+                return self.evaluate(snapshot, index, None).await;
+            }
+            PhaseAdapterSelection::Native(selected) => selected,
+        };
         let claim = PreparationClaim::committed(&snapshot, index);
         let mut eligible = true;
         let result = self
@@ -1192,6 +1267,7 @@ impl WorkflowEngine {
                     context,
                     config,
                     environment,
+                    selected,
                 },
                 &claim,
                 &mut eligible,
@@ -1270,6 +1346,52 @@ impl WorkflowEngine {
         // owners, Task/Record CAS and all native executor/Lost closing fences.
         self.persist(&mut snapshot, None)
     }
+    fn preflight_native_adapter(
+        &self,
+        task: &Task,
+        phase: Phase,
+    ) -> Result<NativeAdapterSelection> {
+        let (agent, needed) = match phase.actor() {
+            Actor::Executor => (&task.executor, Capability::Execute),
+            Actor::Reviewer => (
+                task.reviewers
+                    .first()
+                    .ok_or(NativePreflightRefusal::MissingReviewer)?,
+                Capability::Review,
+            ),
+            Actor::EvidencePort => anyhow::bail!("evidence phase does not select a native adapter"),
+        };
+        let adapter = self.registry.get(agent).map_err(|error| {
+            anyhow::Error::new(error).context(NativePreflightRefusal::AdapterUnavailable)
+        })?;
+        // Registry lookup is internal metadata. Public trait callbacks (including
+        // capabilities) have no effect-free seal, so the genuine static composition
+        // check must precede every callback. Diagnostics below stay unreachable
+        // until the implementation-owned joint protocol is installed.
+        require_managed_native_binding_composed()?;
+        let capabilities = adapter.capabilities();
+        for required in [needed, Capability::PreparedInputAdmission] {
+            if !capabilities.contains(&required) {
+                return Err(NativePreflightRefusal::MissingCapability(required).into());
+            }
+        }
+        let info = adapter.probe().map_err(|error| {
+            anyhow::Error::new(error).context(NativePreflightRefusal::ProbeFailed)
+        })?;
+        if info.agent != *agent || info.provider.trim().is_empty() {
+            return Err(NativePreflightRefusal::IdentityMismatch.into());
+        }
+        for required in [needed, Capability::PreparedInputAdmission] {
+            if !info.capabilities.contains(&required) {
+                return Err(NativePreflightRefusal::MissingCapability(required).into());
+            }
+        }
+        Ok(NativeAdapterSelection {
+            adapter,
+            agent: agent.clone(),
+            provider: info.provider,
+        })
+    }
     async fn prepare_agent(
         &self,
         mut snapshot: Snapshot,
@@ -1277,10 +1399,13 @@ impl WorkflowEngine {
         claim: &PreparationClaim,
         eligible: &mut bool,
     ) -> Result<StepResult> {
+        // No private caller may enter the old Task-writing binder through metadata.
+        require_managed_native_binding_composed()?;
         let AgentPreparation {
             context,
             config,
             environment,
+            selected,
         } = preparation;
         let index = claim.index;
         let phase = claim.attempt.phase;
@@ -1346,26 +1471,15 @@ impl WorkflowEngine {
                 && snapshot.task.branch == claim.branch,
             "reserved agent or Task binding changed during preparation"
         );
-        let Some(agent) = selected_agent else {
-            *eligible = false;
-            return self.fail(snapshot, index, "reviewer not configured".into());
-        };
-        let adapter = match self.registry.get(&agent) {
-            Ok(adapter) => adapter,
-            Err(error) => {
-                *eligible = false;
-                return self.fail(snapshot, index, error.to_string());
-            }
-        };
-        let needed = if phase.actor() == Actor::Reviewer {
-            Capability::Review
-        } else {
-            Capability::Execute
-        };
-        if !adapter.capabilities().contains(&needed) {
-            *eligible = false;
-            return self.fail(snapshot, index, format!("agent {agent} lacks {needed:?}"));
-        }
+        ensure!(
+            selected_agent.as_ref() == Some(&selected.agent),
+            "selected adapter changed during preparation"
+        );
+        let NativeAdapterSelection {
+            adapter,
+            agent,
+            provider,
+        } = selected;
         let agent_config = config.agents.get(&agent);
         let input = PreparedInput {
             scope: snapshot.task.scope(),
@@ -1419,6 +1533,7 @@ impl WorkflowEngine {
                 ensure!(
                     session.scope == snapshot.task.scope()
                         && session.agent == agent
+                        && session.provider == provider
                         && session.worktree == worktree
                         && session.role
                             == if phase.actor() == Actor::Reviewer {
@@ -1469,6 +1584,8 @@ impl WorkflowEngine {
         adapter: Arc<dyn crate::adapter::AgentAdapter>,
     ) -> Result<StepResult> {
         use crate::execution::{self, native::NativeStart};
+        // Due-wait and private reentry must not bypass the missing joint protocol.
+        require_managed_native_binding_composed()?;
         ensure!(
             environment.is_empty(),
             "managed native overrides require a qualified resource profile"
@@ -1752,11 +1869,13 @@ impl WorkflowEngine {
                         reason: attempt.detail.clone().unwrap_or_default(),
                     });
                 }
-                let agent = attempt
-                    .agent
-                    .as_ref()
-                    .context("managed waiting agent missing")?;
-                let adapter = self.registry.get(agent)?;
+                // Before clearing/claiming the due waiter or preparing any helper.
+                let selected = self.preflight_native_adapter(&snapshot.task, phase)?;
+                ensure!(
+                    attempt.agent.as_deref() == Some(selected.agent.as_str()),
+                    "managed waiting actor changed"
+                );
+                let adapter = selected.adapter;
                 let context = self.context(&snapshot)?;
                 let input = PreparedInput {
                     scope: context.scope.clone(),
@@ -3757,3 +3876,7 @@ mod managed_tests;
 #[cfg(test)]
 #[path = "workflow/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "workflow/native_preflight_tests.rs"]
+mod native_preflight_tests;
