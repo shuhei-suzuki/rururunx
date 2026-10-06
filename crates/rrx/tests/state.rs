@@ -453,6 +453,20 @@ fn audit_replacement_upsert_and_backdated_sequence_are_rejected() {
     let mut store = Store::open(&db).unwrap();
     let project = project(&mut store, "one", dir.path());
     let raw = current_writer::open(&db).unwrap();
+    let audit_image = || {
+        raw.query_row(
+        "SELECT json_group_array(json_object('sequence',sequence,'project_id',project_id,'goal_id',goal_id,'task_id',task_id,'kind',kind,'at',at,'data',data)) FROM (SELECT * FROM audit ORDER BY sequence)",
+        [], |row| row.get::<_, String>(0),
+    ).unwrap()
+    };
+    let project_image: String = raw
+        .query_row(
+            "SELECT body FROM projects WHERE id=?1",
+            [project.id.to_string()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let original = audit_image();
     for sql in [
         "REPLACE INTO audit(sequence,project_id,kind,at,data) VALUES(1,?1,'forged',0,'{}')",
         "INSERT OR REPLACE INTO audit(sequence,project_id,kind,at,data) VALUES(1,?1,'forged',0,'{}')",
@@ -462,12 +476,14 @@ fn audit_replacement_upsert_and_backdated_sequence_are_rejected() {
             raw.execute(sql, [project.id.to_string()]).is_err(),
             "accepted {sql}"
         );
+        assert_eq!(audit_image(), original);
     }
     raw.execute(
         "INSERT INTO audit(sequence,project_id,kind,at,data) VALUES(50,?1,'future',0,'{}')",
         [project.id.to_string()],
     )
     .unwrap();
+    let with_future = audit_image();
     assert!(
         raw.execute(
             "INSERT INTO audit(sequence,project_id,kind,at,data) VALUES(2,?1,'backdated',0,'{}')",
@@ -475,9 +491,80 @@ fn audit_replacement_upsert_and_backdated_sequence_are_rejected() {
         )
         .is_err()
     );
+    assert_eq!(audit_image(), with_future);
+    assert_eq!(
+        raw.query_row(
+            "SELECT body FROM projects WHERE id=?1",
+            [project.id.to_string()],
+            |row| row.get::<_, String>(0)
+        )
+        .unwrap(),
+        project_image
+    );
     assert_eq!(
         store.events(&Scope::project(project.id), 0, 100).unwrap()[0].kind,
         "project.saved"
+    );
+}
+
+#[test]
+fn nongrant_current_writer_has_no_binding_liveness_or_identity_authority() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("nongrant.db");
+    let mut store = Store::open(&db).unwrap();
+    let project = project(&mut store, "one", dir.path());
+    let raw = current_writer::open(&db).unwrap();
+    for sql in [
+        "SELECT rrx_binding_permit()",
+        "SELECT rrx_binding_permit('audit','INSERT',NULL,42,x'00')",
+        "SELECT rrx_binding_permit(NULL,NULL,0,0)",
+        "SELECT rrx_live_task_driver('task','driver',1,1,'{}')",
+        "SELECT rrx_live_task_driver(NULL,x'00',-1,0,NULL)",
+    ] {
+        assert!(
+            !raw.query_row(sql, [], |row| row.get::<_, bool>(0)).unwrap(),
+            "nongrant query allowed: {sql}"
+        );
+    }
+    let projection = raw.query_row(
+        "SELECT rrx_session_identity('id','project',NULL,NULL,1,'{}')",
+        [],
+        |row| row.get::<_, String>(0),
+    );
+    assert!(
+        projection.is_err(),
+        "nongrant connection projected Session identity"
+    );
+    assert!(
+        projection
+            .unwrap_err()
+            .to_string()
+            .contains("nongrant corruption canary cannot project Session identity")
+    );
+    let changes = raw.total_changes();
+    let schema: String = raw.query_row("SELECT group_concat(sql,';') FROM (SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name)",[],|row|row.get(0)).unwrap();
+    let denied = raw.execute("INSERT INTO workflow_native_contracts(workflow_id,project_id,goal_id,task_id,owner_epoch,origin,profile_digest,contract_state,version,body) VALUES('canary',?1,'goal','task',0,'nongrant',NULL,'legacy_held',1,'{}')",[project.id.to_string()]);
+    assert!(denied.is_err(), "nongrant protected insertion was allowed");
+    assert!(
+        denied
+            .unwrap_err()
+            .to_string()
+            .contains("exact managed mutation permission required")
+    );
+    assert_eq!(raw.total_changes(), changes);
+    assert_eq!(
+        raw.query_row(
+            "SELECT count(*) FROM workflow_native_contracts",
+            [],
+            |row| row.get::<_, usize>(0)
+        )
+        .unwrap(),
+        0
+    );
+    assert_eq!(raw.query_row("SELECT group_concat(sql,';') FROM (SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name)",[],|row|row.get::<_,String>(0)).unwrap(),schema);
+    assert_eq!(
+        serde_json::to_value(store.project(project.id).unwrap().unwrap()).unwrap(),
+        serde_json::to_value(project).unwrap()
     );
 }
 
