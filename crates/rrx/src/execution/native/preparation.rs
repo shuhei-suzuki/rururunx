@@ -18,7 +18,7 @@ struct CustodyState {
     plan: Option<Arc<crate::state::NativePreparationPlan>>,
     known: Option<Arc<crate::state::NativePreparationCommit>>,
     helpers: Vec<Arc<super::version::NativeVersionHelperCustody>>,
-    prepared: Option<Arc<super::version::PreparedNativePhase>>,
+    completion: Option<Arc<super::version::NativeReadonlyHelperCompletion>>,
 }
 impl NativePreparationCustody {
     pub(crate) fn new(allocation: Arc<NativeAllocation>) -> Arc<Self> {
@@ -175,16 +175,16 @@ impl NativePreparationCustody {
             .lock()
             .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
         ensure!(
-            !state.abandoned && state.prepared.is_none(),
-            "original preparation completion already held or installed"
+            !state.abandoned && state.completion.is_none(),
+            "original helper history completion already held"
         );
         let helpers = state.helpers.clone();
         drop(state);
         helpers.iter().map(|h| h.closed()).collect()
     }
-    pub(super) fn retain_prepared(
+    pub(super) fn retain_completion(
         &self,
-        prepared: Arc<super::version::PreparedNativePhase>,
+        completion: Arc<super::version::NativeReadonlyHelperCompletion>,
     ) -> Result<()> {
         let mut state = self
             .state
@@ -192,14 +192,14 @@ impl NativePreparationCustody {
             .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
         ensure!(
             !state.abandoned
-                && state.prepared.is_none()
+                && state.completion.is_none()
                 && state
                     .actor
                     .as_ref()
-                    .is_some_and(|a| prepared.matches_actor(a)),
-            "original preparation completion custody differs"
+                    .is_some_and(|a| completion.matches_actor(a)),
+            "original helper history completion custody differs"
         );
-        state.prepared = Some(prepared);
+        state.completion = Some(completion);
         Ok(())
     }
     /// Nongrant confirmation of the same saved postimage. A wake cannot
@@ -277,7 +277,7 @@ impl Drop for NativePreparationCustody {
                 helper.abandon();
             }
             (
-                state.prepared.take(),
+                state.completion.take(),
                 std::mem::take(&mut state.helpers),
                 state.known.take(),
                 state.plan.take(),
@@ -345,7 +345,7 @@ impl NativeSessions {
         &self,
         launch: Arc<PhaseLaunchParts>,
         custody: Arc<NativePreparationCustody>,
-    ) -> Result<Arc<super::version::PreparedNativePhase>> {
+    ) -> Result<Arc<super::version::NativeReadonlyHelperCompletion>> {
         let adapter = launch.allocation().selected_port().selected_adapter()?;
         ensure!(
             std::ptr::eq(adapter.sessions.as_ref(), self)

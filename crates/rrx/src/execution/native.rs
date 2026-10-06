@@ -210,9 +210,9 @@ impl NativeSessions {
         launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
         custody: Arc<NativePreparationCustody>,
     ) -> Result<NativePhaseStart> {
-        let _prepared = self.begin_phase_preparation(launch, custody).await?;
+        let _helper_completion = self.begin_phase_preparation(launch, custody).await?;
         anyhow::bail!(
-            "actual private Native preparation retained; registration/quota/transport composition unavailable"
+            "actual private Native helper history retained; full preparation/registration/quota/transport composition unavailable"
         )
     }
     async fn start_with_launch(

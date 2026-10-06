@@ -63,7 +63,9 @@ each predecessor's authentic qualified observation and known exact settlement
 inventory, 32 original helpers, 1-MiB combined Git output and 8-MiB aggregate
 capture. The selected continuation refuses before Git intent/spawn because the
 owned-proof effect contract currently admits only the version effect. Private
-Prepared issuance and registration/quota/transport composition remain unreachable.
+helper-history acknowledgement grants no full preparation or static admission;
+hooks, allocation proof, quota and registration/transport composition remain
+unavailable. Full Prepared issuance remains unreachable.
 Reviewer artifact lease production, installed composition and genuine
 actor-chain/both-OS/four-Task qualification also remain unavailable.
 Preparation and version transactions also conjoin the ordinary nongrant Unit

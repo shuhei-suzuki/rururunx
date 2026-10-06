@@ -295,13 +295,14 @@ pub(crate) struct NativeVersionHelperPlan {
 pub(crate) struct NativeHelperSettlementCommit {
     original: Arc<NativeHelperSettlementPlan>,
 }
-/// Complete actual current preparation/history acknowledgement, nongrant for
-/// registration and input. No SQL lookup can construct its private original.
-pub(crate) struct NativePreparedCommit {
+/// Current acknowledgement of the same actual readonly helper history only.
+/// Nongrant for full preparation, registration, static admission and input;
+/// no SQL lookup can construct its private original.
+pub(crate) struct NativeHelperHistoryCommit {
     original: Arc<NativePreparationCommit>,
     history: Vec<Arc<NativeHelperSettlementCommit>>,
 }
-impl NativePreparedCommit {
+impl NativeHelperHistoryCommit {
     pub(crate) fn matches_actor(
         &self,
         actor: &Arc<crate::execution::native::NativePreparationActor>,
@@ -341,11 +342,11 @@ pub(crate) struct NativeHelperSettlementPlan {
     effect: EffectImage,
 }
 impl Store {
-    pub(crate) fn confirm_phase_prepared_helpers(
+    pub(crate) fn confirm_phase_helper_history(
         &mut self,
         history: Vec<Arc<NativeHelperSettlementCommit>>,
         admission: &PhaseEffectAdmissionGuard,
-    ) -> Result<NativePreparedCommit> {
+    ) -> Result<NativeHelperHistoryCommit> {
         ensure!(
             !history.is_empty()
                 && history.len() <= crate::execution::native::readonly::HELPER_LIMIT,
@@ -358,7 +359,7 @@ impl Store {
         for known in &history {
             ensure!(
                 Arc::ptr_eq(&known.original.original.ready, &ready),
-                "prepared history replaced original readiness actor"
+                "helper history replaced original readiness actor"
             );
         }
         selected_database(&self.connection, ready.actor().launch())?;
@@ -375,21 +376,21 @@ impl Store {
                     Inventory::read(&tx, ready.actor().launch().allocation().facts().unit_id)?;
                 ensure!(
                     current == last.original.after,
-                    "prepared latest exact helper inventory differs"
+                    "helper history latest exact inventory differs"
                 );
                 for known in &history {
                     ensure!(
                         known.original.observation.complete()
                             && known.original.effect.text[6] == "confirmed"
                             && current.rows.contains(&known.original.effect),
-                        "prepared original observed/settled helper image differs"
+                        "helper history original observed/settled image differs"
                     );
                 }
                 Ok(())
             })())?;
         }
         tx.commit()?;
-        Ok(NativePreparedCommit {
+        Ok(NativeHelperHistoryCommit {
             original: ready,
             history,
         })

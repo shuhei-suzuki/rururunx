@@ -26,8 +26,8 @@ pub(crate) use execution::QuotaAdmission;
 pub(crate) use execution::cleanup::CleanupClaim;
 pub(crate) use execution::governing_digest as execution_governing_digest;
 pub(crate) use execution::native_phase::{
-    NativeHelperIntentCommit, NativeHelperSettlementCommit, NativeHelperSettlementPlan,
-    NativePreparationCommit, NativePreparationPlan, NativePreparedCommit, NativeTerminalPlan,
+    NativeHelperHistoryCommit, NativeHelperIntentCommit, NativeHelperSettlementCommit,
+    NativeHelperSettlementPlan, NativePreparationCommit, NativePreparationPlan, NativeTerminalPlan,
     NativeVersionClosurePlan, NativeVersionHelperPlan,
 };
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.

@@ -12,14 +12,16 @@ use tokio::io::AsyncReadExt;
 pub(super) const OUTPUT_BYTES: usize = 64 * 1024;
 const PROFILE_BYTES: usize = 64 * 1024;
 
-/// Actual complete Executor preparation only. Retained input seal and history
-/// are immutable; this object grants neither registration nor transport/input.
-pub(crate) struct PreparedNativePhase {
+/// Nongrant acknowledgement of this original actor's readonly helper history.
+/// This is not full Native preparation: hooks, quota admission, allocation proof
+/// and Reviewer artifact lease remain separate required producers/consumers.
+/// It grants neither registration nor transport/input or static admission.
+pub(crate) struct NativeReadonlyHelperCompletion {
     actor: Arc<NativePreparationActor>,
     _seal: Arc<crate::execution::workflow_source::SourceNativePreparationSeal>,
-    commit: crate::state::NativePreparedCommit,
+    commit: crate::state::NativeHelperHistoryCommit,
 }
-impl PreparedNativePhase {
+impl NativeReadonlyHelperCompletion {
     pub(super) fn matches_actor(&self, actor: &Arc<NativePreparationActor>) -> bool {
         Arc::ptr_eq(&self.actor, actor) && self.commit.matches_actor(actor)
     }
@@ -396,7 +398,7 @@ impl NativeSessions {
         &self,
         original: Arc<NativePreparationCustody>,
         mut previous: Arc<NativeVersionHelperCustody>,
-    ) -> Result<Arc<PreparedNativePhase>> {
+    ) -> Result<Arc<NativeReadonlyHelperCompletion>> {
         let actor = original.state_actor()?;
         let seal = actor.launch().preparation_seal()?;
         let mut actions = readonly::namespace_actions(&actor)?;
@@ -444,15 +446,15 @@ impl NativeSessions {
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .confirm_phase_prepared_helpers(history, &admission)?;
-        let prepared = Arc::new(PreparedNativePhase {
+            .confirm_phase_helper_history(history, &admission)?;
+        let completion = Arc::new(NativeReadonlyHelperCompletion {
             actor,
             _seal: seal,
             commit,
         });
-        original.retain_prepared(prepared.clone())?;
+        original.retain_completion(completion.clone())?;
         drop(admission);
-        Ok(prepared)
+        Ok(completion)
     }
     async fn run_phase_helper(
         &self,
