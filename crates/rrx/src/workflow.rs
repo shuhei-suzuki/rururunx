@@ -1348,7 +1348,6 @@ impl WorkflowEngine {
         // capabilities) have no effect-free seal, so the genuine static composition
         // check must precede every callback. Diagnostics below stay unreachable
         // until the implementation-owned joint protocol is installed.
-        let _ = adapter.probe();
         require_managed_native_binding_composed()?;
         let capabilities = adapter.capabilities();
         for required in [needed, Capability::PreparedInputAdmission] {
