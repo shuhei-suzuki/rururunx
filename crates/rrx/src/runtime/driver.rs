@@ -225,6 +225,13 @@ impl DriverAssociation {
             .binding
             .lock()
             .map_err(|_| anyhow::anyhow!("Driver binding poisoned"))?;
+        // Only this same sealed publication's exact planned post-image may
+        // reconcile an already published cache. The Store checked all captured
+        // post-rows before creating it; no SQL/current-row recapture constructs
+        // a publication or activates a stopped/replaced worker.
+        if binding.0 == next_version && binding.1 == next_body {
+            return Ok(());
+        }
         ensure!(
             binding.0 == version && binding.1 == body,
             "Driver publication original cache differs"
