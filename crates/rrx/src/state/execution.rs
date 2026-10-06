@@ -1254,6 +1254,7 @@ mod effects;
 mod quotas;
 pub(crate) use quotas::QuotaAdmission;
 mod migration;
+pub(crate) mod native_phase;
 pub(super) mod native_results;
 mod sessions;
 pub(super) use sessions::logically_retired_session;

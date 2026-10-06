@@ -95,6 +95,35 @@ impl NativePhasePort {
         Ok(adapter)
     }
 
+    /// Consume the actual known-commit launch through the SAME installed vtable.
+    /// No public ManagedInput, alias lookup or capability response can enter it.
+    pub(crate) async fn start_phase(
+        &self,
+        launch: crate::state::managed_binding::PhaseLaunch,
+    ) -> std::result::Result<
+        execution::native::NativePhaseStart,
+        execution::native::NativePhaseStartError,
+    > {
+        let parts = launch.into_parts();
+        let adapter = match self.selected_adapter().and_then(|adapter| {
+            anyhow::ensure!(
+                std::ptr::eq(parts.allocation().selected_port(), self)
+                    && Arc::ptr_eq(parts.marker().allocation(), parts.allocation()),
+                "Native launch uses a different selected vtable/allocation"
+            );
+            Ok(adapter)
+        }) {
+            Ok(adapter) => adapter,
+            Err(error) => {
+                return Err(execution::native::NativePhaseStartError {
+                    launch: parts,
+                    error,
+                });
+            }
+        };
+        adapter.sessions.start_phase(parts).await
+    }
+
     /// Allocate before all version, readonly Git and Native child operations.
     /// Current owner/input/Workflow/locks still require the marker's final CAS;
     /// this return value cannot register a Session or authorize a helper.
