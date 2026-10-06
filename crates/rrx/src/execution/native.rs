@@ -78,7 +78,7 @@ struct Entry {
     handle: ManagedSessionRef,
     status: watch::Receiver<NativeStatus>,
     control: mpsc::Sender<Control>,
-    terminal: Arc<Mutex<Option<NativeTerminal>>>,
+    terminal: Arc<Mutex<Option<Arc<NativeTerminal>>>>,
     update: watch::Sender<NativeStatus>,
 }
 /// Conservative caps: aliases for a provider share the strictest configured cap.
@@ -1072,7 +1072,7 @@ struct Core {
     invocation: NativeInvocationId,
     collector: native_result::Collector,
     receipt_saved: bool,
-    frozen_terminal: Arc<Mutex<Option<NativeTerminal>>>,
+    frozen_terminal: Arc<Mutex<Option<Arc<NativeTerminal>>>>,
     wire: Lines,
     child: process::OwnedProcess,
     update: watch::Sender<NativeStatus>,
@@ -1359,7 +1359,7 @@ impl Core {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
             ensure!(frozen.is_none(), "native terminal already captured");
-            *frozen = Some(proof);
+            *frozen = Some(Arc::new(proof));
             let (_, receipt, session) = frozen
                 .as_ref()
                 .expect("captured terminal")
