@@ -403,3 +403,11 @@ routes have no managed Unit capability; actual accepted-Goal scope is refused
 before their first helper. Typed Goal/Task facts and private historical cleanup
 remain separate callable paths. The test-only Git counter observes actual native
 outputs on the calling thread, not kernel containment or native readiness.
+
+The legacy helper classification now reads one bounded Task row (1MiB), validates
+requested ID and indexed Project/Goal/version against the complete decoded body,
+and returns that exact snapshot for the helper consumer. Missing, malformed,
+oversized or mismatched rows refuse before Git; an unchecked second Task reader
+cannot replace the classified scope. The test-only historical legacy fixture
+has no accepted Goal authority or Driver; its actual helper compatibility control
+is distinct from the genuine Unix-controller accepted-Goal negative cases.

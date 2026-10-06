@@ -382,6 +382,57 @@ impl ControlFixture {
             _peer: peer,
         }
     }
+    fn register_real_git_project(&mut self) {
+        let real_root = self._dir.path().join("real-git-source");
+        std::fs::create_dir(&real_root).unwrap();
+        self.project = crate::domain::Project::new(
+            "real-source".into(),
+            real_root.canonicalize().unwrap(),
+            "not-yet-registered".into(),
+            "main".into(),
+        );
+        for args in [
+            vec!["init", "-b", "main"],
+            vec![
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "core.hooksPath=.git/hooks",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "fixture",
+            ],
+        ] {
+            let output = std::process::Command::new("git")
+                .current_dir(&self.project.root)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "isolated Git fixture must be valid: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        let valid_before = crate::git::observed_git_outputs();
+        self.project.repository_identity =
+            crate::git::repository_identity(&self.project.root, "main").unwrap();
+        assert!(
+            crate::git::observed_git_outputs() > valid_before,
+            "valid native repository identity must reach actual helper outputs"
+        );
+        self.owner
+            .store()
+            .lock()
+            .unwrap()
+            .put_project(&mut self.project)
+            .unwrap();
+    }
     fn request(&self, action: ControlAction) -> ControlRequest {
         ControlRequest {
             request_id: Uuid::new_v4(),
@@ -914,55 +965,7 @@ async fn actual_goal_acceptance_and_stop_share_publication_linearization() {
 #[tokio::test]
 async fn actual_accepted_worktree_routes_refuse_before_valid_native_git_helpers() {
     let mut f = ControlFixture::new();
-    let real_root = f._dir.path().join("real-git-source");
-    std::fs::create_dir(&real_root).unwrap();
-    f.project = crate::domain::Project::new(
-        "real-source".into(),
-        real_root.canonicalize().unwrap(),
-        "not-yet-registered".into(),
-        "main".into(),
-    );
-    for args in [
-        vec!["init", "-b", "main"],
-        vec![
-            "-c",
-            "user.name=Fixture",
-            "-c",
-            "user.email=fixture@example.invalid",
-            "-c",
-            "commit.gpgsign=false",
-            "-c",
-            "core.hooksPath=.git/hooks",
-            "commit",
-            "--allow-empty",
-            "-m",
-            "fixture",
-        ],
-    ] {
-        let output = std::process::Command::new("git")
-            .current_dir(&f.project.root)
-            .args(args)
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "isolated Git fixture must be valid: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-    let valid_before = crate::git::observed_git_outputs();
-    f.project.repository_identity =
-        crate::git::repository_identity(&f.project.root, "main").unwrap();
-    assert!(
-        crate::git::observed_git_outputs() > valid_before,
-        "valid native repository identity must reach actual helper outputs"
-    );
-    f.owner
-        .store()
-        .lock()
-        .unwrap()
-        .put_project(&mut f.project)
-        .unwrap();
+    f.register_real_git_project();
     let goal = f.create(plan()).await;
     let g = f.owner.store().lock().unwrap().goal(goal).unwrap().unwrap();
     let t = f
@@ -1057,4 +1060,174 @@ async fn actual_control_loop_error_retires_join_result_before_repeated_shutdown(
     );
     assert!(!f.runtime.service_running());
     f.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn actual_worktree_snapshot_identity_precedes_legacy_scope_and_git() {
+    use crate::domain::{Goal, GoalState, Task, TaskId};
+    let mut f = ControlFixture::new();
+    f.register_real_git_project();
+    let accepted = f.create(plan()).await;
+    let accepted_goal = f
+        .owner
+        .store()
+        .lock()
+        .unwrap()
+        .goal(accepted)
+        .unwrap()
+        .unwrap();
+    let accepted_task = f
+        .owner
+        .store()
+        .lock()
+        .unwrap()
+        .task(accepted_goal.dag.nodes[0])
+        .unwrap()
+        .unwrap();
+    let connection = crate::state::current_test_writer(f.owner.state_path()).unwrap();
+    // Historical unaccepted fixture content, not a new production ingress or
+    // a managed owner. Public Goal creation remains refused. Only the public
+    // legacy worktree route is exercised positively; no Driver is installed.
+    let mut legacy_goal = Goal::new(f.project.id, "historical legacy helper".into(), vec![]);
+    legacy_goal.version = 1;
+    legacy_goal.state = GoalState::Running;
+    connection
+        .execute(
+            "INSERT INTO goals(id,project_id,version,body) VALUES(?1,?2,?3,?4)",
+            rusqlite::params![
+                legacy_goal.id.to_string(),
+                f.project.id.to_string(),
+                legacy_goal.version,
+                serde_json::to_string(&legacy_goal).unwrap()
+            ],
+        )
+        .unwrap();
+    let mut legacy = Task::new(
+        f.project.id,
+        legacy_goal.id,
+        "legacy negative".into(),
+        "worker".into(),
+    );
+    let mut positive = Task::new(
+        f.project.id,
+        legacy_goal.id,
+        "canonical legacy positive".into(),
+        "worker".into(),
+    );
+    {
+        let shared = f.owner.store();
+        let mut store = shared.lock().unwrap();
+        store.put_task(&mut legacy).unwrap();
+        store.put_task(&mut positive).unwrap();
+        let before = crate::git::observed_git_outputs();
+        let status = crate::git::WorktreeManager::create(&mut store, positive.id).unwrap();
+        assert!(status.worktree.is_dir());
+        assert!(
+            crate::git::observed_git_outputs() > before,
+            "canonical legacy route must reach actual Git helpers"
+        );
+    }
+    let mut wrong_id = legacy.clone();
+    wrong_id.id = TaskId::new();
+    let mut wrong_project = legacy.clone();
+    wrong_project.project_id = crate::domain::ProjectId::new();
+    let mut wrong_goal = legacy.clone();
+    wrong_goal.goal_id = accepted;
+    let mut wrong_version = legacy.clone();
+    wrong_version.version += 1;
+    let mut oversized = legacy.clone();
+    oversized.title = "x".repeat(1024 * 1024);
+    let bodies = [
+        serde_json::to_string(&accepted_task).unwrap(),
+        serde_json::to_string(&wrong_id).unwrap(),
+        serde_json::to_string(&wrong_project).unwrap(),
+        serde_json::to_string(&wrong_goal).unwrap(),
+        serde_json::to_string(&wrong_version).unwrap(),
+        "{}".into(),
+        serde_json::to_string(&oversized).unwrap(),
+    ];
+    for body in bodies {
+        connection
+            .execute(
+                "UPDATE tasks SET body=?1 WHERE id=?2",
+                rusqlite::params![body, legacy.id.to_string()],
+            )
+            .unwrap();
+        let before = raw_control_fixture_rows(&connection);
+        let outputs = crate::git::observed_git_outputs();
+        {
+            let shared = f.owner.store();
+            let mut store = shared.lock().unwrap();
+            assert!(crate::git::WorktreeManager::create(&mut store, legacy.id).is_err());
+            assert!(crate::git::WorktreeManager::status(&store, legacy.id).is_err());
+            assert!(
+                crate::git::WorktreeManager::ensure_mutation_allowed(&store, legacy.id).is_err()
+            );
+            assert!(
+                crate::git::WorktreeManager::lock_review(
+                    &mut store,
+                    legacy.id,
+                    &"a".repeat(40),
+                    "corrupt Task"
+                )
+                .is_err()
+            );
+            assert!(crate::git::WorktreeManager::cleanup(&mut store, legacy.id).is_err());
+        }
+        assert_eq!(
+            crate::git::observed_git_outputs(),
+            outputs,
+            "malformed Task body/index reached actual Git helpers"
+        );
+        assert_eq!(
+            raw_control_fixture_rows(&connection),
+            before,
+            "malformed Task helper wrote authority or audit"
+        );
+        assert!(
+            !f.project
+                .worktree_root
+                .join(format!("task-{}", legacy.id))
+                .exists()
+        );
+        assert!(
+            !f.project
+                .worktree_root
+                .join(format!("task-{}", accepted_task.id))
+                .exists()
+        );
+    }
+    let before = crate::git::observed_git_outputs();
+    let shared = f.owner.store();
+    let mut store = shared.lock().unwrap();
+    assert!(crate::git::WorktreeManager::create(&mut store, TaskId::new()).is_err());
+    assert_eq!(crate::git::observed_git_outputs(), before);
+}
+
+// Entire small isolated fixture DB, including native/resource/audit tables.
+// Comparing rows (not only the main file) includes any WAL-visible writes.
+fn raw_control_fixture_rows(connection: &rusqlite::Connection) -> Vec<(String, Vec<Vec<String>>)> {
+    let mut names = connection.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").unwrap();
+    names
+        .query_map([], |r| r.get::<_, String>(0))
+        .unwrap()
+        .map(|name| {
+            let name = name.unwrap();
+            let mut rows = connection
+                .prepare(&format!("SELECT * FROM \"{}\"", name.replace('"', "\"\"")))
+                .unwrap();
+            let count = rows.column_count();
+            let mut contents = rows
+                .query_map([], |row| {
+                    (0..count)
+                        .map(|i| row.get_ref(i).map(|v| format!("{v:?}")))
+                        .collect::<rusqlite::Result<Vec<_>>>()
+                })
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect::<Vec<_>>();
+            contents.sort();
+            (name, contents)
+        })
+        .collect()
 }

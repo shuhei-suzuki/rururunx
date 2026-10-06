@@ -320,17 +320,30 @@ pub(super) fn invalidate_tx(
 }
 
 impl Store {
-    /// Legacy helper routes have no managed Unit/Driver capability. Protect the
-    /// indexed accepted scope before their first Git/filesystem operation.
-    pub(crate) fn ensure_legacy_worktree_access(&self, task: TaskId) -> Result<()> {
-        let accepted: bool = self.connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM tasks t JOIN goal_authority a ON a.goal_id=t.goal_id AND a.project_id=t.project_id WHERE t.id=?1)",
-            [task.to_string()], |r| r.get(0),
-        )?;
+    /// Legacy helpers consume this exact bounded Task snapshot. Classification
+    /// and subsequent effects must not use different body/index identities.
+    pub(crate) fn legacy_worktree_task(&self, id: TaskId) -> Result<Task> {
+        let indexed = self.connection.query_row(
+            "SELECT t.id,t.project_id,t.goal_id,t.version,CASE WHEN length(CAST(t.body AS BLOB))<=1048576 THEN t.body END,EXISTS(SELECT 1 FROM goal_authority a WHERE a.goal_id=t.goal_id AND a.project_id=t.project_id) FROM tasks t WHERE t.id=?1",
+            [id.to_string()],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, u64>(3)?, row.get::<_, Option<String>>(4)?, row.get::<_, bool>(5)?)),
+        ).optional()?.context("unknown legacy worktree Task")?;
+        let body = indexed
+            .4
+            .context("legacy worktree Task exceeds body bound")?;
+        let task: Task = decode(body)?;
         ensure!(
-            !accepted,
+            task.id == id
+                && indexed.0 == id.to_string()
+                && indexed.1 == task.project_id.to_string()
+                && indexed.2 == task.goal_id.to_string()
+                && indexed.3 == task.version,
+            "legacy worktree Task body/index identity differs"
+        );
+        ensure!(
+            !indexed.5,
             "accepted Goal worktree helpers require the unavailable managed Driver/binding producer"
         );
-        Ok(())
+        Ok(task)
     }
 }
