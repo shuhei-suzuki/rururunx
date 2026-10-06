@@ -173,7 +173,8 @@ impl DriverReadTicket {
                             == serde_json::to_value(project)?
                         && invocation.phase == attempt.phase
                         && invocation.sources == w.sources
-                        && invocation.context == context
+                        && serde_json::to_value(&invocation.context)?
+                            == serde_json::to_value(&context)?
                         && invocation.budget == attempt.budget
                         && serde_json::to_value(&invocation.prerequisites)?
                             == serde_json::to_value(w.completed.values().collect::<Vec<_>>())?

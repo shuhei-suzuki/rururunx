@@ -122,7 +122,7 @@ impl DriverReadTicket {
         ensure!(
             serde_json::to_value(task)? == serde_json::to_value(self.task())?
                 && serde_json::to_value(record)? == serde_json::to_value(w)?
-                && context == c,
+                && serde_json::to_value(context)? == serde_json::to_value(c)?,
             "Driver Engine input view differs from captured original"
         );
         Ok(())

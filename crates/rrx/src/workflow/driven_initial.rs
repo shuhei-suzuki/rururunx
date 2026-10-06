@@ -6,6 +6,7 @@ use crate::{
     runtime::driver::WorkerLifetime,
     state::{DriverReadTicket, InitialGateEdge},
 };
+use anyhow::bail;
 impl WorkflowEngine {
     pub(crate) async fn step_driven_initial(
         &self,
