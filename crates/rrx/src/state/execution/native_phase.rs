@@ -213,9 +213,19 @@ fn plan_native_owner(
     runtime: &crate::execution::RuntimeOwner,
     phase: &Arc<NativePhaseSession>,
 ) -> Result<NativeOwnerPlan> {
+    plan_owner_currency(runtime, phase, false)
+}
+// A captured known terminal may settle after Core Drop revoked NEW effects. It
+// still needs exact current original currency and the real Driver in this TX.
+// Only the terminal child module calls this ended-owner planning mode.
+fn plan_owner_currency(
+    runtime: &crate::execution::RuntimeOwner,
+    phase: &Arc<NativePhaseSession>,
+    terminal_ending: bool,
+) -> Result<NativeOwnerPlan> {
     let binding = phase.binding_snapshot()?;
     ensure!(
-        binding.is_live() && phase.launch_parts().is_retained(),
+        (terminal_ending || binding.is_live()) && phase.launch_parts().is_retained(),
         "actual Native owner ended"
     );
     let current = plan_current_phase(runtime, phase.marker())?;
@@ -336,6 +346,19 @@ impl NativeOwnerPlan {
         validate_current_tx(tx, self.binding.marker(), &self.current)?;
         self.binding.marker().validate_driver_live_tx(tx)?;
         validate_authority(tx, &self.current.unit().authority(), true, false)?;
+        self.session.validate_tx(tx)?;
+        self.owner.validate_tx(tx)?;
+        self.readiness.validate_tx(tx)?;
+        Ok(())
+    }
+    fn validate_terminal_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        ensure!(
+            self.binding.owner().launch_parts().is_retained(),
+            "actual terminal owner lost custody"
+        );
+        validate_current_tx(tx, self.binding.marker(), &self.current)?;
+        self.binding.marker().validate_driver_live_tx(tx)?;
+        validate_authority(tx, &self.current.unit().authority(), false, true)?;
         self.session.validate_tx(tx)?;
         self.owner.validate_tx(tx)?;
         self.readiness.validate_tx(tx)?;

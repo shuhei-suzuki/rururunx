@@ -194,8 +194,36 @@ pub(crate) fn plan_phase_terminal(
             && terminal.session_version() == binding.record_version(),
         "saved terminal differs from actual phase owner"
     );
-    // Failure here produces a nongrant closure, never a refreshed current owner.
-    let normal = plan_native_owner(runtime, phase).ok();
+    // Storage faults are not evidence that owned known work became historical.
+    // A known terminal needs original current currency even after its Core has
+    // ended; revocation prevents new effects but cannot erase that observation.
+    // Only actual closed/retired/foreign-epoch Units, or non-success transport
+    // observations, use the separate nongrant closure lane.
+    let eligible = terminal_snapshot(runtime, |tx| {
+        let unit = UnitImage::read(tx, phase)?;
+        let epoch: u64 = tx.query_row(
+            "SELECT epoch FROM runtime_epoch WHERE singleton=1",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok(epoch == f.epoch
+            && unit.value.native_effects_open
+            && unit.value.result_finalization_open
+            && unit.value.work.is_none()
+            && unit.value.disposition == Disposition::Active
+            && matches!(
+                unit.value.state,
+                UnitState::DispatchPending | UnitState::Running | UnitState::WaitingQuota
+            ))
+    })?;
+    let normal = if eligible
+        && observed.observed_work != WorkOutcome::Unknown
+        && observed.disposition == Disposition::Completed
+    {
+        Some(plan_owner_currency(runtime, phase, true)?)
+    } else {
+        None
+    };
     let (unit, invocation, session, owner, readiness, admission, input_effect) = terminal_snapshot(
         runtime,
         |tx| {
@@ -418,7 +446,7 @@ pub(crate) fn plan_phase_terminal(
                 (None, None)
             };
             if let Some(normal) = &normal {
-                normal.validate_tx(tx)?;
+                normal.validate_terminal_tx(tx)?;
             }
             Ok((
                 unit,
@@ -448,7 +476,10 @@ pub(crate) fn plan_phase_terminal(
             } else {
                 WorkOutcome::Unknown
             });
-            after.disposition = if owned {
+            after.disposition = if owned
+                || (receipt.observed_work == WorkOutcome::Unknown
+                    && receipt.disposition != Disposition::Completed)
+            {
                 receipt.disposition
             } else {
                 Disposition::Lost
@@ -684,7 +715,7 @@ impl Store {
         if plan.committed_tx(&tx)? {tx.commit()?;return Ok(plan.commit());}
         plan.unit.validate_tx(&tx)?;plan.invocation.validate_tx(&tx)?;
         plan.session.validate_tx(&tx)?;plan.owner.validate_tx(&tx)?;plan.readiness.validate_tx(&tx)?;
-        if let Some(normal)=&plan.normal {normal.validate_tx(&tx)?;}
+        if let Some(normal)=&plan.normal {normal.validate_terminal_tx(&tx)?;}
         if let Some(a)=&plan.admission {a.validate_tx(&tx)?;}
         if let Some((id,raw,version,_))=&plan.input_effect {
             let exact:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE id=?1 AND version=?2 AND body=?3)",params![id.to_string(),version,raw],|r|r.get(0))?;
