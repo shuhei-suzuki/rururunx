@@ -11,7 +11,7 @@ remain baseline descriptions, not acceptance of that proposal.
 The independently reviewed [Runtime/Scheduler integration](../runtime-scheduler-integration-design.md)
 defines typed accepted Goal authority, actual prerequisite evidence, fair driver
 claims and private retained/pre-input source recovery. These ports and the
-operational CLI remain implementation work; structural DAG support alone does
+complete operational CLI remain implementation work; structural DAG support alone does
 not execute or complete a Goal.
 
 ## 1. Goal
@@ -328,8 +328,18 @@ TaskDag::hard_order validates finite node/edge bounds, declared unique nodes,
 non-self unique ordered edge pairs and hard dependency cycles. Store::put_goal
 uses it before publishing the Goal and its audit; soft advisory cycles are allowed.
 The deterministic order includes all declared nodes and grants no readiness or
-dispatch authority. Managed definitions, lifecycle, verified completion, controller
-loop and CLI remain pending in #23/#24 with #19/#43 producer integration.
+dispatch authority. The Runtime control foundation includes typed Goal creation,
+scoped status and bounded Task reads. The compiled foreground `rrx serve`
+and `rrx goal status/tasks` now consume the actual private Unix endpoint with
+Project routing and current-owner authentication. Task pages carry a Goal version
+and individual Task versions, with a scope-checked bare cursor; separate pages
+remain independent observations. A final page does not assert a complete snapshot.
+
+These read clients do not construct owners or write rows, versions, epochs,
+acknowledgements, audits or attention. Native dispatch is explicitly unavailable.
+CLI creation, typed proposal/graph/lifecycle controls, logs/actual attach, verified
+continuous Goal execution and the TUI remain pending with native producer
+integration. This partial source unit does not satisfy full Goal or MVP acceptance.
 
 ### Published source reconstruction component checkpoint
 

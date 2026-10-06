@@ -1,8 +1,11 @@
 use anyhow::{Result, ensure};
 use clap::{Parser, Subcommand};
 use rrx::{
+    cli::{client, service},
     config::Config,
+    domain::{GoalId, TaskId},
     project::{AddProject, ProjectRegistry, default_state_path},
+    runtime::control::{ControlAction, ControlResponse},
     state::Store,
 };
 use std::{path::PathBuf, process::ExitCode};
@@ -24,6 +27,20 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Serve dedicated local controls in the foreground; native dispatch is unavailable.
+    Serve,
+    /// Inspect current metadata (full hierarchy and native capacity remain unavailable).
+    Status {
+        #[arg(long)]
+        all: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Read scoped Goal facts from the existing control service.
+    Goal {
+        #[command(subcommand)]
+        command: GoalCommand,
+    },
     /// Validate configuration without starting sessions or creating state.
     ConfigCheck,
     /// Register and inspect isolated repository projects.
@@ -31,6 +48,63 @@ enum Command {
         #[command(subcommand)]
         command: ProjectCommand,
     },
+}
+#[derive(Subcommand)]
+enum GoalCommand {
+    Status {
+        goal: GoalId,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    Tasks {
+        goal: GoalId,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        after: Option<TaskId>,
+        /// One independent page; no automatic aggregation.
+        #[arg(long, default_value_t = 64, value_parser = clap::value_parser!(u16).range(1..=128))]
+        maximum: u16,
+        #[arg(long)]
+        json: bool,
+    },
+}
+fn print_control(response: ControlResponse, json: bool, metadata: bool) -> Result<()> {
+    let observation = if metadata {
+        "runtime_metadata"
+    } else {
+        "independent_scoped_observation"
+    };
+    let unavailable = if metadata {
+        vec![
+            "project_goal_task_hierarchy",
+            "effective_native_limits",
+            "unit_provider_evidence",
+            "wait_cleanup_details",
+        ]
+    } else {
+        vec![
+            "native_dispatch",
+            "unit_provider_evidence",
+            "wait_cleanup_details",
+        ]
+    };
+    let output = serde_json::json!({
+        "observation": observation, "complete": false,
+        "unavailable_fields": unavailable, "facts": response,
+    });
+    if json {
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!(
+            "{}\nIncomplete observation: {}",
+            serde_json::to_string_pretty(&output["facts"])?,
+            unavailable.join(", ")
+        );
+    }
+    Ok(())
 }
 #[derive(Subcommand)]
 enum ProjectCommand {
@@ -76,6 +150,79 @@ enum ProjectCommand {
 }
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
+        Some(command @ (Command::Serve | Command::Status { .. } | Command::Goal { .. })) => {
+            ensure!(
+                cli.project_config.is_none(),
+                "Runtime commands use the registered Project configuration; --project-config is not accepted"
+            );
+            let config = Config::load(cli.config.as_deref(), None)?;
+            let state = cli.state.map(Ok).unwrap_or_else(default_state_path)?;
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()?;
+            runtime.block_on(async {
+                match command {
+                    Command::Serve => service::serve(&state, config).await,
+                    Command::Status { all: _, json } => {
+                        let response =
+                            client::request(&state, ControlAction::RuntimeStatus).await?;
+                        ensure!(
+                            matches!(response, ControlResponse::RuntimeMetadata { .. }),
+                            "unexpected Runtime response"
+                        );
+                        print_control(response, json, true)
+                    }
+                    Command::Goal { command } => {
+                        let (goal, selector, json, page) = match command {
+                            GoalCommand::Status {
+                                goal,
+                                project,
+                                json,
+                            } => (goal, project, json, None),
+                            GoalCommand::Tasks {
+                                goal,
+                                project,
+                                after,
+                                maximum,
+                                json,
+                            } => (goal, project, json, Some((after, maximum))),
+                        };
+                        let resolved = client::request(
+                            &state,
+                            ControlAction::ResolveProject {
+                                selector,
+                                cwd: std::env::current_dir()?,
+                            },
+                        )
+                        .await?;
+                        let ControlResponse::ProjectResolved { project, .. } = resolved else {
+                            anyhow::bail!("unexpected Project routing response");
+                        };
+                        let action = match page {
+                            Some((after, maximum)) => ControlAction::GoalTasks {
+                                project,
+                                goal,
+                                after,
+                                maximum: usize::from(maximum),
+                            },
+                            None => ControlAction::GoalStatus { project, goal },
+                        };
+                        let response = client::request(&state, action).await?;
+                        ensure!(
+                            matches!(
+                                (&response, page),
+                                (ControlResponse::GoalFacts { .. }, None)
+                                    | (ControlResponse::GoalTaskPage { .. }, Some(_))
+                            ),
+                            "unexpected Goal response"
+                        );
+                        print_control(response, json, false)
+                    }
+                    _ => unreachable!(),
+                }
+            })?;
+        }
         Some(Command::ConfigCheck) => {
             let config = Config::load(cli.config.as_deref(), cli.project_config.as_deref())?;
             println!(
