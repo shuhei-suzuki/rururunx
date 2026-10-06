@@ -306,6 +306,46 @@ impl ScopePlan {
         );
         self.validate_projection_context(c, task, task_raw, Some(workflow), Some(context))
     }
+    /// Nongrant prescribed pre-marker Context successor. Old current head is
+    /// validated separately by the retained Driver ticket before any writes.
+    pub(in crate::state) fn validate_gate_projection(
+        &self,
+        c: &Connection,
+        task: &Task,
+        task_raw: &str,
+        workflow: (&Record, &str),
+        context: (&ContextVersion, &str),
+        fresh: bool,
+    ) -> Result<()> {
+        let old = self
+            .context
+            .as_ref()
+            .context("gate original Context missing")?;
+        ensure!(
+            self.workflow
+                .as_ref()
+                .is_some_and(|w| w.parsed().id == workflow.0.id)
+                && context.0.version
+                    == if fresh {
+                        old.parsed()
+                            .version
+                            .checked_add(1)
+                            .context("Context version overflow")?
+                    } else {
+                        old.parsed().version
+                    }
+                && task.context_version == context.0.version
+                && (fresh || context.1 == old.raw()),
+            "gate Context successor differs"
+        );
+        self.validate_projection_context(c, task, task_raw, Some(workflow), Some(context))
+    }
+    pub(in crate::state) fn workflow_input(&self) -> Result<(&Record, &ContextVersion)> {
+        Ok((
+            self.workflow.as_ref().context("Workflow missing")?.parsed(),
+            self.context.as_ref().context("Context missing")?.parsed(),
+        ))
+    }
     fn validate_projection_context(
         &self,
         c: &Connection,

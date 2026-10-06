@@ -3275,7 +3275,7 @@ fn validate_status(status: &SessionStatus, task: &Task, attempt: &PhaseAttempt) 
     );
     Ok(())
 }
-fn validate_evidence(
+pub(crate) fn validate_evidence(
     evidence: &Evidence,
     scope: &Scope,
     source: &SourceSnapshot,
@@ -3846,7 +3846,7 @@ fn native_wait_state(reason: crate::execution::WaitReason) -> TaskState {
         _ => TaskState::WaitingHuman,
     }
 }
-fn next_phase(workflow: &WorkflowSnapshot) -> Option<Phase> {
+pub(crate) fn next_phase(workflow: &WorkflowSnapshot) -> Option<Phase> {
     workflow
         .configured_phases
         .iter()
@@ -3934,6 +3934,9 @@ fn load_rules(
     config.validate()?;
     Ok((config, rules, versions))
 }
+
+#[path = "workflow/driven_initial.rs"]
+mod driven_initial;
 
 #[cfg(test)]
 #[path = "workflow/committed_source_tests.rs"]

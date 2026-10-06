@@ -319,3 +319,157 @@ async fn initial_input_projection_requires_exact_post_head_and_preserves_origina
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn initial_gate_projection_requires_prescribed_consecutive_context_and_exact_head() {
+    let f = Fixture::new().await;
+    let original = plan_scope(&f.owner, &f.scope).unwrap();
+    let mut task = original.task.parsed().clone();
+    task.version += 1;
+    task.context_version = 1;
+    task.revision = Some("a".repeat(40));
+    let w = crate::workflow::WorkflowSnapshot {
+        workflow: task.workflow,
+        risk: task.risk,
+        generation: 1,
+        context_version: 1,
+        context_fresh: true,
+        active: None,
+        completed: Default::default(),
+        history: vec![],
+        escalations: vec![],
+        retries: vec![],
+        invalidations: vec![],
+        terminal_decision: None,
+        finalizations: vec![],
+        sources: crate::workflow::SourceSnapshot {
+            scope: f.scope.clone(),
+            revision: "a".repeat(40),
+            artifact: None,
+            source_versions: Default::default(),
+            payload: "historical read image".into(),
+        },
+        configured_phases: crate::workflow::phases(task.workflow, &Config::default()),
+        finished: false,
+        held_reason: None,
+    };
+    let mut record = Record::new(
+        f.scope.clone(),
+        RecordKind::Workflow,
+        serde_json::to_value(w).unwrap(),
+    );
+    record.version = 1;
+    let context = ContextVersion {
+        scope: f.scope.clone(),
+        version: 1,
+        revision: "a".repeat(40),
+        source_hashes: Default::default(),
+        data: serde_json::json!({"historical_read_image":true}),
+    };
+    let key = crate::state::context_owner(&f.scope).unwrap();
+    let mut connection = crate::state::current_test_writer(f.owner.state_path()).unwrap();
+    let tx = connection.transaction().unwrap();
+    // Factual, rollback-only owner/input images. No Driver, Unit, preparation,
+    // actual gate completion or private authority is seeded or granted.
+    tx.execute(
+        "UPDATE tasks SET version=?1,body=?2 WHERE id=?3",
+        rusqlite::params![
+            task.version,
+            serde_json::to_string(&task).unwrap(),
+            task.id.to_string()
+        ],
+    )
+    .unwrap();
+    tx.execute("INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,'workflow',?2,?3,?4,1,?5)",rusqlite::params![record.id.to_string(),task.project_id.to_string(),task.goal_id.to_string(),task.id.to_string(),serde_json::to_string(&record).unwrap()]).unwrap();
+    tx.execute("INSERT INTO context_versions(project_id,goal_id,task_id,owner,version,body) VALUES(?1,?2,?3,?4,1,?5)",rusqlite::params![task.project_id.to_string(),task.goal_id.to_string(),task.id.to_string(),key,serde_json::to_string(&context).unwrap()]).unwrap();
+    let plan = super::snapshot::read_scope(&tx, &f.owner, &f.scope).unwrap();
+    plan.validate_current(&tx).unwrap();
+    task.version += 1;
+    record.version += 1;
+    let mut next = context.clone();
+    next.version = 2;
+    task.context_version = 2;
+    let task_raw = serde_json::to_string(&task).unwrap();
+    let record_raw = serde_json::to_string(&record).unwrap();
+    let next_raw = serde_json::to_string(&next).unwrap();
+    assert!(
+        plan.validate_gate_projection(
+            &tx,
+            &task,
+            &task_raw,
+            (&record, &record_raw),
+            (&next, &next_raw),
+            true
+        )
+        .is_err()
+    );
+    tx.execute(
+        "UPDATE tasks SET version=?1,body=?2 WHERE id=?3",
+        rusqlite::params![task.version, task_raw, task.id.to_string()],
+    )
+    .unwrap();
+    tx.execute(
+        "UPDATE records SET version=?1,body=?2 WHERE id=?3",
+        rusqlite::params![record.version, record_raw, record.id.to_string()],
+    )
+    .unwrap();
+    tx.execute("INSERT INTO context_versions(project_id,goal_id,task_id,owner,version,body) VALUES(?1,?2,?3,?4,2,?5)",rusqlite::params![task.project_id.to_string(),task.goal_id.to_string(),task.id.to_string(),key,next_raw]).unwrap();
+    plan.validate_gate_projection(
+        &tx,
+        &task,
+        &task_raw,
+        (&record, &record_raw),
+        (&next, &next_raw),
+        true,
+    )
+    .unwrap();
+    assert!(plan.validate_current(&tx).is_err());
+    assert!(
+        plan.validate_gate_projection(
+            &tx,
+            &task,
+            &task_raw,
+            (&record, &record_raw),
+            (&next, &next_raw),
+            false
+        )
+        .is_err(),
+        "claim cannot replace original Context"
+    );
+    // A fresh context is not arbitrary current-head ratification: jumping from
+    // original1 to current3 fails even with exact current bytes/indexes.
+    let mut surplus = next.clone();
+    surplus.version = 3;
+    task.context_version = 3;
+    let surplus_raw = serde_json::to_string(&surplus).unwrap();
+    let surplus_task = serde_json::to_string(&task).unwrap();
+    tx.execute(
+        "UPDATE tasks SET body=?1 WHERE id=?2",
+        rusqlite::params![surplus_task, task.id.to_string()],
+    )
+    .unwrap();
+    tx.execute("INSERT INTO context_versions(project_id,goal_id,task_id,owner,version,body) VALUES(?1,?2,?3,?4,3,?5)",rusqlite::params![task.project_id.to_string(),task.goal_id.to_string(),task.id.to_string(),key,surplus_raw]).unwrap();
+    assert!(
+        plan.validate_gate_projection(
+            &tx,
+            &task,
+            &surplus_task,
+            (&record, &record_raw),
+            (&surplus, &surplus_raw),
+            true
+        )
+        .is_err(),
+        "gate context cannot jump over original successor"
+    );
+    tx.rollback().unwrap();
+    original.validate_current(&connection).unwrap();
+    assert!(
+        f.owner
+            .store()
+            .lock()
+            .unwrap()
+            .execution_units(Some(&f.scope))
+            .unwrap()
+            .is_empty()
+    );
+}

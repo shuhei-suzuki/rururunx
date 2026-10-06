@@ -5,7 +5,7 @@ use crate::{
     state::{InitialDriverPlan, PendingDriverClaim, managed_binding::InstalledDriverComposition},
 };
 use anyhow::{Result, ensure};
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 impl Runtime {
     /// Root's real installed composition must exist BEFORE planning/claiming.
@@ -100,7 +100,7 @@ async fn drive(claim: PendingDriverClaim, lifetime: WorkerLifetime) -> Result<()
         let result = tokio::select! {
             biased;
             ()=lifetime.cancelled()=>return Err(anyhow::anyhow!("Task Driver cancelled")),
-            result=engine.step(task,BTreeMap::new())=>result?,
+            result=engine.step_driven_initial(task,&sources,&lifetime)=>result?,
         };
         if matches!(result, crate::workflow::StepResult::Finished) {
             return Ok(());

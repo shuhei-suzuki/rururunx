@@ -15,6 +15,24 @@ pub struct ManagedWorkflowGates {
     owner: Arc<RuntimeOwner>,
     sources: Arc<ManagedWorkflowSources>,
 }
+/// Actual initial-gate result. Only the concrete producer can construct this;
+/// a receipt ID or serialized GateOutcome does not create completion authority.
+pub(crate) struct InitialGateCompletion {
+    invocation: PhaseInvocation,
+    outcome: GateOutcome,
+    receipt: Option<Record>,
+}
+impl InitialGateCompletion {
+    pub(crate) fn invocation(&self) -> &PhaseInvocation {
+        &self.invocation
+    }
+    pub(crate) fn outcome(&self) -> &GateOutcome {
+        &self.outcome
+    }
+    pub(crate) fn receipt(&self) -> Option<&Record> {
+        self.receipt.as_ref()
+    }
+}
 #[derive(Debug, PartialEq, Eq, Serialize)]
 struct Claim {
     record: RecordId,
@@ -34,6 +52,52 @@ impl ManagedWorkflowGates {
             "gate and source must share the same Runtime"
         );
         Ok(Self { owner, sources })
+    }
+    pub(crate) async fn complete_initial_driven(
+        &self,
+        invocation: PhaseInvocation,
+    ) -> Result<InitialGateCompletion> {
+        ensure!(
+            matches!(invocation.phase, Phase::Issue | Phase::Worktree),
+            "driven initial gate only"
+        );
+        let outcome = self.evaluate(invocation.clone(), None).await?;
+        let receipt = if let GateOutcome::Passed(evidence) = &outcome {
+            let ids = evidence
+                .artifacts
+                .iter()
+                .filter_map(|a| a.strip_prefix("rrx-gate:"))
+                .collect::<Vec<_>>();
+            ensure!(ids.len() == 1, "initial gate receipt missing");
+            let store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            let receipt = store
+                .record(ids[0].parse()?)?
+                .context("initial receipt missing")?;
+            ensure!(
+                receipt.kind == RecordKind::Verification
+                    && receipt.scope == invocation.task.scope()
+                    && receipt.data["schema"] == "managed_workflow_gate_v1"
+                    && receipt.data["claim"]
+                        == serde_json::to_value(Self::claim(&store, &invocation)?.0)?
+                    && receipt.data["phase"] == serde_json::to_value(invocation.phase)?
+                    && receipt.data["revision"] == invocation.sources.revision
+                    && receipt.data["sources"]
+                        == serde_json::to_value(&invocation.sources.source_versions)?,
+                "initial receipt identity changed"
+            );
+            Some(receipt)
+        } else {
+            None
+        };
+        Ok(InitialGateCompletion {
+            invocation,
+            outcome,
+            receipt,
+        })
     }
     fn claim(store: &Store, invocation: &PhaseInvocation) -> Result<(Claim, WorkflowSnapshot)> {
         let task = store.task(invocation.task.id)?.context("Task missing")?;

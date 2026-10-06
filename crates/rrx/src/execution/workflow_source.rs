@@ -65,6 +65,37 @@ impl InitialInputFrame {
     pub(crate) fn governing(&self) -> &str {
         &self.frame.governing_digest
     }
+    pub(crate) fn validate_context(
+        &self,
+        task: &Task,
+        record: &Record,
+        context: &ContextVersion,
+    ) -> Result<()> {
+        let workflow: WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
+        let phase: Phase = serde_json::from_value(context.data["phase"].clone())?;
+        let budget = crate::workflow::budget(workflow.workflow, phase, &self.frame.config);
+        let expected = self.frame.render(task, phase, &budget)?;
+        let mut hashes = expected.source_versions.clone();
+        hashes.insert("workflow:phase".into(), phase.key().into());
+        hashes.insert(
+            "workflow:generation".into(),
+            workflow.generation.to_string(),
+        );
+        ensure!(
+            context.scope == self.frame.scope
+                && task.scope() == self.frame.scope
+                && record.scope == self.frame.scope
+                && context.revision == expected.revision
+                && context.source_hashes == hashes
+                && workflow.sources == expected
+                && context.data
+                    == serde_json::json!({"phase":phase,"workflow":workflow.workflow,
+                "generation":workflow.generation,"budget":budget,"payload":expected.payload}),
+            "prepared gate Context differs from actual immutable frame"
+        );
+        crate::workflow::validate_context(task, record, context)
+    }
+
     pub(crate) fn validate(&self, owner: &Arc<RuntimeOwner>) -> Result<()> {
         ensure!(
             Arc::ptr_eq(owner, &self.producer.owner),
@@ -309,6 +340,72 @@ impl ManagedWorkflowSources {
             unit: unit.clone(),
         };
         Ok((proof, unit))
+    }
+    /// Same real bootstrap preparation and immutable frame for initial gates.
+    /// Unlike first initialization, this validates the actual phase/generation
+    /// of an already-owned Workflow Context; it cannot adopt a native Unit.
+    pub(crate) async fn initial_gate_frame(
+        self: &Arc<Self>,
+        original: &Task,
+        record: &Record,
+        context: &ContextVersion,
+    ) -> Result<(InitialInputFrame, ExecutionUnit)> {
+        let slot = self.slot(original.id)?;
+        let state = slot.lock().await;
+        let state = state.as_ref().context("initial gate frame missing")?;
+        let prepared = state
+            .prepared
+            .as_ref()
+            .context("initial preparation missing")?;
+        let unit = prepared.unit().clone();
+        ensure!(
+            state.recovery.is_none()
+                && state.frame.artifact.is_none()
+                && unit.scope == original.scope()
+                && unit.phase == WORKFLOW_SOURCE_BOOTSTRAP
+                && unit.state == UnitState::Preparing
+                && unit.work.is_none()
+                && unit.session_id.is_none()
+                && unit.artifact_id.is_none()
+                && state.frame.scope == original.scope()
+                && state.frame.revision == unit.base_sha
+                && prepared.retains(&self.owner, &unit)?,
+            "initial gate lacks owned preparation"
+        );
+        let workflow: WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
+        let phase: Phase = serde_json::from_value(context.data["phase"].clone())?;
+        let budget: ContextBudget = serde_json::from_value(context.data["budget"].clone())?;
+        let expected = state.frame.render(original, phase, &budget)?;
+        let mut hashes = expected.source_versions.clone();
+        hashes.insert("workflow:phase".into(), phase.key().into());
+        hashes.insert(
+            "workflow:generation".into(),
+            workflow.generation.to_string(),
+        );
+        ensure!(
+            record.kind == RecordKind::Workflow
+                && record.scope == original.scope()
+                && record.version > 0
+                && workflow.generation == 1
+                && context.scope == original.scope()
+                && context.version > 0
+                && context.revision == expected.revision
+                && context.source_hashes == hashes
+                && context.data
+                    == serde_json::json!({"phase":phase,"workflow":workflow.workflow,
+                "generation":workflow.generation,"budget":budget,"payload":expected.payload})
+                && workflow.sources == expected,
+            "initial gate Context/frame metadata or bytes differs"
+        );
+        Ok((
+            InitialInputFrame {
+                producer: self.clone(),
+                slot: slot.clone(),
+                frame: state.frame.clone(),
+                unit: unit.clone(),
+            },
+            unit,
+        ))
     }
     async fn prepare_inner(
         &self,

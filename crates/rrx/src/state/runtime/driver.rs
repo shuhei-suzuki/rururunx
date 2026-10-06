@@ -13,7 +13,7 @@ mod marker;
 mod namespace;
 mod preparation;
 pub(in crate::state) use namespace::NamespaceSnapshot;
-pub(crate) use preparation::DriverPreparationAdvance;
+pub(crate) use preparation::{DriverPreparationAdvance, InitialGateEdge};
 mod observation;
 pub(crate) use marker::{DriverMarkerAdvance, DriverPublication};
 pub(crate) use observation::DriverExitPublication;

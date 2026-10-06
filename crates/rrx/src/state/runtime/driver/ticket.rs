@@ -100,6 +100,33 @@ impl DriverReadTicket {
         )?);
         Ok(self)
     }
+    /// Finite collision evidence under the unchanged original ticket; this
+    /// does not refresh Task, input, governing or Driver authority.
+    pub(crate) fn with_gate_namespace(mut self) -> Result<Self> {
+        self.namespace = Some(crate::state::managed_binding::snapshot(
+            &self.owner,
+            |tx| {
+                self.validate_current_tx(tx)?;
+                super::NamespaceSnapshot::read(tx, self.task().project_id)
+            },
+        )?);
+        Ok(self)
+    }
+    pub(crate) fn matches_input_view(
+        &self,
+        task: &Task,
+        record: &Record,
+        context: &ContextVersion,
+    ) -> Result<()> {
+        let (w, c) = self.scope.workflow_input()?;
+        ensure!(
+            serde_json::to_value(task)? == serde_json::to_value(self.task())?
+                && serde_json::to_value(record)? == serde_json::to_value(w)?
+                && context == c,
+            "Driver Engine input view differs from captured original"
+        );
+        Ok(())
+    }
     pub(crate) fn task(&self) -> &Task {
         self.scope.task()
     }

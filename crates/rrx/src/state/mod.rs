@@ -7,7 +7,7 @@ mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
 pub(crate) use runtime::driver::{
     DriverExitPublication, DriverMarkerAdvance, DriverPreparationAdvance, DriverPublication,
-    DriverReadTicket, InitialDriverPlan, PendingDriverClaim, plan_initial_driver,
+    DriverReadTicket, InitialDriverPlan, InitialGateEdge, PendingDriverClaim, plan_initial_driver,
     read_driver_ticket,
 };
 use std::{path::Path, time::Duration};
@@ -109,6 +109,7 @@ enum WorkflowCompletion<'a> {
     Executor(&'a crate::execution::WorkflowPublication),
     Readonly(&'a crate::execution::ReadonlyCompletion),
     Verification(&'a crate::execution::verification::VerificationCompletion),
+    DriverGate(&'a std::sync::Arc<DriverPreparationAdvance>),
     Activation(
         &'a crate::execution::verification::ManagedVerificationActivation,
         Option<&'a std::sync::Arc<DriverPreparationAdvance>>,
@@ -616,6 +617,21 @@ impl Store {
             Some(WorkflowCompletion::Activation(activation, Some(plan))),
         )
     }
+    pub(crate) fn apply_driven_initial_gate(
+        &mut self,
+        plan: &std::sync::Arc<DriverPreparationAdvance>,
+    ) -> Result<()> {
+        let (mut task, mut record, context, pv, gv) = plan.gate_write()?;
+        self.put_workflow_transition_inner(
+            &mut task,
+            &mut record,
+            context,
+            pv,
+            gv,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::DriverGate(plan)),
+        )
+    }
     // Exact owner CAS and optional completion proof are independent inputs.
     #[allow(clippy::too_many_arguments)]
     fn put_workflow_transition_inner(
@@ -633,7 +649,8 @@ impl Store {
             "workflow requires exact owning Task scope"
         );
         let driver_input = match &publication {
-            Some(WorkflowCompletion::Activation(_, Some(plan))) => Some(*plan),
+            Some(WorkflowCompletion::Activation(_, Some(plan)))
+            | Some(WorkflowCompletion::DriverGate(plan)) => Some(*plan),
             _ => None,
         };
         let _applying = driver_input.map(|p| p.begin_input()).transpose()?;
@@ -641,12 +658,7 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         if let Some(plan) = driver_input {
-            plan.validate_input_before_tx(
-                &tx,
-                task,
-                workflow,
-                context.context("initial Driver Context missing")?,
-            )?;
+            plan.validate_input_before_tx(&tx, task, workflow, context)?;
         }
         let conservative = matches!(
             access,
@@ -797,7 +809,12 @@ impl Store {
                 "terminal operation may only change Task decision"
             );
         }
-        crate::workflow::validate_transition(task, workflow, previous_workflow.as_ref())?;
+        let observed_before = driver_input.and_then(|p| p.input_observed_before());
+        crate::workflow::validate_transition(
+            task,
+            workflow,
+            observed_before.or(previous_workflow.as_ref()),
+        )?;
         let typed_workflow: crate::workflow::WorkflowSnapshot =
             serde_json::from_value(workflow.data.clone())?;
         if execution::verification::requires_verification(&tx, workflow.id)? {
@@ -988,7 +1005,9 @@ impl Store {
                     && activation.scope() == &workflow.scope,
                 "managed verification contract requires exact initial activation"
             );
-        } else if let Some(completion) = &publication {
+        } else if let Some(completion) = &publication
+            && !matches!(completion, WorkflowCompletion::DriverGate(_))
+        {
             let previous = previous_workflow
                 .as_ref()
                 .context("completion requires a reserved Workflow")?;
@@ -1002,7 +1021,9 @@ impl Store {
                     previous,
                     context,
                 )?,
-                WorkflowCompletion::Activation(_, _) => unreachable!("activation handled above"),
+                WorkflowCompletion::Activation(_, _) | WorkflowCompletion::DriverGate(_) => {
+                    unreachable!("activation/Driver gate handled above")
+                }
                 WorkflowCompletion::Verification(completion) => {
                     execution::verification::accept_tx(
                         &tx, completion, task, workflow, previous, context,

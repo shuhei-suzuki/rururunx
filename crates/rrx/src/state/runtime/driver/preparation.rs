@@ -5,6 +5,9 @@ use crate::execution::{
     CleanupOutcome, Disposition, ExecutionUnit, UnitKind, UnitState, WORKFLOW_SOURCE_BOOTSTRAP,
 };
 use crate::state::managed_binding::ExactRowMutation;
+#[path = "gates.rs"]
+mod gates;
+pub(crate) use gates::InitialGateEdge;
 
 pub(crate) struct DriverPreparationAdvance {
     ticket: DriverReadTicket,
@@ -20,6 +23,8 @@ pub(crate) struct DriverPreparationAdvance {
     reconcile_ready: std::sync::atomic::AtomicBool,
 }
 struct InitialInput {
+    gate: Option<gates::GateInput>,
+    fresh_context: bool,
     frame: crate::execution::workflow_source::InitialInputFrame,
     record_before: Record,
     record: Record,
@@ -127,6 +132,8 @@ impl DriverReadTicket {
             initial: false,
             governing,
             input: Some(InitialInput {
+                gate: None,
+                fresh_context: true,
                 frame,
                 record_before: record.clone(),
                 record: next_record,
@@ -317,7 +324,7 @@ impl DriverPreparationAdvance {
         tx: &Transaction<'_>,
         task: &Task,
         record: &Record,
-        context: &ContextVersion,
+        context: Option<&ContextVersion>,
     ) -> Result<()> {
         let input = self.input.as_ref().context("not an initial input plan")?;
         input.frame.validate(&self.ticket.owner)?;
@@ -328,12 +335,28 @@ impl DriverPreparationAdvance {
         ensure!(
             serde_json::to_value(task)? == serde_json::to_value(&projected)?
                 && serde_json::to_value(record)? == serde_json::to_value(&input.record_before)?
-                && serde_json::to_string(context)? == input.context_body,
+                && context.map(serde_json::to_string).transpose()?
+                    == input.fresh_context.then(|| input.context_body.clone()),
             "initial input write differs from retained plan"
         );
+        if let Some(gate) = &input.gate {
+            gate.validate_before_tx(tx)?;
+        }
         let outstanding:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE task_id=?1 AND state IN ('pending','unknown'))",[task.id.to_string()],|r|r.get(0))?;
         ensure!(!outstanding, "initial input has unresolved helper effects");
         Ok(())
+    }
+    pub(in crate::state) fn input_observed_before(&self) -> Option<&Record> {
+        self.input
+            .as_ref()
+            .and_then(|i| i.gate.as_ref())
+            .and_then(|g| g.observed_before.as_ref())
+    }
+    pub(in crate::state) fn input_observation(&self) -> Option<&crate::workflow::GateObservation> {
+        self.input
+            .as_ref()
+            .and_then(|i| i.gate.as_ref())
+            .and_then(|g| g.observation.as_ref())
     }
     pub(in crate::state) fn input_timestamp(&self) -> i64 {
         self.task.updated_at
@@ -368,6 +391,14 @@ impl DriverPreparationAdvance {
             "initial Driver revoked before publication"
         );
         self.write_driver_tx(tx, permits)?;
+        if let Some(observation) = self.input_observation() {
+            append_event(
+                tx,
+                &task.scope(),
+                "workflow.gate_observed",
+                json!({"workflow":record.id,"attempt":self.input.as_ref().and_then(|i|i.gate.as_ref()).map(|g|g.index),"observation":observation}),
+            )?;
+        }
         append_event(
             tx,
             &task.scope(),
@@ -441,13 +472,24 @@ impl DriverPreparationAdvance {
     fn validate_result(&self, tx: &Transaction<'_>) -> Result<()> {
         if let Some(input) = &self.input {
             input.frame.validate(&self.ticket.owner)?;
-            self.ticket.scope.validate_input_projection(
-                tx,
-                &self.task,
-                &self.task_body,
-                (&input.record, &input.record_body),
-                (&input.context, &input.context_body),
-            )?;
+            if input.gate.is_some() {
+                self.ticket.scope.validate_gate_projection(
+                    tx,
+                    &self.task,
+                    &self.task_body,
+                    (&input.record, &input.record_body),
+                    (&input.context, &input.context_body),
+                    input.fresh_context,
+                )?;
+            } else {
+                self.ticket.scope.validate_input_projection(
+                    tx,
+                    &self.task,
+                    &self.task_body,
+                    (&input.record, &input.record_body),
+                    (&input.context, &input.context_body),
+                )?;
+            }
         } else {
             self.ticket
                 .scope

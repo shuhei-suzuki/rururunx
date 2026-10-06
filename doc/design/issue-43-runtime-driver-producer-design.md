@@ -332,3 +332,35 @@ same-Unit adoption and complete marker/native composition remain prerequisites.
 projection test images qualify nongrant exact-read checks only, never a Driver,
 prepared input, native lifecycle or end-to-end positive dispatcher. No current
 code milestone alone qualifies Runtime/Binding43/Phase2/native/MVP readiness.
+
+### Initial Evidence continuation source increment
+
+The real worker next calls `WorkflowEngine::step_driven_initial`, without falling
+back to ordinary `step`/`persist`. The unchanged actual worker association mints
+one coherent ticket per authorized edge. It carries the same original full
+P/G/T/Workflow/Context/locks, same bootstrap Unit and actual Sources slot/frame.
+Only Issue/Worktree before any native history are supported: Running reservation
+with its next Context, Evaluating claim with unchanged Context, then an atomic
+actual result observation plus Passed closure/next Context or Waiting. Each edge
+is retained as the SAME `DriverPreparationAdvance` in the actual Driver slot
+before SQL; it uses existing exact-post publication or proven original rollback
+on error, cancellation, uncertain commit or cache failure. No generic authority
+write is accepted as a new input or current Driver binding.
+
+The private `InitialGateCompletion` is constructed only by the concrete
+ManagedWorkflowGates after its existing claim, registered namespace/source and
+receipt checks. A public GateOutcome, receipt identifier or JSON cannot create
+it. Its receipt's complete scoped/versioned bytes remain part of the closure CAS.
+Passed observation and closure are fused in one Immediate transaction; the exact
+sealed virtual observer image is supplied only to the existing transition
+validator, and ordinary observer/writer semantics are unchanged. Driver/Task/W
+post images are precomputed outside Store and preserve original governing and
+Unit pins. No native work/result or review certificate is inferred from an
+initial preparation gate. Interrupted Evaluating and Waiting do not replay a
+helper or reinterpret a receipt as the lost private completion.
+
+Native first-Executor reservation/adoption and later evidence/result/lifecycle
+continuations remain unavailable, as do genuine initial Driver issuer/startup
+and full producer-backed positive qualification. The existing composition issuer
+and native preflight remain closed. Nongrant complete Context projection controls
+use rollback-only factual images; they do not seed Driver/Unit/input authority.
