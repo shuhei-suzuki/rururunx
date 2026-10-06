@@ -59,6 +59,9 @@ pub(crate) struct InitialInputFrame {
     unit: ExecutionUnit,
 }
 impl InitialInputFrame {
+    pub(crate) fn unit(&self) -> &ExecutionUnit {
+        &self.unit
+    }
     pub(crate) fn governing(&self) -> &str {
         &self.frame.governing_digest
     }

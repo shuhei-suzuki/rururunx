@@ -54,6 +54,10 @@ impl DriverReadTicket {
             "Driver initial input is not pristine"
         );
         self.preparation_matches(&unit)?;
+        ensure!(
+            serde_json::to_value(frame.unit())? == serde_json::to_value(&unit)?,
+            "initial frame/Driver selected Unit differs"
+        );
         frame.validate(&self.owner)?;
         let (project, goal) = self.scope.governing_owners();
         let governing = crate::state::execution::governing_digest(project, goal)?;
