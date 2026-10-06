@@ -176,10 +176,10 @@ NativeCompatDeclaration <- NativeAdapter (installed) and <- compat qualification
    | Park | Initial: `(preparing,2,NULL)`, Unit U₀ | Quota: `(parked,3,3)`, U₀+1 |
    | Re-park | Quota parked `(parked,3,3)`, Uₖ | SAME lineage when the reason is unchanged; otherwise Quota `(parked,3,3)`, Uₖ+1 |
    | Due-claim admit | Quota parked | Quota: `(preparing,4,NULL)`, Uₖ+1 |
-   | Closure | latest lineage, images only (§7.4) | none (closed) |
+   | Closure | latest lineage readiness image only; the Unit is compared as its latest factual image, not a lineage image (§7.4) | none (closed) |
 
    A due-claim admit always proceeds to S7, so no Park ever starts from a Quota `preparing` lineage.
-4. **Not authority.** Rows, IDs and equal-looking images never create or advance a lineage. A lineage only fixes the preimages that the SAME actor's next write must match.
+4. **Not authority.** Rows, IDs and equal-looking images never create or advance a lineage. A lineage only fixes the preimages that the SAME actor's next write must match. The nongrant closure's factual Unit read (§7.4) is no exception: it is compared, never turned into a lineage.
 
 ## 4. Compatibility declaration (P)
 
@@ -330,6 +330,8 @@ Every private quota Immediate runs under a NEW guard from the SAME launch admiss
 - the SAME no-dispatch value and its negative conjuncts;
 - planned `at` within 5 s of now; otherwise replan.
 
+The Closure row uses the §7.4 nongrant conjunct instead of the list above.
+
 Images below are complete columns, with full body bytes where present. Every write is `WHERE` all columns `IS` the preimage, and the rowcount must be exactly 1. An INSERT requires exact absence.
 
 The pool default image is D = `(provider, 'unknown', next_probe_at 0, probe_unit NULL, backoff 60000, last_role 'reviewer')`, which equals the DDL defaults (`execution.sql:117–123`).
@@ -340,7 +342,7 @@ The pool default image is D = `(provider, 'unknown', next_probe_at 0, probe_unit
 | **Park** | `(preparing,2,NULL)` → `(parked,3,3)`; body keys unchanged except state/version/parking_version | INSERT `(unit, provider, 'unknown', reason, due, fairness_sequence=at, resume_state='preparing')` | none, compared | cold: INSERT D (postimage D); existing: complete image compared, unchanged | `wait_reason None→Some(reason)`, `version U₀→U₀+1`, `updated_at`; `state` stays `Preparing` |
 | **Re-park** (due, still waiting) | unchanged `(parked,3,3)`, compared | UPDATE `reason, next_due` only (fairness kept) | compared | exists (waiter FK); complete image compared | `wait_reason` updated only if the reason changes (+1) |
 | **Due-claim admit** | `(parked,3,3)` → `(preparing,4,NULL)` | DELETE exact image | as Admit-first | exists; as Admit-first for an existing pool | `wait_reason Some→None`, +1 |
-| **Closure** (§7.4) | latest lineage `(parked,3,3)` or `(preparing,2\|4,NULL)` → `(closed, V+1, start_ended=1, parking_version NULL)` | DELETE exact image, or accept absence only when the actor is revoked | `active 1→0` on an exact own image, or accept absent/inactive | own probe (`probe_unit` = own unit): `probe_unit→NULL`, `next_probe_at→MAX(pre.next_probe_at, at+pre.backoff)`, `backoff` and `last_role` unchanged (as `release_quota_tx`, `quotas.rs:515–521`). Foreign or NULL probe: complete image compared, unchanged. Absent pool: absence compared | untouched (Unit retirement belongs to the trusted cancel/fence owner) |
+| **Closure** (§7.4) | latest lineage `(parked,3,3)` or `(preparing,2\|4,NULL)` → `(closed, V+1, start_ended=1, parking_version NULL)` | DELETE exact image, or accept absence only when the actor is revoked | `active 1→0` on an exact own image, or accept absent/inactive | own probe (`probe_unit` = own unit): `probe_unit→NULL`, `next_probe_at→MAX(pre.next_probe_at, at+pre.backoff)`, `backoff` and `last_role` unchanged (as `release_quota_tx`, `quotas.rs:515–521`). Foreign or NULL probe: complete image compared, unchanged. Absent pool: absence compared | untouched; its latest complete factual image is compared by exact CAS (§7.4) and may be the `fence_task_tx` postimage (Unit retirement belongs to the trusted cancel/fence owner) |
 
 1. **Unit state stays `Preparing`.** Because of this, the transport HOW §5.3 `registration_unit` predicate is unchanged. Prepared's Unit image is exactly the `NativeQuotaAdmitted` lineage Unit: U₀ after Admit-first, or the due-claim postimage. It is never recomputed.
 2. **Readiness lineage.** P is 2 when never parked, or 4 after one Park to `(parked,3,3)`, any number of Re-parks at version 3, and one due-claim admit (§3.4). `parking_version` is non-NULL only in `parked`, where it equals that row's version. This is the actual representation of the approved "readiness parkingVersion". The existing `binding_admission_not_parked` trigger keeps consumption impossible while parked.
@@ -385,7 +387,7 @@ The pool default image is D = `(provider, 'unknown', next_probe_at 0, probe_unit
 | Private route (this HOW) | exact-image writes above, including a cold pool's D INSERT and the Closure own-probe release | — |
 | Legacy admission (other Tasks) | own unit only; may create the pool; changes pool/lease inventory | conflict → replan |
 | `observe_quota` (non-probe) | may create the pool; writes windows | conflict → replan |
-| `fence_task_tx` / trusted cancel | deletes Task waiters, releases leases (including an own probe, through `release_quota_tx`) | revoked actor → closure accepts absence; open actor → Held |
+| `fence_task_tx` / trusted cancel | deletes Task waiters, releases leases (including an own probe, through `release_quota_tx`) | revoked actor → closure accepts absence and compares the fenced Unit's latest factual image (§7.4); open actor → Held |
 | `begin_execution_epoch` (new epoch) | deletes all waiters, deactivates leases, nulls every probe | in-memory custody is gone; readiness remains `parked`/`preparing` → Held visible (cross-epoch gate) |
 | Terminal (`terminal.rs:736–737`) | releases own lease and own probe | after registration only |
 | Old10 cached/new-open binary | generic validation refuses marked candidates → skip (fairness only); may self-admit legacy units | conflict → replan; never a grant |
@@ -427,13 +429,15 @@ The pool default image is D = `(provider, 'unknown', next_probe_at 0, probe_unit
 
 1. Root's trusted stop (G3 `request_stop`) revokes the actor and notifies the parked loop. The SAME task then plans the nongrant **preparation closure**, using the readonly HOW §10 same-owner/epoch snapshot rules. It omits the current/Driver/admission conjuncts, and it keeps:
    - `validate_preparation_original`;
-   - the latest known lineage's complete Unit image as an exact CAS (the Unit is not changed by closure);
+   - the latest complete factual Unit image as an exact CAS. The Unit is not changed by closure. The image is read and checked only by the existing `LatestUnitImage` port (`version/closure.rs:11–153`): `read` copies all 13 columns under the bounded snapshot of the SAME selected owner (pointer-equal `RuntimeOwner` and selected DB, as `plan_phase_version_closure`, `version/closure.rs:349–382`); `validate_original` requires the SAME allocation's original immutable identity (id, scope, kind, generation, `owner_epoch`, phase, provider, worktree, branch, base, profile, cookie, `created_at`; version ≥ original); `validate_tx` re-checks the complete image in the Immediate. It is not the lineage Unit image, because a trusted `fence_task_tx` (`state/execution.rs:323–356`) may already have retired the Unit (`Retired`, `Cancelled`, both open flags false, absent work → `Unknown`, version+1) before releasing the own lease, waiter and probe; a lineage Unit CAS would then always be stale. A foreign identity or another owner/epoch refuses with no write;
    - the latest known lineage's complete readiness image as the preimage;
    - the inventory == completion `after`;
    - the no-dispatch value (still valid: no registration).
+
+   This factual Unit read exists only for this nongrant closure. It never issues or advances a `NativeReadyLineage`, `NativeQuotaAdmitted`, `NativeParkedPhase`, Prepared, permission or grant. Admit-first, Park, Re-park, Due-claim admit, S7, `issue_prepared` and registration keep the known lineage Unit image and never read the Unit row to refresh it.
 2. It writes the Closure row of §6.3, including the own-probe release. It then releases the same-Unit gate once, outside all locks (preparation HOW §3.2 "trusted cancel/genuine closure"). It offers the SAME no-dispatch value to Root's typed non-success closure (RN-1). Until RN-1 exists, the operation stays Held after the factual closure.
 3. **Invariants.** Closure issues no permission, input or success. Unknown is never upgraded. Known work is not overwritten. A foreign probe is preserved.
-4. **Failures.** A Store error keeps the SAME plan. An uncertain closure commit runs `confirm_phase_quota` on the SAME closure plan (§6.3 item 4). At most one exact probe runs per wake, with 100 ms–5 s backoff.
+4. **Failures.** A Store error keeps the SAME plan. A definitive pre-write image mismatch, such as a fence committed after the closure snapshot, writes nothing and replans the closure from a fresh bounded snapshot within the §6.3 item 5 limits. An uncertain closure commit runs `confirm_phase_quota` on the SAME closure plan (§6.3 item 4). At most one exact probe runs per wake, with 100 ms–5 s backoff.
 5. The same closure applies after Admit but before S8. That path releases the own lease and, if held, the own probe.
 
 ### 7.5 Restart and lost owner
@@ -594,7 +598,7 @@ It replaces generic `validate_authority` at `native_phase.rs:360,373`, used for 
 | `qualified_profile` (C-3) | `native/version.rs:86–153` (sole consumers: version stage, receipt) | Codex newline accepted exactly; no new leniency for Claude |
 | `plan_native_command` (C-7) replacing transport `plan_transport_command` | transport HOW §3.1 signature, §4.3 `command_digest`, §6 vector, §7 steps 1 and 4d, `NativeTransportCustody.command` (now `Arc`, SAME as Prepared's) | One producer, run once before quota. S8 rechecks and digests the SAME command; no second command can exist |
 | `NativePreparationCustody` slots, `abandon` | `phase_jobs.rs:140,195–228,280–284`; `native/preparation.rs:9–69,104–184` | Added `command` and `lineage` slots; abandon also notifies the parked loop; teardown is not closure |
-| `NativePreparationPlan::validate_common` → `validate_common_with`; `NativeReadyLineage` | `begin_native_preparation`, `confirm_native_preparation`, `validate_version_ready` (`preparation.rs:24–27,137–180`); helper txs `state/.../version.rs:371,444,490` | Existing callers keep the original successor and the v2 image, so helper behavior is unchanged. Only quota, due-claim, closure, S7 and registration use the Quota lineage |
+| `NativePreparationPlan::validate_common` → `validate_common_with`; `NativeReadyLineage` | `begin_native_preparation`, `confirm_native_preparation`, `validate_version_ready` (`preparation.rs:24–27,137–180`); helper txs `state/.../version.rs:371,444,490` | Existing callers keep the original successor and the v2 image, so helper behavior is unchanged. Only quota, due-claim, closure (readiness image only), S7 and registration use the Quota lineage |
 | `CurrentWorkflowSuccessor::with_known_unit` (new) | `validate_current_tx` (`successor.rs:261–281`), `validate_preparation_origin_tx` (`phase_supervisor.rs:186–194`); other `plan_current_phase` callers (`binding.rs:320`, `native_phase.rs:243,1114`, `native.rs:242`) | Other callers neither see nor build it. No row read; identity predicate identical to `current_unit` |
 | `quotas.rs` → `quota_policy` + classification | all quota callers: `execution/quota.rs`, `native.rs:399–423` (legacy start), `workflow.rs` legacy waits, `terminal.rs:736–737`, `state/execution.rs:340–345,589–591,686`, `driver/executor.rs:212` | Legacy decisions identical except a marked head is no longer skipped; adoption gates are unaffected (they run before the marker) |
 | `quota_pools` cold INSERT and Closure own-probe release (private route) | FK dependants (`execution.sql:124–142`); legacy creators `quotas.rs:60,179` (`ON CONFLICT DO NOTHING` tolerates an existing row); probe readers `quotas.rs:302–305,386`; `release_quota_tx` callers (`fence_task_tx`, terminal); `begin_execution_epoch` | The inserted D equals the DDL defaults, so legacy readers see a normal pool. Closure probe semantics equal `release_quota_tx`; foreign probes are untouched |
@@ -604,7 +608,8 @@ It replaces generic `validate_authority` at `native_phase.rs:360,373`, used for 
 | Transport registration lineage (C-8) | transport HOW §§7 step 1, 9 (`validate_preparation_origin_tx`, prepared readiness P, prepared full Unit CAS) | Registration uses Prepared's lineage successor and images; no other transport check changes |
 | Root `InvocationObservation::Waiting` derivation | `phase_jobs.rs` observers, Engine waiters | Nongrant level only |
 | Finalization/artifact retention | `artifacts.rs:392–570`, `results.rs:101–135` | Unchanged here; PR-4 is a prerequisite for Reviewer |
-| Admission/cleanup | `fence_task_tx`, `begin_execution_epoch`, cleanup intents | Unchanged writers; the private consumer detects and Holds |
+| Admission/cleanup | `fence_task_tx`, `begin_execution_epoch`, cleanup intents | Unchanged writers; the private consumer detects and Holds, except that a revoked nongrant closure compares the fenced Unit's latest factual image (§7.4) |
+| `LatestUnitImage` (`version/closure.rs:11–153`), reused by the §7.4 closure | version-observation closure (`version/closure.rs:349–415`); transport HOW §8 `close_transport_observation` (same port) | Read-only reuse with unchanged predicates. Used only by nongrant closure; never by a grant, lineage, Prepared or registration path |
 | C-1 planner constants | `state/.../version.rs:280–311` | Protected-only; earlier honest refusal; legacy unaffected |
 | Master current behavior | `master/agent-execution.md` §5 last paragraph, `master/workflow-engine.md` | **No master edit in this HOW.** The source PR updates master only with implemented, verified current facts |
 
@@ -637,6 +642,7 @@ Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session bin
    - Cancel while parked: closure rows, gate released once, no Session.
    - Cancel after Admit: lease released.
    - `fence_task_tx` race gives absence accepted only when revoked.
+   - **Fenced revoked closure:** an actual Park, and separately an actual Admit-first, reaches its known lineage. Then the actual `fence_task_tx` commits and Root's stop revokes the actor, and only then the closure runs. It CASes the exact latest bounded same-owner factual Unit image (the fence postimage, not the lineage Unit), leaves the fenced Unit row byte-identical, writes readiness `closed` once, and releases the same-Unit gate exactly once. Waiter, lease and own probe are accepted as already released by the fence. An injected Unit row with a changed immutable identity or another `owner_epoch` refuses with no write, and the operation stays Held. If the real chain cannot reach Park or Admit, or the actual fence cannot run, this is a SETUP refusal, neither a pass nor a kill.
    - Epoch change while parked gives Held and no reconstruction.
    - Weak probes show no custody/actor/plan cycle.
    - Another Task proceeds.
@@ -659,6 +665,7 @@ Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session bin
    - C-1 constants restored;
    - cold start requiring an existing pool, or creating it with `ON CONFLICT DO NOTHING` instead of exact absence;
    - closure leaving the own probe set, or clearing a foreign probe;
+   - closure Unit CAS against the lineage Unit image instead of the latest factual image (killed by the fenced revoked closure control); `validate_original` skipped for the closure Unit; the closure's factual Unit image feeding a lineage, `NativeQuotaAdmitted` or Prepared;
    - Initial `validate_version_ready` or the original successor re-applied after Park;
    - a lineage built from current rows;
    - S8 rebuilding the command, or Prepared issued before `check_command`;
