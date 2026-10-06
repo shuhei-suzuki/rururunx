@@ -325,6 +325,15 @@ impl ScopePlan {
             self.workflow
                 .as_ref()
                 .is_some_and(|w| w.parsed().id == workflow.0.id)
+                && context.0.version
+                    == if fresh {
+                        old.parsed()
+                            .version
+                            .checked_add(1)
+                            .context("Context version overflow")?
+                    } else {
+                        old.parsed().version
+                    }
                 && task.context_version == context.0.version
                 && (fresh || context.1 == old.raw()),
             "gate Context successor differs"
