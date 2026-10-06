@@ -30,6 +30,17 @@ normal proof. The successful saved-terminal late predicate is not implemented
 by this increment, so terminal races remain held until its actual producer and
 consumer are connected.
 
+The original marker also borrows its SAME retained Driver advance for a private
+live-TX check in planning and the normal binder's Immediate. The selected actual
+database, worker-entered/live/not-revoked association, captured exact post Driver
+cache and SQL row, and captured Source post anchor or original absence must agree.
+This check never mints a ticket or refreshes original pins from current rows.
+Generic current Workflow/Unit currency remains a separate nongrant reader;
+retained launch membership alone does not establish Driver liveness. Actual
+Native preparation/registration/input consumers must conjunct this API with
+their own phase/pair/lifecycle checks. Their wiring and genuine controls remain
+unfinished, so this source does not enable availability or qualify those paths.
+
 The complete Workflow projection changes only the original active attempt's
 absent session_id and derived ManagedSessionRef, plus Record version/updated_at.
 Full typed roundtrip prevents unknown Workflow fields from being dropped. Before

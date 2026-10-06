@@ -57,6 +57,20 @@ impl OriginalMarker {
     pub(super) fn validate_open_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         self.plan.rows.validate_open_tx(tx)
     }
+    /// Recheck the SAME retained Driver/Source post anchor, never a row-derived
+    /// replacement ticket. Callers must also validate current phase facts and
+    /// their actual Native owner in this transaction before a new effect.
+    pub(crate) fn validate_driver_live_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        ensure!(
+            self.plan
+                .owner
+                .state_path()
+                .to_str()
+                .is_some_and(|path| tx.path() == Some(path)),
+            "original marker Driver validation uses another database"
+        );
+        self.plan.driver.validate_live_tx(tx)
+    }
     pub(crate) fn matches_original_plan(&self, plan: &Arc<MarkerPublicationPlan>) -> bool {
         Arc::ptr_eq(&self.plan, plan)
     }

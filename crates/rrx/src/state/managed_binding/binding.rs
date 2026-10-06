@@ -320,6 +320,7 @@ pub(crate) fn plan_managed_binding(
     normal_eligibility(&proof, &current)?;
     let (session, owner_raw, invocation) = snapshot(owner, |tx| {
         validate_current_tx(tx, proof.marker(), &current)?;
+        proof.marker().validate_driver_live_tx(tx)?;
         Ok((
             latest_session(tx, &proof)?,
             registered_owner(tx, &proof)?,
@@ -394,6 +395,7 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         validate_current_tx(&tx, plan.proof.marker(), &plan.current)?;
+        plan.proof.marker().validate_driver_live_tx(&tx)?;
         normal_eligibility(&plan.proof, &plan.current)?;
         validate_registered_owner_tx(&tx, &plan.proof, &plan.owner_raw)?;
         validate_invocation_tx(&tx, &plan.invocation)?;
