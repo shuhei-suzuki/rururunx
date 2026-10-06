@@ -1211,3 +1211,74 @@ async fn actual_workflow_future_abort_fences_command_unit_and_quarantines_unknow
         .cancel(task, "aborted future accounted".into())
         .unwrap();
 }
+
+#[tokio::test]
+async fn actual_completion_handoff_abort_preserves_known_success_without_tests_acceptance() {
+    let (f, engine, verifier, _) =
+        ready("codex", Some(profile("print('known command success')"))).await;
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (_resume_tx, resume_rx) = tokio::sync::oneshot::channel();
+    verifier.before_completion((entered_tx, resume_rx));
+    let engine = Arc::new(engine);
+    let running_engine = engine.clone();
+    let task = f.task.id;
+    let running = tokio::spawn(async move { running_engine.step(task, BTreeMap::new()).await });
+    let unit = tokio::time::timeout(Duration::from_secs(10), entered_rx)
+        .await
+        .unwrap()
+        .unwrap();
+    {
+        let store = f.owner.store.lock().unwrap();
+        let current = store.execution_unit(unit).unwrap();
+        assert_eq!(current.work, Some(execution::WorkOutcome::Success));
+        assert!(!current.native_effects_open && current.result_finalization_open);
+        assert!(store.verification_run(unit).unwrap().certifying);
+    }
+    running.abort();
+    assert!(running.await.unwrap_err().is_cancelled());
+    {
+        let store = f.owner.store.lock().unwrap();
+        let current = store.execution_unit(unit).unwrap();
+        assert_eq!(current.work, Some(execution::WorkOutcome::Success));
+        assert!(!current.native_effects_open && !current.result_finalization_open);
+        assert_eq!(current.state, execution::UnitState::Retired);
+        assert_eq!(current.cleanup, execution::CleanupOutcome::Unknown);
+        let run = store.verification_run(unit).unwrap();
+        assert!(run.historical && run.certifying && run.commands.len() == 4);
+        assert!(
+            store
+                .managed_effects(unit)
+                .unwrap()
+                .iter()
+                .filter(|e| e.kind == "verification_command")
+                .all(|e| e.state == execution::EffectState::Confirmed)
+        );
+        assert!(
+            store
+                .execution_leases(unit)
+                .unwrap()
+                .iter()
+                .all(|l| l.state == execution::LeaseState::Quarantined)
+        );
+        assert!(
+            store
+                .due_execution_cleanup(now_ms().saturating_add(1000), 32)
+                .unwrap()
+                .contains(&unit)
+        );
+    }
+    assert!(
+        !engine
+            .snapshot(task)
+            .unwrap()
+            .completed
+            .contains_key(&Phase::Tests)
+    );
+    assert_eq!(
+        verifier.inspect_stream(unit, 0, false, 4096).unwrap(),
+        b"known command success\n"
+    );
+    engine
+        .cancel(task, "handoff abort accounted".into())
+        .unwrap();
+}

@@ -208,9 +208,16 @@ pub struct ManagedVerifier {
     sources: Arc<workflow_source::ManagedWorkflowSources>,
     #[cfg(test)]
     before_commands: std::sync::Mutex<Option<VerificationHook>>,
+    #[cfg(test)]
+    before_completion: std::sync::Mutex<Option<VerificationCheckpoint>>,
 }
 #[cfg(test)]
 type VerificationHook = Box<dyn FnOnce(UnitId) + Send>;
+#[cfg(test)]
+type VerificationCheckpoint = (
+    tokio::sync::oneshot::Sender<UnitId>,
+    tokio::sync::oneshot::Receiver<()>,
+);
 impl ManagedVerifier {
     pub fn new(
         owner: Arc<RuntimeOwner>,
@@ -225,11 +232,17 @@ impl ManagedVerifier {
             sources,
             #[cfg(test)]
             before_commands: std::sync::Mutex::new(None),
+            #[cfg(test)]
+            before_completion: std::sync::Mutex::new(None),
         })
     }
     #[cfg(test)]
     pub(crate) fn before_commands(&self, hook: VerificationHook) {
         *self.before_commands.lock().unwrap() = Some(hook);
+    }
+    #[cfg(test)]
+    pub(crate) fn before_completion(&self, checkpoint: VerificationCheckpoint) {
+        *self.before_completion.lock().unwrap() = Some(checkpoint);
     }
     pub(crate) fn belongs_to(&self, owner: &Arc<RuntimeOwner>) -> bool {
         Arc::ptr_eq(&self.owner, owner)
@@ -459,15 +472,24 @@ impl ManagedVerifier {
                     session_id: None,
                     context_version: claim.context_version,
                 };
+                let completion = VerificationCompletion {
+                    grant,
+                    run,
+                    run_digest,
+                    _abandonment: abandonment,
+                };
+                #[cfg(test)]
+                {
+                    let checkpoint = self.before_completion.lock().unwrap().take();
+                    if let Some((entered, resume)) = checkpoint {
+                        let _ = entered.send(id);
+                        let _ = resume.await;
+                    }
+                }
                 Ok(ManagedVerificationResult {
                     successor,
                     outcome: GateOutcome::Passed(evidence),
-                    completion: Some(VerificationCompletion {
-                        grant,
-                        run,
-                        run_digest,
-                        _abandonment: abandonment,
-                    }),
+                    completion: Some(completion),
                 })
             }
             Err(error) => {
