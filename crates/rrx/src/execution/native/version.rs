@@ -9,6 +9,26 @@ use tokio::io::AsyncReadExt;
 const OUTPUT_BYTES: usize = 64 * 1024;
 const PROFILE_BYTES: usize = 64 * 1024;
 
+#[derive(Default)]
+struct BoundedOutput {
+    stdout: Vec<u8>,
+    bytes: usize,
+}
+impl BoundedOutput {
+    fn read_window(&self) -> usize {
+        (OUTPUT_BYTES.saturating_sub(self.bytes) + 1).min(4096)
+    }
+    fn observe(&mut self, bytes: &[u8], stdout: bool) -> bool {
+        self.bytes = self.bytes.saturating_add(bytes.len());
+        if stdout {
+            let available = OUTPUT_BYTES.saturating_sub(self.stdout.len());
+            self.stdout
+                .extend_from_slice(&bytes[..bytes.len().min(available)]);
+        }
+        self.bytes <= OUTPUT_BYTES
+    }
+}
+
 pub(super) struct NativeVersionHelperCustody {
     plan: Arc<NativeVersionHelperPlan>,
     raw: Mutex<process::RetainedRawProcess>,
@@ -32,6 +52,8 @@ pub(crate) struct NativeVersionObservation {
     exit: Option<std::process::ExitStatus>,
     complete: bool,
     group_hygiene: bool,
+    attempted: bool,
+    returned_child: bool,
 }
 impl NativeVersionObservation {
     pub(crate) fn matches_plan(&self, plan: &Arc<NativeVersionHelperPlan>) -> bool {
@@ -53,6 +75,17 @@ impl NativeVersionObservation {
     }
     pub(crate) fn safe_receipt(&self) -> BTreeMap<String, String> {
         BTreeMap::from([
+            (
+                "creation".into(),
+                if self.returned_child {
+                    "returned_child"
+                } else if self.attempted {
+                    "attempt_without_returned_handle"
+                } else {
+                    "not_attempted"
+                }
+                .into(),
+            ),
             (
                 "capture".into(),
                 if self.complete { "complete" } else { "unknown" }.into(),
@@ -100,6 +133,40 @@ impl NativeVersionHelperCustody {
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+    pub(super) fn reconcile(&self, owner: &Arc<RuntimeOwner>) -> Result<()> {
+        let (intent, observation, settlement) = {
+            let state = self.state();
+            (
+                state.intent.clone(),
+                state.observation.clone(),
+                state.settlement.clone(),
+            )
+        };
+        if let Some(settlement) = settlement {
+            return owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .record_phase_version_observation(&settlement);
+        }
+        if intent.is_none() {
+            let intent = owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .confirm_phase_version_intent(self.plan.clone())?;
+            self.state().intent.get_or_insert_with(|| Arc::new(intent));
+        }
+        let observation = observation.context("same owned version observation pending; held")?;
+        let planned =
+            crate::state::Store::plan_phase_version_settlement(self.plan.clone(), observation)?;
+        let settlement = self.state().settlement.get_or_insert(planned).clone();
+        owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .record_phase_version_observation(&settlement)
     }
 }
 /// Constructed before task spawn/first poll. A task dropped without polling
@@ -295,10 +362,11 @@ impl NativeSessions {
 
 async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
     let helper = &guard.custody;
-    let mut stdout = Vec::new();
-    let mut bytes = 0usize;
+    let mut output = BoundedOutput::default();
     let mut complete = false;
     let mut exit = None;
+    let returned_child = helper.raw().has_child();
+    let attempted = helper.state().attempted;
     let qualified = helper.raw().qualify().is_ok();
     let pipes = if qualified {
         helper.raw().pipes().ok()
@@ -326,23 +394,19 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
                 break;
             }
             let end = drain_deadline.unwrap_or(deadline).min(deadline);
-            let read_len = (OUTPUT_BYTES.saturating_sub(bytes) + 1).min(4096);
+            let read_len = output.read_window();
             tokio::select! {
                 read = out.read(&mut out_buffer[..read_len]), if out_open => {
                     match read {
                         Ok(0) => out_open = false,
                         Ok(n) => {
-                            bytes = bytes.saturating_add(n);
-                            let available = OUTPUT_BYTES.saturating_sub(stdout.len());
-                            stdout.extend_from_slice(&out_buffer[..n.min(available)]);
-                            if bytes > OUTPUT_BYTES { break; }
+                            if !output.observe(&out_buffer[..n],true) { break; }
                         }, Err(_) => break,
                     }
                 },
                 read = err.read(&mut err_buffer[..read_len]), if err_open => {
                     match read { Ok(0) => err_open = false, Ok(n) => {
-                        bytes = bytes.saturating_add(n);
-                        if bytes > OUTPUT_BYTES { break; }
+                        if !output.observe(&err_buffer[..n],false) { break; }
                     }, Err(_) => break }
                 },
                 _ = tokio::time::sleep_until(end) => break,
@@ -387,13 +451,39 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
     complete &= exit.is_some();
     let observation = Arc::new(NativeVersionObservation {
         plan: helper.plan.clone(),
-        stdout,
-        bytes,
+        stdout: output.stdout,
+        bytes: output.bytes,
         exit,
         complete,
         group_hygiene,
+        attempted,
+        returned_child,
     });
     // This original observation precedes optional parsing, hashing and SQL.
     helper.state().observation = Some(observation);
     drop(guard);
+}
+
+#[cfg(test)]
+mod output_tests {
+    use super::*;
+
+    #[test]
+    fn nongrant_output_combines_both_streams_with_one_overflow_sentinel() {
+        let mut output = BoundedOutput::default();
+        assert!(output.observe(&vec![b'o'; OUTPUT_BYTES / 2], true));
+        assert!(output.observe(&vec![b'e'; OUTPUT_BYTES / 2], false));
+        assert_eq!(output.bytes, OUTPUT_BYTES);
+        assert_eq!(output.stdout.len(), OUTPUT_BYTES / 2);
+        assert_eq!(output.read_window(), 1);
+        assert!(!output.observe(b"e", false));
+        assert_eq!(output.bytes, OUTPUT_BYTES + 1);
+        assert_eq!(output.stdout.len(), OUTPUT_BYTES / 2);
+        // Discarded stderr never replenishes combined quota.
+        assert!(!output.observe(b"o", true));
+        let mut out_only = BoundedOutput::default();
+        assert!(out_only.observe(&vec![b'o'; OUTPUT_BYTES], true));
+        assert!(!out_only.observe(b"o", true));
+        assert_eq!(out_only.stdout.len(), OUTPUT_BYTES);
+    }
 }

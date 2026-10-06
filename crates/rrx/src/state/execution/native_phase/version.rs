@@ -422,6 +422,31 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+    /// Post-error confirmation is factual only. This SAME retained plan may
+    /// acknowledge its exact postimage, never replay an intent or spawn.
+    pub(crate) fn confirm_phase_version_intent(
+        &mut self,
+        plan: Arc<NativeVersionHelperPlan>,
+    ) -> Result<NativeHelperIntentCommit> {
+        selected_database(&self.connection, plan.actor().launch())?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        {
+            let budget = InventoryBudget::new(&tx)?;
+            budget.finish((|| {
+                plan.validate_ready(&tx)?;
+                ensure!(
+                    Inventory::read(&tx, plan.actor().launch().allocation().facts().unit_id)?
+                        == plan.pending,
+                    "Native original intent confirmation postimage changed"
+                );
+                Ok(())
+            })())?;
+        }
+        tx.commit()?;
+        Ok(NativeHelperIntentCommit { original: plan })
+    }
     pub(crate) fn plan_phase_version_settlement(
         plan: Arc<NativeVersionHelperPlan>,
         observation: Arc<NativeVersionObservation>,

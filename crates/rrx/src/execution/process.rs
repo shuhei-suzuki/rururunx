@@ -254,3 +254,49 @@ pub(crate) async fn capture_scoped_pinned(
         }
     }
 }
+
+#[cfg(test)]
+mod retained_raw_tests {
+    use super::*;
+
+    async fn reaped(raw: &mut RetainedRawProcess) -> ExitStatus {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if let Some(status) = raw.reap().unwrap() {
+                    return status;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap()
+    }
+    #[tokio::test]
+    async fn nongrant_raw_adoption_precedes_qualification_and_direct_hygiene() {
+        let mut command = Command::new("/bin/sleep");
+        command.arg("30").process_group(0).kill_on_drop(true);
+        let mut custody = RetainedRawProcess::default();
+        let child = command.spawn().unwrap();
+        custody.adopt(child);
+        assert!(custody.has_child());
+        assert!(custody.pid.is_none());
+        assert!(custody.exited_unreaped().is_err());
+        assert!(!custody.hygiene());
+        assert!(!reaped(&mut custody).await.success());
+        assert!(custody.reaped);
+    }
+    #[tokio::test]
+    async fn nongrant_qualified_raw_leader_is_signalled_before_reaping() {
+        let mut command = Command::new("/bin/sleep");
+        command.arg("30").process_group(0).kill_on_drop(true);
+        let mut custody = RetainedRawProcess::default();
+        let child = command.spawn().unwrap();
+        custody.adopt(child);
+        custody.qualify().unwrap();
+        assert!(custody.pid.is_some());
+        assert!(!custody.reaped);
+        assert!(custody.hygiene());
+        assert!(!reaped(&mut custody).await.success());
+        assert!(custody.exited_unreaped().is_err());
+    }
+}

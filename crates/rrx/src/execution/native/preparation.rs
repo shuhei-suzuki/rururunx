@@ -148,6 +148,30 @@ impl NativePreparationCustody {
     /// Nongrant confirmation of the same saved postimage. A wake cannot
     /// replace the actor/plan, replay preparation, or reopen a revoked actor.
     pub(crate) async fn reconcile_known_commit(self: &Arc<Self>) -> Result<()> {
+        let helper = {
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+            state.helper.clone()
+        };
+        if let Some(helper) = helper {
+            let actor = {
+                let state = self
+                    .state
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+                state
+                    .actor
+                    .clone()
+                    .context("original helper actor unavailable")?
+            };
+            let sessions = actor
+                .sessions
+                .upgrade()
+                .context("actual preparation issuer ended")?;
+            return helper.reconcile(&sessions.owner);
+        }
         let plan = {
             let state = self
                 .state
