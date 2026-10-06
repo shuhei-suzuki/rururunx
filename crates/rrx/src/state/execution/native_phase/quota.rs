@@ -379,7 +379,7 @@ fn read_snapshot(
     let mut candidates = Vec::new();
     if legacy {
         for row in &waiters {
-            if text(row, 0)? == id {
+            if !ahead_of_own(row, unit, waiter.as_ref(), text(&effective, 5)?, at)? {
                 break;
             }
             if integer(row, 14)? != 0 {
@@ -487,6 +487,36 @@ fn project_blocked(leases: &[Row], project: &str, task: &str, max: usize) -> Res
     }
     Ok(!tasks.contains(task) && tasks.len() >= max)
 }
+fn ahead_of_own(
+    row: &Row,
+    unit: &ExecutionUnit,
+    own: Option<&Row>,
+    last_role: &str,
+    at: i64,
+) -> Result<bool> {
+    let own_sequence = own.map(|w| integer(w, 5)).transpose()?.unwrap_or(at);
+    let own_id = unit.id.to_string();
+    let own_order = fair_position(
+        key(unit.kind).as_str(),
+        own_sequence,
+        own_id.as_str(),
+        last_role,
+    );
+    let row_order = fair_position(text(row, 7)?, integer(row, 5)?, text(row, 0)?, last_role);
+    Ok(row_order < own_order)
+}
+fn fair_position<'a>(
+    role: &str,
+    sequence: i64,
+    id: &'a str,
+    last_role: &str,
+) -> (bool, i64, &'a str) {
+    (
+        (role == "executor") == (last_role == "executor"),
+        sequence,
+        id,
+    )
+}
 fn policy(
     snapshot: &Snapshot,
     lineage: &NativeReadyLineage,
@@ -586,6 +616,15 @@ fn policy(
     let mut first = None;
     for row in &snapshot.waiters {
         let candidate = text(row, 0)?;
+        if !ahead_of_own(
+            row,
+            unit,
+            snapshot.images.waiter.as_ref(),
+            text(&pool, 5)?,
+            at,
+        )? {
+            break;
+        }
         let max = caps.project.min(usize::try_from(integer(row, 16)?)?);
         ensure!(max > 0, "candidate project concurrency invalid");
         if project_blocked(&snapshot.leases, text(row, 8)?, text(row, 9)?, max)?
@@ -615,8 +654,7 @@ fn policy(
             break;
         }
     }
-    let self_head =
-        first == Some(id.as_str()) || (snapshot.images.waiter.is_none() && first.is_none());
+    let self_head = first.is_none();
     Ok(quota_policy::decide(
         &QuotaSnapshot {
             exhausted,
@@ -674,6 +712,8 @@ impl Store {
                 text(l, 0)? == id
                     && text(l, 1)? == provider
                     && text(l, 2)? == "unknown"
+                    && text(l, 3)? == key(unit.kind)
+                    && integer(l, 4)? == i64::try_from(unit.owner_epoch)?
                     && integer(l, 5)? == 0,
                 "own pre-Session lease is foreign or active"
             );
@@ -1042,13 +1082,24 @@ fn apply_images(tx: &Transaction<'_>, plan: &NativeQuotaPlan) -> Result<()> {
         plan.pre.readiness().update_tx(tx, &plan.readiness)?;
     }
     if let Some(body) = &plan.unit {
+        let before = plan.pre.unit();
         let n = tx.execute(
-            "UPDATE execution_units SET version=?1,body=?2 WHERE id=?3 AND version=?4 AND body=?5",
+            "UPDATE execution_units SET version=?1,body=?2 WHERE id=?3 AND project_id=?4 AND goal_id=?5 AND task_id=?6 AND kind=?7 AND generation=?8 AND owner_epoch=?9 AND version=?10 AND native_effects_open=?11 AND result_finalization_open=?12 AND worktree=?13 AND branch IS ?14 AND body=?15",
             params![
                 body.parsed().version,
                 body.raw(),
                 f.unit_id.to_string(),
-                plan.pre.unit().version,
+                before.scope.project_id.to_string(),
+                before.scope.goal_id.context("quota Unit Goal absent")?.to_string(),
+                before.scope.task_id.context("quota Unit Task absent")?.to_string(),
+                key(before.kind),
+                before.generation,
+                before.owner_epoch,
+                before.version,
+                before.native_effects_open,
+                before.result_finalization_open,
+                before.worktree.to_str().context("quota Unit path not UTF-8")?,
+                before.branch,
                 plan.pre.current().unit_raw()
             ],
         )?;
@@ -1066,6 +1117,20 @@ fn insert_cold_pool(tx: &Transaction<'_>, provider: &str) -> Result<Row> {
 #[cfg(test)]
 mod primitive_tests {
     use super::*;
+    #[test]
+    fn nongrant_native_virtual_waiter_uses_role_sequence_and_id_position() {
+        for last in ["executor", "reviewer"] {
+            let preferred = if last == "executor" {
+                "reviewer"
+            } else {
+                "executor"
+            };
+            assert!(fair_position(preferred, 999, "z", last) < fair_position(last, 1, "a", last));
+            assert!(fair_position(last, 9, "z", last) < fair_position(last, 10, "a", last));
+            assert!(fair_position(last, 10, "a", last) < fair_position(last, 10, "b", last));
+            assert!(fair_position(last, 11, "a", last) > fair_position(last, 10, "b", last));
+        }
+    }
     fn db() -> Connection {
         let c = Connection::open_in_memory().unwrap();
         c.execute_batch("PRAGMA foreign_keys=ON;CREATE TABLE quota_pools(provider TEXT,account_key TEXT,next_probe_at INTEGER,probe_unit TEXT,backoff INTEGER,last_role TEXT,PRIMARY KEY(provider,account_key));CREATE TABLE quota_waiters(unit_id TEXT PRIMARY KEY,provider TEXT,account_key TEXT,reason TEXT,next_due INTEGER,fairness_sequence INTEGER,resume_state TEXT,FOREIGN KEY(provider,account_key) REFERENCES quota_pools(provider,account_key));").unwrap();
@@ -1553,6 +1618,8 @@ impl Store {
                     && plan.readiness.validate_tx(&tx).is_ok()
                     && validate_post_unit(&tx, &plan).is_ok();
                 if post {
+                    plan.pre
+                        .validate_planned_post_tx(&tx, plan.unit.as_deref())?;
                     return Ok(true);
                 }
                 ensure!(

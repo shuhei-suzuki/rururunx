@@ -39,6 +39,7 @@ pub(crate) use publication::{
 };
 pub(crate) use snapshot::plan_scope;
 pub(in crate::state) use snapshot::{ScopePlan, read_scope, snapshot};
+pub(in crate::state) use successor::validate_planned_unit_tx;
 pub(crate) use successor::{CurrentWorkflowSuccessor, plan_current_phase, validate_current_tx};
 pub(crate) use unpublished::{UnpublishedMarkerProof, plan_unpublished_marker};
 

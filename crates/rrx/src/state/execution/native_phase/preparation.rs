@@ -27,6 +27,34 @@ pub(crate) enum NativeReadyLineage {
     },
 }
 impl NativeReadyLineage {
+    pub(super) fn validate_planned_post_tx(
+        &self,
+        tx: &Transaction<'_>,
+        unit: Option<&crate::state::managed_binding::Body<ExecutionUnit>>,
+    ) -> Result<()> {
+        let Some(unit) = unit else {
+            return self
+                .commit()
+                .original
+                .validate_common_with(tx, self.current());
+        };
+        let original = &self.commit().original;
+        original.actor.validate_original()?;
+        let launch = original.actor.launch();
+        selected_database(tx, launch)?;
+        launch.validate_preparation_original()?;
+        crate::state::managed_binding::validate_planned_unit_tx(
+            tx,
+            launch.marker(),
+            self.current(),
+            unit,
+        )?;
+        launch.marker().validate_driver_live_tx(tx)?;
+        original.validate_facts(tx, unit.parsed())?;
+        registration_unit(unit.parsed(), launch)?;
+        no_registration(tx, launch)?;
+        original.owner_before.validate_tx(tx)
+    }
     pub(super) fn validate_closure_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         let original = &self.commit().original;
         original.actor.validate_original()?;

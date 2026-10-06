@@ -304,6 +304,28 @@ pub(crate) fn validate_current_tx(
     marker: &OriginalMarker,
     current: &CurrentWorkflowSuccessor,
 ) -> Result<()> {
+    validate_current_unit_tx(tx, marker, current, current.unit(), current.unit_raw())
+}
+
+/// A planned exact quota postimage is factual until the confirming transaction
+/// commits. This port validates it without constructing a successor lineage.
+pub(in crate::state) fn validate_planned_unit_tx(
+    tx: &Transaction<'_>,
+    marker: &OriginalMarker,
+    current: &CurrentWorkflowSuccessor,
+    body: &Body<ExecutionUnit>,
+) -> Result<()> {
+    validate_unit_identity(body.parsed(), current.unit(), true)?;
+    validate_current_unit_tx(tx, marker, current, body.parsed(), body.raw())
+}
+
+fn validate_current_unit_tx(
+    tx: &Transaction<'_>,
+    marker: &OriginalMarker,
+    current: &CurrentWorkflowSuccessor,
+    unit: &ExecutionUnit,
+    raw: &str,
+) -> Result<()> {
     ensure!(
         marker.matches_original_plan(&current.original),
         "different original marker current plan"
@@ -317,7 +339,7 @@ pub(crate) fn validate_current_tx(
         Some((current.workflow.parsed(), current.workflow.raw())),
     )?;
     ensure!(
-        unit_index_matches(tx, current.unit.parsed(), current.unit.raw())?,
+        unit_index_matches(tx, unit, raw)?,
         "complete current allocated Unit changed before effect admission"
     );
     let sql = format!(
