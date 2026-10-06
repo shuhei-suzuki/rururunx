@@ -223,8 +223,10 @@ worker claim → composition → queue` once the future installation producer ex
 Composition therefore retains a Weak reference to the SAME phase supervisor.
 Admission upgrades that original Weak reference only for its synchronous exact
 Runtime/queue/owner validation. An ended supervisor refuses; no replacement queue,
-identifier lookup or new Runtime is accepted. Actual phase capacity/launch retains
-its supervisor separately through the existing genuine reservation. Driver
+identifier lookup or new Runtime is accepted. Before publication, Runtime strongly
+owns the supervisor; PendingPhaseCapacity retains its same slot and only a Weak
+supervisor origin, so an ended origin refuses. MarkerPublicationRetention and
+PhaseLaunchParts subsequently retain the genuine supervisor strongly. Driver
 composition neither owns nor releases it. The Runtime reference was already Weak.
 
 This representation prevents the composition's return edge. It does not issue
