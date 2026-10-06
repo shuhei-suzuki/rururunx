@@ -516,18 +516,19 @@ fn nongrant_current_writer_denies_protected_insert_and_session_projection() {
     let raw = current_writer::open(&db).unwrap();
     let changes = raw.total_changes();
     let schema: String = raw.query_row("SELECT group_concat(sql,';') FROM (SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name)",[],|row|row.get(0)).unwrap();
-    let denied = raw.execute("INSERT INTO workflow_native_contracts(workflow_id,project_id,goal_id,task_id,owner_epoch,origin,profile_digest,contract_state,version,body) VALUES('canary',?1,'goal','task',0,'nongrant',NULL,'legacy_held',1,'{}')",[project.id.to_string()]);
+    // Deliberately invalid corruption attempt, never a retained Driver fixture.
+    let denied = raw.execute("INSERT INTO task_drivers(task_id,goal_id,project_id,id,owner_epoch,version,state,body) VALUES('canary','canary',?1,'canary',0,0,'invalid','{}')",[project.id.to_string()]);
     assert!(denied.is_err(), "nongrant protected insertion was allowed");
     assert!(
         denied
             .unwrap_err()
             .to_string()
-            .contains("exact managed mutation permission required")
+            .contains("private retained Driver writer required")
     );
     assert_eq!(raw.total_changes(), changes);
     assert_eq!(
         raw.query_row(
-            "SELECT count(*) FROM workflow_native_contracts",
+            "SELECT count(*) FROM task_drivers",
             [],
             |row| row.get::<_, usize>(0)
         )
