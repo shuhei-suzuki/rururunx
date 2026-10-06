@@ -19,7 +19,10 @@ impl LatestUnitImage {
                 format!("CASE WHEN typeof({column})='integer' THEN {column} END")
             } else {
                 let limit = if index == 12 { UNIT_BYTES } else { 4096 };
-                format!("CASE WHEN typeof({column})='text' AND length(CAST({column} AS BLOB))<={limit} THEN {column} END")
+                // Only branch is nullable. An invalid non-NULL branch must
+                // not masquerade as its absent physical preimage.
+                let invalid = if index == 11 { " WHEN branch IS NULL THEN NULL ELSE X'00'" } else { "" };
+                format!("CASE WHEN typeof({column})='text' AND length(CAST({column} AS BLOB))<={limit} THEN {column}{invalid} END")
             }
         }).collect::<Vec<_>>().join(",");
         let mut statement = tx.prepare(&format!(
