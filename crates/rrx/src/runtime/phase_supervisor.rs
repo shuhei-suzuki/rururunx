@@ -20,6 +20,7 @@ const PAGE: usize = 64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PendingObservation {
     PendingMarker,
+    MarkerPublicationPending,
     HeldOwnerChanged,
     Stopping,
 }
@@ -27,6 +28,12 @@ struct Slot {
     allocation: Arc<NativeAllocation>,
     preparation: Mutex<Option<PreparationGuard>>,
     observation: Mutex<PendingObservation>,
+    publication: Mutex<PublicationState>,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PublicationState {
+    Unmarked,
+    Publishing,
 }
 #[derive(Default)]
 struct Queue {
@@ -40,6 +47,21 @@ struct Queue {
 pub(crate) struct PendingPhaseCapacity {
     supervisor: Weak<PhaseSupervisor>,
     slot: Arc<Slot>,
+}
+/// The same real slot retained across marker publication and commit uncertainty.
+/// This is NOT OriginalMarker or permission to register/start a Native process.
+/// Drop leaves the publishing slot charged; it cannot silently abandon it.
+pub(crate) struct MarkerPublicationRetention {
+    supervisor: Arc<PhaseSupervisor>,
+    capacity: PendingPhaseCapacity,
+}
+impl MarkerPublicationRetention {
+    pub(crate) fn allocation(&self) -> &NativeAllocation {
+        self.capacity.allocation()
+    }
+    pub(crate) fn is_retained(&self) -> bool {
+        self.supervisor.contains(&self.capacity.slot)
+    }
 }
 pub(crate) struct PendingReservationError {
     pub(crate) reason: &'static str,
@@ -71,8 +93,7 @@ impl PendingPhaseCapacity {
             .upgrade()
             .is_some_and(|s| s.contains(&self.slot))
     }
-    /// This first stage has no marked transition. Future marked operations must
-    /// use genuine typed closure, not expose this unmarked removal path to them.
+    /// Publication and marked operations cannot use this removal path.
     pub(crate) fn abandon_unmarked(self) -> Result<()> {
         let supervisor = self
             .supervisor
@@ -171,6 +192,7 @@ impl PhaseSupervisor {
             allocation: Arc::new(allocation),
             preparation: Mutex::new(Some(preparation)),
             observation: Mutex::new(PendingObservation::PendingMarker),
+            publication: Mutex::new(PublicationState::Unmarked),
         });
         if !queue.projects.contains_key(&project) {
             queue.rotation.push_back(project);
@@ -183,12 +205,100 @@ impl PhaseSupervisor {
         })
     }
     fn contains(&self, slot: &Arc<Slot>) -> bool {
-        !self.closed.load(Ordering::SeqCst)
-            && self.queue.lock().is_ok_and(|q| {
-                q.entries
-                    .get(&slot.allocation.facts().operation_id)
-                    .is_some_and(|current| Arc::ptr_eq(current, slot))
-            })
+        self.queue.lock().is_ok_and(|q| {
+            q.entries
+                .get(&slot.allocation.facts().operation_id)
+                .is_some_and(|current| Arc::ptr_eq(current, slot))
+        })
+    }
+    fn begin_publication(
+        self: &Arc<Self>,
+        capacity: PendingPhaseCapacity,
+    ) -> Result<MarkerPublicationRetention> {
+        ensure!(
+            capacity
+                .supervisor
+                .upgrade()
+                .is_some_and(|s| Arc::ptr_eq(&s, self)),
+            "foreign publication supervisor"
+        );
+        let q = self
+            .queue
+            .lock()
+            .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
+        ensure!(
+            !self.closed.load(Ordering::SeqCst)
+                && q.entries
+                    .get(&capacity.allocation().facts().operation_id)
+                    .is_some_and(|s| Arc::ptr_eq(s, &capacity.slot)),
+            "pending publication capacity unavailable"
+        );
+        // Queue -> publication -> preparation is the only mutation lock order.
+        // These locks never span SQL, hashing, guard Drop or an async boundary.
+        let mut state = capacity
+            .slot
+            .publication
+            .lock()
+            .map_err(|_| anyhow::anyhow!("publication state poisoned"))?;
+        ensure!(
+            *state == PublicationState::Unmarked,
+            "marker publication already begun"
+        );
+        let mut preparation = capacity
+            .slot
+            .preparation
+            .lock()
+            .map_err(|_| anyhow::anyhow!("pending preparation poisoned"))?;
+        preparation
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("pending preparation absent"))?
+            .hold_marker_publication();
+        *state = PublicationState::Publishing;
+        drop(preparation);
+        drop(state);
+        drop(q);
+        Ok(MarkerPublicationRetention {
+            supervisor: self.clone(),
+            capacity,
+        })
+    }
+    fn restore_unpublished(
+        &self,
+        slot: &Arc<Slot>,
+        proof: crate::state::managed_binding::UnpublishedMarkerProof,
+    ) -> Result<()> {
+        ensure!(
+            proof.matches(&self.owner, &slot.allocation),
+            "foreign rollback proof"
+        );
+        let q = self
+            .queue
+            .lock()
+            .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
+        ensure!(
+            q.entries
+                .get(&slot.allocation.facts().operation_id)
+                .is_some_and(|s| Arc::ptr_eq(s, slot)),
+            "publication slot no longer retained"
+        );
+        let mut state = slot
+            .publication
+            .lock()
+            .map_err(|_| anyhow::anyhow!("publication state poisoned"))?;
+        ensure!(
+            *state == PublicationState::Publishing,
+            "slot is not publishing"
+        );
+        let mut preparation = slot
+            .preparation
+            .lock()
+            .map_err(|_| anyhow::anyhow!("pending preparation poisoned"))?;
+        preparation
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("pending preparation absent"))?
+            .restore_unmarked_retirement();
+        *state = PublicationState::Unmarked;
+        Ok(())
     }
     fn remove_unmarked(&self, slot: &Arc<Slot>) -> Result<()> {
         let removed = {
@@ -202,6 +312,14 @@ impl PhaseSupervisor {
                     .get(&f.operation_id)
                     .is_some_and(|current| Arc::ptr_eq(current, slot)),
                 "pending slot no longer retained"
+            );
+            ensure!(
+                *slot
+                    .publication
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("publication state poisoned"))?
+                    == PublicationState::Unmarked,
+                "publishing operation needs proven rollback or genuine closure"
             );
             let removed = q.entries.remove(&f.operation_id).expect("checked slot");
             let ids = q
@@ -260,12 +378,24 @@ impl PhaseSupervisor {
         let page = self.fair_page()?;
         let pending = !page.is_empty();
         for slot in page {
+            let publishing = *slot
+                .publication
+                .lock()
+                .map_err(|_| anyhow::anyhow!("publication state poisoned"))?
+                == PublicationState::Publishing;
             let a = &slot.allocation;
-            let current = crate::execution::phase::allocation_snapshot(
-                &self.owner,
-                &a.unit_snapshot().authority(),
-            );
+            let current = (!publishing).then(|| {
+                crate::execution::phase::allocation_snapshot(
+                    &self.owner,
+                    &a.unit_snapshot().authority(),
+                )
+            });
             let valid = current
+                .unwrap_or_else(|| {
+                    Err(anyhow::anyhow!(
+                        "publication requires original marker currency"
+                    ))
+                })
                 .and_then(|u| {
                     Ok(serde_json::to_value(u)? == serde_json::to_value(a.unit_snapshot())?)
                 })
@@ -279,7 +409,9 @@ impl PhaseSupervisor {
             if self.closed.load(Ordering::SeqCst) {
                 *observation = PendingObservation::Stopping;
             } else if self.contains(&slot) {
-                *observation = if valid {
+                *observation = if publishing {
+                    PendingObservation::MarkerPublicationPending
+                } else if valid {
                     PendingObservation::PendingMarker
                 } else {
                     PendingObservation::HeldOwnerChanged
@@ -292,10 +424,29 @@ impl PhaseSupervisor {
         self.closed.store(true, Ordering::SeqCst);
         let slots = {
             let mut q = self.queue.lock().unwrap_or_else(|e| e.into_inner());
-            let entries = std::mem::take(&mut q.entries);
-            q.projects.clear();
-            q.rotation.clear();
-            entries.into_values().collect::<Vec<_>>()
+            // Poison is not evidence that publication never began. Retain such
+            // slots and their guards instead of treating them as unmarked.
+            let unmarked = q
+                .entries
+                .iter()
+                .filter_map(|(id, slot)| {
+                    slot.publication
+                        .lock()
+                        .ok()
+                        .and_then(|state| (*state == PublicationState::Unmarked).then_some(*id))
+                })
+                .collect::<BTreeSet<_>>();
+            let slots = unmarked
+                .iter()
+                .filter_map(|id| q.entries.remove(id))
+                .collect::<Vec<_>>();
+            for ids in q.projects.values_mut() {
+                ids.retain(|id| !unmarked.contains(id));
+            }
+            q.projects.retain(|_, ids| !ids.is_empty());
+            let remaining = q.projects.keys().copied().collect::<BTreeSet<_>>();
+            q.rotation.retain(|project| remaining.contains(project));
+            slots
         };
         for slot in slots {
             *slot.observation.lock().unwrap_or_else(|e| e.into_inner()) =
@@ -320,6 +471,48 @@ impl Drop for PhaseSupervisor {
 }
 
 impl super::Runtime {
+    /// Protect the genuine same-supervisor slot BEFORE beginning the marker TX.
+    /// This retention alone never authorizes an adapter or private Store writer.
+    pub(crate) async fn retain_marker_publication(
+        &self,
+        capacity: PendingPhaseCapacity,
+    ) -> Result<MarkerPublicationRetention> {
+        let _admission = self.control_admission.lock().await;
+        ensure!(
+            self.service_running(),
+            "Runtime is not accepting marker publication"
+        );
+        self.phases.begin_publication(capacity)
+    }
+    /// Roll back only after an actual current Immediate establishes no marker,
+    /// allocated Session or invocation. Any error keeps the same slot protected.
+    pub(crate) async fn rollback_marker_publication(
+        &self,
+        publication: MarkerPublicationRetention,
+    ) -> Result<PendingPhaseCapacity> {
+        let _admission = self.control_admission.lock().await;
+        ensure!(
+            Arc::ptr_eq(&publication.supervisor, &self.phases) && publication.is_retained(),
+            "foreign/unretained publication"
+        );
+        let plan = crate::state::managed_binding::plan_unpublished_marker(
+            &self.owner,
+            publication.allocation(),
+        )?;
+        let proof = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .confirm_unpublished_marker(plan)?;
+        // Store guard above is gone before queue changes or preparation Drop.
+        self.phases
+            .restore_unpublished(&publication.capacity.slot, proof)?;
+        if self.phases.closed.load(Ordering::SeqCst) {
+            self.phases.remove_unmarked(&publication.capacity.slot)?;
+        }
+        Ok(publication.capacity)
+    }
     /// Genuine retained queue admission only. Native-ready Driver/marker is absent.
     pub(crate) async fn reserve_pending_phase(
         &self,

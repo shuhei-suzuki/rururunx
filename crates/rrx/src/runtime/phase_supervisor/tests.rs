@@ -444,3 +444,85 @@ fn pending_fallback_is_finite_and_idle_resets_backoff() {
         Duration::from_millis(100)
     );
 }
+
+#[tokio::test]
+async fn actual_publication_drop_and_shutdown_preserve_unknown_slot_until_proven_rollback() {
+    let f = Fixture::new(4, 4).await;
+    let tasks = f.tasks("publication", 3).await;
+    let (capacity, unit) = f.reserve(&tasks[0], "claude").await;
+    let operation = capacity.allocation().facts().operation_id;
+    let publication = f.runtime.retain_marker_publication(capacity).await.unwrap();
+    assert!(publication.is_retained());
+    drop(publication);
+    f.runtime.phases.reconcile_pending().unwrap();
+    let page = f.runtime.phases.fair_page().unwrap();
+    let slot = page
+        .iter()
+        .find(|s| s.allocation.facts().operation_id == operation)
+        .unwrap();
+    assert_eq!(
+        *slot.observation.lock().unwrap(),
+        PendingObservation::MarkerPublicationPending
+    );
+    assert!(f.runtime.phases.remove_unmarked(slot).is_err());
+    f.unchanged(&unit);
+
+    let (rollback, rollback_unit) = f.reserve(&tasks[1], "codex").await;
+    let rollback_operation = rollback.allocation().facts().operation_id;
+    let rollback = f.runtime.retain_marker_publication(rollback).await.unwrap();
+    let (unmarked, unmarked_unit) = f.reserve(&tasks[2], "claude").await;
+    f.runtime.shutdown().await.unwrap();
+    assert!(!unmarked.is_retained());
+    assert!(rollback.is_retained());
+    assert!(f.runtime.phases.contains(slot));
+    f.unchanged(&unit);
+    f.unchanged(&rollback_unit);
+    assert!(
+        !f.owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_unit(unmarked_unit.id)
+            .unwrap()
+            .native_effects_open
+    );
+    let returned = f
+        .runtime
+        .rollback_marker_publication(rollback)
+        .await
+        .unwrap();
+    assert_eq!(
+        returned.allocation().facts().operation_id,
+        rollback_operation
+    );
+    assert!(
+        !returned.is_retained(),
+        "stopped supervisor re-admitted an unmarked slot"
+    );
+    assert!(
+        !f.owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_unit(rollback_unit.id)
+            .unwrap()
+            .native_effects_open
+    );
+    f.unchanged(&unit);
+    assert!(!f.counter.exists());
+    // Final Runtime/queue Drop is also not evidence of non-publication. Keep
+    // the actual owner and temporary DB alive while releasing every slot read.
+    let owner = f.owner.clone();
+    drop(page);
+    drop(f.runtime);
+    assert!(
+        owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_unit(unit.id)
+            .unwrap()
+            .native_effects_open,
+        "final supervisor Drop retired an uncertain publishing Unit"
+    );
+}

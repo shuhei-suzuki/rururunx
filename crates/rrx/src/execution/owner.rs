@@ -42,6 +42,7 @@ pub(crate) struct PreparationGuard {
     owner: Arc<RuntimeOwner>,
     unit: super::ExecutionUnit,
     armed: bool,
+    unmarked_retirement: bool,
 }
 impl PreparationGuard {
     /// Nongrant identity inspection for transfer to the actual Runtime queue.
@@ -60,7 +61,18 @@ impl PreparationGuard {
             owner,
             unit: unit.clone(),
             armed: true,
+            unmarked_retirement: true,
         }
+    }
+    /// Retention policy only: this does not authorize a helper, input or close.
+    /// A publishing slot may have committed even when its caller disappeared.
+    pub(crate) fn hold_marker_publication(&mut self) {
+        self.unmarked_retirement = false;
+    }
+    /// Only the actual supervisor's unpublished-marker transaction may restore
+    /// this policy. It must exclude a concurrent publisher and check the ledger.
+    pub(crate) fn restore_unmarked_retirement(&mut self) {
+        self.unmarked_retirement = true;
     }
     pub(crate) fn update(&mut self, unit: &super::ExecutionUnit) {
         self.unit = unit.clone();
@@ -71,7 +83,7 @@ impl PreparationGuard {
 }
 impl Drop for PreparationGuard {
     fn drop(&mut self) {
-        if !self.armed {
+        if !self.armed || !self.unmarked_retirement {
             return;
         }
         if let Ok(mut store) = self.owner.store.lock()
