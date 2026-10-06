@@ -1071,6 +1071,31 @@ fn native_authority(
     store.validate_execution(&unit.authority(), true, false)?;
     Ok(unit.authority())
 }
+fn actual_native_authority(
+    owner: &RuntimeOwner,
+    pinned: &ExecutionUnit,
+    session: SessionId,
+    phase: Option<&Arc<NativePhaseSession>>,
+) -> Result<ExecutionAuthority> {
+    let Some(phase) = phase else {
+        return native_authority(owner, pinned, session);
+    };
+    let facts = phase.allocation().facts();
+    ensure!(
+        facts.unit_id == pinned.id
+            && facts.scope == &pinned.scope
+            && facts.generation == pinned.generation
+            && facts.epoch == pinned.owner_epoch
+            && facts.session_id == session,
+        "actual Native actor semantic identity changed"
+    );
+    let plan = crate::state::Store::plan_native_phase_owner(owner, phase)?;
+    owner
+        .store
+        .lock()
+        .map_err(|_| anyhow::anyhow!("state poisoned"))?
+        .validate_phase_owner(plan)
+}
 // These non-Clone private-field values originate only at the actual Native actor.
 // DTO/GenericRecord/tool JSON cannot construct a dispatch or terminal producer.
 pub(crate) struct NativeSeed {
@@ -1246,8 +1271,78 @@ struct Core {
 }
 impl Core {
     fn authority(&self) -> Result<ExecutionAuthority> {
-        native_authority(&self.owner, &self.unit, self.session.id)
-            .context(NativeFailure::AuthorityUnavailable)
+        actual_native_authority(
+            &self.owner,
+            &self.unit,
+            self.session.id,
+            self.phase.as_ref().map(|phase| &phase.owner),
+        )
+        .context(NativeFailure::AuthorityUnavailable)
+    }
+    fn admit(
+        &self,
+        value: &Value,
+        authority: Option<&ExecutionAuthority>,
+        kind: &str,
+    ) -> Result<OperationId> {
+        let Some(phase) = &self.phase else {
+            return admit_native_frame(
+                &self.owner,
+                &self.unit,
+                self.session.id,
+                self.invocation,
+                authority,
+                kind,
+                value,
+            );
+        };
+        let plan = crate::state::Store::plan_native_phase_dispatch(
+            &self.owner,
+            &phase.owner,
+            authority,
+            kind,
+            value,
+        )?;
+        let commit = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .admit_phase_dispatch(plan)?;
+        let (operation, digest, expected_thread, input) = commit.into_parts();
+        if input {
+            // Only the successful actual same-TX input intent reaches this
+            // private producer; retain it BEFORE the first wire await.
+            phase.admitted(operation, digest, expected_thread)?;
+        }
+        Ok(operation)
+    }
+    fn acknowledge_input(&self, thread: &str, turn: Option<&str>) -> Result<()> {
+        if let Some(phase) = &self.phase {
+            let consumed = phase.consumed()?;
+            // This is an observed response from the owned protocol, not a DB
+            // lookup. Retain it across a later persistence error or lost return.
+            consumed.acknowledge(thread, turn)?;
+            let plan = crate::state::Store::plan_native_phase_input_ack(
+                &self.owner,
+                &phase.owner,
+                consumed,
+                thread,
+                turn,
+            )?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .acknowledge_phase_input(plan)
+        } else {
+            let authority = self.authority()?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .ack_native_invocation(&authority, self.invocation, thread, turn)
+        }
     }
     async fn send_effect(
         &mut self,
@@ -1255,15 +1350,7 @@ impl Core {
         authority: Option<&ExecutionAuthority>,
         kind: &str,
     ) -> Result<()> {
-        let operation = admit_native_frame(
-            &self.owner,
-            &self.unit,
-            self.session.id,
-            self.invocation,
-            authority,
-            kind,
-            value,
-        )?;
+        let operation = self.admit(value, authority, kind)?;
         // The durable intent is the dispatch winner. Later retirement cannot revoke
         // already issued bytes, and lost acknowledgements are never blindly replayed.
         let sent = self.wire.send(value).await;
@@ -1293,22 +1380,26 @@ impl Core {
         params: Value,
         kind: Option<&str>,
     ) -> Result<Value> {
+        // Every actual phase request crosses the same before-wire journal;
+        // metadata/setup has no input-consumption authority of its own.
+        let kind = if self.phase.is_some() {
+            Some(kind.unwrap_or("native_setup"))
+        } else {
+            kind
+        };
         let operation = kind
             .map(|kind| {
-                admit_native_frame(
-                    &self.owner,
-                    &self.unit,
-                    self.session.id,
-                    self.invocation,
+                self.admit(
+                    &json!({"id":self.wire.next,"method":method,"params":params}),
                     None,
                     kind,
-                    &json!({"id":self.wire.next,"method":method,"params":params}),
                 )
             })
             .transpose()?;
         let owner = self.owner.clone();
         let pinned = self.unit.clone();
         let session = self.session.id;
+        let phase = self.phase.as_ref().map(|phase| phase.owner.clone());
         let mut fence = tokio::time::interval(Duration::from_millis(100));
         let result = {
             let call = self.wire.call(method, params);
@@ -1320,7 +1411,7 @@ impl Core {
                         Some(Control::Approval {response,..})=>{let _=response.send(Err(anyhow::anyhow!("native turn not established")));},
                         _=>break Err(anyhow::anyhow!("native bootstrap cancelled"))
                     },
-                    _=fence.tick()=>{if let Err(error)=native_authority(&owner,&pinned,session){break Err(error);}}
+                    _=fence.tick()=>{if let Err(error)=actual_native_authority(&owner,&pinned,session,phase.as_ref()){break Err(error);}}
                 }
             }
         };
@@ -1383,16 +1474,7 @@ impl Core {
         self.unit = unit;
         self.record_version = version;
         if self.unit.provider == "claude" {
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .ack_native_invocation(
-                    &self.unit.authority(),
-                    self.invocation,
-                    &self.native,
-                    None,
-                )?;
+            self.acknowledge_input(&self.native, None)?;
         }
         self.update.send_modify(|s| {
             s.session = self.session.clone();
@@ -1658,9 +1740,12 @@ impl Core {
         let init=self.boot_call("initialize",json!({"clientInfo":{"name":"rururunx","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}}),None).await?;
         crate::codex::managed::initialization(&init)
             .context(NativeFailure::UnsupportedCapability)?;
-        self.wire
-            .send(&json!({"method":"initialized","params":{}}))
-            .await?;
+        let initialized = json!({"method":"initialized","params":{}});
+        if self.phase.is_some() {
+            self.send_effect(&initialized, None, "native_setup").await?;
+        } else {
+            self.wire.send(&initialized).await?;
+        }
         let account = self
             .boot_call("account/read", json!({"refreshToken":false}), None)
             .await?;
@@ -1727,12 +1812,7 @@ impl Core {
             .boot_call("turn/start", turn, Some("native_input"))
             .await?;
         let turn_id = claude_wire::bounded_id(&started["turn"]["id"])?;
-        let authority = self.authority()?;
-        self.owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .ack_native_invocation(&authority, self.invocation, &thread_id, Some(&turn_id))?;
+        self.acknowledge_input(&thread_id, Some(&turn_id))?;
         let mut approvals =
             crate::codex::managed::Approvals::new(&thread_id, &turn_id, &self.unit.worktree);
         let mut quota_ended = false;
@@ -1808,12 +1888,16 @@ impl Core {
         input: &PreparedInput,
     ) -> Result<(WorkOutcome, Disposition, Option<Value>)> {
         self.authority()?;
-        self.wire
-            .send(&claude_wire::control("initialize", "rrx-initialize"))
-            .await?;
+        let initialize = claude_wire::control("initialize", "rrx-initialize");
+        if self.phase.is_some() {
+            self.send_effect(&initialize, None, "native_setup").await?;
+        } else {
+            self.wire.send(&initialize).await?;
+        }
         let owner = self.owner.clone();
         let pinned = self.unit.clone();
         let session = self.session.id;
+        let phase = self.phase.as_ref().map(|phase| phase.owner.clone());
         let mut fence = tokio::time::interval(Duration::from_millis(100));
         tokio::time::timeout(Duration::from_secs(30),async {
             loop {tokio::select! {
@@ -1828,7 +1912,7 @@ impl Core {
                     Some(Control::Approval {response,..})=>{let _=response.send(Err(anyhow::anyhow!("native input not established")));},
                     _=>anyhow::bail!("native bootstrap cancelled")
                 },
-                _=fence.tick()=>{native_authority(&owner,&pinned,session)?;}
+                _=fence.tick()=>{actual_native_authority(&owner,&pinned,session,phase.as_ref())?;}
             }}Ok::<_,anyhow::Error>(())
         }).await??;
         self.authority()?;
