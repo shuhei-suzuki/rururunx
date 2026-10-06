@@ -20,6 +20,10 @@ use tokio::{
 };
 #[cfg(test)]
 mod phase_fence_tests;
+mod phase_protocol;
+pub(crate) use phase_protocol::{
+    ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession, OwnedPhaseSettlement,
+};
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -78,8 +82,9 @@ struct Entry {
     handle: ManagedSessionRef,
     status: watch::Receiver<NativeStatus>,
     control: mpsc::Sender<Control>,
-    terminal: Arc<Mutex<Option<NativeTerminal>>>,
+    terminal: Arc<Mutex<Option<Arc<NativeTerminal>>>>,
     update: watch::Sender<NativeStatus>,
+    phase: Option<Arc<phase_protocol::PhaseActor>>,
 }
 /// Conservative caps: aliases for a provider share the strictest configured cap.
 /// Counting leases in SQLite includes admission before a Session exists.
@@ -509,6 +514,7 @@ impl NativeSessions {
             controls: receiver,
             native,
             drain,
+            phase: None,
         };
         self.entries
             .lock()
@@ -521,6 +527,7 @@ impl NativeSessions {
                     control,
                     terminal: frozen_terminal,
                     update,
+                    phase: None,
                 },
             );
         preparation_guard.disarm();
@@ -549,6 +556,26 @@ impl NativeSessions {
     }
     pub fn subscribe(&self, handle: &ManagedSessionRef) -> Result<watch::Receiver<NativeStatus>> {
         Ok(self.entry(handle)?.0)
+    }
+    /// Read a proof issued by the retained actual Native actor. Session IDs and
+    /// persisted rows cannot manufacture this private owner observation.
+    pub(crate) fn phase_binding(&self, handle: &ManagedSessionRef) -> Result<NativePhaseBinding> {
+        let phase = {
+            let entries = self
+                .entries
+                .lock()
+                .map_err(|_| anyhow::anyhow!("native registry unavailable"))?;
+            let entry = entries
+                .get(&handle.session)
+                .context("native Session missing")?;
+            ensure!(entry.handle == *handle, "foreign native phase Session");
+            entry
+                .phase
+                .clone()
+                .context("actual native phase owner unavailable")?
+        };
+        // No registry lock spans projection copying or later Store validation.
+        phase.owner.binding_snapshot()
     }
     pub fn status(&self, handle: &ManagedSessionRef) -> Result<NativeStatus> {
         let mut status = self.entry(handle)?.0.borrow().clone();
@@ -1072,13 +1099,14 @@ struct Core {
     invocation: NativeInvocationId,
     collector: native_result::Collector,
     receipt_saved: bool,
-    frozen_terminal: Arc<Mutex<Option<NativeTerminal>>>,
+    frozen_terminal: Arc<Mutex<Option<Arc<NativeTerminal>>>>,
     wire: Lines,
     child: process::OwnedProcess,
     update: watch::Sender<NativeStatus>,
     controls: mpsc::Receiver<Control>,
     native: String,
     drain: tokio::task::JoinHandle<()>,
+    phase: Option<Arc<phase_protocol::PhaseActor>>,
 }
 impl Core {
     fn authority(&self) -> Result<ExecutionAuthority> {
@@ -1359,7 +1387,7 @@ impl Core {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
             ensure!(frozen.is_none(), "native terminal already captured");
-            *frozen = Some(proof);
+            *frozen = Some(Arc::new(proof));
             let (_, receipt, session) = frozen
                 .as_ref()
                 .expect("captured terminal")
@@ -1737,6 +1765,11 @@ impl Core {
 }
 impl Drop for Core {
     fn drop(&mut self) {
+        if let Some(phase) = &self.phase {
+            // Revoke normal/live delivery before every early Drop return. A
+            // previously retained known settlement has its separate late path.
+            phase.owner.revoke();
+        }
         self.drain.abort();
         let owner = self.owner.clone();
         let Ok(mut store) = owner.store.lock() else {
