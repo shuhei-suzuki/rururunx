@@ -1,0 +1,208 @@
+{
+  "round": 1,
+  "candidate": "1222472f4b153e1807fd22647f231925710bcace",
+  "risk": "STRICT",
+  "scope": "Managed Session binding supplemental requirements only",
+  "reviews_independent_and_closed_before_sharing": true,
+  "raw_reviews": {
+    "b": {
+      "review_kind": "Independent STRICT requirements review only",
+      "source_commit": "1222472f4b153e1807fd22647f231925710bcace",
+      "source_baseline": "5b6e8a8152926b643c6926b87e853de12b9319fc",
+      "legacy_contract_commit": "b191b466d5dea303585cfaf6968c6fb178be79cd",
+      "verdict": "DENY_REQUIREMENTS_PENDING_MEDIUM_CLOSURE",
+      "severity_counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 1,
+        "Low": 1
+      },
+      "findings": [
+        {
+          "id": "MB-B-M1",
+          "severity": "Medium",
+          "title": "Late binding still imports a success-settlement predicate without defining its cleanup-independent meaning for the new profile",
+          "locations": [
+            {
+              "path": "doc/requirements/issue-43-managed-binding-requirements.md",
+              "lines": "5-10,98-109,111-118"
+            }
+          ],
+          "evidence": [
+            "MB7 requires a sealed current allocated/input/success-settlement proof, and MB8 publishes readiness before/with settlement; the document explicitly connects the approved legacy contract but gives no explicit replacement definition for this predicate.",
+            "Legacy Requirements9 at b191b466 doc/requirements/issue-43-requirements.md:87-105 requires current Exited success plus verified profile-required settlement and explicitly rejects unknown cleanup. Legacy binding mechanics:619-644 similarly requires full cleanup on lost normal delivery.",
+            "MB6 says cleanup remains best effort and separate from work outcome, but does not state whether unknown/leftovers alone may prevent the factual late binder/readiness. The new managed execution requirements explicitly supersede conflicting ownership-only policy and prohibit cleanup-only whole-Task blockage (agent-execution-requirements.md:89-106,188-200).",
+            "Current actual Native terminal transaction classifies OwnedTerminal from current private Unit authority and persists known work/Session/receipt before cleanup (state/execution/native_results.rs:386-418,449-503; execution/native.rs:1326-1351). This is not legacy physical full settlement."
+          ],
+          "causal_rationale": "A legitimate current invocation completes successfully after its Engine start-result delivery is dropped, while a detached descendant remains or the process/Docker cleanup observation stays unknown. An implementation following the imported legacy success-settlement condition cannot bind the absent Session, so the real Driver remains held solely by best-effort cleanup. Calling the same DTO a settlement proof instead would silently assert unimplemented legacy ownership/settlement. The requirements must choose the actual new-profile predicate rather than leave these two readings.",
+          "requested_change": "Define the managed late proof explicitly: genuine private phase owner/prepared/admitted/actually consumed input and exact current known successful owned Native terminal under the original frame/instance, plus any genuine result/logical finalization evidence needed for factual binding. State exactly which old physical-settlement/death predicate is superseded for this profile, that cleanup unknown/leftovers alone neither creates authority nor blocks eligible factual binding/progress, and keep actual unknown work, ambiguous input/current proof, irreversible external-effect uncertainty and stale/recovery authority as holds. Do not weaken private #19 input proof or accept raw receipt IDs.",
+          "causal_controls_not_executed": [
+            "Actual owned registered invocation finishes after lost start delivery with genuine input/terminal proof and forced cleanup Unknown/Leftovers. Real active Driver late binder advances only Workflow/audit once; Task/Session/full locks remain unchanged and no second input is emitted.",
+            "Same fixture with Unknown work, HistoricalDraft, wrong input/marker/instance or ambiguous external operation still holds with zero binding writes. Neither a cleanup label nor a public NativeResultReceipt can mint the private proof."
+          ]
+        },
+        {
+          "id": "MB-B-L1",
+          "severity": "Low",
+          "title": "State the normal pre-input/pre-ACK private proof state explicitly",
+          "locations": [
+            {
+              "path": "doc/requirements/issue-43-managed-binding-requirements.md",
+              "lines": "59-68,70-78,134-136"
+            }
+          ],
+          "evidence": [
+            "MB3 refers jointly to preparation/admission/consumption pair for both normal and late paths; MB4 allows Starting lifecycle advancement but does not explicitly say actual consumed input or acknowledgment is not required for factual normal binding.",
+            "The imported approved mechanics at b191b466:180-187 explicitly permits private validated Starting preparation before ACK without delivery assertion.",
+            "Actual NativeSessions returns Launched after Core is spawned (execution/native.rs:406-425,513-518); its invocation initially has NotDispatched, no input effect/thread/turn (native.rs:905-940), and actual input reservation/ACK occur later. An ordinary legal normal return can precede those facts."
+          ],
+          "causal_rationale": "This is covered by the referenced legacy state contract, so it is a clarification rather than an independently demonstrated blocking contradiction. Making the distinction explicit avoids waiting for consumption just to record a legally allocated Starting Session, or fabricating consumed evidence to pass binding.",
+          "requested_change": "Explicitly allow normal factual binding from the genuine validated/prepared private owner/pair in its permitted pre-input/pre-ACK state, while requiring actual correlated consumed input/current successful terminal for the lost-return late path. Neither path grants input delivery, completion or success from binding.",
+          "causal_controls_not_executed": [
+            "Actual managed adapter returns before any native input/ACK; binder records its genuine Starting private owner with zero delivery/success claim. Late path using that same NotDispatched owner is refused."
+          ]
+        }
+      ],
+      "confirmed_coverage": [
+        "MB1 adapts the exact redundant managed execution companion while keeping Task/P/G/Session/Context/full locks unchanged and forbidding outcome/certificate claims.",
+        "MB2 rejects refreshed P/G/T/W/frame expectations and requires the genuine atomic post-marker original version/body/full-lock claim.",
+        "MB3 and Delivery correctly do not equate existing Unit/NativeInvocation DTOs with the genuine private #19 protocol and require actual producer/all protected writer integration.",
+        "MB4 correctly binds Reviewer to the separate genuinely prepared snapshot Unit, rather than the Executor Task path, and preserves latest durable lifecycle plus negative UUID ambiguity/non-indexable checks.",
+        "MB5 correctly requires sole private binding writer, exact projection, no generic mode bypass, duplicate same-operation no-write and reserved audits.",
+        "MB7/8 retain typed deferred same-operation reconciliation, independent retained supervision, durable fair lost-wake readiness, authentic recovery fencing and no passive observer binding/new input.",
+        "MB9 preserves protected bounded factual lineage, separate diagnostic/gate/closure contracts and reserved mandatory closure capacity.",
+        "Master note remains proposal/pending source composition and does not assert actual #19/binder/native Driver readiness."
+      ],
+      "limits": [
+        "Read-only fixed Git object review. No peer results, aggregate reports or parent test claims consulted.",
+        "Only two candidate documents were reviewed as requirements; this is not source/design approval, native readiness, issue closure, CI/native/MVP or Phase2 acceptance.",
+        "Existing private Native registration/receipt source was authored by this reviewer earlier; it is used here only to check feasibility/current API constraints, not independently approve own code.",
+        "No tests/build, actual Agent/auth/account/network/signals/config or state DB mutations executed.",
+        "All proposed causal controls are unexecuted. No candidate/shared source edits performed. Frozen ReviewRound63c remains untouched."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    "c": {
+      "reviewer": "C",
+      "risk": "STRICT",
+      "source_commit": "1222472f4b153e1807fd22647f231925710bcace",
+      "source_baseline": "5b6e8a8152926b643c6926b87e853de12b9319fc",
+      "verdict": "APPROVE_COMPONENT_REQUIREMENTS",
+      "findings": [],
+      "severity_counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "scope": [
+        "doc/requirements/issue-43-managed-binding-requirements.md",
+        "doc/design/master/workflow-engine.md"
+      ],
+      "review_mode": "independent immutable git-object static requirements review; no implementation edits, tests, native/auth qualification or peer findings read",
+      "files": {
+        "doc/requirements/issue-43-managed-binding-requirements.md": {
+          "bytes": 11950,
+          "sha256": "3ecea54c89ccbb42726c2afc7749757f7aa6938af70816278727d0f80df73ca0"
+        },
+        "doc/design/master/workflow-engine.md": {
+          "bytes": 20110,
+          "sha256": "4f3e497bfa3cab34528ef615d824d9f65d357a40a0d2385a77cede0fe2bbd9c0"
+        }
+      },
+      "rules": "AGENTS.md absent in fixed repository tree; global no-rtk instruction observed",
+      "legacy_contract": {
+        "commit": "b191b466d5dea303585cfaf6968c6fb178be79cd",
+        "requirements": "doc/requirements/issue-43-requirements.md Requirements9",
+        "design": "doc/design/issue-43-binding-mechanics.md Design10",
+        "legacy_equivalence_not_assumed": true
+      },
+      "basis": [
+        {
+          "id": "C-MB-B1",
+          "requirement_evidence": "requirements:14-28,38-46; workflow.rs:1602-1605; state/mod.rs:802",
+          "actual_guard_condition": "New requirements correctly identify ordinary binding refresh_owners+persist→put_task_tx, while prohibiting a factual binder from rewriting Task/P/G/Session/Context/full-lock body/version. They do not claim a demonstrated legacy Task-version failure for current Unit/generation/governing-content authority."
+        },
+        {
+          "id": "C-MB-B2",
+          "requirement_evidence": "requirements:48-68; state/execution/native_results.rs:230-254; state/execution.rs:356-443",
+          "actual_guard_condition": "Original immutable post-marker full frame, exact allocation/preparation/admission/consumption pair and registered owned invocation are mandatory on both normal and late routes. Existing Session/NativeInvocation transaction writes no Task but does not qualify the missing private #19 credential; public DTO/row/hash/protocol labels cannot substitute."
+        },
+        {
+          "id": "C-MB-B3",
+          "requirement_evidence": "requirements:70-90; workflow.rs:1498-1532",
+          "actual_guard_condition": "Returned registered actor/provider/role/scope identity is checked against current Session under transaction, with explicit reviewer retained-snapshot worktree adaptation and UUID ambiguity/nonindexable negative proof; legitimate startup PID/native-ref/lifecycle advances are observations, not grants. Sole existing-attempt Session-ID/execution writer and complete delta check preserve all other writes."
+        },
+        {
+          "id": "C-MB-B4",
+          "requirement_evidence": "requirements:92-118,134-141; legacy Design10 normal/deferred and readiness sections",
+          "actual_guard_condition": "Missing real composition refuses before fresh native phase effects. Definitive/stale binding never fails/retries/releases/regrants. Genuine retained invocation/Driver, durable readiness and finite fair timer recheck are required through Err/drop/timeout/cancel; passive polling and durable rows cannot mint restart/live owner."
+        },
+        {
+          "id": "C-MB-B5",
+          "requirement_evidence": "requirements:120-128,145-157; legacy Design10:768-1005",
+          "actual_guard_condition": "Reserved immutable factual successor ledger, finite imported per-class allowance and mandatory closure reserve, outside-lock complete body planning and bounded transaction surface are retained. All actual writers/consumers and joint schema/Driver/owner-input composition remain design/source gates; controlled and authenticated/native/CI acceptance are separated."
+        }
+      ],
+      "design_acceptance_obligations": [
+        {
+          "item": "Actual producer and writer inventory",
+          "reason": "New design must enumerate every real prepare_managed, poll, evaluate, native/session input and terminal, source-recovery pin, generic/raw/recovery writer before enabling implementation-owned readiness. Source5b native receipt producer and public Unit authority alone remain insufficient."
+        },
+        {
+          "item": "Additional current live wait writers",
+          "evidence": "workflow.rs:1825-1830 live WaitingQuota arm; prepare_managed NativeStart::Waiting arm:1613-1634",
+          "reason": "These current Task-writing wait arms supplement the legacy two diagnostic branches. Preserve MB2/MB9 original Task/frame/native currency; classify each as passive derived status or separately reviewed private/closure behavior, without calling ordinary bookkeeping a valid binding successor. The mandatory every-writer design inventory covers this; no new source claim is made here."
+        },
+        {
+          "item": "Source-recovery integration",
+          "evidence": "state/execution/source_recovery.rs::validate_task/before_write/after_write",
+          "reason": "Existing published-frame/current Workflow checks must compose with genuine factual successors without refreshing original private authority or adding forbidden binder writes. This is a required actual-consumer design/source obligation, not an existing integration."
+        },
+        {
+          "item": "Managed settlement versus legacy cleanup",
+          "reason": "MB6 best-effort cleanup and MB151-155 non-equivalence require explicit joint design mapping of normal/late/current success settlement and two-axis cleanup observations. Do not relabel current native receipts as legacy full-settlement proof or claim death from cleanup Unknown; preserve all required owner/input/identity/ledger predicates. Legacy-required recovery stays Unsupported unless its actual reviewed ports compose."
+        },
+        {
+          "item": "Ordered migration allocation",
+          "reason": "Verifier8 and Runtime9 must compose, Review10 is separately reserved; binding schema/index guards require Root-coordinated later allocation and all-old-writer fencing/migration controls."
+        }
+      ],
+      "limitations": [
+        "requirements approval only; no managed binder/allocation/input-pair implementation or source approval",
+        "no actual #19/#14 restore or authoritative Driver readiness qualification",
+        "no authenticated official CLI/hooks/four-Task or macOS/Ubuntu CI qualification",
+        "no ownership-sampling extension, outer sandbox or process-death guarantee",
+        "no whole Issue43/Phase2/MVP/public-main readiness approval",
+        "peer/parent Issue43 findings/reports were not read"
+      ],
+      "created_utc": "2026-10-06T01:33:41.172066+00:00"
+    }
+  },
+  "author_verification": [
+    {
+      "finding": "MB-B-M1",
+      "classification": "Verified requirements ambiguity",
+      "evidence": "Legacy late path refuses unknown cleanup/full settlement; latest managed requirements make cleanup best effort and separate from work. Actual Native terminal is retained before cleanup.",
+      "change": "Explicit managed late private consumed-input/current-owned-success logical predicate; physical full-cleanup refusal superseded only for this profile; actual unknown work/current proof/external effect uncertainty still holds."
+    },
+    {
+      "finding": "MB-B-L1",
+      "classification": "Verified useful clarification",
+      "evidence": "Actual NativeSessions returns Launched before Core input and ACK; NativeInvocation starts NotDispatched.",
+      "change": "Normal preparation/pre-input binding permitted with genuine private pair, while late success requires actual consumed input/current owned terminal."
+    }
+  ],
+  "additional_design_obligations": [
+    "Capture Runtime instance/epoch and Unit/execution generation in immutable marker frame",
+    "SourceRecovery7 and Driver9 recognize actual private successors without binder authority-row rewrite",
+    "Inventory managed live quota/status and pre-Session Waiting arms separately from old detail-only diagnostics"
+  ],
+  "status": "Corrected requirements pending independent re-review; no production or native acceptance",
+  "limits": [
+    "No binder/proof/migration source added",
+    "No capability/fixture/native authority relaxation",
+    "Root/main/GitHub/license unchanged"
+  ]
+}
