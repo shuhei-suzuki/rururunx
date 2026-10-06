@@ -1,8 +1,8 @@
 //! Command-only verification contracts, exact grants and qualified receipt acceptance.
 use super::*;
 use crate::execution::verification::{
-    AdmittedProfile, CollectedCommand, ManagedVerificationActivation, VerificationClaim,
-    VerificationCompletion, VerificationGrant, VerificationRun, hash, json_hash,
+    AdmittedProfile, CollectedCommand, CommandCwdObservation, ManagedVerificationActivation,
+    VerificationClaim, VerificationCompletion, VerificationGrant, VerificationRun, hash, json_hash,
 };
 use crate::workflow::{Actor, AttemptState, Phase, PhaseInvocation, WorkflowSnapshot};
 
@@ -704,7 +704,7 @@ impl Store {
         grant: &VerificationGrant,
         index: usize,
         operation: OperationId,
-        cwd: &std::path::Path,
+        cwd_observation: &CommandCwdObservation,
     ) -> Result<()> {
         let tx = self
             .connection
@@ -727,11 +727,10 @@ impl Store {
             prior.len() == index && prior.iter().all(|o| o.certifying()),
             "verification command cannot follow incomplete/non-certifying work"
         );
-        ensure!(
-            cwd == std::fs::canonicalize(unit.worktree.join(&command.cwd))?
-                && cwd.starts_with(&unit.worktree),
-            "verification command cwd differs from admitted input"
-        );
+        // Current Unit/whole claim and exact admitted command have been checked
+        // above. Canonical filesystem I/O happened in the sealed actual producer
+        // observation before acquiring SharedStore or this Immediate transaction.
+        let cwd = cwd_observation.bind(grant, command)?;
         let effect = ManagedEffect {
             id: operation,
             unit_id: unit.id,

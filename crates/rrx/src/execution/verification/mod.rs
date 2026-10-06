@@ -118,6 +118,54 @@ impl VerificationGrant {
         &self.profile_digest
     }
 }
+/// Actual producer observation, minted off Store/SQL locks after snapshot
+/// inspection. DTO paths never stand in for this canonical ancestry observation.
+pub(crate) struct CommandCwdObservation {
+    unit: UnitId,
+    profile_digest: String,
+    command: TestCommand,
+    input_root: std::path::PathBuf,
+    canonical: std::path::PathBuf,
+}
+impl CommandCwdObservation {
+    fn observe(
+        grant: &VerificationGrant,
+        command: &TestCommand,
+        input: &std::path::Path,
+    ) -> Result<Self> {
+        ensure!(
+            input == grant.unit.worktree,
+            "verification input differs from owned Unit"
+        );
+        let canonical = std::fs::canonicalize(input.join(&command.cwd))?;
+        ensure!(
+            canonical.starts_with(input) && canonical.is_dir(),
+            "verification cwd escapes readonly input"
+        );
+        Ok(Self {
+            unit: grant.unit.id,
+            profile_digest: grant.profile_digest.clone(),
+            command: command.clone(),
+            input_root: input.into(),
+            canonical,
+        })
+    }
+    pub(crate) fn bind(
+        &self,
+        grant: &VerificationGrant,
+        command: &TestCommand,
+    ) -> Result<&std::path::Path> {
+        ensure!(
+            self.unit == grant.unit.id
+                && self.profile_digest == grant.profile_digest
+                && self.command == *command
+                && self.input_root == grant.unit.worktree
+                && self.canonical.starts_with(&self.input_root),
+            "verification cwd observation differs from exact grant/plan"
+        );
+        Ok(&self.canonical)
+    }
+}
 /// Fields stay private: only real collection and snapshot inspection mint this.
 pub(crate) struct VerificationCompletion {
     grant: VerificationGrant,
@@ -433,11 +481,8 @@ impl ManagedVerifier {
         for (index, c) in admitted.proposal.commands.iter().enumerate() {
             snapshot.verify().await?;
             admitted.recheck(c)?;
-            let cwd = std::fs::canonicalize(snapshot.source().join(&c.cwd))?;
-            ensure!(
-                cwd.starts_with(snapshot.source()) && cwd.is_dir(),
-                "verification cwd escapes readonly input"
-            );
+            let cwd_observation = CommandCwdObservation::observe(grant, c, snapshot.source())?;
+            let cwd = cwd_observation.bind(grant, c)?;
             let operation = OperationId::new();
             let mut command = tokio::process::Command::new(&c.program);
             command
@@ -469,7 +514,7 @@ impl ManagedVerifier {
                     .store
                     .lock()
                     .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-                store.reserve_verification_command(grant, index, operation, &cwd)?;
+                store.reserve_verification_command(grant, index, operation, &cwd_observation)?;
                 match process::OwnedProcess::spawn(&mut command) {
                     Ok(child) => child,
                     Err(e) => {

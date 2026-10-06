@@ -63,17 +63,26 @@ async fn ready(
         .production_engine("pass")
         .with_verifier(verifier.clone())
         .unwrap();
-    let prepared = f.sources.prepare(f.task.id, provider).await.unwrap();
-    engine.initialize(f.task.id, None).await.unwrap();
-    early_phases(&engine, f.task.id, WorkflowClass::Quick).await;
+    let artifact = publish(&f, &engine, f.task.id, provider).await;
+    (f, engine, verifier, artifact)
+}
+async fn publish(
+    f: &Fixture,
+    engine: &WorkflowEngine,
+    task: TaskId,
+    provider: &str,
+) -> execution::ArtifactId {
+    let prepared = f.sources.prepare(task, provider).await.unwrap();
+    engine.initialize(task, None).await.unwrap();
+    early_phases(engine, task, WorkflowClass::Quick).await;
     assert!(matches!(
-        engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+        engine.step(task, BTreeMap::new()).await.unwrap(),
         StepResult::Started {
             phase: Phase::Implement,
             ..
         }
     ));
-    let snapshot = engine.snapshot(f.task.id).unwrap();
+    let snapshot = engine.snapshot(task).unwrap();
     let identity = snapshot.history[snapshot.active.unwrap()]
         .execution
         .clone()
@@ -112,24 +121,18 @@ async fn ready(
     .await
     .unwrap();
     assert!(matches!(
-        engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+        engine.step(task, BTreeMap::new()).await.unwrap(),
         StepResult::Completed {
             phase: Phase::Implement
         }
     ));
     assert!(matches!(
-        engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+        engine.step(task, BTreeMap::new()).await.unwrap(),
         StepResult::Completed {
             phase: Phase::Commit
         }
     ));
-    let artifact = engine
-        .snapshot(f.task.id)
-        .unwrap()
-        .sources
-        .artifact
-        .unwrap();
-    (f, engine, verifier, artifact)
+    engine.snapshot(task).unwrap().sources.artifact.unwrap()
 }
 
 #[tokio::test]
@@ -697,4 +700,182 @@ async fn actual_command_cancel_retains_observed_receipt_without_accepting_tests(
         .verify(&original)
         .await
         .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn four_actual_command_tasks_cancel_one_preserving_sibling_artifacts_and_receipts() {
+    let f = Fixture::new("codex", WorkflowClass::Quick).await;
+    let mut ids = vec![f.task.id];
+    for i in 1..4 {
+        let mut task = Task::new(
+            f.task.project_id,
+            f.task.goal_id,
+            format!("command sibling {i}"),
+            "native-alias".into(),
+        );
+        task.workflow = WorkflowClass::Quick;
+        task.acceptance_criteria = vec!["retain the committed answer".into()];
+        f.owner.store.lock().unwrap().put_task(&mut task).unwrap();
+        ids.push(task.id);
+    }
+    let verifier = Arc::new(ManagedVerifier::new(f.owner.clone(), f.sources.clone()).unwrap());
+    let version = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .project(f.task.project_id)
+        .unwrap()
+        .unwrap()
+        .version;
+    verifier.admit_tests(f.task.project_id, version, profile(
+        "import os,pathlib,time\np=pathlib.Path(os.environ['TMPDIR'])\nif COMMAND_INDEX == 0:\n p.joinpath('verification-ready').write_text('ready')\n while not p.joinpath('verification-release').exists(): time.sleep(0.01)\nprint(os.environ['RRX_UNIT_ID']+'-COMMAND_INDEX')"
+    )).unwrap();
+    let engine = Arc::new(
+        f.production_engine("pass")
+            .with_verifier(verifier.clone())
+            .unwrap(),
+    );
+    let mut artifacts = Vec::new();
+    for task in &ids {
+        artifacts.push(publish(&f, &engine, *task, "codex").await);
+    }
+    let mut running = Vec::new();
+    for task in &ids {
+        let engine = engine.clone();
+        let task = *task;
+        running.push(tokio::spawn(async move {
+            engine.step(task, BTreeMap::new()).await
+        }));
+    }
+    let profiles = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let mut profiles = Vec::new();
+            for task in &ids {
+                let w = engine.snapshot(*task).unwrap();
+                if let Some(reference) = w
+                    .history
+                    .iter()
+                    .find(|a| a.phase == Phase::Tests)
+                    .and_then(|a| a.unit.as_ref())
+                {
+                    let unit = f
+                        .owner
+                        .store
+                        .lock()
+                        .unwrap()
+                        .execution_unit(reference.unit)
+                        .unwrap();
+                    let profile = execution::resources::ResourceManager::new(f.owner.clone())
+                        .profile(&unit)
+                        .unwrap();
+                    if profile.temp.join("verification-ready").is_file() {
+                        profiles.push(profile);
+                    }
+                }
+            }
+            if profiles.len() == 4 {
+                break profiles;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        profiles
+            .iter()
+            .map(|p| &p.temp)
+            .collect::<BTreeSet<_>>()
+            .len(),
+        4
+    );
+    assert_eq!(
+        profiles
+            .iter()
+            .map(|p| (p.port_start, p.port_end))
+            .collect::<BTreeSet<_>>()
+            .len(),
+        4
+    );
+    engine
+        .cancel(ids[0], "one of four command Tasks cancelled".into())
+        .unwrap();
+    // An ordinary Executor survivor writes its discarded live namespace while
+    // all sibling Verifier commands are still running against retained sources.
+    for task in &ids {
+        let task = f.owner.store.lock().unwrap().task(*task).unwrap().unwrap();
+        std::fs::write(
+            task.worktree.unwrap().join("rules.md"),
+            "late executor survivor write",
+        )
+        .unwrap();
+    }
+    for profile in profiles.iter().skip(1) {
+        std::fs::write(profile.temp.join("verification-release"), "continue").unwrap();
+    }
+    for (i, handle) in running.into_iter().enumerate() {
+        let result = tokio::time::timeout(Duration::from_secs(10), handle)
+            .await
+            .unwrap()
+            .unwrap();
+        if i > 0 {
+            assert!(matches!(
+                result.unwrap(),
+                StepResult::Completed {
+                    phase: Phase::Tests
+                }
+            ));
+        }
+        let w = engine.snapshot(ids[i]).unwrap();
+        let unit = w
+            .history
+            .iter()
+            .find(|a| a.phase == Phase::Tests)
+            .unwrap()
+            .unit
+            .as_ref()
+            .unwrap()
+            .unit;
+        let run = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .verification_run(unit)
+            .unwrap();
+        assert_eq!(run.artifact, artifacts[i]);
+        if i == 0 {
+            assert!(!w.completed.contains_key(&Phase::Tests) && !run.certifying);
+            assert_eq!(
+                run.commands[0].issue,
+                Some(execution::verification::CaptureIssue::Cancelled)
+            );
+        } else {
+            assert!(run.certifying && run.commands.len() == 4);
+            for j in 0..4 {
+                assert_eq!(
+                    verifier.inspect_stream(unit, j, false, 4096).unwrap(),
+                    format!("{unit}-{j}\n").as_bytes()
+                );
+            }
+            assert_eq!(w.completed[&Phase::Tests].revision, run.revision);
+        }
+        let artifact = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .result_artifact(artifacts[i])
+            .unwrap();
+        execution::results::ResultStore::new(f.owner.clone())
+            .verify(&artifact)
+            .await
+            .unwrap();
+    }
+    for task in ids.into_iter().skip(1) {
+        engine
+            .cancel(task, "parallel control complete".into())
+            .unwrap();
+    }
 }

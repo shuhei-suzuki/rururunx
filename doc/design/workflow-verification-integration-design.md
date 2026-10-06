@@ -421,3 +421,80 @@ hooks/subscription behavior. All native four-Task validation belongs to Phase3;
 README Status changes afterward. The deterministic browser and real staging matrix
 must name OS/backend/version/display/target and unsupported combinations. Keep
 license files unchanged and do not claim process collection or full MVP completion.
+
+## 11. First Schema8 command-only delivery
+
+The first delivery implements the actual managed Tests consumer. It does not
+complete Issue12. Impact selection, ExpandedRegression, mutation generation and
+credit, headed browser, staging and general restart/resume producers remain
+unavailable. Their named managed phases wait and Store refuses new completed
+markers from generic callers. Standard/Strict prerequisites remain mandatory;
+the absence of an Impact producer is not an implicit Quick downgrade.
+
+`execution::verification::ManagedVerifier` shares the exact RuntimeOwner and
+ManagedWorkflowSources. Trusted operator integration explicitly calls `admit_tests`
+before Workflow activation, then installs that verifier on the actual Engine.
+No repository command string or Task-authored DTO activates a catalog. A catalog
+has explicit Tests/typecheck/lint/build applicability, relevant required Tests and
+commands for every other required category. NotApplicable requires a reason and
+cannot silently drop mandatory Workflow obligations. This delivery freezes one
+catalog per Project and one exact catalog digest, or unavailable NULL catalog, per
+Workflow. Late catalog replacement/version selection is unsupported; existing
+NULL-contract Workflows require a genuine fresh Workflow rather than retagging.
+
+The operator admits canonical executable files outside managed writable roots,
+pins their actual bytes, and supplies finite argv/cwd/limits. Bare shell evaluation
+profiles are refused. Program identity is rechecked before reservation and every
+command. This is explicit operator qualification, not proof that arbitrary program
+code has no external effects. Tests which require daemon, network, absolute shared
+paths, Docker, services, mutable external dependencies or hooks beyond the admitted
+command contract have not been qualified by this delivery. Task namespace overlays
+and ordinary PATH tool mediation remain cooperative; an intentional absolute-path
+or same-user bypass is outside the application threat model. This is not a security
+sandbox or a claimed general build-tool isolation solution.
+
+Actual Engine initialize installs the immutable managed verification contract in
+the same transaction as Task/Workflow state, before any Verifier Unit exists.
+Store's managed success guard therefore applies even when an invocation has no
+Unit or verifier port. Legacy nonformal library Workflows retain their distinct
+behavior. Real7→8 migration installs a historical unavailable contract for proper
+existing managed execution Workflows, never executable grants or accepted success.
+Fresh8 and ordered migration use exact writer8 fencing on every mutable table;
+namespace conflicts roll back. No empty intermediate schema is installed.
+
+A private claim pins full P/G/T/W/Context/source/artifact authority. Reservation
+creates a command-only Verifier Unit and returns the actual authorized Workflow
+successor containing that Unit. It creates no Agent Session or native quota lease.
+Generic Session, native terminal, non-Git helper and delegated effect ports refuse
+this Unit before their intents. Preparation materializes a fresh resource namespace
+and an independently retained read-only source snapshot of the Published commit.
+The private producer observes canonical command cwd ancestry off Store/SQL locks,
+then the real command-intent transaction checks the current whole claim, immutable
+catalog, exact command and sealed observation before owned child spawn. Commands
+are ordered; a subsequent command cannot follow non-certifying/incomplete work.
+
+The collector observes the owned unreaped child, retains stdout/stderr separately
+with finite limits, and records actual exit/signal, timeout/cancel/overflow/drain
+conditions. Group stop is best effort and cleanup remains Unknown independently of
+known work. It does not prove descendant absence. Actual terminal command receipts
+can survive cancellation as historical diagnostics, but cannot mint a current
+completion. Retained evidence files are outside every Unit writable namespace;
+same-user intentional tampering is detected on inspection, not contained by OS
+security. Protected stream retrieval verifies byte count/digest and caller budget.
+
+Only complete admitted coverage, actual successful command receipts and reverified
+retained input/artifact/streams mint the private completion. Store accepts it with
+exact current authority and the one audited Workflow observation, atomically
+advancing accepted run/Unit/Workflow/source pins. Known failure remains Failure;
+overflow, incomplete evidence, changed input or uncertain operation wait without
+acceptance. DTO `certifying`, caller Passed, evidence URL or raw run rows grant no
+permission. Required readonly proof cannot be replaced by a command exit0.
+
+Runtime/TaskDriver/operational CLI wiring, capacity-aware parallel command scheduling
+and general crash recovery are separate integration work. Account-free controls
+use actual Engine, managed Sources, Published artifacts, operator admission and
+owned command collection. Fixture Claude/Codex stdio peers are not authenticated
+official CLI qualification. Full Phase3/native four-Task/hook/subscription and
+Linux/macOS qualification remain required independently. Source review and fixed
+control/mutation handles are supplied separately; this description is not their
+acceptance result.
