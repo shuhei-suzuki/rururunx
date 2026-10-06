@@ -152,3 +152,29 @@ controls. Genuine positive qualification remains unavailable while the composed
 Driver/Native producer is incomplete; no Fake or SQL-seeded authority substitutes
 for it. This design is an implementation step of the existing approved custody
 contract, not a relaxation of preflight or a declaration of Phase2 completion.
+
+## 6. Retained normal-return binding delivery
+
+The same Runtime job wraps the actual returned non-Clone NativePhaseBinding in
+one Arc before planning. The job holds the actual ManagedSessionRef and that
+same proof; cancellation of an Engine observation cannot consume either. The
+normal planner borrows a clone of this Arc instead of taking the sole proof by
+value. It still checks the original allocation/marker, live Driver and Native
+owner, complete current scope and immutable Session identity. Arc sharing creates
+no new actor or grant and does not refresh original governing/input pins.
+
+After planning, the job retains the SAME immutable ManagedBindingPlan before
+locking the selected owner's Store. Only the existing record-only writer may
+commit Workflow and its first binding audit. A returned Bound/AlreadyBound makes
+the observation Bound. Planning, Store or CAS failure makes it BindingHeld and
+keeps the proof, handle, original launch and any attempted plan. A panic during
+binding makes it Uncertain; it never synthesizes Task failure or releases capacity.
+No job mutex is held while reading a snapshot, planning or writing Store.
+
+This increment attempts normal binding once. It does not retry an uncertain
+commit with a new plan or infer completion from rows: exact confirmation of the
+saved attempted postimage, late terminal binding, typed factual successor fold,
+job retirement, cancellation and restart recovery remain required next steps.
+Bound is a private binding observation, not completed work or process reclamation.
+The composition issuer remains unavailable; actual producer-backed planning/CAS
+fault and cancellation controls cannot be claimed until its missing routes work.

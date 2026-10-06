@@ -23,6 +23,7 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 use rusqlite::{Connection, Transaction, TransactionBehavior, params, types::Value as SqlValue};
 use serde_json::{Value, json};
+use std::sync::Arc;
 
 const SESSION_BYTES: usize = 4 * 1024 * 1024;
 const OWNER_BYTES: usize = 32 * 1024;
@@ -31,7 +32,7 @@ const KIND: &str = "rrx.private.workflow.session_bound";
 /// Retains the original actual actor across planning/commit errors. Neither a
 /// Session DTO nor a public ManagedSessionRef can construct this argument.
 pub(crate) struct ManagedBindingPlan {
-    proof: NativePhaseBinding,
+    proof: Arc<NativePhaseBinding>,
     current: CurrentWorkflowSuccessor,
     session: Body<Record>,
     owner_raw: String,
@@ -314,7 +315,7 @@ fn payload(proof: &NativePhaseBinding, after: &Body<Record>, at: i64) -> Result<
 /// current facts. No receipt ID, status poll, alias or capability mints a proof.
 pub(crate) fn plan_managed_binding(
     owner: &RuntimeOwner,
-    proof: NativePhaseBinding,
+    proof: Arc<NativePhaseBinding>,
 ) -> Result<ManagedBindingPlan> {
     let current = plan_current_phase(owner, proof.marker())?;
     normal_eligibility(&proof, &current)?;

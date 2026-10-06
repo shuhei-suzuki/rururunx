@@ -2,9 +2,10 @@
 use super::phase_supervisor::{PhaseLaunch, PhaseLaunchParts};
 use crate::execution::{
     OperationId,
-    native::{NativePhaseStart, NativePhaseStartError},
+    native::{ManagedSessionRef, NativePhaseBinding, NativePhaseStart, NativePhaseStartError},
     phase::NativeAllocation,
 };
+use crate::state::managed_binding::{ManagedBindingPlan, plan_managed_binding};
 use anyhow::{Result, ensure};
 use std::{
     collections::BTreeMap,
@@ -18,7 +19,9 @@ const MAX_JOBS: usize = 128;
 pub(crate) enum InvocationObservation {
     Reserved,
     Starting,
-    Launched,
+    Binding,
+    Bound,
+    BindingHeld,
     Waiting,
     Failed,
     Uncertain,
@@ -27,7 +30,17 @@ pub(crate) enum InvocationObservation {
 struct JobState {
     observation: InvocationObservation,
     launch: Option<Arc<PhaseLaunchParts>>,
-    outcome: Option<std::result::Result<NativePhaseStart, NativePhaseStartError>>,
+    outcome: Option<std::result::Result<RetainedStart, NativePhaseStartError>>,
+    binding_plan: Option<Arc<ManagedBindingPlan>>,
+    binding_error: Option<anyhow::Error>,
+}
+/// Actual returned objects, never reconstructed from DTOs or registry IDs.
+enum RetainedStart {
+    Launched {
+        _handle: ManagedSessionRef,
+        binding: Arc<NativePhaseBinding>,
+    },
+    Waiting(NativePhaseStart),
 }
 struct Job {
     allocation: Arc<NativeAllocation>,
@@ -59,7 +72,9 @@ impl PhaseInvocation {
             let observation = *self.changed.borrow_and_update();
             if !matches!(
                 observation,
-                InvocationObservation::Reserved | InvocationObservation::Starting
+                InvocationObservation::Reserved
+                    | InvocationObservation::Starting
+                    | InvocationObservation::Binding
             ) {
                 return observation;
             }
@@ -106,6 +121,8 @@ impl PhaseJobs {
                         observation: InvocationObservation::Reserved,
                         launch: None,
                         outcome: None,
+                        binding_plan: None,
+                        binding_error: None,
                     }),
                     changed,
                 }),
@@ -160,11 +177,24 @@ impl PhaseJobs {
         let running = RunningJob(job.clone());
         entry.handle = Some(tokio::spawn(async move {
             let _running = running;
-            let outcome = job.allocation.selected_port().start_phase(launch).await;
-            let observation = match &outcome {
-                Ok(NativePhaseStart::Launched { .. }) => InvocationObservation::Launched,
-                Ok(NativePhaseStart::Waiting { .. }) => InvocationObservation::Waiting,
-                Err(_) => InvocationObservation::Failed,
+            let outcome = job
+                .allocation
+                .selected_port()
+                .start_phase(launch)
+                .await
+                .map(|start| match start {
+                    NativePhaseStart::Launched { handle, binding } => RetainedStart::Launched {
+                        _handle: handle,
+                        binding: Arc::new(binding),
+                    },
+                    waiting @ NativePhaseStart::Waiting { .. } => RetainedStart::Waiting(waiting),
+                });
+            let (observation, binding) = match &outcome {
+                Ok(RetainedStart::Launched { binding, .. }) => {
+                    (InvocationObservation::Binding, Some(binding.clone()))
+                }
+                Ok(RetainedStart::Waiting(_)) => (InvocationObservation::Waiting, None),
+                Err(_) => (InvocationObservation::Failed, None),
             };
             {
                 let mut state = job.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -172,6 +202,22 @@ impl PhaseJobs {
                 state.observation = observation;
             }
             job.changed.send_replace(observation);
+            if let Some(binding) = binding {
+                // Both the actual proof and handle are already retained. No
+                // fallible planning or Store access can consume their sole owner.
+                let result = job.bind_returned(binding);
+                let observation = if result.is_ok() {
+                    InvocationObservation::Bound
+                } else {
+                    InvocationObservation::BindingHeld
+                };
+                {
+                    let mut state = job.state.lock().unwrap_or_else(|e| e.into_inner());
+                    state.binding_error = result.err();
+                    state.observation = observation;
+                }
+                job.changed.send_replace(observation);
+            }
         }));
         PhaseInvocation { changed }
     }
@@ -215,11 +261,33 @@ impl PhaseJobs {
     }
 }
 
+impl Job {
+    fn bind_returned(&self, proof: Arc<NativePhaseBinding>) -> Result<()> {
+        let owner = self.allocation.selected_port().owner();
+        let plan = Arc::new(plan_managed_binding(owner, proof)?);
+        {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            ensure!(
+                state.binding_plan.is_none(),
+                "binding plan already retained"
+            );
+            state.binding_plan = Some(plan.clone());
+        }
+        // Short job locks above never overlap the selected owner's Store lock.
+        owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("binding Store poisoned"))?
+            .bind_managed_phase(&plan)?;
+        Ok(())
+    }
+}
+
 struct RunningJob(Arc<Job>);
 impl Drop for RunningJob {
     fn drop(&mut self) {
         let mut state = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.outcome.is_none() {
+        if state.outcome.is_none() || state.observation == InvocationObservation::Binding {
             state.observation = InvocationObservation::Uncertain;
             self.0
                 .changed
