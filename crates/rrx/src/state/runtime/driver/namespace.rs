@@ -104,7 +104,7 @@ impl NamespaceSnapshot {
     fn current_count(&self, c: &Connection) -> Result<(usize, i32)> {
         // Compiled sentinel, not a caller budget or truncated admitted inventory.
         // Production schema supplies the Project-leading covering index.
-        let mut statement=c.prepare("SELECT count(*) FROM (SELECT 1 FROM tasks INDEXED BY tasks_by_project_issue WHERE project_id=?1 LIMIT 4097)")?;
+        let mut statement=c.prepare("SELECT count(*) FROM (SELECT 1 FROM tasks INDEXED BY tasks_by_project_issue WHERE project_id=?1)")?;
         let count = statement.query_row([self.project.to_string()], |r| r.get(0))?;
         Ok((
             count,
