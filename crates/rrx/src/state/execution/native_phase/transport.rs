@@ -74,7 +74,7 @@ impl NativeTransportStartPlan {
     fn validate_pre_tx(&self,tx:&Transaction<'_>) -> Result<()> {
         self.prepared.validate_open()?;
         self.validate_origin_tx(tx)?;
-        self.prepared.lineage().validate_tx(tx)?;
+        self.prepared.lineage().validate_registration_tx(tx)?;
         self.prepared.quota().validate_registration_tx(tx)?;
         self.prepared.history().validate_inventory(tx)?;
         registration_unit(self.current.unit(),&self.launch)?;
@@ -144,7 +144,7 @@ fn plan_prepared_transport(
     let current = prepared.lineage().current().copy_original();
     registration_attempt(&current, &launch)?;
     let (owner_before, readiness_before, artifact_version) = snapshot(owner, |tx| {
-        prepared.lineage().validate_tx(tx)?;
+        prepared.lineage().validate_registration_tx(tx)?;
         prepared.history().validate_inventory(tx)?;
         prepared.quota().validate_registration_tx(tx)?;
         registration_unit(current.unit(), &launch)?;

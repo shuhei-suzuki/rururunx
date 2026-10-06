@@ -1417,6 +1417,48 @@ impl Core {
         self.record_dispatch_observation(operation,if sent.is_ok() {EffectState::Confirmed} else {EffectState::Unknown},receipt)?;
         sent
     }
+    fn quota_read(&self) -> Result<(bool,Vec<QuotaObservation>)> {
+        if let Some(phase)=&self.phase {
+            let plan=crate::state::Store::plan_phase_quota_read(&self.owner,&phase.owner)?;
+            let result=(plan.is_own_probe(),plan.observations().to_vec());
+            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.apply_phase_live_quota(plan)?;
+            Ok(result)
+        } else {
+            let store=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
+            Ok((store.execution_is_quota_probe(self.unit.id,&self.unit.provider,"unknown")?,store.quota_observations(&self.unit.provider,"unknown")?))
+        }
+    }
+    fn quota_probe(&self) -> Result<bool> { Ok(self.quota_read()?.0) }
+    fn quota_windows(&self) -> Result<Vec<QuotaObservation>> { Ok(self.quota_read()?.1) }
+    fn observe_quota(&self,observation:&QuotaObservation,recovery:bool) -> Result<()> {
+        if let Some(phase)=&self.phase {
+            let plan=crate::state::Store::plan_phase_quota_observation(&self.owner,&phase.owner,observation,recovery)?;
+            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.apply_phase_live_quota(plan)?;
+            Ok(())
+        } else {
+            let scheduler=quota::QuotaScheduler::new(self.owner.clone());
+            if recovery {scheduler.observe_probe(&self.authority()?,observation)} else {scheduler.observe(observation)}
+        }
+    }
+    fn quota_wait(&self,retry:bool) -> Result<ExecutionUnit> {
+        if let Some(phase)=&self.phase {
+            let plan=crate::state::Store::plan_phase_quota_wait(&self.owner,&phase.owner,retry)?;
+            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.apply_phase_live_quota(plan)
+        } else {
+            let authority=self.authority()?;
+            let mut store=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
+            if retry {store.mark_execution_quota_retry(&authority)} else {store.mark_execution_quota_wait(&authority)}
+        }
+    }
+    fn quota_resume(&self,buckets:&std::collections::BTreeSet<String>) -> Result<ExecutionUnit> {
+        if let Some(phase)=&self.phase {
+            let plan=crate::state::Store::plan_phase_quota_resume(&self.owner,&phase.owner,buckets)?;
+            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.apply_phase_live_quota(plan)
+        } else {
+            let authority=self.authority()?;
+            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.resume_execution_quota_wait(&authority,buckets)
+        }
+    }
     fn record_dispatch_observation(&self,operation:OperationId,state:EffectState,receipt:BTreeMap<String,String>) -> Result<()> {
         if let Some(phase)=&self.phase {
             let original=phase.dispatch(operation)?;
@@ -1923,24 +1965,14 @@ impl Core {
         let quota = self
             .boot_call("account/rateLimits/read", json!({}), None)
             .await?;
-        let probe = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .execution_is_quota_probe(self.unit.id, "codex", "unknown")?;
+        let probe = self.quota_probe()?;
         let observations =
             quota::codex_windows(&quota, now_ms()).context(NativeFailure::MetadataUnavailable)?;
         let exhausted = observations
             .iter()
             .any(|o| o.status == QuotaStatus::Exhausted);
         for observation in observations {
-            let scheduler = quota::QuotaScheduler::new(self.owner.clone());
-            if probe && observation.status == QuotaStatus::Available {
-                scheduler.observe_probe(&self.authority()?, &observation)?;
-            } else {
-                scheduler.observe(&observation)?;
-            }
+            self.observe_quota(&observation,probe && observation.status==QuotaStatus::Available)?;
         }
         if exhausted && !probe {
             return Ok((WorkOutcome::Unknown, Disposition::QuotaInterrupted, None));
@@ -1986,7 +2018,7 @@ impl Core {
                         self.authority()?;let pending=approvals.insert(&frame)?;self.update.send_modify(|s|s.pending.push(pending));continue;
                     }
                     if frame["method"]=="account/rateLimits/updated" {
-                        for observation in quota::codex_windows(p,now_ms())?{quota::QuotaScheduler::new(self.owner.clone()).observe(&observation)?;}continue;
+                        for observation in quota::codex_windows(p,now_ms())?{self.observe_quota(&observation,false)?;}continue;
                     }
                     if p.get("threadId").is_some_and(|id|id!=&json!(thread_id)){continue;}
                     if p.get("turnId").is_some_and(|id|id!=&json!(turn_id)){continue;}
@@ -1996,11 +2028,10 @@ impl Core {
                         Some("item/agentMessage/delta") if p["threadId"]==thread_id && p["turnId"]==turn_id=>self.collector.codex_delta(p),
                         Some("error") if p["threadId"]==thread_id && p["turnId"]==turn_id && quota::codex_subscription_error(&p["error"])=>{
                             quota_ended = !p["willRetry"].as_bool().context("native retry flag missing")?;
-                            quota::QuotaScheduler::new(self.owner.clone()).observe(&QuotaObservation {provider:"codex".into(),account_key:"unknown".into(),bucket:"native.subscription".into(),window_id:"unknown-native".into(),
-                                status:QuotaStatus::Exhausted,used_percent:None,resets_at:None,observed_at:now_ms(),source_version:"codex-cli 0.160.0/usageLimitExceeded".into(),confirmed_subscription:true})?;
+                            self.observe_quota(&QuotaObservation {provider:"codex".into(),account_key:"unknown".into(),bucket:"native.subscription".into(),window_id:"unknown-native".into(),
+                                status:QuotaStatus::Exhausted,used_percent:None,resets_at:None,observed_at:now_ms(),source_version:"codex-cli 0.160.0/usageLimitExceeded".into(),confirmed_subscription:true},false)?;
                             if !quota_ended {
-                                let authority=self.authority()?;
-                                self.unit=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.mark_execution_quota_retry(&authority)?;
+                                self.unit=self.quota_wait(true)?;
                             }
                             self.update.send_modify(|s|{s.authority=self.unit.authority();s.wait_reason=self.unit.wait_reason;s.diagnostic=Some("subscription quota exhausted; native retry state retained");});
                         },
@@ -2018,14 +2049,14 @@ impl Core {
                             // or follow a willRetry=true notification for the same turn.
                             if status=="failed" && quota::codex_subscription_error(&p["turn"]["error"]) {
                                 quota_ended=true;
-                                quota::QuotaScheduler::new(self.owner.clone()).observe(&QuotaObservation {provider:"codex".into(),account_key:"unknown".into(),bucket:"native.subscription".into(),window_id:"unknown-native".into(),
-                                    status:QuotaStatus::Exhausted,used_percent:None,resets_at:None,observed_at:now_ms(),source_version:"codex-cli 0.160.0/terminal usageLimitExceeded".into(),confirmed_subscription:true})?;
+                                self.observe_quota(&QuotaObservation {provider:"codex".into(),account_key:"unknown".into(),bucket:"native.subscription".into(),window_id:"unknown-native".into(),
+                                    status:QuotaStatus::Exhausted,used_percent:None,resets_at:None,observed_at:now_ms(),source_version:"codex-cli 0.160.0/terminal usageLimitExceeded".into(),confirmed_subscription:true},false)?;
                             }
-                            let current_probe=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.execution_is_quota_probe(self.unit.id,"codex","unknown")?;
+                            let current_probe=self.quota_probe()?;
                             if status=="completed" && current_probe {
-                                let windows=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.quota_observations("codex","unknown")?;
+                                let windows=self.quota_windows()?;
                                 if let Some(old)=windows.into_iter().find(|o|o.bucket=="native.subscription" && o.status==QuotaStatus::Exhausted) {
-                                    quota::QuotaScheduler::new(self.owner.clone()).observe_probe(&self.authority()?,&QuotaObservation {status:QuotaStatus::Available,observed_at:now_ms(),source_version:"codex-cli 0.160.0/correlated recovery turn completed".into(),..old})?;
+                                    self.observe_quota(&QuotaObservation {status:QuotaStatus::Available,observed_at:now_ms(),source_version:"codex-cli 0.160.0/correlated recovery turn completed".into(),..old},true)?;
                                 }
                             }
                             return Ok(if status=="completed" {(WorkOutcome::Success,Disposition::Completed,Some(p["turn"].clone()))}
@@ -2100,21 +2131,18 @@ impl Core {
                     }
                     if let Some(observation)=quota::claude_window(&frame,now_ms())? {
                         quota_buckets.insert(observation.bucket.clone());
-                        let scheduler=quota::QuotaScheduler::new(self.owner.clone());
-                        let probe=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.execution_is_quota_probe(self.unit.id,"claude","unknown")?;
-                        if probe && observation.status==QuotaStatus::Available{scheduler.observe_probe(&self.authority()?,&observation)?;}else{scheduler.observe(&observation)?;}
+                        let probe=self.quota_probe()?;
+                        self.observe_quota(&observation,probe && observation.status==QuotaStatus::Available)?;
                         if observation.status==QuotaStatus::Exhausted {
-                            let authority=self.authority()?;
-                            let mut store=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
+
                             // A rejected stale window may have been ignored by the pool.
                             // Only accepted exhaustion for this Session's bucket waits.
-                            if store.quota_observations("claude","unknown")?.iter().any(|o|o.bucket==observation.bucket && o.status==QuotaStatus::Exhausted) {
-                                self.unit=store.mark_execution_quota_wait(&authority)?;
+                            if self.quota_windows()?.iter().any(|o|o.bucket==observation.bucket && o.status==QuotaStatus::Exhausted) {
+                                self.unit=self.quota_wait(false)?;
                                 self.update.send_modify(|s|{s.authority=self.unit.authority();s.wait_reason=self.unit.wait_reason;s.diagnostic=Some("subscription quota exhausted; native retry state retained");});
                             }
                         } else if observation.status==QuotaStatus::Available {
-                            let authority=self.authority()?;
-                            let recovered=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.resume_execution_quota_wait(&authority,&quota_buckets)?;
+                            let recovered=self.quota_resume(&quota_buckets)?;
                             if recovered.version!=self.unit.version {
                                 self.unit=recovered;
                                 self.update.send_modify(|s|{s.authority=self.unit.authority();s.wait_reason=self.unit.wait_reason;if s.wait_reason.is_none(){s.diagnostic=None;}});
@@ -2150,8 +2178,7 @@ impl Core {
                         self.observed_terminal=Some(provisional);
                         // Consult accepted bucket state, not the last telemetry frame.
                         // Budget/turn/output caps remain work failures even during quota exhaustion.
-                        let quota_exhausted=quota_sensitive && !quota_buckets.is_empty() && self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?
-                            .quota_observations("claude","unknown")?.iter().any(|o|o.status==QuotaStatus::Exhausted && quota_buckets.contains(&o.bucket));
+                        let quota_exhausted=quota_sensitive && !quota_buckets.is_empty() && self.quota_windows()?.iter().any(|o|o.status==QuotaStatus::Exhausted && quota_buckets.contains(&o.bucket));
                         let observed=if quota_exhausted {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
                             else if state.terminal_capacity || (unclassified_limit && quota_sensitive) {(WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)}
                             else {(WorkOutcome::Failure,Disposition::Completed,None)};

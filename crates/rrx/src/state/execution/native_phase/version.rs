@@ -336,7 +336,7 @@ pub(crate) struct NativeHelperHistoryCommit {
 impl NativeHelperHistoryCommit {
     pub(super) fn validate_registration_inventory(&self, tx:&Transaction<'_>, effect:&ManagedEffect) -> Result<()> {
         let tail=self.history.last().context("closed helper history absent")?;
-        let mut expected=tail.original.after.clone();
+        let mut expected=(*tail.original.after).clone();
         expected.rows.push(EffectImage::generated(effect)?);
         expected.rows.sort_by(|a,b|a.text[0].cmp(&b.text[0]));
         expected.validate_bound()?;
