@@ -279,7 +279,8 @@ impl Runtime {
             let policy = serde_json::to_vec(&self.config)?;
             ensure!(policy.len() <= 1024 * 1024, "Runtime policy exceeds bound");
             let digest = format!("{:x}", Sha256::digest(&policy));
-            // Mutation: omit the shared Goal publication admission boundary.
+            // Same admission boundary as shutdown, retained through actual publication.
+            let _admission = self.control_admission.lock().await;
             ensure!(
                 !self.stopping.load(std::sync::atomic::Ordering::SeqCst),
                 "Runtime stopping; new Goal refused"
