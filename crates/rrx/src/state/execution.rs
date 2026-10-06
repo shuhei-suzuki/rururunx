@@ -4,7 +4,7 @@ use crate::execution::{model::key, *};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-const MUTABLE_TABLES: &[&str] = &[
+pub(super) const MUTABLE_TABLES: &[&str] = &[
     "projects",
     "goals",
     "tasks",

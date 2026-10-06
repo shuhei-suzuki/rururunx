@@ -1,4 +1,5 @@
 use super::super::*;
+use uuid::Uuid;
 
 // Actual schema8 objects and an already-open version8 connection, not a relabelled9 Store.
 fn old8(path: &std::path::Path) -> Connection {

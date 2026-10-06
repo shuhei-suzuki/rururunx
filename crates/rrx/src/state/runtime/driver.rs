@@ -217,7 +217,7 @@ fn snapshot(c: &Connection, task_id: TaskId) -> Result<Pins> {
         prerequisites: hash(&prerequisites)?,
     })
 }
-pub(super) fn register_liveness(
+pub(in crate::state) fn register_liveness(
     connection: &Connection,
     registry: Weak<DriverRegistry>,
 ) -> Result<()> {
@@ -317,4 +317,20 @@ pub(super) fn invalidate_tx(
         json!({"driver":id,"epoch":epoch,"version":row.version}),
     )?;
     Ok(())
+}
+
+impl Store {
+    /// Legacy helper routes have no managed Unit/Driver capability. Protect the
+    /// indexed accepted scope before their first Git/filesystem operation.
+    pub(crate) fn ensure_legacy_worktree_access(&self, task: TaskId) -> Result<()> {
+        let accepted: bool = self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM tasks t JOIN goal_authority a ON a.goal_id=t.goal_id AND a.project_id=t.project_id WHERE t.id=?1)",
+            [task.to_string()], |r| r.get(0),
+        )?;
+        ensure!(
+            !accepted,
+            "accepted Goal worktree helpers require the unavailable managed Driver/binding producer"
+        );
+        Ok(())
+    }
 }

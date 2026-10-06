@@ -390,3 +390,16 @@ passing refusal tests to obtain a green regression. Account-free controller
 controls qualify only the above component. CLI service wiring and whole Runtime,
 4-Task/2-Project scheduling, accepted evidence evaluation and native/profile
 qualification remain open.
+
+Source9 correction boundaries: the same async control-admission mutex spans
+CreateGoal/Resume's current stopping check and complete Store publication, and
+shutdown takes that boundary before setting stopping and retaining/joining its
+control-loop handle. Stop acknowledgement therefore follows any earlier admitted
+Goal commit; later admission refuses. Caller cancellation drops only its borrowed
+mutex guard, never constructs another owner or successful cleanup. Resume counts
+Context history by its indexed Project/Goal columns, including malformed bodies.
+Legacy WorktreeManager creation, physical status, mutation/review-lock and cleanup
+routes have no managed Unit capability; actual accepted-Goal scope is refused
+before their first helper. Typed Goal/Task facts and private historical cleanup
+remain separate callable paths. The test-only Git counter observes actual native
+outputs on the calling thread, not kernel containment or native readiness.

@@ -18,6 +18,9 @@ pub struct Runtime {
     running: Arc<AtomicBool>,
     stopping: AtomicBool,
     wake: Arc<tokio::sync::Notify>,
+    control_admission: tokio::sync::Mutex<()>,
+    #[cfg(test)]
+    goal_admission_pause: std::sync::Mutex<Option<GoalAdmissionPause>>,
     supervisor: tokio::sync::Mutex<Option<tokio::task::JoinHandle<Result<()>>>>,
 }
 impl Runtime {
@@ -34,6 +37,9 @@ impl Runtime {
             running: Arc::new(AtomicBool::new(false)),
             stopping: AtomicBool::new(false),
             wake: Arc::new(tokio::sync::Notify::new()),
+            control_admission: tokio::sync::Mutex::new(()),
+            #[cfg(test)]
+            goal_admission_pause: std::sync::Mutex::new(None),
             supervisor: tokio::sync::Mutex::new(None),
         })
     }
@@ -52,3 +58,9 @@ impl Runtime {
 }
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+struct GoalAdmissionPause {
+    reached: tokio::sync::oneshot::Sender<()>,
+    release: tokio::sync::oneshot::Receiver<()>,
+}

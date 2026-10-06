@@ -279,6 +279,23 @@ impl Runtime {
             let policy = serde_json::to_vec(&self.config)?;
             ensure!(policy.len() <= 1024 * 1024, "Runtime policy exceeds bound");
             let digest = format!("{:x}", Sha256::digest(&policy));
+            // Same admission boundary as shutdown, retained through actual publication.
+            let _admission = self.control_admission.lock().await;
+            ensure!(
+                !self.stopping.load(std::sync::atomic::Ordering::SeqCst),
+                "Runtime stopping; new Goal refused"
+            );
+            #[cfg(test)]
+            {
+                let pause = self.goal_admission_pause.lock().unwrap().take();
+                if let Some(pause) = pause {
+                    let _ = pause.reached.send(());
+                    pause
+                        .release
+                        .await
+                        .map_err(|_| anyhow::anyhow!("test admission observer closed"))?;
+                }
+            }
             let response = self
                 .owner
                 .store
@@ -311,6 +328,7 @@ impl Runtime {
                 .runtime_goal_task_page(&ingress, *project, *goal, *after, *maximum);
         }
         if matches!(&request.action, ControlAction::SetGoalLifecycle { .. }) {
+            let _admission = self.control_admission.lock().await;
             if matches!(
                 &request.action,
                 ControlAction::SetGoalLifecycle {

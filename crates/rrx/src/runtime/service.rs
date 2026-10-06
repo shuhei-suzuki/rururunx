@@ -20,6 +20,7 @@ impl Runtime {
     /// Start exactly once on the existing owner. Missing native binding stays a
     /// named durable hold; the service does not instantiate another owner epoch.
     pub async fn start(self: &Arc<Self>) -> Result<()> {
+        let _admission = self.control_admission.lock().await;
         ensure!(
             !self.stopping.load(Ordering::SeqCst),
             "Runtime already stopping"
@@ -73,6 +74,10 @@ impl Runtime {
     /// Cooperative shutdown retains the JoinHandle on timeout/caller Drop.
     /// No child/native work is owned by this initial control-service loop.
     pub async fn shutdown(&self) -> Result<()> {
+        let _admission =
+            tokio::time::timeout(Duration::from_secs(5), self.control_admission.lock())
+                .await
+                .context("Runtime control admission shutdown remains pending")?;
         self.stopping.store(true, Ordering::SeqCst);
         self.wake.notify_one();
         let mut slot = self.supervisor.lock().await;

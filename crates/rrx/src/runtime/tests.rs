@@ -756,3 +756,257 @@ async fn actual_control_loop_persists_named_hold_without_authority_bumps() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn actual_indexed_context_history_cannot_resume_by_malformed_body_scope() {
+    let f = ControlFixture::new();
+    for body in [
+        serde_json::json!({}),
+        serde_json::json!({"scope":{"goal_id":crate::domain::GoalId::new()}}),
+        serde_json::json!({"valid_scope_placeholder":true}),
+    ] {
+        let goal = f.create(plan()).await;
+        f.runtime
+            .handle_control(
+                &f.socket,
+                f.request(ControlAction::SetGoalLifecycle {
+                    project: f.project.id,
+                    goal,
+                    expected_goal: 1,
+                    target: GoalControl::Pause,
+                    reason: "history hold".into(),
+                }),
+            )
+            .await
+            .unwrap();
+        let original = f.owner.store().lock().unwrap().goal(goal).unwrap().unwrap();
+        let events = f
+            .owner
+            .store()
+            .lock()
+            .unwrap()
+            .events(&original.scope(), 0, 100)
+            .unwrap()
+            .len();
+        let connection = crate::state::current_test_writer(f.owner.state_path()).unwrap();
+        let body = if body.get("valid_scope_placeholder").is_some() {
+            serde_json::json!({"scope":original.scope(),"version":1})
+        } else {
+            body
+        };
+        connection.execute("INSERT INTO context_versions(project_id,goal_id,task_id,owner,version,body) VALUES(?1,?2,NULL,?3,1,?4)",rusqlite::params![f.project.id.to_string(),goal.to_string(),goal.to_string(),body.to_string()]).unwrap();
+        let request = f.request(ControlAction::SetGoalLifecycle {
+            project: f.project.id,
+            goal,
+            expected_goal: 2,
+            target: GoalControl::Resume,
+            reason: "indexed history must remain held".into(),
+        });
+        let request_id = request.request_id;
+        assert!(matches!(
+            f.runtime.handle_control(&f.socket, request).await.unwrap(),
+            ControlResponse::Unavailable {
+                reason: UnavailableReason::FreshBootstrapRecoveryUnavailable,
+                ..
+            }
+        ));
+        assert_eq!(
+            serde_json::to_value(&original).unwrap(),
+            serde_json::to_value(f.owner.store().lock().unwrap().goal(goal).unwrap().unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            f.owner
+                .store()
+                .lock()
+                .unwrap()
+                .events(&original.scope(), 0, 100)
+                .unwrap()
+                .len(),
+            events
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM runtime_control_acks WHERE request_id=?1",
+                    [request_id.to_string()],
+                    |r| r.get::<_, u64>(0)
+                )
+                .unwrap(),
+            0
+        );
+    }
+}
+#[tokio::test]
+async fn actual_goal_acceptance_and_stop_share_publication_linearization() {
+    use std::{future::Future, task::Poll};
+    let f = ControlFixture::new();
+    let (reached_rx_sender, reached) = tokio::sync::oneshot::channel();
+    let (release, release_rx) = tokio::sync::oneshot::channel();
+    *f.runtime.goal_admission_pause.lock().unwrap() = Some(GoalAdmissionPause {
+        reached: reached_rx_sender,
+        release: release_rx,
+    });
+    let runtime = f.runtime.clone();
+    let request = f.request(ControlAction::CreateGoal {
+        project: f.project.id,
+        expected_project: f.project.version,
+        plan: plan(),
+    });
+    let (server, _peer) = tokio::net::UnixStream::pair().unwrap();
+    let creating = tokio::spawn(async move { runtime.handle_control(&server, request).await });
+    reached.await.unwrap();
+    let stopping = f
+        .runtime
+        .handle_control(&f.socket, f.request(ControlAction::RuntimeStop));
+    tokio::pin!(stopping);
+    std::future::poll_fn(|cx| {
+        assert!(
+            matches!(stopping.as_mut().poll(cx), Poll::Pending),
+            "Stop acknowledged before its admitted Goal publication finished"
+        );
+        Poll::Ready(())
+    })
+    .await;
+    release.send(()).unwrap();
+    assert!(matches!(
+        creating.await.unwrap().unwrap(),
+        ControlResponse::GoalAccepted { .. }
+    ));
+    assert!(matches!(
+        stopping.await.unwrap(),
+        ControlResponse::RuntimeStopped { .. }
+    ));
+    assert_eq!(
+        f.owner
+            .store()
+            .lock()
+            .unwrap()
+            .goals(f.project.id)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        f.runtime
+            .handle_control(
+                &f.socket,
+                f.request(ControlAction::CreateGoal {
+                    project: f.project.id,
+                    expected_project: f.project.version,
+                    plan: plan()
+                })
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        f.owner
+            .store()
+            .lock()
+            .unwrap()
+            .goals(f.project.id)
+            .unwrap()
+            .len(),
+        1
+    );
+}
+#[tokio::test]
+async fn actual_accepted_worktree_routes_refuse_before_valid_native_git_helpers() {
+    let mut f = ControlFixture::new();
+    for args in [
+        vec!["init", "-b", "main"],
+        vec![
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=.git/hooks",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "fixture",
+        ],
+    ] {
+        let output = std::process::Command::new("git")
+            .current_dir(&f.project.root)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "isolated Git fixture must be valid: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let valid_before = crate::git::observed_git_outputs();
+    f.project.repo_id = crate::git::repository_identity(&f.project.root, "main").unwrap();
+    assert!(
+        crate::git::observed_git_outputs() > valid_before,
+        "valid native repository identity must reach actual helper outputs"
+    );
+    f.owner
+        .store()
+        .lock()
+        .unwrap()
+        .put_project(&mut f.project)
+        .unwrap();
+    let goal = f.create(plan()).await;
+    let g = f.owner.store().lock().unwrap().goal(goal).unwrap().unwrap();
+    let t = f
+        .owner
+        .store()
+        .lock()
+        .unwrap()
+        .task(g.dag.nodes[0])
+        .unwrap()
+        .unwrap();
+    let outputs = crate::git::observed_git_outputs();
+    let before = f
+        .owner
+        .store()
+        .lock()
+        .unwrap()
+        .events(&t.scope(), 0, 100)
+        .unwrap()
+        .len();
+    {
+        let shared = f.owner.store();
+        let mut store = shared.lock().unwrap();
+        let error = crate::git::WorktreeManager::create(&mut store, t.id).unwrap_err();
+        assert!(format!("{error:#}").contains("managed Driver/binding"));
+        assert!(crate::git::WorktreeManager::status(&store, t.id).is_err());
+        assert!(crate::git::WorktreeManager::ensure_mutation_allowed(&store, t.id).is_err());
+        assert!(
+            crate::git::WorktreeManager::lock_review(
+                &mut store,
+                t.id,
+                &"a".repeat(40),
+                "held review"
+            )
+            .is_err()
+        );
+        assert!(crate::git::WorktreeManager::cleanup(&mut store, t.id).is_err());
+        assert_eq!(
+            crate::git::observed_git_outputs(),
+            outputs,
+            "accepted public worktree route reached native Git helper"
+        );
+        assert_eq!(
+            serde_json::to_value(&t).unwrap(),
+            serde_json::to_value(store.task(t.id).unwrap().unwrap()).unwrap()
+        );
+        assert_eq!(store.events(&t.scope(), 0, 100).unwrap().len(), before);
+        assert!(
+            store
+                .records(&t.scope(), crate::domain::RecordKind::WorktreeLock)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(store.execution_units(Some(&t.scope())).unwrap().is_empty());
+    }
+    assert!(!f.project.worktree_root.exists());
+}
