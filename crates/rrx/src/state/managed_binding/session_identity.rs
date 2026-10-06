@@ -32,7 +32,7 @@ pub(super) fn validate_negative_identities(
     let mut own_seen = false;
     while let Some(row) = cursor.next()? {
         ensure!(
-            count < IDENTITIES,
+            count <= IDENTITIES,
             "complete scoped Session identity history exceeds4096"
         );
         count += 1;
