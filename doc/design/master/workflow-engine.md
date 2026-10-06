@@ -32,6 +32,8 @@ awaits admission. Exact marker publication retains the original Native job and
 known marker before the once-only selected launch. Observations remain nongrant:
 installed composition and full Native preparation are unavailable, so this internal
 connection does not yet expose an executable managed Agent or completed Task.
+Publication-fault and accepted-slot shutdown custody repair remain pending
+implementation gates.
 
 The incremental [production gate integration](../production-workflow-gates-design.md)
 adds a concrete library port for real initial preparation, Implement terminal/result

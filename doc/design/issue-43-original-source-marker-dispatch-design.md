@@ -54,7 +54,8 @@ The independent concrete invocation has this order:
 
 1. Enter the actual control admission and perform the unchanged original ticket
    read, Source origin/map/slot/assets borrow and concrete queue reserve. Save
-   actual capacity before Source acceptance. Save and install original lineage
+   actual capacity and its accepted guard policy before `finish_accepted`, even
+   if subsequent origin installation fails. Save and install original lineage
    as before. End EVERY Source/custody/queue borrow and the transfer admission
    before the publication continuation; no nested admission acquisition.
 2. Borrow only immutable SAME allocation/origin Arcs from the retained capacity
@@ -81,8 +82,9 @@ The independent concrete invocation has this order:
    fallible handoff lookup; retain it in the original slot, obtain SAME real job
    preparation custody, and create the one-time launch with Weak custody linkage.
 6. Call actual PhaseJobs start, whose original registry owns its real handle and
-   whose eager guard/result cells preserve launch/Native actor/plan/error. Save
-   only the observation needed by its actual consumer. Engine currently observes
+   whose eager guard/result cells preserve launch/Native actor/plan/error. The
+   Handoff saves the factual publication stage, not an unused job receiver.
+   Engine currently observes
    handoff transfer state and remains Waiting until genuine binding/terminal
    consumers supply their own result; no label creates a Workflow success.
 
@@ -94,16 +96,23 @@ PhaseDispatcher::plan_original_marker(
     -> Result<Arc<MarkerPublicationPlan>>
 PhaseDispatcher::publish_planned_marker(
     independently retained original publication custody)
-    -> Result<PhaseInvocation>
-PhaseDispatcher::reconcile_phase_marker(operation_hint)
-    -> Result<PhaseInvocation>
+    -> Result<()>
+PhaseDispatcher::reconcile_phase_marker(
+    SAME independently retained original publication custody)
+    -> Result<()>
+PhaseDispatcher::rollback_marker_publication(
+    SAME independently retained original publication custody)
+    -> Result<()>
 ```
 
 The new planner receives only originals from actual successful transfer. An
 allocation, capacity, metadata or a helper result alone is not an origin. The
 queue still owns its exact allocation and armed guard independently when a
-caller handle is moved or dropped. Reconciliation uses its SAME retained slot/
-original plan and existing exact postimage protocol, never a row-derived plan.
+caller handle is moved or dropped. These results do not certify work or release
+custody; each producer saves its factual outcome before returning an error.
+Reconciliation uses its SAME retained slot/original plan, first known marker and
+existing exact postimage protocol, never a row-derived plan. An operation ID is
+only a wake hint; it cannot replace the concrete retained custody argument.
 This increment adds no scheduler that automatically replans or replays effects.
 
 ## 4. Refusal, cancellation and known outcomes
@@ -154,15 +163,28 @@ toward those paths, not completion of the MVP or permission to merge.
 
 ## 6. Impact analysis and implementation boundary
 
-`Runtime::new` creates the dispatcher from the same original objects. Existing
-`publish_phase_marker`, `reconcile_phase_marker`, `retain_marker_publication`
-and `rollback_marker_publication` delegate to it; pending reservation retains
-the existing Runtime wake path. The concrete Source invocation now calls the
-planner and saved-plan publisher after its transfer function returns. Handoff
-assets independently retain the original plan and returned job observation.
+`Runtime::new` creates the dispatcher from the same original objects. The
+concrete Source Handoff continuation calls the planner and custody-based publisher
+after transfer returns, and owns the same-custody rollback/reconciliation error
+path. Remove the unused Handoff job receiver and narrow the unused Runtime
+publication wrapper; recovery ports require the originals in section 3.
+Pending reservation retains the existing Runtime wake path.
 
-Consumers are `runtime/phase_handoffs.rs`, `runtime/phase_supervisor.rs`, the
-Runtime constructor and the existing supervisor/ingress controls. The existing
+The correction has these concrete consumers:
+
+| Consumer | Required change or preserved contract |
+| --- | --- |
+| `runtime/phase_handoffs.rs` | Accepted guard presave; independent original publication custody; inline outcome/rollback consumer; no unused invocation receiver |
+| `runtime/phase_supervisor.rs` | Plan/job before latch; same-custody publication/reconcile/rollback; accepted policy across restore, abandon, removal, closed rollback and final Drop |
+| `runtime/phase_jobs.rs` | Distinguish a fresh-created unstarted reservation from an existing same-original reservation; remove only the permitted original job |
+| `state/managed_binding/publication.rs` | Retain actual commit before fallible Driver-cache publication; preserve exact SQL/Driver/current conditions and first-marker confirmation |
+| `state/managed_binding/unpublished.rs` | Preserve the existing private same-original proof unchanged; no Goal predicate, row-only release or refreshed snapshot |
+| `execution/owner.rs` | Preserve armed ownership; accepted guard policy must prevent Lost retirement even at final Drop, including after restoration |
+| `runtime/service.rs`, Runtime constructor and supervisor/ingress controls | Same admission/shutdown objects; accepted custody remains pending; retain never-accepted legacy assertions |
+| `execution/workflow_source/native_handoff.rs` | Preserve original split/rejoin and `finish_accepted`; Runtime must save accepted responsibility before this call |
+
+This inventory specifies contracts, not a requirement to edit every preserved
+consumer. The existing
 EMPTY graph control also checks the actual dispatcher lifetime. The master
 Workflow description records this internal connection and its unavailable
 installation boundary. No public API, SQL schema/guard, admission capability,
@@ -193,8 +215,9 @@ allocation, marker permission, schema, capability or host ownership guarantee.
 
 **Independent originals.** Before the second admission await, the Handoff saves
 one private publication custody containing its actual capacity, SAME plan and
-original origin. A typed stage records no transaction attempted, transaction
-attempted/uncertain, committed/cache pending, known marker, or handed off. The
+original origin. A typed stage records no transaction attempted, observed
+precommit refusal, transaction attempted/uncertain, committed/cache pending,
+known marker, handed off, restored Held, or partial rollback/removal error. The
 actual producer advances the stage; error text and persisted rows cannot
 construct it. The private Store producer preserves the observed successful
 commit in that independently retained cell before fallible Driver-cache
@@ -205,21 +228,36 @@ This custody retains an actual unstarted-job reservation, publication retention
 and first genuine marker as they become available. It has no strong Runtime,
 Handoff registry, own handle or return edge to its owning Handoff. Do not put a
 strong retention back inside its own queue slot. No custody/queue/job mutex spans
-Store access, readonly planning, child I/O or an await.
+Store access, readonly planning, child I/O or an await. Store receives the
+private cell without its mutex held; any synchronous factual update ends before
+the caller next uses Store. No custody-to-Store lock edge is introduced.
 
 **Pre-latch order.** Under SAME control admission, validate the original slot,
 origin and plan, install its SAME plan, and reserve the actual unstarted job and
 EMPTY preparation custody before changing Unmarked to Publishing. Save that
 original retention synchronously before entering Store. If any earlier step
 fails, preserve its actual stage and assets, without falsely entering Publishing
-or deleting a previously existing job. Apply this order to the test-only
-retained-publication port as well. Narrow the unused Runtime publication wrapper
-to its real scope; future reconciliation still requires the saved originals.
+or deleting a previously existing job. The actual reservation records whether
+this call created the job or reused its SAME unstarted reservation. Under SAME
+admission, a known no-transaction/no-start attempt may remove only this call's
+fresh, still-unstarted job; otherwise retain its actual charge and error stage.
+Neither persisted absence nor a failure label supplies that observation.
+Real plan-bearing retention ports follow this order. Isolate the existing no-plan
+retained-publication port under `cfg(test)` as a nongrant legacy guard-retention
+control: it cannot publish a marker or start Native, and supplies no accepted
+Source qualification. Do not fabricate a plan or change legacy assertions.
+Narrow the unused Runtime publication wrapper to its real scope; concrete
+reconciliation still requires the saved originals.
 
 **Actual outcomes and rollback.** Publication distinguishes its observed
 precommit, commit-attempt and postcommit-cache boundaries. A known precommit
 refusal permits an attempt at the existing same-original unpublished protocol;
-it is not itself a rollback proof. `plan_unpublished_marker` uses the retained
+it is not itself a rollback proof. The actual Handoff continuation retains its
+custody, then enters fresh SAME control admission for this inline attempt after
+the publisher releases admission. No nested admission, new offer or retry loop
+is added. Each successful or failed step saves its factual stage in that same
+cell; consuming a local handle on error never loses the retained originals.
+`plan_unpublished_marker` uses the retained
 allocation's original Unit snapshot. Its successfully ended Immediate checks
 SAME owner/epoch/generation, exact original open Unit and absence of the allocated
 operation/pair/Session/invocation. Goal-row drift alone is not one of those
@@ -236,17 +274,35 @@ original custody in the same synchronous return path, before fallible origin,
 queue, job or preparation lookup. Poison recovery is allowed only to preserve
 this factual object, never to authorize handoff. All existing original/current/
 Driver/Unit/permission checks and the once-only launch CAS still precede start.
-The queue preserves that first marker when confirmation revisits its SAME plan.
+The same-custody reconciliation seam confirms its SAME saved plan using the
+existing exact postimage protocol. If cache publication failed before a first
+marker returned, this protocol may produce the first genuine Arc, saved in the
+SAME custody before lookup. Otherwise a fresh confirmation wrapper does not
+replace the retained first Arc. Save that first Arc in the queue before
+fallible handoff lookup, and update the SAME independent cell only after the real
+once-only launch handoff. Any queue link to the cell is non-owning; a strong
+publication retention inside its own slot would recreate a cycle.
 
 **Accepted-Unmarked shutdown.** The actual transfer mechanically preserves its
 original slot/armed guard under accepted custody before `finish_accepted`, under
 the first control admission. This cannot rely only on subsequent origin
-installation, which can fail. Shutdown may drain never-accepted legacy Unmarked
+installation, which can fail. A one-way accepted-custody property belongs to
+the SAME slot and original armed guard. Restoring Unmarked never re-enables
+Lost retirement for that accepted guard. Apply this distinction to
+`restore_unpublished`, `abandon_unmarked`, `remove_unmarked`, closed rollback,
+`close_unmarked` and final supervisor/guard Drop. Final guard destruction keeps
+accepted ownership unresolved; it does not disarm ownership or write Lost from
+destruction alone. Shutdown may drain never-accepted legacy Unmarked
 slots, but retains accepted-Unmarked, Publishing and marked slots pending genuine
 closure and reports that pending state. Driver stop, guard Drop, missing rows or
 a shutdown error does not release that responsibility or declare completion.
 Runtime/all-owner loss retains the documented uncertainty; recovery is a separate
-required MVP gate, not supplied by this amendment.
+required MVP gate, not supplied by this amendment. This extends the unmarked-only
+stage in [supervisor integration](issue-43-phase-supervisor-integration-design.md)
+and [retention progress](issue-43-marker-retention-progress.md) only for genuine
+accepted Source custody; those historical legacy controls remain valid. The
+actual Handoff/job registries already reject pending shutdown; this amendment
+adds no separate diagnostic framework or inference of process death.
 
 **Actual consumers and qualification.** Remove the unused Handoff invocation
 receiver; PhaseJobs already owns the launch and results. Engine's handoff state
