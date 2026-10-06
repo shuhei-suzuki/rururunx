@@ -8,7 +8,7 @@ use crate::runtime::phase_effect_admission::PhaseEffectAdmissionGuard;
 use crate::state::managed_binding::Body;
 
 const LEASES: &str = "SELECT l.unit_id,l.provider,l.account_key,l.role,l.epoch,l.active,u.project_id,u.task_id,u.kind FROM quota_leases l JOIN execution_units u ON u.id=l.unit_id WHERE l.active=1 ORDER BY l.unit_id LIMIT 4097";
-const WAITERS: &str = "SELECT w.unit_id,w.provider,w.account_key,w.reason,w.next_due,w.fairness_sequence,w.resume_state,u.kind,u.project_id,u.task_id,u.native_effects_open,u.version,COALESCE(json_extract(u.body,'$.state'),''),COALESCE(json_extract(u.body,'$.wait_reason'),''),EXISTS(SELECT 1 FROM managed_phase_operations o WHERE o.unit_id=u.id AND o.phase_open=1),EXISTS(SELECT 1 FROM managed_phase_operations o JOIN managed_phase_readiness r ON r.operation_id=o.operation_id WHERE o.unit_id=u.id AND o.phase_open=1 AND r.state='parked' AND r.parking_version=r.version),json_extract(p.body,'$.max_tasks') FROM quota_waiters w JOIN execution_units u ON u.id=w.unit_id JOIN projects p ON p.id=u.project_id WHERE w.provider=?1 AND w.account_key='unknown' AND w.next_due<=?2 AND u.native_effects_open=1 ORDER BY CASE WHEN (u.kind='executor')=(?3='executor') THEN 1 ELSE 0 END,w.fairness_sequence,w.unit_id LIMIT 4097";
+const WAITERS: &str = "SELECT w.unit_id,w.provider,w.account_key,w.reason,w.next_due,w.fairness_sequence,w.resume_state,u.kind,u.project_id,u.task_id,u.native_effects_open,u.version,COALESCE(json_extract(u.body,'$.state'),''),COALESCE(json_extract(u.body,'$.wait_reason'),''),EXISTS(SELECT 1 FROM managed_phase_operations o WHERE o.unit_id=u.id AND o.phase_open=1),EXISTS(SELECT 1 FROM managed_phase_operations o JOIN managed_phase_readiness r ON r.operation_id=o.operation_id WHERE o.unit_id=u.id AND o.phase_open=1 AND r.state='parked' AND r.parking_version=r.version),json_extract(p.body,'$.max_tasks'),COALESCE(json_extract(u.body,'$.provider'),'') FROM quota_waiters w JOIN execution_units u ON u.id=w.unit_id JOIN projects p ON p.id=u.project_id WHERE w.provider=?1 AND w.account_key='unknown' AND w.next_due<=?2 AND u.native_effects_open=1 ORDER BY CASE WHEN (u.kind='executor')=(?3='executor') THEN 1 ELSE 0 END,w.fairness_sequence,w.unit_id LIMIT 4097";
 const POOL: &str = "SELECT provider,account_key,next_probe_at,probe_unit,backoff,last_role FROM quota_pools WHERE provider=?1 AND account_key='unknown'";
 const OWN_WAITER: &str = "SELECT unit_id,provider,account_key,reason,next_due,fairness_sequence,resume_state FROM quota_waiters WHERE unit_id=?1";
 const OWN_LEASE: &str =
@@ -638,7 +638,9 @@ fn policy(
             text(row, 12)? == "preparing",
             text(row, 13)? == text(row, 3)?,
             text(row, 6)? == "preparing",
-            text(row, 1)? == provider && text(row, 2)? == "unknown",
+            text(row, 1)? == provider
+                && text(row, 17)? == text(row, 1)?
+                && text(row, 2)? == "unknown",
             integer(row, 4)?,
             at,
         );
