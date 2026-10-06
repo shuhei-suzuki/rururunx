@@ -14,7 +14,7 @@ pub(crate) struct DriverReadTicket {
     pub(super) body: String,
     pub(super) preparation: Option<(crate::execution::ExecutionUnit, String)>,
     pub(super) source: Option<(Uuid, u64, String)>,
-    prerequisites: super::claim::PrerequisiteRows,
+    pub(super) prerequisites: super::claim::PrerequisiteRows,
 }
 
 pub(crate) fn read_driver_ticket(

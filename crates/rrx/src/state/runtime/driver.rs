@@ -10,6 +10,8 @@ pub(crate) use claim::{InitialDriverPlan, PendingDriverClaim, plan_initial_drive
 mod ticket;
 pub(crate) use ticket::{DriverReadTicket, read_driver_ticket};
 mod marker;
+mod preparation;
+pub(crate) use preparation::DriverPreparationAdvance;
 mod observation;
 pub(crate) use marker::{DriverMarkerAdvance, DriverPublication};
 pub(crate) use observation::DriverExitPublication;

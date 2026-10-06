@@ -220,7 +220,8 @@ impl AttemptManager {
             phase != WORKFLOW_SOURCE_BOOTSTRAP,
             "reserved preparation phase"
         );
-        self.prepare_inner(task, provider, phase, base, None).await
+        self.prepare_inner(task, provider, phase, base, None, None)
+            .await
     }
     /// Pre-register the first Workflow's Git source namespace. This is not a
     /// native launch capability or a successful work/result artifact.
@@ -230,7 +231,32 @@ impl AttemptManager {
         provider: &str,
     ) -> Result<PreparedExecutor> {
         let (unit, _) = self
-            .prepare_inner(task, provider, WORKFLOW_SOURCE_BOOTSTRAP, None, None)
+            .prepare_inner(task, provider, WORKFLOW_SOURCE_BOOTSTRAP, None, None, None)
+            .await?;
+        let guard = owner::PreparationGuard::new(self.owner.clone(), &unit);
+        Ok(PreparedExecutor {
+            owner: self.owner.clone(),
+            unit,
+            guard,
+        })
+    }
+    /// Only the actual retained Sources worker supplies this borrowed lifetime.
+    /// Public/legacy preparation does not acquire a managed Driver lane.
+    pub(crate) async fn prepare_driver_source(
+        &self,
+        task: crate::domain::TaskId,
+        provider: &str,
+        driver: &crate::runtime::driver::WorkerLifetime,
+    ) -> Result<PreparedExecutor> {
+        let (unit, _) = self
+            .prepare_inner(
+                task,
+                provider,
+                WORKFLOW_SOURCE_BOOTSTRAP,
+                None,
+                None,
+                Some(driver),
+            )
             .await?;
         let guard = owner::PreparationGuard::new(self.owner.clone(), &unit);
         Ok(PreparedExecutor {
@@ -247,7 +273,7 @@ impl AttemptManager {
         base: &str,
         reservation: &WorkflowReservation,
     ) -> Result<(ExecutionUnit, ResourceProfile)> {
-        self.prepare_inner(task, provider, phase, Some(base), Some(reservation))
+        self.prepare_inner(task, provider, phase, Some(base), Some(reservation), None)
             .await
     }
     async fn prepare_inner(
@@ -257,6 +283,7 @@ impl AttemptManager {
         phase: &str,
         base: Option<&str>,
         reservation: Option<&WorkflowReservation>,
+        driver: Option<&crate::runtime::driver::WorkerLifetime>,
     ) -> Result<(ExecutionUnit, ResourceProfile)> {
         ensure!(
             matches!(provider, "codex" | "claude") && !phase.is_empty() && phase.len() <= 64,
@@ -268,7 +295,10 @@ impl AttemptManager {
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            let task = store.task(task)?.context("Task missing")?;
+            let task = match driver {
+                Some(_) => store.task(task)?.context("Task missing")?,
+                None => store.legacy_worktree_task(task)?,
+            };
             let project = store.project(task.project_id)?.context("Project missing")?;
             (task, project)
         };
@@ -320,15 +350,29 @@ impl AttemptManager {
             created_at: at,
             updated_at: at,
         };
+        let driver_plan = driver
+            .map(|driver| {
+                ensure!(
+                    reservation.is_none() && base.is_none(),
+                    "first Driver source cannot reuse a Workflow reservation"
+                );
+                crate::state::read_driver_ticket(self.owner.clone(), driver.association()?)?
+                    .plan_first_preparation(unit.clone())
+            })
+            .transpose()?;
         let unit = {
             let mut store = self
                 .owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            match reservation {
-                Some(r) => store.reserve_workflow_execution(unit, task.version, r)?,
-                None => store.reserve_execution(unit, task.version)?,
+            if let Some(plan) = &driver_plan {
+                store.apply_driver_preparation(plan)?
+            } else {
+                match reservation {
+                    Some(r) => store.reserve_workflow_execution(unit, task.version, r)?,
+                    None => store.reserve_execution(unit, task.version)?,
+                }
             }
         };
         let mut preparation_guard = owner::PreparationGuard::new(self.owner.clone(), &unit);
@@ -336,12 +380,23 @@ impl AttemptManager {
             self.resources.reserve(&unit, &profile)?;
             drop(admission);
             self.resources.materialize(&profile)?;
-            let mut preparing = self
-                .owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .transition_execution(&unit.authority(), UnitState::Preparing)?;
+            let transition = driver
+                .map(|driver| {
+                    crate::state::read_driver_ticket(self.owner.clone(), driver.association()?)?
+                        .plan_preparing()
+                })
+                .transpose()?;
+            let mut preparing = {
+                let mut store = self
+                    .owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+                match &transition {
+                    Some(plan) => store.apply_driver_preparation(plan)?,
+                    None => store.transition_execution(&unit.authority(), UnitState::Preparing)?,
+                }
+            };
             preparation_guard.update(&preparing);
             let common = self.owner.git_lease(preparing.id, None).await?;
             let io =
@@ -359,12 +414,26 @@ impl AttemptManager {
                             ],
                         )
                         .await?;
-                    preparing = self
-                        .owner
-                        .store
-                        .lock()
-                        .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                        .bind_execution_base(&preparing.authority(), &base)?;
+                    let advance = driver
+                        .map(|driver| {
+                            crate::state::read_driver_ticket(
+                                self.owner.clone(),
+                                driver.association()?,
+                            )?
+                            .plan_preparation_base(&base)
+                        })
+                        .transpose()?;
+                    preparing = {
+                        let mut store = self
+                            .owner
+                            .store
+                            .lock()
+                            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+                        match &advance {
+                            Some(plan) => store.apply_driver_preparation(plan)?,
+                            None => store.bind_execution_base(&preparing.authority(), &base)?,
+                        }
+                    };
                     preparation_guard.update(&preparing);
                     base
                 }
@@ -462,6 +531,7 @@ impl AttemptManager {
         provider: &str,
         phase: &str,
         reservation: Option<&WorkflowReservation>,
+        driver: Option<&crate::runtime::driver::WorkerLifetime>,
     ) -> Result<(ExecutionUnit, ResourceProfile)> {
         ensure!(
             matches!(kind, UnitKind::Reviewer | UnitKind::Verifier),

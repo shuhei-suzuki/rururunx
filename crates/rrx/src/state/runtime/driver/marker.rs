@@ -20,13 +20,13 @@ pub(crate) struct DriverMarkerAdvance {
 /// Created only by checking a completed planned mutation on the same Store
 /// after commit. Not Clone/Deserialize and never an input/Native credential.
 pub(crate) struct DriverPublication {
-    task: TaskId,
-    id: Uuid,
-    epoch: u64,
-    before_version: u64,
-    before_body: String,
-    after_version: u64,
-    after_body: String,
+    pub(super) task: TaskId,
+    pub(super) id: Uuid,
+    pub(super) epoch: u64,
+    pub(super) before_version: u64,
+    pub(super) before_body: String,
+    pub(super) after_version: u64,
+    pub(super) after_body: String,
 }
 impl DriverPublication {
     pub(crate) fn before(&self) -> (TaskId, Uuid, u64, u64, &str) {
@@ -42,7 +42,7 @@ impl DriverPublication {
         (self.after_version, &self.after_body)
     }
 }
-fn image(row: &Row, body: &str) -> Result<Vec<SqlValue>> {
+pub(super) fn image(row: &Row, body: &str) -> Result<Vec<SqlValue>> {
     let scope = &row.pins.scope;
     Ok(vec![
         scope

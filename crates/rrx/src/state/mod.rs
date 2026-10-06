@@ -6,8 +6,9 @@ mod native_dispatch_tests;
 mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
 pub(crate) use runtime::driver::{
-    DriverExitPublication, DriverMarkerAdvance, DriverPublication, DriverReadTicket,
-    InitialDriverPlan, PendingDriverClaim, plan_initial_driver, read_driver_ticket,
+    DriverExitPublication, DriverMarkerAdvance, DriverPreparationAdvance, DriverPublication,
+    DriverReadTicket, InitialDriverPlan, PendingDriverClaim, plan_initial_driver,
+    read_driver_ticket,
 };
 use std::{path::Path, time::Duration};
 
@@ -1561,6 +1562,9 @@ fn owns_workflow(tx: &Transaction<'_>, scope: &Scope) -> Result<bool> {
     Ok(tx.query_row("SELECT EXISTS(SELECT 1 FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='workflow')", params![scope.project_id.to_string(), scope.goal_id.map(|id| id.to_string()), scope.task_id.map(|id| id.to_string())], |row| row.get(0))?)
 }
 fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
+    put_task_tx_at(tx, task, now_ms())
+}
+fn put_task_tx_at(tx: &Transaction<'_>, task: &Task, at: i64) -> Result<Task> {
     ensure!(
         !task.title.trim().is_empty() && !task.executor.trim().is_empty(),
         "task title/executor must be nonempty"
@@ -1637,7 +1641,7 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
     }
     let mut next = task.clone();
     bump(&mut next.version)?;
-    next.updated_at = now_ms();
+    next.updated_at = at;
     let body = serde_json::to_string(&next)?;
     write_snapshot(
         tx,
