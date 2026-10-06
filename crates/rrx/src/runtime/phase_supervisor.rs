@@ -198,6 +198,11 @@ impl PhaseLaunchParts {
     pub(crate) fn validate_preparation_original(&self) -> Result<()> {
         self.origin.validate_marker(&self.marker)
     }
+    pub(crate) fn preparation_seal(
+        &self,
+    ) -> Result<Arc<crate::execution::workflow_source::SourceNativePreparationSeal>> {
+        self.origin.preparation_seal(&self.marker)
+    }
     pub(crate) fn admission(&self) -> &Arc<super::phase_effect_admission::PhaseEffectAdmission> {
         &self.retention.supervisor.admission
     }

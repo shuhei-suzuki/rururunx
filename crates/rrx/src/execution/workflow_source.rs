@@ -41,8 +41,8 @@ fn retire_source_access<T>(tasks: &Mutex<BTreeMap<TaskId, T>>, task: TaskId) -> 
 }
 mod native_handoff;
 pub(crate) use native_handoff::{
-    SourceNativeCustody, SourceNativeHandoff, SourceNativeOrigin, SourceNativeTransfer,
-    SourceRefusalRestoration,
+    SourceNativeCustody, SourceNativeHandoff, SourceNativeOrigin, SourceNativePreparationSeal,
+    SourceNativeTransfer, SourceRefusalRestoration,
 };
 
 /// Only this producer owns the live preparation capability. Ledger hints cannot
@@ -68,6 +68,69 @@ struct Frame {
     versions: BTreeMap<String, String>,
     mandatory: BTreeMap<String, String>,
     governing_digest: String,
+    native_tree: BTreeMap<String, CommittedTreeEntry>,
+    native_bytes: BTreeMap<String, Vec<u8>>,
+    native_mandatory: std::collections::BTreeSet<String>,
+}
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct CommittedTreeEntry {
+    mode: String,
+    kind: String,
+    pub(crate) oid: String,
+    size: Option<usize>,
+}
+struct CommittedCorpus {
+    files: Vec<CommittedFile>,
+    tree: BTreeMap<String, CommittedTreeEntry>,
+}
+pub(crate) fn parse_committed_tree(bytes: &[u8]) -> Result<BTreeMap<String, CommittedTreeEntry>> {
+    ensure!(
+        bytes.len() <= 16 * 1024 * 1024 && (bytes.is_empty() || bytes.last() == Some(&0)),
+        "committed tree bound/frame differs"
+    );
+    let mut entries = BTreeMap::new();
+    for entry in bytes.split(|b| *b == 0).filter(|e| !e.is_empty()) {
+        ensure!(
+            entries.len() < 4096,
+            "committed inventory exceeds 4096 files"
+        );
+        let text = std::str::from_utf8(entry)?;
+        let (header, path) = text
+            .split_once('\t')
+            .context("committed tree path absent")?;
+        relative(path)?;
+        let fields: Vec<_> = header.split_whitespace().collect();
+        ensure!(
+            fields.len() == 4
+                && valid_oid(fields[2])
+                && matches!(
+                    (fields[0], fields[1]),
+                    ("100644" | "100755" | "120000", "blob") | ("160000", "commit")
+                ),
+            "committed tree physical type/OID differs"
+        );
+        let size = if fields[1] == "blob" {
+            Some(fields[3].parse::<usize>()?)
+        } else {
+            ensure!(fields[3] == "-", "committed gitlink size differs");
+            None
+        };
+        ensure!(
+            entries
+                .insert(
+                    path.to_owned(),
+                    CommittedTreeEntry {
+                        mode: fields[0].into(),
+                        kind: fields[1].into(),
+                        oid: fields[2].into(),
+                        size,
+                    }
+                )
+                .is_none(),
+            "duplicate committed tree path"
+        );
+    }
+    Ok(entries)
 }
 /// Actual first committed frame and its still-owned preparation. This token
 /// retains the real Sources slot, never an input DTO/native permission.
@@ -949,7 +1012,7 @@ impl Frame {
         runtime: &Config,
         revision: String,
         artifact: Option<ArtifactId>,
-        files: Vec<CommittedFile>,
+        corpus: CommittedCorpus,
     ) -> Result<Self> {
         ensure!(
             task.project_id == project.id
@@ -958,6 +1021,12 @@ impl Frame {
             "source owners differ"
         );
         let mut config = runtime.clone();
+        let files = corpus.files;
+        let native_bytes = files
+            .iter()
+            .filter_map(|f| f.bytes.as_ref().map(|b| (f.path.clone(), b.clone())))
+            .collect();
+        let mut native_mandatory = std::collections::BTreeSet::new();
         let mut rules = String::new();
         let mut versions = BTreeMap::from([("code".into(), revision.clone())]);
         let read = |reference: &Path| -> Result<(String, &[u8])> {
@@ -979,7 +1048,8 @@ impl Frame {
             ))
         };
         if let Some(reference) = &project.config_ref {
-            let (_, bytes) = read(reference)?;
+            let (path, bytes) = read(reference)?;
+            native_mandatory.insert(path);
             let text = std::str::from_utf8(bytes)?;
             ensure!(!text.contains('\0'), "binary config");
             versions.insert("rules:config".into(), digest(bytes));
@@ -987,6 +1057,7 @@ impl Frame {
         }
         for reference in &project.rule_refs {
             let (path, bytes) = read(reference)?;
+            native_mandatory.insert(path.clone());
             let text = std::str::from_utf8(bytes)?;
             ensure!(!text.contains('\0'), "binary mandatory rule");
             versions.insert(format!("rules:{path}"), digest(bytes));
@@ -1041,6 +1112,9 @@ impl Frame {
             versions,
             mandatory,
             governing_digest: crate::state::execution_governing_digest(project, goal)?,
+            native_tree: corpus.tree,
+            native_bytes,
+            native_mandatory,
         })
     }
     fn render(&self, task: &Task, phase: Phase, budget: &ContextBudget) -> Result<SourceSnapshot> {
@@ -1143,11 +1217,7 @@ impl CorpusReader<'_> {
         }
     }
 }
-async fn read_corpus(
-    io: CorpusReader<'_>,
-    path: &Path,
-    revision: &str,
-) -> Result<Vec<CommittedFile>> {
+async fn read_corpus(io: CorpusReader<'_>, path: &Path, revision: &str) -> Result<CommittedCorpus> {
     ensure!(
         valid_oid(revision),
         "committed inventory requires exact OID"
@@ -1157,27 +1227,10 @@ async fn read_corpus(
         .await?;
     let mut files = Vec::new();
     let mut total = 0usize;
-    for entry in tree.split(|b| *b == 0).filter(|e| !e.is_empty()) {
-        ensure!(files.len() < 4096, "committed inventory exceeds 4096 files");
-        let tab = entry
-            .iter()
-            .position(|b| *b == b'\t')
-            .context("invalid committed tree entry")?;
-        let fields = std::str::from_utf8(&entry[..tab])?
-            .split_whitespace()
-            .collect::<Vec<_>>();
-        let name = std::str::from_utf8(&entry[tab + 1..])?.to_owned();
-        relative(&name)?;
-        ensure!(
-            fields.len() == 4 && valid_oid(fields[2]),
-            "invalid committed tree header"
-        );
-        let ordinary = matches!(fields[0], "100644" | "100755") && fields[1] == "blob";
-        let size = if ordinary {
-            fields[3].parse::<usize>()?
-        } else {
-            0
-        };
+    let native_tree = parse_committed_tree(&tree)?;
+    for (name, entry) in &native_tree {
+        let ordinary = matches!(entry.mode.as_str(), "100644" | "100755") && entry.kind == "blob";
+        let size = entry.size.unwrap_or(0);
         let (bytes, skipped) = if !ordinary {
             (None, Some("unsupported Git entry type".into()))
         } else if size > 256 * 1024 {
@@ -1187,18 +1240,21 @@ async fn read_corpus(
                 .checked_add(size)
                 .context("committed corpus size overflow")?;
             ensure!(total <= 16 * 1024 * 1024, "committed corpus exceeds 16 MiB");
-            let bytes = io.run(path, ["cat-file", "blob", fields[2]]).await?;
+            let bytes = io.run(path, ["cat-file", "blob", &entry.oid]).await?;
             ensure!(bytes.len() == size, "committed blob size mismatch");
             (Some(bytes), None)
         };
         files.push(CommittedFile {
-            path: name,
-            oid: fields[2].into(),
+            path: name.clone(),
+            oid: entry.oid.clone(),
             bytes,
             skipped,
         });
     }
-    Ok(files)
+    Ok(CommittedCorpus {
+        files,
+        tree: native_tree,
+    })
 }
 
 #[cfg(test)]

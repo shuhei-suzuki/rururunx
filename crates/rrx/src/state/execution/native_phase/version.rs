@@ -1,6 +1,7 @@
 //! Private original-actor version intent and owned-observation inventory CAS.
 //! Compatible effect writers remain journal writers, never observation issuers.
 use super::*;
+use crate::execution::native::readonly::NativePhaseHelperAction;
 use crate::execution::native::version::NativeVersionObservation;
 use crate::runtime::phase_effect_admission::PhaseEffectAdmissionGuard;
 use rusqlite::{Connection, types::ValueRef};
@@ -287,6 +288,31 @@ pub(crate) struct NativeVersionHelperPlan {
     before: Inventory,
     pending: Inventory,
     effect: EffectImage,
+    action: NativePhaseHelperAction,
+}
+/// Known factual settlement of SAME owned observation. Issued only after the
+/// exact closure transaction commits; subsequent helpers still need authority.
+pub(crate) struct NativeHelperSettlementCommit {
+    original: Arc<NativeHelperSettlementPlan>,
+}
+/// Complete actual current preparation/history acknowledgement, nongrant for
+/// registration and input. No SQL lookup can construct its private original.
+pub(crate) struct NativePreparedCommit {
+    original: Arc<NativePreparationCommit>,
+    history: Vec<Arc<NativeHelperSettlementCommit>>,
+}
+impl NativePreparedCommit {
+    pub(crate) fn matches_actor(
+        &self,
+        actor: &Arc<crate::execution::native::NativePreparationActor>,
+    ) -> bool {
+        !self.history.is_empty() && Arc::ptr_eq(self.original.actor(), actor)
+    }
+}
+impl NativeHelperSettlementCommit {
+    pub(crate) fn matches_plan(&self, plan: &Arc<NativeVersionHelperPlan>) -> bool {
+        Arc::ptr_eq(&self.original.original, plan)
+    }
 }
 pub(crate) struct NativeHelperIntentCommit {
     original: Arc<NativeVersionHelperPlan>,
@@ -297,6 +323,9 @@ impl NativeHelperIntentCommit {
     }
 }
 impl NativeVersionHelperPlan {
+    pub(crate) fn action(&self) -> &NativePhaseHelperAction {
+        &self.action
+    }
     pub(crate) fn actor(&self) -> &Arc<crate::execution::native::NativePreparationActor> {
         self.ready.actor()
     }
@@ -312,6 +341,59 @@ pub(crate) struct NativeHelperSettlementPlan {
     effect: EffectImage,
 }
 impl Store {
+    pub(crate) fn confirm_phase_prepared_helpers(
+        &mut self,
+        history: Vec<Arc<NativeHelperSettlementCommit>>,
+        admission: &PhaseEffectAdmissionGuard,
+    ) -> Result<NativePreparedCommit> {
+        ensure!(
+            !history.is_empty()
+                && history.len() <= crate::execution::native::readonly::HELPER_LIMIT,
+            "complete finite actual helper history absent"
+        );
+        let last = history.last().expect("checked history");
+        let ready = last.original.original.ready.clone();
+        // Qualifiers/hash/fs checks run before this method outside SharedStore.
+        // Here only SAME original objects and already-owned physical images.
+        for known in &history {
+            ensure!(
+                Arc::ptr_eq(&known.original.original.ready, &ready),
+                "prepared history replaced original readiness actor"
+            );
+        }
+        selected_database(&self.connection, ready.actor().launch())?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        {
+            let budget = InventoryBudget::new(&tx)?;
+            budget.finish((|| {
+                admission.validate_for(ready.actor().launch())?;
+                ready.actor().validate_open()?;
+                ready.validate_version_ready(&tx)?;
+                let current =
+                    Inventory::read(&tx, ready.actor().launch().allocation().facts().unit_id)?;
+                ensure!(
+                    current == last.original.after,
+                    "prepared latest exact helper inventory differs"
+                );
+                for known in &history {
+                    ensure!(
+                        known.original.observation.complete()
+                            && known.original.effect.text[6] == "confirmed"
+                            && current.rows.contains(&known.original.effect),
+                        "prepared original observed/settled helper image differs"
+                    );
+                }
+                Ok(())
+            })())?;
+        }
+        tx.commit()?;
+        Ok(NativePreparedCommit {
+            original: ready,
+            history,
+        })
+    }
     pub(crate) fn plan_phase_version_intent(
         runtime: &crate::execution::RuntimeOwner,
         ready: Arc<NativePreparationCommit>,
@@ -369,6 +451,61 @@ impl Store {
             before,
             pending,
             effect,
+            action: NativePhaseHelperAction::Version,
+        }))
+    }
+    pub(crate) fn plan_phase_readonly_intent(
+        runtime: &crate::execution::RuntimeOwner,
+        previous: Arc<NativeHelperSettlementCommit>,
+        action: NativePhaseHelperAction,
+    ) -> Result<Arc<NativeVersionHelperPlan>> {
+        ensure!(
+            !matches!(action, NativePhaseHelperAction::Version),
+            "readonly action cannot issue another version helper"
+        );
+        let original = &previous.original.original;
+        original.actor().validate_open()?;
+        ensure!(
+            previous.original.observation.qualified(),
+            "previous original helper was not qualified"
+        );
+        let before = snapshot(runtime, |tx| {
+            let budget = InventoryBudget::new(tx)?;
+            budget.finish((|| {
+                original.validate_ready(tx)?;
+                let actual =
+                    Inventory::read(tx, original.actor().launch().allocation().facts().unit_id)?;
+                ensure!(
+                    actual == previous.original.after,
+                    "readonly predecessor exact settlement inventory changed"
+                );
+                Ok(actual)
+            })())
+        })?;
+        let id = OperationId::new();
+        let allocation = original.actor().launch().allocation();
+        let effect = EffectImage::generated(&ManagedEffect {
+            id,
+            unit_id: allocation.facts().unit_id,
+            scope: allocation.unit_snapshot().scope.clone(),
+            kind: action.kind().into(),
+            idempotency_key: format!("native-readonly-{id}"),
+            expected_target: format!(
+                "readonly:{}:{}",
+                allocation.facts().operation_id,
+                action.label()
+            ),
+            state: EffectState::Pending,
+            receipt: BTreeMap::new(),
+            version: 1,
+        })?;
+        let pending = before.with_version_intent(effect.clone())?;
+        Ok(Arc::new(NativeVersionHelperPlan {
+            ready: original.ready.clone(),
+            before,
+            pending,
+            effect,
+            action,
         }))
     }
     pub(crate) fn reserve_phase_version_intent(

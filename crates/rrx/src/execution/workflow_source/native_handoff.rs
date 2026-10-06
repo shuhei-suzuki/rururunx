@@ -58,7 +58,83 @@ pub(crate) struct SourceNativeCustody {
     pair: uuid::Uuid,
     session: SessionId,
     invocation: NativeInvocationId,
+    seal: Arc<SourceNativePreparationSeal>,
     assets: Mutex<Assets>,
+}
+/// Only the actual validated first Executor offer creates this immutable seal.
+/// No Deserialize/DTO constructor, live permission or strong producer backlink.
+pub(crate) struct SourceNativePreparationSeal {
+    frame: Arc<Frame>,
+    operation: OperationId,
+    pair: uuid::Uuid,
+    input_bytes: Vec<u8>,
+}
+fn validate_seal_identity(
+    actual: (OperationId, uuid::Uuid, &[u8]),
+    original: (OperationId, uuid::Uuid, &[u8]),
+) -> Result<()> {
+    ensure!(
+        actual == original,
+        "original committed Source preparation seal differs"
+    );
+    Ok(())
+}
+impl SourceNativePreparationSeal {
+    pub(crate) fn readonly_actions(
+        &self,
+    ) -> Result<Vec<crate::execution::native::readonly::NativePhaseHelperAction>> {
+        use crate::execution::native::readonly::NativePhaseHelperAction as Action;
+        ensure!(
+            self.frame.artifact.is_none(),
+            "actual readonly artifact lease unavailable"
+        );
+        let inventory = self.frame.index.inventory();
+        let mut actions = vec![
+            Action::Head,
+            Action::Status,
+            Action::Tree {
+                revision: self.frame.revision.clone(),
+                inventory: self.frame.native_tree.clone(),
+            },
+        ];
+        let mut seen = std::collections::BTreeSet::new();
+        for path in &self.frame.native_mandatory {
+            let entry = inventory
+                .get(path)
+                .context("original mandatory inventory entry absent")?;
+            let original_bytes = self
+                .frame
+                .native_bytes
+                .get(path)
+                .context("original mandatory actual bytes absent")?;
+            ensure!(
+                entry.sha256.as_deref() == Some(digest(original_bytes).as_str())
+                    && self
+                        .frame
+                        .native_tree
+                        .get(path)
+                        .is_some_and(|p| p.oid == entry.oid),
+                "original mandatory bytes/OID correspondence differs"
+            );
+            if let Some(hash) = &entry.sha256
+                && seen.insert(entry.oid.clone())
+            {
+                ensure!(
+                    entry.bytes.is_some_and(|n| n <= 1024 * 1024),
+                    "committed blob qualification exceeds bound"
+                );
+                actions.push(Action::Blob {
+                    oid: entry.oid.clone(),
+                    sha256: hash.clone(),
+                });
+            }
+        }
+        ensure!(
+            actions.len() < 32,
+            "committed source qualification exceeds finite helper bound"
+        );
+        Ok(actions)
+    }
 }
 /// A transient borrow origin, never embedded in a Source slot/custody/plan.
 pub(crate) struct SourceNativeOrigin {
@@ -79,6 +155,23 @@ pub(crate) enum SourceRefusalRestoration {
 }
 
 impl SourceNativeCustody {
+    /// Borrow only the immutable original offer seal. Root first validates its
+    /// SAME Source/ticket/allocation marker; no slot/asset lock or encoding here.
+    pub(crate) fn preparation_seal(
+        &self,
+        allocation: &NativeAllocation,
+    ) -> Result<Arc<SourceNativePreparationSeal>> {
+        let facts = allocation.facts();
+        ensure!(
+            facts.operation_id == self.operation && facts.pair_id == self.pair,
+            "original accepted Source allocation differs"
+        );
+        validate_seal_identity(
+            (facts.operation_id, facts.pair_id, facts.input_bytes),
+            (self.seal.operation, self.seal.pair, &self.seal.input_bytes),
+        )?;
+        Ok(self.seal.clone())
+    }
     /// Original selected object only; no allocation or dispatch permission.
     pub(crate) fn selected_port(&self) -> &Arc<NativePhasePort> {
         &self.selected
@@ -103,6 +196,33 @@ impl SourceNativeCustody {
                 && serde_json::to_value(allocation.unit_snapshot())?
                     == serde_json::to_value(&self.unit)?,
         )
+    }
+}
+
+#[cfg(test)]
+mod seal_identity_tests {
+    use super::*;
+    #[test]
+    fn nongrant_seal_scalar_original_operation_pair_and_full_encoded_bytes() {
+        let operation = OperationId::new();
+        let pair = uuid::Uuid::new_v4();
+        let original = (
+            operation,
+            pair,
+            b"original exact encoded Context/template/pins".as_slice(),
+        );
+        validate_seal_identity(original, original).unwrap();
+        for changed in [
+            (OperationId::new(), pair, original.2),
+            (operation, uuid::Uuid::new_v4(), original.2),
+            (operation, pair, b"row-equal replacement payload".as_slice()),
+            (operation, pair, &original.2[..original.2.len() - 1]),
+        ] {
+            assert!(
+                validate_seal_identity(changed, original).is_err(),
+                "original seal facts must refuse substitution"
+            );
+        }
     }
 }
 impl SourceNativeOrigin {
@@ -382,6 +502,14 @@ impl ManagedWorkflowSources {
         ticket.validate_current_read()?;
         let ticket = Arc::new(ticket);
         let facts = allocation.facts();
+        // proof.validate_context above established exact committed template,
+        // payload and all Context pins before any original assets transfer.
+        let seal = Arc::new(SourceNativePreparationSeal {
+            frame: state.frame.clone(),
+            operation: facts.operation_id,
+            pair: facts.pair_id,
+            input_bytes: facts.input_bytes.to_vec(),
+        });
         let map = self
             .tasks
             .lock()
@@ -401,6 +529,7 @@ impl ManagedWorkflowSources {
             pair: facts.pair_id,
             session: facts.session_id,
             invocation: facts.invocation_id,
+            seal,
             assets: Mutex::new(Assets {
                 state: CustodyState::Ready,
                 prepared: state.prepared.take(),

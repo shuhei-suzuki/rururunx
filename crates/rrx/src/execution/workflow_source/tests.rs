@@ -307,9 +307,9 @@ async fn retained_corpus_reads_exact_tree_blobs_after_retirement_and_refuses_unr
     let files = read_corpus(CorpusReader::Retained(&io), &artifact.repository, &sha)
         .await
         .unwrap();
-    assert_eq!(files.len(), 1);
+    assert_eq!(files.files.len(), 1);
     assert_eq!(
-        files[0].bytes.as_deref(),
+        files.files[0].bytes.as_deref(),
         Some(b"retained changed source\n".as_slice())
     );
     assert!(io.run(["cat-file", "blob", &old_blob]).await.is_err());

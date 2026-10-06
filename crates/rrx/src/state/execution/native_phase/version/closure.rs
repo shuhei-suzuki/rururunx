@@ -385,7 +385,7 @@ impl Store {
     pub(crate) fn close_phase_version_observation(
         &mut self,
         closure: &Arc<NativeVersionClosurePlan>,
-    ) -> Result<()> {
+    ) -> Result<NativeHelperSettlementCommit> {
         closure.validate_original()?;
         let settlement = &closure.settlement;
         let plan = &settlement.original;
@@ -409,6 +409,8 @@ impl Store {
             })())?;
         }
         tx.commit()?;
-        Ok(())
+        Ok(NativeHelperSettlementCommit {
+            original: closure.settlement.clone(),
+        })
     }
 }

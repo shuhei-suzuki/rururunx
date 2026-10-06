@@ -17,7 +17,8 @@ struct CustodyState {
     actor: Option<Arc<NativePreparationActor>>,
     plan: Option<Arc<crate::state::NativePreparationPlan>>,
     known: Option<Arc<crate::state::NativePreparationCommit>>,
-    helper: Option<Arc<super::version::NativeVersionHelperCustody>>,
+    helpers: Vec<Arc<super::version::NativeVersionHelperCustody>>,
+    prepared: Option<Arc<super::version::PreparedNativePhase>>,
 }
 impl NativePreparationCustody {
     pub(crate) fn new(allocation: Arc<NativeAllocation>) -> Arc<Self> {
@@ -37,7 +38,7 @@ impl NativePreparationCustody {
             if let Some(actor) = &state.actor {
                 actor.revoked.store(true, Ordering::Release);
             }
-            if let Some(helper) = &state.helper {
+            for helper in &state.helpers {
                 helper.abandon();
             }
         }
@@ -106,7 +107,7 @@ impl NativePreparationCustody {
             .lock()
             .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
         ensure!(
-            !state.abandoned && state.helper.is_none(),
+            !state.abandoned && state.helpers.is_empty(),
             "original version stage held or already installed"
         );
         state
@@ -135,14 +136,70 @@ impl NativePreparationCustody {
             .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
         ensure!(
             !state.abandoned
-                && state.helper.is_none()
+                && state.helpers.len() < super::readonly::HELPER_LIMIT
                 && state
                     .actor
                     .as_ref()
                     .is_some_and(|actor| helper.matches_actor(actor)),
             "original version helper custody changed"
         );
-        state.helper = Some(helper);
+        state.helpers.push(helper);
+        Ok(())
+    }
+    pub(super) fn next_output_limit(
+        &self,
+        action: &super::readonly::NativePhaseHelperAction,
+    ) -> Result<usize> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(
+            !state.abandoned && state.helpers.len() < super::readonly::HELPER_LIMIT,
+            "finite preparation helper budget exhausted or revoked"
+        );
+        let helpers = state.helpers.clone();
+        drop(state);
+        let captured = helpers.iter().try_fold(0usize, |sum, helper| {
+            helper.closed()?;
+            sum.checked_add(helper.captured_bytes()?)
+                .context("preparation aggregate capture overflow")
+        })?;
+        super::readonly::next_output_budget(helpers.len(), captured, action)
+    }
+    pub(super) fn qualified_history(
+        &self,
+    ) -> Result<Vec<Arc<crate::state::NativeHelperSettlementCommit>>> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(
+            !state.abandoned && state.prepared.is_none(),
+            "original preparation completion already held or installed"
+        );
+        let helpers = state.helpers.clone();
+        drop(state);
+        helpers.iter().map(|h| h.closed()).collect()
+    }
+    pub(super) fn retain_prepared(
+        &self,
+        prepared: Arc<super::version::PreparedNativePhase>,
+    ) -> Result<()> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(
+            !state.abandoned
+                && state.prepared.is_none()
+                && state
+                    .actor
+                    .as_ref()
+                    .is_some_and(|a| prepared.matches_actor(a)),
+            "original preparation completion custody differs"
+        );
+        state.prepared = Some(prepared);
         Ok(())
     }
     /// Nongrant confirmation of the same saved postimage. A wake cannot
@@ -153,7 +210,7 @@ impl NativePreparationCustody {
                 .state
                 .lock()
                 .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-            state.helper.clone()
+            state.helpers.last().cloned()
         };
         if let Some(helper) = helper {
             let actor = {
@@ -216,11 +273,12 @@ impl Drop for NativePreparationCustody {
             if let Some(actor) = &state.actor {
                 actor.revoked.store(true, Ordering::Release);
             }
-            if let Some(helper) = &state.helper {
+            for helper in &state.helpers {
                 helper.abandon();
             }
             (
-                state.helper.take(),
+                state.prepared.take(),
+                std::mem::take(&mut state.helpers),
                 state.known.take(),
                 state.plan.take(),
                 state.actor.take(),
@@ -287,7 +345,7 @@ impl NativeSessions {
         &self,
         launch: Arc<PhaseLaunchParts>,
         custody: Arc<NativePreparationCustody>,
-    ) -> Result<()> {
+    ) -> Result<Arc<super::version::PreparedNativePhase>> {
         let adapter = launch.allocation().selected_port().selected_adapter()?;
         ensure!(
             std::ptr::eq(adapter.sessions.as_ref(), self)
@@ -363,11 +421,7 @@ impl NativeSessions {
         };
         custody.retain_commit(commit)?;
         drop(admission);
-        self.prepare_phase_version(custody).await?;
-        // This helper remains factual only. Quota/transport/full preparation
-        // are unavailable; never fall through to generic admission.
-        anyhow::bail!(
-            "original Native version observation retained; full preparation/quota/transport composition unavailable"
-        )
+        let version = self.prepare_phase_version(custody.clone()).await?;
+        self.prepare_phase_readonly(custody, version).await
     }
 }

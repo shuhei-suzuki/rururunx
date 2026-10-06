@@ -22,6 +22,7 @@ use tokio::{
 mod phase_fence_tests;
 mod phase_protocol;
 mod preparation;
+pub(crate) mod readonly;
 pub(crate) mod version;
 pub(crate) use phase_protocol::{
     ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession, OwnedPhaseSettlement,
@@ -209,8 +210,10 @@ impl NativeSessions {
         launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
         custody: Arc<NativePreparationCustody>,
     ) -> Result<NativePhaseStart> {
-        self.begin_phase_preparation(launch, custody).await?;
-        anyhow::bail!("private Native transport composition unavailable")
+        let _prepared = self.begin_phase_preparation(launch, custody).await?;
+        anyhow::bail!(
+            "actual private Native preparation retained; registration/quota/transport composition unavailable"
+        )
     }
     async fn start_with_launch(
         &self,

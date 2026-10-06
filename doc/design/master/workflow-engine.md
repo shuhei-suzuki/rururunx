@@ -44,7 +44,7 @@ lookup. Genuine producer controls, full regression and lint qualification remain
 open; these source mechanisms alone do not qualify Native execution.
 
 The selected Native preparation continuation retains its original readiness
-actor, exact known commit and a single version-helper plan independently of the
+actor, exact known commit and finite original helper history independently of the
 caller future. The private existing10 intent and owned-observation settlement
 compare the complete original indexed Unit effect inventory; compatible journal
 writes cause Held conflicts and cannot issue observations or replay a child.
@@ -52,9 +52,21 @@ Both inventory passes share a scoped SQLite VM budget, with a 256-row sentinel,
 8-KiB body bound and inclusive 2-MiB all-column framing bound. The raw child is
 adopted before identity or pipe qualification. Capture has an eager independent
 owner, a combined 64-KiB output budget and bounded execution/drain/stop attempts.
-This version-only observation supplies no full prepared-input, Session or
-transport proof. Installed composition, current official CLI compatibility,
-full Native preparation and both-OS/four-Task qualification remain unavailable.
+The actual first Executor Source retains its validated immutable Context/template,
+encoded input, committed corpus bytes, complete physical tree inventory and mandatory
+config/rule pins. Its nongrant seal reaches Native through the same accepted
+Source/ticket/allocation origin. Native follows the supported version capture with
+fixed readonly namespace, exact HEAD/status, pinned full-tree and mandatory-blob
+helpers. Git uses the original real tool/profile, sanitized routing environment,
+disabled lazy fetch/replacements and genuine owned Git lease. Each next intent
+requires its predecessor's authentic qualified observation and known exact
+settlement inventory. Limits are 32 original helpers, 1-MiB combined Git output,
+8-MiB aggregate capture and existing bounded deadlines. Complete same-current
+preparing-v2 readiness, Unit/parent/input/owner/Driver and observed history checks
+can acknowledge one private retained Executor preparation object; it supplies no
+registration, Session, transport or input permission. Reviewer artifact lease
+production, registration/transport consumption, installed composition and
+genuine actor-chain/both-OS/four-Task qualification remain unavailable.
 Preparation and version transactions also conjoin the ordinary nongrant Unit
 identity/epoch/generation, parent activity, executor projection and governing
 context predicates with their original Source lineage, current successor,

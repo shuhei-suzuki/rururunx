@@ -2,24 +2,38 @@
 //! protected Native preparation, registration, input or Session authority.
 use super::*;
 use crate::state::{
-    NativeHelperIntentCommit, NativeHelperSettlementPlan, NativeVersionClosurePlan,
-    NativeVersionHelperPlan,
+    NativeHelperIntentCommit, NativeHelperSettlementCommit, NativeHelperSettlementPlan,
+    NativeVersionClosurePlan, NativeVersionHelperPlan,
 };
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::AsyncReadExt;
 
-const OUTPUT_BYTES: usize = 64 * 1024;
+pub(super) const OUTPUT_BYTES: usize = 64 * 1024;
 const PROFILE_BYTES: usize = 64 * 1024;
+
+/// Actual complete Executor preparation only. Retained input seal and history
+/// are immutable; this object grants neither registration nor transport/input.
+pub(crate) struct PreparedNativePhase {
+    actor: Arc<NativePreparationActor>,
+    _seal: Arc<crate::execution::workflow_source::SourceNativePreparationSeal>,
+    commit: crate::state::NativePreparedCommit,
+}
+impl PreparedNativePhase {
+    pub(super) fn matches_actor(&self, actor: &Arc<NativePreparationActor>) -> bool {
+        Arc::ptr_eq(&self.actor, actor) && self.commit.matches_actor(actor)
+    }
+}
 
 #[derive(Default)]
 struct BoundedOutput {
     stdout: Vec<u8>,
     bytes: usize,
+    limit: usize,
 }
 impl BoundedOutput {
     fn read_window(&self) -> usize {
-        (OUTPUT_BYTES.saturating_sub(self.bytes) + 1).min(4096)
+        (self.limit.saturating_sub(self.bytes) + 1).min(4096)
     }
     fn observe(&mut self, bytes: &[u8], stdout: bool) -> bool {
         let Some(total) = self.bytes.checked_add(bytes.len()) else {
@@ -27,11 +41,11 @@ impl BoundedOutput {
         };
         self.bytes = total;
         if stdout {
-            let available = OUTPUT_BYTES.saturating_sub(self.stdout.len());
+            let available = self.limit.saturating_sub(self.stdout.len());
             self.stdout
                 .extend_from_slice(&bytes[..bytes.len().min(available)]);
         }
-        self.bytes <= OUTPUT_BYTES
+        self.bytes <= self.limit
     }
 }
 
@@ -41,6 +55,8 @@ pub(super) struct NativeVersionHelperCustody {
     state: Mutex<HelperState>,
     cancelled: AtomicBool,
     done: tokio::sync::Notify,
+    output_limit: usize,
+    git_lease: Mutex<Option<Arc<owner::GitLease>>>,
 }
 #[derive(Default)]
 struct HelperState {
@@ -49,6 +65,7 @@ struct HelperState {
     observation: Option<Arc<NativeVersionObservation>>,
     settlement: Option<Arc<NativeHelperSettlementPlan>>,
     closure: Option<Arc<NativeVersionClosurePlan>>,
+    closed: Option<Arc<NativeHelperSettlementCommit>>,
     ended: bool,
 }
 /// Only actual capture constructs these fields. Output is never a receipt.
@@ -63,6 +80,20 @@ pub(crate) struct NativeVersionObservation {
     returned_child: bool,
 }
 impl NativeVersionObservation {
+    pub(crate) fn qualified(&self) -> bool {
+        if !self.complete || !self.exit.is_some_and(|exit| exit.success()) {
+            return false;
+        }
+        match self.plan.action() {
+            readonly::NativePhaseHelperAction::Version => self.qualified_profile().is_some(),
+            action => action
+                .qualify(
+                    &self.stdout,
+                    self.plan.actor().launch().allocation().unit_snapshot(),
+                )
+                .is_ok(),
+        }
+    }
     pub(crate) fn matches_plan(&self, plan: &Arc<NativeVersionHelperPlan>) -> bool {
         Arc::ptr_eq(&self.plan, plan)
     }
@@ -70,7 +101,12 @@ impl NativeVersionObservation {
         self.complete
     }
     fn qualified_profile(&self) -> Option<&'static str> {
-        if !self.complete || !self.exit.is_some_and(|exit| exit.success()) {
+        if !matches!(
+            self.plan.action(),
+            readonly::NativePhaseHelperAction::Version
+        ) || !self.complete
+            || !self.exit.is_some_and(|exit| exit.success())
+        {
             return None;
         }
         let text = std::str::from_utf8(&self.stdout).ok()?;
@@ -105,6 +141,7 @@ impl NativeVersionObservation {
             ),
             ("bytes".into(), self.bytes.to_string()),
             ("stdout_sha256".into(), native_result::digest(&self.stdout)),
+            ("action".into(), self.plan.action().label().into()),
             (
                 "profile".into(),
                 self.qualified_profile()
@@ -124,6 +161,29 @@ impl NativeVersionObservation {
     }
 }
 impl NativeVersionHelperCustody {
+    pub(super) fn captured_bytes(&self) -> Result<usize> {
+        self.state()
+            .observation
+            .as_ref()
+            .map(|o| o.bytes)
+            .context("authentic helper observation remains held")
+    }
+    pub(super) fn closed(&self) -> Result<Arc<NativeHelperSettlementCommit>> {
+        let (observation, closed) = {
+            let state = self.state();
+            (state.observation.clone(), state.closed.clone())
+        };
+        ensure!(
+            observation.as_ref().is_some_and(|o| o.qualified()),
+            "original helper qualification failed or remains unknown"
+        );
+        let closed = closed.context("known original helper settlement remains held")?;
+        ensure!(
+            closed.matches_plan(&self.plan),
+            "closed original helper plan differs"
+        );
+        Ok(closed)
+    }
     pub(super) fn matches_actor(&self, actor: &Arc<NativePreparationActor>) -> bool {
         Arc::ptr_eq(self.plan.actor(), actor)
     }
@@ -171,11 +231,13 @@ impl NativeVersionHelperCustody {
                 self.state().closure.get_or_insert(planned).clone()
             }
         };
-        owner
+        let closed = owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .close_phase_version_observation(&closure)
+            .close_phase_version_observation(&closure)?;
+        self.state().closed.get_or_insert(Arc::new(closed));
+        Ok(())
     }
 }
 /// Constructed before task spawn/first poll. A task dropped without polling
@@ -218,6 +280,8 @@ impl Drop for CaptureKick {
 fn physical_command(
     owner: &Arc<RuntimeOwner>,
     actor: &Arc<NativePreparationActor>,
+    action: &readonly::NativePhaseHelperAction,
+    lease: Option<&Arc<owner::GitLease>>,
 ) -> Result<Command> {
     actor.validate_open()?;
     let allocation = actor.launch().allocation();
@@ -271,10 +335,33 @@ fn physical_command(
         "original resource child namespace differs"
     );
     let overlay = profile.environment(&unit.cookie, &owner.socket)?;
-    let mut command = Command::new(facts.program);
+    let mut command = if matches!(action, readonly::NativePhaseHelperAction::Version) {
+        ensure!(lease.is_none(), "version cannot consume Git lease");
+        let mut command = Command::new(facts.program);
+        command.arg("--version");
+        command
+    } else {
+        let lease = lease.context("original readonly Git lease absent")?;
+        let program = profile
+            .real_tools
+            .get("git")
+            .context("original real Git program absent")?;
+        ensure!(
+            program.is_absolute() && program.canonicalize()? == *program && program.is_file(),
+            "original real Git physical profile differs"
+        );
+        let mut command = Command::new(program);
+        command
+            .args(action.git_argv()?)
+            .env_clear()
+            .envs(crate::git::native_environment())
+            .env("GIT_NO_LAZY_FETCH", "1")
+            .env("GIT_NO_REPLACE_OBJECTS", "1")
+            .env("RRX_GIT_GATE_TOKEN", lease.id.to_string());
+        command
+    };
     command
-        .arg("--version")
-        .current_dir(facts.path)
+        .current_dir(action.cwd(actor))
         .envs(overlay)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -288,13 +375,78 @@ impl NativeSessions {
     pub(super) async fn prepare_phase_version(
         &self,
         original: Arc<NativePreparationCustody>,
-    ) -> Result<()> {
+    ) -> Result<Arc<NativeVersionHelperCustody>> {
         let ready = original.version_original()?;
         // Full profile/path/environment qualification and encoding are outside
         // Store, custody, source, queue and effect-admission locks.
         let actor = original.state_actor()?;
-        let mut command = physical_command(&self.owner, &actor)?;
+        let action = readonly::NativePhaseHelperAction::Version;
+        let command = physical_command(&self.owner, &actor, &action, None)?;
         let plan = crate::state::Store::plan_phase_version_intent(&self.owner, ready)?;
+        self.run_phase_helper(original, actor, plan, command, None)
+            .await
+    }
+    pub(super) async fn prepare_phase_readonly(
+        &self,
+        original: Arc<NativePreparationCustody>,
+        mut previous: Arc<NativeVersionHelperCustody>,
+    ) -> Result<Arc<PreparedNativePhase>> {
+        let actor = original.state_actor()?;
+        let seal = actor.launch().preparation_seal()?;
+        let mut actions = readonly::namespace_actions(&actor)?;
+        actions.extend(seal.readonly_actions()?);
+        ensure!(
+            actions.len() < readonly::HELPER_LIMIT,
+            "complete original qualification exceeds finite helper bound"
+        );
+        let lease = self
+            .owner
+            .git_lease(actor.launch().allocation().facts().unit_id, None)
+            .await?;
+        for action in actions {
+            let known = previous.closed()?;
+            let command = physical_command(&self.owner, &actor, &action, Some(&lease))?;
+            let plan = crate::state::Store::plan_phase_readonly_intent(&self.owner, known, action)?;
+            previous = self
+                .run_phase_helper(
+                    original.clone(),
+                    actor.clone(),
+                    plan,
+                    command,
+                    Some(lease.clone()),
+                )
+                .await?;
+        }
+        previous.closed()?;
+        // All hash/namespace/profile qualifications have completed before
+        // Store entry. A full SAME current transaction acknowledges actual
+        // observed history while retaining original preparing-v2 readiness.
+        let history = original.qualified_history()?;
+        let launch = actor.launch().clone();
+        let admission = launch.admission().enter(launch.clone()).await?;
+        let commit = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .confirm_phase_prepared_helpers(history, &admission)?;
+        let prepared = Arc::new(PreparedNativePhase {
+            actor,
+            _seal: seal,
+            commit,
+        });
+        original.retain_prepared(prepared.clone())?;
+        drop(admission);
+        Ok(prepared)
+    }
+    async fn run_phase_helper(
+        &self,
+        original: Arc<NativePreparationCustody>,
+        actor: Arc<NativePreparationActor>,
+        plan: Arc<NativeVersionHelperPlan>,
+        mut command: Command,
+        lease: Option<Arc<owner::GitLease>>,
+    ) -> Result<Arc<NativeVersionHelperCustody>> {
         ensure!(
             Arc::ptr_eq(plan.actor(), &actor),
             "version original actor differs"
@@ -305,6 +457,8 @@ impl NativeSessions {
             state: Mutex::new(HelperState::default()),
             cancelled: AtomicBool::new(false),
             done: tokio::sync::Notify::new(),
+            output_limit: original.next_output_limit(plan.action())?,
+            git_lease: Mutex::new(lease),
         });
         original.retain_helper(helper.clone())?;
         let (sender, receiver) = tokio::sync::oneshot::channel();
@@ -355,13 +509,16 @@ impl NativeSessions {
         // Both initial completion and later reconciliation use SAME authentic
         // observation; cancellation cannot force normal permission reopening.
         helper.reconcile(&self.owner)?;
-        Ok(())
+        Ok(helper)
     }
 }
 
 async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
     let helper = &guard.custody;
-    let mut output = BoundedOutput::default();
+    let mut output = BoundedOutput {
+        limit: helper.output_limit,
+        ..Default::default()
+    };
     let mut complete = false;
     let mut exit = None;
     let returned_child = helper.raw().has_child();
@@ -460,6 +617,13 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
     });
     // This original observation precedes optional parsing, hashing and SQL.
     helper.state().observation = Some(observation);
+    if !helper.raw().has_child() {
+        helper
+            .git_lease
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+    }
     drop(guard);
 }
 
@@ -469,7 +633,10 @@ mod output_tests {
 
     #[test]
     fn nongrant_output_combines_both_streams_with_one_overflow_sentinel() {
-        let mut output = BoundedOutput::default();
+        let mut output = BoundedOutput {
+            limit: OUTPUT_BYTES,
+            ..Default::default()
+        };
         assert!(output.observe(&vec![b'o'; OUTPUT_BYTES / 2], true));
         assert!(output.observe(&vec![b'e'; OUTPUT_BYTES / 2], false));
         assert_eq!(output.bytes, OUTPUT_BYTES);
@@ -480,7 +647,10 @@ mod output_tests {
         assert_eq!(output.stdout.len(), OUTPUT_BYTES / 2);
         // Discarded stderr never replenishes combined quota.
         assert!(!output.observe(b"o", true));
-        let mut out_only = BoundedOutput::default();
+        let mut out_only = BoundedOutput {
+            limit: OUTPUT_BYTES,
+            ..Default::default()
+        };
         assert!(out_only.observe(&vec![b'o'; OUTPUT_BYTES], true));
         assert!(!out_only.observe(b"o", true));
         assert_eq!(out_only.stdout.len(), OUTPUT_BYTES);

@@ -55,6 +55,13 @@ pub(super) struct PhasePreparationOrigin {
     ticket: Weak<DriverReadTicket>,
 }
 impl PhasePreparationOrigin {
+    pub(super) fn preparation_seal(
+        &self,
+        marker: &OriginalMarker,
+    ) -> Result<Arc<crate::execution::workflow_source::SourceNativePreparationSeal>> {
+        self.validate_marker(marker)?;
+        self.source.preparation_seal(&self.allocation)
+    }
     /// Reject a different genuine but row-equal ticket BEFORE marker planning
     /// or SQL. Only the Source producer's SAME original Arc can continue.
     pub(super) fn validate_ticket(&self, ticket: &Arc<DriverReadTicket>) -> Result<()> {
