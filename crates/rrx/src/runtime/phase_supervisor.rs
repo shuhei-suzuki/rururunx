@@ -27,6 +27,7 @@ pub(crate) enum PendingObservation {
 }
 struct Slot {
     allocation: Arc<NativeAllocation>,
+    origin: Mutex<Option<Arc<super::phase_handoffs::PhasePreparationOrigin>>>,
     preparation: Mutex<Option<PreparationGuard>>,
     observation: Mutex<PendingObservation>,
     publication: Mutex<PublicationState>,
@@ -68,6 +69,7 @@ pub(crate) struct PhaseLaunch {
 pub(crate) struct PhaseLaunchParts {
     marker: Arc<crate::state::managed_binding::OriginalMarker>,
     retention: MarkerPublicationRetention,
+    origin: Arc<super::phase_handoffs::PhasePreparationOrigin>,
 }
 impl PhaseLaunch {
     pub(super) fn parts(&self) -> &Arc<PhaseLaunchParts> {
@@ -78,6 +80,18 @@ impl PhaseLaunch {
     }
 }
 impl PhaseLaunchParts {
+    /// Original Source lineage plus actual current/Driver currency. Still no
+    /// Native permission: its writer must validate admission and exact stage,
+    /// Unit/input/pair/lifecycle and compiled mutations in this SAME transaction.
+    pub(crate) fn validate_preparation_origin_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        current: &crate::state::managed_binding::CurrentWorkflowSuccessor,
+    ) -> Result<()> {
+        self.origin.validate_marker(&self.marker)?;
+        crate::state::managed_binding::validate_current_tx(tx, &self.marker, current)?;
+        self.marker.validate_driver_live_tx(tx)
+    }
     pub(crate) fn admission(&self) -> &Arc<super::phase_effect_admission::PhaseEffectAdmission> {
         &self.retention.supervisor.admission
     }
@@ -112,6 +126,24 @@ impl std::fmt::Debug for PendingReservationError {
     }
 }
 impl PendingPhaseCapacity {
+    pub(super) fn allocation_arc(&self) -> &Arc<NativeAllocation> {
+        &self.slot.allocation
+    }
+    fn preparation_origin(&self) -> Result<Arc<super::phase_handoffs::PhasePreparationOrigin>> {
+        let origin = self
+            .slot
+            .origin
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Source preparation origin poisoned"))?
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("actual accepted Source preparation origin missing"))?;
+        ensure!(
+            origin.matches_allocation(&self.slot.allocation),
+            "Source origin allocation differs"
+        );
+        Ok(origin)
+    }
     /// Borrowing the immutable real allocation never holds the queue mutex.
     pub(crate) fn allocation(&self) -> &NativeAllocation {
         &self.slot.allocation
@@ -236,6 +268,7 @@ impl PhaseSupervisor {
         }
         let slot = Arc::new(Slot {
             allocation: Arc::new(allocation),
+            origin: Mutex::new(None),
             preparation: Mutex::new(Some(preparation)),
             observation: Mutex::new(PendingObservation::PendingMarker),
             publication: Mutex::new(PublicationState::Unmarked),
@@ -252,6 +285,49 @@ impl PhaseSupervisor {
             supervisor: Arc::downgrade(self),
             slot,
         })
+    }
+    /// Only the real Source transfer can create this private sealed origin.
+    /// Exact allocation Arc and retained unmarked slot, never scalar IDs, are
+    /// required. No encoding, Source/Store mutex, guard Drop or await here.
+    pub(super) fn retain_preparation_origin(
+        &self,
+        allocation: &Arc<NativeAllocation>,
+        origin: Arc<super::phase_handoffs::PhasePreparationOrigin>,
+    ) -> Result<()> {
+        ensure!(
+            origin.matches_allocation(allocation),
+            "foreign Source origin"
+        );
+        let queue = self
+            .queue
+            .lock()
+            .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
+        let slot = queue
+            .entries
+            .get(&allocation.facts().operation_id)
+            .ok_or_else(|| anyhow::anyhow!("original Source capacity no longer retained"))?;
+        ensure!(
+            !self.closed.load(Ordering::SeqCst) && Arc::ptr_eq(&slot.allocation, allocation),
+            "Source origin capacity changed"
+        );
+        let publication = slot
+            .publication
+            .lock()
+            .map_err(|_| anyhow::anyhow!("publication state poisoned"))?;
+        ensure!(
+            *publication == PublicationState::Unmarked,
+            "Source origin cannot replace publishing provenance"
+        );
+        let mut saved = slot
+            .origin
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Source preparation origin poisoned"))?;
+        ensure!(
+            saved.is_none(),
+            "Source preparation origin already installed"
+        );
+        *saved = Some(origin);
+        Ok(())
     }
     fn contains(&self, slot: &Arc<Slot>) -> bool {
         self.queue.lock().is_ok_and(|q| {
@@ -548,6 +624,8 @@ impl super::Runtime {
         retention: MarkerPublicationRetention,
         marker: Arc<crate::state::managed_binding::OriginalMarker>,
     ) -> Result<super::phase_jobs::PhaseInvocation> {
+        let origin = retention.capacity.preparation_origin()?;
+        origin.validate_marker(&marker)?;
         let slot = &retention.capacity.slot;
         self.phase_jobs.ready(&slot.allocation)?;
         let q = self
@@ -606,7 +684,11 @@ impl super::Runtime {
         drop(state);
         drop(q);
         Ok(self.phase_jobs.start(PhaseLaunch {
-            parts: Arc::new(PhaseLaunchParts { marker, retention }),
+            parts: Arc::new(PhaseLaunchParts {
+                marker,
+                retention,
+                origin,
+            }),
         }))
     }
 
@@ -687,6 +769,9 @@ impl super::Runtime {
         ticket: Arc<crate::state::DriverReadTicket>,
         workflow: crate::domain::RecordId,
     ) -> Result<super::phase_jobs::PhaseInvocation> {
+        // Actual accepted Source provenance must exist before marker planning
+        // or SQL effects. Bare queue capacity is not this private origin.
+        let _origin = capacity.preparation_origin()?;
         let plan = crate::state::managed_binding::plan_marker_publication(
             self.owner.clone(),
             capacity.slot.allocation.clone(),

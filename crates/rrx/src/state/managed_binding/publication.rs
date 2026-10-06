@@ -51,6 +51,11 @@ pub(crate) struct OriginalMarker {
     plan: Arc<MarkerPublicationPlan>,
 }
 impl OriginalMarker {
+    /// Immutable original lineage; copied rows or a fresh ticket cannot match.
+    /// Current successor, live Driver and actual Native eligibility are separate.
+    pub(crate) fn matches_source_ticket(&self, ticket: &Arc<DriverReadTicket>) -> bool {
+        self.plan.driver.matches_source_ticket(ticket)
+    }
     pub(super) fn publication_plan(&self) -> Arc<MarkerPublicationPlan> {
         self.plan.clone()
     }

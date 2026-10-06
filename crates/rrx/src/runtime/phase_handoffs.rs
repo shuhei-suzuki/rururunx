@@ -2,13 +2,18 @@
 use super::phase_supervisor::{PendingPhaseCapacity, PendingReservationError, PhaseSupervisor};
 use crate::{
     domain::TaskId,
-    execution::{OperationId, RuntimeOwner, workflow_source::SourceNativeHandoff},
+    execution::{
+        OperationId, RuntimeOwner,
+        phase::NativeAllocation,
+        workflow_source::{SourceNativeCustody, SourceNativeHandoff},
+    },
+    state::{DriverReadTicket, managed_binding::OriginalMarker},
 };
 use anyhow::{Result, ensure};
 use std::{
     collections::BTreeMap,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, Weak,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -27,8 +32,37 @@ pub(crate) enum SourceHandoffState {
 
 struct Assets {
     capacity: Option<PendingPhaseCapacity>,
+    origin: Option<Arc<PhasePreparationOrigin>>,
     malformed_return: Option<Box<PendingReservationError>>,
     error: Option<anyhow::Error>,
+}
+
+/// Created only below, AFTER the concrete original Source take/reserve/accept.
+/// Retains original immutable input via its allocation, not a copied row proof.
+/// No strong ticket, marker, capacity, Runtime or registry return edge.
+pub(super) struct PhasePreparationOrigin {
+    source: Arc<SourceNativeCustody>,
+    allocation: Arc<NativeAllocation>,
+    ticket: Weak<DriverReadTicket>,
+}
+impl PhasePreparationOrigin {
+    pub(super) fn matches_allocation(&self, allocation: &Arc<NativeAllocation>) -> bool {
+        Arc::ptr_eq(&self.allocation, allocation)
+            && self.source.operation() == allocation.facts().operation_id
+    }
+    /// Immutable original-object linkage only, safe under SharedStore. Native
+    /// must ALSO conjoin real admission/current/Driver/Unit/pair/permissions.
+    pub(super) fn validate_marker(&self, marker: &OriginalMarker) -> Result<()> {
+        let ticket = self
+            .ticket
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("original Source ticket ended"))?;
+        ensure!(
+            self.matches_allocation(marker.allocation()) && marker.matches_source_ticket(&ticket),
+            "Native preparation lacks same accepted Source/marker/ticket"
+        );
+        Ok(())
+    }
 }
 struct Handoff {
     // Original non-Clone envelope and SAME Arc ticket survive planning refusal.
@@ -97,6 +131,7 @@ impl Consumer {
         // uses its existing independent read-only allocation snapshot.
         match self.phases.reserve(allocation, preparation) {
             Ok(capacity) => {
+                let allocation = capacity.allocation_arc().clone();
                 // Save ownership BEFORE the Source's infallible acceptance.
                 // Poison recovery here retains objects only; it grants no effect.
                 handoff
@@ -105,6 +140,22 @@ impl Consumer {
                     .unwrap_or_else(|e| e.into_inner())
                     .capacity = Some(capacity);
                 transfer.finish_accepted();
+                // This constructor is private to the real successful producer.
+                // It cannot run before original capacity custody/Source acceptance.
+                let origin = Arc::new(PhasePreparationOrigin {
+                    source: source.custody().clone(),
+                    allocation: allocation.clone(),
+                    ticket: Arc::downgrade(source.ticket()),
+                });
+                handoff
+                    .assets
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .origin = Some(origin.clone());
+                // Source locks have ended. Retain the SAME sealed origin beside
+                // the queue's armed preparation before marker planning is allowed.
+                // On failure the independent Handoff keeps both actual objects.
+                self.phases.retain_preparation_origin(&allocation, origin)?;
                 Ok(SourceHandoffState::Reserved)
             }
             Err(error) => {
@@ -174,6 +225,7 @@ impl PhaseHandoffs {
             source,
             assets: Mutex::new(Assets {
                 capacity: None,
+                origin: None,
                 malformed_return: None,
                 error: None,
             }),

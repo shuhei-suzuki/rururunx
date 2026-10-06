@@ -123,6 +123,11 @@ impl DriverReadTicket {
     }
 }
 impl DriverMarkerAdvance {
+    /// Original-object identity only, no currency or Native grant. Root's
+    /// accepted Source origin must link to the SAME retained producer ticket.
+    pub(crate) fn matches_source_ticket(&self, ticket: &Arc<DriverReadTicket>) -> bool {
+        Arc::ptr_eq(&self.ticket, ticket)
+    }
     /// Borrow only this OriginalMarker-owned advance. This checks actual Driver
     /// liveness and immutable post Driver/Source rows; Root separately validates
     /// the original-derived Workflow successor, current Unit/pair and lifecycle

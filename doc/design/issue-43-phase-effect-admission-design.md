@@ -185,3 +185,34 @@ current marker, Native dispatch or Session binding. Genuine offer/observer-drop/
 refusal/stop/uncertainty controls require the missing installed producer; no SQL
 seeds or manufactured tickets qualify them. Full regression/lint and actual
 four-Task/both-OS/authenticated verification remain open.
+
+## 9. Original preparation lineage increment
+
+The concrete successful Source transfer now creates PhasePreparationOrigin only
+after it has saved the actual capacity and finished original Source acceptance.
+Private fields retain the original immutable Source capsule and SAME allocation
+Arc, which already owns complete canonical input bytes. The ticket edge is Weak
+to the SAME original Arc ticket; there is no strong marker/capacity/Runtime/registry
+backlink. The independent Handoff retains the origin before queue installation;
+queue failure therefore leaves actual capacity/origin held without remint.
+
+The same actual unmarked queue slot retains that origin beside the armed guard.
+Original marker planning requires it before SQL effects, and known marker handoff
+captures the SAME origin into PhaseLaunchParts after checking the same allocation
+and original marker-owned Driver ticket. IDs and Source Accepted labels alone
+cannot construct it. An unmarked removal or speculative capacity never creates a
+replacement origin. The real control mutex continues to serialize cooperative
+queue transfer/marker/stop, with inherited Runtime Drop race limitations.
+
+PhaseLaunchParts::validate_preparation_origin_tx performs only immutable original
+lineage checks and existing exact current-successor/Driver-live checks in the
+caller's transaction. No Source/queue mutex, encoding or recaptured read is used
+under SharedStore. Native must additionally validate the actual effect admission,
+selected owner/port, complete Unit/input/pair/readiness/lifecycle and compiled
+exact mutations; this conjunction is not permission or prepared completion itself.
+
+The real Native consumer, retained marker continuation and Engine caller remain
+uninstalled, and composition issuer remains Err. Source acceptance/lineage and
+all genuine cancellation, capacity, marker uncertainty and stage controls remain
+unqualified until that actual composition exists. No grant-bearing fixture or
+SQL-seeded Native allocation/Driver proof is introduced by this increment.
