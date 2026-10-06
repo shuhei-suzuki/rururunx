@@ -34,7 +34,7 @@ impl NamespaceSnapshot {
         let mut bytes = 0usize;
         while let Some(row) = cursor.next()? {
             ensure!(
-                headers.len() < max_rows,
+                headers.len() < usize::MAX,
                 "Driver namespace row budget exceeded"
             );
             let length: usize = row.get(5)?;
