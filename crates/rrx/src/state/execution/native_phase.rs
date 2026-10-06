@@ -13,6 +13,19 @@ use std::sync::Arc;
 
 const PAIR_BODY_BYTES: usize = 32 * 1024;
 
+fn selected_database(connection: &rusqlite::Connection, launch: &PhaseLaunchParts) -> Result<()> {
+    ensure!(
+        launch
+            .allocation()
+            .facts()
+            .state_path
+            .to_str()
+            .is_some_and(|path| connection.path() == Some(path)),
+        "Native phase writer is not the selected owner's database"
+    );
+    Ok(())
+}
+
 /// Complete indexed image, never a persisted owner-to-authority conversion.
 struct PairRow {
     table: &'static str,
@@ -713,6 +726,7 @@ impl Store {
         &mut self,
         plan: NativeProjectionPlan,
     ) -> Result<(ExecutionUnit, Session, u64)> {
+        selected_database(&self.connection, plan.before.binding.owner().launch_parts())?;
         let permission = plan.before.session.update_permission(&plan.after)?;
         self.binding_permits.with_exact_permit(vec![permission], || {
             let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -744,6 +758,7 @@ impl Store {
         current: &CurrentWorkflowSuccessor,
     ) -> Result<ExecutionUnit> {
         ensure!(launch.is_retained(), "Native preparation retention ended");
+        selected_database(&self.connection, launch)?;
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -767,6 +782,7 @@ impl Store {
             plan.launch.is_retained(),
             "Native registration retention ended"
         );
+        selected_database(&self.connection, &plan.launch)?;
         let mutations = vec![
             plan.owner_before.update_permission(&plan.owner_after)?,
             plan.readiness_before
