@@ -2,6 +2,7 @@
 mod environment;
 #[cfg(test)]
 mod native_dispatch_tests;
+mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
 use std::{path::Path, time::Duration};
 
