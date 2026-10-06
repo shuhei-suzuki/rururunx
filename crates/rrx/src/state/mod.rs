@@ -6,8 +6,8 @@ mod native_dispatch_tests;
 mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
 pub(crate) use runtime::driver::{
-    DriverMarkerAdvance, DriverPublication, DriverReadTicket, InitialDriverPlan,
-    PendingDriverClaim, plan_initial_driver, read_driver_ticket,
+    DriverExitPublication, DriverMarkerAdvance, DriverPublication, DriverReadTicket,
+    InitialDriverPlan, PendingDriverClaim, plan_initial_driver, read_driver_ticket,
 };
 use std::{path::Path, time::Duration};
 

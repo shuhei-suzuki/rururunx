@@ -6,6 +6,7 @@ use crate::{
     state::managed_binding::{InstalledDriverComposition, ScopePlan},
 };
 use rusqlite::types::Value as SqlValue;
+use std::collections::BTreeSet;
 
 pub(crate) struct InitialDriverPlan {
     owner: Arc<RuntimeOwner>,

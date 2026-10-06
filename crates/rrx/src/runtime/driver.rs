@@ -451,7 +451,7 @@ impl DriverRegistry {
     pub(super) fn acknowledge_exit(
         &self,
         exit: &DriverExit,
-        publication: &crate::state::runtime::driver::DriverExitPublication,
+        publication: &crate::state::DriverExitPublication,
     ) -> Result<()> {
         ensure!(
             publication.identity() == exit.identity(),
