@@ -405,7 +405,7 @@ impl Store {
                     saved_policy == policy_sha256,
                     "Goal accepted policy changed; resume remains held"
                 );
-                let history:u64=tx.query_row("SELECT (SELECT count(*) FROM execution_units WHERE goal_id=?1 AND project_id=?2)+(SELECT count(*) FROM records WHERE goal_id=?1 AND project_id=?2 AND kind IN ('workflow','session','worktree_lock'))+(SELECT count(*) FROM context_versions WHERE project_id=?2 AND goal_id=?1)+(SELECT count(*) FROM source_recoveries WHERE goal_id=?1 AND project_id=?2)",params![id.to_string(),project.to_string()],|r|r.get(0))?;
+                let history:u64=tx.query_row("SELECT (SELECT count(*) FROM execution_units WHERE goal_id=?1 AND project_id=?2)+(SELECT count(*) FROM records WHERE goal_id=?1 AND project_id=?2 AND kind IN ('workflow','session','worktree_lock'))+(SELECT count(*) FROM context_versions WHERE project_id=?2 AND json_extract(body,'$.scope.goal_id')=?1)+(SELECT count(*) FROM source_recoveries WHERE goal_id=?1 AND project_id=?2)",params![id.to_string(),project.to_string()],|r|r.get(0))?;
                 // Only a genuinely never-prepared graph can resume here. A row,
                 // retired Unit or old Session is not a recovery capability.
                 if history > 0 {
