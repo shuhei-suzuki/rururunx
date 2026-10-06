@@ -530,6 +530,8 @@ impl SourceHandoffReservation {
                     handoff.changed.send_replace(state);
                 }
                 Err(error) => {
+                    #[cfg(test)]
+                    eprintln!("actual retained Source handoff outcome: {error:#}");
                     handoff
                         .assets
                         .lock()

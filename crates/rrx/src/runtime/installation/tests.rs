@@ -212,7 +212,8 @@ async fn c5_c6_actual_ingress_source_prepared_transport_and_record_only_binding(
                     .iter()
                     .map(|event| (&event.kind, &event.data))
                     .collect();
-                panic!("SETUP: actual producer did not reach bound {provider}; events={kinds:?}");
+                let handoff=f.runtime.observe_source_handoff(tasks[0].id).unwrap().map(|v|v.state());
+                panic!("SETUP: actual producer did not reach bound {provider}; handoff={handoff:?}; events={kinds:?}");
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         };
