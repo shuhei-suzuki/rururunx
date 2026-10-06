@@ -42,6 +42,14 @@ pub(super) const MUTABLE_TABLES: &[&str] = &[
     "scheduler_tasks",
     "task_drivers",
     "goal_observations",
+    "workflow_native_contracts",
+    "managed_phase_operations",
+    "managed_marker_bodies",
+    "managed_phase_owners",
+    "managed_phase_inputs",
+    "managed_phase_admissions",
+    "managed_phase_readiness",
+    "scoped_session_identities",
 ];
 
 pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
