@@ -60,10 +60,10 @@ mod registration_primitive_tests {
         assert!(known_ack(&state, &cell).is_err());
         state.store(REVOKED, Ordering::SeqCst);
         assert!(known_ack(&state, &cell).is_err());
-        let acknowledged=OnceLock::new();
+        let acknowledged = OnceLock::new();
         assert!(acknowledged.set(ack()).is_ok());
-        state.store(CANDIDATE,Ordering::SeqCst);
-        assert!(known_ack(&state,&acknowledged).is_err());
+        state.store(CANDIDATE, Ordering::SeqCst);
+        assert!(known_ack(&state, &acknowledged).is_err());
     }
     #[test]
     fn known_commit_activates_once_and_retains_ack_after_revocation() {
@@ -147,6 +147,9 @@ struct RetainedProofs {
     terminal_plan: Option<Arc<crate::state::NativeTerminalPlan>>,
 }
 impl PhaseActor {
+    pub(crate) fn is_candidate(&self) -> bool {
+        self.owner.state.load(Ordering::SeqCst) == CANDIDATE && self.owner.ack.get().is_none()
+    }
     /// Preallocated outside admission, with no registration or effect authority.
     pub(crate) fn prepared_candidate(plan: &Arc<NativeTransportStartPlan>) -> Result<Arc<Self>> {
         let owner = NativePhaseSession::candidate(plan.clone())?;
@@ -426,6 +429,8 @@ impl NativePhaseSession {
                 && old.model == session.model
                 && old.effort == session.effort
                 && old.started_at == session.started_at
+                && old.recovery == session.recovery
+                && old.pid.is_none_or(|pid| session.pid == Some(pid))
                 && old
                     .native_ref
                     .as_ref()

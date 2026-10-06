@@ -1054,6 +1054,7 @@ fn plan_phase_projection(
             && session.effort == old.effort
             && session.started_at == old.started_at
             && session.recovery == old.recovery
+            && old.pid.is_none_or(|pid| session.pid == Some(pid))
             && session.state == SessionState::Running
             && session.native_ref.as_ref().is_some_and(|s| !s.is_empty()
                 && s.len() <= 512
