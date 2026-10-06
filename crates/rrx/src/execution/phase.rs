@@ -94,7 +94,7 @@ const INPUT_BYTES: usize = 2 * 1024 * 1024;
 
 /// Provisional current-unit snapshot, on a separate read-only connection. Full
 /// owner/Context/Workflow/lock validation belongs to the marker's actual CAS.
-pub(super) fn allocation_snapshot(
+pub(crate) fn allocation_snapshot(
     owner: &RuntimeOwner,
     authority: &ExecutionAuthority,
 ) -> Result<ExecutionUnit> {
@@ -173,7 +173,7 @@ pub(super) fn allocation_snapshot(
 
 /// Encode all input fields into a finite original template. A bounded writer
 /// enforces the complete escaped encoding cost, including keys and overhead.
-pub(super) fn encode_input(input: &PreparedInput) -> Result<Vec<u8>> {
+pub(crate) fn encode_input(input: &PreparedInput) -> Result<Vec<u8>> {
     ensure!(
         input.scope.goal_id.is_some()
             && input.scope.task_id.is_some()
@@ -233,4 +233,232 @@ pub(super) fn encode_input(input: &PreparedInput) -> Result<Vec<u8>> {
         },
     )?;
     Ok(encoded.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        adapter::{AgentRegistry, GenericCliAdapter, InputKind},
+        config::{AgentConfig, Config},
+        execution::{attempts::AttemptManager, native::tests::input, results},
+    };
+    use std::{collections::BTreeMap, os::unix::fs::PermissionsExt, sync::Arc};
+
+    async fn fixture(
+        provider: &str,
+    ) -> (
+        tempfile::TempDir,
+        Arc<RuntimeOwner>,
+        ExecutionUnit,
+        AgentRegistry,
+        std::path::PathBuf,
+    ) {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let (unit, _) = AttemptManager::new(owner.clone())
+            .prepare(task.id, provider, "Implement", None)
+            .await
+            .unwrap();
+        let counter = dir.path().join("native-started");
+        let program = dir.path().join("native-counter");
+        std::fs::write(
+            &program,
+            format!(
+                "#!/bin/sh\nprintf invoked > '{}'\nexit 7\n",
+                counter.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut config = Config::default();
+        config.agents.insert(
+            provider.into(),
+            AgentConfig {
+                provider: Some(provider.into()),
+                command: vec![program.to_string_lossy().into()],
+                ..Default::default()
+            },
+        );
+        let registry = AgentRegistry::from_managed_config(&config, owner.clone()).unwrap();
+        (dir, owner, unit, registry, counter)
+    }
+
+    fn counts(owner: &RuntimeOwner) -> Vec<i64> {
+        let c = Connection::open_with_flags(owner.state_path(), OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .unwrap();
+        [
+            "execution_units",
+            "records",
+            "audit",
+            "managed_effects",
+            "quota_leases",
+            "native_invocations",
+            "native_results",
+        ]
+        .into_iter()
+        .map(|table| {
+            c.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+                .unwrap()
+        })
+        .collect()
+    }
+
+    #[tokio::test]
+    async fn actual_installed_port_allocates_same_identity_without_effects_or_registration() {
+        for provider in ["claude", "codex"] {
+            let (_dir, owner, unit, registry, counter) = fixture(provider).await;
+            let before = counts(&owner);
+            let port = registry.native_phase_port(provider).unwrap();
+            let allocation = port
+                .allocate(
+                    input(&unit, "exact original input"),
+                    Some("model".into()),
+                    Some("effort".into()),
+                )
+                .unwrap();
+            let f = allocation.facts();
+            assert_eq!(
+                (f.unit_id, f.generation, f.epoch, f.unit_version),
+                (unit.id, unit.generation, unit.owner_epoch, unit.version)
+            );
+            assert_eq!(
+                (
+                    f.scope,
+                    f.provider,
+                    f.alias,
+                    f.role,
+                    f.path,
+                    f.profile_digest
+                ),
+                (
+                    &unit.scope,
+                    provider,
+                    provider,
+                    SessionRole::Executor,
+                    unit.worktree.as_path(),
+                    unit.profile_digest.as_str()
+                )
+            );
+            assert_eq!(
+                (f.model, f.effort, f.artifact),
+                (Some("model"), Some("effort"), unit.artifact_id)
+            );
+            let encoded: serde_json::Value = serde_json::from_slice(f.input_bytes).unwrap();
+            assert_eq!(encoded["payload"], f.input.payload);
+            assert_eq!(encoded["version"], f.input.version);
+            assert_eq!(
+                encoded["source_versions"],
+                serde_json::json!(f.input.source_versions)
+            );
+            let other = port
+                .allocate(input(&unit, "exact original input"), None, None)
+                .unwrap();
+            let o = other.facts();
+            assert_eq!(f.origin_id, o.origin_id);
+            assert_ne!(f.session_id, o.session_id);
+            assert_ne!(f.invocation_id, o.invocation_id);
+            assert_ne!(f.operation_id, o.operation_id);
+            assert_ne!(f.pair_id, o.pair_id);
+            drop(other);
+            drop(allocation);
+            assert_eq!(counts(&owner), before);
+            assert_eq!(
+                owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .execution_unit(unit.id)
+                    .unwrap()
+                    .version,
+                unit.version
+            );
+            assert!(
+                !counter.exists(),
+                "allocation ran a Native version helper or child"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn actual_port_refuses_stale_or_mismatched_selection_before_effects() {
+        let (_dir, owner, unit, registry, counter) = fixture("codex").await;
+        let port = registry.native_phase_port("codex").unwrap();
+        let before = counts(&owner);
+        for fault in [
+            "alias",
+            "version",
+            "generation",
+            "epoch",
+            "scope",
+            "kind",
+            "model",
+        ] {
+            let mut i = input(&unit, "original");
+            let mut model = None;
+            match fault {
+                "alias" => i.agent = "other".into(),
+                "version" => i.authority.record_version += 1,
+                "generation" => i.authority.generation += 1,
+                "epoch" => i.authority.owner_epoch += 1,
+                "scope" => i.input.scope.task_id = Some(crate::domain::TaskId::new()),
+                "kind" => i.input.kind = InputKind::ReviewBundle,
+                "model" => model = Some("bad\nmodel".into()),
+                _ => unreachable!(),
+            }
+            assert!(port.allocate(i, model, None).is_err(), "accepted {fault}");
+        }
+        assert_eq!(counts(&owner), before);
+        assert!(!counter.exists());
+        let mut generic = AgentRegistry::default();
+        generic
+            .register(
+                "codex".into(),
+                Arc::new(
+                    GenericCliAdapter::new(
+                        "codex".into(),
+                        vec!["/bin/false".into()],
+                        owner.store(),
+                    )
+                    .unwrap(),
+                ),
+            )
+            .unwrap();
+        assert!(
+            generic.native_phase_port("codex").is_err(),
+            "public registration minted a concrete native port"
+        );
+    }
+
+    #[test]
+    fn complete_input_encoding_counts_escape_expansion_and_all_pins() {
+        let input = PreparedInput {
+            scope: Scope {
+                project_id: crate::domain::ProjectId::new(),
+                goal_id: Some(crate::domain::GoalId::new()),
+                task_id: Some(crate::domain::TaskId::new()),
+            },
+            kind: InputKind::ContextPack,
+            revision: "a".repeat(40),
+            version: 1,
+            source_versions: BTreeMap::from([("exact-rule".into(), "b".repeat(64))]),
+            payload: "a".repeat(1024 * 1024),
+        };
+        let bytes = encode_input(&input).unwrap();
+        assert!(bytes.len() > input.payload.len());
+        assert!(bytes.len() <= INPUT_BYTES);
+        let mut escaped = input.clone();
+        escaped.payload = "\0".repeat(1024 * 1024);
+        assert!(
+            encode_input(&escaped).is_err(),
+            "payload-only bound omitted full escaped encoding cost"
+        );
+        let mut oversized = input;
+        oversized.source_versions = (0..4096)
+            .map(|n| (format!("{:04}{}", n, "x".repeat(1024)), "a".repeat(64)))
+            .collect();
+        assert!(
+            encode_input(&oversized).is_err(),
+            "source inventory escaped the complete input budget"
+        );
+    }
 }
