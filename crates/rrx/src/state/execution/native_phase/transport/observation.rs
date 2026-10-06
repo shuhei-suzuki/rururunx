@@ -11,23 +11,19 @@ pub(crate) struct NativeTransportSettlementPlan {
     readiness: PairRow,
     after: ManagedEffect,
     after_raw: String,
+    before_values: Vec<SqlValue>,
+    after_values: Vec<SqlValue>,
+    update_values: Vec<SqlValue>,
 }
 impl NativeTransportSettlementPlan {
     fn validate_original(&self) -> Result<()> {
         self.observation.validate_original()?;
         self.observation.phase().validate_known_registration()?;
-        Ok(())
+        self.observation.plan().launch().validate_preparation_original()
     }
     fn exact_effect(&self, tx: &Transaction<'_>, after: bool) -> Result<bool> {
-        let intent = self.observation.plan().transport_intent();
-        let effect = if after { &self.after } else { intent };
-        let raw = if after {
-            self.after_raw.as_str()
-        } else {
-            self.observation.plan().transport_intent_raw()
-        };
-        let (p, g, t) = scope_keys(&effect.scope)?;
-        Ok(tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE id IS ?1 AND unit_id IS ?2 AND project_id IS ?3 AND goal_id IS ?4 AND task_id IS ?5 AND idempotency_key IS ?6 AND state IS ?7 AND body IS ?8 AND version IS ?9)",params![effect.id.to_string(),effect.unit_id.to_string(),p,g,t,effect.idempotency_key,key(effect.state),raw,effect.version],|r|r.get(0))?)
+        let values=if after { &self.after_values } else { &self.before_values };
+        Ok(tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE id IS ?1 AND unit_id IS ?2 AND project_id IS ?3 AND goal_id IS ?4 AND task_id IS ?5 AND idempotency_key IS ?6 AND state IS ?7 AND body IS ?8 AND version IS ?9)",params_from_iter(values),|r|r.get(0))?)
     }
 }
 
@@ -50,6 +46,7 @@ impl Store {
         closure: bool,
     ) -> Result<Arc<NativeTransportSettlementPlan>> {
         observation.validate_original()?;
+        observation.plan().launch().validate_preparation_original()?;
         let phase = observation.phase();
         phase.validate_known_registration()?;
         let normal = if closure {
@@ -67,7 +64,7 @@ impl Store {
                 let record:Record=serde_json::from_value(session.body()?)?;
                 let stored:Session=serde_json::from_value(record.data.clone())?;
                 let original=origin.session();
-                ensure!(record.id==RecordId(f.session_id.0) && record.kind==RecordKind::Session && record.scope==*f.scope && record.version>0 && stored.id==original.id && stored.scope==original.scope && stored.agent==original.agent && stored.provider==original.provider && stored.role==original.role && stored.worktree==original.worktree && stored.model==original.model && stored.effort==original.effort && stored.recovery==original.recovery && stored.started_at==original.started_at,"transport latest Session original changed");
+                ensure!(record.id==RecordId(f.session_id.0) && record.kind==RecordKind::Session && record.scope==*f.scope && record.version>0 && serde_json::to_value(&stored)?==record.data && stored.id==original.id && stored.scope==original.scope && stored.agent==original.agent && stored.provider==original.provider && stored.role==original.role && stored.worktree==original.worktree && stored.model==original.model && stored.effort==original.effort && stored.recovery==original.recovery && stored.started_at==original.started_at,"transport latest Session original changed");
                 let (p,g,t)=scope_keys(f.scope)?;
                 for (name,value) in [("id",SqlValue::Text(record.id.to_string())),("kind",SqlValue::Text("session".into())),("project_id",SqlValue::Text(p)),("goal_id",SqlValue::Text(g)),("task_id",SqlValue::Text(t)),("version",SqlValue::Integer(i64::try_from(record.version)?))] { ensure!(session.column(name)?==&value,"transport Session indexed/body mismatch"); }
                 let owner_row=PairRow::read(tx,"managed_phase_owners",&f.pair_id.to_string())?;
@@ -93,6 +90,13 @@ impl Store {
             after_raw.len() <= 8192,
             "transport observation exceeds bound"
         );
+        let values=|effect:&ManagedEffect,raw:&str|->Result<Vec<SqlValue>> {
+            let (p,g,t)=scope_keys(&effect.scope)?;
+            Ok(vec![SqlValue::Text(effect.id.to_string()),SqlValue::Text(effect.unit_id.to_string()),SqlValue::Text(p),SqlValue::Text(g),SqlValue::Text(t),SqlValue::Text(effect.idempotency_key.clone()),SqlValue::Text(key(effect.state)),SqlValue::Text(raw.into()),SqlValue::Integer(i64::try_from(effect.version)?)])
+        };
+        let before_values=values(origin.transport_intent(),origin.transport_intent_raw())?;
+        let after_values=values(&after,&after_raw)?;
+        let update_values=vec![SqlValue::Text(key(after.state)),SqlValue::Text(after_raw.clone()),before_values[0].clone(),before_values[7].clone()];
         Ok(Arc::new(NativeTransportSettlementPlan {
             observation,
             owner: normal,
@@ -102,6 +106,9 @@ impl Store {
             readiness,
             after,
             after_raw,
+            before_values,
+            after_values,
+            update_values,
         }))
     }
     pub(crate) fn record_transport_settlement(
@@ -121,8 +128,7 @@ impl Store {
                 if let Some(owner)=&plan.owner { owner.validate_tx(&tx)?; }
                 else { plan.unit.validate_tx(&tx)?; plan.session.validate_tx(&tx)?; plan.owner_row.validate_tx(&tx)?; plan.readiness.validate_tx(&tx)?; }
                 ensure!(plan.exact_effect(&tx,false)?,"transport own intent changed; SAME observation held");
-                let before=plan.observation.plan().transport_intent();
-                ensure!(tx.execute("UPDATE managed_effects SET state=?1,version=2,body=?2 WHERE id=?3 AND version=1 AND body=?4",params![key(plan.after.state),plan.after_raw,before.id.to_string(),plan.observation.plan().transport_intent_raw()])?==1,"transport own-row CAS changed");
+                ensure!(tx.execute("UPDATE managed_effects SET state=?1,version=2,body=?2 WHERE id=?3 AND version=1 AND body=?4",params_from_iter(&plan.update_values))?==1,"transport own-row CAS changed");
                 Ok(())
             })())?;
         }
