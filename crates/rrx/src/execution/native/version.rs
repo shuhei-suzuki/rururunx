@@ -22,7 +22,7 @@ pub(crate) struct NativeReadonlyHelperCompletion {
     pub(crate) commit: crate::state::NativeHelperHistoryCommit,
 }
 impl NativeReadonlyHelperCompletion {
-    pub(super) fn matches_actor(&self, actor: &Arc<NativePreparationActor>) -> bool {
+    pub(crate) fn matches_actor(&self, actor: &Arc<NativePreparationActor>) -> bool {
         Arc::ptr_eq(&self.actor, actor) && self.commit.matches_actor(actor)
     }
 }

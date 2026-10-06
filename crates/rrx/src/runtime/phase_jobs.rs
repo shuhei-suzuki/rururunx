@@ -46,7 +46,6 @@ enum RetainedStart {
         _handle: ManagedSessionRef,
         binding: Arc<NativePhaseBinding>,
     },
-    Waiting(Box<NativePhaseStart>),
 }
 struct Job {
     allocation: Arc<NativeAllocation>,
@@ -250,26 +249,35 @@ impl PhaseJobs {
         let running = RunningJob(job.clone());
         entry.handle = Some(tokio::spawn(async move {
             let _running = running;
-            let outcome = job
+            let mut parked=preparation.parked_updates();
+            let start = job
                 .allocation
                 .selected_port()
-                .start_phase(launch, preparation.clone())
-                .await
+                .start_phase(launch, preparation.clone());
+            tokio::pin!(start);
+            let result=loop {
+                tokio::select! {
+                    result=&mut start=>break result,
+                    changed=parked.changed()=>{
+                        if changed.is_err() { continue; }
+                        let observation=if *parked.borrow_and_update() {InvocationObservation::Waiting} else {InvocationObservation::Starting};
+                        { let mut state=job.state.lock().unwrap_or_else(|e|e.into_inner()); if state.outcome.is_none() { state.observation=observation; } }
+                        job.changed.send_replace(observation);
+                    },
+                }
+            };
+            let outcome = result
                 .map(|start| match start {
                     NativePhaseStart::Launched { handle, binding } => RetainedStart::Launched {
                         _handle: handle,
                         binding: Arc::from(binding),
                     },
-                    waiting @ NativePhaseStart::Waiting { .. } => {
-                        RetainedStart::Waiting(Box::new(waiting))
-                    }
                 });
             let refused = outcome.is_err();
             let (observation, binding) = match &outcome {
                 Ok(RetainedStart::Launched { binding, .. }) => {
                     (InvocationObservation::Binding, Some(binding.clone()))
                 }
-                Ok(RetainedStart::Waiting(_)) => (InvocationObservation::Waiting, None),
                 Err(_) => (InvocationObservation::Failed, None),
             };
             {

@@ -16,6 +16,7 @@ const PAIR_BODY_BYTES: usize = 32 * 1024;
 mod preparation;
 mod quota;
 pub(crate) use quota::{NativeQuotaAdmitted, NativeQuotaCaps, NativeQuotaConfirmation, NativeQuotaOutcome, NativeQuotaPlan, NativeParkedPhase, NativeQuotaWrite};
+pub(crate) use quota::{NativeQuotaClosurePlan,NativePreparationClosureCommit,NativeQuotaClosureConfirmation};
 pub(crate) use preparation::{NativePreparationCommit, NativePreparationPlan, NativeReadyLineage};
 mod version;
 pub(crate) use version::{

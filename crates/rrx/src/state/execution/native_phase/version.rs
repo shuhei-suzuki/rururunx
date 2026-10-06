@@ -12,6 +12,7 @@ use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 mod closure;
+pub(super) use closure::LatestUnitImage;
 pub(crate) use closure::NativeVersionClosurePlan;
 
 const ROWS: usize = 256;
@@ -333,6 +334,7 @@ pub(crate) struct NativeHelperHistoryCommit {
     history: Vec<Arc<NativeHelperSettlementCommit>>,
 }
 impl NativeHelperHistoryCommit {
+    pub(crate) fn matches_prefix(&self, known:&Arc<NativePreparationCommit>, version:&Arc<NativeHelperSettlementCommit>) -> bool { Arc::ptr_eq(&self.original,known) && self.history.first().is_some_and(|k|Arc::ptr_eq(k,version)) }
     pub(crate) fn len(&self) -> usize { self.history.last().map_or(0, |k| k.original.after.rows.len()) }
     pub(super) fn validate_inventory(&self, tx: &Transaction<'_>) -> Result<()> {
         let tail = self.history.last().context("closed helper history absent")?;

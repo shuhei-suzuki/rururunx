@@ -19,6 +19,24 @@ type Row = Vec<SqlValue>;
 
 #[derive(Clone, PartialEq)]
 struct Images { pool: Option<Row>, waiter: Option<Row>, lease: Option<Row> }
+pub(crate) struct NativeQuotaClosurePlan {
+    actor:Arc<NativePreparationActor>,no_dispatch:Arc<PreparedPhaseNoCurrentDispatch>,lineage:Arc<NativeReadyLineage>,
+    // Latest factual Unit is confined to this nongrant plan. It never enters
+    // quota lineage, Prepared or any registration/permission constructor.
+    unit:super::version::LatestUnitImage,before:Images,after:Images,readiness:PairRow,at:i64,
+}
+pub(crate) struct NativePreparationClosureCommit { original:Arc<NativeQuotaClosurePlan> }
+pub(crate) enum NativeQuotaClosureConfirmation { Known(NativePreparationClosureCommit), RolledBack }
+impl NativePreparationClosureCommit { pub(crate) fn matches_plan(&self,plan:&Arc<NativeQuotaClosurePlan>)->bool { Arc::ptr_eq(&self.original,plan) } }
+impl NativeQuotaClosurePlan {
+    pub(crate) fn matches(&self,actor:&Arc<NativePreparationActor>,lineage:&Arc<NativeReadyLineage>)->bool { Arc::ptr_eq(&self.actor,actor) && Arc::ptr_eq(&self.lineage,lineage) }
+    fn validate_original(&self,tx:&Transaction<'_>)->Result<()> {
+        self.actor.validate_original()?;ensure!(self.actor.is_revoked(),"nongrant preparation closure requires original revocation");
+        self.no_dispatch.validate_original(&self.actor)?;no_registration(tx,self.actor.launch())?;
+        self.no_dispatch.completion.commit.validate_inventory(tx)?;
+        self.unit.validate_original(self.actor.launch().allocation().unit_snapshot())
+    }
+}
 struct Snapshot { images: Images, leases: Vec<Row>, waiters: Vec<Row>, windows: Vec<Row>, history: Vec<Row>, legacy: Vec<LegacyCandidate> }
 struct LegacyCandidate { unit: ExecutionUnit, raw: String, project: Body<Project>, goal: Body<Goal>, task: Body<Task>, digest: String }
 impl LegacyCandidate {
@@ -256,6 +274,14 @@ fn images_match(tx:&Transaction<'_>,plan:&NativeQuotaPlan,images:&Images)->Resul
     let pool:Option<Row>={ let mut scalars=0;let mut bodies=0; rows(tx,POOL,&[t(f.provider)],1,None,&mut scalars,&mut bodies)?.pop() };
     Ok(pool==images.pool && image_matches(tx,"quota_waiters",WAITER_COLUMNS,&t(f.unit_id.to_string()),&images.waiter)? && image_matches(tx,"quota_leases",LEASE_COLUMNS,&t(f.unit_id.to_string()),&images.lease)?)
 }
+fn read_images(tx:&Transaction<'_>,actor:&Arc<NativePreparationActor>)->Result<Images> {
+    let f=actor.launch().allocation().facts();let mut scalar=0;let mut body=0;
+    Ok(Images {
+        pool:rows(tx,POOL,&[t(f.provider)],1,None,&mut scalar,&mut body)?.pop(),
+        waiter:rows(tx,OWN_WAITER,&[t(f.unit_id.to_string())],1,None,&mut scalar,&mut body)?.pop(),
+        lease:rows(tx,OWN_LEASE,&[t(f.unit_id.to_string())],1,None,&mut scalar,&mut body)?.pop(),
+    })
+}
 fn sort_waiters(waiters:&mut [Row],last:&str) {
     waiters.sort_by(|a,b| {
         let ar=(text(a,7).ok()==Some("executor"))==(last=="executor");
@@ -306,10 +332,75 @@ fn apply_images(tx:&Transaction<'_>,plan:&NativeQuotaPlan)->Result<()> {
     Ok(())
 }
 impl Store {
+    pub(crate) fn plan_phase_quota_closure(owner:&Arc<crate::execution::RuntimeOwner>,actor:Arc<NativePreparationActor>,no_dispatch:Arc<PreparedPhaseNoCurrentDispatch>,lineage:Arc<NativeReadyLineage>,at:i64)->Result<Arc<NativeQuotaClosurePlan>> {
+        actor.validate_original()?;ensure!(actor.is_revoked(),"preparation closure not revoked");
+        ensure!(std::ptr::eq(actor.launch().allocation().selected_port().owner(),owner.as_ref()),"nongrant closure selected another owner");
+        no_dispatch.validate_original(&actor)?;
+        let (unit,before)=snapshot(owner,|tx| {
+            let budget=InventoryBudget::new(tx)?;
+            budget.finish((|| {
+                lineage.validate_closure_tx(tx)?;no_dispatch.completion.commit.validate_inventory(tx)?;
+                let unit=super::version::LatestUnitImage::read(tx,actor.launch().allocation().unit_snapshot())?;
+                Ok((unit,read_images(tx,&actor)?))
+            })())
+        })?;
+        let f=actor.launch().allocation().facts();let mut after=before.clone();
+        if let Some(w)=&before.waiter { ensure!(text(w,0)?==f.unit_id.to_string() && text(w,1)?==f.provider && text(w,2)?=="unknown" && text(w,6)?=="preparing","closure own waiter identity differs"); }
+        after.waiter=None;
+        if let Some(l)=&mut after.lease {
+            ensure!(text(l,0)?==f.unit_id.to_string() && text(l,1)?==f.provider && text(l,2)?=="unknown" && integer(l,4)?==i64::try_from(f.epoch)?,"closure own lease identity/epoch differs");
+            l[5]=i(0);
+        }
+        if let Some(p)=&mut after.pool && p[3]==t(f.unit_id.to_string()) {
+            p[3]=SqlValue::Null;p[2]=i(integer(p,2)?.max(at.saturating_add(integer(p,4)?)));
+        }
+        let mut readiness=lineage.readiness().copy_image();let version=match readiness.column("version")? {SqlValue::Integer(v)=>v.checked_add(1).context("readiness closure version exhausted")?,_=>anyhow::bail!("readiness closure version absent")};
+        readiness.transition_readiness("closed",version,None,true)?;
+        Ok(Arc::new(NativeQuotaClosurePlan {actor,no_dispatch,lineage,unit,before,after,readiness,at}))
+    }
+    pub(crate) fn close_phase_quota(&mut self,plan:Arc<NativeQuotaClosurePlan>)->Result<Option<NativePreparationClosureCommit>> {
+        selected_database(&self.connection,plan.actor.launch())?;
+        let mutation=plan.lineage.readiness().update_permission(&plan.readiness)?;
+        let committed=self.binding_permits.with_exact_permit(vec![mutation],|| {
+            let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            {
+                let budget=InventoryBudget::new(&tx)?;
+                let same=budget.finish((|| {
+                    plan.validate_original(&tx)?;plan.lineage.validate_closure_tx(&tx)?;
+                    ensure!(now_ms().abs_diff(plan.at)<=5000,"preparation closure plan clock stale");
+                    if read_images(&tx,&plan.actor)?!=plan.before || plan.unit.validate_tx(&tx).is_err() { return Ok(false); }
+                    write_image(&tx,"quota_pools",POOL_COLUMNS,&plan.before.pool,&plan.after.pool)?;
+                    write_image(&tx,"quota_waiters",WAITER_COLUMNS,&plan.before.waiter,&plan.after.waiter)?;
+                    write_image(&tx,"quota_leases",LEASE_COLUMNS,&plan.before.lease,&plan.after.lease)?;
+                    plan.lineage.readiness().update_tx(&tx,&plan.readiness)?;
+                    self.binding_permits.ensure_consumed()?;Ok(true)
+                })())?;
+                if !same { return Ok(false); }
+            }
+            tx.commit()?;Ok(true)
+        })?;
+        Ok(committed.then_some(NativePreparationClosureCommit {original:plan}))
+    }
+    pub(crate) fn confirm_phase_quota_closure(&mut self,plan:Arc<NativeQuotaClosurePlan>)->Result<NativeQuotaClosureConfirmation> {
+        selected_database(&self.connection,plan.actor.launch())?;
+        let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let post={
+            let budget=InventoryBudget::new(&tx)?;
+            budget.finish((|| {
+                plan.validate_original(&tx)?;plan.unit.validate_tx(&tx)?;
+                let actual=read_images(&tx,&plan.actor)?;
+                if actual==plan.after && plan.readiness.validate_tx(&tx).is_ok() { return Ok(true); }
+                ensure!(actual==plan.before && plan.lineage.validate_closure_tx(&tx).is_ok(),"uncertain preparation closure mixed images; Held");Ok(false)
+            })())?
+        };
+        tx.commit()?;
+        Ok(if post { NativeQuotaClosureConfirmation::Known(NativePreparationClosureCommit {original:plan}) } else { NativeQuotaClosureConfirmation::RolledBack })
+    }
     pub(crate) fn commit_phase_quota(&mut self,plan:Arc<NativeQuotaPlan>,admission:&PhaseEffectAdmissionGuard)->Result<NativeQuotaWrite> {
         selected_database(&self.connection,plan.actor.launch())?;
         let mutation=(plan.readiness.values!=plan.pre.readiness().values).then(||plan.pre.readiness().update_permission(&plan.readiness)).transpose()?;
-        let write=|| -> Result<bool> {
+        let permitted=mutation.is_some();
+        let mut write=|| -> Result<bool> {
             let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             {
                 let budget=InventoryBudget::new(&tx)?;
@@ -322,7 +413,7 @@ impl Store {
                     // no alternative validator silently substitutes for it.
                     ensure!(plan.before.legacy.is_empty(),"private quota Legacy-head contract unresolved");
                     apply_images(&tx,&plan)?;
-                    if mutation.is_some() { self.binding_permits.ensure_consumed()?; }
+                    if permitted { self.binding_permits.ensure_consumed()?; }
                     Ok(true)
                 })())?;
                 if !same { return Ok(false); }

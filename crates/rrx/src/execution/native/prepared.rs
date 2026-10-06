@@ -15,6 +15,34 @@ impl PreparedPhaseNoCurrentDispatch {
     }
 }
 impl NativeSessions {
+    pub(super) async fn close_prepared_on_revocation(&self,custody:&Arc<NativePreparationCustody>) -> Result<()> {
+        let mut replans=0u8;let mut backoff=100u64;
+        loop {
+            let (actor,no_dispatch,lineage,saved)=custody.closure_original()?;
+            // A retained uncertain plan is confirmed before any fresh factual
+            // snapshot. No later row can refresh a grant lineage.
+            if let Some(saved)=saved {
+                let confirmed=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.confirm_phase_quota_closure(saved)?;
+                if let crate::state::NativeQuotaClosureConfirmation::Known(known)=confirmed { custody.retain_closed(known)?;actor.release_gate();return Ok(()); }
+            }
+            let plan=crate::state::Store::plan_phase_quota_closure(&self.owner,actor.clone(),no_dispatch,lineage,now_ms())?;
+            custody.retain_closure_plan(plan.clone())?;
+            let result=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.close_phase_quota(plan.clone());
+            match result {
+                Ok(Some(known))=>{custody.retain_closed(known)?;actor.release_gate();return Ok(());},
+                Ok(None)=>{custody.clear_definitive_closure_conflict(&plan)?;},
+                Err(error)=>{
+                    match self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.confirm_phase_quota_closure(plan) {
+                        Ok(crate::state::NativeQuotaClosureConfirmation::Known(known))=>{custody.retain_closed(known)?;actor.release_gate();return Ok(());},
+                        Ok(crate::state::NativeQuotaClosureConfirmation::RolledBack)=>return Err(error),
+                        Err(error)=>return Err(error.context("SAME nongrant closure commit uncertain; Held")),
+                    }
+                },
+            }
+            replans=replans.saturating_add(1);
+            if replans>=8 { tokio::time::sleep(Duration::from_millis(backoff)).await;replans=0;backoff=backoff.saturating_mul(2).min(5000); }
+        }
+    }
     pub(super) async fn prepare_phase_quota(&self,custody:&Arc<NativePreparationCustody>) -> Result<Arc<crate::state::NativeQuotaAdmitted>> {
         let mut conflicts=0u8; let mut backoff=100u64;
         loop {
@@ -48,13 +76,13 @@ impl NativeSessions {
                         let now=now_ms();
                         let wake=if value.reason()==WaitReason::Capacity { value.due().min(now.saturating_add(1000)) } else { value.due() };
                         let delay=Duration::from_millis(u64::try_from(wake.saturating_sub(now).max(1))?);
-                        tokio::select! { _=tokio::time::sleep(delay)=>{}, _=custody.revocation()=>{ anyhow::bail!("same parked Native operation revoked; nongrant closure required") } }
+                        tokio::select! { _=tokio::time::sleep(delay)=>{}, _=custody.revocation()=>{ self.close_prepared_on_revocation(custody).await?;anyhow::bail!("same parked Native operation closed; Root typed non-success closure unavailable") } }
                     },
                 }
             } else {
                 conflicts=conflicts.saturating_add(1);
                 if conflicts>=8 {
-                    tokio::select! { _=tokio::time::sleep(Duration::from_millis(backoff))=>{}, _=custody.revocation()=>{ anyhow::bail!("same quota operation revoked; nongrant closure required") } }
+                    tokio::select! { _=tokio::time::sleep(Duration::from_millis(backoff))=>{}, _=custody.revocation()=>{self.close_prepared_on_revocation(custody).await?;anyhow::bail!("same quota operation closed; Root typed non-success closure unavailable") } }
                     conflicts=0; backoff=backoff.saturating_mul(2).min(5000);
                 }
             }
@@ -83,6 +111,20 @@ pub(super) struct PreparedNativePhase {
     pub(super) compat: Arc<compat::NativeCompatQualification>,
     pub(super) command: Arc<NativeTransportCommand>,
     pub(super) quota: Arc<crate::state::NativeQuotaAdmitted>,
+}
+impl NativeSessions {
+    pub(super) fn issue_prepared(&self,custody:&Arc<NativePreparationCustody>) -> Result<Arc<PreparedNativePhase>> {
+        let value=custody.prepared_original()?;
+        value.actor.validate_open()?;
+        let version=value.version.closed()?;
+        ensure!(value.completion.matches_actor(&value.actor) && value.completion.commit.matches_prefix(&value.known,&version)
+            && value.compat.matches(&value.actor,&value.version),"prepared SAME closed helper prefix/compatibility differs");
+        value.compat.check_command(&value.command)?;
+        value.quota.lineage().validate_prepared_shape()?;
+        // Budget qualification remains refused pending the reviewed provider
+        // setup-effect arithmetic correction. No transport consumes this yet.
+        anyhow::bail!("prepared provider effect-budget qualification pending")
+    }
 }
 
 pub(super) struct NativeTransportCommand {

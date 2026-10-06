@@ -23,6 +23,14 @@ pub(crate) enum NativeReadyLineage {
     Quota { commit: Arc<NativePreparationCommit>, current: CurrentWorkflowSuccessor, readiness: PairRow },
 }
 impl NativeReadyLineage {
+    pub(super) fn validate_closure_tx(&self,tx:&Transaction<'_>) -> Result<()> {
+        let original=&self.commit().original;
+        original.actor.validate_original()?;
+        selected_database(tx,original.actor.launch())?;
+        original.owner_before.validate_tx(tx)?;
+        no_registration(tx,original.actor.launch())?;
+        self.readiness().validate_tx(tx)
+    }
     pub(super) fn commit(&self) -> &Arc<NativePreparationCommit> { match self { Self::Initial(c) | Self::Quota { commit:c, .. } => c } }
     pub(super) fn current(&self) -> &CurrentWorkflowSuccessor { match self { Self::Initial(c) => &c.original.current, Self::Quota { current, .. } => current } }
     pub(super) fn readiness(&self) -> &PairRow { match self { Self::Initial(c) => &c.original.readiness_after, Self::Quota { readiness, .. } => readiness } }

@@ -30,8 +30,54 @@ struct CustodyState {
     admitted: Option<Arc<crate::state::NativeQuotaAdmitted>>,
     prepared: Option<Arc<super::prepared::PreparedNativePhase>>,
     first_parked_at: Option<i64>,
+    closure: Option<Arc<crate::state::NativeQuotaClosurePlan>>,
+    closed: Option<Arc<crate::state::NativePreparationClosureCommit>>,
 }
 impl NativePreparationCustody {
+    pub(super) fn clear_definitive_closure_conflict(&self,plan:&Arc<crate::state::NativeQuotaClosurePlan>) -> Result<()> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(state.closed.is_none() && state.closure.as_ref().is_some_and(|p|Arc::ptr_eq(p,plan)),"closure pre-write conflict plan differs");
+        state.closure=None;Ok(())
+    }
+    pub(super) fn closure_original(&self) -> Result<(Arc<NativePreparationActor>,Arc<super::prepared::PreparedPhaseNoCurrentDispatch>,Arc<crate::state::NativeReadyLineage>,Option<Arc<crate::state::NativeQuotaClosurePlan>>)> {
+        let state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(state.abandoned && state.closed.is_none(),"nongrant closure not revoked or already closed");
+        let no_dispatch=state.no_dispatch.clone().context("same no-dispatch closure prerequisite absent")?;
+        Ok((state.actor.clone().context("same closure actor absent")?,no_dispatch.clone(),state.lineage.clone().unwrap_or_else(||no_dispatch.issued.clone()),state.closure.clone()))
+    }
+    pub(super) fn retain_closure_plan(&self,plan:Arc<crate::state::NativeQuotaClosurePlan>) -> Result<()> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        let no_dispatch=state.no_dispatch.as_ref().context("closure no-dispatch absent")?;
+        let lineage=state.lineage.as_ref().unwrap_or(&no_dispatch.issued);
+        ensure!(state.abandoned && state.closed.is_none() && state.actor.as_ref().is_some_and(|a|plan.matches(a,lineage)),"closure plan replaced original lineage");
+        state.closure=Some(plan);Ok(())
+    }
+    pub(super) fn retain_closed(&self,known:crate::state::NativePreparationClosureCommit) -> Result<()> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(state.closed.is_none() && state.closure.as_ref().is_some_and(|p|known.matches_plan(p)),"known closure differs from SAME retained plan");
+        state.closed=Some(Arc::new(known));Ok(())
+    }
+    pub(super) fn prepared_original(&self) -> Result<super::prepared::PreparedNativePhase> {
+        let state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.prepared.is_none() && state.parked.is_none(),"prepared issuer operation already ended or parked");
+        let value=super::prepared::PreparedNativePhase {
+            actor:state.actor.clone().context("same prepared actor absent")?,known:state.known.clone().context("same known preparation absent")?,
+            version:state.helpers.first().cloned().context("same version helper absent")?, completion:state.completion.clone().context("same helper completion absent")?,
+            compat:state.compat.clone().context("same captured compatibility absent")?,command:state.command.clone().context("same retained command absent")?,
+            quota:state.admitted.clone().context("same quota admission absent")?,
+        };
+        ensure!(state.no_dispatch.as_ref().is_some_and(|n|value.quota.matches(&value.actor,n)),"prepared quota belongs to another no-dispatch/actor");
+        Ok(value)
+    }
+    pub(super) fn retain_prepared(&self,value:Arc<super::prepared::PreparedNativePhase>) -> Result<Arc<super::prepared::PreparedNativePhase>> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.actor.as_ref().is_some_and(|a|Arc::ptr_eq(a,&value.actor)) && state.known.as_ref().is_some_and(|k|Arc::ptr_eq(k,&value.known))
+            && state.helpers.first().is_some_and(|v|Arc::ptr_eq(v,&value.version)) && state.completion.as_ref().is_some_and(|c|Arc::ptr_eq(c,&value.completion))
+            && state.compat.as_ref().is_some_and(|c|Arc::ptr_eq(c,&value.compat)) && state.command.as_ref().is_some_and(|c|Arc::ptr_eq(c,&value.command))
+            && state.admitted.as_ref().is_some_and(|q|Arc::ptr_eq(q,&value.quota)),"prepared conjunct original custody pointers changed");
+        if let Some(original)=&state.prepared { return Ok(original.clone()); }
+        state.prepared=Some(value.clone());Ok(value)
+    }
     pub(crate) fn parked_updates(&self) -> watch::Receiver<bool> { self.parked_level.subscribe() }
     pub(super) async fn revocation(&self) {
         loop {
@@ -278,6 +324,15 @@ impl NativePreparationCustody {
     /// Nongrant confirmation of the same saved postimage. A wake cannot
     /// replace the actor/plan, replay preparation, or reopen a revoked actor.
     pub(crate) async fn reconcile_known_commit(self: &Arc<Self>) -> Result<()> {
+        let closure_actor={
+            let state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+            if state.closed.is_some() { return Ok(()); }
+            if state.abandoned && state.no_dispatch.is_some() { state.actor.clone() } else { None }
+        };
+        if let Some(actor)=closure_actor {
+            let sessions=actor.sessions.upgrade().context("actual preparation closure issuer ended")?;
+            return sessions.close_prepared_on_revocation(self).await;
+        }
         let helper = {
             let state = self
                 .state
@@ -504,6 +559,7 @@ impl NativeSessions {
         custody.retain_compatible_command(compat, command)?;
         self.issue_no_current_dispatch(&custody).await?;
         self.prepare_phase_quota(&custody).await?;
+        self.issue_prepared(&custody)?;
         // The readonly fact is deliberately nongrant. Full prepared input,
         // artifact lease, hooks, quota and transport issuers remain absent.
         anyhow::bail!(

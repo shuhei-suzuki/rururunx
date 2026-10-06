@@ -81,12 +81,6 @@ pub(crate) enum NativePhaseStart {
         handle: ManagedSessionRef,
         binding: Box<NativePhaseBinding>,
     },
-    Waiting {
-        launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
-        unit: Box<ExecutionUnit>,
-        reason: WaitReason,
-        next_due: i64,
-    },
 }
 pub(crate) struct NativePhaseStartError {
     pub(crate) launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,

@@ -8,7 +8,7 @@ const UNIT_CAS: &str = "SELECT EXISTS(SELECT 1 FROM execution_units WHERE id IS 
 
 /// A bounded complete physical Unit preimage, without cleanup overlay or a
 /// current Task-generation join. Neither flags nor rows are Native authority.
-struct LatestUnitImage {
+pub(in crate::state::execution::native_phase) struct LatestUnitImage {
     values: Vec<SqlValue>,
 }
 // Fixed physical column vocabulary only; no caller SQL or grant is accepted.
@@ -26,7 +26,7 @@ fn unit_projection() -> Vec<String> {
     }).collect()
 }
 impl LatestUnitImage {
-    fn read(tx: &Transaction<'_>, original: &ExecutionUnit) -> Result<Self> {
+    pub(in crate::state::execution::native_phase) fn read(tx: &Transaction<'_>, original: &ExecutionUnit) -> Result<Self> {
         // First qualify types and all copied byte lengths before text copying.
         let columns = unit_projection().join(",");
         let mut statement = tx.prepare(&format!(
@@ -65,7 +65,7 @@ impl LatestUnitImage {
         image.validate_original(original)?;
         Ok(image)
     }
-    fn validate_original(&self, original: &ExecutionUnit) -> Result<()> {
+    pub(in crate::state::execution::native_phase) fn validate_original(&self, original: &ExecutionUnit) -> Result<()> {
         ensure!(self.values.len() == 13, "incomplete closure Unit image");
         for (index, value) in self.values.iter().enumerate() {
             match value {
@@ -142,7 +142,7 @@ impl LatestUnitImage {
         );
         Ok(())
     }
-    fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+    pub(in crate::state::execution::native_phase) fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         ensure!(
             tx.query_row(UNIT_CAS, params_from_iter(&self.values), |row| row
                 .get::<_, bool>(0))?,
