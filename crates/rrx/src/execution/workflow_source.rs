@@ -26,6 +26,11 @@ pub(crate) fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 const PAYLOAD_BOUND: usize = 1024 * 1024;
+mod native_handoff;
+pub(crate) use native_handoff::{
+    SourceNativeCustody, SourceNativeHandoff, SourceNativeOrigin, SourceNativeTransfer,
+    SourceRefusalRestoration,
+};
 
 /// Only this producer owns the live preparation capability. Ledger hints cannot
 /// recreate it. Runtime must call prepare before Workflow initialization.
@@ -36,6 +41,7 @@ pub struct ManagedWorkflowSources {
 }
 struct TaskSources {
     prepared: Option<PreparedExecutor>,
+    handoff: Option<Arc<SourceNativeCustody>>,
     frame: Arc<Frame>,
     recovery: Option<crate::state::SourceReadBinding>,
 }
@@ -569,6 +575,7 @@ impl ManagedWorkflowSources {
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .validate_execution(&unit.authority(), true, true)?;
         *state = Some(TaskSources {
+            handoff: None,
             prepared: Some(prepared),
             frame: Arc::new(frame),
             recovery: None,
@@ -654,6 +661,7 @@ impl ManagedWorkflowSources {
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .accept_retained_source_recovery(&claim, &proof)?;
         *state = Some(TaskSources {
+            handoff: None,
             prepared: None,
             frame: proof.frame,
             recovery: Some(installed),
@@ -889,6 +897,10 @@ impl WorkflowSources for ManagedWorkflowSources {
             let slot = self.slot(task.id)?;
             let mut state = slot.lock().await;
             let state = state.as_mut().context("committed source missing")?;
+            ensure!(
+                state.handoff.is_none(),
+                "original preparation already offered to Runtime"
+            );
             if let Some(prepared) = state.prepared.take() {
                 ensure!(
                     frame.artifact.is_none() && prepared.unit().base_sha == expected.revision,
