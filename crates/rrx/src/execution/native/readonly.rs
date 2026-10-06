@@ -508,6 +508,7 @@ pub(super) fn qualify_correspondence(
     conversion: Arc<ConversionIdentity>,
     observations: Vec<Arc<super::version::NativeVersionObservation>>,
 ) -> Result<NativeGitCorrespondence> {
+    seal.validate_deadline()?;
     ensure!(
         conversion.matches_seal(&seal) && observations.len() == GIT_ACTIONS,
         "physical correspondence lacks SAME complete batch"

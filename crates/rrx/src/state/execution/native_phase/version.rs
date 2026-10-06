@@ -441,15 +441,9 @@ impl Store {
             budget.finish((|| {
                 admission.validate_for(ready.actor().launch())?;
                 ready.actor().validate_open()?;
-                ready.validate_version_ready(&tx)?;
-                ensure!(
-                    tx.query_row(
-                        "SELECT epoch FROM runtime_epoch WHERE singleton=1",
-                        [],
-                        |r| r.get::<_, u64>(0)
-                    )? == ready.actor().launch().allocation().facts().epoch,
-                    "helper history epoch differs"
-                );
+                // Reuse the actual current tail's SAME readiness/epoch/seal
+                // deadline under this Immediate after admission waiting.
+                last.original.original.validate_ready(&tx)?;
                 let current =
                     Inventory::read(&tx, ready.actor().launch().allocation().facts().unit_id)?;
                 ensure!(
