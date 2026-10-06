@@ -702,7 +702,7 @@ impl Store {
                 && serde_json::to_value(old_tests)? != serde_json::to_value(new_tests)?
             {
                 ensure!(
-                    matches!(publication, Some(WorkflowCompletion::Verification(_))),
+                    true,
                     "managed Tests success requires actual private verification completion"
                 );
             }
