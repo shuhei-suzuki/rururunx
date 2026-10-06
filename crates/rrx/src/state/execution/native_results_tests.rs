@@ -24,7 +24,13 @@ fn legacy5(path: &Path) -> Connection {
     for table in MUTABLE_TABLES.iter().filter(|table| {
         !matches!(
             **table,
-            "native_invocations" | "native_results" | "source_recoveries"
+            "native_invocations"
+                | "native_results"
+                | "source_recoveries"
+                | "verification_profiles"
+                | "workflow_verification_contracts"
+                | "verification_runs"
+                | "verification_commands"
         )
     }) {
         for action in ["INSERT", "UPDATE", "DELETE"] {

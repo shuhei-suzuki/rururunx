@@ -46,6 +46,10 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let unit = validate_authority(&tx, authority, native, !native)?;
         ensure!(
+            !verification::is_command_unit(&tx, unit.id)? || kind == "git_helper",
+            "command-only verifier only permits scoped snapshot Git helpers"
+        );
+        ensure!(
             unit.phase != WORKFLOW_SOURCE_BOOTSTRAP || kind == "git_helper",
             "source preparation only permits registered Git helpers"
         );
@@ -87,6 +91,10 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let unit = validate_authority(&tx, authority, true, false)?;
+        ensure!(
+            !verification::is_command_unit(&tx, unit.id)?,
+            "command-only verifier cannot issue generic or delegated effects"
+        );
         ensure!(
             unit.phase != WORKFLOW_SOURCE_BOOTSTRAP,
             "source preparation cannot issue native or delegated effects"

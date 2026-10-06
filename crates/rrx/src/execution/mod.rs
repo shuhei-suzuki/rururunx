@@ -22,3 +22,4 @@ pub mod strict_json;
 pub mod tools;
 pub mod workflow_gates;
 pub mod workflow_source;
+pub mod verification;

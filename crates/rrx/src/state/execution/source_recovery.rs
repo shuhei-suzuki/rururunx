@@ -546,7 +546,16 @@ mod tests {
             [Uuid::new_v4().to_string()],
         )
         .unwrap();
-        for table in MUTABLE_TABLES.iter().filter(|t| **t != "source_recoveries") {
+        for table in MUTABLE_TABLES.iter().filter(|t| {
+            !matches!(
+                **t,
+                "source_recoveries"
+                    | "verification_profiles"
+                    | "workflow_verification_contracts"
+                    | "verification_runs"
+                    | "verification_commands"
+            )
+        }) {
             for action in ["INSERT", "UPDATE", "DELETE"] {
                 old.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>6 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
             }
@@ -566,7 +575,7 @@ mod tests {
             .unwrap();
         cached.execute([]).unwrap();
         let current = Store::open(&path).unwrap();
-        assert_eq!(current.schema_version().unwrap(), 7);
+        assert_eq!(current.schema_version().unwrap(), SCHEMA_VERSION);
         assert!(
             cached
                 .execute([])
@@ -584,7 +593,7 @@ mod tests {
                         |r| r.get(0),
                     )
                     .unwrap();
-                assert!(sql.contains("<>7"));
+                assert!(sql.contains(&format!("<>{SCHEMA_VERSION}")));
             }
         }
         assert_eq!(
@@ -606,7 +615,10 @@ mod tests {
         drop(cached);
         drop(old);
         drop(current);
-        assert_eq!(Store::open(&path).unwrap().schema_version().unwrap(), 7);
+        assert_eq!(
+            Store::open(&path).unwrap().schema_version().unwrap(),
+            SCHEMA_VERSION
+        );
     }
     #[test]
     fn schema7_namespace_collision_rolls_back_exact6_bytes_and_version() {

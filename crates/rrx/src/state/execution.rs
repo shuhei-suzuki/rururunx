@@ -30,6 +30,10 @@ const MUTABLE_TABLES: &[&str] = &[
     "native_invocations",
     "native_results",
     "source_recoveries",
+    "verification_profiles",
+    "workflow_verification_contracts",
+    "verification_runs",
+    "verification_commands",
 ];
 
 pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
@@ -37,6 +41,7 @@ pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
     tx.execute_batch(include_str!("execution.sql"))?;
     native_results::install_schema(tx)?;
     source_recovery::install_schema(tx)?;
+    verification::install_schema(tx)?;
     tx.execute(
         "INSERT INTO runtime_epoch(singleton,instance_id,epoch) VALUES(1,?1,0)",
         [Uuid::new_v4().to_string()],
@@ -966,6 +971,10 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut unit = validate_authority(&tx, authority, false, true)?;
+        ensure!(
+            !verification::is_command_unit(&tx, unit.id)?,
+            "command-only verifier terminal requires the owned command collector"
+        );
         ensure!(unit.work.is_none(), "work terminal already recorded");
         ensure!(
             !matches!(
@@ -1255,6 +1264,7 @@ fn effect_tx(connection: &Connection, id: OperationId) -> Result<ManagedEffect> 
 // Other state operations share the same connection and transaction helpers.
 mod artifacts;
 pub(super) mod source_recovery;
+pub(super) mod verification;
 pub(super) use artifacts::{complete_workflow_readonly_tx, publish_workflow_result_tx};
 pub(crate) mod cleanup;
 mod effects;

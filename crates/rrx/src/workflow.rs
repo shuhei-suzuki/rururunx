@@ -451,6 +451,8 @@ struct Snapshot {
     workflow: WorkflowSnapshot,
     publication: Option<crate::execution::WorkflowPublication>,
     readonly_completion: Option<crate::execution::ReadonlyCompletion>,
+    verification_completion: Option<crate::execution::verification::VerificationCompletion>,
+    verification_activation: Option<crate::execution::verification::ManagedVerificationActivation>,
 }
 
 /// Invocation-local proof minted only from a successfully committed agent reservation.
@@ -509,6 +511,7 @@ pub struct WorkflowEngine {
     runtime: Config,
     sources: Arc<dyn WorkflowSources>,
     gates: Arc<dyn PhaseGates>,
+    verifier: Option<Arc<crate::execution::verification::ManagedVerifier>>,
     managed_snapshots: std::sync::Mutex<
         BTreeMap<crate::execution::UnitId, crate::execution::results::ResultSnapshot>,
     >,
@@ -536,10 +539,26 @@ impl WorkflowEngine {
             runtime,
             sources,
             gates,
+            verifier: None,
             managed_snapshots: std::sync::Mutex::new(BTreeMap::new()),
             #[cfg(test)]
             hooks: EngineHooks::default(),
         })
+    }
+    pub fn with_verifier(
+        mut self,
+        verifier: Arc<crate::execution::verification::ManagedVerifier>,
+    ) -> Result<Self> {
+        let owner = self
+            .registry
+            .managed_owner()
+            .context("verifier requires a managed registry")?;
+        ensure!(
+            verifier.belongs_to(&owner),
+            "verifier and Workflow Runtime differ"
+        );
+        self.verifier = Some(verifier);
+        Ok(self)
     }
     pub fn snapshot(&self, task_id: TaskId) -> Result<WorkflowSnapshot> {
         Ok(self.read(task_id)?.workflow)
@@ -561,6 +580,8 @@ impl WorkflowEngine {
         Ok(Snapshot {
             publication: None,
             readonly_completion: None,
+            verification_completion: None,
+            verification_activation: None,
             project,
             goal,
             task,
@@ -574,6 +595,26 @@ impl WorkflowEngine {
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state store poisoned"))?;
+        if let Some(activation) = snapshot.verification_activation.as_ref() {
+            return store.activate_managed_workflow(
+                &mut snapshot.task,
+                &mut snapshot.record,
+                context.context("managed activation requires initial Context")?,
+                snapshot.project.version,
+                snapshot.goal.version,
+                activation,
+            );
+        }
+        if let Some(completion) = snapshot.verification_completion.as_ref() {
+            return store.put_workflow_verification_transition(
+                &mut snapshot.task,
+                &mut snapshot.record,
+                context.context("verification acceptance requires fresh Context")?,
+                snapshot.project.version,
+                snapshot.goal.version,
+                completion,
+            );
+        }
         if snapshot.workflow.active.is_none()
             && let Some(previous) = store.record(snapshot.record.id)?
         {
@@ -850,12 +891,22 @@ impl WorkflowEngine {
         let mut snapshot = Snapshot {
             publication: None,
             readonly_completion: None,
+            verification_completion: None,
+            verification_activation: None,
             project,
             goal,
             task,
             record,
             workflow: workflow_state,
         };
+        if let Some(owner) = self.registry.managed_owner() {
+            snapshot.verification_activation = Some(
+                crate::execution::verification::ManagedVerificationActivation::from_owner(
+                    &owner,
+                    &snapshot.record,
+                )?,
+            );
+        }
         self.persist(&mut snapshot, Some(&context))?;
         Ok(snapshot.workflow)
     }
@@ -2479,7 +2530,43 @@ impl WorkflowEngine {
             prerequisites: snapshot.workflow.completed.values().cloned().collect(),
             prior_observations: snapshot.workflow.history[index].observations.clone(),
         };
-        let outcome = match self.gates.complete(invocation, status).await {
+        let managed_contract = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .workflow_requires_verification(snapshot.record.id)?;
+        let gate_result = if managed_contract && phase == Phase::Tests {
+            if let Some(verifier) = &self.verifier {
+                match verifier.evaluate(invocation).await {
+                    Ok(result) => {
+                        self.adopt_verification_successor(&mut snapshot, index, &result.successor)?;
+                        snapshot.verification_completion = result.completion;
+                        Ok(result.outcome)
+                    }
+                    Err(_) => Ok(GateOutcome::Waiting(
+                        "managed Tests prerequisites or catalog unavailable; no command acceptance"
+                            .into(),
+                    )),
+                }
+            } else {
+                Ok(GateOutcome::Waiting(
+                    "managed Tests verifier integration not configured".into(),
+                ))
+            }
+        } else if managed_contract
+            && matches!(
+                phase,
+                Phase::ExpandedRegression | Phase::Mutation | Phase::Browser | Phase::Staging
+            )
+        {
+            Ok(GateOutcome::Waiting(format!(
+                "managed {} verifier integration pending",
+                phase.key()
+            )))
+        } else {
+            self.gates.complete(invocation, status).await
+        };
+        let outcome = match gate_result {
             Ok(outcome) => {
                 self.observe_gate(
                     &mut snapshot,
@@ -2513,6 +2600,65 @@ impl WorkflowEngine {
             }
         };
         self.apply_outcome(snapshot, index, source, outcome).await
+    }
+    fn adopt_verification_successor(
+        &self,
+        snapshot: &mut Snapshot,
+        index: usize,
+        successor: &Record,
+    ) -> Result<()> {
+        let next: WorkflowSnapshot = serde_json::from_value(successor.data.clone())?;
+        let identity = next
+            .history
+            .get(index)
+            .and_then(|a| a.unit.clone())
+            .context("verification successor lacks actual unit")?;
+        let mut expected = snapshot.record.clone();
+        let mut workflow = snapshot.workflow.clone();
+        ensure!(
+            workflow.active == Some(index)
+                && workflow.history[index].state == AttemptState::Evaluating
+                && workflow.history[index].phase == Phase::Tests
+                && workflow.history[index].unit.is_none(),
+            "verification successor differs from original claim"
+        );
+        workflow.history[index].unit = Some(identity.clone());
+        expected.data = serde_json::to_value(&workflow)?;
+        expected.version = expected
+            .version
+            .checked_add(1)
+            .context("verification successor version overflow")?;
+        expected.updated_at = successor.updated_at;
+        ensure!(
+            serde_json::to_value(&expected)? == serde_json::to_value(successor)?,
+            "verification successor changed fields outside private reservation"
+        );
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+        let actual = store
+            .record(successor.id)?
+            .context("verification successor missing")?;
+        let unit = store.execution_unit(identity.unit)?;
+        ensure!(
+            serde_json::to_value(&actual)? == serde_json::to_value(successor)?
+                && crate::execution::ManagedUnitRef::from(&unit) == identity
+                && unit.scope == snapshot.task.scope()
+                && unit.kind == crate::execution::UnitKind::Verifier
+                && unit.provider == "verifier"
+                && unit.phase == Phase::Tests.key()
+                && unit.session_id.is_none()
+                && serde_json::to_value(
+                    store
+                        .task(snapshot.task.id)?
+                        .context("verification Task missing")?
+                )? == serde_json::to_value(&snapshot.task)?,
+            "verification successor current ledger/Task identity changed"
+        );
+        snapshot.record = successor.clone();
+        snapshot.workflow = next;
+        Ok(())
     }
     async fn apply_outcome(
         &self,
@@ -3171,8 +3317,14 @@ pub(crate) fn validate_transition(
                             && after.state == AttemptState::Running
                             && before.session_id.is_none()
                             && !before.dispatch_started
-                            && after.phase.actor() != Actor::EvidencePort),
-                    "managed unit may only bind before native dispatch"
+                            && after.phase.actor() != Actor::EvidencePort)
+                        || (before.state == AttemptState::Evaluating
+                            && after.state == AttemptState::Evaluating
+                            && before.phase == Phase::Tests
+                            && before.session_id.is_none()
+                            && before.execution.is_none()
+                            && !before.dispatch_started),
+                    "managed unit may only bind before native dispatch or private Tests reservation"
                 );
                 ensure!(
                     before.execution.is_some()

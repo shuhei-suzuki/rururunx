@@ -1300,3 +1300,6 @@ async fn production_gate_closed_claim_cannot_be_replayed_into_another_receipt() 
         .cancel(f.task.id, "closed claim control finished".into())
         .unwrap();
 }
+
+#[path = "verification_tests.rs"]
+mod verification_tests;

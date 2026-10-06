@@ -182,7 +182,13 @@ fn schema5_replaces_contract4_guards_and_fences_already_open_writer() {
     for table in MUTABLE_TABLES.iter().filter(|table| {
         !matches!(
             **table,
-            "native_invocations" | "native_results" | "source_recoveries"
+            "native_invocations"
+                | "native_results"
+                | "source_recoveries"
+                | "verification_profiles"
+                | "workflow_verification_contracts"
+                | "verification_runs"
+                | "verification_commands"
         )
     }) {
         for action in ["INSERT", "UPDATE", "DELETE"] {

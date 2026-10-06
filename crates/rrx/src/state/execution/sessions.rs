@@ -12,6 +12,10 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut unit = validate_authority(&tx, authority, true, false)?;
         ensure!(
+            !verification::is_command_unit(&tx, unit.id)?,
+            "command-only verifier cannot register or update native Sessions"
+        );
+        ensure!(
             unit.state == UnitState::Preparing
                 && unit.phase != WORKFLOW_SOURCE_BOOTSTRAP
                 && valid_oid(&unit.base_sha)
@@ -67,6 +71,10 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut unit = validate_authority(&tx, authority, true, false)?;
+        ensure!(
+            !verification::is_command_unit(&tx, unit.id)?,
+            "command-only verifier cannot register or update native Sessions"
+        );
         ensure!(
             unit.session_id == Some(session.id) && session.state == SessionState::Running,
             "invalid native acknowledgement"

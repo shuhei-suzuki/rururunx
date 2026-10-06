@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 8;
 pub(crate) use execution::source_recovery::SourceReadBinding;
 mod execution;
 pub(crate) use execution::QuotaAdmission;
@@ -94,6 +94,8 @@ pub(crate) fn current_test_writer(path: &Path) -> Result<Connection> {
 enum WorkflowCompletion<'a> {
     Executor(&'a crate::execution::WorkflowPublication),
     Readonly(&'a crate::execution::ReadonlyCompletion),
+    Verification(&'a crate::execution::verification::VerificationCompletion),
+    Activation(&'a crate::execution::verification::ManagedVerificationActivation),
 }
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -159,6 +161,10 @@ impl Store {
                     execution::source_recovery::validate_legacy_namespace(&tx)?;
                     execution::source_recovery::install_schema(&tx)?;
                 }
+                if locked_version < 8 {
+                    execution::verification::validate_legacy_namespace(&tx)?;
+                    execution::verification::install_schema(&tx)?;
+                }
                 for next in (locked_version + 1)..=SCHEMA_VERSION {
                     if next == 4 {
                         execution::install_schema(&tx)?;
@@ -174,7 +180,7 @@ impl Store {
                         execution::native_results::install_schema(&tx)?;
                         execution::install_writer_guards(&tx)?;
                     }
-                    if next == 7 {
+                    if matches!(next, 7 | 8) {
                         execution::install_writer_guards(&tx)?;
                     }
                     tx.pragma_update(None, "user_version", next)?;
@@ -472,6 +478,44 @@ impl Store {
             Some(WorkflowCompletion::Readonly(completion)),
         )
     }
+    pub(crate) fn put_workflow_verification_transition(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: &ContextVersion,
+        project_version: u64,
+        goal_version: u64,
+        completion: &crate::execution::verification::VerificationCompletion,
+    ) -> Result<()> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            Some(context),
+            project_version,
+            goal_version,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::Verification(completion)),
+        )
+    }
+    pub(crate) fn activate_managed_workflow(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: &ContextVersion,
+        project_version: u64,
+        goal_version: u64,
+        activation: &crate::execution::verification::ManagedVerificationActivation,
+    ) -> Result<()> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            Some(context),
+            project_version,
+            goal_version,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::Activation(activation)),
+        )
+    }
     // Exact owner CAS and optional completion proof are independent inputs.
     #[allow(clippy::too_many_arguments)]
     fn put_workflow_transition_inner(
@@ -640,6 +684,48 @@ impl Store {
         crate::workflow::validate_transition(task, workflow, previous_workflow.as_ref())?;
         let typed_workflow: crate::workflow::WorkflowSnapshot =
             serde_json::from_value(workflow.data.clone())?;
+        if execution::verification::requires_verification(&tx, workflow.id)? {
+            let before = previous_workflow
+                .as_ref()
+                .map(|r| {
+                    serde_json::from_value::<crate::workflow::WorkflowSnapshot>(r.data.clone())
+                })
+                .transpose()?;
+            let old_tests = before
+                .as_ref()
+                .and_then(|w| w.completed.get(&crate::workflow::Phase::Tests));
+            let new_tests = typed_workflow.completed.get(&crate::workflow::Phase::Tests);
+            if new_tests.is_some()
+                && serde_json::to_value(old_tests)? != serde_json::to_value(new_tests)?
+            {
+                ensure!(
+                    matches!(publication, Some(WorkflowCompletion::Verification(_))),
+                    "managed Tests success requires actual private verification completion"
+                );
+            }
+            for phase in [
+                crate::workflow::Phase::ExpandedRegression,
+                crate::workflow::Phase::Mutation,
+                crate::workflow::Phase::Browser,
+                crate::workflow::Phase::Staging,
+            ] {
+                let old = before.as_ref().and_then(|w| w.completed.get(&phase));
+                let new = typed_workflow.completed.get(&phase);
+                ensure!(
+                    new.is_none() || serde_json::to_value(old)? == serde_json::to_value(new)?,
+                    "managed verification phase producer not implemented"
+                );
+            }
+            for (index, attempt) in typed_workflow.history.iter().enumerate() {
+                if attempt.phase == crate::workflow::Phase::Tests && attempt.unit.is_some() {
+                    let previous = before.as_ref().and_then(|w| w.history.get(index));
+                    ensure!(
+                        previous.is_some_and(|a| a.unit == attempt.unit),
+                        "managed Tests unit binding requires private verifier reservation"
+                    );
+                }
+            }
+        }
         for attempt in &typed_workflow.history {
             if let Some(identity) = &attempt.unit {
                 let unit = execution::unit_tx(&tx, identity.unit)?;
@@ -778,7 +864,15 @@ impl Store {
             )?;
             crate::workflow::validate_context(task, workflow, &decode(body)?)?;
         }
-        if let Some(completion) = publication {
+        if let Some(WorkflowCompletion::Activation(activation)) = &publication {
+            ensure!(
+                previous_workflow.is_none()
+                    && workflow.version == 0
+                    && activation.record() == workflow.id
+                    && activation.scope() == &workflow.scope,
+                "managed verification contract requires exact initial activation"
+            );
+        } else if let Some(completion) = &publication {
             let previous = previous_workflow
                 .as_ref()
                 .context("completion requires a reserved Workflow")?;
@@ -792,6 +886,12 @@ impl Store {
                     previous,
                     context,
                 )?,
+                WorkflowCompletion::Activation(_) => unreachable!("activation handled above"),
+                WorkflowCompletion::Verification(completion) => {
+                    execution::verification::accept_tx(
+                        &tx, completion, task, workflow, previous, context,
+                    )?;
+                }
                 WorkflowCompletion::Readonly(completion) => {
                     execution::complete_workflow_readonly_tx(
                         &tx, completion, task, workflow, previous, context,
@@ -801,6 +901,9 @@ impl Store {
         }
         let next_task = put_task_tx(&tx, task)?;
         let next_workflow = put_record_tx(&tx, workflow)?;
+        if let Some(WorkflowCompletion::Activation(activation)) = &publication {
+            execution::verification::install_contract(&tx, activation, workflow, &next_task)?;
+        }
         execution::source_recovery::after_write(&tx, source_advance, conservative)?;
         tx.commit()?;
         *task = next_task;
