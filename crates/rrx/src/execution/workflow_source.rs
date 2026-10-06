@@ -27,6 +27,24 @@ pub(crate) fn digest(bytes: &[u8]) -> String {
 }
 const PAYLOAD_BOUND: usize = 1024 * 1024;
 
+/// Detach access under the map lock, then destroy the last slot/owned assets
+/// outside it. An armed preparation destructor can acquire SharedStore.
+fn retire_source_access<T>(tasks: &Mutex<BTreeMap<TaskId, T>>, task: TaskId) -> Result<()> {
+    let removed = {
+        let mut tasks = tasks
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Workflow sources poisoned"))?;
+        tasks.remove(&task)
+    };
+    drop(removed);
+    Ok(())
+}
+mod native_handoff;
+pub(crate) use native_handoff::{
+    SourceNativeCustody, SourceNativeHandoff, SourceNativeOrigin, SourceNativeTransfer,
+    SourceRefusalRestoration,
+};
+
 /// Only this producer owns the live preparation capability. Ledger hints cannot
 /// recreate it. Runtime must call prepare before Workflow initialization.
 pub struct ManagedWorkflowSources {
@@ -36,6 +54,7 @@ pub struct ManagedWorkflowSources {
 }
 struct TaskSources {
     prepared: Option<PreparedExecutor>,
+    handoff: Option<Arc<SourceNativeCustody>>,
     frame: Arc<Frame>,
     recovery: Option<crate::state::SourceReadBinding>,
 }
@@ -569,6 +588,7 @@ impl ManagedWorkflowSources {
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .validate_execution(&unit.authority(), true, true)?;
         *state = Some(TaskSources {
+            handoff: None,
             prepared: Some(prepared),
             frame: Arc::new(frame),
             recovery: None,
@@ -595,6 +615,7 @@ impl ManagedWorkflowSources {
     ) -> Result<()> {
         let slot = self.slot(task)?;
         let mut state = slot.lock().await;
+        ensure!(state.is_none(), "Workflow source already installed");
         let claim = self
             .owner
             .store
@@ -654,6 +675,7 @@ impl ManagedWorkflowSources {
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .accept_retained_source_recovery(&claim, &proof)?;
         *state = Some(TaskSources {
+            handoff: None,
             prepared: None,
             frame: proof.frame,
             recovery: Some(installed),
@@ -889,11 +911,16 @@ impl WorkflowSources for ManagedWorkflowSources {
             let slot = self.slot(task.id)?;
             let mut state = slot.lock().await;
             let state = state.as_mut().context("committed source missing")?;
-            if let Some(prepared) = state.prepared.take() {
+            ensure!(
+                state.handoff.is_none(),
+                "original preparation already offered to Runtime"
+            );
+            if let Some(prepared) = state.prepared.as_ref() {
                 ensure!(
                     frame.artifact.is_none() && prepared.unit().base_sha == expected.revision,
                     "initial source changed before adoption"
                 );
+                let prepared = state.prepared.take().expect("checked original preparation");
                 return Ok(Some(InitialWorkflowExecutor { prepared, expected }));
             }
             Ok(None)
@@ -911,11 +938,7 @@ impl WorkflowSources for ManagedWorkflowSources {
         ensure!(actual.scope() == *scope, "foreign source retirement");
         // Remove access immediately. A bounded in-flight source read retains its
         // guard until it finishes; terminal Task fencing already forbids launch.
-        self.tasks
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Workflow sources poisoned"))?
-            .remove(&task);
-        Ok(())
+        retire_source_access(&self.tasks, task)
     }
 }
 impl Frame {
@@ -1180,3 +1203,46 @@ async fn read_corpus(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod retirement_tests {
+    use super::*;
+    use std::sync::{
+        Weak,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    struct OwnedDestructor {
+        sources: Weak<Mutex<BTreeMap<TaskId, OwnedDestructor>>>,
+        observed_unlocked: Arc<AtomicBool>,
+    }
+    impl Drop for OwnedDestructor {
+        fn drop(&mut self) {
+            let sources = self.sources.upgrade().expect("actual map still owned");
+            self.observed_unlocked
+                .store(sources.try_lock().is_ok(), Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn retired_owned_assets_drop_after_source_map_unlock() {
+        // Mechanical destructor-order control of the SAME production removal
+        // consumer. No preparation, Driver, Unit or native grant is fabricated.
+        let task = TaskId::new();
+        let sources = Arc::new(Mutex::new(BTreeMap::new()));
+        let observed = Arc::new(AtomicBool::new(false));
+        sources.lock().unwrap().insert(
+            task,
+            OwnedDestructor {
+                sources: Arc::downgrade(&sources),
+                observed_unlocked: observed.clone(),
+            },
+        );
+        retire_source_access(&sources, task).unwrap();
+        assert!(
+            observed.load(Ordering::SeqCst),
+            "owned Source assets dropped under Source map lock"
+        );
+        assert!(sources.lock().unwrap().is_empty());
+    }
+}

@@ -18,6 +18,27 @@ pub struct PreparedExecutor {
     unit: ExecutionUnit,
     guard: owner::PreparationGuard,
 }
+/// Only splitting the actual preparation creates this remainder. It cannot
+/// construct a guard or certify a different Unit after queue refusal.
+pub(crate) struct PreparedExecutorRemainder {
+    owner: Arc<RuntimeOwner>,
+    unit: ExecutionUnit,
+}
+impl PreparedExecutorRemainder {
+    pub(crate) fn rejoin(
+        self,
+        guard: owner::PreparationGuard,
+    ) -> std::result::Result<PreparedExecutor, Box<(Self, owner::PreparationGuard)>> {
+        if !guard.matches(&self.owner, &self.unit).unwrap_or(false) {
+            return Err(Box::new((self, guard)));
+        }
+        Ok(PreparedExecutor {
+            owner: self.owner,
+            unit: self.unit,
+            guard,
+        })
+    }
+}
 /// Constructed only after the owning preparation validates its physical namespace.
 pub(crate) struct PreparedAdoption {
     unit: ExecutionUnit,
@@ -36,6 +57,17 @@ impl PreparedAdoption {
     }
 }
 impl PreparedExecutor {
+    pub(crate) fn into_original_parts(
+        self,
+    ) -> (PreparedExecutorRemainder, owner::PreparationGuard) {
+        (
+            PreparedExecutorRemainder {
+                owner: self.owner,
+                unit: self.unit,
+            },
+            self.guard,
+        )
+    }
     pub fn unit(&self) -> &ExecutionUnit {
         &self.unit
     }
