@@ -192,8 +192,10 @@ async fn c9_busy_admission_sweep_is_synchronous_and_shutdown_stops_claims() {
     assert_eq!(f.runtime.admit_ready_tasks().unwrap(), 0);
     let runtime = f.runtime.clone();
     let shutdown = tokio::spawn(async move { runtime.shutdown().await });
-    tokio::task::yield_now().await;
-    assert!(f.runtime.stopping.load(std::sync::atomic::Ordering::SeqCst));
+    // Shutdown waits for the actual already-held control operation to finish.
+    // Stopping is set under that admission, not by a speculative observer.
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(!shutdown.is_finished());
     assert_eq!(f.runtime.admit_ready_tasks().unwrap(), 0);
     assert_eq!(count(&f, "task_drivers"), 0);
     drop(guard);
@@ -245,6 +247,12 @@ async fn c15_actual_service_pass_keeps_cursor_after_32_paused_tasks() {
     let page = keys(&f);
     assert_eq!(page.len(), 41);
     assert_eq!(page[0].goal_id, paused.to_string());
+    // Accepted Goals left one coalesced wake hint. Consume it before start so
+    // observation follows one actual service pass rather than two immediate
+    // passes. A wake is nongrant; no admission/actor state is changed here.
+    tokio::time::timeout(Duration::from_millis(20), f.runtime.wake.notified())
+        .await
+        .unwrap();
     f.runtime.start().await.unwrap();
     tokio::task::yield_now().await;
     assert_eq!(
