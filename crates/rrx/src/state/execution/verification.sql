@@ -11,8 +11,9 @@ BEGIN SELECT RAISE(ABORT,'verification profile is retained'); END;
 CREATE TABLE IF NOT EXISTS workflow_verification_contracts (
     workflow_id TEXT PRIMARY KEY NOT NULL REFERENCES records(id),
     project_id TEXT NOT NULL, goal_id TEXT NOT NULL, task_id TEXT NOT NULL UNIQUE,
-    owner_epoch INTEGER NOT NULL CHECK(owner_epoch>0),
+    owner_epoch INTEGER NOT NULL CHECK(owner_epoch>=0),
     profile_digest TEXT,
+    CHECK(owner_epoch>0 OR profile_digest IS NULL),
     FOREIGN KEY(project_id,profile_digest) REFERENCES verification_profiles(project_id,digest),
     FOREIGN KEY(task_id,goal_id,project_id) REFERENCES tasks(id,goal_id,project_id)
 );

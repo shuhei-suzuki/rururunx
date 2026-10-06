@@ -186,6 +186,9 @@ impl Store {
                     tx.pragma_update(None, "user_version", next)?;
                 }
             }
+            if locked_version > 0 && locked_version < 8 {
+                execution::verification::hold_existing_managed(&tx)?;
+            }
             tx.commit()?;
         }
         connection.pragma_update(None, "journal_mode", "WAL")?;

@@ -299,3 +299,315 @@ async fn activated_tests_contract_refuses_generic_passed_even_with_no_unit() {
         .cancel(f.task.id, "negative complete".into())
         .unwrap();
 }
+
+#[tokio::test]
+async fn actual_command_failure_overflow_timeout_and_source_drift_never_certify_tests() {
+    for scenario in ["exit", "overflow", "timeout", "source"] {
+        let code = match scenario {
+            "exit" => "import sys; print('known failure'); sys.exit(3)",
+            "overflow" => "print('x'*100000)",
+            "timeout" => "import time; time.sleep(30)",
+            "source" => {
+                "import pathlib; p=pathlib.Path('rules.md'); p.chmod(0o600); p.write_text('changed input'); print('source writer exited zero')"
+            }
+            _ => unreachable!(),
+        };
+        let mut proposal = profile(code);
+        if scenario == "overflow" {
+            for c in &mut proposal.commands {
+                c.stdout_bytes = 128
+            }
+        }
+        if scenario == "timeout" {
+            for c in &mut proposal.commands {
+                c.timeout_seconds = 1
+            }
+        }
+        let (f, engine, verifier, artifact) = ready("codex", Some(proposal)).await;
+        let result = engine.step(f.task.id, BTreeMap::new()).await.unwrap();
+        if scenario == "exit" {
+            assert!(matches!(
+                result,
+                StepResult::Failed {
+                    phase: Phase::Tests,
+                    ..
+                }
+            ))
+        } else {
+            assert!(
+                matches!(
+                    result,
+                    StepResult::Waiting {
+                        phase: Phase::Tests,
+                        ..
+                    }
+                ),
+                "{scenario}: {result:?}"
+            )
+        }
+        let workflow = engine.snapshot(f.task.id).unwrap();
+        assert!(!workflow.completed.contains_key(&Phase::Tests));
+        let attempt = workflow
+            .history
+            .iter()
+            .find(|a| a.phase == Phase::Tests)
+            .unwrap();
+        let unit = attempt.unit.as_ref().unwrap().unit;
+        let run = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .verification_run(unit)
+            .unwrap();
+        assert!(!run.certifying);
+        let current = f.owner.store.lock().unwrap().execution_unit(unit).unwrap();
+        assert!(
+            !current.native_effects_open
+                && !current.result_finalization_open
+                && current.session_id.is_none()
+        );
+        if scenario == "exit" {
+            assert_eq!(run.work, execution::WorkOutcome::Failure);
+            assert_eq!(run.commands[0].exit, Some(3));
+        }
+        if scenario == "overflow" {
+            assert_eq!(
+                run.commands[0].issue,
+                Some(execution::verification::CaptureIssue::OutputOverflow)
+            );
+            assert_eq!(
+                verifier.inspect_stream(unit, 0, false, 128).unwrap().len(),
+                128
+            );
+        }
+        if scenario == "timeout" {
+            assert_eq!(
+                run.commands[0].issue,
+                Some(execution::verification::CaptureIssue::Timeout)
+            );
+        }
+        if scenario == "source" {
+            // A same-user writer may change modes; validation, rather than a
+            // security-containment claim, prevents acceptance of changed input.
+            assert_eq!(run.work, execution::WorkOutcome::Unknown);
+            assert_eq!(run.commands.len(), 1);
+            assert_eq!(run.commands[0].exit, Some(0));
+        }
+        let original = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .result_artifact(artifact)
+            .unwrap();
+        execution::results::ResultStore::new(f.owner.clone())
+            .verify(&original)
+            .await
+            .unwrap();
+        engine
+            .cancel(f.task.id, "negative complete".into())
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn accepted_raw_stream_retrieval_rejects_tampering_and_short_budget_after_reopen() {
+    let (f, engine, verifier, _) = ready(
+        "claude",
+        Some(profile("print('independent retained evidence')")),
+    )
+    .await;
+    assert!(matches!(
+        engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+        StepResult::Completed {
+            phase: Phase::Tests
+        }
+    ));
+    let workflow = engine.snapshot(f.task.id).unwrap();
+    let unit = workflow
+        .history
+        .iter()
+        .find(|a| a.phase == Phase::Tests)
+        .unwrap()
+        .unit
+        .as_ref()
+        .unwrap()
+        .unit;
+    assert!(verifier.inspect_stream(unit, 0, false, 1).is_err());
+    let reopened = Store::open(&f._dir.path().join("state.db")).unwrap();
+    assert_eq!(reopened.verification_run(unit).unwrap().commands.len(), 4);
+    drop(reopened);
+    let path = f
+        .owner
+        .root
+        .join("verification-evidence")
+        .join(unit.to_string())
+        .join("0")
+        .join("stdout");
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::write(&path, "changed retained bytes").unwrap();
+    assert!(
+        verifier
+            .inspect_stream(unit, 0, false, 4096)
+            .unwrap_err()
+            .to_string()
+            .contains("digest mismatch")
+    );
+    assert_eq!(
+        engine.snapshot(f.task.id).unwrap().completed[&Phase::Tests].revision,
+        workflow.completed[&Phase::Tests].revision
+    );
+    engine
+        .cancel(f.task.id, "retrieval complete".into())
+        .unwrap();
+}
+
+#[tokio::test]
+async fn actual_command_grant_rejects_native_session_helper_delegation_and_terminal_writers() {
+    let (f, engine, verifier, _) = ready(
+        "codex",
+        Some(profile("print('command-only actual control')")),
+    )
+    .await;
+    let owner = f.owner.clone();
+    verifier.before_commands(Box::new(move |id| {
+        let mut store = owner.store.lock().unwrap();
+        let unit = store.execution_unit(id).unwrap();
+        assert_eq!(unit.state, execution::UnitState::Preparing);
+        let sessions = store
+            .records(&unit.scope, RecordKind::Session)
+            .unwrap()
+            .len();
+        let effects = store.managed_effects(id).unwrap().len();
+        let session = Session {
+            id: SessionId::new(),
+            scope: unit.scope.clone(),
+            agent: "verifier".into(),
+            provider: unit.provider.clone(),
+            role: SessionRole::Consultant,
+            native_ref: None,
+            pid: None,
+            worktree: unit.worktree.clone(),
+            state: SessionState::Starting,
+            model: None,
+            effort: None,
+            recovery: json!({}),
+            started_at: now_ms(),
+        };
+        assert!(
+            store
+                .register_execution_session(&unit.authority(), &session)
+                .unwrap_err()
+                .to_string()
+                .contains("command-only verifier")
+        );
+        for kind in ["native_version", "docker_probe"] {
+            assert!(
+                store
+                    .reserve_execution_helper(
+                        &unit.authority(),
+                        execution::OperationId::new(),
+                        true,
+                        &unit.worktree,
+                        kind
+                    )
+                    .unwrap_err()
+                    .to_string()
+                    .contains("command-only verifier")
+            );
+        }
+        let effect = execution::ManagedEffect {
+            id: execution::OperationId::new(),
+            unit_id: id,
+            scope: unit.scope.clone(),
+            kind: "docker_create".into(),
+            idempotency_key: "guard-negative".into(),
+            expected_target: "isolated-negative-container".into(),
+            state: execution::EffectState::Pending,
+            receipt: BTreeMap::new(),
+            version: 1,
+        };
+        assert!(
+            store
+                .reserve_managed_effect(&unit.authority(), &effect)
+                .unwrap_err()
+                .to_string()
+                .contains("command-only verifier")
+        );
+        assert!(
+            store
+                .finish_execution(
+                    &unit.authority(),
+                    execution::WorkOutcome::Success,
+                    execution::Disposition::Completed
+                )
+                .unwrap_err()
+                .to_string()
+                .contains("owned command collector")
+        );
+        assert_eq!(
+            store
+                .records(&unit.scope, RecordKind::Session)
+                .unwrap()
+                .len(),
+            sessions
+        );
+        assert_eq!(store.managed_effects(id).unwrap().len(), effects);
+        assert!(store.execution_unit(id).unwrap().work.is_none());
+    }));
+    assert!(matches!(
+        engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+        StepResult::Completed {
+            phase: Phase::Tests
+        }
+    ));
+    engine.cancel(f.task.id, "guard complete".into()).unwrap();
+}
+
+#[tokio::test]
+async fn actual_command_preparation_then_owner_drift_refuses_before_command_intent() {
+    let (f, engine, verifier, _) = ready("codex", Some(profile("print('must not start')"))).await;
+    let owner = f.owner.clone();
+    let goal_id = f.task.goal_id;
+    verifier.before_commands(Box::new(move |_| {
+        let mut store = owner.store.lock().unwrap();
+        let mut goal = store.goal(goal_id).unwrap().unwrap();
+        goal.title = "changed semantic Goal".into();
+        store.put_goal(&mut goal).unwrap();
+    }));
+    let result = engine.step(f.task.id, BTreeMap::new()).await;
+    assert!(
+        result.is_err()
+            || matches!(
+                result.unwrap(),
+                StepResult::Waiting {
+                    phase: Phase::Tests,
+                    ..
+                }
+            )
+    );
+    let workflow = engine.snapshot(f.task.id).unwrap();
+    assert!(!workflow.completed.contains_key(&Phase::Tests));
+    let unit = workflow
+        .history
+        .iter()
+        .find(|a| a.phase == Phase::Tests)
+        .unwrap()
+        .unit
+        .as_ref()
+        .unwrap()
+        .unit;
+    assert!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .managed_effects(unit)
+            .unwrap()
+            .iter()
+            .all(|e| e.kind != "verification_command")
+    );
+    engine.cancel(f.task.id, "drift complete".into()).unwrap();
+}

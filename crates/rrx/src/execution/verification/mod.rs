@@ -143,7 +143,11 @@ pub(crate) struct ManagedVerificationResult {
 pub struct ManagedVerifier {
     owner: Arc<RuntimeOwner>,
     sources: Arc<workflow_source::ManagedWorkflowSources>,
+    #[cfg(test)]
+    before_commands: std::sync::Mutex<Option<VerificationHook>>,
 }
+#[cfg(test)]
+type VerificationHook = Box<dyn FnOnce(UnitId) + Send>;
 impl ManagedVerifier {
     pub fn new(
         owner: Arc<RuntimeOwner>,
@@ -153,7 +157,16 @@ impl ManagedVerifier {
             sources.belongs_to(&owner),
             "verifier/source Runtime mismatch"
         );
-        Ok(Self { owner, sources })
+        Ok(Self {
+            owner,
+            sources,
+            #[cfg(test)]
+            before_commands: std::sync::Mutex::new(None),
+        })
+    }
+    #[cfg(test)]
+    pub(crate) fn before_commands(&self, hook: VerificationHook) {
+        *self.before_commands.lock().unwrap() = Some(hook);
     }
     pub(crate) fn belongs_to(&self, owner: &Arc<RuntimeOwner>) -> bool {
         Arc::ptr_eq(&self.owner, owner)
@@ -233,6 +246,16 @@ impl ManagedVerifier {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .verification_claim(&invocation)?;
+        let admitted = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .verification_profile_for(claim.record)?;
+        admitted.validate()?;
+        for c in &admitted.proposal.commands {
+            admitted.recheck(c)?;
+        }
         let observed = self
             .sources
             .capture(
@@ -246,16 +269,6 @@ impl ManagedVerifier {
             serde_json::to_value(&observed)? == serde_json::to_value(&invocation.sources)?,
             "verification managed source differs from invocation"
         );
-        let admitted = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .verification_profile_for(claim.record)?;
-        admitted.validate()?;
-        for c in &admitted.proposal.commands {
-            admitted.recheck(c)?;
-        }
         let id = UnitId::new();
         let manager = resources::ResourceManager::new(self.owner.clone());
         let path = self
@@ -411,6 +424,10 @@ impl ManagedVerifier {
             .snapshot(grant.unit())
             .await?;
         preparation.disarm();
+        #[cfg(test)]
+        if let Some(hook) = self.before_commands.lock().unwrap().take() {
+            hook(grant.unit.id);
+        }
         let mut commands = Vec::new();
         let mut bytes = 0u64;
         for (index, c) in admitted.proposal.commands.iter().enumerate() {

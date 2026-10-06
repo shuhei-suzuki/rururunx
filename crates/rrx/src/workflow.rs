@@ -2535,6 +2535,7 @@ impl WorkflowEngine {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .workflow_requires_verification(snapshot.record.id)?;
+        let managed_contract = managed_contract || self.registry.managed_owner().is_some();
         let gate_result = if managed_contract && phase == Phase::Tests {
             if let Some(verifier) = &self.verifier {
                 match verifier.evaluate(invocation).await {

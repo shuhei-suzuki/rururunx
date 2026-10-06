@@ -10,6 +10,12 @@ pub(in crate::state) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
     tx.execute_batch(include_str!("verification.sql"))?;
     Ok(())
 }
+pub(in crate::state) fn hold_existing_managed(tx: &Transaction<'_>) -> Result<()> {
+    // Legacy evidence cannot activate an executable catalog or recreate a live
+    // owner grant. The immutable NULL profile is an explicit historical hold.
+    tx.execute("INSERT INTO workflow_verification_contracts(workflow_id,project_id,goal_id,task_id,owner_epoch,profile_digest) SELECT r.id,r.project_id,r.goal_id,r.task_id,0,NULL FROM records r JOIN tasks t ON t.id=r.task_id AND t.project_id=r.project_id AND t.goal_id=r.goal_id JOIN task_execution e ON e.task_id=t.id WHERE r.kind='workflow' AND e.generation>0",[])?;
+    Ok(())
+}
 pub(in crate::state) fn validate_legacy_namespace(tx: &Transaction<'_>) -> Result<()> {
     let n:u64=tx.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE name IN ('verification_profiles','workflow_verification_contracts','verification_runs','verification_commands','verification_profile_no_update','verification_profile_no_delete','verification_contract_no_update','verification_contract_no_delete','verification_run_identity','verification_run_no_delete','verification_command_identity','verification_command_no_delete')",[],|r|r.get(0))?;
     ensure!(n == 0, "legacy verification namespace is not empty");
@@ -98,6 +104,15 @@ fn bounded<T: serde::de::DeserializeOwned>(
     read_tx(connection, table, id)?.context("verifier authority snapshot missing")
 }
 fn context_read(connection: &Connection, scope: &Scope, version: u64) -> Result<ContextVersion> {
+    let latest: u64 = connection.query_row(
+        "SELECT COALESCE(MAX(version),0) FROM context_versions WHERE project_id=?1 AND owner=?2",
+        params![scope.project_id.to_string(), context_owner(scope)?],
+        |r| r.get(0),
+    )?;
+    ensure!(
+        latest == version,
+        "verification current Context pointer changed"
+    );
     let (body, n): (String, usize) = connection.query_row(
         "SELECT body,length(CAST(body AS BLOB)) FROM context_versions WHERE project_id=?1 AND owner=?2 AND version=?3 AND length(CAST(body AS BLOB))<=8388608",
         params![scope.project_id.to_string(),context_owner(scope)?,version], |r| Ok((r.get(0)?,r.get(1)?)))?;
@@ -107,7 +122,65 @@ fn context_read(connection: &Connection, scope: &Scope, version: u64) -> Result<
         context.scope == *scope && context.version == version,
         "verifier Context indexed ownership differs"
     );
+    let mut columns = scoped_columns(scope);
+    columns.extend([
+        ("owner", json!(context_owner(scope)?)),
+        ("version", json!(version)),
+    ]);
+    check_indexed(connection, "context_versions", &columns)?;
     Ok(context)
+}
+fn validate_owners(
+    connection: &Connection,
+    project: &Project,
+    goal: &Goal,
+    task: &Task,
+    record: &Record,
+) -> Result<()> {
+    check_indexed(
+        connection,
+        "projects",
+        &[
+            ("id", json!(project.id)),
+            ("version", json!(project.version)),
+            ("root", json!(project.root)),
+        ],
+    )?;
+    check_indexed(
+        connection,
+        "goals",
+        &[
+            ("id", json!(goal.id)),
+            ("version", json!(goal.version)),
+            ("project_id", json!(project.id)),
+        ],
+    )?;
+    check_indexed(
+        connection,
+        "tasks",
+        &[
+            ("id", json!(task.id)),
+            ("version", json!(task.version)),
+            ("project_id", json!(project.id)),
+            ("goal_id", json!(goal.id)),
+            ("issue", json!(task.issue)),
+        ],
+    )?;
+    let mut columns = scoped_columns(&record.scope);
+    columns.extend([
+        ("id", json!(record.id)),
+        ("version", json!(record.version)),
+        ("kind", json!("workflow")),
+    ]);
+    check_indexed(connection, "records", &columns)?;
+    ensure!(
+        project.id == task.project_id
+            && goal.id == task.goal_id
+            && goal.project_id == project.id
+            && record.scope == task.scope(),
+        "verification authority Scope mismatch"
+    );
+    Ok(())
 }
 fn record_claim(
     connection: &Connection,
@@ -153,6 +226,7 @@ fn record_claim(
         requires_verification(connection, record.id)?,
         "verification requires activated managed contract"
     );
+    validate_owners(connection, &project, &goal, &task, &record)?;
     let w: WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
     let index = w.active.context("verification active claim missing")?;
     let a = w
@@ -191,6 +265,16 @@ fn record_claim(
             && w.sources.source_versions == invocation.sources.source_versions,
         "verification source frame mismatch"
     );
+    let _: ResultArtifact = bounded(
+        connection,
+        "result_artifacts",
+        &invocation
+            .sources
+            .artifact
+            .context("verification Published input missing")?
+            .to_string(),
+        128 * 1024,
+    )?;
     let artifact = self_artifact_tx(
         connection,
         invocation
@@ -235,6 +319,69 @@ fn record_claim(
     };
     Ok((claim, record))
 }
+fn read_commands(
+    connection: &Connection,
+    unit: UnitId,
+    plan: &AdmittedProfile,
+) -> Result<Vec<crate::execution::verification::CommandObservation>> {
+    let mut q=connection.prepare("SELECT ordinal,operation_id,body,length(CAST(body AS BLOB)) FROM verification_commands WHERE unit_id=?1 AND state='terminal' ORDER BY ordinal LIMIT 33")?;
+    let rows = q
+        .query_map([unit.to_string()], |r| {
+            let n: usize = r.get(3)?;
+            if n > 65536 {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+            Ok((
+                r.get::<_, usize>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    ensure!(
+        rows.len() <= plan.proposal.commands.len(),
+        "verification terminal command count exceeds admitted plan"
+    );
+    let mut commands = Vec::new();
+    for (i, (ordinal, operation, body)) in rows.into_iter().enumerate() {
+        ensure!(
+            ordinal == i,
+            "verification command order differs from admitted plan"
+        );
+        let observation: crate::execution::verification::CommandObservation = decode(body)?;
+        observation.validate(&plan.proposal.commands[i])?;
+        ensure!(
+            observation.operation.to_string() == operation,
+            "verification command operation index differs"
+        );
+        commands.push(observation);
+    }
+    Ok(commands)
+}
+fn observed_work(
+    commands: &[crate::execution::verification::CommandObservation],
+    expected: usize,
+) -> WorkOutcome {
+    if commands.iter().any(|o| {
+        o.work_known
+            && (o.exit.is_some_and(|c| c != 0) || o.signal.is_some())
+            && !matches!(
+                o.issue,
+                Some(
+                    crate::execution::verification::CaptureIssue::Timeout
+                        | crate::execution::verification::CaptureIssue::Cancelled
+                )
+            )
+    }) {
+        WorkOutcome::Failure
+    } else if commands.len() == expected
+        && commands.iter().all(|o| o.work_known && o.exit == Some(0))
+    {
+        WorkOutcome::Success
+    } else {
+        WorkOutcome::Unknown
+    }
+}
 fn run_read(connection: &Connection, unit: UnitId) -> Result<VerificationRun> {
     let (body,scope,workflow,profile_digest,generation,epoch):(String,(String,String,String),String,String,u64,u64)=connection.query_row("SELECT body,project_id,goal_id,task_id,workflow_id,profile_digest,generation,owner_epoch FROM verification_runs WHERE unit_id=?1 AND length(CAST(body AS BLOB))<=262144",[unit.to_string()],|r|Ok((r.get(0)?,(r.get(1)?,r.get(2)?,r.get(3)?),r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?)))?;
     let mut run: VerificationRun = decode(body)?;
@@ -250,6 +397,41 @@ fn run_read(connection: &Connection, unit: UnitId) -> Result<VerificationRun> {
             && run.commands.len() <= 32,
         "verification run indexed ownership mismatch"
     );
+    let plan = profile(connection, run.workflow)?;
+    let commands = read_commands(connection, unit, &plan)?;
+    let state: String = connection.query_row(
+        "SELECT state FROM verification_runs WHERE unit_id=?1",
+        [unit.to_string()],
+        |r| r.get(0),
+    )?;
+    ensure!(
+        u.kind == UnitKind::Verifier
+            && u.phase == Phase::Tests.key()
+            && u.provider == "verifier"
+            && u.session_id.is_none()
+            && u.artifact_id == Some(run.artifact)
+            && u.base_sha == run.revision
+            && run.profile_digest == json_hash(&plan)?,
+        "verification run command purpose/plan differs"
+    );
+    if matches!(state.as_str(), "admitted" | "unknown") {
+        ensure!(
+            !run.certifying && run.work == WorkOutcome::Unknown && run.commands.is_empty(),
+            "incomplete verification run cannot certify work"
+        );
+        // A diagnostic projection preserves actual observed partial commands;
+        // it is never a reusable completion or persisted aggregate success.
+        run.commands = commands;
+    } else {
+        ensure!(
+            serde_json::to_value(&run.commands)? == serde_json::to_value(&commands)?
+                && run.work == observed_work(&commands, plan.proposal.commands.len())
+                && run.certifying
+                    == (commands.len() == plan.proposal.commands.len()
+                        && commands.iter().all(|o| o.certifying())),
+            "verification run terminal/coverage differs from immutable commands"
+        );
+    }
     let current_epoch: u64 = connection.query_row(
         "SELECT epoch FROM runtime_epoch WHERE singleton=1",
         [],
@@ -286,19 +468,23 @@ fn checked(
         "command verifier identity changed"
     );
     validate_authority(connection, &current.authority(), native, !native)?;
-    let row: Record = read_tx(connection, "records", &claim.record.to_string())?
-        .context("verification Workflow missing")?;
+    let row: Record = bounded(
+        connection,
+        "records",
+        &claim.record.to_string(),
+        8 * 1024 * 1024,
+    )?;
     let w: WorkflowSnapshot = serde_json::from_value(row.data.clone())?;
     let a = w
         .history
         .get(claim.index)
         .context("verification attempt missing")?;
-    let task: Task = read_tx(
+    let task: Task = bounded(
         connection,
         "tasks",
-        &claim.scope.task_id.unwrap().to_string(),
-    )?
-    .context("verification Task missing")?;
+        &claim.scope.task_id.context("Task required")?.to_string(),
+        1024 * 1024,
+    )?;
     let project: Project = bounded(
         connection,
         "projects",
@@ -306,15 +492,8 @@ fn checked(
         1024 * 1024,
     )?;
     let goal: Goal = bounded(connection, "goals", &task.goal_id.to_string(), 1024 * 1024)?;
-    let context: ContextVersion = decode(connection.query_row(
-        "SELECT body FROM context_versions WHERE project_id=?1 AND owner=?2 AND version=?3",
-        params![
-            task.project_id.to_string(),
-            context_owner(&task.scope())?,
-            claim.context_version
-        ],
-        |r| r.get::<_, String>(0),
-    )?)?;
+    validate_owners(connection, &project, &goal, &task, &row)?;
+    let context = context_read(connection, &task.scope(), claim.context_version)?;
     let stored: String = connection.query_row(
         "SELECT claim FROM verification_runs WHERE unit_id=?1 AND profile_digest=?2",
         params![current.id.to_string(), grant.profile_digest()],
@@ -380,7 +559,7 @@ impl Store {
             "verification activation Project/epoch mismatch"
         );
         let activated: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM workflow_verification_contracts WHERE project_id=?1)",
+            "SELECT EXISTS(SELECT 1 FROM workflow_verification_contracts WHERE project_id=?1 AND profile_digest IS NOT NULL)",
             [project_id.to_string()],
             |r| r.get(0),
         )?;
@@ -684,19 +863,7 @@ impl Store {
         );
         let certifying =
             commands.len() == p.proposal.commands.len() && commands.iter().all(|o| o.certifying());
-        let work = if commands.iter().any(|o| {
-            o.work_known
-                && (o.exit.is_some_and(|c| c != 0) || o.signal.is_some())
-                && o.issue.is_none()
-        }) {
-            WorkOutcome::Failure
-        } else if commands.len() == p.proposal.commands.len()
-            && commands.iter().all(|o| o.work_known && o.exit == Some(0))
-        {
-            WorkOutcome::Success
-        } else {
-            WorkOutcome::Unknown
-        };
+        let work = observed_work(commands, p.proposal.commands.len());
         let mut run = run_read(&tx, unit.id)?;
         run.commands = commands.to_vec();
         run.work = work;
