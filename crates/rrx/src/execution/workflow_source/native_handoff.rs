@@ -263,7 +263,7 @@ impl ManagedWorkflowSources {
         selected: Arc<NativePhasePort>,
     ) -> Result<SourceNativeHandoff> {
         ticket.matches_input_view(task, record, context)?;
-        crate::state::managed_binding::snapshot(&self.owner, |tx| ticket.validate_current_tx(tx))?;
+        ticket.validate_current_read()?;
         let workflow: WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
         let index = workflow
             .active
@@ -374,7 +374,7 @@ impl ManagedWorkflowSources {
             serde_json::to_value(allocation.unit_snapshot())? == serde_json::to_value(&unit)?,
             "actual allocation preparation changed"
         );
-        crate::state::managed_binding::snapshot(&self.owner, |tx| ticket.validate_current_tx(tx))?;
+        ticket.validate_current_read()?;
         let ticket = Arc::new(ticket);
         let facts = allocation.facts();
         let map = self

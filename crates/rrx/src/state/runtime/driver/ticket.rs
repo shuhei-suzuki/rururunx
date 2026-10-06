@@ -84,6 +84,11 @@ pub(crate) fn read_driver_ticket(
 }
 
 impl DriverReadTicket {
+    /// Recheck this SAME captured ticket on the selected read-only snapshot.
+    /// No SharedStore acquisition, authority recapture or new ticket is issued.
+    pub(crate) fn validate_current_read(&self) -> Result<()> {
+        crate::state::managed_binding::snapshot(&self.owner, |tx| self.validate_current_tx(tx))
+    }
     /// Collision evidence only, added under the same original ticket before
     /// the writer mutex. It cannot refresh governing/input/Driver authority.
     pub(crate) fn with_initial_namespace(mut self) -> Result<Self> {
