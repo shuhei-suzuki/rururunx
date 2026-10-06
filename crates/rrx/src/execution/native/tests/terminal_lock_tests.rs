@@ -302,3 +302,165 @@ async fn legacy_native_status_releases_saved_terminal_mutex_before_store_and_cor
     );
     sessions.release(&handle).unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn legacy_codex_received_terminal_survives_optional_quota_read_failure() {
+    let (dir, owner, task) = legacy_fixture().await;
+    let sessions = NativeSessions::new(owner.clone()).unwrap();
+    let (unit, _) = attempts::AttemptManager::new(owner.clone())
+        .prepare(task.id, "codex", "Implement", None)
+        .await
+        .unwrap();
+    let NativeStart::Launched(handle) = sessions
+        .start_inner(
+            input(&unit, "answer-hold-after-final"),
+            None,
+            None,
+            Some(program(dir.path(), "codex")),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("actual legacy launch")
+    };
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !sessions
+            .status(&handle)
+            .unwrap()
+            .pending
+            .iter()
+            .any(|p| p["id"] == "answer-barrier")
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let output = owner
+        .root
+        .join("units")
+        .join(unit.id.to_string())
+        .join("output");
+    let c = Connection::open(dir.path().join("state.db")).unwrap();
+    // A real missing-table storage fault affects only optional quota probe read
+    // and later receipt persistence. It cannot mint an owner or alter wire input.
+    c.execute_batch("ALTER TABLE quota_leases RENAME TO fixture_missing_quota_leases")
+        .unwrap();
+    std::fs::write(output.join("fixture-delay-publication"), "delay").unwrap();
+    std::fs::write(output.join("fixture-release"), "release").unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !output.join("fixture-publication-ready").exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let pending = sessions
+        .entries
+        .lock()
+        .unwrap()
+        .get(&handle.session)
+        .unwrap()
+        .terminal
+        .clone();
+    let proof = pending.lock().unwrap().as_ref().unwrap().clone();
+    // Restore storage before assertion/cleanup, including causal mutants.
+    c.execute_batch("ALTER TABLE fixture_missing_quota_leases RENAME TO quota_leases")
+        .unwrap();
+    let observed = proof.receipt.observed_work;
+    std::fs::write(output.join("fixture-publication-release"), "release").unwrap();
+    assert_eq!(
+        observed,
+        WorkOutcome::Success,
+        "received standalone terminal was replaced by optional quota-read error"
+    );
+    assert_eq!(proof.receipt.disposition, Disposition::Completed);
+    assert_eq!(proof.receipt.text.as_deref(), Some("APPROVE actual answer"));
+    assert!(proof.receipt.terminal_sha256.is_some());
+    let restored = sessions.status(&handle).unwrap();
+    assert_eq!(restored.work, Some(WorkOutcome::Success));
+    assert_eq!(restored.observed_work, Some(WorkOutcome::Success));
+    let receipt = owner
+        .store
+        .lock()
+        .unwrap()
+        .native_result(restored.receipt.unwrap())
+        .unwrap();
+    assert_eq!(receipt.observed_work, WorkOutcome::Success);
+    assert_eq!(receipt.text.as_deref(), Some("APPROVE actual answer"));
+    sessions.release(&handle).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn legacy_claude_received_error_retains_terminal_when_quota_classification_is_unavailable() {
+    let (dir, owner, task) = legacy_fixture().await;
+    let sessions = NativeSessions::new(owner.clone()).unwrap();
+    let (unit, _) = attempts::AttemptManager::new(owner.clone())
+        .prepare(task.id, "claude", "Implement", None)
+        .await
+        .unwrap();
+    let NativeStart::Launched(handle) = sessions
+        .start_inner(
+            input(&unit, "quota-retry-held"),
+            None,
+            None,
+            Some(program(dir.path(), "claude")),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("actual legacy launch")
+    };
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !sessions
+            .status(&handle)
+            .unwrap()
+            .pending
+            .iter()
+            .any(|p| p["request_id"] == "quota-barrier")
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let output = owner
+        .root
+        .join("units")
+        .join(unit.id.to_string())
+        .join("output");
+    let c = Connection::open(dir.path().join("state.db")).unwrap();
+    c.execute_batch("ALTER TABLE quota_windows RENAME TO fixture_missing_quota_windows")
+        .unwrap();
+    std::fs::write(output.join("fixture-delay-publication"), "delay").unwrap();
+    std::fs::write(output.join("fixture-quota-release"), "release").unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !output.join("fixture-publication-ready").exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    c.execute_batch("ALTER TABLE fixture_missing_quota_windows RENAME TO quota_windows")
+        .unwrap();
+    std::fs::write(output.join("fixture-publication-release"), "release").unwrap();
+    let status = sessions.status(&handle).unwrap();
+    assert_eq!(status.work, Some(WorkOutcome::Unknown));
+    assert_eq!(
+        status.disposition,
+        Disposition::Lost,
+        "unavailable accepted bucket classification must not invent subscription or work failure"
+    );
+    let receipt = owner
+        .store
+        .lock()
+        .unwrap()
+        .native_result(status.receipt.unwrap())
+        .unwrap();
+    assert_eq!(receipt.observed_work, WorkOutcome::Unknown);
+    assert!(
+        receipt.terminal_sha256.is_some(),
+        "the actual accepted error terminal must remain captured before Store failure"
+    );
+    sessions.release(&handle).unwrap();
+}
