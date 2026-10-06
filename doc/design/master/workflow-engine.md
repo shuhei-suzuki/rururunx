@@ -8,6 +8,11 @@ remain baseline descriptions, not acceptance of that proposal.
 **Status:** Rust phase runner implemented (Issue #8); dependent integrations pending
 **Scope:** MVP workflow orchestration
 
+The corrected [ReviewRound11 supplement](../review-round-implementation-design.md)
+requires distinct actual Binding10 round/member ports and whole-cohort admission
+before member preparation. It is a design candidate: real member/Driver/native
+producer qualification and ordered actual8→9→10→11 composition remain open.
+
 The incremental [production gate integration](../production-workflow-gates-design.md)
 adds a concrete library port for real initial preparation, Implement terminal/result
 and retained commit observations. Its receipts are diagnostic; existing Workflow

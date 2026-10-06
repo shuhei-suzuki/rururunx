@@ -1,0 +1,264 @@
+{
+  "fixed_reviewed_design": "63c3964c1354b385d117f18fa2b693c6f4c84e74",
+  "status": "Closed original round reports; design corrections proposed for fresh independent review, not self-approved",
+  "closed_reports": {
+    "root": {
+      "reviewer": "Root",
+      "risk": "STRICT",
+      "review_kind": "Independent fixed-commit ReviewRound implementation DESIGN review",
+      "candidate": "63c3964c1354b385d117f18fa2b693c6f4c84e74",
+      "verdict": "APPROVE_COMPONENT_DESIGN",
+      "findings": [],
+      "severity_counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "review_mode": "Fixed Git object read-only review, own assessment completed before reading same-round C report; design author B excluded from independent review",
+      "design_sha256": "971f380554ea73754b9259b8a0c67b27917f5a5f912a4b1017b51a00a7b4f708",
+      "source_checked": "802764f03893d0ee8e08ee19045ccb333387ad9b, same Rust source as current documentation HEAD3c4f83064beb59ba20d9cb9e9be3a22b6757b501",
+      "basis": [
+        {
+          "contract": "Actual member authority rather than DTO capability",
+          "evidence": [
+            "design sections1-3",
+            "actual adapter/native.rs::start_managed",
+            "actual state/execution.rs::checked_workflow_binding and validate_authority",
+            "actual state/execution/native_results.rs::register_native_session/reserve_native_input"
+          ],
+          "assessment": "Explicit new private member allocation/vtable/Unit validation and exact Context/member input branch are required, since existing single active Unit/Session cannot be reused by siblings. Real Session/invocation/Worker binding is atomic and actual effects consumers check it. Public ManagedInput/Goal/Session JSON and Native receipt are not allocation/activation authority."
+        },
+        {
+          "contract": "Work/result/approval/cleanup remain separate",
+          "evidence": [
+            "design section4",
+            "actual execution/results.rs::ResultSnapshot::completion",
+            "actual state/execution/native_results.rs::finish_native_result"
+          ],
+          "assessment": "Countable predicate is native Owned Success AND genuine readonly snapshot AND valid exact receipt/envelope AND successful logical closure AND APPROVE; final SQL recomputes it and nonauthor floor. Failure/Unknown opinion content retains findings but zero votes. Known work survives capture/parsing failure and cleanup is independent."
+        },
+        {
+          "contract": "Closure lifetime and retained verification",
+          "evidence": [
+            "design sections2,4"
+          ],
+          "assessment": "Preparation guard armed from real member allocation through closure, independent conservative Drop closes logical grants without claiming OS/SQLite availability. Closed member completion is immutable private-produced record. Collective reread uses current Runtime retained intents, not reopened already closed Unit finalization."
+        },
+        {
+          "contract": "Currency, cancellation and publication",
+          "evidence": [
+            "design sections3-4",
+            "actual state/execution/source_recovery.rs::validate_row/before_write/after_write"
+          ],
+          "assessment": "Exact launch semantic/context/source/Goal/governing/artifact pins remain; permitted sibling projections require typed transactional current-pin hooks. Epoch/cancel fences all before stops; old records cannot reopen ownership. Collective certificate, phase/Task/Context/audit atomic under complete current proof; no generic Passed/representative Session."
+        },
+        {
+          "contract": "Finite scheduling and lineage bounds",
+          "evidence": [
+            "design sections3-5",
+            "approved review-engine-integration requirements R1,R7 and design sections5,9"
+          ],
+          "assessment": "Native schedule qualification is separate genuine producer; exact original elapsed envelope before every input. Concurrent-only all-or-none cohort before effects, zero queued partial permits, no fallback. Full 2MiB receipt and actual duplicate encoded storage plus fixed inspection/control allowances charged before input against128MiB/64round shared ceiling; max roster sizes do not promise max-sized payloads fit."
+        },
+        {
+          "contract": "Reveal/inspection/fix provenance",
+          "evidence": [
+            "design section4",
+            "approved review-engine-integration R2,R4,R5"
+          ],
+          "assessment": "Full roster logical closure before reveal, independent finding inspection/clearance and original authorship exclusions remain. Fresh full-roster fix/re-review on new retained artifact, no carried approval/resampling/row-based Human authority; unsupported actual producers explicitly held."
+        }
+      ],
+      "followup_dependencies_not_findings": [
+        {
+          "item": "Coordinated migration allocation",
+          "decision": "Root changed reservation after fixed design submission: actual Verifier8 -> Runtime9 -> Binding10 -> ReviewRound11. Update schema10 references in a later fixed documentation commit; candidate remains immutable. No Review schema source exists or is authorized by this review."
+        },
+        {
+          "item": "Actual managed binding protocol",
+          "decision": "Requirements approved079f5fd/7e47421; complete genuine allocation/prepared/input/owned-terminal/OriginalMarker/successor protocol is pending design/source. ReviewMember grant cannot rename Unit/DTO into this protocol. Joint source integration at actual Native/worker ports is an open prerequisite."
+        },
+        {
+          "item": "Actual Runtime Driver",
+          "decision": "Schema9 controller draft has no active retained native Driver producer, operational:false. Review activation/scheduling/live wait hooks/final acceptance must consume the actual later reviewed Driver, not infer it from schema9 or accepted Goal DTO."
+        }
+      ],
+      "limitations": [
+        "Design-only component approval, no source/API/schema install approval, no Issue43/Review completion or Phase2/MVP acceptance.",
+        "No native account/authentication/settings/hooks/profile independence, two-OS or four-real-Task verification. Account-free protocol peers cannot supply official native qualification.",
+        "Actual protected writer matrix, primitive/private producer, current scope and successor consumption, finite SQL controls, retained actor/profile/rubric/author activation and source audits remain required before readiness.",
+        "No test/build/native/network/signals or shared candidate edits; own past verifier/recovery evidence not treated as independent source review.",
+        "No peer findings/report or aggregate read before completing this assessment."
+      ],
+      "created_utc": "2026-10-06T01:46:19.749613+00:00",
+      "live_handles": []
+    },
+    "c": {
+      "review_id": "C-REVIEW-ROUND-IMPLEMENTATION-DESIGN-1",
+      "source_commit": "63c3964c1354b385d117f18fa2b693c6f4c84e74",
+      "source_worktree": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/agent-execution-review-round",
+      "review_mode": "Independent STRICT static design review, immutable Git objects, read-only candidate",
+      "component_only": true,
+      "verdict": "REQUEST_CHANGES_COMPONENT_DESIGN",
+      "severity_counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 2,
+        "Low": 0
+      },
+      "independence": {
+        "candidate_edits": false,
+        "tests_run": false,
+        "authenticated_native_run": false,
+        "parent_or_peer_findings_consulted": false,
+        "aggregate_review_results_consulted": false,
+        "self_authored_verifier_source_qualification": false
+      },
+      "scope": [
+        "doc/design/review-round-implementation-design.md",
+        "Referenced approved review-engine-integration requirements/design and native-result-receipts design",
+        "Actual fixed Native6/Recovery7/Workflow/Store adapter and input consumers inherited at candidate",
+        "Pending Runtime9 operational contracts, treated as proposed APIs rather than implemented authority",
+        "Approved Issue43 managed binding requirements at 7e47421a24225583795245b307e574fb3156dd7e, independent requirements review already closed",
+        "Frozen semantic claims versus mutable worker/Task/Workflow projections, member lifetime/closure, collective acceptance, scheduling and bounded retention"
+      ],
+      "findings": [
+        {
+          "id": "C-RRI-M1",
+          "severity": "Medium",
+          "title": "The actual member launch path omits the required managed binding protocol dependency",
+          "evidence": [
+            {
+              "commit": "63c3964c1354b385d117f18fa2b693c6f4c84e74",
+              "path": "doc/design/review-round-implementation-design.md",
+              "lines": "40-85",
+              "observation": "The described actual path proceeds from Runtime9 activation to ReviewMemberGrant, snapshot, Session/invocation/Worker registration and native input. It defines a new private launch identity, but does not require the genuine allocated prepared-owner/input pair or the normal/late/deferred factual binding producer."
+            },
+            {
+              "commit": "63c3964c1354b385d117f18fa2b693c6f4c84e74",
+              "path": "doc/design/review-round-implementation-design.md",
+              "lines": "118-141,229-237",
+              "observation": "Currency and delivery explicitly await Runtime9 and its projection hook. They do not specify the original dispatch-marker Workflow body/full scoped lock frame or the private permitted-successor protocol needed when member Session binding, live waits and sibling projections interact with SourceRecovery and Driver."
+            },
+            {
+              "commit": "7e47421a24225583795245b307e574fb3156dd7e",
+              "path": "doc/requirements/issue-43-managed-binding-requirements.md",
+              "lines": "30-34,48-74,141-158,176-188",
+              "observation": "Review member execution requires actual binding composition. The mandatory original frame, genuine allocation/prepared/admitted/consumed protocol, factual writer restrictions and original-authority-derived Source/Driver successor cannot be supplied by Unit/Invocation DTOs or a terminal receipt."
+            },
+            {
+              "commit": "63c3964c1354b385d117f18fa2b693c6f4c84e74",
+              "path": "crates/rrx/src/workflow.rs",
+              "lines": "1592-1606",
+              "observation": "Current ordinary managed start return writes Session/execution into the attempt, refreshes current owners and persists the ordinary Workflow transition; it is not the approved factual binding producer."
+            },
+            {
+              "commit": "63c3964c1354b385d117f18fa2b693c6f4c84e74",
+              "path": "crates/rrx/src/state/execution/native_results.rs",
+              "lines": "230-255",
+              "observation": "Existing Native registration creates Session/Invocation from ExecutionAuthority and NativeSeed. It does not supply the missing immutable full marker/private phase owner and preparation/consumption pair merely by being used by a new member branch."
+            },
+            {
+              "commit": "63c3964c1354b385d117f18fa2b693c6f4c84e74",
+              "path": "crates/rrx/src/state/execution/source_recovery.rs",
+              "lines": "330-362",
+              "observation": "Existing source bookkeeping before_write/after_write recaptures resulting pins under the old typed transition plan. The new binding requirements expressly require a permitted private successor instead of a generic after_write refresh at the binding boundary."
+            }
+          ],
+          "causal_trigger": "After Runtime9 becomes available, an implementer can follow the complete path and delivery list as written and enable member native execution with the new ReviewMemberGrant plus Session/Invocation/Worker rows, without composing the required original-marker owner/input protocol. A normal or lost/deferred start return, or a sibling/live-quota projection change during that interval, then has no defined factual binding/current-successor consumer contract. Either ordinary refresh behavior is reused, or legitimate member progress conflicts with the untouched exact Source/Driver claims.",
+          "actual_guard_condition": "Before any managed member marker/preparation/helper/native effect, availability must be derived from the actual Binding10 producer composition. Each member must carry the genuine private original marker, allocated prepared-owner/input pair and its actual consumption/settlement correlation. Session binding and legitimate wait/closure projections must consume the exact permitted successor anchored at original authority, never reconstruct it from current Unit/Worker/Session DTOs or silently refresh Source/Driver pins.",
+          "requested_change": "Add Binding10 as an explicit pending prerequisite of the member actual path and delivery, and map the member marker/allocation/prepared-input/normal-return/late/deferred binding and native live-wait branches to its actual private producer and sole factual writer. Specify how Round/Worker bindings adapt the complete original frame and how sibling projections compose the SourceRecovery7/Runtime9 successor ports. Until the joint design/source consumer composition is fixed, keep Review member readiness held. Do not replace the approved semantic-versus-projection distinction; define its authorized integration.",
+          "acceptance_gap": "Require causal controls for genuine prepared pre-input normal binding, consumed successful late binding, refusal of the same NotDispatched pair on the late path, lost/dropped start delivery, original full-lock/body drift, sibling projection updates and all generic/bypass writers through the real member adapter/Driver consumers."
+        },
+        {
+          "id": "C-RRI-M2",
+          "severity": "Medium",
+          "title": "The member preparation sequence does not consume the whole-cohort capacity authority before effects",
+          "evidence": [
+            {
+              "commit": "63c3964c1354b385d117f18fa2b693c6f4c84e74",
+              "path": "doc/design/review-round-implementation-design.md",
+              "lines": "54-80",
+              "observation": "The numbered actual path registers Round/Workers, then inserts a Unit and issues ReviewMemberGrant, then performs snapshot preparation. It states schedule/cohort authority explicitly at native input, but reserve_review_member has no explicit scheduling/cohort grant prerequisite."
+            },
+            {
+              "commit": "63c3964c1354b385d117f18fa2b693c6f4c84e74",
+              "path": "doc/design/review-round-implementation-design.md",
+              "lines": "151-161",
+              "observation": "Concurrent-only is specified as whole-cohort capacity or zero and no partial native inputs. This does not state that a queued zero-capacity cohort issues no member preparation grants or starts no snapshot/version helpers."
+            },
+            {
+              "commit": "63c3964c1354b385d117f18fa2b693c6f4c84e74",
+              "path": "doc/design/review-engine-integration-design.md",
+              "lines": "145-157,206-218",
+              "observation": "Approved reserve_review_member consumes the quota/resource scheduling grant. Actual ReviewCohortAdmission must precede member preparation/native effects; only the successful whole-cohort reservation issues linked private member grants."
+            },
+            {
+              "commit": "63c3964c1354b385d117f18fa2b693c6f4c84e74",
+              "path": "doc/requirements/review-engine-integration-requirements.md",
+              "lines": "85-93",
+              "observation": "A wholly unadmitted queued Set owns no round worktree lock, and missing genuine all-or-nothing admission refuses before member preparation/native effects."
+            }
+          ],
+          "causal_trigger": "A genuine concurrent-only cohort producer exists, but current global/project/provider capacity cannot fit the entire roster. Following the listed preparation sequence, reserve_review_member can still mint a grant and materialize snapshots/helpers before the later native input capacity check. Zero partial inputs is then preserved while the approved before-preparation boundary and wholly-unadmitted Set lock invariant are violated.",
+          "actual_guard_condition": "For CONCURRENT_ONLY, reserve_review_member must validate and consume a successful current whole-roster ReviewCohortAdmission before any member Unit preparation grant, review worktree lock, materialization or helper/native effect. A queued or failed all-or-nothing claim issues zero linked grants. Resource admission mutual exclusion and the SQL port/path leases are not substitutes for the native scheduling permits.",
+          "requested_change": "Insert the actual cohort admission producer before member reservation/preparation in section 2, and add its exact private grant/current cohort pins to reserve_review_member and the helper/native authority checks. State the zero-capacity queued behavior explicitly, including no preparation grants/effects or round worktree lock. Preserve serialized-capable per-member admission and original-window fencing.",
+          "acceptance_gap": "Add actual negative controls that saturate one required capacity bucket with a fully registered valid cohort/profile, invoke member preparation, and assert zero grants/Units, no new review worktree lock, no snapshot/version helper intents and no native inputs. Restore capacity to demonstrate the genuine whole-cohort positive path and compiled guard mutation at reserve_review_member."
+        }
+      ],
+      "confirmed_design_properties": [
+        "Current launch Context remains independently validated while member payload bytes/hash gain a separate durable binding; model echoes and public DTOs do not mint authority.",
+        "Success/failure content, review opinion and physical cleanup remain distinct; valid failure APPROVE has zero approval/floor votes while potential blockers remain inspection obligations.",
+        "The guard is specified through SQL member closure rather than disarmed at native terminal or snapshot production; known native outcomes survive parsing/retention/CAS failures.",
+        "Closed member readonly provenance is immutable actual evidence; aggregate retained reads use current Runtime admitted intents rather than reopening closed Unit finalization or manufacturing a historical snapshot success.",
+        "Final collective acceptance is a private typed SQL conjunction across all roster closures, counted owned successes, eligible independent floor, blockers/dispositions, current owner and lineage charge.",
+        "Complete acquired receipt overhead and all retained copies are charged before input against inherited finite lineage budgets rather than charging only decoded answer text.",
+        "Frozen semantic Task/Context claims versus legitimate mutable Task/Workflow projections are already approved; their distinction itself is not reported as a defect."
+      ],
+      "coordination_updates_not_findings": [
+        "Root has assigned actual8 -> Runtime9 -> Binding10 -> ReviewRound11. Candidate schema10 references require mechanical allocation/migration-matrix updates after composition. The original absent-source reservation is not counted as a design defect."
+      ],
+      "limitations": [
+        "No ReviewRound production implementation exists in the candidate; proposed type/table/private port names are not verified APIs.",
+        "Runtime9 and Binding10 consumers are pending dependencies; current or uncommitted source is not assumed qualified.",
+        "No official authenticated Claude/Codex/Grok run, hooks/settings/channel-independence qualification, Linux/macos native four-Task acceptance or public MVP/Phase2 approval was performed or granted.",
+        "This static design review does not qualify the reviewer's own C8 implementation, establish actual mutation controls, or transfer Native/Verifier component approval to future member glue.",
+        "No security sandbox or process death/cleanup guarantee is inferred."
+      ]
+    }
+  },
+  "author_dispositions": [
+    {
+      "id": "C-RRI-M1",
+      "original_severity": "Medium",
+      "status": "DESIGN_CORRECTION_PROPOSED_NOT_QUALIFIED",
+      "correction_sections": [
+        "1",
+        "2",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "correction": "Distinct genuine Binding10-compatible round/member allocator/prepared-input/registration/consumption/factual-binding/supervisor/current-successor ports; no representative Session, SinglePhaseOwner conversion, Unit/receipt/row-derived authority."
+    },
+    {
+      "id": "C-RRI-M2",
+      "original_severity": "Medium",
+      "status": "DESIGN_CORRECTION_PROPOSED_NOT_QUALIFIED",
+      "correction_sections": [
+        "2",
+        "3",
+        "6",
+        "8"
+      ],
+      "correction": "Existing quota authority integrated pending capacity holds wins whole cohort before any member allocation/grant/Unit/preparation/helper/lock/input; exact hold-to-lease transfer and all-consumer accounting required, queued cohort zero member effects."
+    }
+  ],
+  "allocation_note": "8 -> actual9 -> Binding10 -> Review11. Original schema10 reservation metadata was not counted as a defect.",
+  "limitations": [
+    "No production source, tests, authenticated/native account use or implementation qualification.",
+    "Corrected authored design requires independent Root and B review; original Root zero does not approve this successor."
+  ]
+}
