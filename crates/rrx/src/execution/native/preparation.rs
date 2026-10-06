@@ -225,7 +225,7 @@ impl NativePreparationCustody {
     }
     pub(super) fn report_unresolved_head(&self, cause: &anyhow::Error) {
         self.quota_unresolved.store(true, Ordering::SeqCst);
-        tracing::warn!(cause = %cause, "legacy head unresolved");
+        eprintln!("rrx native preparation: legacy head unresolved: {cause:#}");
         self.parked_level.send_replace(false);
     }
     pub(super) async fn revocation(&self) {
