@@ -15,7 +15,9 @@ mod schema_tests;
 mod snapshot;
 mod successor;
 mod unpublished;
-pub(super) use permits::{ExactRowMutation, PrivatePermitManager, register_permit_function};
+pub(super) use permits::{
+    ExactRowMutation, PrivatePermitManager, phase_pair_columns, register_permit_function,
+};
 #[cfg(test)]
 pub(super) use schema::TABLES;
 pub(super) use schema::{

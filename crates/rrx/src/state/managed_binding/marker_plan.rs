@@ -138,7 +138,7 @@ fn unit(
     Ok(body)
 }
 
-fn unit_index_matches(c: &Connection, u: &ExecutionUnit, raw: &str) -> Result<bool> {
+pub(super) fn unit_index_matches(c: &Connection, u: &ExecutionUnit, raw: &str) -> Result<bool> {
     Ok(c.query_row(
         "SELECT EXISTS(SELECT 1 FROM execution_units u JOIN task_execution t ON t.task_id=u.task_id WHERE u.id=?1 AND u.project_id=?2 AND u.goal_id=?3 AND u.task_id=?4 AND u.kind=?5 AND u.generation=?6 AND u.owner_epoch=?7 AND u.version=?8 AND u.native_effects_open=?9 AND u.result_finalization_open=?10 AND u.worktree=?11 AND u.branch IS ?12 AND u.body=?13 AND t.project_id=u.project_id AND t.goal_id=u.goal_id AND t.generation=u.generation)",
         params![u.id.to_string(), u.scope.project_id.to_string(),
