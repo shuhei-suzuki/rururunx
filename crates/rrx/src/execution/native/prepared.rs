@@ -185,7 +185,7 @@ impl NativeSessions {
             completion.matches_actor(&actor),
             "no-dispatch completion original differs"
         );
-        let lineage = Arc::new(crate::state::NativeReadyLineage::Initial(known));
+        let lineage = known.initial_lineage();
         let launch = actor.launch().clone();
         let admission = launch.admission().enter(launch.clone()).await?;
         self.owner

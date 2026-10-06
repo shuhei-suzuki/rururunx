@@ -4,6 +4,13 @@ use super::*;
 use crate::{execution::phase::NativeAllocation, state::managed_binding::PhaseLaunchParts};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+type ClosureOriginal = (
+    Arc<NativePreparationActor>,
+    Arc<super::prepared::PreparedPhaseNoCurrentDispatch>,
+    Arc<crate::state::NativeReadyLineage>,
+    Option<Arc<crate::state::NativeQuotaClosurePlan>>,
+);
+
 /// The real Runtime job creates this empty cell before its start future. The
 /// selected Native issuer alone installs an actor; public DTOs cannot do so.
 pub(crate) struct NativePreparationCustody {
@@ -49,14 +56,7 @@ impl NativePreparationCustody {
         state.closure = None;
         Ok(())
     }
-    pub(super) fn closure_original(
-        &self,
-    ) -> Result<(
-        Arc<NativePreparationActor>,
-        Arc<super::prepared::PreparedPhaseNoCurrentDispatch>,
-        Arc<crate::state::NativeReadyLineage>,
-        Option<Arc<crate::state::NativeQuotaClosurePlan>>,
-    )> {
+    pub(super) fn closure_original(&self) -> Result<ClosureOriginal> {
         let state = self
             .state
             .lock()

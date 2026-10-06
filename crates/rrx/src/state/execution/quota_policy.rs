@@ -88,24 +88,24 @@ pub(super) enum CandidateClass {
     MarkedParked,
     MarkedStalled,
 }
-pub(super) fn classify(
-    marked: bool,
-    parked: bool,
-    unit_preparing: bool,
-    reason_equal: bool,
-    resume_preparing: bool,
-    pool_equal: bool,
-    next_due: i64,
-    at: i64,
-) -> CandidateClass {
-    if !marked {
+pub(super) struct CandidateFacts {
+    pub marked: bool,
+    pub parked: bool,
+    pub unit_preparing: bool,
+    pub reason_equal: bool,
+    pub resume_preparing: bool,
+    pub pool_equal: bool,
+    pub next_due: i64,
+}
+pub(super) fn classify(facts: CandidateFacts, at: i64) -> CandidateClass {
+    if !facts.marked {
         CandidateClass::Legacy
-    } else if parked
-        && unit_preparing
-        && reason_equal
-        && resume_preparing
-        && pool_equal
-        && next_due >= at.saturating_sub(30_000)
+    } else if facts.parked
+        && facts.unit_preparing
+        && facts.reason_equal
+        && facts.resume_preparing
+        && facts.pool_equal
+        && facts.next_due >= at.saturating_sub(30_000)
     {
         CandidateClass::MarkedParked
     } else {
@@ -118,7 +118,16 @@ pub(super) fn candidate_class(tx: &Connection, id: UnitId, at: i64) -> Result<Ca
         "SELECT EXISTS(SELECT 1 FROM managed_phase_operations o WHERE o.unit_id=u.id AND o.phase_open=1), EXISTS(SELECT 1 FROM managed_phase_operations o JOIN managed_phase_readiness r ON r.operation_id=o.operation_id WHERE o.unit_id=u.id AND o.phase_open=1 AND r.state='parked' AND r.parking_version=r.version), COALESCE(json_extract(u.body,'$.state')='preparing',0), COALESCE(json_extract(u.body,'$.wait_reason')=w.reason,0),w.resume_state='preparing',COALESCE(json_extract(u.body,'$.provider')=w.provider AND w.account_key='unknown',0),w.next_due FROM quota_waiters w JOIN execution_units u ON u.id=w.unit_id WHERE w.unit_id=?1",
         [id.to_string()], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?)))?;
     Ok(classify(
-        marked, parked, preparing, reason, resume, pool, due, at,
+        CandidateFacts {
+            marked,
+            parked,
+            unit_preparing: preparing,
+            reason_equal: reason,
+            resume_preparing: resume,
+            pool_equal: pool,
+            next_due: due,
+        },
+        at,
     ))
 }
 
@@ -219,25 +228,32 @@ mod primitive_tests {
     }
     #[test]
     fn nongrant_native_marked_fair_position_has_exact_stall_boundary() {
+        let facts = |marked, values: [bool; 5], next_due| CandidateFacts {
+            marked,
+            parked: values[0],
+            unit_preparing: values[1],
+            reason_equal: values[2],
+            resume_preparing: values[3],
+            pool_equal: values[4],
+            next_due,
+        };
         assert_eq!(
-            classify(false, false, false, false, false, false, 0, 100_000),
+            classify(facts(false, [false; 5], 0), 100_000),
             CandidateClass::Legacy
         );
         assert_eq!(
-            classify(true, true, true, true, true, true, 70_000, 100_000),
+            classify(facts(true, [true; 5], 70_000), 100_000),
             CandidateClass::MarkedParked
         );
         assert_eq!(
-            classify(true, true, true, true, true, true, 69_999, 100_000),
+            classify(facts(true, [true; 5], 69_999), 100_000),
             CandidateClass::MarkedStalled
         );
         for omitted in 0..5 {
-            let mut facts = [true; 5];
-            facts[omitted] = false;
+            let mut values = [true; 5];
+            values[omitted] = false;
             assert_eq!(
-                classify(
-                    true, facts[0], facts[1], facts[2], facts[3], facts[4], 70_000, 100_000
-                ),
+                classify(facts(true, values, 70_000), 100_000),
                 CandidateClass::MarkedStalled
             );
         }

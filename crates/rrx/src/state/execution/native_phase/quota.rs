@@ -547,15 +547,17 @@ fn policy(
             continue;
         }
         let class = quota_policy::classify(
-            integer(row, 14)? != 0,
-            integer(row, 15)? != 0,
-            text(row, 12)? == "preparing",
-            text(row, 13)? == text(row, 3)?,
-            text(row, 6)? == "preparing",
-            text(row, 1)? == provider
-                && text(row, 17)? == text(row, 1)?
-                && text(row, 2)? == "unknown",
-            integer(row, 4)?,
+            quota_policy::CandidateFacts {
+                marked: integer(row, 14)? != 0,
+                parked: integer(row, 15)? != 0,
+                unit_preparing: text(row, 12)? == "preparing",
+                reason_equal: text(row, 13)? == text(row, 3)?,
+                resume_preparing: text(row, 6)? == "preparing",
+                pool_equal: text(row, 1)? == provider
+                    && text(row, 17)? == text(row, 1)?
+                    && text(row, 2)? == "unknown",
+                next_due: integer(row, 4)?,
+            },
             at,
         );
         if candidate == id

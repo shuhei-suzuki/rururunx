@@ -18,7 +18,10 @@ pub(crate) struct NativePreparationCommit {
     original: Arc<NativePreparationPlan>,
 }
 /// Images advance only from this actor's own known quota transition.
-pub(crate) enum NativeReadyLineage {
+pub(crate) struct NativeReadyLineage {
+    known: KnownReadiness,
+}
+enum KnownReadiness {
     Initial(Arc<NativePreparationCommit>),
     Quota {
         commit: Arc<NativePreparationCommit>,
@@ -71,20 +74,20 @@ impl NativeReadyLineage {
         self.readiness().validate_tx(tx)
     }
     pub(super) fn commit(&self) -> &Arc<NativePreparationCommit> {
-        match self {
-            Self::Initial(c) | Self::Quota { commit: c, .. } => c,
+        match &self.known {
+            KnownReadiness::Initial(c) | KnownReadiness::Quota { commit: c, .. } => c,
         }
     }
     pub(super) fn current(&self) -> &CurrentWorkflowSuccessor {
-        match self {
-            Self::Initial(c) => &c.original.current,
-            Self::Quota { current, .. } => current,
+        match &self.known {
+            KnownReadiness::Initial(c) => &c.original.current,
+            KnownReadiness::Quota { current, .. } => current,
         }
     }
     pub(super) fn readiness(&self) -> &PairRow {
-        match self {
-            Self::Initial(c) => &c.original.readiness_after,
-            Self::Quota { readiness, .. } => readiness,
+        match &self.known {
+            KnownReadiness::Initial(c) => &c.original.readiness_after,
+            KnownReadiness::Quota { readiness, .. } => readiness,
         }
     }
     pub(crate) fn unit(&self) -> &ExecutionUnit {
@@ -103,9 +106,9 @@ impl NativeReadyLineage {
         Ok(())
     }
     pub(super) fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
-        match self {
-            Self::Initial(c) => c.validate_version_ready(tx),
-            Self::Quota {
+        match &self.known {
+            KnownReadiness::Initial(c) => c.validate_version_ready(tx),
+            KnownReadiness::Quota {
                 commit,
                 current,
                 readiness,
@@ -120,14 +123,21 @@ impl NativeReadyLineage {
         unit: Arc<crate::state::managed_binding::Body<ExecutionUnit>>,
         readiness: PairRow,
     ) -> Result<Arc<Self>> {
-        Ok(Arc::new(Self::Quota {
-            commit: self.commit().clone(),
-            current: self.current().with_known_unit(unit)?,
-            readiness,
+        Ok(Arc::new(Self {
+            known: KnownReadiness::Quota {
+                commit: self.commit().clone(),
+                current: self.current().with_known_unit(unit)?,
+                readiness,
+            },
         }))
     }
 }
 impl NativePreparationCommit {
+    pub(crate) fn initial_lineage(self: &Arc<Self>) -> Arc<NativeReadyLineage> {
+        Arc::new(NativeReadyLineage {
+            known: KnownReadiness::Initial(self.clone()),
+        })
+    }
     pub(super) fn project_limit(&self) -> usize {
         self.original
             .actor
@@ -209,7 +219,7 @@ impl Store {
                 actor.validate_open()?;
                 lineage.validate_tx(&tx)?;
                 ensure!(
-                    matches!(lineage, NativeReadyLineage::Initial(_))
+                    matches!(lineage.known, KnownReadiness::Initial(_))
                         && completion.matches_actor(actor)
                         && lineage.unit().wait_reason.is_none(),
                     "no-dispatch Initial facts differ"
