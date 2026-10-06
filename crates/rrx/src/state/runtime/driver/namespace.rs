@@ -28,7 +28,7 @@ impl NamespaceSnapshot {
         max_rows: usize,
         max_bytes: usize,
     ) -> Result<Self> {
-        let mut statement = c.prepare("SELECT id,project_id,goal_id,version,issue,length(CAST(body AS BLOB)) FROM tasks WHERE project_id=?1 ORDER BY id")?;
+        let mut statement = c.prepare("SELECT CASE WHEN typeof(id)='text' AND length(CAST(id AS BLOB))=36 THEN id END,CASE WHEN typeof(project_id)='text' AND length(CAST(project_id AS BLOB))=36 THEN project_id END,CASE WHEN typeof(goal_id)='text' AND length(CAST(goal_id AS BLOB))=36 THEN goal_id END,version,issue,length(CAST(body AS BLOB)) FROM tasks WHERE project_id=?1 ORDER BY id")?;
         let mut cursor = statement.query([project.to_string()])?;
         let mut headers = Vec::new();
         let mut bytes = 0usize;
@@ -45,10 +45,25 @@ impl NamespaceSnapshot {
                 length <= BODY && bytes <= max_bytes,
                 "Driver namespace byte budget exceeded"
             );
+            let id = row
+                .get::<_, Option<String>>(0)?
+                .context("Driver namespace ID header invalid")?;
+            let indexed_project = row
+                .get::<_, Option<String>>(1)?
+                .context("Driver namespace Project header invalid")?;
+            let goal = row
+                .get::<_, Option<String>>(2)?
+                .context("Driver namespace Goal header invalid")?;
+            ensure!(
+                id.parse::<TaskId>().is_ok()
+                    && indexed_project.parse::<ProjectId>().is_ok()
+                    && goal.parse::<GoalId>().is_ok(),
+                "Driver namespace UUID header invalid"
+            );
             headers.push((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
+                id,
+                indexed_project,
+                goal,
                 row.get::<_, u64>(3)?,
                 row.get::<_, Option<u64>>(4)?,
                 length,
@@ -204,7 +219,32 @@ mod tests {
             .unwrap()
             .validate_current(&c)
             .unwrap();
-        let extra = TaskId::new();
+        let surplus = Task::new(
+            task.project_id,
+            task.goal_id,
+            "valid surplus".into(),
+            "codex".into(),
+        );
+        let extra = surplus.id;
+        c.execute(
+            "INSERT INTO tasks VALUES(?1,?2,?3,0,NULL,?4)",
+            params![
+                extra.to_string(),
+                task.project_id.to_string(),
+                task.goal_id.to_string(),
+                serde_json::to_string(&surplus).unwrap()
+            ],
+        )
+        .unwrap();
+        assert!(
+            NamespaceSnapshot::read(&c, task.project_id)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("byte budget")
+        );
+        c.execute("DELETE FROM tasks WHERE id=?1", [extra.to_string()])
+            .unwrap();
         // Deliberately invalid content: complete length overflow must win before
         // copying/decoding any body, including this final surplus row.
         c.execute(
@@ -306,5 +346,21 @@ mod tests {
         let (c, task, _) = history(1, None);
         c.execute("UPDATE tasks SET body='!'", []).unwrap();
         assert!(NamespaceSnapshot::read(&c, task.project_id).is_err());
+    }
+    #[test]
+    fn namespace_header_projection_refuses_before_body_materialization() {
+        for column in ["id", "goal_id"] {
+            let (c, task, _) = history(1, None);
+            c.execute(
+                &format!("UPDATE tasks SET {column}=?1,body='!'"),
+                ["x".repeat(BODY + 1)],
+            )
+            .unwrap();
+            let error = NamespaceSnapshot::read(&c, task.project_id).err().unwrap();
+            assert!(
+                error.to_string().contains("header invalid"),
+                "{column}: {error}"
+            );
+        }
     }
 }
