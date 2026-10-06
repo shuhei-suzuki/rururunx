@@ -202,6 +202,10 @@ pub(crate) fn plan_marker(
     let cv = context.parsed();
     let task = before.task.parsed();
     let mut workflow: WorkflowSnapshot = serde_json::from_value(saved.parsed().data.clone())?;
+    ensure!(
+        workflow.workflow == task.workflow,
+        "managed marker Workflow/Task class differs"
+    );
     let index = workflow
         .active
         .context("managed marker active attempt missing")?;
