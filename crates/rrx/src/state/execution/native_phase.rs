@@ -2,7 +2,7 @@
 //! needs the genuine retained launch and the actual Native issuer after commit.
 use super::*;
 use crate::{
-    execution::native::{ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession, NativeSeed},
+    execution::native::{ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession},
     state::managed_binding::{
         CurrentWorkflowSuccessor, ExactRowMutation, PhaseLaunchParts, phase_pair_columns,
         plan_current_phase, snapshot, validate_current_tx,
@@ -25,7 +25,7 @@ pub(crate) use version::{
 };
 mod transport;
 mod live_quota;
-pub(crate) use transport::{NativeTransportStartPlan, KnownTransportRegistration, RegistrationAck, RegistrationProbe};
+pub(crate) use transport::{NativeTransportStartPlan, KnownTransportRegistration, RegistrationAck, RegistrationAckSource, RegistrationProbe};
 mod terminal;
 pub(crate) use terminal::NativeTerminalPlan;
 
@@ -40,6 +40,27 @@ fn selected_database(connection: &rusqlite::Connection, launch: &PhaseLaunchPart
         "Native phase writer is not the selected owner's database"
     );
     Ok(())
+}
+fn registered_readiness_matches(registered:u64,version:u64,ended:bool) -> bool {
+    matches!(registered,3|5) && if ended {registered.checked_add(1)==Some(version)} else {registered==version}
+}
+#[cfg(test)]
+mod registration_readiness_primitive_tests {
+    use super::registered_readiness_matches;
+    #[test]
+    fn known_admit_and_park_lineage_choose_their_own_readiness() {
+        for registered in [3,5] {
+            assert!(registered_readiness_matches(registered,registered,false));
+            assert!(registered_readiness_matches(registered,registered+1,true));
+            for version in 1..=7 {
+                assert_eq!(registered_readiness_matches(registered,version,false),version==registered);
+                assert_eq!(registered_readiness_matches(registered,version,true),version==registered+1);
+            }
+        }
+        for unprepared in [0,1,2,4,u64::MAX] {
+            assert!(!registered_readiness_matches(unprepared,unprepared,false));
+        }
+    }
 }
 
 /// Complete indexed image, never a persisted owner-to-authority conversion.
@@ -255,9 +276,10 @@ fn plan_owner_currency(
 ) -> Result<NativeOwnerPlan> {
     let binding = phase.binding_snapshot()?;
     ensure!(
-        (terminal_ending || binding.is_live()) && phase.validate_known_registration().is_ok() && phase.launch_parts().is_retained(),
+        (terminal_ending || binding.is_live()) && phase.launch_parts().is_retained(),
         "actual Native owner ended"
     );
+    phase.validate_known_registration()?;
     let current = plan_current_phase(runtime, phase.marker())?;
     let f = phase.allocation().facts();
     let unit = current.unit();
@@ -335,7 +357,7 @@ fn plan_owner_currency(
         ensure!(
             r == json!({"operation_id":f.operation_id,"origin":f.origin_id,"owner_epoch":f.epoch,
             "state":"registered","start_ended":ended,"known_terminal":false,"parking_version":null,"version":version})
-                && ((version == phase.registered_readiness()? && !ended) || (Some(version) == phase.registered_readiness()?.checked_add(1) && ended))
+                && registered_readiness_matches(phase.registered_readiness()?,version,ended)
                 && readiness.column("operation_id")? == &SqlValue::Text(f.operation_id.to_string())
                 && readiness.column("origin")? == &SqlValue::Text(f.origin_id.to_string())
                 && readiness.column("owner_epoch")? == &SqlValue::Integer(i64::try_from(f.epoch)?)

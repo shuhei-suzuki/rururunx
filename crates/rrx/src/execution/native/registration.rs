@@ -20,7 +20,6 @@ impl PreparedNativePhase {
             && self.completion.commit.matches_prefix(&self.known, &closed)
             && self.compat.matches(&self.actor, &self.version),
             "Prepared registration original closed prefix differs");
-        self.compat.check_command(&self.command)?;
         self.lineage().validate_prepared_shape()
     }
     pub(crate) fn validate_open(&self) -> Result<()> {
@@ -33,6 +32,7 @@ impl PreparedNativePhase {
     }
     pub(crate) fn registration_material(&self) -> Result<(Session, NativeSeed, String)> {
         self.validate_open()?;
+        self.compat.check_command(&self.command)?;
         let f = self.launch().allocation().facts();
         ensure!(self.command.program.is_absolute() && self.command.cwd.is_absolute(),
             "Native command program/cwd is not absolute");

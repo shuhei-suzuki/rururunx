@@ -32,7 +32,6 @@ pub(crate) use phase_protocol::{
 };
 pub(crate) use preparation::{NativePreparationActor, NativePreparationCustody};
 pub(crate) use prepared::PreparedNativePhase;
-pub(crate) use phase_protocol::{Activation, PhaseActor};
 #[cfg(test)]
 pub(crate) mod tests;
 

@@ -60,6 +60,8 @@ impl NativeTransportStartPlan {
     pub(crate) fn session(&self) -> &Session { &self.session }
     pub(crate) fn unit(&self) -> &ExecutionUnit { &self.unit_after }
     pub(crate) fn prepared(&self) -> &Arc<crate::execution::native::PreparedNativePhase> { &self.prepared }
+    pub(crate) fn transport_intent(&self) -> &ManagedEffect { &self.effect }
+    pub(crate) fn transport_intent_raw(&self) -> &str { &self.effect_raw }
     pub(crate) fn registered_readiness(&self) -> Result<u64> { Ok(self.prepared.lineage().readiness_version()?.checked_add(1).context("readiness exhausted")?) }
     pub(super) fn governing_digest(&self) -> &str { &self.governing_digest }
     fn validate_origin_tx(&self,tx:&Transaction<'_>) -> Result<()> {
@@ -284,8 +286,15 @@ impl Store {
             let budget=super::version::InventoryBudget::new(&tx)?;
             budget.finish((|| {
                 admission.validate_for(&plan.launch)?;
-                if plan.validate_post_tx(&tx).is_ok() { return Ok(RegistrationProbe::Committed(plan.known(RegistrationAckSource::Confirmed)?)); }
-                if plan.validate_pre_tx(&tx).is_ok() { return Ok(RegistrationProbe::Absent); }
+                let readiness=PairRow::read(&tx,"managed_phase_readiness",&plan.launch.allocation().facts().operation_id.to_string())?;
+                if readiness.values==plan.readiness_after.values {
+                    plan.validate_post_tx(&tx)?;
+                    return Ok(RegistrationProbe::Committed(plan.known(RegistrationAckSource::Confirmed)?));
+                }
+                if readiness.values==plan.readiness_before.values {
+                    plan.validate_pre_tx(&tx)?;
+                    return Ok(RegistrationProbe::Absent);
+                }
                 Ok(RegistrationProbe::Held)
             })())?
         };

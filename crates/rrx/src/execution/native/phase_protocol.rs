@@ -10,6 +10,48 @@ use std::sync::{OnceLock, atomic::{AtomicU8, Ordering}};
 use crate::state::{NativeTransportStartPlan,KnownTransportRegistration,RegistrationAck};
 const CANDIDATE:u8=0; const LIVE:u8=1; const REVOKED:u8=2;
 pub(crate) enum Activation { Live, RevokedKnown, Mismatch }
+fn activate_ack(ack_cell:&OnceLock<RegistrationAck>,state:&AtomicU8,ack:RegistrationAck) -> Activation {
+    if ack_cell.set(ack).is_err() { return Activation::Mismatch; }
+    match state.compare_exchange(CANDIDATE,LIVE,Ordering::SeqCst,Ordering::SeqCst) {
+        Ok(_)=>Activation::Live, Err(REVOKED)=>Activation::RevokedKnown,
+        _=>Activation::Mismatch,
+    }
+}
+fn known_ack(state:&AtomicU8,ack:&OnceLock<RegistrationAck>) -> Result<RegistrationAck> {
+    ensure!(matches!(state.load(Ordering::SeqCst),LIVE|REVOKED),"unregistered Candidate cannot close");
+    ack.get().copied().context("SAME activation acknowledgement absent")
+}
+
+#[cfg(test)]
+mod registration_primitive_tests {
+    use super::*;
+    fn ack() -> RegistrationAck { RegistrationAck { readiness:3,unit_version:7,
+        source:crate::state::RegistrationAckSource::Committed } }
+    #[test]
+    fn candidate_and_unacknowledged_revoked_cannot_close() {
+        let cell=OnceLock::new();let state=AtomicU8::new(CANDIDATE);
+        assert!(known_ack(&state,&cell).is_err());
+        state.store(REVOKED,Ordering::SeqCst);
+        assert!(known_ack(&state,&cell).is_err());
+    }
+    #[test]
+    fn known_commit_activates_once_and_retains_ack_after_revocation() {
+        let cell=OnceLock::new();let state=AtomicU8::new(CANDIDATE);
+        assert!(matches!(activate_ack(&cell,&state,ack()),Activation::Live));
+        assert_eq!(known_ack(&state,&cell).unwrap().readiness,3);
+        state.store(REVOKED,Ordering::SeqCst);
+        assert_eq!(known_ack(&state,&cell).unwrap().unit_version,7);
+        assert!(matches!(activate_ack(&cell,&state,ack()),Activation::Mismatch));
+        assert_eq!(state.load(Ordering::SeqCst),REVOKED);
+    }
+    #[test]
+    fn stop_before_ack_is_retained_without_reopening() {
+        let cell=OnceLock::new();let state=AtomicU8::new(REVOKED);
+        assert!(matches!(activate_ack(&cell,&state,ack()),Activation::RevokedKnown));
+        assert_eq!(state.load(Ordering::SeqCst),REVOKED);
+        assert!(known_ack(&state,&cell).is_ok());
+    }
+}
 
 /// Genuine registered owner. Only the actual Native module can issue it, after
 /// its managed registration transaction succeeds with the original launch.
@@ -72,11 +114,7 @@ impl PhaseActor {
     /// Admission remains held, SharedStore is released. No allocation or SQL.
     pub(crate) fn activate(&self, known:KnownTransportRegistration) -> Activation {
         let Some(ack)=known.activation(&self.owner.origin) else { return Activation::Mismatch };
-        if self.owner.ack.set(ack).is_err() { return Activation::Mismatch; }
-        match self.owner.state.compare_exchange(CANDIDATE,LIVE,Ordering::SeqCst,Ordering::SeqCst) {
-            Ok(_)=>Activation::Live, Err(REVOKED)=>Activation::RevokedKnown,
-            _=>Activation::Mismatch,
-        }
+        activate_ack(&self.owner.ack,&self.owner.state,ack)
     }
     pub(super) fn retain_dispatch(&self,commit:crate::state::NativeDispatchCommit) -> Result<(OperationId,String,Option<String>,bool)> {
         ensure!(commit.belongs_to(&self.owner),"dispatch belongs to another actor");
@@ -335,8 +373,7 @@ impl NativePhaseSession {
     pub(crate) fn registration_ack(&self) -> Option<RegistrationAck> { self.ack.get().copied() }
     pub(crate) fn origin(&self) -> &Arc<NativeTransportStartPlan> { &self.origin }
     pub(crate) fn validate_known_registration(&self) -> Result<RegistrationAck> {
-        ensure!(matches!(self.state.load(Ordering::SeqCst),LIVE|REVOKED),"unregistered Candidate cannot close");
-        self.registration_ack().context("SAME activation acknowledgement absent")
+        known_ack(&self.state,&self.ack)
     }
     pub(crate) fn registered_readiness(&self) -> Result<u64> { self.origin.registered_readiness() }
     pub(crate) fn binding_snapshot(self: &Arc<Self>) -> Result<NativePhaseBinding> {

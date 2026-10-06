@@ -312,7 +312,7 @@ pub(crate) fn plan_phase_terminal(
             ensure!(
                 body == json!({"operation_id":f.operation_id,"origin":f.origin_id,"owner_epoch":f.epoch,
             "state":"registered","start_ended":ended,"known_terminal":false,"parking_version":null,"version":version})
-                    && ((version == phase.registered_readiness()? && !ended) || (Some(version) == phase.registered_readiness()?.checked_add(1) && ended)),
+                    && registered_readiness_matches(phase.registered_readiness()?,version,ended),
                 "terminal readiness changed"
             );
             for (name, value) in [
@@ -711,6 +711,9 @@ impl Store {
         }
         self.binding_permits.with_exact_permit(permissions, || {
         let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        plan.phase.validate_known_registration()?;
+        plan.phase.launch_parts().validate_preparation_original()?;
+        plan.phase.origin().prepared().validate_original()?;
         // Confirmation uses the SAME retained original pre-transaction plan and
         // all its exact post-images. It does not decode rows into owned proof.
         if plan.committed_tx(&tx)? {tx.commit()?;return Ok(plan.commit());}
