@@ -16,7 +16,8 @@ struct CustodyState {
     starting: bool,
     actor: Option<Arc<NativePreparationActor>>,
     plan: Option<Arc<crate::state::NativePreparationPlan>>,
-    known: Option<crate::state::NativePreparationCommit>,
+    known: Option<Arc<crate::state::NativePreparationCommit>>,
+    helper: Option<Arc<super::version::NativeVersionHelperCustody>>,
 }
 impl NativePreparationCustody {
     pub(crate) fn new(allocation: Arc<NativeAllocation>) -> Arc<Self> {
@@ -35,6 +36,9 @@ impl NativePreparationCustody {
             state.abandoned = true;
             if let Some(actor) = &state.actor {
                 actor.revoked.store(true, Ordering::Release);
+            }
+            if let Some(helper) = &state.helper {
+                helper.abandon();
             }
         }
     }
@@ -93,7 +97,52 @@ impl NativePreparationCustody {
             "known preparation commit differs from saved original plan"
         );
         // A stop can revoke future work while this factual known commit remains.
-        state.known = Some(commit);
+        state.known = Some(Arc::new(commit));
+        Ok(())
+    }
+    pub(super) fn version_original(&self) -> Result<Arc<crate::state::NativePreparationCommit>> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(
+            !state.abandoned && state.helper.is_none(),
+            "original version stage held or already installed"
+        );
+        state
+            .known
+            .clone()
+            .context("same known readiness commit absent")
+    }
+    pub(super) fn state_actor(&self) -> Result<Arc<NativePreparationActor>> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned, "original preparation abandoned");
+        state
+            .actor
+            .clone()
+            .context("original preparation actor absent")
+    }
+    pub(super) fn retain_helper(
+        &self,
+        helper: Arc<super::version::NativeVersionHelperCustody>,
+    ) -> Result<()> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(
+            !state.abandoned
+                && state.helper.is_none()
+                && state
+                    .actor
+                    .as_ref()
+                    .is_some_and(|actor| helper.matches_actor(actor)),
+            "original version helper custody changed"
+        );
+        state.helper = Some(helper);
         Ok(())
     }
     /// Nongrant confirmation of the same saved postimage. A wake cannot
@@ -143,7 +192,15 @@ impl Drop for NativePreparationCustody {
             if let Some(actor) = &state.actor {
                 actor.revoked.store(true, Ordering::Release);
             }
-            (state.known.take(), state.plan.take(), state.actor.take())
+            if let Some(helper) = &state.helper {
+                helper.abandon();
+            }
+            (
+                state.helper.take(),
+                state.known.take(),
+                state.plan.take(),
+                state.actor.take(),
+            )
         };
         drop(siblings);
     }
@@ -282,8 +339,9 @@ impl NativeSessions {
         };
         custody.retain_commit(commit)?;
         drop(admission);
-        // First-stage readiness is factual only. Actual helper/quota/transport
-        // consumers are not composed; never fall through to generic admission.
+        self.prepare_phase_version(custody).await?;
+        // This helper remains factual only. Quota/transport/full preparation
+        // are unavailable; never fall through to generic admission.
         anyhow::bail!(
             "original Native preparation retained; helper/quota/transport composition unavailable"
         )

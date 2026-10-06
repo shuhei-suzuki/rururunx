@@ -35,6 +35,19 @@ connection does not yet expose an executable managed Agent or completed Task.
 Publication-fault and accepted-slot shutdown custody repair remain pending
 implementation gates.
 
+The selected Native preparation continuation retains its original readiness
+actor, exact known commit and a single version-helper plan independently of the
+caller future. The private existing10 intent and owned-observation settlement
+compare the complete original indexed Unit effect inventory; compatible journal
+writes cause Held conflicts and cannot issue observations or replay a child.
+Both inventory passes share a scoped SQLite VM budget, with a 256-row sentinel,
+8-KiB body bound and inclusive 2-MiB all-column framing bound. The raw child is
+adopted before identity or pipe qualification. Capture has an eager independent
+owner, a combined 64-KiB output budget and bounded execution/drain/stop attempts.
+This version-only observation supplies no full prepared-input, Session or
+transport proof. Installed composition, current official CLI compatibility,
+full Native preparation and both-OS/four-Task qualification remain unavailable.
+
 The incremental [production gate integration](../production-workflow-gates-design.md)
 adds a concrete library port for real initial preparation, Implement terminal/result
 and retained commit observations. Its receipts are diagnostic; existing Workflow
