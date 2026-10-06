@@ -294,22 +294,18 @@ impl Store {
             {
                 continue;
             }
-            if validate_authority(&tx, &candidate.authority(), true, false).is_ok() {
+            let eligible = match super::quota_policy::candidate_class(&tx,candidate.id,at)? {
+                super::quota_policy::CandidateClass::Legacy => validate_authority(&tx, &candidate.authority(), true, false).is_ok(),
+                super::quota_policy::CandidateClass::MarkedParked => true,
+                super::quota_policy::CandidateClass::MarkedStalled => false,
+            };
+            if eligible {
                 first = Some(candidate.id);
                 break;
             }
         }
-        let wait = if exhausted
-            && (at < next || probe.as_ref().is_some_and(|id| id != &unit.id.to_string()))
-        {
-            Some((WaitReason::Quota, next.max(at.saturating_add(1_000))))
-        } else if capacity_due > at {
-            Some((WaitReason::Capacity, capacity_due))
-        } else if capacity || first != Some(unit.id) {
-            Some((WaitReason::Capacity, at.saturating_add(1_000)))
-        } else {
-            None
-        };
+        let decision = super::quota_policy::decide(&super::quota_policy::QuotaSnapshot { exhausted, next_probe_at:next, foreign_probe:probe.as_ref().is_some_and(|id| id != &unit.id.to_string()), capacity_due, capacity_blocked:capacity, fair_head_is_self:first == Some(unit.id) }, at);
+        let wait = match decision { super::quota_policy::Decision::Wait { reason,due } => Some((reason,due)), super::quota_policy::Decision::Admit { .. } => None };
         if let Some((reason, due)) = wait {
             unit.wait_reason = Some(reason);
             if reason == WaitReason::Quota {

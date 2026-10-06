@@ -15,13 +15,13 @@ pub(super) const LEDGER_DOMAIN: &[u8] = b"rrx.workflow-ledger-sha256/v1\0";
 
 /// Complete typed body and exact stored encoding. Deliberately not a grant and
 /// not Deserialize: construction always validates the original duplicate keys.
-pub(super) struct Body<T> {
+pub(in crate::state) struct Body<T> {
     raw: String,
     parsed: T,
     canonical: Vec<u8>,
 }
 impl<T: DeserializeOwned + Serialize> Body<T> {
-    pub(super) fn decode(raw: String, limit: usize) -> Result<Self> {
+    pub(in crate::state) fn decode(raw: String, limit: usize) -> Result<Self> {
         let value = decode_value(&raw, limit)?;
         let parsed: T = serde_json::from_value(value.clone())
             .map_err(|_| anyhow::anyhow!("managed body does not match its typed schema"))?;
@@ -36,10 +36,10 @@ impl<T: DeserializeOwned + Serialize> Body<T> {
             canonical,
         })
     }
-    pub(super) fn raw(&self) -> &str {
+    pub(in crate::state) fn raw(&self) -> &str {
         &self.raw
     }
-    pub(super) fn parsed(&self) -> &T {
+    pub(in crate::state) fn parsed(&self) -> &T {
         &self.parsed
     }
     pub(super) fn digest(&self, domain: &[u8]) -> String {

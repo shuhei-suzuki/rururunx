@@ -28,7 +28,8 @@ pub(crate) use execution::governing_digest as execution_governing_digest;
 pub(crate) use execution::native_phase::{
     NativeHelperHistoryCommit, NativeHelperIntentCommit, NativeHelperSettlementCommit,
     NativeHelperSettlementPlan, NativePreparationCommit, NativePreparationPlan, NativeTerminalPlan,
-    NativeVersionClosurePlan, NativeVersionHelperPlan,
+    NativeVersionClosurePlan, NativeVersionHelperPlan, NativeReadyLineage,
+    NativeQuotaAdmitted, NativeQuotaCaps, NativeQuotaConfirmation, NativeQuotaOutcome, NativeQuotaPlan, NativeParkedPhase, NativeQuotaWrite,
 };
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 

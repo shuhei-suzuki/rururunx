@@ -24,16 +24,27 @@ const UNIT_BYTES: usize = 16 * 1024;
 /// Keeping the original actual plan prevents SQL/current-row origin replacement.
 pub(crate) struct CurrentWorkflowSuccessor {
     original: Arc<MarkerPublicationPlan>,
-    workflow: Body<Record>,
-    unit: Body<ExecutionUnit>,
+    workflow: Arc<Body<Record>>,
+    unit: Arc<Body<ExecutionUnit>>,
     count: usize,
-    head: Option<Link>,
+    head: Option<Arc<Link>>,
 }
 struct Link {
     event: AuditEvent,
     raw: String,
 }
 impl CurrentWorkflowSuccessor {
+    /// Only an own planned, known committed transition can reach this port.
+    /// It copies the original parent/ledger facts and performs no row lookup.
+    pub(in crate::state) fn with_known_unit(&self, body: Arc<Body<ExecutionUnit>>) -> Result<Self> {
+        validate_unit_identity(body.parsed(), self.unit(), true)?;
+        Ok(Self {
+            original: self.original.clone(),
+            workflow: self.workflow.clone(),
+            unit: body, count: self.count,
+            head: self.head.clone(),
+        })
+    }
     pub(crate) fn workflow(&self) -> &Record {
         self.workflow.parsed()
     }
@@ -60,6 +71,18 @@ impl CurrentWorkflowSuccessor {
     }
 }
 
+fn validate_unit_identity(unit: &ExecutionUnit, original: &ExecutionUnit, increasing: bool) -> Result<()> {
+    ensure!(unit.id == original.id && unit.scope == original.scope && unit.kind == original.kind
+        && unit.generation == original.generation && unit.owner_epoch == original.owner_epoch
+        && unit.phase == original.phase && unit.provider == original.provider && unit.worktree == original.worktree
+        && unit.branch == original.branch && unit.base_sha == original.base_sha && unit.profile_digest == original.profile_digest
+        && unit.cookie == original.cookie && unit.created_at == original.created_at
+        && unit.version >= original.version && (!increasing || unit.version > original.version)
+        && unit.version <= i64::MAX as u64 && (unit.kind != UnitKind::Reviewer || unit.artifact_id == original.artifact_id),
+        "current allocated Unit immutable identity or version changed");
+    Ok(())
+}
+
 fn current_unit(c: &Connection, marker: &OriginalMarker) -> Result<Body<ExecutionUnit>> {
     let original = marker.unit();
     let raw: Option<String> = c.query_row(
@@ -72,6 +95,7 @@ fn current_unit(c: &Connection, marker: &OriginalMarker) -> Result<Body<Executio
         UNIT_BYTES,
     )?;
     let unit = body.parsed();
+    validate_unit_identity(unit, original, false)?;
     ensure!(
         unit.id == original.id
             && unit.scope == original.scope
@@ -247,10 +271,10 @@ pub(crate) fn plan_current_phase(
         );
         Ok(CurrentWorkflowSuccessor {
             original: marker.publication_plan(),
-            workflow,
-            unit,
+            workflow: Arc::new(workflow),
+            unit: Arc::new(unit),
             count: links.len(),
-            head: links.into_iter().last(),
+            head: links.into_iter().last().map(Arc::new),
         })
     })
 }

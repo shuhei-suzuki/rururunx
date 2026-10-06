@@ -32,12 +32,12 @@ impl std::error::Error for InventoryWorkLimit {}
 thread_local! { static ACTIVE_BUDGET: Cell<bool> = const { Cell::new(false) }; }
 /// Declaration precedes statement creation, so their borrows unwind first.
 /// This scope is the sole progress-hook installer on these connections.
-struct InventoryBudget<'a> {
+pub(super) struct InventoryBudget<'a> {
     connection: &'a Connection,
     interrupted: Arc<AtomicBool>,
 }
 impl<'a> InventoryBudget<'a> {
-    fn new(connection: &'a Connection) -> Result<Self> {
+    pub(super) fn new(connection: &'a Connection) -> Result<Self> {
         ensure!(
             !ACTIVE_BUDGET.with(|active| active.replace(true)),
             "nested Native inventory budget"
@@ -61,7 +61,7 @@ impl<'a> InventoryBudget<'a> {
             interrupted,
         })
     }
-    fn finish<T>(&self, result: Result<T>) -> Result<T> {
+    pub(super) fn finish<T>(&self, result: Result<T>) -> Result<T> {
         if self.interrupted.load(Ordering::Relaxed) {
             Err(InventoryWorkLimit.into())
         } else {
@@ -279,7 +279,7 @@ impl Inventory {
     }
     fn reserve_git_batch(&self) -> Result<()> {
         ensure!(
-            self.rows.len() <= 242,
+            self.rows.len() <= 239,
             "Git batch reserves 13 rows and future native input"
         );
         let maximum = shape(&[36, 36, 36, 36, 36, 256, 9, BODY_BYTES], i64::MAX as u64)?;
@@ -304,7 +304,7 @@ impl Inventory {
     }
     fn with_version_intent(&self, image: EffectImage) -> Result<Self> {
         ensure!(
-            self.rows.len() <= 254,
+            self.rows.len() <= 238,
             "version helper reserves one future input slot"
         );
         self.with(image)
@@ -333,6 +333,12 @@ pub(crate) struct NativeHelperHistoryCommit {
     history: Vec<Arc<NativeHelperSettlementCommit>>,
 }
 impl NativeHelperHistoryCommit {
+    pub(crate) fn len(&self) -> usize { self.history.last().map_or(0, |k| k.original.after.rows.len()) }
+    pub(super) fn validate_inventory(&self, tx: &Transaction<'_>) -> Result<()> {
+        let tail = self.history.last().context("closed helper history absent")?;
+        ensure!(Inventory::read(tx, self.original.actor().launch().allocation().facts().unit_id)? == *tail.original.after, "SAME helper completion inventory changed");
+        Ok(())
+    }
     pub(crate) fn matches_actor(
         &self,
         actor: &Arc<crate::execution::native::NativePreparationActor>,

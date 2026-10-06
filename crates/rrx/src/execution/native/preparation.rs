@@ -9,6 +9,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub(crate) struct NativePreparationCustody {
     allocation: Arc<NativeAllocation>,
     state: Mutex<CustodyState>,
+    revoked: tokio::sync::Notify,
+    parked_level: watch::Sender<bool>,
 }
 #[derive(Default)]
 struct CustodyState {
@@ -21,8 +23,66 @@ struct CustodyState {
     completion: Option<Arc<super::version::NativeReadonlyHelperCompletion>>,
     compat: Option<Arc<super::compat::NativeCompatQualification>>,
     command: Option<Arc<super::prepared::NativeTransportCommand>>,
+    no_dispatch: Option<Arc<super::prepared::PreparedPhaseNoCurrentDispatch>>,
+    quota_plan: Option<Arc<crate::state::NativeQuotaPlan>>,
+    lineage: Option<Arc<crate::state::NativeReadyLineage>>,
+    parked: Option<Arc<crate::state::NativeParkedPhase>>,
+    admitted: Option<Arc<crate::state::NativeQuotaAdmitted>>,
+    prepared: Option<Arc<super::prepared::PreparedNativePhase>>,
+    first_parked_at: Option<i64>,
 }
 impl NativePreparationCustody {
+    pub(crate) fn parked_updates(&self) -> watch::Receiver<bool> { self.parked_level.subscribe() }
+    pub(super) async fn revocation(&self) {
+        loop {
+            let notified=self.revoked.notified();
+            if self.state.lock().is_ok_and(|s|s.abandoned) { return; }
+            notified.await;
+        }
+    }
+    pub(super) fn quota_original(&self) -> Result<(Arc<NativePreparationActor>,Arc<super::prepared::PreparedPhaseNoCurrentDispatch>,Arc<crate::state::NativeReadyLineage>)> {
+        let state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.admitted.is_none() && state.prepared.is_none(),"quota original operation ended or admitted");
+        let no_dispatch=state.no_dispatch.clone().context("same no-dispatch absent")?;
+        Ok((state.actor.clone().context("same actor absent")?,no_dispatch.clone(),state.lineage.clone().unwrap_or_else(||no_dispatch.issued.clone())))
+    }
+    pub(super) fn retain_quota_plan(&self,plan:Arc<crate::state::NativeQuotaPlan>) -> Result<()> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        let no_dispatch=state.no_dispatch.as_ref().context("same no-dispatch absent")?;
+        let lineage=state.lineage.as_ref().unwrap_or(&no_dispatch.issued);
+        ensure!(!state.abandoned && state.admitted.is_none() && state.actor.as_ref().is_some_and(|a|plan.matches_actor(a)) && plan.matches_pre(lineage,no_dispatch),"quota plan is not SAME operation/lineage");
+        state.quota_plan=Some(plan); Ok(())
+    }
+    pub(super) fn retain_quota_outcome(&self,outcome:&crate::state::NativeQuotaOutcome) -> Result<()> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        let plan=state.quota_plan.as_ref().context("same quota plan absent")?;
+        ensure!(state.admitted.is_none(),"quota admission already known");
+        let parked=match outcome {
+            crate::state::NativeQuotaOutcome::Admitted(value) => { ensure!(value.matches_plan(plan),"admitted another quota plan"); state.lineage=Some(value.lineage().clone());state.parked=None;state.admitted=Some(value.clone());false },
+            crate::state::NativeQuotaOutcome::Parked(value) => { ensure!(value.matches_plan(plan),"parked another quota plan");state.lineage=Some(value.lineage().clone());state.parked=Some(value.clone());state.first_parked_at.get_or_insert(now_ms());true },
+        };
+        drop(state); self.parked_level.send_replace(parked);Ok(())
+    }
+    pub(super) fn no_dispatch_original(&self) -> Result<(Arc<NativePreparationActor>, Arc<crate::state::NativePreparationCommit>, Arc<super::version::NativeReadonlyHelperCompletion>)> {
+        let state = self.state.lock().map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.no_dispatch.is_none() && state.compat.is_some() && state.command.is_some(), "SAME no-dispatch prerequisites absent");
+        let actor = state.actor.clone().context("original actor absent")?;
+        let known = state.known.clone().context("original known preparation absent")?;
+        let completion = state.completion.clone().context("original helper completion absent")?;
+        let helpers = state.helpers.clone();
+        drop(state);
+        ensure!(helpers.len() == super::readonly::GIT_ACTIONS+1, "finite complete helper manifest absent");
+        for helper in helpers { helper.closed()?; }
+        Ok((actor,known,completion))
+    }
+    pub(super) fn retain_no_dispatch(&self, value: Arc<super::prepared::PreparedPhaseNoCurrentDispatch>) -> Result<()> {
+        let mut state = self.state.lock().map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.no_dispatch.is_none() && state.completion.as_ref().is_some_and(|c| Arc::ptr_eq(c,&value.completion)), "no-dispatch install original differs");
+        state.no_dispatch = Some(value); Ok(())
+    }
+    pub(super) fn no_dispatch_matches(&self, value: &super::prepared::PreparedPhaseNoCurrentDispatch) -> bool {
+        self.state.lock().is_ok_and(|s| s.no_dispatch.as_ref().is_some_and(|v| std::ptr::eq(v.as_ref(),value)))
+    }
     fn retain_compatible_command(&self, compat: Arc<super::compat::NativeCompatQualification>, command: Arc<super::prepared::NativeTransportCommand>) -> Result<()> {
         // All physical, encoding and compatibility work preceded this lock.
         let mut state = self.state.lock().map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
@@ -35,6 +95,8 @@ impl NativePreparationCustody {
         Arc::new(Self {
             allocation,
             state: Mutex::new(CustodyState::default()),
+            revoked: tokio::sync::Notify::new(),
+            parked_level: watch::channel(false).0,
         })
     }
     pub(crate) fn matches_allocation(&self, allocation: &Arc<NativeAllocation>) -> bool {
@@ -52,6 +114,7 @@ impl NativePreparationCustody {
                 helper.abandon();
             }
         }
+        self.revoked.notify_waiters();
     }
     fn claim_start(&self) -> Result<()> {
         let mut state = self
@@ -308,6 +371,8 @@ pub(crate) struct NativePreparationActor {
     _start: Mutex<Option<tokio::sync::OwnedMutexGuard<()>>>,
 }
 impl NativePreparationActor {
+    pub(crate) fn is_revoked(&self) -> bool { self.revoked.load(Ordering::Acquire) }
+    pub(super) fn release_gate(&self) { let gate=self._start.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take(); drop(gate); }
     pub(crate) fn launch(&self) -> &Arc<PhaseLaunchParts> {
         &self.launch
     }
@@ -437,6 +502,8 @@ impl NativeSessions {
         let compat = compat.observe(version)?;
         let command = super::prepared::plan_native_command(&self.owner, &actor, &completion, &compat)?;
         custody.retain_compatible_command(compat, command)?;
+        self.issue_no_current_dispatch(&custody).await?;
+        self.prepare_phase_quota(&custody).await?;
         // The readonly fact is deliberately nongrant. Full prepared input,
         // artifact lease, hooks, quota and transport issuers remain absent.
         anyhow::bail!(

@@ -1,6 +1,90 @@
 //! The sole retained nongrant command, then SAME-custody prepared conjunction.
 use super::*;
 
+pub(crate) struct PreparedPhaseNoCurrentDispatch {
+    custody: Weak<NativePreparationCustody>,
+    pub(crate) completion: Arc<version::NativeReadonlyHelperCompletion>,
+    pub(crate) issued: Arc<crate::state::NativeReadyLineage>,
+}
+impl PreparedPhaseNoCurrentDispatch {
+    pub(crate) fn validate_original(&self, actor: &Arc<NativePreparationActor>) -> Result<()> {
+        actor.validate_original()?;
+        let custody = self.custody.upgrade().context("no-dispatch custody ended")?;
+        ensure!(self.completion.matches_actor(actor) && custody.no_dispatch_matches(self), "no-dispatch value differs from SAME custody");
+        Ok(())
+    }
+}
+impl NativeSessions {
+    pub(super) async fn prepare_phase_quota(&self,custody:&Arc<NativePreparationCustody>) -> Result<Arc<crate::state::NativeQuotaAdmitted>> {
+        let mut conflicts=0u8; let mut backoff=100u64;
+        loop {
+            let (actor,no_dispatch,lineage)=custody.quota_original()?;
+            actor.validate_open()?;
+            let launch=actor.launch().clone();
+            let scheduler=self.limits.scheduler(self.owner.clone(),launch.allocation().facts().provider);
+            let caps=crate::state::NativeQuotaCaps { global:scheduler.global_total,executor:scheduler.provider_executor,provider:scheduler.provider_total,project:scheduler.project_tasks };
+            let plan=crate::state::Store::plan_phase_quota(&self.owner,actor.clone(),no_dispatch,lineage,caps,now_ms())?;
+            custody.retain_quota_plan(plan.clone())?;
+            let admission=launch.admission().enter(launch.clone()).await?;
+            let outcome={
+                let mut store=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
+                match store.commit_phase_quota(plan.clone(),&admission) {
+                    Ok(crate::state::NativeQuotaWrite::Known(outcome))=>Some(outcome),
+                    Ok(crate::state::NativeQuotaWrite::Conflict)=>None,
+                    Err(error)=>match store.confirm_phase_quota(plan,&admission) {
+                        Ok(crate::state::NativeQuotaConfirmation::Known(outcome))=>Some(outcome),
+                        Ok(crate::state::NativeQuotaConfirmation::RolledBack)=>return Err(error),
+                        Err(confirm)=>return Err(confirm.context("same private quota commit remains Held")),
+                    },
+                }
+            };
+            drop(admission);
+            if let Some(outcome)=outcome {
+                custody.retain_quota_outcome(&outcome)?;
+                conflicts=0; backoff=100;
+                match outcome {
+                    crate::state::NativeQuotaOutcome::Admitted(value)=>return Ok(value),
+                    crate::state::NativeQuotaOutcome::Parked(value)=>{
+                        let now=now_ms();
+                        let wake=if value.reason()==WaitReason::Capacity { value.due().min(now.saturating_add(1000)) } else { value.due() };
+                        let delay=Duration::from_millis(u64::try_from(wake.saturating_sub(now).max(1))?);
+                        tokio::select! { _=tokio::time::sleep(delay)=>{}, _=custody.revocation()=>{ anyhow::bail!("same parked Native operation revoked; nongrant closure required") } }
+                    },
+                }
+            } else {
+                conflicts=conflicts.saturating_add(1);
+                if conflicts>=8 {
+                    tokio::select! { _=tokio::time::sleep(Duration::from_millis(backoff))=>{}, _=custody.revocation()=>{ anyhow::bail!("same quota operation revoked; nongrant closure required") } }
+                    conflicts=0; backoff=backoff.saturating_mul(2).min(5000);
+                }
+            }
+        }
+    }
+    pub(super) async fn issue_no_current_dispatch(&self, custody: &Arc<NativePreparationCustody>) -> Result<Arc<PreparedPhaseNoCurrentDispatch>> {
+        let (actor, known, completion) = custody.no_dispatch_original()?;
+        actor.validate_open()?;
+        ensure!(completion.matches_actor(&actor), "no-dispatch completion original differs");
+        let lineage = Arc::new(crate::state::NativeReadyLineage::Initial(known));
+        let launch = actor.launch().clone();
+        let admission = launch.admission().enter(launch.clone()).await?;
+        self.owner.store.lock().map_err(|_| anyhow::anyhow!("state poisoned"))?.check_phase_no_current_dispatch(&actor, &lineage, &completion, &admission)?;
+        drop(admission);
+        let value = Arc::new(PreparedPhaseNoCurrentDispatch { custody: Arc::downgrade(custody), completion, issued: lineage });
+        custody.retain_no_dispatch(value.clone())?;
+        Ok(value)
+    }
+}
+
+pub(super) struct PreparedNativePhase {
+    pub(super) actor: Arc<NativePreparationActor>,
+    pub(super) known: Arc<crate::state::NativePreparationCommit>,
+    pub(super) version: Arc<version::NativeVersionHelperCustody>,
+    pub(super) completion: Arc<version::NativeReadonlyHelperCompletion>,
+    pub(super) compat: Arc<compat::NativeCompatQualification>,
+    pub(super) command: Arc<NativeTransportCommand>,
+    pub(super) quota: Arc<crate::state::NativeQuotaAdmitted>,
+}
+
 pub(super) struct NativeTransportCommand {
     pub(super) program: std::path::PathBuf,
     pub(super) cwd: std::path::PathBuf,

@@ -19,7 +19,7 @@ const PROFILE_BYTES: usize = 64 * 1024;
 pub(crate) struct NativeReadonlyHelperCompletion {
     actor: Arc<NativePreparationActor>,
     _correspondence: readonly::NativeGitCorrespondence,
-    commit: crate::state::NativeHelperHistoryCommit,
+    pub(crate) commit: crate::state::NativeHelperHistoryCommit,
 }
 impl NativeReadonlyHelperCompletion {
     pub(super) fn matches_actor(&self, actor: &Arc<NativePreparationActor>) -> bool {

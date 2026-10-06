@@ -4,6 +4,8 @@
 //! bounded read primitives must not enable Workflow or replace its private proof.
 mod binding;
 mod canonical;
+pub(in crate::state) use canonical::Body;
+pub(in crate::state) use marker_plan::unit_index_matches as unit_image_matches;
 mod composition;
 mod marker_plan;
 mod marker_rows;
