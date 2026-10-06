@@ -1,0 +1,141 @@
+# Issue 43: Retained source handoff and actual effect admission
+
+## 1. Scope and source
+
+This is Root's finite implementation supplement to the approved Source handoff
+design (`0f13284`) and corrected Native preparation design (`c4d581a`). Root
+baseline is `e1f52cd5bd2676effb6ec9d95ac9fe6becf29646`; the concrete Source API
+is the separately reviewed candidate at `63507400f9751b3d11b29de9e9cc37bb4db2dd91`.
+Its qualification is separate from this proposed consumer. No native availability,
+whole Runtime, actual four-Task or macOS/Linux qualification is implied.
+
+The representation fixes already retain the original Arc Driver ticket through
+marker planning and keep the worker composition's queue reference Weak. The
+actual installed composition issuer remains Err. This supplement connects real
+objects; no callback, readable row, arbitrary future or readiness switch creates
+handoff, preparation, input or Native permission.
+
+## 2. Shared actual admission
+
+Runtime creates one private `PhaseEffectAdmission` from its actual owner, actual
+control-admission mutex and actual running/stopping state. Runtime control and
+trusted stop use the SAME mutex. The existing mutex and stopping state become
+shared Arcs; these retain exactly the existing objects, not copied state or a
+second lock. The running Arc remains the one updated by the real service guard.
+PhaseSupervisor retains the same admission object; admission has no strong
+Runtime, queue, Source, Driver registry or job reference.
+
+The actual PhaseLaunchParts exposes that same object through its genuine retained
+publication supervisor. `PhaseEffectAdmission::enter` accepts only an Arc of the
+actual launch, acquires the actual owned mutex asynchronously, and checks actual
+service state, retained original launch/queue, selected owner and pointer-equal
+admission origin. It returns a private non-Clone `PhaseEffectAdmissionGuard` which
+retains that mutex guard and the SAME launch. No new launch is built from IDs.
+
+The guard's `validate_for` checks the actual launch/admission/owner identity and
+stopping state. It is nongrant by itself. Every Native transaction must separately
+check original current successor, live Driver, preparation, Unit, pair, lifecycle
+and exact mutations. Private helper/transport consumers hold admission only over
+their synchronous last-check, known intent/registration commit, Store release,
+spawn and immediate actual child-retention section. They release it before I/O,
+capture, handshake or any further await. No Store/queue/Source/child mutex spans
+an await. A native start gate is separate and cannot substitute for stop admission.
+
+## 3. Synchronous envelope and independently owned invocation
+
+Runtime's bounded `PhaseHandoffs` is a sibling of Sources, PhaseSupervisor and
+PhaseJobs. It retains at most 128 original operations, including Held entries;
+no fullness policy evicts assets. Operation and Unit duplicate checks inspect the
+actual private envelope and original ticket, not metadata as authority. The
+concrete synchronous port is:
+
+```text
+Runtime::retain_source_handoff(SourceNativeHandoff)
+    -> Result<SourceHandoffObservation, SourceNativeHandoff>
+```
+
+It returns the SAME envelope on ordinary refusal. On acceptance it wraps and
+retains the actual envelope before constructing the admission future, installs
+an eager running/abandonment guard BEFORE Tokio spawn, and saves the actual
+JoinHandle before returning. The Engine calls it in the SAME poll after the
+Source producer returns, before an await. Engine cancellation owns only the
+nongrant observation; it cannot abort or dispose the sole producer future.
+
+The retained job's concrete consumer parts contain original owner, phase queue,
+phase jobs and actual admission/state Arcs, never a strong Runtime. PhaseJobs
+becomes a shared Arc of the existing registry. The future captures its inner
+state/envelope and concrete parts; its JoinHandle lives only in the outer registry
+entry. Inner state never owns that handle or registry. Driver composition keeps
+its queue Weak, and the Engine receives only a Weak/watch observation. Neither
+the Source capsule nor queue slot stores the handoff envelope/worker registry.
+
+## 4. Original ownership transfer and marker
+
+The consumer first acquires actual control admission, checks service and the
+original retained envelope/ticket, and revalidates that SAME ticket outside Source
+locks. It upgrades Source's transient original origin and obtains its exact
+map -> tried slot -> custody transfer borrow. With no intervening await or
+SharedStore acquisition it takes the original allocation/guard and calls the
+actual synchronous PhaseSupervisor reserve. Provisional allocation checks use
+the existing separate read-only SQLite snapshot; they are not marker authority.
+
+Ordinary refusal restores the SAME returned objects under the Source borrow.
+Held restoration remains Held. A protocol-error Box is saved in the retained job
+before releasing the borrow, then kept or disposed only outside Source locks.
+On success the job saves the actual capacity before Source's infallible
+finish_accepted. An unfinished/unwound transfer remains Held; no rows, new guard,
+fresh allocation or current ticket reconstruct its continuation.
+
+After releasing all Source locks/origins, Root prepares the original marker from
+the SAME capacity/allocation and producer-held Arc ticket. Planning failure keeps
+all original assets. Root saves the completed SAME plan before marker SQL, reserves
+the actual PhaseJob, and uses the existing private marker writer/handoff. A
+confirmed marker starts the selected actual Native port once. Uncertainty uses
+the exact saved original plan and existing absence/postimage checks. An Engine
+observation, Session None or a result label never authorizes rollback/replay.
+
+## 5. Genuine preparation origin and Native seam
+
+Root creates a private non-Deserialize `PhasePreparationOrigin` only in that
+concrete successful Source-to-queue transfer, from the actual envelope/capsule
+and returned actual capacity. The queue retains this original origin alongside
+the SAME armed guard/allocation before marker publication. The origin retains
+immutable Source custody and original allocation identity, with only a Weak
+reference to the SAME original Arc ticket. Marker's advance strongly retains that
+ticket. It owns no capacity, marker, Runtime or registry; no return cycle is added.
+
+Native receives the original origin only through the genuine PhaseLaunchParts.
+Origin validation compares the original allocation/marker/ticket objects and
+original complete encoded input. It never builds proof from current Source rows,
+an Accepted observation, copied Unit facts or a fresh ticket. Full encoding and
+guard inspection finish outside SharedStore. Native's Immediate conjoins sealed
+original-origin identity with existing current-successor and Driver-live checks,
+complete Unit/input/pair/readiness eligibility and compiled exact permissions.
+No Source/queue mutex is acquired under SharedStore. Real stop admission prevents
+concurrent queue ownership mutation during the synchronous effect section.
+
+The private Native stage may use a zero-helper preparation plan only when that
+actual origin and admission exist. Its known commit changes readiness alone;
+it grants no helper, transport spawn, input or ACK. Helper/transport/quota writers
+remain their separately owned, reviewed concrete consumers. Their shared factoring
+must preserve ordinary authority predicates and cannot add public bypass modes.
+
+## 6. Stop, reconciliation and controls
+
+Stop sets the SAME stopping state while holding admission and prevents new
+handoff/effect admission. Unmarked removal uses the existing actual queue policy;
+publishing/uncertain/native assets remain charged until genuine reconciliation.
+Shutdown includes retained handoff jobs/assets in its pending result and cannot
+report completion while Held originals remain. Runtime Drop fences the shared
+state without requiring a strong Runtime in the worker. No cleanup guarantee or
+success/failure inference follows from worker exit or a reclaimed process group.
+
+Required genuine controls cover observer Drop/unpolled future, capacity refusal
+restoration, protocol-error retention, Source removal and duplicate admission,
+marker planning failure with SAME ticket retained, saved-plan uncertainty, stop
+before/after registration and before spawn, post-child pre-Core faults, and four
+Task independence. Standalone gate/Weak/removal mechanical controls are labelled
+nongrant and cannot qualify these positives. Compiler/setup failures are not
+successful controls. Whole composition/preflight stays refused until genuine
+producers and consumers are installed and positively qualified; existing full
+regression/lint and authenticated compatibility gates remain open.
