@@ -337,9 +337,22 @@ remain independent observations. A final page does not assert a complete snapsho
 
 These read clients do not construct owners or write rows, versions, epochs,
 acknowledgements, audits or attention. Native dispatch is explicitly unavailable.
-CLI creation, typed proposal/graph/lifecycle controls, logs/actual attach, verified
-continuous Goal execution and the TUI remain pending with native producer
-integration. This partial source unit does not satisfy full Goal or MVP acceptance.
+Inline and bounded UTF-8 file objectives now persist through actual Human ingress
+as inert Analyzing proposals. They have no criteria, Tasks, accepted GoalAuthority
+or scheduler entries. Existing protected Goal observation rows pin nongrant
+proposal provenance and the exact proposed Goal version independently of their
+own observation revision; they grant no acceptance. Status distinguishes an inert
+proposal from an accepted definition. Explicit bounded TOML plans include Project
+selection, expected Project version and the typed definition/graph; validation and
+acceptance remain service-owned. Prose is never promoted into that path implicitly.
+
+Goal pause/resume/cancel CLI requires explicit expected Goal version and reason.
+CAS and scope failures surface without current-row refresh/retry. Resume retains
+the existing accepted-policy and genuinely never-prepared-history checks and
+cannot revive a prior Unit/Session/grant. Typed additive followups, Task stop/retry,
+logs/actual attach, verified continuous Goal execution and the TUI remain pending
+with native producer integration. This partial source does not satisfy full Goal
+or MVP acceptance.
 
 ### Published source reconstruction component checkpoint
 
