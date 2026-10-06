@@ -20,12 +20,13 @@ impl Runtime {
     fn observe_task_drivers(&self) -> Result<usize> {
         let pending = self._drivers.observe_finished()?;
         for exit in self._drivers.pending_exits()? {
-            self.owner
+            let publication = self
+                .owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?
                 .record_driver_exit(&exit)?;
-            self._drivers.acknowledge_exit(&exit)?;
+            self._drivers.acknowledge_exit(&exit, &publication)?;
         }
         Ok(pending)
     }

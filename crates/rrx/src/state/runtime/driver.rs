@@ -3,10 +3,7 @@ use super::super::*;
 use crate::{runtime::driver::DriverRegistry, workflow::WorkflowSnapshot};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{
-    collections::BTreeSet,
-    sync::{Arc, Weak},
-};
+use std::sync::{Arc, Weak};
 use uuid::Uuid;
 mod claim;
 pub(crate) use claim::{InitialDriverPlan, PendingDriverClaim, plan_initial_driver};
@@ -15,6 +12,7 @@ pub(crate) use ticket::{DriverReadTicket, read_driver_ticket};
 mod marker;
 mod observation;
 pub(crate) use marker::{DriverMarkerAdvance, DriverPublication};
+pub(crate) use observation::DriverExitPublication;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -204,29 +202,12 @@ fn snapshot(c: &Connection, task_id: TaskId) -> Result<Pins> {
         .optional()?
         .unwrap_or(0);
     let mut prerequisites = Vec::new();
-    let mut seen = BTreeSet::new();
-    for edge in goal
-        .dag
-        .edges
-        .iter()
-        .filter(|e| e.hard && e.dependent == task.id)
-    {
-        ensure!(
-            seen.insert(edge.prerequisite),
-            "duplicate hard prerequisite"
-        );
-        let predecessor: Task = bounded(c, "tasks", &edge.prerequisite.to_string(), 1024 * 1024)?;
-        ensure!(
-            predecessor.project_id == project.id && predecessor.goal_id == goal.id,
-            "foreign prerequisite"
-        );
-        let count:u64=c.query_row("SELECT count(*) FROM records WHERE task_id=?1 AND goal_id=?2 AND project_id=?3 AND kind='workflow'",params![predecessor.id.to_string(),goal.id.to_string(),project.id.to_string()],|r|r.get(0))?;
-        ensure!(count == 1, "prerequisite lacks actual Workflow");
-        let record:Record=decode(c.query_row("SELECT body FROM records WHERE task_id=?1 AND goal_id=?2 AND project_id=?3 AND kind='workflow' AND length(CAST(body AS BLOB))<=8388608",params![predecessor.id.to_string(),goal.id.to_string(),project.id.to_string()],|r|r.get(0))?)?;
+    for (_, _, body, _, _, wbody) in claim::read_prerequisites(c, &task)? {
+        let predecessor: Task = decode(body)?;
+        let record: Record = decode(wbody)?;
         let w: WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
         ensure!(
-            record.scope == predecessor.scope()
-                && w.finished
+            w.finished
                 && w.active.is_none()
                 && w.configured_phases
                     .iter()

@@ -44,6 +44,7 @@ impl Runtime {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .claim_initial_driver(plan, composition)?;
+        pending.bind_claim(&claim)?;
         let runtime = Arc::downgrade(self);
         pending.spawn(move |lifetime,ack| Box::pin(async move {
             {

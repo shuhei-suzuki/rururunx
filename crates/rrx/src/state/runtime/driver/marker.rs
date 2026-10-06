@@ -123,7 +123,7 @@ impl DriverReadTicket {
     }
 }
 impl DriverMarkerAdvance {
-    pub(crate) fn exact_mutations(&self) -> Result<Vec<ExactRowMutation>> {
+    pub(in crate::state) fn exact_mutations(&self) -> Result<Vec<ExactRowMutation>> {
         let mut mutations = vec![ExactRowMutation::new(
             "task_drivers",
             "UPDATE",
