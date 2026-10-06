@@ -101,10 +101,8 @@ impl NativeTransportCustody {
             matches!(child.handoff, Handoff::Offered | Handoff::Accepted)
         };
         self.candidate.owner.revoke();
-        if transferred {
-            if let Some(control) = self.control.get() {
-                let _ = control.try_send(Control::Cancel);
-            }
+        if transferred && let Some(control) = self.control.get() {
+            let _ = control.try_send(Control::Cancel);
         }
         self.changed.notify_waiters();
     }
@@ -448,31 +446,35 @@ struct CoreShell {
     frozen_terminal: Arc<Mutex<Option<Arc<NativeTerminal>>>>,
     phase: Arc<phase_protocol::PhaseActor>,
     custody: Weak<NativeTransportCustody>,
-    drain: Option<tokio::task::JoinHandle<()>>,
 }
-impl CoreShell {
+struct ReadyCoreShell {
+    shell: CoreShell,
+    drain: tokio::task::JoinHandle<()>,
+}
+impl ReadyCoreShell {
     fn into_core(self, child: process::OwnedProcess) -> Core {
+        let shell = self.shell;
         Core {
-            owner: self.owner,
-            unit: self.unit,
-            session: self.session,
+            owner: shell.owner,
+            unit: shell.unit,
+            session: shell.session,
             record_version: 1,
-            invocation: self.invocation,
+            invocation: shell.invocation,
             collector: native_result::Collector::default(),
             receipt_saved: false,
             captured_terminal: None,
             observed_input: None,
             observed_terminal: None,
-            frozen_terminal: self.frozen_terminal,
-            wire: self.wire,
+            frozen_terminal: shell.frozen_terminal,
+            wire: shell.wire,
             child,
-            update: self.update,
-            controls: self.controls,
-            native: self.native,
-            drain: self.drain.unwrap(),
-            phase: Some(self.phase),
+            update: shell.update,
+            controls: shell.controls,
+            native: shell.native,
+            drain: self.drain,
+            phase: Some(shell.phase),
             handoff: Some(TransportHandoff {
-                custody: self.custody,
+                custody: shell.custody,
             }),
         }
     }
@@ -676,7 +678,7 @@ impl NativeSessions {
         } else {
             4 * 1024 * 1024
         };
-        let mut shell = CoreShell {
+        let shell = CoreShell {
             owner: self.owner.clone(),
             unit: plan.unit().clone(),
             session: plan.session().clone(),
@@ -692,7 +694,6 @@ impl NativeSessions {
             frozen_terminal: terminal.clone(),
             phase: candidate.clone(),
             custody: Arc::downgrade(&custody),
-            drain: None,
         };
         {
             let mut entries = self
@@ -715,7 +716,7 @@ impl NativeSessions {
                 },
             );
         }
-        shell.drain = Some(tokio::spawn(async move {
+        let drain = tokio::spawn(async move {
             use tokio::io::AsyncReadExt;
             let mut stderr = pipes.stderr;
             let mut buf = [0; 8192];
@@ -725,7 +726,8 @@ impl NativeSessions {
                     Ok(_) => {}
                 }
             }
-        }));
+        });
+        let shell = ReadyCoreShell { shell, drain };
         let transferred = {
             let mut child = custody
                 .child
@@ -734,7 +736,9 @@ impl NativeSessions {
             let open = child.handoff == Handoff::None
                 && !child.stop_requested
                 && candidate.owner.is_live();
-            let result = child.cell.transfer_with(open, shell, CoreShell::into_core);
+            let result = child
+                .cell
+                .transfer_with(open, shell, ReadyCoreShell::into_core);
             if result.is_ok() {
                 child.handoff = Handoff::Offered;
                 let _ = custody.control.set(control);
@@ -748,9 +752,7 @@ impl NativeSessions {
                     .lock()
                     .map_err(|_| anyhow::anyhow!("sessions poisoned"))?
                     .remove(&handle.session);
-                if let Some(drain) = &refused.shell.drain {
-                    drain.abort();
-                }
+                refused.shell.drain.abort();
                 drop(refused.shell);
                 anyhow::bail!(refused.reason);
             }
