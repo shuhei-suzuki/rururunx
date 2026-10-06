@@ -290,6 +290,33 @@ impl Store {
                 "native Context digest changed"
             );
         }
+        let task: Task = read_tx(
+            &tx,
+            "tasks",
+            &unit
+                .scope
+                .task_id
+                .context("native Task missing")?
+                .to_string(),
+        )?
+        .context("native Task missing")?;
+        ensure!(
+            task.context_version == invocation.context_version.unwrap_or(0),
+            "native Context pointer superseded before input"
+        );
+        if let Some(version) = invocation.context_version {
+            let context: ContextVersion = decode(context_body(&tx, &unit.scope, version)?)?;
+            ensure!(
+                context.scope == unit.scope
+                    && context.version == version
+                    && context.revision == invocation.revision
+                    && context.source_hashes == invocation.source_versions
+                    && crate::execution::native_result::digest(
+                        serde_json::to_string(&context.data)?.as_bytes()
+                    ) == invocation.payload_sha256,
+                "native Context frame superseded before input"
+            );
+        }
         effects::reserve_effect_tx(&tx, authority, effect)?;
         let expected = invocation.version;
         invocation.version += 1;

@@ -315,6 +315,10 @@ pub(super) struct Collector {
     observed: u64,
     observed_complete: bool,
     events: usize,
+    exhausted: bool,
+    completed: bool,
+    claude_signature: Option<String>,
+    claude_ids: BTreeMap<String, String>,
     status: Option<AcquisitionStatus>,
     terminal: Option<String>,
     diagnostics: Vec<String>,
@@ -329,6 +333,9 @@ pub(super) struct Content {
 }
 impl Collector {
     fn poison(&mut self, status: AcquisitionStatus, diagnostic: &str) {
+        if status == AcquisitionStatus::Overflow {
+            self.exhausted = true;
+        }
         // Overflow and ambiguity are sticky; no subsequent successful frame repairs them.
         if !matches!(
             self.status,
@@ -362,6 +369,20 @@ impl Collector {
             n -= 1;
         }
         self.draft.push_str(&text[..n]);
+    }
+    pub(super) fn overflowed(&self) -> bool {
+        self.exhausted
+    }
+    pub(super) fn confirm_complete(&mut self) {
+        self.completed = true;
+    }
+    pub(super) fn claude_redelivery(&mut self, frame: &serde_json::Value) {
+        if frame["uuid"]
+            .as_str()
+            .is_some_and(|id| self.claude_ids.contains_key(id))
+        {
+            self.claude_terminal(frame);
+        }
     }
     pub(super) fn wire_failed(&mut self, wire: &WireEvidence) {
         let status = if matches!(
@@ -528,6 +549,28 @@ impl Collector {
         }
     }
     pub(super) fn claude_terminal(&mut self, frame: &serde_json::Value) {
+        if !self.event() {
+            return;
+        }
+        let signature=digest(&serde_json::to_vec(&serde_json::json!({"subtype":frame["subtype"],"is_error":frame["is_error"],"result":frame["result"],"structured_output":frame["structured_output"]})).expect("Value encoding"));
+        if let Some(id) = frame["uuid"].as_str() {
+            if !self.claude_ids.contains_key(id) && self.claude_ids.len() >= 256 {
+                self.poison(AcquisitionStatus::Overflow, "answer_item_limit");
+                return;
+            }
+            if self.claude_ids.get(id).is_some_and(|old| old != &signature) {
+                self.poison(AcquisitionStatus::Ambiguous, "answer_result_changed");
+                return;
+            }
+            self.claude_ids.insert(id.into(), signature.clone());
+        }
+        if let Some(old) = &self.claude_signature {
+            if old != &signature {
+                self.poison(AcquisitionStatus::Ambiguous, "answer_multiple_results");
+            }
+            return;
+        }
+        self.claude_signature = Some(signature);
         self.terminal = Some(digest(&serde_json::to_vec(frame).expect("Value encoding")));
         if frame["subtype"] != "success" {
             self.poison(
@@ -559,15 +602,15 @@ impl Collector {
         }
     }
     pub(super) fn content(&self) -> Content {
-        let status =
-            self.status
-                .unwrap_or(if self.final_text.is_some() && self.terminal.is_some() {
-                    AcquisitionStatus::Complete
-                } else if self.observed > 0 {
-                    AcquisitionStatus::Partial
-                } else {
-                    AcquisitionStatus::Missing
-                });
+        let status = self.status.unwrap_or(
+            if self.completed && self.final_text.is_some() && self.terminal.is_some() {
+                AcquisitionStatus::Complete
+            } else if self.observed > 0 {
+                AcquisitionStatus::Partial
+            } else {
+                AcquisitionStatus::Missing
+            },
+        );
         let text = (status == AcquisitionStatus::Complete)
             .then(|| self.final_text.clone())
             .flatten();

@@ -229,6 +229,7 @@ impl AgentAdapter for FakeAgent {
                         pending: vec![],
                         result: None,
                         receipt: None,
+                        observed_work: None,
                         metrics: None,
                         diagnostic: None,
                         failure: None,

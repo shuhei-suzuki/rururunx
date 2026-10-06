@@ -297,3 +297,28 @@ or overflowing frames retain only a hash of observed bytes, length, exact/lower-
 bound flag and finite category. No raw credential-bearing prefix is persisted.
 The receipt reference and compatibility projection follow durable typed reads;
 no plain DTO or projection supplies reviewer, member or round permission.
+
+Correction controls preserve the actual observer boundaries. The collector sees
+accepted ordinary Claude results when they arrive, before running/idle or
+background holds can replace RunState.result. Identical representation repeats
+are idempotent; changed ordinary representations or a changed previously owned
+UUID poison acquisition. A known frame is not Complete acquisition until native
+completion/final-idle has been accepted. Exhausting the item/event/content budget
+ends the owned acquisition loop immediately, including when the peer sends no
+terminal; no unbounded suffix is drained to find a later completion.
+
+The native_input intent transaction rechecks the current Task Context pointer and
+all pinned Context bytes/source/payload digests. A formerly standalone input also
+requires the Task to remain without a durable Context pointer. New Context rows
+cannot supersede the frozen frame silently at the stdin boundary.
+
+A known terminal is captured once as a sealed bounded proof retained privately by
+the Session registry and supervisor. Receipt persistence errors do not recapture
+it as Unknown/Lost. Drop retries the same proof before considering abandonment;
+scoped status reconciliation may commit that same proof after storage recovers
+and updates the watch. No new CLI input or RPC turn is replayed. Until commit,
+observed_work reports only the finite native observation, durable work remains
+unset/uncertain, and registry release is refused. A cancel or epoch fence wins
+normally; a later stored receipt is HistoricalDraft and never reopens permission.
+This in-memory handoff does not survive Runtime SIGKILL before a durable receipt;
+restart retains the existing conservative Unknown/no-replay behavior.
