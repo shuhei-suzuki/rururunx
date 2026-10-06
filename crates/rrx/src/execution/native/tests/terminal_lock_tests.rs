@@ -5,7 +5,7 @@ use crate::{
     domain::{Goal, Project, Task},
     state::{APPLICATION_ID, Store},
 };
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, functions::FunctionFlags, params};
 use std::sync::mpsc as std_mpsc;
 
 async fn legacy_fixture() -> (tempfile::TempDir, Arc<RuntimeOwner>, Task) {
@@ -56,6 +56,25 @@ async fn legacy_fixture() -> (tempfile::TempDir, Arc<RuntimeOwner>, Task) {
         include_str!("../../../state/runtime/schema.sql"),
     ] {
         c.execute_batch(sql).unwrap();
+    }
+    c.create_scalar_function(
+        "rrx_writer_contract_version",
+        0,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_INNOCUOUS,
+        |_| Ok(9_i64),
+    )
+    .unwrap();
+    let tables = {
+        let mut q=c.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT GLOB 'sqlite_*' ORDER BY name").unwrap();
+        q.query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    };
+    for table in tables {
+        for action in ["INSERT", "UPDATE", "DELETE"] {
+            c.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>9 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
+        }
     }
     c.execute(
         "INSERT INTO runtime_epoch(singleton,instance_id,epoch) VALUES(1,?1,0)",
