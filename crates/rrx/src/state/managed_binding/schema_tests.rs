@@ -486,3 +486,21 @@ fn fresh_private_tables_have_complete_column_images_and_domain_guards() {
         .is_err()
     );
 }
+
+// Export an actual original00df Store-created/migrated schema10. This test-only
+// harness does not change any original production byte or issue native proofs.
+#[test]
+#[ignore = "owned historical fixture exporter, explicit target path required"]
+fn historical_store_harness_initializes_actual00df() {
+    let path = std::path::PathBuf::from(std::env::var_os("RRX_BINDING10_OLD_STORE_PATH")
+        .expect("explicit owned fixture path required"));
+    assert!(path.is_absolute());
+    let store = Store::open(&path).unwrap();
+    assert_eq!(store.schema_version().unwrap(), 10);
+    assert_eq!(store.connection.query_row(
+        "SELECT count(*) FROM sqlite_schema WHERE name='binding_record_native_ref'",
+        [], |r|r.get::<_,i64>(0)).unwrap(), 0);
+    assert_eq!(store.connection.query_row(
+        "SELECT count(*) FROM managed_phase_operations", [], |r|r.get::<_,i64>(0)).unwrap(),0);
+    drop(store);
+}
