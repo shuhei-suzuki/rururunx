@@ -70,6 +70,8 @@ pub(crate) struct NativeTransportStartPlan {
     effect: ManagedEffect,
     effect_raw: String,
     current: CurrentWorkflowSuccessor,
+    registered_current: CurrentWorkflowSuccessor,
+    registered_inventory: super::version::NativeRegistrationInventory,
     owner_before: PairRow,
     owner_after: PairRow,
     readiness_before: PairRow,
@@ -153,13 +155,8 @@ impl NativeTransportStartPlan {
         // Confirmation validates the SAME original Source/frame and known own
         // postimages. It does not reuse the pre-registration Unit CAS.
         self.prepared.validate_original()?;
-        let post =
-            self.current
-                .with_known_unit(Arc::new(crate::state::managed_binding::Body::decode(
-                    self.unit_raw.clone(),
-                    16 * 1024,
-                )?))?;
-        self.launch.validate_preparation_origin_tx(tx, &post)?;
+        self.launch
+            .validate_preparation_origin_tx(tx, &self.registered_current)?;
         validate_unit_authority_facts(tx, &self.unit_after.authority(), &self.unit_after)?;
         validate_native_effect_open(&self.unit_after)?;
         let original = self.launch.marker().original_plan();
@@ -173,9 +170,7 @@ impl NativeTransportStartPlan {
         self.owner_after.validate_tx(tx)?;
         self.readiness_after.validate_tx(tx)?;
         self.prepared.quota().validate_registration_tx(tx)?;
-        self.prepared
-            .history()
-            .validate_registration_inventory(tx, &self.effect)?;
+        self.registered_inventory.validate_tx(tx)?;
         let (p, g, t) = scope_keys(&self.session.scope)?;
         let exact:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM records WHERE id=?1 AND kind='session' AND project_id=?2 AND goal_id=?3 AND task_id=?4 AND version=1 AND body=?5) AND EXISTS(SELECT 1 FROM session_units WHERE session_id=?1 AND unit_id=?6 AND project_id=?2 AND goal_id=?3 AND task_id=?4 AND dispatch_state='pending') AND NOT EXISTS(SELECT 1 FROM session_units WHERE (session_id=?1 OR unit_id=?6) AND NOT(session_id=?1 AND unit_id=?6))",params![self.session.id.to_string(),p,g,t,self.record_raw,self.unit_after.id.to_string()],|r|r.get(0))?;
         ensure!(exact, "registration Session complete postimage changed");
@@ -233,21 +228,24 @@ fn plan_prepared_transport(
     let current = prepared.lineage().current().copy_original();
     registration_attempt(&current, &launch)?;
     let (owner_before, readiness_before, artifact_version) = snapshot(owner, |tx| {
-        prepared.lineage().validate_registration_tx(tx)?;
-        prepared.history().validate_inventory(tx)?;
-        prepared.quota().validate_registration_tx(tx)?;
-        registration_unit(current.unit(), &launch)?;
-        no_registration(tx, &launch)?;
-        let artifact_version = current
-            .unit()
-            .artifact_id
-            .map(|id| self_artifact_tx(tx, id).map(|a| a.version))
-            .transpose()?;
-        Ok((
-            original_owner(tx, &launch)?,
-            prepared.lineage().readiness().copy_image(),
-            artifact_version,
-        ))
+        let budget = super::version::InventoryBudget::new(tx)?;
+        budget.finish((|| {
+            prepared.lineage().validate_registration_tx(tx)?;
+            prepared.history().validate_inventory(tx)?;
+            prepared.quota().validate_registration_tx(tx)?;
+            registration_unit(current.unit(), &launch)?;
+            no_registration(tx, &launch)?;
+            let artifact_version = current
+                .unit()
+                .artifact_id
+                .map(|id| self_artifact_tx(tx, id).map(|a| a.version))
+                .transpose()?;
+            Ok((
+                original_owner(tx, &launch)?,
+                prepared.lineage().readiness().copy_image(),
+                artifact_version,
+            ))
+        })())
     })?;
     let mut owner_after = PairRow {
         table: owner_before.table,
@@ -328,6 +326,10 @@ fn plan_prepared_transport(
     );
     let effect = transport_effect(&launch, &command_digest)?;
     let effect_raw = serde_json::to_string(&effect)?;
+    let registered_current = current.with_known_unit(Arc::new(
+        crate::state::managed_binding::Body::decode(unit_raw.clone(), 16 * 1024)?,
+    ))?;
+    let registered_inventory = prepared.history().registration_inventory(&effect)?;
     ensure!(
         prepared.history().len() <= 252,
         "prepared effect reserve exhausted"
@@ -339,6 +341,8 @@ fn plan_prepared_transport(
         effect_raw,
         launch,
         current,
+        registered_current,
+        registered_inventory,
         owner_before,
         owner_after,
         readiness_before,

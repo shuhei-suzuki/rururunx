@@ -53,6 +53,7 @@ fn windows(tx: &Transaction<'_>, provider: &str) -> Result<(Vec<Row>, Vec<QuotaO
             },
         )?;
         let o: QuotaObservation = serde_json::from_value(value)?;
+        valid_observation(&o)?;
         ensure!(
             image[0] == SqlValue::Text(o.provider.clone())
                 && image[1] == SqlValue::Text(o.account_key.clone())

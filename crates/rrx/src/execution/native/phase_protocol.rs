@@ -405,6 +405,7 @@ impl NativePhaseSession {
         }))
     }
     pub(super) fn project(&self, session: &Session, record_version: u64) -> Result<()> {
+        self.validate_known_registration()?;
         let mut projection = self
             .projection
             .lock()

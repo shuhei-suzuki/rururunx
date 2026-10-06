@@ -462,6 +462,7 @@ impl NativeOwnerPlan {
         );
         validate_current_tx(tx, self.binding.marker(), &self.current)?;
         self.binding.marker().validate_driver_live_tx(tx)?;
+        self.binding.owner().origin().prepared().validate_open()?;
         self.validate_registered_facts_tx(tx)?;
         validate_native_effect_open(self.current.unit())?;
         self.session.validate_tx(tx)?;

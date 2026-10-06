@@ -333,15 +333,20 @@ pub(crate) struct NativeHelperHistoryCommit {
     original: Arc<NativePreparationCommit>,
     history: Vec<Arc<NativeHelperSettlementCommit>>,
 }
+pub(super) struct NativeRegistrationInventory { unit:UnitId,expected:Inventory }
+impl NativeRegistrationInventory {
+    pub(super) fn validate_tx(&self,tx:&Transaction<'_>) -> Result<()> {
+        ensure!(Inventory::read(tx,self.unit)?==self.expected,"SAME registration helper-plus-intent inventory differs");Ok(())
+    }
+}
 impl NativeHelperHistoryCommit {
-    pub(super) fn validate_registration_inventory(&self, tx:&Transaction<'_>, effect:&ManagedEffect) -> Result<()> {
+    pub(super) fn registration_inventory(&self, effect:&ManagedEffect) -> Result<NativeRegistrationInventory> {
         let tail=self.history.last().context("closed helper history absent")?;
         let mut expected=(*tail.original.after).clone();
         expected.rows.push(EffectImage::generated(effect)?);
         expected.rows.sort_by(|a,b|a.text[0].cmp(&b.text[0]));
         expected.validate_bound()?;
-        ensure!(Inventory::read(tx,effect.unit_id)?==expected,"SAME registration helper-plus-intent inventory differs");
-        Ok(())
+        Ok(NativeRegistrationInventory {unit:effect.unit_id,expected})
     }
     pub(crate) fn matches_prefix(&self, known:&Arc<NativePreparationCommit>, version:&Arc<NativeHelperSettlementCommit>) -> bool { Arc::ptr_eq(&self.original,known) && self.history.first().is_some_and(|k|Arc::ptr_eq(k,version)) }
     pub(crate) fn len(&self) -> usize { self.history.last().map_or(0, |k| k.original.after.rows.len()) }
