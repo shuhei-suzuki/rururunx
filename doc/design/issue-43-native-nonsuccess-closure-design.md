@@ -29,6 +29,8 @@
 
    rrx is not a security sandbox. Native Agents and hooks keep the user's host authority. No process-death claim is made or needed.
 
+7. **Correction scope.** This revision resolves the seven confirmed findings RN1-SOL-01 to RN1-SOL-07 of the independent Sol high review of `b03b6622`. The source pin is unchanged. The G5 component `c51af44` was read only to locate the replaced bail and the driven entry (§§9, 15); it is not a source pin of this HOW.
+
 ### 1.1 One-line acceptance condition (P)
 
 After the SAME selected Native start has ended, the Root's SAME retained PhaseJobs job may close the operation. Its SAME custody must hold a known nongrant preparation closure of the SAME issued `PreparedPhaseNoCurrentDispatch`, with no transport ever installed. The job then obtains one `NativeNoDispatchClosureProof` from that custody and commits ONE exact typed Immediate that:
@@ -60,7 +62,7 @@ RN-1 never calls, widens or reuses `remove_unmarked`, `remove_unstarted`, `close
 | Preparation closure | `close_prepared_on_revocation` (`prepared.rs:24–101`) returns `Result<()>`. Its callers are the parked and backoff revocation arms (`:173,179`), which then bail "Root typed non-success closure unavailable", and `reconcile_known_commit` (`preparation.rs:665–671`). `reconcile_known_commit` returns `Ok(())` early when `closed` is set (`:656–658`) and has **no caller** |
 | Closure plan/commit | `state/execution/native_phase/quota.rs:29–52,61–72,1228–1395` retain the SAME actor, no-dispatch, lineage, `LatestUnitImage` and exact pool/waiter/lease images, plus readiness `closed`, `start_ended=1`. `close_phase_quota` writes pool/waiter/lease and readiness under one readiness permit. Confirm accepts an exact postimage, or an exact preimage (rolled back); anything else is Held. **The Unit is never written** |
 | Transport invariant | `retain_transport` (`preparation.rs:51–72`) does **not** clear `no_dispatch` (prepared HOW §5 item 3 says it does). `closure_original` does not check that `transport` is empty |
-| Start path | `execution/native.rs:208–215` always bails after `begin_phase_preparation` returns Prepared ("transport composition unavailable"). `start_prepared_transport` (`execution/native/transport.rs:498`) has no caller (G5) |
+| Start path | `execution/native.rs:208–215` always bails after `begin_phase_preparation` returns Prepared ("transport composition unavailable"). `start_prepared_transport` (`execution/native/transport.rs:498`) has no caller (G5). G5 (component `c51af44`, not this pin) replaces the bail with that call, so the bail is not an RN-1 producer (§15 item 2) |
 | Root jobs | `MAX_JOBS=128` (`phase_jobs.rs:19`). On start `Err`, the observation becomes `Failed`, the outcome is retained, then `preparation.abandon()` runs (`:276–292`). `RunningJob` drop gives `Uncertain` plus abandon (`:385–404`). Entries are never removed after start |
 | Root slots | A marked slot keeps its `PreparationGuard`. `ensure_accepted_shutdown_complete` (`phase_supervisor.rs:746–756`) and `ensure_shutdown_complete` (`phase_jobs.rs:350–360`) fail while any marked slot or job remains. Dropping an accepted guard is a no-op (`execution/owner.rs:102–112`) |
 | Service loop | `runtime/service.rs:62–99` runs synchronous sweeps (`reconcile_pending`, Driver observation) with a capped 100 ms–5 s backoff |
@@ -87,13 +89,13 @@ RN-1 closes an operation only when all of the following hold:
    - That plan's actor and no-dispatch are pointer-equal to the custody's.
 4. **Store currency** per §7.2.
 
-By reading, the following reach it at `7be25fec` once composition exists:
-- every start that issues Prepared (S7) and then bails at `execution/native.rs:214`, while holding its lease and maybe its own probe, which the preparation closure releases;
-- an S6 Store error whose own confirm returned RolledBack (`prepared.rs:145–147`);
+By reading, once G5 composition and the authentic composed Workflow activation producer exist (§17), the following reach it:
+- an S6 quota Store error whose own confirm returned RolledBack (`prepared.rs:145–147`);
 - an S7 conjunct failure;
-- a revocation while parked or in conflict backoff (`prepared.rs:173,179`), where `closed` is already produced in task.
+- a refusal in `start_prepared_transport` before `retain_transport` (`transport.rs:503–562`), such as `qualified_physical_profile` (`version.rs:376–383`);
+- a revocation while parked or in conflict backoff (`prepared.rs:173,179`), where `closed` is already produced in task; only an existing genuine revoker reaches this (G3 is unresolved).
 
-G5 composition always refuses, so **no production path reaches RN-1 today**.
+The `execution/native.rs:214` bail is replaced by G5 and is not an RN-1 producer. At this source pin composition refuses earlier (`state/managed_binding/composition.rs:70–75`), so **no production path reaches RN-1 today**.
 
 ### 3.2 Not covered: Held, or the case's own unchanged producer
 
@@ -112,53 +114,99 @@ G5 composition always refuses, so **no production path reaches RN-1 today**.
 
 ## 4. Types, ownership and API (P)
 
-All new types are crate-private, non-Clone, not Serialize/Deserialize, with private fields and no row/ID/DTO constructor.
+All new types are crate-private, non-Clone, not Serialize/Deserialize, with private fields and no row/ID/DTO constructor. A restricted `pub(in path)` must name an ancestor of its defining module, so an item read across the `execution` and `state` trees is `pub(crate)` and sealed by an unforgeable argument: a pointer-checked witness, or the `NonSuccessReader` token that only `state::execution::native_phase::nonsuccess` can construct. No accessor returns a reference derived from a temporary `Weak` upgrade or lock guard; every exported reference borrows an Arc field of the value itself.
 
 ```rust
-// execution/native/nonsuccess.rs (new)
+// execution/native/nonsuccess.rs (new); execution/native.rs adds `mod nonsuccess;`
+// and `pub(crate) use nonsuccess::{NativeClosureStep, NativeNoDispatchClosureProof};`
 pub(crate) struct NativeNoDispatchClosureProof {
     custody: Weak<NativePreparationCustody>,           // SAME job custody, never strong
     actor: Arc<NativePreparationActor>,                // SAME original actor, revoked
     no_dispatch: Arc<PreparedPhaseNoCurrentDispatch>,  // SAME issued S5 value
-    closed: Arc<NativePreparationClosureCommit>,       // SAME known nongrant closure
+    closure: Arc<NativeQuotaClosurePlan>,              // SAME Arc as the custody `closure`
+    closed: Arc<NativePreparationClosureCommit>,       // closed.matches_plan(&closure)
 }
 pub(crate) enum NativeClosureStep {
-    NotEligible,                                       // start not ended / custody not revoked
-    PreparationPending,                                // closure conflict or rolled back; later wake
+    NotEligible,                                       // not revoked, or transport installed
+    PreparationPending,                                // closure conflict or rolled back; later turn
     Held(anyhow::Error),                               // bounded reason; nothing written
     Proof(Arc<NativeNoDispatchClosureProof>),
 }
+impl NativeNoDispatchClosureProof {
+    /// Visible only inside execution::native; its sole caller is `nonsuccess_step`.
+    pub(super) fn issue(custody: &Arc<NativePreparationCustody>, actor: Arc<NativePreparationActor>,
+        no_dispatch: Arc<PreparedPhaseNoCurrentDispatch>, closure: Arc<NativeQuotaClosurePlan>,
+        closed: Arc<NativePreparationClosureCommit>) -> Result<Self>;
+    pub(crate) fn launch(&self) -> &Arc<PhaseLaunchParts>;                  // actor.launch()
+    pub(crate) fn validate_original(&self) -> Result<()>;                   // §5, memory only
+    pub(crate) fn closure(&self, _: &crate::state::NonSuccessReader) -> &Arc<NativeQuotaClosurePlan>;
+}
+
+// execution/native/preparation.rs (extended; CustodyState stays private here).
+// CustodyState gains `nonsuccess: Option<Arc<NativeNoDispatchClosureProof>>`, set once.
 impl NativePreparationCustody {
     /// Sole issuer. `ended` is constructible only inside runtime::phase_jobs.
     pub(crate) fn nonsuccess_step(self: &Arc<Self>, ended: &crate::runtime::StartEnded)
         -> NativeClosureStep;
 }
-impl NativeNoDispatchClosureProof {
-    pub(crate) fn launch(&self) -> &Arc<PhaseLaunchParts>;
-    pub(crate) fn validate_original(&self) -> Result<()>;      // in-memory pointer checks only
-    pub(in crate::state) fn closure(&self) -> &Arc<NativeQuotaClosurePlan>;
-}
+
+// execution/native/prepared.rs (extended)
+pub(super) enum PreparationStep { Known, Conflict, RolledBack, Held(anyhow::Error) }
 impl NativeSessions {
-    /// One bounded step; the existing async loop wraps it with unchanged backoff.
+    /// One bounded step; `close_prepared_on_revocation` loops it with its unchanged backoff.
     pub(super) fn close_prepared_step(&self, custody: &Arc<NativePreparationCustody>)
-        -> Result<PreparationStep>;                    // Known | Conflict | RolledBack
+        -> Result<PreparationStep>;
 }
 
-// runtime/phase_jobs.rs (extended)
-pub(crate) struct StartEnded { allocation: Arc<NativeAllocation> } // constructor private to phase_jobs
+// runtime/phase_jobs.rs (extended); runtime/mod.rs adds `pub(crate) use phase_jobs::StartEnded;`
+pub(crate) struct StartEnded { allocation: Arc<NativeAllocation> }   // built only in phase_jobs
+impl StartEnded {
+    pub(crate) fn matches_allocation(&self, a: &Arc<NativeAllocation>) -> bool;   // Arc::ptr_eq
+}
 pub(crate) enum InvocationObservation { /* existing */ ClosedNonSuccess }
 
-// state/execution/native_phase/nonsuccess.rs (new)
+// state/managed_binding/closure.rs (new). ManagedMarkerPlan fields are pub(super),
+// so marker-derived images are planned and validated inside managed_binding.
+pub(in crate::state) struct UnlinkedPhaseClosure {   // compact, retained (§7.5)
+    attempt: usize,
+    workflow_version_after: u64,
+    workflow_growth: u64,
+    at: i64,
+    workflow_after_sha256: String,                    // WORKFLOW_DOMAIN digest, 64 hex
+    operation_body_after_sha256: String,              // 64 hex
+}
+pub(in crate::state) struct PhaseClosureImages {     // transient, never retained
+    workflow_after: Record,
+    workflow_after_raw: String,
+    operation_after: Vec<SqlValue>,                   // 32 columns
+}
+pub(in crate::state) enum PhaseImage<'a> {
+    Open,
+    Closed { images: &'a PhaseClosureImages, at: i64, data: &'a str },
+}
+pub(in crate::state) fn plan_unlinked_closure(tx: &Transaction<'_>, marker: &OriginalMarker, at: i64)
+    -> Result<UnlinkedPhaseClosure>;
+pub(in crate::state) fn validate_original_phase_tx(tx: &Transaction<'_>, marker: &OriginalMarker,
+    unit: (&ExecutionUnit, &str), image: PhaseImage<'_>) -> Result<()>;      // §7.2 item 2, §8
+impl UnlinkedPhaseClosure {
+    pub(in crate::state) fn materialize(&self, marker: &OriginalMarker) -> Result<PhaseClosureImages>;
+    pub(in crate::state) fn mutations(&self, marker: &OriginalMarker, images: &PhaseClosureImages)
+        -> Result<[ExactRowMutation; 2]>;             // operation and records UPDATE
+    pub(in crate::state) fn validate_budget_tx(&self, tx: &Transaction<'_>, marker: &OriginalMarker,
+        audit_bytes: u64) -> Result<()>;
+}
+
+// state/execution/native_phase/nonsuccess.rs (new); re-exported like `native_phase.rs:23–25`
+pub(crate) struct NonSuccessReader(());              // private field: built only here
 pub(crate) struct NativeNonSuccessClosurePlan {
     proof: Arc<NativeNoDispatchClosureProof>,
-    current: CurrentWorkflowSuccessor,                 // fresh, original-anchored, zero links
-    unit_after: Body<ExecutionUnit>,                   // preimage = proof.closure().unit (exact 13 cols)
-    operation_after: Vec<SqlValue>,                    // 32 cols; preimage = marker original image
-    workflow_after: Body<Record>,
-    audit_data: String,                                // <= 4096 bytes
-    at: i64,
-    operation_mutation: ExactRowMutation,              // managed_phase_operations UPDATE
-    record_mutation: ExactRowMutation,                 // records UPDATE; audit permit built in TX
+    images: UnlinkedPhaseClosure,
+    unit_after: Vec<SqlValue>,                       // 13 columns; body <= 16 KiB
+    audit_data: String,                              // <= 4096 bytes
+}
+pub(crate) struct NativeNonSuccessMaterial {         // one turn; consumed by one Store call
+    plan: Arc<NativeNonSuccessClosurePlan>,
+    images: PhaseClosureImages,
 }
 pub(crate) struct PhaseClosedAcknowledgment { plan: Arc<NativeNonSuccessClosurePlan> }
 pub(crate) enum NativeNonSuccessWrite { Known(PhaseClosedAcknowledgment), Conflict(anyhow::Error) }
@@ -166,41 +214,49 @@ pub(crate) enum NativeNonSuccessConfirmation { Known(PhaseClosedAcknowledgment),
 impl Store {
     pub(crate) fn plan_phase_nonsuccess_closure(owner: &Arc<RuntimeOwner>,
         proof: Arc<NativeNoDispatchClosureProof>) -> Result<Arc<NativeNonSuccessClosurePlan>>;
-    pub(crate) fn close_phase_nonsuccess(&mut self, plan: Arc<NativeNonSuccessClosurePlan>)
-        -> Result<NativeNonSuccessWrite>;
-    pub(crate) fn confirm_phase_nonsuccess(&mut self, plan: Arc<NativeNonSuccessClosurePlan>)
-        -> Result<NativeNonSuccessConfirmation>;
+    pub(crate) fn materialize_phase_nonsuccess(plan: &Arc<NativeNonSuccessClosurePlan>)
+        -> Result<NativeNonSuccessMaterial>;         // no Store mutex
+    pub(crate) fn close_phase_nonsuccess(&mut self, material: NativeNonSuccessMaterial)
+        -> Result<NativeNonSuccessWrite>;            // Err = uncertain
+    pub(crate) fn confirm_phase_nonsuccess(&mut self, material: NativeNonSuccessMaterial)
+        -> Result<NativeNonSuccessConfirmation>;     // Err = Held
 }
 impl PhaseClosedAcknowledgment {
     pub(crate) fn matches_allocation(&self, a: &Arc<NativeAllocation>) -> bool;      // Arc::ptr_eq
     pub(crate) fn matches_marker(&self, m: &Arc<OriginalMarker>) -> bool;           // Arc::ptr_eq
 }
 
-// runtime/phase_supervisor.rs and runtime/phase_jobs.rs (extended, pub(super))
-impl PhaseDispatcher { pub(super) fn reconcile_nonsuccess(&self) -> Result<bool>; }
-impl PhaseSupervisor { fn retire_closed_marked(&self, ack: &PhaseClosedAcknowledgment) -> Result<()>; }
+// runtime (extended). Job stays private to phase_jobs, so the per-job sweep lives there.
+impl PhaseDispatcher { pub(super) fn reconcile_nonsuccess(&self) -> Result<bool>; }  // delegates
 impl PhaseJobs {
-    pub(super) fn closure_page(&self) -> Result<Vec<(Arc<Job>, Option<StartEnded>)>>; // <= 64
-    pub(super) fn retire_closed(&self, job: &Arc<Job>) -> Result<()>;
+    pub(super) fn reconcile_nonsuccess(&self, phases: &PhaseSupervisor, stopping: &AtomicBool)
+        -> Result<bool>;
+    fn closure_snapshot(&self) -> Result<Vec<(OperationId, Arc<Job>, bool)>>;      // bool: handle finished
+    fn retire_closed(&self, job: &Arc<Job>) -> Result<()>;
+}
+impl PhaseSupervisor {
+    pub(super) fn retire_closed_marked(&self, ack: &PhaseClosedAcknowledgment) -> Result<()>;
 }
 ```
 
-Supporting accessors, all `pub(in crate::state)` or narrower:
-- `OriginalMarker::original_operation_image()` returns the retained 32-column insert image;
-- on `NativeQuotaClosurePlan`: `unit()`, `readiness_after()`, `own_after()` and `no_dispatch()`;
-- `NativeQuotaClosurePlan::validate_original` becomes `pub(in native_phase)`.
+Supporting accessors, each at a legal and narrowest visibility:
+- `quota.rs`: `NativeQuotaClosurePlan::validate_original` becomes `pub(super)` (visible in `native_phase` and its child `nonsuccess`); new `pub(super)` `unit()` and `validate_after_tx(tx)` (readiness equals the `closed` image, own waiter absent, own lease equal to the after-image or absent); new `pub(crate)` `matches_no_dispatch(&Arc<PreparedPhaseNoCurrentDispatch>) -> bool` (pointer check only).
+- `publication.rs`: `OriginalMarker::validate_unadvanced_tx(tx)` (operation, input and owner rows equal their retained insert images, reusing `Insert::validate_tx`, `marker_rows.rs:59–77`) and `original_operation_image()`, both `pub(super)`.
+- `successor.rs`: the ledger reader `rows` and `KINDS` become `pub(super)` for `closure.rs`. `CurrentWorkflowSuccessor::workflow_raw` stays `pub(super)`; RN-1 builds no successor (§7.1).
 
-Nothing in `runtime` can build a proof, plan or acknowledgment.
+Nothing in `runtime` can build a proof, plan, material, reader or acknowledgment.
 
 ```text
 Runtime -> PhaseDispatcher -> PhaseJobs -> Entry -> Job -> JobState
   JobState.preparation  -> NativePreparationCustody                    (A)
-  JobState.nonsuccess   -> Option<Arc<NativeNonSuccessClosurePlan>>    (P, at most one live)
+  JobState.nonsuccess   -> Option<Arc<NativeNonSuccessClosurePlan>>    (P, compact, at most one)
   JobState.closed_ack   -> Option<Arc<PhaseClosedAcknowledgment>>      (P)
   JobState.closure_due, closure_backoff, uncertain, slot_released, attention (P, scalars)
+PhaseJobs.closure_cursor -> Option<OperationId>                        (P, leaf mutex)
 NativePreparationCustody.state.nonsuccess -> Option<Arc<Proof>>        (P, set once)
-Proof -Weak-> custody; Proof -> actor, no_dispatch, closed             (existing siblings)
-Plan -> proof; Ack -> plan; neither -> Job, PhaseJobs, PhaseSupervisor or Runtime
+Proof -Weak-> custody; Proof -> actor, no_dispatch, closure, closed    (existing siblings)
+Plan -> proof; Material -> plan (one turn); Ack -> plan
+None of them -> Job, PhaseJobs, PhaseSupervisor or Runtime
 PhaseSupervisor.queue -> Slot (A); never -> Job or Ack
 ```
 
@@ -208,53 +264,69 @@ There is no ownership cycle. The custody's proof edge returns to the custody onl
 
 ## 5. Proof issuer (P)
 
-`nonsuccess_step(ended)` performs these steps in order:
-1. Require `Arc::ptr_eq(ended.allocation, custody.allocation)`.
-2. Under the custody mutex, clone the Arcs and drop the lock. Require:
-   - `abandoned`;
-   - actor present and `actor.is_revoked()`;
-   - `transport.is_none()`;
-   - `no_dispatch` present.
-
-   If `nonsuccess` is already set, return the SAME Arc. A missing `no_dispatch` is `Held("pre-no-dispatch: RN-1b")`. A present `transport` is `NotEligible`.
+`nonsuccess_step(ended)` performs these steps in order. No step holds the custody mutex across another lock, the Store or an await.
+1. Require `ended.matches_allocation(&self.allocation)`; otherwise `Held`.
+2. Under the custody mutex, clone the Arcs and flags, then drop the lock:
+   - `nonsuccess` already set: return the SAME Arc;
+   - not `abandoned`, or the actor absent or not revoked: `NotEligible`;
+   - `transport` present: `NotEligible` (transport paths);
+   - `no_dispatch` absent: `Held("pre-no-dispatch: RN-1b")`.
 3. If `closed` is empty, run exactly one `close_prepared_step` through `actor.sessions.upgrade()`; an ended `Weak` is `Held`. The step:
-   - first confirms a retained closure plan, then plans and closes once;
-   - on Known: `retain_closed` and `release_gate`;
+   - first confirms a retained closure plan, otherwise plans and closes once;
+   - on Known: `retain_closed` and `release_gate`, then continues to step 4;
    - on Conflict or RolledBack: `PreparationPending`;
    - on a mixed image: `Held`.
 
-   The step never sleeps; Root owns the backoff. No custody lock spans the Store.
-4. With `closed` set, require all of:
-   - `closed.matches_plan(state.closure)`;
-   - `closure.matches(actor, lineage)`;
-   - `Arc::ptr_eq(closure.no_dispatch(), state.no_dispatch)`;
-   - `actor.validate_original()` (SAME selected sessions, launch ↔ custody link).
-5. Build the proof and install it once, pointer-checked.
+   The step never sleeps; Root owns the backoff.
+4. Under the custody mutex, clone `closure` and `closed`, then drop the lock. Require:
+   - `closed.matches_plan(&closure)`;
+   - `closure.matches(&actor, lineage)` and `closure.matches_no_dispatch(&no_dispatch)`;
+   - `transport` still empty.
+5. Without any lock: `actor.validate_original()` (SAME selected sessions, launch ↔ custody link) and `no_dispatch.validate_original(&actor)`.
+6. `NativeNoDispatchClosureProof::issue` re-checks closed ↔ closure and closure ↔ actor/no-dispatch. Install the Arc under the custody mutex only if `nonsuccess` is empty; otherwise return the installed Arc.
+
+`NativeNoDispatchClosureProof::validate_original()` is memory-only. It upgrades the custody `Weak`. Under the custody mutex it requires `nonsuccess`, `closure`, `closed` and `no_dispatch` pointer-equal to the proof's own fields, and `transport` empty. Then, without that lock, it requires `actor.validate_original()`, `actor.is_revoked()` and `no_dispatch.validate_original(&actor)`.
 
 **Not inputs:** error text, observation labels, rows, IDs, readiness `closed`, `start_ended`, Session or process absence, `NativePhaseStartError`. The proof grants no dispatch, input, binding, settlement, refresh, retry or stop. It has no persisted form; Runtime exit drops it, which leaves the operation Held across epochs.
 
 ## 6. Root sweep, fairness and lock order (P)
 
-`PhaseDispatcher::reconcile_nonsuccess()` is synchronous. The service loop calls it right after `reconcile_pending()` (`service.rs:80`), and its `bool` ORs into `pending`. Each sweep:
+`PhaseDispatcher::reconcile_nonsuccess()` is synchronous and delegates to `PhaseJobs::reconcile_nonsuccess(&self.phases, &self.stopping)`, because `Job` is private to `phase_jobs`. The service loop calls it right after `reconcile_pending()` (`service.rs:80`), and its `bool` ORs into `pending`. Each sweep:
 
-1. **Page.** Under the `entries` lock only, `closure_page()` collects at most `PAGE = 64` started jobs. It resumes after a persisted `closure_cursor` (operation-ID round robin, wrapping), so every job is considered within ⌈128/64⌉ sweeps. It derives `StartEnded` there: outcome `Some(Err)`, or observation `Uncertain` with a finished handle. It then drops the lock.
-2. **Job state.** Per job, under a short `job.state` lock:
-   - if `closed_ack` is set, go to step 7;
-   - if `closure_due > now`, skip;
-   - otherwise clone the custody and any retained plan, then drop the lock.
-3. **Caps.** At most `LIVE_PLANS = 4` plans may be retained Root-wide (an atomic counter); jobs beyond the cap wait for their fair turn. Each sweep runs at most 8 preparation-closure steps.
-4. **Proof.** Call `custody.nonsuccess_step(&ended)`.
-   - `Held`: record bounded attention (an allowlisted category, ≤128 bytes) and set due to now+5 s.
-   - `PreparationPending`: set due by backoff.
-5. **Plan.** If no plan is retained, run `Store::plan_phase_nonsuccess_closure` on query-only snapshots; the Store mutex is not held. Install the plan once, pointer-checked.
-6. **Write.** Under the Store mutex only:
-   - if `uncertain` is set, call `confirm_phase_nonsuccess(SAME plan)`; otherwise `close_phase_nonsuccess(SAME plan)`;
-   - `Known` goes to step 7;
-   - `Conflict(cause)` means a definitive pre-write refusal. The plan is dropped. Contention backs off 100 ms–5 s; currency drift becomes Held attention with a read-only re-probe at most every 5 s;
-   - `Err` sets `uncertain`, then the SAME plan is confirmed in the same sweep. `Known` goes to step 7. `RolledBack` keeps the SAME plan and retries later; this is bookkeeping retry only. `Err` stays Held with the plan retained.
-7. **Acknowledge** (§11): install `closed_ack`, then `retire_closed_marked`, then `retire_closed`.
+1. **Snapshot.** Under `entries` only, `closure_snapshot()` clones `(operation, Arc<Job>, handle_finished)` for every started entry, at most `MAX_JOBS = 128`, in operation-ID order from `closure_cursor`, wrapping. `handle_finished` is `JoinHandle::is_finished`, which never reverts. It then drops the lock.
+2. **Classify.** Per job, checking `stopping` first, under `job.state` only:
+   - `closed_ack` set: retry only the removal (step 8); this uses no Store and no turn;
+   - derive `StartEnded` from this job alone: `outcome` is `Some(Err(_))`, or `observation` is `Uncertain` with `outcome` `None` and `handle_finished`; otherwise skip;
+   - `closure_due > now`: skip;
+   - otherwise the job is **due**: clone the custody, the retained plan and `uncertain`, then drop the lock.
+3. **Turns.** A sweep grants at most `TURNS = 8` execution turns, one per due job, in snapshot order. If a due job finds no turn left, `closure_cursor` is set to its operation and the sweep stops; otherwise the cursor is cleared after the pass. Jobs that are not ended, not due or only awaiting removal take no turn. Every due job therefore gets a turn within ⌈128/8⌉ = 16 sweeps, whatever precedes it. A turn runs steps 4–7 until its first Store outcome.
+4. **Proof** (only without a retained plan). Call `custody.nonsuccess_step(&ended)`.
+   - `NotEligible` or `Held`: for `Held`, record bounded attention (an allowlisted category, ≤128 bytes); due now+5 s.
+   - `PreparationPending`: due by backoff 100 ms–5 s.
+   - `Proof`: continue.
+5. **Plan.** `Store::plan_phase_nonsuccess_closure` on a query-only snapshot, without the Store mutex. Install it once under `job.state`, pointer-checked. A planning refusal is Held attention; due now+5 s.
+6. **Material.** `Store::materialize_phase_nonsuccess(&plan)`, outside every lock (§7.5).
+7. **Write or confirm**, under the Store mutex only:
+   - `uncertain` unset: `close_phase_nonsuccess`. `Known` goes to step 8. `Conflict(cause)` is a definitive pre-write refusal: the plan is dropped, attention is recorded, due now+5 s. A later turn may plan again from the SAME proof, but plans derive only from the marker's original images, so drift is never laundered (no pin refresh). `Err` sets `uncertain`; due now.
+   - `uncertain` set: `confirm_phase_nonsuccess`. `Known` goes to step 8. `RolledBack` clears `uncertain` and keeps the SAME plan and `at` for a bookkeeping write in a later turn. `Err` is Held with the plan retained; due now+5 s.
+8. **Acknowledge** (§11): install `closed_ack`, then `retire_closed_marked`, then `retire_closed`.
 
-**Lock order.** At most one of {`entries`, `job.state`, custody state, `queue`, Store mutex} is held at a time. No await or child/gate action happens under any of them. Removed values are dropped after the lock is released. The existing `start()`, which nests `entries` and `job.state`, is unchanged.
+**Plan lifetime.** A job retains at most one compact plan (§7.5). An uncertain plan lives until its own confirm is Known, until it is confirmed RolledBack and then refused definitively, or until the Runtime exits (Held across epochs). Its `at`, digests, Unit postimage and payload are never discarded or rebuilt while it lives. There is no Root-wide plan-credit cap, so uncertain plans of other jobs never take a due job's turn.
+
+**Lock order.**
+
+| Lock | While held, may take |
+|---|---|
+| `PhaseJobs.entries` | `job.state`, only in the existing `start()` (`phase_jobs.rs:234–244`); nothing in RN-1 |
+| `job.state` | nothing |
+| `PhaseJobs.closure_cursor` (new) | nothing |
+| `PhaseSupervisor.queue` | the slot's `publication` and `marker` leaves, as the existing `remove_unmarked` (`phase_supervisor.rs:582–603`) |
+| Store mutex | the permit manager (existing); custody `state` as the existing short leaf through `no_dispatch_matches` (`prepared.rs:10–21`, `preparation.rs:407–416`) and the proof's own check (§5) |
+| custody `state` | only the existing helper leaves inside `abandon` |
+
+RN-1 holds at most one of {`entries`, `job.state`, `closure_cursor`, `queue`, Store mutex} at a time. `StartEnded` is derived under `job.state` from the `handle_finished` value copied out of the snapshot. Removal reads the set-once `closed_ack` and `slot_released` under `job.state`, then takes `entries` alone (§11). No reverse edge is added: nothing under custody `state`, `job.state` or `queue` takes the Store, and nothing under `job.state` takes `entries`. No await, gate action or Drop of a removed Job, Slot, plan, material or acknowledgment happens under any lock. The validators' temporary custody upgrade is never the last strong reference: only this sweep thread removes a started job, after its Store call returns.
+
+In debug builds, RN-1's lock guards increment a thread-local `ROOT_LOCK_DEPTH`; `nonsuccess_step`, materialization and the RN-1 Store ports `debug_assert!` that it is zero.
 
 **Cancellation and shutdown.** The sweep checks `stopping` before each job. Retained proof, plan and acknowledgment live in `JobState` until consumed, independent of Engine or Driver futures. Shutdown runs no extra RN-1 sweep. Jobs that are closed but unacknowledged keep `ensure_*shutdown_complete` failing, as today.
 
@@ -262,33 +334,32 @@ There is no ownership cycle. The custody's proof edge returns to the custody onl
 
 ### 7.1 Plan, outside SharedStore
 
-1. **Original and owner.** `proof.validate_original()`. The selected owner must be pointer-equal (as `quota.rs:1237–1243`) and `owner.epoch() == f.epoch`.
-2. **Successor.** `current = plan_current_phase(owner, marker)`. Require `!current.has_links()` and `current.workflow_raw()` equal to the marker's `workflow_after` raw bytes.
-3. **Snapshot checks.** In one query-only snapshot:
-   - `launch.validate_preparation_origin_tx(tx, &current)` (original Source, currency, Driver live);
-   - `closure.validate_original(tx)`: revoked actor, no-dispatch, `no_registration`, complete inventory equal to the completion's `after`, original Unit identity;
-   - `closure.unit().validate_tx(tx)`;
-   - closure readiness postimage `validate_tx`;
-   - own waiter absent; own lease equal to the closure's after-image, or absent;
-   - `current.unit_raw()` byte-equal to the closure Unit body.
-4. **Unit preimage.** The decoded preimage must pass `registration_unit` (Preparing, Session None, both flags 1, work None, disposition Active, original identity) with `wait_reason ∈ {None, Quota, Capacity}`. Build `unit_after` (§10). The identity predicate is that of `with_known_unit` (`successor.rs:48–57`), with a strictly increasing version.
-5. **Operation.** The preimage is the marker's original insert image; there is no row read. The postimage copies it with `phase_open` 0 and `version` 2. Its body is the canonical re-encode of the original body object with exactly `phase_open:false` and `version:2` changed; every other key is byte-identical after decode. The body stays ≤4 MiB.
-6. **Workflow.** Decode the Record and `WorkflowSnapshot` with a complete typed roundtrip (as `binding.rs:244–250`).
-   - The active index must be the marker attempt.
+In one query-only snapshot, without the Store mutex:
+1. **Original and owner.** `proof.validate_original()`. The selected owner must be pointer-equal (as `quota.rs:1237–1243`), and the allocation's `state_path`, `instance_id` and `epoch` must equal the owner's (as `successor.rs:212–217`).
+2. **Currency.** The complete open-preimage conjunct set of §7.2 items 1–4, through the same code as the Immediate, so planning and writing cannot diverge. The Workflow image is the marker's retained `workflow_after`; with zero links it equals the current row byte for byte (`successor.rs:241–246`). No `CurrentWorkflowSuccessor` is built or retained, so `workflow_raw` keeps its `pub(super)` visibility.
+3. **Unit preimage.** The closure's `LatestUnitImage` must decode and pass `registration_unit` (Preparing, Session None, both flags 1, work None, disposition Active, original identity) with `wait_reason ∈ {None, Quota, Capacity}`. Build the 13-column `unit_after` (§10). The identity predicate is that of `with_known_unit` (`successor.rs:48–57`), with a strictly increasing version.
+4. **Operation and Workflow** (`plan_unlinked_closure`, inside `managed_binding`):
+   - Operation: the marker's original insert image with `phase_open` 0 and `version` 2. Its body is the canonical re-encode of the original body object with exactly `phase_open:false` and `version:2` changed; every other key is byte-identical after decode. The body stays ≤4 MiB.
+   - Workflow: decode the marker's `workflow_after` Record and `WorkflowSnapshot` with a complete typed roundtrip (as `binding.rs:244–250`). The active index must be the marker attempt.
    - Preconditions: state Running; `dispatch_started`; `session_id` and `execution` None; `unit == ManagedUnitRef::from(original)`; `completed_at`, `native_wait` and `next_due` None; no observations; `claimed_observations` 0.
    - Apply only: state Failed, `completed_at=at`, `detail=REASON_DETAIL`; Record `version+1`, `updated_at=at`.
-   - Check `workflow::validate_transition(task_after, &after, Some(&before))`.
-   - Check that the decoded before and after bodies, with exactly these fields neutralized, are canonically byte-equal.
-7. **Payload.** Build the payload (§7.4) and the two exact mutations. `at` is bookkeeping time and is not re-checked under the lock.
+   - Check `workflow::validate_transition(task_after, &after, Some(&before))`, and that the decoded before and after bodies, with exactly these fields neutralized, are canonically byte-equal.
+   - Retain only the compact `UnlinkedPhaseClosure`: attempt index, versions, `at`, Workflow growth, and the SHA-256 digests of the canonical Workflow postimage (`WORKFLOW_DOMAIN`, equal to the payload's `workflow_body_sha256_after`) and of the operation post-body. Every parsed and encoded postimage is dropped before the plan is installed.
+5. **Payload.** Build `audit_data` (§7.4). `at` is bookkeeping time and is not re-checked under the lock.
 
 ### 7.2 Immediate conjuncts (`close_phase_nonsuccess`), all before any write
 
-One `TransactionBehavior::Immediate` under `InventoryBudget`:
-1. `selected_database`; `proof.validate_original()` (in memory).
-2. `launch.validate_preparation_origin_tx(&tx, &plan.current)`. This covers: open marker operation and input preimages; runtime instance/epoch; P/G/T versions and bodies; Workflow; locks; Context; the complete Unit index equal to the closure factual image; ledger count 0 with no head; Driver live.
-3. `closure.validate_original(&tx)`: actor revoked, no-dispatch, `no_registration`, inventory equal to the completion's `after`, Unit original identity.
-4. Exact closure readiness postimage. Own waiter absent. Own lease equal to the closure after-image, or absent. `closure.unit().validate_tx` (all 13 columns).
-5. `charged_scope_bytes(scope) + workflow growth + audit bytes ≤ WORKFLOW_BYTES`.
+The material (§7.5) is built before the Store mutex and supplies this attempt's exact operation and Workflow postimages. Then one `TransactionBehavior::Immediate` under `InventoryBudget`:
+1. **Database and memory.** `selected_database(&self.connection, launch)` (`native_phase.rs:40–50`); `proof.validate_original()`; `launch.validate_preparation_original()` (SAME Source, ticket and allocation linkage).
+2. **Open original preimage**, `validate_original_phase_tx(…, PhaseImage::Open)`:
+   - the operation, input **and owner** rows equal their retained original insert images in every column, through the new `OriginalMarker::validate_unadvanced_tx` (the existing exact-row validator, `marker_rows.rs:59–77`). The owner is therefore still the unregistered version-1 image, and the operation is `phase_open=1`, version 1;
+   - the original projection with the marker's `task_after` and `workflow_after`: runtime instance and epoch, P/G/T versions and bodies, the Workflow row, locks and Context (`snapshot.rs:349–374`);
+   - the complete Unit index equals the closure's factual image (`unit_index_matches`);
+   - ledger count 0 with no head;
+   - the SAME retained Driver post anchor and Source result are live (`marker.validate_driver_live_tx`, `driver/marker.rs:135–154`), which rechecks the database path too.
+3. **Closure facts.** `closure.validate_original(&tx)`: actor revoked, SAME custody no-dispatch, `no_registration`, inventory equal to the completion's `after`, Unit original identity.
+4. **Closure postimages.** `closure.validate_after_tx(&tx)`: readiness equals the closure `closed` image; own waiter absent; own lease equal to the closure after-image, or absent. `closure.unit().validate_tx` (all 13 columns).
+5. **Budget.** `charged_scope_bytes(scope) + workflow growth + audit bytes ≤ WORKFLOW_BYTES`, through `UnlinkedPhaseClosure::validate_budget_tx`.
 
 Any failure rolls back and returns `Conflict(cause)`, with no write. No hashing, encoding, policy or image building runs under SharedStore.
 
@@ -325,12 +396,27 @@ The key set is exact. The payload carries no error text, argv, environment, cred
 
 ### 7.5 Budgets
 
+Owned representations:
+
+| Representation | Owner and lifetime | Bytes |
+|---|---|---|
+| Proof | custody and plan; shared Arcs | pointers only; actor, no-dispatch, closure plan and commit already exist (§2) |
+| Marker preimages: `workflow_after` (raw, canonical and parsed), operation, input and owner images | the existing marker, for the slot lifetime | existing; RN-1 retains no copy |
+| Compact plan: `unit_after` (13 columns), `audit_data`, two digests, scalars | `JobState.nonsuccess`, until acknowledgment or a definitive `Conflict` | ≤16 KiB body + ≤1 KiB columns + ≤4 KiB + 128 B + scalars: ≤24 KiB |
+| Acknowledgment | `JobState.closed_ack` | one Arc |
+| Material | one turn; dropped before the next turn | Workflow: one deep copy of the marker's parsed Record (P_W) plus its encoding ≤8 MiB; operation: one transient parse of the ≤4 MiB original body (P_O) plus its encoding ≤4 MiB |
+| Mutations | one Store call | operation old/new ≤4+4 MiB; Workflow old/new ≤8+8 MiB; audit ≤8 KiB |
+| Immediate reads | one Store call | projection Workflow row ≤8 MiB plus its expected copy ≤8 MiB (`snapshot.rs:368–373`); Unit ≤16 KiB; readiness ≤4 KiB; ledger `LIMIT 257` × ≤4 KiB; own waiter and lease rows |
+
+- **Retained.** At most one compact plan per job, so ≤128 × 24 KiB = 3 MiB Root-wide, however many plans are uncertain. There is no plan-credit cap.
+- **Peak.** The sweep is synchronous, so one turn's transients exist at a time: ≤3 MiB retained + P_W + P_O + 12 MiB encodings + 24 MiB mutation copies + ≤17 MiB Immediate reads + SQLite's own copies of bound parameters (≤24 MiB). A planning turn instead holds the typed before/after `WorkflowSnapshot` pair (≤2·P_W) and encodings ≤16 MiB, all dropped before the plan is installed.
+- **Parsed trees.** P_W and P_O are parsed-tree sizes; this HOW asserts no numeric expansion factor. P_W is at most the tree the marker already retains for the same operation. Control M1 (§15) measures both.
+- **Materialization.** Postimages are re-derived only from the SAME marker originals and plan scalars, outside every lock, and their digests must equal the plan's. No row is read. A mismatch is Held; the plan is neither rebuilt nor discarded.
+
 | Item | Bound |
 |---|---|
-| One plan | Current Workflow ≤8 MiB + Workflow after ≤8 MiB + operation after ≤4 MiB (the original image is shared with the marker) + 2 Unit images ≤16 KiB each + payload ≤4 KiB ≈ ≤20.1 MiB |
-| Retained plans | `LIVE_PLANS = 4` Root-wide, so ≤81 MiB worst case. Each plan is dropped on acknowledgment or definitive conflict. Uncertain plans count against the cap (liveness cost only) |
-| One sweep | ≤64 jobs considered, ≤8 preparation-closure steps, ≤4 RN-1 Immediates and ≤4 confirms |
-| Immediate reads | Existing bounded validators only: marker rows, projection, Driver anchor, ledger `LIMIT 257`, Unit ≤16 KiB, readiness ≤4 KiB, one own waiter and one own lease row, `InventoryBudget` |
+| One sweep | ≤128 jobs classified; ≤8 execution turns, each ≤1 preparation-closure step (≤3 Store transactions) or ≤1 RN-1 Immediate or confirm; removals use no Store |
+| Immediate reads | Existing bounded validators only (above), plus `InventoryBudget` |
 | Writes | 4 rows, 3 permits (≤128) |
 | Ledger | 0 → 1 link (≤256); link ≤4096 bytes |
 | Reservation | `phase_open` 1→0 releases `max(0, 1 MiB − spent)` (derived) |
@@ -340,19 +426,19 @@ The key set is exact. The payload carries no error text, argv, environment, cred
 
 ## 8. Uncertain commit (P)
 
-`confirm_phase_nonsuccess(SAME plan)` runs one Immediate with no write. It reads the Unit (13 columns), the operation (32), the Workflow (7), every link for the operation (`LIMIT 257`), the runtime epoch, readiness and the own waiter and lease.
+`confirm_phase_nonsuccess(material)` runs one Immediate with no write. Its material is re-derived from the SAME plan outside the Store mutex (§7.5); nothing comes from current rows. Both classifications first require the complete original currency of §7.2: item 1; the input and owner images and Driver liveness of item 2; item 3; and the readiness, waiter and lease part of item 4.
 
-- **Known** iff all of:
-  - the epoch is the original;
-  - Unit, operation and Workflow equal their postimages exactly;
-  - exactly one link exists: `phase_closed` with byte-equal scope, `at` and data, and any `sequence` > 0;
-  - readiness is the closed image; the own waiter is absent and the own lease is unchanged.
+- **Known** iff, in addition, the closed branch `validate_original_phase_tx(…, PhaseImage::Closed)` holds:
+  - the operation equals the materialized postimage in all 32 columns, whose other 29 columns equal the original image;
+  - the projection (runtime instance and epoch, P/G/T, locks, Context) passes with the materialized Workflow postimage;
+  - the Unit equals `unit_after` in all 13 columns, and its index matches;
+  - exactly one link exists: `phase_closed` with the marker scope, the plan's `at` and byte-equal `audit_data`, and any `sequence` > 0.
 
   Returns an acknowledgment for the SAME plan Arc.
-- **RolledBack** iff the epoch is the same, Unit, operation and Workflow equal their preimages, and there are zero links. This permits a bookkeeping retry of the SAME plan only; there is no new plan and no new `at`.
-- **Anything else is Held:** mixed images, a foreign or different link, a foreign epoch, or a row equal to neither image. Only a read-only probe at most every 5 s follows. Nothing is rebuilt from current rows. Link presence alone is never acknowledgment. A preimage is never success.
+- **RolledBack** iff all of §7.2 items 1–4 hold, including the open operation, Workflow and Unit preimages and zero links. This permits a bookkeeping retry of the SAME plan only; there is no new plan and no new `at`.
+- **Anything else is Held** (`Err`): mixed images; a foreign or different link; a changed database, runtime instance or epoch, owner or input image, Source linkage, Driver, P/G/T, Context or lock; or a row equal to neither image. Only a read-only confirm per 5 s follows. Nothing is rebuilt from current rows. Link presence alone is never acknowledgment. A preimage is never success. A currency change after a committed but unconfirmed write therefore stays Held for TerminalRecovery.
 
-`validate_current_tx` is not used here because it requires the OPEN operation image.
+`validate_current_tx` is not used: it requires the OPEN operation image and a successor.
 
 ## 9. Workflow non-success and retry visibility (P)
 
@@ -362,10 +448,10 @@ The key set is exact. The payload carries no error text, argv, environment, cred
   - The Task row is unchanged, at its marker version and state: no `WaitingHuman`, no blocker and no Task-terminal success, failure or cancel (unlike `Engine::fail`, `workflow.rs:2571–2581`).
   - Context, artifact, Session and permission are unchanged or absent.
 - **Derived status.**
-  - `poll` yields `StepResult::Failed{detail}` read-only (`workflow.rs:1940–1945`).
+  - The production Driver calls `step_driven_initial` (`task_driver.rs:104`). For an active Executor attempt that function would reach the Source handoff consumer, which reports Waiting whenever the retained handoff exists (`driven_initial.rs:36–40,141–163`). RN-1 adds one read-only branch before that consumer: an active Executor attempt in state Failed returns `StepResult::Failed { phase, reason: detail }` from the snapshot already read. It observes no handoff, offers nothing, writes nothing and grants nothing. G5 changes this function's signature but keeps the branch point.
+  - The Driver loop exits only on `Finished` (`task_driver.rs:106–108`), so the SAME Driver stays `driving` and polls every 100 ms, read-only, with the constant `REASON_DETAIL`. This also keeps §7.2's Driver conjunct satisfiable. Generic `poll` also returns `Failed` read-only (`workflow.rs:1940–1945`).
   - `runtime/waiting.rs:35–60` stops reporting the operation because it filters `phase_open=1`.
-  - Driver occupancy (`claim.rs:337`) frees at commit.
-  - The Driver loop keeps polling every 100 ms read-only (`runtime/task_driver.rs:97–115`); control W2 verifies this.
+  - **Occupancy is released only in part.** At commit the capacity union (`driver/claim.rs:337`) loses its open-Unit and open-operation members, but the Task stays occupied through its `driving` Driver row, which RN-1 does not change. RN-1 releases the operation reservation, the Unit flags, the audit reservation, the PhaseSupervisor slot and the PhaseJobs entry; the preparation closure already released the own lease, waiter and probe. The Source handoff entry stays retained (`phase_handoffs.rs:417–429`). Driver and handoff retirement need their own genuine typed producers (§17).
 - **Retry is not delivered.** `Engine::retry`'s managed branch (`workflow.rs:3104–3157`) passes its Unit checks once both flags are false. Its generic persist then hits the protected Record guard (`schema.rs:328`), which refuses the whole transaction.
 
   A typed protected retry port, **RN-R**, is a separate dependency. It must provide a fresh worktree, Unit and generation, advance `task_execution`, retire the readonly generation and clean up the namespace. There is no automatic Agent restart, worktree reuse or input replay.
@@ -411,7 +497,7 @@ The retirement is never inferred from readiness `closed`, `start_ended`, a Faile
      Then remove the slot from `entries`, `projects` and `rotation`, unlock, and call `Self::release` (an accepted guard's drop is a no-op).
 
      This is idempotent: if the slot is already absent and `slot_released` is set, return `Ok`.
-  3. `PhaseJobs::retire_closed(job)`, under the `entries` lock. Require the entry to be pointer-equal to the job, with `closed_ack` set and `slot_released` true. Remove the entry and drop it after unlocking.
+  3. `PhaseJobs::retire_closed(job)`. Under `job.state` alone, read `closed_ack` and `slot_released` (both set once and never cleared), require both, and drop the lock. Under `entries` alone, require the entry pointer-equal to the job with a finished handle. Remove the entry and drop it after unlocking.
 - **Removal failure.** If step 2 or 3 fails, the acknowledgment is retained and only the removal is retried; the DB is not written again.
 - **Nothing else releases a marked slot or started job:** not observation Failed or Uncertain, not outcome `Err`, not readiness `closed`, not `phase_open=0` read from SQL, not shutdown.
 
@@ -429,7 +515,7 @@ The retirement is never inferred from readiness `closed`, `start_ended`, a Faile
 | Ledger non-empty / epoch changed | Held | none |
 | `SQLITE_BUSY` before the first write | `Err` → confirm → RolledBack → SAME plan later | none |
 | Commit uncertain | Confirm the SAME plan (§8) | none from confirm |
-| Live-plan cap reached | Wait for the next fair turn | none |
+| Execution turns exhausted | `closure_cursor` stays at this job; it is served first in the next sweep | none |
 | Slot or job removal fails after Known | Acknowledgment retained; removal retried | none |
 | Runtime stopping | Sweep returns; retained values die with the Runtime → Held across epochs | none |
 | Later G3 `request_stop` | Not called by RN-1. If it genuinely revokes a parked start, the in-task closure runs and RN-1 follows only with unchanged parents | as above |
@@ -473,14 +559,16 @@ The roles are local Runtime and cross-Task roles; there are no web roles.
 |---|---|---|
 | Custody `nonsuccess` slot; `closure_original` + `transport.is_none()`; `retain_transport` clears `no_dispatch` (C-R1) | `prepared.rs:24–185`; `preparation.rs:51–72,88–154,636–726`; `transport.rs:563` | Pre-transport behavior is unchanged. After transport, `reconcile_known_commit` already takes the transport branch first |
 | `close_prepared_on_revocation` → loop over `close_prepared_step` | `prepared.rs:173,179`; `preparation.rs:670` | Same semantics and backoff |
-| Closure-plan accessors | `quota.rs` only | Read-only, crate-private |
-| `OriginalMarker::original_operation_image` | `marker_rows.rs:97–108`; `publication.rs` | Read-only |
+| Closure-plan accessors: `validate_original`, `unit`, `validate_after_tx` (`pub(super)`); `matches_no_dispatch` | `quota.rs`; `native_phase/nonsuccess.rs` | Read-only; no new constructor |
+| `OriginalMarker::validate_unadvanced_tx`, `original_operation_image`; successor `rows`/`KINDS` `pub(super)`; new `managed_binding/closure.rs` | `marker_rows.rs:59–108`; `publication.rs:186–233`; `successor.rs:19,151–190` | Read-only; `validate_open_tx` and `validate_current_tx` unchanged |
 | First `phase_closed` producer | `schema.rs:358–414`; `successor.rs:19` (KINDS) | After close, `validate_open_tx` fails, so every open-currency consumer refuses: binder, registration, quota, transport, version helpers, `plan_current_phase`. Intended |
-| `phase_open=0` | `publication.rs:366` (reservation release); `waiting.rs:60`; `claim.rs:337`; `quota_policy.rs:118`; `quota.rs:13`; admission trigger `schema.sql:195` | Status stops, capacity and reservation free, consumption impossible |
+| `phase_open=0` | `publication.rs:366` (reservation release); `waiting.rs:60`; `driver/claim.rs:337`; `quota_policy.rs:118`; `quota.rs:13`; admission trigger `schema.sql:195` | Status stops; the reservation and the operation member of the occupancy union free; the Task stays occupied by its `driving` Driver (§9); consumption impossible |
 | Unit flags/state | `state/mod.rs:935,946`; `workflow.rs:3104–3157`; `cleanup.rs:82`; `execution.rs:325`; `verification.rs:452`; quota WAITERS | Retired and inert; no cleanup job |
 | Workflow Failed attempt | `poll` (`workflow.rs:1940`); status/CLI; `validate_transition`; TerminalRecovery (`state/mod.rs:692,767,940`) | Read-only Failed; TerminalRecovery unchanged |
 | PhaseJobs, PhaseSupervisor, service loop; `ClosedNonSuccess` | `service.rs:80,134–136`; `phase_jobs.rs:84–99` (`wait` treats it as terminal); handoff drops `PhaseInvocation` (`phase_supervisor.rs:915`) | Unmarked paths and `fair_page` unchanged |
-| Constants: `PAGE` 64, `LIVE_PLANS` 4, backoff 100 ms–5 s, `REASON_DETAIL` ≤128, payload ≤4096, ledger ≤256 | New, RN-1 only; trigger header list `schema.rs:368–396` | Header keys satisfied; projection keys free |
+| `StartEnded` re-export; `PhaseJobs::reconcile_nonsuccess`; `closure_cursor` | `runtime/mod.rs:7`; `phase_jobs.rs` | Crate-visible type with a phase_jobs-only constructor |
+| Driven Failed branch | `driven_initial.rs:36–40` (G5: same branch, new signature); `task_driver.rs:97–115`; G5 `preflight_installed_native` (not reached for a Failed attempt) | Read-only `Failed`; no handoff observation or offer for a Failed active Executor |
+| Constants: `TURNS` 8, snapshot bound `MAX_JOBS` 128 (existing), backoff 100 ms–5 s, `REASON_DETAIL` ≤128, payload ≤4096, ledger ≤256 | New, RN-1 only; trigger header list `schema.rs:368–396` | Header keys satisfied; projection keys free; no plan-credit cap |
 | Environment variables, input lists, paths | None | No impact |
 
 **Not affected:**
@@ -495,45 +583,63 @@ The roles are local Runtime and cross-Task roles; there are no web roles.
    - the Workflow delta builder: Running-only; refuses any other field change;
    - the operation body transform: exactly two keys change;
    - the payload: exact key set, ≤4096 bytes, no error text;
-   - the confirm classifier over (Unit, operation, Workflow, link) tuples: every post/pre/mixed combination;
+   - the confirm classifier: every post/pre/mixed (Unit, operation, Workflow, link) combination, and each currency member of §8 changed alone in the post and in the pre branch;
    - the Unit delta identity predicate;
-   - cursor fairness and the live-plan cap.
-2. **Genuine causal pairs.** These require production Runtime → Driver → Source → Frame → marker → `PhaseJobs.start` → selected `NativeSessions`/actor/custody, with the actual protocol fixture configured as an external CLI. There is no test-only authority constructor, fake grant or prepared metadata. G5 is closed, so every row below is **UNVERIFIED/SETUP until integration**. A SETUP refusal earns no positive or kill credit.
+   - materialization determinism and its digest refusal;
+   - the turn scheduler (§6 item 3): a due job behind persistent due jobs, and four uncertain plans plus a fifth due job, each served within ⌈n/8⌉ sweeps.
+2. **Normal producer.** Every genuine row needs a genuine composed start that issued the S5 no-dispatch value and then ended `Err` before `retain_transport`. That requires G5 and the authentic composed Workflow activation producer (§17); RN-1 never synthesizes an activation row or relaxes `publication.rs:244–271`. Candidates, each to be shown reachable by the implementation evidence:
+   - (a) S6: the quota commit returns `Err` and its own confirm returns RolledBack (`prepared.rs:145–147`), under genuine writer contention on the selected database;
+   - (b) a refusal in `start_prepared_transport` before `retain_transport` (`transport.rs:503–562`), for example `qualified_physical_profile` (`version.rs:376–383`) after the selected program stops being a regular file while the start is parked at S6 behind genuine sibling Tasks.
 
-   | ID | Normal | Single changed condition | Required refusal evidence |
+   The replaced `native.rs:214` bail, FirstExecutor or account-free protocol-fixture outcomes, failpoints and test constructors are not normal producers. Until (a) or (b) is demonstrated, every row below is **UNVERIFIED/SETUP**; a SETUP refusal earns no positive or kill credit.
+3. **Genuine causal pairs.** These require production Runtime → Driver → Source → Frame → marker → `PhaseJobs.start` → selected `NativeSessions`/actor/custody, with the actual protocol fixture configured as an external CLI (intermediate only; official Agents remain the merge gate). There is no test-only authority constructor, fake grant or prepared metadata. The `#[cfg(test)]` failpoints exist only in the RN-1 Store ports, inject `Err`, and construct nothing.
+
+   | ID | Normal | Single changed condition | Required evidence |
    |---|---|---|---|
-   | H1 evidence handoff | S7 bail → sweep → W1–W4, acknowledgment, slot and job removed | genuine S4b refusal (no S5) | Held; zero RN-1 rows; slot and job retained; shutdown check fails |
-   | H2 | parked revocation → in-task closure → RN-1 | start not ended | no proof issued |
-   | C1 exact currency | as H1 | genuine Task change or Goal pause before the Immediate | `Conflict`/Held; all rows byte-identical |
-   | C2 | as H1 | Driver genuinely invalidated | Held |
-   | C3 | as H1 | epoch advanced | Held; no reconstruction |
+   | H1 evidence handoff | normal producer → sweep → W1–W4, acknowledgment, slot and job removed | genuine S4b refusal (no S5) | Held "pre-no-dispatch"; zero RN-1 rows; slot and job retained; shutdown check fails |
+   | H2 | parked revocation → in-task closure → RN-1 | start not ended | no `StartEnded`; issuer not called. Needs an existing genuine revoker (G3): UNVERIFIED until then |
+   | C1 exact currency | as H1 | a genuine Project, Goal, Task, Context or lock change through its existing writer, before the Immediate | `Conflict` with the projection cause; Held; all rows byte-identical |
+   | C2 | as H1 | Driver genuinely no longer live | `Conflict` with the Driver cause; Held |
+   | C3 | as H1 | Runtime restart (new epoch) | no custody, no proof; Held; no reconstruction. Positive Held evidence, not a kill |
    | L1 ledger/idempotence | Known, then another sweep | — | no second write; one link; operation version 2 |
-   | L2 | commit failpoint returns `Err` after commit | — | confirm Known; one link |
-   | L3 | failpoint before commit | — | RolledBack; SAME plan and `at`; one link |
+   | L2 | commit failpoint returns `Err` after commit | — | confirm Known for the SAME plan; one link |
+   | L2-x | as L2 | after the commit and before the confirm, one of: confirm on a Store of another database; a C1 change; a C2 change | confirm Held; no acknowledgment; slot and job retained |
+   | L3 | failpoint before commit | — | RolledBack; SAME plan and `at`; later exactly one link |
+   | L3-x | as L3 | one L2-x change | confirm Held, not RolledBack |
    | U1 permission retirement | `managed_attempt_retired` true; no cleanup job | Unit fenced first | Held; RN-1 wrote nothing |
    | A1 acknowledgment | slot and job removed; `ensure_*` pass | Store refusal (C1) | both retained; `ensure_*` fail |
    | W1 caller wiring | the service loop drives RN-1 | service call removed (mutant) | H1 fails: no link |
-   | W2 visibility | `poll` Failed read-only; waiting None; Task unchanged | — | no write during Driver polling |
+   | W2 visibility | the production Driver reports `Failed` with `REASON_DETAIL`; no write, handoff observation or offer while it polls; waiting None; Task unchanged | driven Failed branch removed (mutant) | the Driver reports the handoff Waiting reason |
+   | O1 occupancy | after acknowledgment: no open Unit or operation for the Task; own lease inactive; slot and job removed | — | the capacity union still counts the Task through its `driving` Driver |
+   | F1 fairness | ≥9 genuine due jobs (Held pre-S5 jobs or failpoint-held confirms) precede a closable genuine job | — | the closable job is acknowledged within ⌈n/8⌉ sweeps |
+   | F2 | four jobs with failpoint-held confirms, then a fifth genuine job | — | the fifth is acknowledged; the four keep their SAME plans and `at` |
+   | M1 memory | Workflow body near 8 MiB and operation body near 4 MiB; four retained uncertain plans | — | retained ≤24 KiB per plan; measured peak within §7.5 with P_W and P_O reported; no truncation or evidence loss |
    | R1 retry | `Engine::retry` on a closed protected Workflow | — | refused; zero writes |
    | Q1 lease | own lease released; a sibling genuine Unit is admitted | — | — |
 
-3. **Compiled omissions.** Each mutant must fail its intended assertion:
-   - the issuer without `closed`, without the transport-empty check, or with `StartEnded` from another allocation;
-   - plan Unit taken from current rows instead of the closure image;
-   - `validate_preparation_origin_tx`, Driver-live or epoch check omitted;
-   - non-empty ledger allowed;
-   - Task written, or `session_id` set;
-   - detail taken from error text;
-   - flags left open, or retired without the exact open image;
-   - operation `phase_open` unchanged, or audit inserted before W2/W3;
-   - confirm accepting a link alone or a preimage as Known, or rebuilding the plan;
-   - slot or job removed without an acknowledgment, or on a Failed observation;
-   - `remove_unmarked` used for a marked slot;
-   - service call removed;
-   - live-plan cap ignored;
-   - a Root lock held across the Store (debug assertion).
+4. **Causal omission map.** A kill needs the genuine setup to succeed and the named assertion to change. Compile refusals, SETUP failures and redundant defenses earn no kill credit; redundant defenses stay in the code.
 
-   A missing constructor is a compile refusal, not a kill.
+   | Mutant | Effective predicate | Setup | Assertion that changes | Credit |
+   |---|---|---|---|---|
+   | Projection conjunct omitted | §7.2 item 2 projection | C1 | a link is written despite the change | kill |
+   | Driver-live conjunct omitted | §7.2 item 2 Driver | C2 | a link is written | kill |
+   | Closed-branch currency omitted | §8 Known | L2-x | an acknowledgment is issued | kill |
+   | Preimage accepted as Known | §8 | L3 | acknowledgment while `phase_open=1`; slot removed | kill |
+   | Plan rebuilt or new `at` after uncertainty | §6 item 7 | L3 | the link's `at` or digest differs from the SAME plan | kill |
+   | Removal on a Failed observation or without an acknowledgment | §11 | A1 | slot or job removed | kill |
+   | Service call removed | W1 | H1 | no link | kill |
+   | Driven Failed branch removed | §9 | W2 | Waiting reported | kill |
+   | Cursor advanced past an unserved due job | §6 item 3 | F1 | the closable job exceeds the bound | kill |
+   | Task written, `session_id` set, detail from error text, flags left open, or `phase_open` unchanged | §7.3, §10 images | H1 | a durable image differs from §7.3/§10 | kill |
+   | Audit inserted before W2/W3 | chain trigger | H1 | the trigger refuses; no link | kill (trigger) |
+   | Root lock held across a Store call | §6 lock order | H1 | the `ROOT_LOCK_DEPTH` debug assertion fires | kill (debug) |
+   | `retain_transport` keeps `no_dispatch` and the issuer omits the transport check | issuer | a genuine start error after `retain_transport` | a proof is issued for a transported operation | kill (pair); UNVERIFIED until that error is shown |
+   | Transport check omitted alone | redundant with C-R1 | — | — | defense only |
+   | Epoch or instance check omitted alone | overlaps snapshot, projection and Driver epoch | — | — | defense only |
+   | Owner exact image omitted | §7.2 item 2 owner | no genuine pre-transport owner writer exists; permits refuse others | — | defense only; required by §1.1 |
+   | Ledger-zero conjunct omitted | §7.2 item 2 ledger | no pre-transport link producer exists; the trigger refuses a second `phase_closed` | — | defense only |
+   | `StartEnded` of another allocation | issuer | the sweep derives it from the same job | — | defense only |
+   | Issuer without `closed`; plan without proof; `remove_unmarked` for a marked slot | non-`Option` fields; `remove_unmarked` refuses `Publishing` | — | — | compile or existing refusal; none |
 
 ## 16. Corrections to approved documents (minimum, evidence-backed)
 
@@ -546,12 +652,14 @@ The roles are local Runtime and cross-Task roles; there are no web roles.
 
 ## 17. Unresolved dependencies and open gates
 
-- **G5** composition and its pending HOW correction. Until it lands, no protected start reaches RN-1 and every genuine control is SETUP/UNVERIFIED.
+- **G5** composition and its pending HOW correction. Component `c51af44` compiles for all targets; its C5/C6 controls are SETUP before the marker. Until G5 lands and a §15 item 2 normal producer is demonstrated, every genuine control is SETUP/UNVERIFIED.
+- **Composed Workflow activation producer** (Root, separate design). `plan_marker_publication` requires a `composed` version-1 `workflow_native_contracts` row matching the allocation scope, epoch, origin and profile (`publication.rs:244–271`); production has only the `legacy_held` migration insert (`schema.rs:519–533`). RN-1 depends on that genuine path and never synthesizes activation rows or removes the predicate.
 - **G3** Root `request_stop` caller; Root SourceStop/Cancel author/permission decisions; the R2 shared Git environment author exception. None is decided or widened here. RN-1 mints no stop authorization.
 - **RN-1b:** a non-success proof for errors before S5 (pre-helper refusal, settled-helper refusal at S4/S4b/S5). Until it exists, these stay Held.
 - **RN-R:** explicit protected retry, including fresh worktree/Unit/generation, `task_execution` advance, readonly-generation retirement and namespace cleanup of the closed Unit.
 - TerminalRecovery / `terminal_decision` for fenced or drifted operations; across-epoch restore; transport closure for S8 onward.
 - No final RN-1 sweep at shutdown.
+- Driver and Source handoff retirement after RN-1. The Task stays occupied by its `driving` Driver, and the handoff entry keeps `ensure_shutdown_complete` failing, until their own genuine typed producers exist.
 - Regression and Clippy RED. N1/N4/H/Q/install/both-OS/dogfood qualification. The Official-Agent/four-Task/both-OS MERGE gate.
 - Diff of §2 against the unread reconnaissance report.
 
