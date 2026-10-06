@@ -307,6 +307,87 @@ pub(crate) fn validate_current_tx(
     validate_current_unit_tx(tx, marker, current, current.unit(), current.unit_raw())
 }
 
+#[cfg(test)]
+mod primitive_tests {
+    use super::*;
+    use crate::{
+        domain::{GoalId, ProjectId, Scope, TaskId},
+        execution::{CleanupOutcome, Disposition, UnitId, UnitState, WaitReason},
+    };
+
+    // Factual DTOs only. No marker, owner, successor or grant is constructed.
+    fn original() -> ExecutionUnit {
+        ExecutionUnit {
+            id: UnitId::new(),
+            scope: Scope {
+                project_id: ProjectId::new(),
+                goal_id: Some(GoalId::new()),
+                task_id: Some(TaskId::new()),
+            },
+            kind: UnitKind::Executor,
+            generation: 1,
+            owner_epoch: 1,
+            version: 1,
+            phase: "Implement".into(),
+            provider: "claude".into(),
+            state: UnitState::Preparing,
+            native_effects_open: true,
+            result_finalization_open: true,
+            work: None,
+            cleanup: CleanupOutcome::Unknown,
+            disposition: Disposition::Active,
+            worktree: "/tmp/nongrant-lineage".into(),
+            branch: Some("rrx/test".into()),
+            base_sha: "a".repeat(40),
+            profile_digest: "b".repeat(64),
+            cookie: uuid::Uuid::new_v4().to_string(),
+            session_id: None,
+            artifact_id: None,
+            wait_reason: None,
+            capacity_retry_at: None,
+            created_at: 1,
+            updated_at: 1,
+        }
+    }
+    #[test]
+    fn nongrant_native_postimage_identity_preserves_original_and_increasing_version() {
+        let original = original();
+        assert!(validate_unit_identity(&original, &original, true).is_err());
+        let mut post = original.clone();
+        post.version += 1;
+        post.wait_reason = Some(WaitReason::Quota);
+        post.updated_at = 2;
+        validate_unit_identity(&post, &original, true).unwrap();
+        let mutations: &[fn(&mut ExecutionUnit)] = &[
+            |u| u.id = UnitId::new(),
+            |u| u.scope.project_id = ProjectId::new(),
+            |u| u.scope.goal_id = Some(GoalId::new()),
+            |u| u.scope.task_id = Some(TaskId::new()),
+            |u| u.kind = UnitKind::Reviewer,
+            |u| u.generation += 1,
+            |u| u.owner_epoch += 1,
+            |u| u.phase.push('x'),
+            |u| u.provider.push('x'),
+            |u| u.worktree.push("other"),
+            |u| u.branch = None,
+            |u| u.base_sha.push('x'),
+            |u| u.profile_digest.push('x'),
+            |u| u.cookie.push('x'),
+            |u| u.created_at += 1,
+            |u| u.version = 0,
+            |u| u.version = i64::MAX as u64 + 1,
+        ];
+        for (index, mutate) in mutations.iter().enumerate() {
+            let mut changed = post.clone();
+            mutate(&mut changed);
+            assert!(
+                validate_unit_identity(&changed, &original, true).is_err(),
+                "immutable predicate {index}"
+            );
+        }
+    }
+}
+
 /// A planned exact quota postimage is factual until the confirming transaction
 /// commits. This port validates it without constructing a successor lineage.
 pub(in crate::state) fn validate_planned_unit_tx(
