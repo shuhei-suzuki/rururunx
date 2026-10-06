@@ -2089,7 +2089,7 @@ impl Core {
                         },
                         Some("turn/completed") if p["threadId"]==thread_id && p["turn"]["id"]==turn_id=>{
                             let status=p["turn"]["status"].as_str().context("native turn status missing")?;
-                            if self.phase.is_some() && matches!(status,"completed"|"failed") {
+                            if matches!(status,"completed"|"failed") {
                                 self.collector.codex_terminal(&p["turn"]);
                                 self.observed_terminal=Some(if status=="completed" {(WorkOutcome::Success,Disposition::Completed,None)}
                                     else if quota_ended || quota::codex_subscription_error(&p["turn"]["error"]) {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
