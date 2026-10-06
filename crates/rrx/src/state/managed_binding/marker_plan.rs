@@ -389,6 +389,55 @@ pub(crate) fn plan_marker(
 }
 
 impl ManagedMarkerPlan {
+    // Read-only views for the actual Driver's sealed pre/post advancement plan.
+    // These views issue no marker, capacity, Native owner or input permission.
+    pub(crate) fn scope(&self) -> Scope {
+        self.before.task.parsed().scope()
+    }
+    pub(crate) fn project(&self) -> (&Project, &str) {
+        (self.before.project.parsed(), self.before.project.raw())
+    }
+    pub(crate) fn goal(&self) -> (&Goal, &str) {
+        (self.before.goal.parsed(), self.before.goal.raw())
+    }
+    pub(crate) fn task_before(&self) -> (&Task, &str) {
+        (self.before.task.parsed(), self.before.task.raw())
+    }
+    pub(crate) fn task_after(&self) -> (&Task, &str) {
+        (self.task_after.parsed(), self.task_after.raw())
+    }
+    pub(crate) fn workflow_before(&self) -> (&Record, &str) {
+        let body = self
+            .before
+            .workflow
+            .as_ref()
+            .expect("validated marker Workflow");
+        (body.parsed(), body.raw())
+    }
+    pub(crate) fn workflow_after(&self) -> (&Record, &str) {
+        (self.workflow_after.parsed(), self.workflow_after.raw())
+    }
+    pub(crate) fn context(&self) -> (&ContextVersion, &str) {
+        let body = self
+            .before
+            .context
+            .as_ref()
+            .expect("validated marker Context");
+        (body.parsed(), body.raw())
+    }
+    pub(crate) fn unit(&self) -> (&ExecutionUnit, &str) {
+        (self.unit.parsed(), self.unit.raw())
+    }
+    pub(crate) fn operation(&self) -> crate::execution::OperationId {
+        self.operation
+    }
+    pub(crate) fn marker_digest(&self) -> &str {
+        &self.frame_digest
+    }
+    pub(crate) fn context_digest(&self) -> &str {
+        &self.context_digest
+    }
+
     /// Nongrant transaction recheck, to be composed only with actual retained
     /// capacity/Driver/allocation consumers. This cannot publish or start.
     pub(super) fn validate_current(&self, c: &Connection) -> Result<()> {
