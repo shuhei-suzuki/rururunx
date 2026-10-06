@@ -487,7 +487,7 @@ impl ManagedVerifier {
             let mut command = tokio::process::Command::new(&c.program);
             command
                 .args(&c.args)
-                .current_dir(&cwd)
+                .current_dir(cwd)
                 .envs(profile.environment(&grant.unit.cookie, self.owner.ipc_path())?)
                 .env_remove("RRX_GIT_GATE_TOKEN")
                 .env("PYTHONDONTWRITEBYTECODE", "1")

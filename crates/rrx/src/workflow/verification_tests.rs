@@ -1,9 +1,9 @@
 //! Actual managed Workflow commands, immutable evidence, and caller-Passed refusal.
 use super::*;
-use std::collections::BTreeSet;
 use crate::execution::verification::{
     Applicability, Category, ManagedVerifier, TestCommand, TestsProfile,
 };
+use std::collections::BTreeSet;
 
 fn profile(code: &str) -> TestsProfile {
     let python = std::fs::canonicalize("/usr/bin/python3").unwrap();
@@ -187,17 +187,20 @@ async fn actual_tests_commands_complete_on_retained_commit_without_agent_session
                 format!("diagnostic-{i}\n").as_bytes()
             );
         }
-        let store = f.owner.store.lock().unwrap();
-        assert_eq!(
-            store
-                .records(&f.task.scope(), RecordKind::Session)
-                .unwrap()
-                .len(),
-            before_sessions
-        );
-        let u = store.execution_unit(unit).unwrap();
-        assert!(u.session_id.is_none() && !u.native_effects_open && !u.result_finalization_open);
-        drop(store);
+        {
+            let store = f.owner.store.lock().unwrap();
+            assert_eq!(
+                store
+                    .records(&f.task.scope(), RecordKind::Session)
+                    .unwrap()
+                    .len(),
+                before_sessions
+            );
+            let u = store.execution_unit(unit).unwrap();
+            assert!(
+                u.session_id.is_none() && !u.native_effects_open && !u.result_finalization_open
+            );
+        }
         let original = f
             .owner
             .store
@@ -642,6 +645,16 @@ async fn actual_command_cancel_retains_observed_receipt_without_accepting_tests(
                     .unwrap()
                     .execution_unit(unit.unit)
                     .unwrap();
+                if !unit
+                    .worktree
+                    .parent()
+                    .unwrap()
+                    .join("profile.json")
+                    .is_file()
+                {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    continue;
+                }
                 let resources = execution::resources::ResourceManager::new(f.owner.clone())
                     .profile(&unit)
                     .unwrap();
@@ -767,6 +780,15 @@ async fn four_actual_command_tasks_cancel_one_preserving_sibling_artifacts_and_r
                         .unwrap()
                         .execution_unit(reference.unit)
                         .unwrap();
+                    if !unit
+                        .worktree
+                        .parent()
+                        .unwrap()
+                        .join("profile.json")
+                        .is_file()
+                    {
+                        continue;
+                    }
                     let profile = execution::resources::ResourceManager::new(f.owner.clone())
                         .profile(&unit)
                         .unwrap();

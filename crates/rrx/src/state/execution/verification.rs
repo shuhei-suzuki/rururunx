@@ -721,7 +721,7 @@ impl Store {
             [unit.id.to_string()],
             |r| r.get(0),
         )?;
-        ensure!(n==index as u64 && (index==0 || tx.query_row("SELECT EXISTS(SELECT 1 FROM verification_commands WHERE unit_id=?1 AND state='pending')",[unit.id.to_string()],|r|r.get::<_,bool>(0))?==false),"verification command sequencing mismatch");
+        ensure!(n==index as u64 && (index==0 || !tx.query_row("SELECT EXISTS(SELECT 1 FROM verification_commands WHERE unit_id=?1 AND state='pending')",[unit.id.to_string()],|r|r.get::<_,bool>(0))?),"verification command sequencing mismatch");
         let prior = read_commands(&tx, unit.id, &p)?;
         ensure!(
             prior.len() == index && prior.iter().all(|o| o.certifying()),
