@@ -37,10 +37,42 @@ ownership and any Task.version-changing Session binding.
 
 A protected Native command is created only by the SAME actual `PreparedNativePhase`
 after one known-committed Immediate registration + distinct `native_phase_transport`
-intent under the SAME Runtime stop admission with SharedStore released, and every
-returned `Child` is moved into preallocated custody before any fallible step and
-stays there until the SAME registered actor's Core accepts it; every other path is
-no-spawn, Held, or nongrant closure.
+intent under the SAME Runtime stop admission with SharedStore released, which
+activates only the SAME pre-built candidate actor of that plan; every returned
+`Child` is adopted into the preallocated custody cell before any fallible step,
+is upgraded there in place, and leaves that cell only by one infallible move into
+the SAME registered actor's Core; every other path is no-spawn, Held, or nongrant
+closure.
+
+### 1.2 Revision delta (P)
+
+This revision corrects the three defects confirmed by the independent Sol high
+design review and clarifies one composability point. Changed: §§1.1, 1.2, 3,
+3.1, 4.3 (handoff vocabulary only), 5.1 (expected-inventory paragraph), 5.2, 6,
+7, 8.1, 8.2 (owner argument), 10, 11, 12, 13, 14.1, 15 and the G4 row of §16.
+Unchanged: §§2, 4.1, 4.2, 4.4, 5.3, 9, 14.2–14.4 and the rest of §16.
+
+- **D1 pre-Core child custody.** The earlier `into_owned()`/`native_pipes()` on
+  `RetainedRawProcess` returned an `OwnedProcess`/pipes to the caller, so Entry,
+  registry, shell and task preparation ran with the child in a local value. They
+  are replaced by a custody-resident `NativeChildCell` that is upgraded in place.
+  A single checked, infallible final transfer moves the process into the SAME
+  Core and records `Offered` in the same section. First-poll `Accepted` and
+  unpolled `DroppedUnpolled` are distinct (§§3.1, 7, 10, 12).
+- **D2 candidate without an unissued registration.** The pre-admission candidate
+  no longer takes an `Arc<NativeTransportRegistration>`. It is a concrete
+  nongrant `Candidate` built from the SAME plan. The SAME-plan known commit yields
+  a by-value `KnownTransportRegistration` that activates it once and in place: an
+  inline `OnceLock<RegistrationAck>` plus a `Candidate → Live` CAS that cannot
+  reopen `Revoked`. There is no heap allocation, hash, FS or await in that step,
+  and equal SQL rows never create an actor or commit (§§3, 3.1, 5.2, 7, 8.1).
+- **D3 Claude argv.** The preserved existing Claude vector has 12–18 elements.
+  The inclusive bound is now ≤18 elements × ≤128 B. Role, model and effort
+  controls are specified (§6, §13, §15).
+- **C1 inventory composability.** The version observation (text + closed ack) and
+  the last complete settled helper manifest are different objects. The separate
+  readonly draft's nongrant completion is only a possible manifest link; it is not
+  Prepared, registration, input or static-admission proof (§5.1).
 
 ## 2. Existing consumers and why they cannot be used (V)
 
@@ -80,29 +112,42 @@ Root PhaseJobs Entry -> Job -> JobState.preparation (A, phase_jobs.rs:33-42)
        transport: Option<Arc<NativeTransportCustody>> (P)
 NativeTransportCustody (P)
   plan: Arc<NativeTransportStartPlan>        [Store-owned sealed images]
-  candidate: Arc<PhaseActor>                 [built before admission; unissued]
-  registration: Option<Arc<NativeTransportRegistration>>  [known-commit ack]
-  creation: CreationState                    [one-shot: NotAttempted|Attempted|ReturnedChild]
-  raw: Mutex<RetainedRawProcess>             [Empty|RawChild|Qualified; poison-recovering]
-  prebuilt: Option<PrebuiltEntry>            [watch/mpsc/terminal cell/Entry value]
-  handoff: Handoff                           [None|Offered|Accepted]
+  command: NativeTransportCommand            [sealed program/argv/env/cwd, §6]
+  candidate: Arc<PhaseActor>                 [built before admission from SAME plan;
+                                              state Candidate; carries no registration]
+  phase: Mutex<TransportPhase>               [Planned|RegistrationUncertain|Registered|Held;
+                                              short; never held with Store]
+  child: Mutex<ChildCustody>                 [dedicated, poison-recovering, §7]
+       cell: NativeChildCell                 [Empty|Raw(RetainedRawProcess)|Owned(OwnedProcess)|Transferred]
+       creation: Creation                    [NotAttempted|Attempted|ReturnedChild|SpawnErr(class)]
+       handoff: Handoff                      [None|Offered|Accepted|DroppedUnpolled]
+       stop_requested: bool                  [set only under this mutex]
+  control: OnceLock<mpsc::Sender<Control>>   [clone of the prebuilt sender, set at transfer]
+  handoff_notify: tokio::sync::Notify
   observation / settlement / closure: Option<Arc<..>> (one slot each)
-  stop_requested: AtomicBool, reason: &'static str
+  reason: &'static str
 NativeTransportStartPlan -> PreparedNativePhase -> NativePreparationActor -> PhaseLaunchParts
-NativeTransportRegistration -> SAME NativeTransportStartPlan
 PhaseActor (A) -> NativePhaseSession (A + P fields) -> PhaseLaunchParts
-NativePhaseSession -> NativeTransportRegistration (P; immutable origin, no custody edge)
+NativePhaseSession.origin: Arc<NativeTransportStartPlan>   (P, immutable, set at candidate construction)
+NativePhaseSession.ack: OnceLock<RegistrationAck>         (P, inline Copy value, one-time)
+NativePhaseSession.state: AtomicU8 Candidate|Live|Revoked (P, replaces live: AtomicBool)
 PhaseLaunchParts -Weak-> NativePreparationCustody (A)
 NativePreparationActor -Weak-> custody, -Weak-> NativeSessions (A)
 NativeSessions.preparations -Weak-> NativePreparationCustody (A)
 Core (A) -> child: OwnedProcess, phase: Arc<PhaseActor>
+Core.handoff: Option<TransportHandoff> (P) -Weak-> NativeTransportCustody
+CoreShell (P)                                [start-future local; every Core field
+                                              except child; never holds a child]
 ```
 
 No strong edge returns to Runtime, PhaseJobs, JobState, NativeSessions or the
-NativeAdapter: the transport custody is a sibling slot of the Root-retained
-preparation custody, reached from Native only through the existing Weak index.
-No new registry or index is added. This removes local return edges; it is not a
-proof that every existing ownership graph is cycle-free.
+NativeAdapter. The transport custody is a sibling slot of the Root-retained
+preparation custody, and Native reaches it only through the existing Weak index.
+The candidate's `origin` points at the plan, and the plan points at the Prepared
+phase and the preparation actor; none of these points back to the transport
+custody. Core reaches the custody only by Weak. No new registry or index is
+added. This removes local return edges; it is not a proof that every existing
+ownership graph is cycle-free.
 
 ### 3.1 Private signatures (P)
 
@@ -119,31 +164,90 @@ fn issue_prepared(custody: &Arc<NativePreparationCustody>)
 // Built outside admission/Store/custody locks.
 fn plan_transport_command(owner: &Arc<RuntimeOwner>, prepared: &Arc<PreparedNativePhase>)
     -> Result<NativeTransportCommand>;              // fixed argv/env/cwd; §6
+
 // Store (state/execution/native_phase/transport.rs). Snapshot outside SharedStore.
 fn plan_prepared_transport(runtime: &RuntimeOwner, prepared: Arc<PreparedNativePhase>,
     command_digest: String, native_uuid: Option<String>)
     -> Result<Arc<NativeTransportStartPlan>>;
 fn register_prepared_transport(&mut self, plan: &Arc<NativeTransportStartPlan>,
-    admission: &PhaseEffectAdmissionGuard) -> Result<NativeTransportRegistration>;
+    admission: &PhaseEffectAdmissionGuard) -> Result<KnownTransportRegistration>;
 fn confirm_prepared_transport(&mut self, plan: &Arc<NativeTransportStartPlan>,
     admission: &PhaseEffectAdmissionGuard) -> Result<RegistrationProbe>; // §8
-fn plan_transport_settlement(reg: &Arc<NativeTransportRegistration>,
+fn plan_transport_settlement(actor: &Arc<PhaseActor>,
     obs: Arc<NativeTransportObservation>) -> Result<Arc<NativeTransportSettlementPlan>>;
 fn record_transport_settlement(&mut self, s: &Arc<NativeTransportSettlementPlan>) -> Result<()>;
 fn plan_transport_closure(runtime: &RuntimeOwner, s: Arc<NativeTransportSettlementPlan>)
     -> Result<Arc<NativeTransportClosurePlan>>;
 fn close_transport_observation(&mut self, c: &Arc<NativeTransportClosurePlan>) -> Result<()>;
 
-// Process (execution/process.rs), additions only; legacy OwnedProcess::spawn unchanged.
-impl RetainedRawProcess {
-    fn native_pipes(&mut self) -> Result<(ChildStdin, ChildStdout, ChildStderr)>;
-    fn into_owned(&mut self) -> Result<OwnedProcess>; // Err leaves the SAME Child in place
+// Known-commit token: produced only inside the two Store functions above for the
+// SAME plan Arc passed in. By value, non-Clone, private fields, no row/ID/DTO
+// constructor. Holds a refcount clone of that plan Arc and Copy facts only.
+pub(crate) struct KnownTransportRegistration {
+    plan: Arc<NativeTransportStartPlan>,
+    ack: RegistrationAck,
 }
+#[derive(Clone, Copy)]
+pub(crate) struct RegistrationAck {
+    readiness: u64,      // P+1
+    unit_version: u64,   // U+1
+    source: AckSource,   // Committed | Confirmed
+}
+
+// Native phase protocol (execution/native/phase_protocol.rs).
+impl PhaseActor {
+    // Step 1, outside every lock. State Candidate, ack empty, origin = plan.
+    fn prepared_candidate(plan: &Arc<NativeTransportStartPlan>, session: Session)
+        -> Result<Arc<Self>>;
+    // Step 4c, inside admission after SharedStore release. Pointer check, inline
+    // OnceLock set, one CAS. No heap allocation, SQL, FS, hash or await.
+    fn activate(&self, known: KnownTransportRegistration) -> Activation;
+}
+enum Activation { Live, RevokedKnown, Mismatch }
+
+// Process (execution/process.rs), additions only. Legacy OwnedProcess::spawn and
+// every existing RetainedRawProcess method are unchanged.
+pub(crate) enum NativeChildCell {
+    Empty,
+    Raw(RetainedRawProcess),
+    Owned(OwnedProcess),
+    Transferred,
+}
+impl NativeChildCell {
+    fn adopt(&mut self, child: Child);                        // Empty -> Raw; infallible, no allocation
+    fn qualify(&mut self) -> Result<()>;                      // Raw in place; Err leaves the SAME Raw
+    fn upgrade_in_place(&mut self) -> Result<()>;             // Raw(qualified) -> Owned; returns no process
+    fn take_native_pipes(&mut self) -> Result<NativePipes>;   // Owned; all-three presence check before any take
+    fn transfer_with<T>(&mut self, build: impl FnOnce(OwnedProcess) -> T) -> Result<T>;
+                                                              // checks first; then moves into `build`; cell = Transferred
+    fn hygiene(&mut self) -> Hygiene;                         // group signal if qualified, else direct start_kill
+    fn try_reap(&mut self) -> Result<Option<ExitStatus>>;     // sync try_wait; marks reaped/unreaped=false
+}
+impl OwnedProcess {
+    fn from_qualified(child: Child, pid: Pid) -> Self;        // private to process.rs; unreaped = true
+}
+
+// Native (execution/native.rs).
+struct CoreShell { /* every Core field except `child` */ }
+impl CoreShell { fn into_core(self, child: OwnedProcess) -> Core; } // pure field moves
+struct TransportHandoff { custody: Weak<NativeTransportCustody> }
+impl TransportHandoff { fn accept(&self) -> Result<()>; }           // first statement of Core::run
+impl Drop for TransportHandoff { /* Offered -> DroppedUnpolled, notify */ }
 ```
 
-`RegistrationProbe` is `{ Committed(NativeTransportRegistration), Absent, Held }`.
-`into_owned` succeeds only when `pid` is already qualified and the cell holds the
-child; the move itself is infallible after that check.
+`RegistrationProbe` is `{ Committed(KnownTransportRegistration), Absent, Held }`.
+
+`upgrade_in_place` checks four things before moving anything: the cell is `Raw`,
+it holds a child, it is not reaped, and `pid` is qualified. Only then does it
+take the child out of the `RetainedRawProcess` and write
+`Owned(OwnedProcess::from_qualified(child, pid))` into the SAME cell. The emptied
+raw value drops with `child = None`, so its `Drop` hygiene sends no signal
+(`process.rs:66–72`). No method of `NativeChildCell` returns an `OwnedProcess`
+or `Child` to its caller.
+
+`transfer_with` checks five things before calling `build`: `Owned`, all three
+pipes already taken, not reaped, handoff `None`, and `!stop_requested`. If any
+check fails, `build` is never called and the process stays in the cell.
 
 ## 4. Durable representation (P)
 
@@ -215,11 +319,12 @@ Settlement (v2) is written once from the SAME actual `NativeTransportObservation
 | --- | --- | --- |
 | One-shot latch never set (spawn not invoked) | `resolved` | `creation=not_attempted`, `handoff=none` |
 | `Command::spawn` returned `Err` | `unknown` | `creation=attempt_without_returned_handle`, `spawn_error=<not_found\|permission_denied\|other>` |
-| `Child` returned | `confirmed` | `creation=returned_child`, `identity=<qualified\|unqualified>`, `pipes=<complete\|incomplete\|n/a>`, `handoff=<core_accepted\|core_offered\|precore_retained>`, `hygiene=<group_signal_attempted\|direct_kill_attempted\|unknown\|n/a>`, `reap=<exit:N\|signal\|unknown\|n/a>` |
+| `Child` returned | `confirmed` | `creation=returned_child`, `identity=<qualified\|unqualified>`, `pipes=<complete\|incomplete\|n/a>`, `handoff=<core_accepted\|core_dropped_unpolled\|precore_retained>`, `hygiene=<group_signal_attempted\|direct_kill_attempted\|unknown\|n/a>`, `reap=<exit:N\|signal\|unknown\|n/a>` |
 
 `confirmed` means "a process was created and retained", never work success,
 input, ACK or owned completion. No PID, argv, path, stderr or provider output is
-stored.
+stored. `Offered` is never a settlement value: the row is written only after the
+handoff resolves (§7 step 8).
 
 ### 4.4 Compatibility plan (no DDL)
 
@@ -252,46 +357,125 @@ stored.
 
 ### 5.1 `PreparedNativePhase` contents (absent producer, G1)
 
-Issued once by Native only, from the SAME custody, after: readiness known commit
-(A); version helper settlement **closed** (A + P flag); every required readonly Git
-qualification/artifact lease outcome settled (in progress separately, G1); profile/
-program/path qualification; quota admission settled as admitted (not parked).
-It retains, without copying: the SAME `NativePreparationActor`; the SAME
-`NativePreparationCommit`; the SAME version `NativeHelperSettlementPlan` (its
-`after` inventory is the expected inventory, borrowed, not cloned); the owned
-version text; the exact prepared readiness `PairRow` (`state=preparing`, version P);
-the exact prepared Unit image (full encoded body and version U); the governing
-digest already fixed from original marker parents. It grants nothing by itself and
-cannot be issued from rows, IDs, a version string or a successful helper exit.
+Native alone issues it, once, from the SAME custody, after all of the following:
+- readiness known commit (A);
+- version helper settlement **closed** (A + P flag);
+- every required readonly Git qualification and artifact lease outcome settled
+  (in progress separately, G1);
+- profile/program/path qualification;
+- quota admission settled as admitted (not parked).
+
+It retains, without copying:
+- the SAME `NativePreparationActor` and the SAME `NativePreparationCommit`;
+- the SAME version observation, i.e. the owned version text plus the closed
+  `native_phase_version` settlement acknowledgement;
+- exactly one borrowed **last complete settled helper manifest** (defined below);
+- the exact prepared readiness `PairRow` (`state=preparing`, version P);
+- the exact prepared Unit image (full encoded body and version U);
+- the governing digest already fixed from original marker parents.
+
+It grants nothing by itself and cannot be issued from rows, IDs, a version string,
+a successful helper exit or a helper completion.
+
+The version observation and the expected inventory are different objects:
+
+- **Version observation (text + ack).** It comes from the SAME version
+  `NativeHelperSettlementPlan` and its closed settlement. It is used only for
+  `native_invocations.native_version` (§4.2) and the provider version gate. It
+  is never an inventory baseline.
+- **Last complete settled helper manifest.** This is the complete `after` effect
+  inventory of the LAST helper that settled in the SAME preparation custody's
+  ordered helper history. Prepared borrows it; it is never merged, recomputed or
+  derived from rows. If no readonly helper follows the version helper, it is the
+  version settlement's `after`. If the separately authored readonly source draft
+  supplies its nongrant completion, it is that completion's settled `after`. In
+  that draft the completion is `NativeReadonlyHelperCompletion`, carrying a
+  `NativeHelperHistoryCommit`. Those names come from that draft, are absent at
+  76a58b6e, and are neither reviewed nor tested by this HOW. Each history link's
+  `before` must equal the previous link's `after` exactly; otherwise the history
+  is Held and Prepared stays absent. This manifest is the "prepared expected"
+  inventory used in §§7 and 9.
+
+A helper completion is a factual nongrant record. It is not registration, input,
+ACK, static admission or Prepared proof. Full `PreparedNativePhase` stays absent
+(G1) until every producer below is conjoined in the SAME custody:
+- #19 prepared input;
+- hooks/settings qualification;
+- quota admission;
+- Reviewer genuine artifact/readonly lease.
+
+This HOW does not define, extend or widen the distinct marked readonly Git seam.
 
 `reconcile_known_commit` (`preparation.rs:150–205`) must return immediately once
 `version_closed` is set by the SAME successful `close_phase_version_observation`
 that observed `current == settlement.after`; no later wake re-reads the version
-inventory. Without this, the transport row would make version reconciliation
-conflict forever.
+inventory. Without this, any later readonly helper row or the transport row would
+make version reconciliation conflict forever.
 
 ### 5.2 Registered actor continuity
 
-- The registration candidate `PhaseActor` is constructed before admission from the
-  plan's `Session` and `record_version = 1`, via a replacement for
-  `PhaseActor::registered` (`phase_protocol.rs:62–76`) that additionally takes the
-  `Arc<NativeTransportRegistration>` it will carry. It is unpublished: held only by
-  the transport custody, not in `NativeSessions.entries`, not returned, and its
-  `live` flag is false until the SAME known commit (or exact confirmation, §8)
-  flips it with one infallible atomic store.
-- `NativePhaseSession` (P) gains immutable `registered_readiness: u64 = P+1` and the
-  registration origin Arc. `plan_owner_currency` (`native_phase.rs:311–330`) and the
-  terminal reader (`terminal.rs:305–316`) accept only `(P+1, !ended)` or
-  `(P+2, ended)` for this actor, not the constants 2/3. Rows of any other lineage
-  refuse (Held). The allocated-v1→registered-v2 producer is deleted.
-- Input continuity: Core receives a clone of the SAME `f.input` (`PreparedInput`
-  captured in the allocation) and `f.model/f.effort`; registration keeps the
-  existing `encode_input(seed.input()) == f.input_bytes` check (`:1111`); dispatch
-  keeps comparing payload with `f.input.payload` (`:529–556`). No `ManagedInput`,
-  re-read Context or regenerated pin participates.
-- The Session/invocation/pair are exactly the originally allocated IDs; no UUID is
-  generated after preparation except `T` and, for Claude, the native session UUID,
-  both generated once in the sealed plan and reused on every retry of that plan.
+- **Candidate (step 1, outside every lock).**
+  - `PhaseActor::prepared_candidate(&plan, session)` runs after
+    `plan_prepared_transport` returns.
+  - It performs today's identity checks of `NativePhaseSession::registered`
+    (`phase_protocol.rs:250–273`) against the plan's Session and
+    `record_version = 1`.
+  - It records `origin = plan.clone()` and `registered_readiness = P+1`
+    immutably.
+  - It allocates the complete actor: Arc, projection Mutex, retained-proofs
+    Mutex, an empty inline `OnceLock<RegistrationAck>`, and
+    `state = Candidate`.
+  - It references no registration object, because none exists before the
+    commit.
+  - Only the transport custody holds it: it is not in `NativeSessions.entries`,
+    not returned and not in any binding.
+- **Candidate and Revoked are nongrant.** Only `Live` passes these checks:
+  - `NativePhaseBinding::is_live`, `binding_snapshot`'s `live` field and
+    `ConsumedPhaseInput::admitted` (`phase_protocol.rs:321–383`);
+  - currency planning and terminal planning.
+  `revoke()` stores `Revoked` unconditionally. No transition leaves `Revoked`.
+- **Known-commit token.** Only two outcomes produce a
+  `KnownTransportRegistration`: `register_prepared_transport` returning `Ok`, and
+  `confirm_prepared_transport` returning `Committed`.
+  - The token is by value, for the SAME `&Arc<NativeTransportStartPlan>` passed
+    in, inside the Store call, before SharedStore is released.
+  - It carries a refcount clone of that plan Arc (no heap allocation) and Copy
+    facts only.
+  - Rows, equal-looking postimages, IDs and DTOs never produce a token.
+  - A token never constructs an actor.
+- **Activation (step 4c, admission held, SharedStore released).**
+  `candidate.activate(known)` does the following, in order:
+  1. Checks `Arc::ptr_eq(&known.plan, &origin)`; on failure it returns
+     `Mismatch` (Held, no spawn). The private producer cannot cause this.
+  2. Calls `ack.set(known.ack)`. The set is inline and one-time. The ack is
+     retained as the factual known commit even when the actor is already
+     revoked. A second set cannot happen through the private producer; if it
+     did, the result is Held.
+  3. Runs `state.compare_exchange(Candidate, Live)`. If it fails because the
+     state is `Revoked`, the result is `RevokedKnown`: the registration is known,
+     there is no spawn, and the path continues in §10 (`not_attempted`) and
+     §10.1.
+
+  Activation does no SQL, FS, hash, await or heap allocation. A stop that wins
+  before activation therefore can never be reopened by a later activation.
+- **Readiness.** `NativePhaseSession` gains `registered_readiness = P+1` and the
+  `origin` Arc.
+  - `plan_owner_currency` (`native_phase.rs:311–330`) and the terminal reader
+    (`terminal.rs:305–316`) accept only `(P+1, !ended)` or `(P+2, ended)`, and
+    only for an actor whose ack is set. They no longer use the constants 2/3.
+  - Rows of any other lineage refuse (Held).
+  - The allocated-v1→registered-v2 producer is deleted.
+- **Input continuity.**
+  - Core receives a clone of the SAME `f.input` (`PreparedInput` captured in the
+    allocation) and `f.model`/`f.effort`.
+  - Registration keeps the existing check `encode_input(seed.input()) ==
+    f.input_bytes` (`:1111`).
+  - Dispatch keeps comparing the payload with `f.input.payload` (`:529–556`).
+  - No `ManagedInput`, re-read Context or regenerated pin participates.
+- **IDs.** The Session, invocation and pair are exactly the originally allocated
+  IDs. After preparation, only two IDs are generated: `T` and, for Claude, the
+  native session UUID. Both are generated once in the sealed plan and reused on
+  every retry of that plan.
 
 ### 5.3 Pre-Session parking stays distinct
 
@@ -310,111 +494,226 @@ Built outside admission/Store from the prepared actor, reusing the version
 helper's bounded physical profile qualification (`version.rs:218–285`, factored
 into a shared private function; not `ResourceManager::profile`):
 
-- program: `f.program`, absolute, canonical, regular file (rechecked here);
-  cwd: `f.path`, absolute, canonical. Both server-decided by the original
-  allocation; never caller input.
-- argv: Codex `["app-server","--listen","stdio://"]`; Claude the existing fixed
-  vector (`native.rs:455–482`) with plan-generated session UUID, `f.model`,
-  `f.effort` and `--permission-mode plan` for non-Executor. No shell, no caller
-  argv, no new flag. Each element ≤4096 B, ≤16 elements.
-- environment: the qualified profile overlay `profile.environment(cookie, socket)`
-  only, as today; inherited host/auth environment unchanged and out of scope.
-- `stdin/stdout/stderr` piped, `process_group(0)`, `kill_on_drop(true)`.
-- Complete encoded plan ≤64 KiB. Verifier command-only Units refuse
-  (`verification::is_command_unit`).
+- **Program and cwd.**
+  - program: `f.program`, absolute, canonical, regular file (rechecked here).
+  - cwd: `f.path`, absolute, canonical.
+  - Both are server-decided by the original allocation; never caller input.
+- **Codex argv** is exactly `["app-server","--listen","stdio://"]` (3 elements).
+  Codex model/effort are not argv; they travel only as JSON protocol values
+  (`native.rs:2009–2028`).
+- **Claude argv** keeps the existing vector and order exactly
+  (`native.rs:454–482`), in these segments:
+  1. `-p --input-format stream-json --output-format stream-json --verbose
+     --session-id` (7 elements);
+  2. the plan-generated session UUID (1 element, 36 B);
+  3. `--permission-prompt-tool stdio --settings {"forceLoginMethod":"claudeai"}`
+     (4 elements);
+  4. `--model <f.model>` only when `f.model` is `Some` (2 elements);
+  5. `--effort <f.effort>` only when `f.effort` is `Some` (2 elements);
+  6. `--permission-mode plan` only when the role is not Executor (2 elements).
+
+  So n is 12–18. Executor gives 12–16 and Reviewer gives 14–18. The inclusive
+  bound is **≤18 elements, each ≤128 B**. That fits: the longest fixed element is
+  32 B, the UUID is 36 B, and model/effort are at most 128 B. Total argv is
+  ≤2304 B. The built vector is checked against this bound before the digest and
+  before registration.
+- **Role control.**
+  - The role is `f.role`. Protected allocation admits only Executor or Reviewer
+    (`adapter/native.rs:149–153`).
+  - The plan cross-checks it against the prepared Unit kind (Executor↔Executor,
+    Reviewer↔Reviewer) and the plan's Session role; any mismatch refuses.
+  - Plan mode is keyed on `role != Executor`, so a Reviewer can never omit it.
+  - Verifier/command-only Units refuse (`verification::is_command_unit`).
+  - Plan mode is a cooperative native role policy, not host containment.
+- **Model/effort control.**
+  - Values come only from `f.model`/`f.effort`. Caller argv, rows, Context and
+    config re-reads are never used.
+  - The allocation predicate is rechecked: non-empty, ≤128 B, no control
+    character (`adapter/native.rs:140–145`).
+  - Additionally, the first byte must not be `-`, so the CLI can never parse a
+    value as an option. This narrowing is protected-only and refuses before
+    registration.
+  - Each value is its own argv element directly after its flag: no `=` joining,
+    no shell.
+  - The SAME values feed the Session image (§4.2) and the Core run arguments.
+- **No new inputs.** No shell, no caller argv, no new flag.
+- **Environment:** the qualified profile overlay `profile.environment(cookie,
+  socket)` only, as today. The inherited host/auth environment is unchanged and
+  out of scope.
+- **Process setup:** `stdin/stdout/stderr` piped, `process_group(0)`,
+  `kill_on_drop(true)`.
+- **Size:** the complete encoded plan is ≤64 KiB.
+- **Failure:** any failure above refuses with no effect, before admission.
 
 The command is not a `PhaseHelperAction`, not a callback and cannot be built from
-a row. It is cooperative role policy, not host containment.
+a row.
 
 ## 7. Protected start sequence (P)
 
 Continuation of `begin_phase_preparation` after `issue_prepared` succeeds:
 
-1. **Outside all locks:** build `NativeTransportCommand`; `plan_prepared_transport`
-   on a separate bounded readonly snapshot (current successor, Driver-live,
-   `registration_attempt`, owner v1, prepared readiness, prepared Unit, budgeted
-   inventory == prepared expected, idempotency absence). Build the candidate
-   `PhaseActor`, `watch`/`mpsc(16)` channels, frozen-terminal cell and the
-   unpublished `Entry` value (`PrebuiltEntry`). Allocate `NativeTransportCustody`
-   with `raw = Empty`, `creation = NotAttempted`.
-2. Short custody lock: install the transport custody into the preparation custody
-   slot exactly once (pointer-checked); refuse if abandoned. No SQL/await under it.
-3. `launch.admission().enter(launch)` — may await before acquisition.
-4. **Admission section (no await, FS, hash or allocation-heavy work):**
-   a. `admission.validate_for`, `actor.validate_open`, custody not revoked/stop-
-      requested.
-   b. Lock SharedStore; `register_prepared_transport` (§9 checks, §4.2 writes);
-      release SharedStore immediately after commit/rollback.
-   c. On `Ok`: retain the `NativeTransportRegistration` in custody and flip the
-      candidate actor live — both infallible after pre-reserved slots. On `Err`:
-      set `RegistrationUncertain`, release admission, do NOT spawn (§8).
-   d. Recheck `admission.validate_for` and `actor.validate_open`; set the one-shot
-      `creation = Attempted` latch; call `Command::spawn()` synchronously.
-   e. On `Ok(child)`: FIRST action is `raw.adopt(child)` under the dedicated
-      poison-recovering raw mutex (no allocation, no fallible lock); set
-      `ReturnedChild`. On `Err(e)`: record the bounded error class only.
-   f. Drop the admission guard.
-5. **After admission:** under the raw mutex, `qualify()` PID in place; take
-   `native_pipes()`; `into_owned()`. Any failure leaves the SAME child in custody
-   (`precore_retained`) and proceeds to §10 pre-Core closure.
-6. Insert the prebuilt `Entry` into `NativeSessions.entries` (key = original
-   SessionId, absence checked in step 1); on poison/collision the child stays in
-   custody (§10). Spawn the stderr drain task.
-7. Construct `Core` (infallible struct construction) owning the `OwnedProcess`,
-   the SAME `PhaseActor` and prebuilt channels; set `handoff = Offered`; if
-   `stop_requested`, revoke the session actor and pre-queue `Control::Cancel`;
-   `tokio::spawn(core.run(f.input.clone(), f.model, f.effort, profile))`. Core's
-   existing `Drop` (`native.rs:2248–2256` → `drop_phase`) is the eager abandonment
-   guard for an unpolled or aborted task.
-8. Core's first poll sets `handoff = Accepted` (P hook at the top of `Core::run`),
-   then releases the same-Unit start gate once (§12). The start future records the
-   transport settlement (§8.2) and returns `NativePhaseStart::Launched { handle,
-   binding: phase.owner.binding_snapshot() }`; Root's existing `bind_returned`
-   (`phase_jobs.rs:286–301,356–374`) continues unchanged.
+1. **Outside all locks:**
+   - Build `NativeTransportCommand` (§6).
+   - Run `plan_prepared_transport` on a separate bounded readonly snapshot. It
+     checks: current successor, Driver-live, `registration_attempt`, owner v1,
+     prepared readiness, prepared Unit, budgeted inventory == Prepared's last
+     complete settled helper manifest (§5.1), idempotency absence, and that the
+     original SessionId is absent from `NativeSessions.entries`.
+   - Build `PhaseActor::prepared_candidate` (§5.2), the `watch`/`mpsc(16)`
+     channels and the frozen-terminal cell.
+   - Allocate `NativeTransportCustody` with `phase = Planned` and `ChildCustody
+     { cell: Empty, creation: NotAttempted, handoff: None, stop_requested:
+     false }`.
+2. **Short custody lock:** install the transport custody into the preparation
+   custody slot exactly once (pointer-checked); refuse if abandoned. No SQL or
+   await under it.
+3. **`launch.admission().enter(launch)`** — may await before acquisition. A
+   start future dropped here leaves no child by construction.
+4. **Admission section** (synchronous; no await, FS, hash or heap allocation
+   outside the SQL engine's own use inside the Immediate):
+   a. Check `admission.validate_for`, `actor.validate_open`, that the custody is
+      not stop-requested, and that the candidate is in `Candidate`.
+   b. Lock SharedStore; run `register_prepared_transport` (§9 checks, §4.2
+      writes); release SharedStore immediately after commit or rollback.
+   c. On `Ok(known)`, call `candidate.activate(known)`:
+      - `Live` → `phase = Registered`;
+      - `RevokedKnown` → `phase = Registered`, no spawn (§10);
+      - `Mismatch` → Held, no spawn.
 
-There is no process call inside Immediate; no FS/hash/await while holding Store,
-actor, queue, custody-state or raw-child mutex. Admission does not span pipe
-handshake, Core I/O or child execution. Core input consumption/ACK remain their
-separate private protocol and are not implied by any step above.
+      On `Err`, set `RegistrationUncertain`, do NOT spawn, and go to §8.
+   d. Recheck `admission.validate_for`, `actor.validate_open` and candidate
+      `Live`. Acquire the child mutex (poison-recovering) and require
+      `!stop_requested`. Set `creation = Attempted`, then call
+      `Command::spawn()` synchronously while holding that mutex.
+      - On `Ok(child)`: the very next statement is the infallible,
+        allocation-free `cell.adopt(child)`; set `ReturnedChild`.
+      - On `Err(e)`: record only the bounded error class.
+
+      Release the child mutex. Because the mutex is acquired before the spawn,
+      adoption never waits on a fallible lock after a child exists.
+   e. Drop the admission guard.
+5. **Synchronous pre-Core segment.** There is no `.await` from 4e through step
+   6's `tokio::spawn`, so the start future cannot be cancelled inside this
+   segment. A panic unwinds only child-free locals; the child stays in the
+   Root-retained cell.
+   a. Child mutex section: `qualify()`, then `upgrade_in_place()`, then
+      `take_native_pipes()` (all three present before any take). Release the
+      mutex. Any `Err` leaves the SAME child in the cell (`Raw` or `Owned`) →
+      `precore_retained`, §10.2.
+   b. Outside the child mutex, build the `CoreShell`:
+      - `Lines::new(stdin, stdout, limit)` and the channels;
+      - the frozen-terminal cell;
+      - the registered Unit/Session images taken from the plan's new images;
+      - `record_version = 1` and `invocation = f.invocation_id`;
+      - the SAME candidate Arc (now `Live`);
+      - `TransportHandoff { custody: Weak }`.
+
+      All fallible or allocation-heavy work happens here, and the shell holds
+      no child.
+   c. Insert the prebuilt `Entry` (key = original SessionId) into
+      `NativeSessions.entries`. On poison or collision, drop the shell (closing
+      the pipes); the child stays in the cell → §10.2.
+   d. Spawn the stderr drain task and store its JoinHandle in the shell.
+   e. **Final transfer.** Acquire the child mutex, then call
+      `cell.transfer_with(|child| shell.into_core(child))`:
+      - All preconditions (§3.1) are checked before any move.
+      - The `OwnedProcess` then moves from the cell straight into the Core
+        struct literal; every other field is a plain move of the already-built
+        shell. There is no local binding, `?`, allocation, lock acquisition or
+        await between.
+      - In the SAME section, set `cell = Transferred`, `handoff = Offered` and
+        `control` (a clone of the prebuilt sender) once; then release.
+      - If a precondition fails (stop requested, or an impossible state), remove
+        the Entry just inserted (synchronously), drop the shell, and keep the
+        child in the cell → §10.2.
+6. **Spawn Core.** Call `tokio::spawn(core.run(f.input.clone(), f.model,
+   f.effort, profile))` right after releasing the child mutex.
+   - Between that release and the spawn, the only owner is the Core value: the
+     SAME eager owner with the existing `Drop` (`native.rs:2248–2256` →
+     `drop_phase`). Nothing fallible runs there.
+   - If tokio drops the future unpolled (runtime shutdown, task cancelled before
+     first poll), `Core::drop` revokes the actor and captures Lost through
+     `drop_phase` (A). The `OwnedProcess` drop group-signals (A). The
+     `TransportHandoff` drop then turns `Offered` into `DroppedUnpolled` and
+     notifies.
+7. **First poll.** The first statement of `Core::run`, before any wire I/O or
+   Store access, is `handoff.accept()`:
+   - In a short child-mutex section it moves `Offered → Accepted` and notifies,
+     then releases the mutex.
+   - Then, outside all locks, it takes the preparation actor's start-gate guard
+     out of its one-time cell and drops it (§12).
+   - If acceptance cannot be recorded (custody gone, poisoned mutex, or state
+     not `Offered`), Core revokes its own owner and returns through its existing
+     Lost path without dispatch, and the gate is not released by Core.
+8. **Settlement and return.** The start future waits on `handoff_notify` for at
+   most 5 s, holding no lock, until the handoff is `Accepted` or
+   `DroppedUnpolled`.
+   - It then records the transport settlement (§8.2) for the observed handoff.
+     If the handoff is still `Offered` at the bound, it records nothing; the
+     SAME custody records it on a later reconcile wake.
+   - Unless the handoff is `DroppedUnpolled` (in which case it returns `Err`
+     with the SAME launch, and Root keeps the custody Held), it returns
+     `NativePhaseStart::Launched { handle, binding:
+     phase.owner.binding_snapshot() }`.
+   - Root's existing `bind_returned` (`phase_jobs.rs:286–301,356–374`) continues
+     unchanged.
+
+There is no process call inside the Immediate. No FS, hash or await runs while
+holding the Store, actor, queue, custody-state or child mutex. Admission does not
+span the pipe handshake, Core I/O or child execution. Core input
+consumption/ACK remain their separate private protocol and are not implied by any
+step above.
 
 ## 8. Same-plan reconciliation (P)
 
 ### 8.1 Registration
 
-The custody retains the SAME plan and original pair across every outcome. At most
-one exact probe per due wake, capped 100 ms–5 s backoff, under a fresh admission
-guard, by `confirm_prepared_transport`:
+The custody retains the SAME plan, the SAME candidate and the original pair
+across every outcome. At most one exact probe runs per due wake, with capped
+100 ms–5 s backoff, under a fresh admission guard, by
+`confirm_prepared_transport`:
 
 | Probe observation (all images read in one Immediate) | Result |
 | --- | --- |
-| Complete postimage of every §4.2 row equals the plan's new images, transport row is v1 pending exactly | `Committed` → issue the SAME `NativeTransportRegistration` and flip the SAME candidate; spawn may then proceed in that same admission section (step 4d) |
+| Complete postimage of every §4.2 row equals the plan's new images, transport row is v1 pending exactly | `Committed(KnownTransportRegistration)` for the SAME plan Arc → `candidate.activate` in that same admission section (step 4c); spawn may then proceed (step 4d) |
 | Complete preimage of every row and all inserted keys absent | `Absent` → retry the SAME plan's Immediate (same `T`, Session, invocation, native UUID) only if all §9 normal checks pass |
 | Mixed, foreign suffix, transport row not pending v1, stale current/Driver, unknown | `Held`; no spawn, no new plan, no row-to-actor construction |
 
-Equal-looking rows never create an actor; only the SAME retained plan and
-candidate can be issued. A generic Store error, empty raw cell or missing Session
-is never rollback evidence.
+Equal-looking rows never create an actor or a token; only the SAME retained plan
+can produce a token, and only the SAME retained candidate can be activated. A
+generic Store error, empty child cell or missing Session is never rollback
+evidence.
 
 ### 8.2 Transport settlement and closure
 
-`record_transport_settlement` (normal, while the registered actor is open):
-selected DB; SAME registration and observation; §9 normal predicates for the
-registered owner (after G2 replacement); the transport row's exact v1 preimage
-(all nine columns); single-row CAS update to the §4.3 v2 image; rowcount must be 1.
-It deliberately does **not** compare the complete Unit inventory: after Core
+`record_transport_settlement` is the normal writer, used while the registered
+actor is `Live`. It requires:
+- the selected DB;
+- the SAME activated candidate (ack set, `origin` pointer equals the custody
+  plan) and the SAME observation;
+- the §9 normal predicates for the registered owner (after the G2 replacement);
+- the transport row's exact v1 preimage (all nine columns).
+
+It performs a single-row CAS update to the §4.3 v2 image; rowcount must be 1. It
+deliberately does **not** compare the complete Unit inventory: after Core
 acceptance the SAME actor's own setup/input dispatches legitimately append rows.
 The pre-spawn baseline was already full-inventory exact in §9.
 
-`close_transport_observation` (nongrant, after revocation or currency loss):
-validates only `validate_preparation_original` (immutable Source/marker lineage),
-the latest complete Unit image CAS (reuse `LatestUnitImage`,
-`version/closure.rs:11–153`, factored to a shared module), the latest exact
-Session record, owner v2 and readiness (`registered P+1` or later `closed`) images,
-and the transport row's exact v1 preimage. It writes ONLY the transport row. It
-issues no permission, input, owned success or Session/Unit change, and preserves
-any known terminal independently (Core's frozen terminal is untouched). Drift
-keeps the SAME observation Held. Both writers are idempotent on the exact v2
-postimage (return Ok without writing).
+`close_transport_observation` is the nongrant writer, used after revocation or
+currency loss, including `RevokedKnown` and `DroppedUnpolled`. It validates only:
+- `validate_preparation_original` (immutable Source/marker lineage);
+- the latest complete Unit image CAS (reusing `LatestUnitImage` from
+  `version/closure.rs:11–153`, factored to a shared module);
+- the latest exact Session record;
+- the owner v2 and readiness (`registered P+1` or later `closed`) images;
+- the transport row's exact v1 preimage.
+
+It writes ONLY the transport row. It issues no permission, input, owned success
+or Session/Unit change, and preserves any known terminal independently (Core's
+frozen terminal is untouched). Drift keeps the SAME observation Held.
+
+Both writers are idempotent on the exact v2 postimage: they return `Ok` without
+writing.
 
 ## 9. Normal versus nongrant checks (P)
 
@@ -439,63 +738,115 @@ There is no boolean bypass, public validation mode, optional actor fallback or
 
 | Actual observation/fault | Custody state | Handling |
 | --- | --- | --- |
-| Stop wins admission before 4a | Registered = none | No registration, no spawn; preparation Held per approved §3.2 |
+| Stop wins admission before 4a | Planned | No registration, no spawn; preparation Held per approved §3.2 |
 | Registration rollback proved (`Absent`) | Planned | No spawn; SAME plan retry only if all §9 checks pass; never new IDs/pins |
 | Registration commit uncertain | RegistrationUncertain | No spawn; §8.1 probe; Held otherwise |
-| Known registration, stop/revocation before 4d | Registered, `NotAttempted` | No spawn; settlement `resolved/not_attempted` (authentic local precreation proof); registered owner revoked; terminal Lost via §10.1; no input/ACK |
+| Known registration, candidate already `Revoked` at activation (`RevokedKnown`), or stop/revocation before 4d | Registered, `NotAttempted`, cell Empty | No spawn; settlement `resolved/not_attempted` by nongrant closure (authentic local precreation proof); terminal Lost via §10.1; no input/ACK |
+| Activation `Mismatch` | Held | No spawn; impossible via the private producer; Held for attention |
 | `Command::spawn` `Err` | Attempted, Empty | Settlement `unknown`; never NoChild/NoCurrentDispatch; no replay; Held for attention |
-| Child returned, PID qualification fails | RawChild | Child retained; no group signal; direct `start_kill`/bounded reap (best effort); settlement `confirmed/unqualified/precore_retained`; never NoChild |
-| Child qualified, pipes/registry/Entry failure | Qualified | Retained custody owns child; group signal + bounded reap; settlement `confirmed/precore_retained`; terminal via §10.1 |
-| Start future dropped/aborted, Engine timeout, Runtime Drop before 7 | any pre-Core | Root-retained custody keeps child/outcome; `abandon()` extended to transport sets stop_requested; preparation Held until nongrant settlement; no new start/input/DTO restoration |
-| Stop after 7 (Offered/Accepted) | Offered/Accepted | Send `Control::Cancel` on the prebuilt sender and revoke the session actor; Core's existing cancel/terminal path |
-| Core task never polled (executor shutdown) | Offered | Core `Drop` → `drop_phase` captures Unknown/Lost terminal (A); custody stays Offered/Held; gate not released |
+| Child returned, PID qualification fails | Raw (unqualified) | Child retained in the cell; no group signal; direct `start_kill` + bounded reap (§10.2); settlement `confirmed/unqualified/precore_retained`; never NoChild |
+| In-place upgrade precondition fails (defensive) | Raw (qualified) | SAME child in the cell; group signal + bounded reap; `precore_retained` |
+| Pipe presence check fails (any of stdin/stdout/stderr absent) | Owned, no pipe taken | SAME child in the cell; group signal + bounded reap; `pipes=incomplete`, `precore_retained` |
+| Shell build or Entry insert fails (poison/collision) | Owned, pipes taken | Shell dropped (pipes closed); SAME child in the cell; group signal + bounded reap; `pipes=complete`, `precore_retained`; terminal via §10.1 |
+| Transfer precondition fails (stop requested under the child mutex, or impossible state) | Owned | Entry removed synchronously; shell dropped; SAME child in the cell; §10.2; `precore_retained` |
+| Panic anywhere in step 5 | Raw/Owned (mutex possibly poisoned) | Only child-free locals unwind; the cell keeps the child; poison is recovered only for retention/hygiene; reconcile wake runs §10.2 |
+| Start future dropped at the step-3 await | Planned | No registration, no child |
+| Start future dropped during the step-8 wait | Offered/Accepted/DroppedUnpolled | Core (or its Drop) owns the child; the SAME custody records settlement on a reconcile wake |
+| Engine timeout / Runtime Drop / `abandon()` with a child still in the cell (after a step-5 failure) | Raw/Owned | Root-retained custody keeps the child; `abandon()` extended to transport sets `stop_requested` under the child mutex and revokes the candidate; reconcile wake runs §10.2 and nongrant closure; custody memory Drop (teardown) runs the existing `RetainedRawProcess`/`OwnedProcess` Drop hygiene only and is not logical closure |
+| Stop after transfer (Offered/Accepted) | Offered/Accepted | Under the child mutex observe the handoff; revoke the session actor (Core's fence observes it) and best-effort `try_send(Control::Cancel)` on the retained sender; Core's existing cancel/terminal path |
+| Core future dropped before first poll | DroppedUnpolled | `Core::drop` → `revoke` + `drop_phase` Lost terminal (A); `OwnedProcess` Drop group signal (A); `TransportHandoff` Drop marks `DroppedUnpolled`; settlement by nongrant closure `confirmed/core_dropped_unpolled`, `hygiene=group_signal_attempted`, `reap=unknown`; gate stays Held; start returns `Err` |
+| First poll cannot record acceptance | Offered | Core revokes its own owner before any wire I/O; existing Lost path; no dispatch; gate not released by Core; Held |
 | Core accepted | Accepted | Pre-Core responsibility ends; gate released once; settlement `confirmed/core_accepted` |
+| Core aborted or dropped after acceptance | Accepted | Core's existing Drop/terminal path; `TransportHandoff` Drop is a no-op |
 | Settlement/closure Store error | unchanged | SAME observation retained; one probe per wake; no state inferred from error |
 
 ### 10.1 Pre-Core terminal without Core
 
 When a registration is known but no Core exists, a private Native-only
-`NativeTerminal` (as in `RegistrationGuard`, `native.rs:1171–1201`: acquisition
-Missing, `HistoricalDraft`, `observed_work=Unknown`, `disposition=Lost`) is
-persisted ONLY through the SAME `PhaseActor::terminal_plan` →
-`finish_phase_terminal` (`phase_protocol.rs:110–148`, `native.rs:1286–1329`). With
-no consumed input, `owned_success` is impossible. This path depends on gate G2;
-until then the terminal stays Held while §8.2 closure still records the factual
-creation outcome. Generic `RegistrationGuard`, `retire_execution_as` and
-`close_execution_session` are never used for protected scopes.
+`NativeTerminal` is built as in `RegistrationGuard` (`native.rs:1137–1201`):
+acquisition Missing, `HistoricalDraft`, `observed_work=Unknown`,
+`disposition=Lost`. It is persisted ONLY through the SAME
+`PhaseActor::terminal_plan` → `finish_phase_terminal` (`phase_protocol.rs:110–148`,
+`native.rs:1286–1329`). With no consumed input, `owned_success` is impossible.
+
+This path depends on gate G2. Until G2 exists, the terminal stays Held while the
+§8.2 closure still records the factual creation outcome. Generic
+`RegistrationGuard`, `retire_execution_as` and `close_execution_session` are
+never used for protected scopes.
+
+### 10.2 Pre-Core child closure
+
+This applies only while the cell is `Raw` or `Owned`:
+1. In one short child-mutex section, run `cell.hygiene()`:
+   - `Owned` or qualified `Raw` → process-group signal;
+   - unqualified `Raw` → direct `start_kill` only; it never adopts another PID.
+2. Release the mutex.
+3. Poll `cell.try_reap()` every 20 ms, re-acquiring the mutex briefly for each
+   poll, for at most 10 s. A reaped status sets `reaped`/`unreaped = false` in
+   place, so no later Drop signals a recycled group.
+4. Record `hygiene` and `reap=<exit:N|signal|unknown>` in the observation.
+
+This is best-effort hygiene, not a process-death or isolation guarantee.
 
 ## 11. Concurrency, locks and ownership (P)
 
-Lock order: admission (async acquire) → SharedStore (sync, released before spawn)
-→ raw-child mutex (short). Custody-state, Root job, entries and preparation-index
-mutexes are never held together with SharedStore or across await, SQL, spawn or
-hashing. The raw mutex recovers poison only to retain/hygiene the child; poison
-never grants an effect.
+**Lock order.**
+- The sequence is admission (async acquire) → SharedStore (sync, released before
+  spawn) → child mutex (short).
+- Never nested: the child mutex with SharedStore, with the `entries` mutex, or
+  with the actor start-gate cell. Step 5c locks `entries` with the child mutex
+  released; step 5e locks the child mutex with `entries` released.
+- Custody-state, Root job, `entries` and preparation-index mutexes are never
+  held with SharedStore, or across an await, SQL, spawn or hashing.
+- The child mutex is held across `Command::spawn()` in 4d. That is a
+  synchronous syscall under admission, not under Store.
+- The `TransportHandoff` Drop takes only the child mutex. It runs after
+  `Core::drop`'s body has released the Store.
+- Poison on the child mutex is recovered only to retain the child or run its
+  hygiene; poison never grants an effect or an acceptance.
 
-Linearization: a stop holding `control_admission` either precedes 4a (no
-registration/spawn) or waits until 4f, when the custody already holds either a
-no-spawn registration or the adopted child; it then targets that SAME operation
-through the custody (Root caller is gate G3). `Runtime::drop` sets `stopping`
-without admission; the 4d recheck narrows but cannot close that window. A child
-spawned in it is retained and closed nongrantly. This is linearization of
-admission, not a process-death guarantee.
+**Linearization.**
+- A stop holding `control_admission` either precedes 4a (no registration or
+  spawn), or waits until 4e. By then the custody holds either a no-spawn
+  registration or the adopted child, and the stop targets that SAME operation
+  through the custody (the Root caller is gate G3).
+- `request_stop` sets `stop_requested` while holding the child mutex, so it is
+  totally ordered with the 4d spawn check and the 5e transfer. Either no child
+  is created or transferred, or the handoff is `Offered`/`Accepted` and the
+  stop goes to Core.
+- Candidate `revoke` is ordered against activation by the
+  `Candidate|Live|Revoked` CAS (§5.2).
+- `Runtime::drop` sets `stopping` without admission. The 4d recheck narrows that
+  window but cannot close it; a child spawned in it is retained and closed
+  nongrantly.
+- This is linearization of admission, not a process-death guarantee.
 
-Ownership: Root `JobState.preparation` strongly retains the preparation custody
-and therefore the transport custody independently of the Engine future. Neither
-custody nor plan owns NativeSessions/NativeAdapter, Runtime, PhaseJobs or the
-JoinHandle. Different Tasks proceed concurrently after their own short admission
-sections.
+**Ownership.**
+- Root `JobState.preparation` strongly retains the preparation custody, and
+  therefore the transport custody, independently of the Engine future.
+- Until the step-5e transfer, the child is owned by that custody's cell and
+  nowhere else. From then on it is owned by the SAME Core.
+- Neither the custody nor the plan owns NativeSessions/NativeAdapter, Runtime,
+  PhaseJobs or the JoinHandle. Core reaches the custody only by Weak.
+- Different Tasks proceed concurrently after their own short admission sections.
 
 ## 12. Gate release and memory (P)
 
-The actor's same-Unit gate (`preparation.rs:240,328–331`) is released exactly once
-by taking the guard out of its one-time cell and dropping it outside all locks, on:
-(a) `handoff = Accepted`; or (b) known `not_attempted` settlement + known terminal
-or closure; or (c) a pre-Core created child observed reaped + known transport
-closure + known terminal. Every uncertain outcome keeps the gate and is visibly
-Held; no forced unlock permits a replacement start. Removing the Root job entry
-additionally requires no remaining reconciliation responsibility. Release never
-authorizes another preparation or owner. Memory teardown is not logical closure.
+The actor's same-Unit gate (`preparation.rs:240,328–331`) is released exactly
+once, by taking the guard out of its one-time cell and dropping it outside all
+locks. That happens on exactly one of:
+- (a) `handoff = Accepted`, released by the `accept()` hook after the child
+  mutex is released;
+- (b) a known `not_attempted` settlement plus a known terminal or closure;
+- (c) a pre-Core created child that the custody observed reaped (`try_reap`
+  returned a status), plus a known transport closure and a known terminal.
+
+`Offered` that never resolves, `DroppedUnpolled` (the child was signalled by
+Drop, but the custody never observed a reap), and every other uncertain outcome
+keep the gate and are visibly Held. No forced unlock permits a replacement start.
+Removing the Root job entry additionally requires no remaining reconciliation
+responsibility. Release never authorizes another preparation or owner. Memory
+teardown is not logical closure.
 
 ## 13. Finite inclusive limits (checked before copies) (P unless marked A)
 
@@ -504,17 +855,19 @@ authorizes another preparation or owner. Memory teardown is not logical closure.
 | Effect inventory before registration | ≤252 rows (transport + up to 2 setup + 1 input ≤256); complete ≤256 rows, ≤2 MiB all-column framing, body ≤8192 B, VM budget (A, `version.rs:13–73`) |
 | Transport effect | idempotency 53 B, expected_target ≤256 B, body ≤8192 B, receipt ≤16 entries |
 | Session record / Unit / invocation / readiness / owner read | ≤32 KiB / ≤16 KiB / `INVOCATION_BYTES` / ≤4096 B / ≤32 KiB (A) |
-| Command plan | ≤16 argv × ≤4096 B, env overlay ≤64 entries, encoded ≤64 KiB; profile file ≤64 KiB+1 read (A) |
+| Command plan | Codex exactly 3 argv; Claude 12–18 argv, inclusive ≤18 elements × ≤128 B (≤2304 B total); model/effort ≤128 B each (A allocation bound); env overlay ≤64 entries; encoded ≤64 KiB; profile file ≤64 KiB+1 read (A) |
 | Version text reused | ≤64 KiB combined capture (A) |
 | Custodies | one transport custody per operation; ≤128 operations (A, `MAX_JOBS`, preparation index) |
-| Per-custody slots | plan, candidate, registration, observation, settlement, closure, prebuilt entry: one each; no history lists |
-| Plan memory | images ≤~2.2 MiB per plan without copying the borrowed expected inventory |
+| Per-custody slots | plan, command, candidate, child cell, retained control sender, observation, settlement, closure: one each; no history lists. `CoreShell` is a start-future local and holds no child |
+| Candidate activation | one inline `OnceLock<RegistrationAck>` (3 words + tag) per candidate; one CAS; no heap allocation |
+| Plan memory | images ≤~2.2 MiB per plan without copying the borrowed expected manifest |
 | Reconciliation | ≤1 exact probe per wake, 100 ms–5 s capped backoff |
+| Start-future handoff wait | ≤5 s, no lock held; unresolved → later reconcile wake |
 | Pre-Core stop | group/direct signal then ≤10 s reap polling at 20 ms (as version helper); not death proof |
-| Control channel / line limits | mpsc 16; Claude `LINE_LIMIT`, Codex 4 MiB (A) |
+| Control channel / line limits | mpsc 16; Claude `LINE_LIMIT` 2 MiB, Codex 4 MiB (A) |
 
-Overflow refuses before INSERT/spawn; settlement overflow refuses before write
-with the observation retained.
+An overflow refuses before the INSERT and before spawn. A settlement overflow
+refuses before the write, with the observation retained.
 
 ## 14. Impact analysis
 
@@ -522,18 +875,21 @@ with the observation retained.
 
 | Symbol (file) | Change | Callers/consumers checked (V) |
 | --- | --- | --- |
-| `start_with_launch` (`native.rs:215`) | remove `launch` parameter and every protected branch (`:237–245,429–431,492–497,500–560,642–645`) | only `start_inner` (`:194`, passes `None`) |
+| `start_with_launch` (`native.rs:215`) | remove `launch` parameter and every protected branch (`:237–245,429–431,492–497,500–560,642–645`) | only `start_inner` (`:194`, passes `None`); public legacy behavior unchanged |
 | `start_phase_inner` (`native.rs:207`) | continue into §7 only after `issue_prepared` | `start_phase` ← `NativePhasePort` ← `phase_jobs.rs:253–257` |
-| `NativePreparationCustody` (`native/preparation.rs:9–231`) | add `prepared`, `transport`, `version_closed`; extend `abandon`/`Drop`/`reconcile_known_commit` | `phase_jobs.rs:140,195–228,283,393`; `begin_phase_preparation` |
+| `NativePreparationCustody` (`native/preparation.rs:9–231`) | add `prepared`, `transport`, `version_closed`; extend `abandon`/`Drop` (set `stop_requested` under the child mutex, revoke candidate) and `reconcile_known_commit` | `phase_jobs.rs:140,195–228,283,393`; `begin_phase_preparation` |
 | `NativeVersionHelperCustody::reconcile` (`version.rs:144`) | early return when closed; `physical_command` profile part factored | `preparation.rs:173`, `version.rs:357` |
-| `PhaseActor::registered`, `NativePhaseSession::registered` (`phase_protocol.rs:62,250`) | replaced by prepared-registered constructor with origin + readiness version | only `native.rs:535` (deleted) |
-| `plan_owner_currency` (`native_phase.rs:233`), terminal reader (`terminal.rs:302`) | readiness version from actor | dispatch, ACK, projection, terminal, `actual_native_authority` |
+| `PhaseActor::registered`, `NativePhaseSession::registered` (`phase_protocol.rs:62,250`) | replaced by `prepared_candidate` + `activate` (§5.2); identity checks retained | only `native.rs:535` (deleted) |
+| `NativePhaseSession.live: AtomicBool` (`phase_protocol.rs:16`) | replaced by `state: AtomicU8` `Candidate\|Live\|Revoked` plus `origin`, `registered_readiness`, `ack` | `revoke` (`:318`), `binding_snapshot` (`:321–334`), `NativePhaseBinding::is_live` (`:358`), `ConsumedPhaseInput::admitted` (`:375–383`): each reads `Live` only |
+| `plan_owner_currency` (`native_phase.rs:233`), terminal reader (`terminal.rs:302`) | readiness version from the activated actor | dispatch, ACK, projection, terminal, `actual_native_authority` |
 | `plan_phase_registration`, `register_phase_session`, `validate_phase_preparation`, `NativeRegistrationPlan` (`native_phase.rs:887–1209,1384–1479`) | deleted; replaced by `transport.rs` | only `native.rs:244,504,520` |
 | `original_owner`, `check_owner_indices`, `no_registration`, `registration_unit`, `registration_attempt` | reused unchanged | preparation and transport plans |
 | `Inventory`, `EffectImage`, `InventoryBudget` (`version.rs`), `LatestUnitImage` (`version/closure.rs`) | visibility to `pub(super)` / shared module | version + transport |
-| `RetainedRawProcess` (`process.rs:17`) | add `native_pipes`, `into_owned` | version helper (unchanged use) |
+| `RetainedRawProcess` (`process.rs:17–99`) | unchanged (no `into_owned`/`native_pipes`); wrapped by the new `NativeChildCell` | version helper use unchanged |
+| `NativeChildCell`, `OwnedProcess::from_qualified` (`process.rs`, new) | in-place upgrade, pipe take, checked transfer, sync hygiene/reap | transport custody only; `OwnedProcess::spawn` and its callers unchanged |
+| `Core` (`native.rs:1341`) | add `handoff: Option<TransportHandoff>`; protected construction only via `CoreShell::into_core` inside `transfer_with` | legacy construction (`native.rs:608`) passes `None`; legacy behavior unchanged |
+| `Core::run` (`native.rs:1696`) | first statement `handoff.accept()` when present | phase Core only |
 | generic effect writers (`effects.rs:41,129,247`) | refuse `native_phase_*` | all generic callers; legitimate kinds unaffected |
-| `Core::run` (`native.rs:1696`) | first-poll acceptance hook when phase present | phase Core only |
 | `state/mod.rs:28–31` | re-export new types | crate-private |
 
 ### 14.2 Unchanged guards and bounds (V)
@@ -565,32 +921,108 @@ adapters (no new port).
 
 ## 15. Tests and controls (P; none executed)
 
-Compatibility (Store-level, compiled): new intent/settlement images decode through
-actual old10 `effect_tx`/`managed_effects`/epoch fence/`EffectImage::decode`;
-UNIQUE idempotency rejects a second intent; layout catalogue unchanged; generic
-reserve/reconcile refuse `native_phase_*`; compiled old10 (76a58b6e) generic
-reconcile interference → private CAS conflict/Held; 252/253 baseline and 256/257,
-inclusive 2 MiB boundaries; readiness `(P+1,!ended)`/`(P+2,ended)` accepted, v2/v3
-and other lineages refused.
+**Compatibility (Store-level, compiled).** These require:
+- the new intent/settlement images decode through the actual old10
+  `effect_tx`/`managed_effects`/epoch fence/`EffectImage::decode`;
+- UNIQUE idempotency rejects a second intent;
+- the layout catalogue is unchanged;
+- generic reserve/reconcile refuse `native_phase_*`;
+- compiled old10 (76a58b6e) generic reconcile interference → private CAS
+  conflict/Held;
+- the 252/253 baseline, 256/257 and inclusive 2 MiB boundaries;
+- readiness `(P+1,!ended)`/`(P+2,ended)` accepted for an activated actor, and
+  v2/v3, other lineages and a non-activated candidate refused.
 
-Causal actual-producer controls (only after G1/G2 allow a genuine positive; until
-then record SETUP refusal and credit no mutant kill): real Goal/Driver/Source/
-marker/job/actor chain to `PreparedNativePhase`; pause after registration commit
-before spawn and race a real `control_admission` stop (both orders); injected
-commit error with actual committed postimage → no spawn until exact confirmation;
-true rollback → same-plan retry with identical IDs; injected PID/pipe/Entry/registry
-fault after real `Command::spawn` → SAME child retained and reaped, no input/
-Task write, never NoChild; spawn `Err` → `unknown`, no replay; start-future Drop
-and unpolled Core task; Core accepted → gate released exactly once, Weak probes
-show no custody/actor/plan cycle; other Task proceeds after the short section;
-controlled protocol peer exercising stdio (not official CLI/auth/hooks).
+**Pure protocol controls (compiled; not lifecycle proof).**
+- **Candidate.** A built candidate:
+  - is not live;
+  - yields a non-live `binding_snapshot`;
+  - fails `ConsumedPhaseInput::admitted`.
+- **Activation.** These cases are required:
+  - a token for the SAME plan Arc → `Live` and ack set;
+  - a token for a different plan Arc with byte-equal images → `Mismatch`, no
+    ack, not live;
+  - `revoke` before activation → `RevokedKnown`, ack set, still not live,
+    nothing reopens it;
+  - a second activation is refused.
+- **Argv.**
+  - Claude Executor with no model/effort → exactly 12 elements in the existing
+    order; Reviewer with both → exactly 18, ending in `--permission-mode plan`;
+    each element ≤128 B.
+  - A synthetic 19th element is refused before the digest.
+  - Codex → exactly 3 elements; model/effort appear only in the protocol JSON.
+  - A model/effort with a leading `-`, a control character, empty, or 129 B is
+    refused before registration with no effect.
+  - A role/Unit-kind mismatch is refused.
 
-Required compiled mutants (must fail the intended consumer assertion): spawn under
-SharedStore; adopt after `qualify`; spawn on registration `Err`; omitted admission
-recheck; generic `validate_authority` reintroduced; inventory equality removed;
-readiness constant 2/3 restored; settlement full-inventory CAS (breaks after
-setup dispatch); `version_closed` early return removed; candidate actor live before
-commit; idempotency key per-plan instead of per-operation.
+**Child-cell controls** (controlled child such as `/bin/sleep`; compiled).
+- Inject a fault after each of `qualify`, `upgrade_in_place`, the pipe-presence
+  check, the shell build, the Entry insert and the transfer precondition. Each
+  must leave the SAME child in the cell, with the PID unchanged and the variant
+  as specified in §10.
+- No `NativeChildCell` API returns an `OwnedProcess`/`Child`.
+- §10.2 group-signals or direct-kills, reaps within the bound, and leaves no
+  later Drop signal after the reap.
+- A successful transfer leaves the cell `Transferred` and the handoff `Offered`
+  in one section.
+- Dropping a Core value before its first poll yields `DroppedUnpolled`, keeps the
+  gate held and captures a Lost terminal.
+- A first poll yields `Accepted` and releases the gate exactly once.
+- An unrecordable acceptance does no wire I/O.
+
+**Inventory composability** runs only after the separate readonly draft source
+exists; it is not claimed here. Prepared's expected manifest must be the last
+link's `after`. A broken link (`before ≠` previous `after`) must keep Prepared
+absent. A helper completion alone must never issue Prepared, a token or an
+activation.
+
+**Causal actual-producer controls.** These run only after G1/G2 allow a genuine
+positive; until then, record the SETUP refusal and credit no mutant kill.
+- The real Goal/Driver/Source/marker/job/actor chain reaches
+  `PreparedNativePhase`.
+- Pause after the registration commit, before spawn, and race a real
+  `control_admission` stop (both orders).
+- An injected commit error with an actual committed postimage → no spawn until
+  exact confirmation activates the SAME candidate.
+- A true rollback → same-plan retry with identical IDs.
+- An injected PID/pipe/shell/Entry/registry fault after a real `Command::spawn`
+  → the SAME child is retained in the cell and reaped, with no input/Task write
+  and never NoChild.
+- Spawn `Err` → `unknown`, no replay.
+- Start-future Drop during the step-8 wait, and an unpolled Core task (runtime
+  shutdown) → `DroppedUnpolled`/Held.
+- Core accepted → gate released exactly once, and Weak probes show no
+  custody/actor/plan cycle.
+- Another Task proceeds after the short section.
+- A controlled protocol peer exercises stdio (not the official CLI, auth or
+  hooks).
+
+**Required compiled mutants** (each must fail the intended consumer assertion):
+- spawn under SharedStore;
+- adopt after `qualify`;
+- child mutex acquired after spawn;
+- spawn on registration `Err`;
+- omitted admission recheck;
+- generic `validate_authority` reintroduced;
+- inventory equality removed;
+- readiness constant 2/3 restored;
+- settlement full-inventory CAS (breaks after setup dispatch);
+- `version_closed` early return removed;
+- candidate live before activation;
+- activation as `store(Live)` instead of CAS (reopens `Revoked`);
+- activation without the plan pointer check (accepts the equal-row foreign
+  token);
+- idempotency key per-plan instead of per-operation;
+- upgrade returning `OwnedProcess` to the caller with Entry insert after it
+  (fault leaves no child in the cell);
+- pipes taken before the all-three presence check;
+- transfer without the `stop_requested` check;
+- handoff set to `Offered` outside the transfer section;
+- gate released on `Offered`;
+- the `TransportHandoff` Drop not marking `DroppedUnpolled`;
+- Claude argv bound 16 restored (refuses the 18-element Reviewer vector);
+- plan mode keyed on `Verifier` instead of `!= Executor`;
+- the leading-`-` model/effort refusal removed.
 
 ## 16. Unresolved genuine seams and phase gates
 
@@ -599,13 +1031,18 @@ commit; idempotency key per-plan instead of per-operation.
 | G1 `PreparedNativePhase` issuer: full #19 prepared input, readonly Git source/seal (being implemented separately), Reviewer genuine artifact/readonly lease, hooks/settings qualification, quota admission vs parking | Native (B) with A/Root | Absent; transport stays refused |
 | G2 Registered-owner factual predicates replacing `validate_authority` in `NativeOwnerPlan::validate_tx/validate_terminal_tx` (dispatch, ACK, projection, terminal) | input/ACK increment | Without it every spawned child fails its first dispatch; composition stays refused |
 | G3 Root stop caller targeting the SAME custody (`request_stop`) | Root | Cooperative shutdown keeps Held only |
-| G4 Core first-poll acceptance hook and gate release | Native | Part of this increment |
+| G4 `NativeChildCell` in-place upgrade and checked transfer, `TransportHandoff` first-poll acceptance / unpolled-drop marking, and gate release | Native | Part of this increment |
 | G5 Installed composition / static admission | Root | Remain closed |
 | G6 Inherited Stop repeated-failure and request-identity findings | existing owners | Open; not addressed |
 
-Increment order: (1) this HOW's independent Sol high review; (2) G1 producer;
-(3) transport source (§§4–12) with G2 in the same or an earlier reviewed increment;
-(4) actual-producer controls; (5) later user-approved four-Task and real macOS/
-Linux qualification. Until each real source exists, the corresponding effect stays
-refused or Held. rururunx is not a security sandbox; work, immutable result and
-best-effort cleanup remain separate.
+Increment order:
+1. this HOW's independent Sol high review, now its delta re-review;
+2. the G1 producer;
+3. transport source (§§4–12), with G2 in the same or an earlier reviewed
+   increment;
+4. actual-producer controls;
+5. later user-approved four-Task and real macOS/Linux qualification.
+
+Until each real source exists, the corresponding effect stays refused or Held.
+rururunx is not a security sandbox; work, immutable result and best-effort cleanup
+remain separate.
