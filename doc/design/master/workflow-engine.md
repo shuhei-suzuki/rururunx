@@ -103,7 +103,13 @@ the own lease, waiter and probe. It cannot refresh a grant lineage.
 Full Prepared issuance remains refused at provider effect-budget qualification.
 The private quota commit also refuses unresolved Legacy candidates ahead until
 its writer-connection head validator is supplied. Public registration, transport,
-composition and derived Task/CLI/Driver status remain unavailable. Primitive
+composition remain unavailable. A separate bounded nongrant waiting reader joins
+open operation, Unit, readiness and waiter facts for Goal status counts and Task
+pages while preserving the existing wire shape and stored Task version. The
+Workflow waiting-observation accessor and retained Driver handoff reason use the
+same reader; the exact Workflow snapshot remains unchanged. Stale, malformed or
+ambiguous facts produce Held attention in this observation, without a resume
+grant or another Task's admission being stopped. Primitive
 parsing, policy and exact-image tests do not qualify these actor transactions.
 Reviewer artifact lease production, installed composition and genuine
 actor-chain/both-OS/four-Task qualification also remain unavailable.

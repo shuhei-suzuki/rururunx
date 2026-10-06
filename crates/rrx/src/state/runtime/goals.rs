@@ -315,9 +315,11 @@ impl Store {
         let tasks = scoped_tasks(&tx, &goal)?;
         let mut states = BTreeMap::new();
         for task in &tasks {
+            let observation = super::waiting::observe(&tx, task, &goal);
+            let state = super::waiting::effective_state(task, observation.as_ref());
             *states
                 .entry(
-                    serde_json::to_value(task.state)?
+                    serde_json::to_value(state)?
                         .as_str()
                         .context("Task state encoding")?
                         .to_owned(),
@@ -533,7 +535,10 @@ impl Store {
             facts.push(TaskFacts {
                 scope: task.scope(),
                 version: task.version,
-                state: task.state,
+                state: super::waiting::effective_state(
+                    task,
+                    super::waiting::observe(&tx, task, &goal).as_ref(),
+                ),
                 phase: task.phase.clone(),
             });
             let more = eligible.len() > facts.len();

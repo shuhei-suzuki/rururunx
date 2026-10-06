@@ -426,6 +426,16 @@ pub struct Invalidation {
     pub sources: BTreeMap<String, String>,
     pub at: i64,
 }
+/// Display facts only; never accepted as Workflow evidence or launch authority.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PhaseWaitingObservation {
+    Waiting {
+        reason: crate::execution::WaitReason,
+        next_due: i64,
+    },
+    Held,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowSnapshot {
     pub workflow: WorkflowClass,
@@ -627,6 +637,13 @@ impl WorkflowEngine {
     }
     pub fn snapshot(&self, task_id: TaskId) -> Result<WorkflowSnapshot> {
         Ok(self.read(task_id)?.workflow)
+    }
+    pub fn waiting_observation(&self, task_id: TaskId) -> Result<Option<PhaseWaitingObservation>> {
+        let snapshot = self.read(task_id)?;
+        self.store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state store poisoned"))?
+            .phase_waiting_observation(&snapshot.task, &snapshot.goal)
     }
     fn read(&self, task_id: TaskId) -> Result<Snapshot> {
         let store = self

@@ -144,13 +144,23 @@ impl WorkflowEngine {
         };
         if let Some(observation) = observation {
             // Observation never authorizes a new offer, retry or Workflow write.
-            return Ok(StepResult::Waiting {
-                phase,
-                reason: format!(
+            let waiting = self.waiting_observation(snapshot.task.id)?;
+            let reason = match waiting {
+                Some(PhaseWaitingObservation::Waiting { reason, next_due }) => format!(
+                    "original Source handoff {:?}; {:?} waiting until {next_due}",
+                    observation.state(),
+                    reason
+                ),
+                Some(PhaseWaitingObservation::Held) => format!(
+                    "original Source handoff {:?}; Held: Native waiting facts require attention",
+                    observation.state()
+                ),
+                None => format!(
                     "original Source handoff {:?}; marker/binding/terminal continuation required",
                     observation.state()
                 ),
-            });
+            };
+            return Ok(StepResult::Waiting { phase, reason });
         }
         // Unchanged genuine-composition preflight precedes callbacks and offer.
         let selected = self.preflight_native_adapter(&snapshot.task, phase)?;

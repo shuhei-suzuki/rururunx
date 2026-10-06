@@ -4,6 +4,7 @@ mod goals;
 mod proposals;
 mod routing;
 mod service;
+mod waiting;
 
 pub(super) const TABLES: &[&str] = &[
     "goal_authority",
