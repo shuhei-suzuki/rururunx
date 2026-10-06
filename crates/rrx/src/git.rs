@@ -96,10 +96,9 @@ pub fn validate_worktree_ownership(
 pub struct WorktreeManager;
 impl WorktreeManager {
     pub fn create(store: &mut Store, task_id: TaskId) -> Result<WorktreeStatus> {
-        let mut task = store.task(task_id)?.context("unknown Task")?;
+        let mut task = store.legacy_worktree_task(task_id)?;
         let project = project(store, &task)?;
         let root = project_root(&project)?;
-        let _ = store.legacy_worktree_task(task_id)?;
         ensure!(
             task.worktree.is_none() && task.branch.is_none(),
             "task already has a worktree binding; reconcile existing intent instead"
