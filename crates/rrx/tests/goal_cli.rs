@@ -15,6 +15,8 @@ use std::{
     time::{Duration, Instant},
 };
 use uuid::Uuid;
+#[path = "support/current_writer.rs"]
+mod current_writer;
 
 struct Fixture {
     directory: tempfile::TempDir,
@@ -355,6 +357,55 @@ async fn inline_file_proposals_remain_inert_after_restart_and_reads_write_nothin
     );
     assert_eq!(rows(&f.state), before);
     assert_eq!(f.count("goal_authority"), 0);
+    f.stop().await;
+}
+
+#[tokio::test]
+async fn independent_observer_revision_cannot_refresh_or_accept_a_proposal() {
+    let mut f = Fixture::new();
+    f.project("one");
+    f.start().await;
+    let proposed = f.json(&["goal", "Inert objective", "--project", "one", "--json"]);
+    let goal = proposed["facts"]["goal"].as_str().unwrap();
+    assert_eq!(
+        f.json(&["goal", "status", goal, "--project", "one", "--json"])["facts"]["accepted"],
+        false
+    );
+    // Negative corruption canary only, after a genuine compiled Human proposal.
+    // Uses the existing compatible-writer helper; creates no accepted row/grant.
+    current_writer::open(&f.state)
+        .unwrap()
+        .execute(
+            "UPDATE goal_observations SET version=version+1 WHERE goal_id=?1",
+            [goal],
+        )
+        .unwrap();
+    let before = f.stable().await;
+    assert!(
+        !f.output(&["goal", "status", goal, "--project", "one"])
+            .status
+            .success(),
+        "observer revision silently refreshed the proposed Goal pin"
+    );
+    assert!(
+        !f.output(&[
+            "goal",
+            "resume",
+            goal,
+            "--project",
+            "one",
+            "--expected-version",
+            "1",
+            "--reason",
+            "No accepted authority"
+        ])
+        .status
+        .success()
+    );
+    assert_eq!(rows(&f.state), before);
+    assert_eq!(f.count("goal_authority"), 0);
+    assert_eq!(f.count("tasks"), 0);
+    assert_eq!(f.count("task_drivers"), 0);
     f.stop().await;
 }
 
