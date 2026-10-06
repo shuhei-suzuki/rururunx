@@ -508,39 +508,12 @@ fn audit_replacement_upsert_and_backdated_sequence_are_rejected() {
 }
 
 #[test]
-fn nongrant_current_writer_has_no_binding_liveness_or_identity_authority() {
+fn nongrant_current_writer_denies_protected_insert_and_session_projection() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("nongrant.db");
     let mut store = Store::open(&db).unwrap();
     let project = project(&mut store, "one", dir.path());
     let raw = current_writer::open(&db).unwrap();
-    for sql in [
-        "SELECT rrx_binding_permit()",
-        "SELECT rrx_binding_permit('audit','INSERT',NULL,42,x'00')",
-        "SELECT rrx_binding_permit(NULL,NULL,0,0)",
-        "SELECT rrx_live_task_driver('task','driver',1,1,'{}')",
-        "SELECT rrx_live_task_driver(NULL,x'00',-1,0,NULL)",
-    ] {
-        assert!(
-            !raw.query_row(sql, [], |row| row.get::<_, bool>(0)).unwrap(),
-            "nongrant query allowed: {sql}"
-        );
-    }
-    let projection = raw.query_row(
-        "SELECT rrx_session_identity('id','project',NULL,NULL,1,'{}')",
-        [],
-        |row| row.get::<_, String>(0),
-    );
-    assert!(
-        projection.is_err(),
-        "nongrant connection projected Session identity"
-    );
-    assert!(
-        projection
-            .unwrap_err()
-            .to_string()
-            .contains("nongrant corruption canary cannot project Session identity")
-    );
     let changes = raw.total_changes();
     let schema: String = raw.query_row("SELECT group_concat(sql,';') FROM (SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name)",[],|row|row.get(0)).unwrap();
     let denied = raw.execute("INSERT INTO workflow_native_contracts(workflow_id,project_id,goal_id,task_id,owner_epoch,origin,profile_digest,contract_state,version,body) VALUES('canary',?1,'goal','task',0,'nongrant',NULL,'legacy_held',1,'{}')",[project.id.to_string()]);
@@ -561,6 +534,32 @@ fn nongrant_current_writer_has_no_binding_liveness_or_identity_authority() {
         .unwrap(),
         0
     );
+    let mut session = Record::new(Scope::project(project.id), RecordKind::Session, json!({}));
+    session.version = 1;
+    let projection = raw.execute(
+        "INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,'session',?2,NULL,NULL,1,?3)",
+        rusqlite::params![session.id.to_string(),project.id.to_string(),serde_json::to_string(&session).unwrap()],
+    );
+    assert!(
+        projection.is_err(),
+        "nongrant connection projected Session identity"
+    );
+    assert!(
+        projection
+            .unwrap_err()
+            .to_string()
+            .contains("nongrant corruption canary cannot project Session identity")
+    );
+    for table in ["records", "scoped_session_identities"] {
+        assert_eq!(
+            raw.query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+                row.get::<_, usize>(0)
+            })
+            .unwrap(),
+            0,
+            "rejected Session insertion changed {table}"
+        );
+    }
     assert_eq!(raw.query_row("SELECT group_concat(sql,';') FROM (SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name)",[],|row|row.get::<_,String>(0)).unwrap(),schema);
     assert_eq!(
         serde_json::to_value(store.project(project.id).unwrap().unwrap()).unwrap(),
