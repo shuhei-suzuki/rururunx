@@ -11,7 +11,7 @@ remain baseline descriptions, not acceptance of that proposal.
 The [managed Session binding requirements](../../requirements/issue-43-managed-binding-requirements.md)
 are a STRICT proposal connecting Issue43 to the current managed profile. The
 private managed binder updates the Workflow record without changing Task
-version; its genuine Native allocation/input composition is unavailable. Ordinary
+version; its Runtime-only first Executor composition is unmerged and unqualified. Ordinary
 legacy binding remains a separate path. Native
 Driver readiness remains an open gate until the actual private producers and
 sole binding consumer compose and pass their integration controls.
@@ -30,8 +30,8 @@ reservation holds only its Weak reference. After transfer releases Source locks
 and admission, the handoff saves the original marker plan before publication
 awaits admission. Exact marker publication retains the original Native job and
 known marker before the once-only selected launch. Observations remain nongrant:
-installed composition and full Native preparation are unavailable, so this internal
-connection does not yet expose an executable managed Agent or completed Task.
+the Runtime-only installed graph and preparation-to-transport connection are
+unmerged and unqualified, and this connection cannot complete a Task.
 The actual Source reservation saves a one-way accepted witness in its SAME slot
 and armed guard before Source acceptance. Accepted Unmarked custody remains
 charged through unpublished restoration, shutdown and final Drop without a Lost
@@ -113,8 +113,8 @@ preceding Legacy candidates use the unchanged writer-connected validator, at
 most eight calls after bounded typed Project/Goal/Task structure checks. A
 malformed candidate or ninth required call aborts before any write, reports
 attention and replans cancellably. Known outcomes retain the selected branch;
-uncertain confirmation requires a unique exact committed branch. Public registration, transport,
-composition remain unavailable. A separate bounded nongrant waiting reader joins
+uncertain confirmation requires a unique exact committed branch. Public standalone
+registration, transport and composition remain unavailable. A separate bounded nongrant waiting reader joins
 open operation, Unit, readiness and waiter facts for Goal status counts and Task
 pages while preserving the existing wire shape and stored Task version. The
 Workflow waiting-observation accessor and retained Driver handoff reason use the
@@ -122,8 +122,9 @@ same reader; the exact Workflow snapshot remains unchanged. Stale, malformed or
 ambiguous facts produce Held attention in this observation, without a resume
 grant or another Task's admission being stopped. Primitive
 parsing, policy and exact-image tests do not qualify these actor transactions.
-Reviewer artifact lease production, installed composition and genuine
-actor-chain/both-OS/four-Task qualification also remain unavailable.
+Reviewer artifact lease production and genuine actor-chain/both-OS/four-Task
+qualification remain unavailable. The Runtime-only installed source increment
+retains its merge and official qualification gates.
 
 The private physical transport entry point consumes the retained SAME Prepared
 command and registration acknowledgement. Preparation custody retains its child
@@ -135,9 +136,9 @@ observation. Factual settlement compares the exact own transport effect and
 records its outcome without granting input authority. Preparation abandonment
 requests stop on its retained transport after releasing the preparation mutex;
 leader signalling and reap are best-effort hygiene, without a descendant-death
-claim. The production preparation-to-transport call, Runtime stop callers and
-installed Driver composition are absent, so this private entry point does not
-make the public Native execution path available.
+claim. The Runtime-only source connects preparation to transport using the SAME retained
+Prepared Arc. Runtime stop callers remain absent. The installed Driver graph is
+unmerged and unqualified and gives no public standalone Native admission.
 
 Preparation and version transactions also conjoin the ordinary nongrant Unit
 identity/epoch/generation, parent activity, executor projection and governing
@@ -152,7 +153,8 @@ settlement and latest bounded complete Unit preimage, then compares all Unit
 columns/body and the exact original effect inventory in one Immediate. Only the
 original effect is journaled or its exact postimage confirmed; flags and Native
 permissions stay unchanged. Missing lineage or CAS drift remains Held. Genuine
-marked lifecycle qualification and installed composition remain unavailable.
+marked lifecycle qualification remains unavailable; the Runtime-only installed
+composition is an unmerged source increment.
 
 The incremental [production gate integration](../production-workflow-gates-design.md)
 adds a concrete library port for real initial preparation, Implement terminal/result

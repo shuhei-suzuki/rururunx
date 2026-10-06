@@ -326,6 +326,7 @@ impl Store {
                 )
                 .or_insert(0) += 1;
         }
+        let initial_driver:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM scheduler_tasks s JOIN task_drivers d ON d.task_id=s.task_id AND d.goal_id=s.goal_id AND d.project_id=s.project_id WHERE s.goal_id=?1 AND s.project_id=?2 AND s.attention IS NULL AND d.owner_epoch=?3 AND d.state='driving')",params![id.to_string(),project.to_string(),ingress.identity().1],|r|r.get(0))?;
         let response = ControlResponse::GoalFacts {
             goal: id,
             version: goal.version,
@@ -333,7 +334,11 @@ impl Store {
             task_count: tasks.len(),
             states,
             dispatch_available: false,
-            attention: crate::runtime::control::UnavailableReason::NativeBindingUnavailable,
+            attention: if initial_driver {
+                crate::runtime::control::UnavailableReason::NativeContinuationUnavailable
+            } else {
+                crate::runtime::control::UnavailableReason::NativeBindingUnavailable
+            },
         };
         tx.commit()?;
         Ok(response)

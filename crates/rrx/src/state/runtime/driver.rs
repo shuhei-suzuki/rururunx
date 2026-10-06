@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Weak};
 use uuid::Uuid;
+mod candidates;
+pub(crate) use candidates::{CandidateKey, CandidatePage};
 mod claim;
 pub(crate) use claim::{InitialDriverPlan, PendingDriverClaim, plan_initial_driver};
 mod ticket;

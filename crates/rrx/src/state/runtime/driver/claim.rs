@@ -341,6 +341,7 @@ impl Store {
             let next_goal=plan.goal_rotation.checked_add(1).filter(|v|*v<=i64::MAX as u64).context("Goal fairness exhausted")?;
             ensure!(tx.execute("UPDATE scheduler_projects SET rotation=?1 WHERE project_id=?2 AND rotation=?3",params![next_project,task.project_id.to_string(),plan.project_rotation])?==1,"Project fairness CAS changed");
             ensure!(tx.execute("UPDATE scheduler_goals SET rotation=?1 WHERE goal_id=?2 AND project_id=?3 AND rotation=?4",params![next_goal,task.goal_id.to_string(),task.project_id.to_string(),plan.goal_rotation])?==1,"Goal fairness CAS changed");
+            tx.execute("UPDATE scheduler_tasks SET attention=NULL WHERE task_id=?1 AND goal_id=?2 AND project_id=?3 AND queue_sequence=?4 AND attention IS ?5",params![task.id.to_string(),task.goal_id.to_string(),task.project_id.to_string(),plan.queue,super::super::service::native_binding_hold()])?;
             append_event(&tx,&task.scope(),"rrx.private.runtime.driver_claimed",json!({"driver":plan.row.id,"epoch":plan.row.epoch,"queue_sequence":plan.queue}))?;
             permits.ensure_consumed()?;
             tx.commit()?;

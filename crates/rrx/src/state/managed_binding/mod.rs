@@ -6,7 +6,6 @@ mod binding;
 mod canonical;
 pub(in crate::state) use canonical::Body;
 pub(in crate::state) use marker_plan::unit_index_matches as unit_image_matches;
-mod composition;
 mod marker_plan;
 mod marker_rows;
 mod permits;
@@ -29,9 +28,9 @@ pub(super) use schema::{
     validate_legacy_namespace,
 };
 
+pub(crate) use crate::runtime::installation::InstalledDriverComposition;
 pub(crate) use crate::runtime::phase_supervisor::{PhaseLaunch, PhaseLaunchParts};
 pub(crate) use binding::{ManagedBindingPlan, plan_managed_binding};
-pub(crate) use composition::InstalledDriverComposition;
 pub(crate) use marker_plan::ManagedMarkerPlan;
 pub(crate) use publication::{
     MarkerPublicationOutcome, MarkerPublicationPlan, MarkerTransactionObservation, OriginalMarker,

@@ -6,8 +6,10 @@ intent share an exact Immediate transaction. A preallocated Candidate retains
 the plan and activates once from that plan's known commit acknowledgement;
 revocation cannot reopen it. Registered dispatch, ACK, projection and terminal
 currency use the original Source/frame and current Driver conjunction. Public
-Native composition remains refused. Genuine registration lifecycle controls,
-transport custody and independent source review remain
+Native composition and capability advertisement remain refused on public standalone
+paths. The unmerged Runtime source installs one managed graph and connects the
+original first Executor to its retained Prepared and physical transport. Genuine
+registration lifecycle controls, transport custody and independent source review remain
 unverified; these source primitives do not establish Native availability.
 Registered Codex retry/probe and Claude wait/recovery callbacks use the SAME Live
 actor and exact active own lease through bounded private snapshot/Immediate plans.
@@ -198,7 +200,8 @@ closure never refreshes that lineage from rows. Private Prepared issuance checks
 the SAME allocation's fixed provider/role budget at version, Git, Prepared and
 registration. Private quota uses two prebuilt branches and at most eight exact
 writer-connected Legacy validations before the own fair position, with malformed
-owner data or an unresolved ninth call held without a write. Session, transport, public composition and Native capability
-advertisement remain unavailable. Component source
+owner data or an unresolved ninth call held without a write. Public standalone Session/transport composition and Native capability
+advertisement remain unavailable. The Runtime-only first Executor connection is
+unmerged and unqualified; continuation and Root stop integration remain absent. Component source
 and primitive real-Git controls do not qualify the actual installed actor chain,
 Git version, authenticated Agent, both-host operation or four-Task acceptance.

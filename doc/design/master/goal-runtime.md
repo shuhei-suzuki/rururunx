@@ -364,3 +364,15 @@ pins, installs no old Unit/Session/native permission, and supports legitimate ty
 Workflow bookkeeping. It does not construct a Runtime Driver or make restart
 scheduling available. Fresh pre-artifact recovery and full operational Goal/CLI
 construction remain required.
+
+
+The unmerged Runtime source constructs one managed Registry/Sources/Gates/Verifier/
+Engine graph once. Installation refusal retains usable Goal controls. A synchronous
+try-lock sweep evaluates at most 32 bounded Task bodies, retains a finite-pass
+cursor and rereads current ranks and distinct-Task capacity after each claim.
+Only a genuine claim clears the exact native binding hold in its transaction;
+reconcile preserves driving attention and restores the hold after closure or an
+epoch change. Goal facts name native_continuation_unavailable for a current driving
+Task with cleared attention, while dispatch_available remains false. These display
+facts grant nothing. The original first Executor lane remains unmerged and
+unqualified; continuation, Root stop integration and full Native acceptance are open.

@@ -1,7 +1,10 @@
-//! Trusted Goal controls and durable attention. Native Driver admission is unavailable.
+//! Trusted controls and one installed graph for the original first Executor.
+//! Continuation and official Native qualification remain unavailable.
+mod admission;
 pub mod control;
 pub(crate) mod driver;
 pub mod goal;
+pub(crate) mod installation;
 pub(crate) mod phase_effect_admission;
 mod phase_handoffs;
 mod phase_jobs;
@@ -23,6 +26,9 @@ pub struct Runtime {
     phase_jobs: Arc<phase_jobs::PhaseJobs>,
     phase_dispatcher: Arc<phase_supervisor::PhaseDispatcher>,
     phase_handoffs: Arc<phase_handoffs::PhaseHandoffs>,
+    installed:
+        std::result::Result<installation::InstalledNativeGraph, installation::InstallationRefusal>,
+    admission_cursor: std::sync::Mutex<Option<crate::state::CandidateKey>>,
     started: AtomicBool,
     running: Arc<AtomicBool>,
     stopping: Arc<AtomicBool>,
@@ -62,7 +68,10 @@ impl Runtime {
             running.clone(),
             stopping.clone(),
         );
+        let installed = installation::InstalledNativeGraph::new(owner.clone(), &config);
         Ok(Self {
+            installed,
+            admission_cursor: std::sync::Mutex::new(None),
             owner,
             config,
             _drivers: drivers,

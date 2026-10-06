@@ -208,8 +208,10 @@ impl NativeSessions {
         launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
         custody: Arc<NativePreparationCustody>,
     ) -> Result<NativePhaseStart> {
-        let _prepared = self.begin_phase_preparation(launch, custody).await?;
-        anyhow::bail!("actual Prepared Native input retained; transport composition unavailable")
+        let prepared = self
+            .begin_phase_preparation(launch, custody.clone())
+            .await?;
+        self.start_prepared_transport(&custody, prepared).await
     }
     async fn start_legacy(
         &self,

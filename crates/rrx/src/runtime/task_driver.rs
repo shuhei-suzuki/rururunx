@@ -7,34 +7,54 @@ use crate::{
 use anyhow::{Result, ensure};
 use std::{sync::Arc, time::Duration};
 
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum SkipReason {
+    CurrentTaskBounded,
+    BoundedReread,
+    Composition,
+    ValidateFor,
+    Plan,
+}
+pub(super) enum AdmitOutcome {
+    Claimed,
+    Skipped(SkipReason),
+}
 impl Runtime {
     /// Root's real installed composition must exist BEFORE planning/claiming.
     /// This private entry is not a public caller-supplied availability switch.
-    pub(crate) async fn admit_task_driver(
+    pub(super) fn admit_task_driver(
         self: &Arc<Self>,
+        _admission: &tokio::sync::MutexGuard<'_, ()>,
+        key: &crate::state::CandidateKey,
         task: TaskId,
         composition: InstalledDriverComposition,
-    ) -> Result<()> {
-        let _admission = self.control_admission.lock().await;
+    ) -> Result<AdmitOutcome> {
         ensure!(
             self.service_running(),
             "Runtime is not accepting Task Drivers"
         );
-        let current = self
+        let current = match self
             .owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .task(task)?
-            .ok_or_else(|| anyhow::anyhow!("Task missing"))?;
-        ensure!(current.id == task, "Driver Task body identity differs");
-        composition.validate_for(&self.owner, &current)?;
-        let plan: InitialDriverPlan = crate::state::plan_initial_driver(
+            .current_task_bounded(key)
+        {
+            Ok(task) => task,
+            Err(_) => return Ok(AdmitOutcome::Skipped(SkipReason::BoundedReread)),
+        };
+        if current.id != task || composition.validate_for(&self.owner, &current).is_err() {
+            return Ok(AdmitOutcome::Skipped(SkipReason::ValidateFor));
+        }
+        let plan: InitialDriverPlan = match crate::state::plan_initial_driver(
             self.owner.clone(),
             task,
             self.config.scheduler.global_max_sessions,
             self.config.scheduler.max_tasks_per_project,
-        )?;
+        ) {
+            Ok(plan) => plan,
+            Err(_) => return Ok(AdmitOutcome::Skipped(SkipReason::Plan)),
+        };
         let pending = self._drivers.reserve_pending(&plan)?;
         // The known commit and actual spawn/custody installation have NO await.
         // Cancellation at an async boundary cannot strand an unowned created job.
@@ -63,7 +83,7 @@ impl Runtime {
             drive(claim,lifetime).await
         }))?;
         self.wake.notify_one();
-        Ok(())
+        Ok(AdmitOutcome::Claimed)
     }
 }
 async fn drive(claim: PendingDriverClaim, lifetime: WorkerLifetime) -> Result<()> {
@@ -71,7 +91,6 @@ async fn drive(claim: PendingDriverClaim, lifetime: WorkerLifetime) -> Result<()
     let sources = claim.composition().sources().clone();
     let engine = claim.composition().engine().clone();
     let provider = claim.composition().provider().to_owned();
-    let runtime = claim.composition().runtime().clone();
     let ticket = crate::state::read_driver_ticket(claim.owner().clone(), lifetime.association()?)?;
     {
         let mut store = claim
@@ -101,7 +120,7 @@ async fn drive(claim: PendingDriverClaim, lifetime: WorkerLifetime) -> Result<()
         let result = tokio::select! {
             biased;
             ()=lifetime.cancelled()=>return Err(anyhow::anyhow!("Task Driver cancelled")),
-            result=engine.step_driven_initial(task,&sources,&lifetime,&runtime)=>result?,
+            result=engine.step_driven_initial(task,claim.composition(),&lifetime)=>result?,
         };
         if matches!(result, crate::workflow::StepResult::Finished) {
             return Ok(());

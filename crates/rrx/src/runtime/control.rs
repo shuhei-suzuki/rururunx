@@ -157,6 +157,7 @@ pub enum UnavailableReason {
     TaskDriverUnavailable,
     PlanningUnavailable,
     NativeBindingUnavailable,
+    NativeContinuationUnavailable,
     FreshBootstrapRecoveryUnavailable,
 }
 

@@ -4,17 +4,59 @@ use crate::{
     execution::workflow_gates::ManagedWorkflowGates,
     execution::workflow_source::ManagedWorkflowSources,
     runtime::driver::WorkerLifetime,
-    state::{DriverReadTicket, InitialGateEdge},
+    state::{DriverReadTicket, InitialGateEdge, managed_binding::InstalledDriverComposition},
 };
 use anyhow::bail;
 impl WorkflowEngine {
+    fn preflight_installed_native(
+        &self,
+        composition: &InstalledDriverComposition,
+        task: &Task,
+        phase: Phase,
+    ) -> Result<Arc<crate::adapter::native::NativePhasePort>> {
+        ensure!(
+            std::ptr::eq(self, composition.engine().as_ref())
+                && composition.is_current()
+                && task.id == composition.original_task().id
+                && task.executor == composition.selected().alias(),
+            "installed driven Engine/Task identity differs"
+        );
+        let port = self.registry.native_phase_port(&task.executor)?;
+        ensure!(
+            Arc::ptr_eq(&port, composition.selected()),
+            "installed driven port differs"
+        );
+        let snapshot = self.read(task.id)?;
+        let workflow = &snapshot.workflow;
+        ensure!(
+            workflow.generation == 1
+                && workflow
+                    .configured_phases
+                    .iter()
+                    .find(|p| p.actor() == Actor::Executor)
+                    == Some(&phase)
+                && workflow
+                    .history
+                    .iter()
+                    .enumerate()
+                    .all(|(index, attempt)| attempt.phase.actor() != Actor::Executor
+                        || (workflow.active == Some(index)
+                            && index + 1 == workflow.history.len()
+                            && attempt.phase == phase
+                            && attempt.state == AttemptState::Running
+                            && attempt.generation == workflow.generation)),
+            "installed driven phase is not the original first Executor"
+        );
+        Ok(port)
+    }
+
     pub(crate) async fn step_driven_initial(
         &self,
         task_id: TaskId,
-        sources: &Arc<ManagedWorkflowSources>,
+        composition: &InstalledDriverComposition,
         lifetime: &WorkerLifetime,
-        runtime: &std::sync::Weak<crate::runtime::Runtime>,
     ) -> Result<StepResult> {
+        let sources = composition.sources();
         let installed: Arc<dyn WorkflowSources> = sources.clone();
         ensure!(
             Arc::ptr_eq(&self.sources, &installed),
@@ -36,17 +78,12 @@ impl WorkflowEngine {
             if phase.actor() == Actor::Executor {
                 if snapshot.workflow.active.is_some() {
                     return self
-                        .offer_driven_first_executor(snapshot, sources, lifetime, runtime, phase)
+                        .offer_driven_first_executor(snapshot, composition, lifetime, phase)
                         .await;
                 }
                 // Keep this unchanged genuine-composition refusal before every
                 // namespace helper and every preparatory write.
-                let selected = self.preflight_native_adapter(&snapshot.task, phase)?;
-                let port = self.registry.native_phase_port(&snapshot.task.executor)?;
-                ensure!(
-                    selected.agent == port.alias() && selected.provider == port.provider(),
-                    "first Executor registry selection differs"
-                );
+                let port = self.preflight_installed_native(composition, &snapshot.task, phase)?;
                 return self
                     .reserve_driven_first_executor(snapshot, sources, lifetime, port)
                     .await;
@@ -133,11 +170,12 @@ impl WorkflowEngine {
     async fn offer_driven_first_executor(
         &self,
         snapshot: Snapshot,
-        sources: &Arc<ManagedWorkflowSources>,
+        composition: &InstalledDriverComposition,
         lifetime: &WorkerLifetime,
-        runtime: &std::sync::Weak<crate::runtime::Runtime>,
         phase: Phase,
     ) -> Result<StepResult> {
+        let sources = composition.sources();
+        let runtime = composition.runtime();
         let observation = {
             let runtime = runtime.upgrade().context("original Runtime ended")?;
             runtime.observe_source_handoff(snapshot.task.id)?
@@ -163,12 +201,7 @@ impl WorkflowEngine {
             return Ok(StepResult::Waiting { phase, reason });
         }
         // Unchanged genuine-composition preflight precedes callbacks and offer.
-        let selected = self.preflight_native_adapter(&snapshot.task, phase)?;
-        let port = self.registry.native_phase_port(&snapshot.task.executor)?;
-        ensure!(
-            selected.agent == port.alias() && selected.provider == port.provider(),
-            "first Executor registry selection differs"
-        );
+        let port = self.preflight_installed_native(composition, &snapshot.task, phase)?;
         let owner = self
             .registry
             .managed_owner()
