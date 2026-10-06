@@ -222,7 +222,7 @@ fn session_projection_retains_duplicate_lost_and_malformed_original_history() {
     );
     let mut a2 = a.clone();
     a2.version = 2;
-    a2.data["native_ref"] = serde_json::json!("new-native");
+    a2.data["pid"] = serde_json::json!(12345);
     s.connection
         .execute(
             "UPDATE records SET version=2,body=?1 WHERE id=?2",
@@ -237,7 +237,7 @@ fn session_projection_retains_duplicate_lost_and_malformed_original_history() {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .unwrap();
-    assert_eq!(actual, (2, "new-native".into()));
+    assert_eq!(actual, (2, "same-native".into()));
     // Original duplicate member cannot be erased by Value decoding in the projection.
     let mut a3 = a2.clone();
     a3.version = 3;
@@ -541,4 +541,162 @@ fn initializer_rechecks_current_after_initial_observation_without_reinstalling()
             0
         );
     }
+}
+
+fn session_facts(store: &Store, id: RecordId) -> (String, String, i64) {
+    let record = store
+        .connection
+        .query_row(
+            "SELECT body FROM records WHERE id=?1",
+            [id.to_string()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let index = store
+        .connection
+        .query_row(
+            "SELECT body FROM scoped_session_identities WHERE session_id=?1",
+            [id.to_string()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let events = store
+        .connection
+        .query_row("SELECT count(*) FROM audit", [], |r| r.get(0))
+        .unwrap();
+    (record, index, events)
+}
+fn task_path(c: &Connection, scope: &Scope, path: &Path) {
+    let raw: String = c
+        .query_row(
+            "SELECT body FROM tasks WHERE id=?1",
+            [scope.task_id.unwrap().to_string()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let mut task: Task = serde_json::from_str(&raw).unwrap();
+    task.worktree = Some(path.to_owned());
+    task.branch = Some("historical".into());
+    c.execute(
+        "UPDATE tasks SET body=?1 WHERE id=?2",
+        params![serde_json::to_string(&task).unwrap(), task.id.to_string()],
+    )
+    .unwrap();
+}
+#[test]
+fn store_history_uuid_cannot_be_removed_or_replaced_and_same_identity_status_is_valid() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("state.db");
+    let old = old9(&path);
+    let scope = history(&old);
+    let work = dir.path().join("work");
+    std::fs::create_dir(&work).unwrap();
+    task_path(&old, &scope, &work);
+    let histories = [SessionState::Exited, SessionState::Lost].map(|state| {
+        let mut record = session(&scope, state);
+        record.data["worktree"] = serde_json::json!(work);
+        insert_record(&old, &record, None);
+        record
+    });
+    let mut store = Store::open(&path).unwrap();
+    for record in &histories {
+        let before = session_facts(&store, record.id);
+        for replacement in [
+            serde_json::json!("different-native"),
+            serde_json::Value::Null,
+        ] {
+            let mut changed = record.clone();
+            changed.data["native_ref"] = replacement;
+            let error = store.put_record(&mut changed).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("established native Session identity is immutable"),
+                "expected SQL identity fence, got {error:#}"
+            );
+            assert_eq!(
+                session_facts(&store, record.id),
+                before,
+                "failed historical update changed record/index/audit"
+            );
+            assert_eq!(
+                changed.version, record.version,
+                "failed writer changed caller version"
+            );
+        }
+    }
+    assert_eq!(store.connection.query_row("SELECT count(*) FROM scoped_session_identities WHERE provider='claude' AND native_ref='same-native'",[],|r|r.get::<_,i64>(0)).unwrap(),2);
+    // Factual terminal metadata and conservative Lost remain legitimate; no cleanup authority is granted.
+    for mut record in histories {
+        record.data["pid"] = serde_json::json!(12345);
+        store.put_record(&mut record).unwrap();
+        assert_eq!(record.version, 2);
+        assert_eq!(
+            store
+                .connection
+                .query_row(
+                    "SELECT native_ref FROM scoped_session_identities WHERE session_id=?1",
+                    [record.id.to_string()],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+            "same-native"
+        );
+    }
+}
+#[test]
+fn store_initial_none_to_some_and_same_uuid_lifecycle_pid_update_remain_valid() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("state.db");
+    let old = old9(&path);
+    let scope = history(&old);
+    let work = dir.path().join("work");
+    std::fs::create_dir(&work).unwrap();
+    task_path(&old, &scope, &work);
+    let mut record = session(&scope, SessionState::Starting);
+    record.data["worktree"] = serde_json::json!(work);
+    record.data["native_ref"] = serde_json::Value::Null;
+    insert_record(&old, &record, None);
+    let mut store = Store::open(&path).unwrap();
+    record.data["native_ref"] = serde_json::json!("first-native");
+    store.put_record(&mut record).unwrap();
+    assert_eq!(record.version, 2);
+    record.data["state"] = serde_json::json!("running");
+    record.data["pid"] = serde_json::json!(12345);
+    store.put_record(&mut record).unwrap();
+    assert_eq!(record.version, 3);
+    let (actual, version) = store.session(SessionId(record.id.0)).unwrap().unwrap();
+    assert_eq!(actual.native_ref.as_deref(), Some("first-native"));
+    assert_eq!(actual.state, SessionState::Running);
+    assert_eq!(actual.pid, Some(12345));
+    assert_eq!(version, 3);
+    assert_eq!(
+        store
+            .connection
+            .query_row(
+                "SELECT native_ref FROM scoped_session_identities WHERE session_id=?1",
+                [record.id.to_string()],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+        "first-native"
+    );
+    // Raw supported mutation is subject to the same fence, not just public API checks.
+    let before = session_facts(&store, record.id);
+    let mut changed = record.clone();
+    changed.version = 4;
+    changed.data["native_ref"] = serde_json::Value::Null;
+    assert!(
+        store
+            .connection
+            .execute(
+                "UPDATE records SET version=4,body=?1 WHERE id=?2",
+                params![
+                    serde_json::to_string(&changed).unwrap(),
+                    record.id.to_string()
+                ]
+            )
+            .is_err()
+    );
+    assert_eq!(session_facts(&store, record.id), before);
 }

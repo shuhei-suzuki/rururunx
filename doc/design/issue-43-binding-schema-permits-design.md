@@ -76,3 +76,12 @@ objects and no operations. The observation callback is private, cannot alter the
 observed version and production always supplies a no-op; it is no authority issuer.
 Historical schema6/7 fixtures exclude future Binding10 tables from their original
 writer-trigger inventories, preserving old layout and all expected legacy fences.
+
+Once a Session's original Record body has a text/Some native_ref, a SQL BEFORE
+UPDATE guard forbids replacing or removing it, independent of generic/private
+writer choice. Initial None→Some remains allowed; same-reference lifecycle/PID
+observations remain factual and confer no native ownership or cleanup proof.
+Historical Exited/Lost public Store controls check U1→U2/None rejects with exact
+Record, negative-index and audit bytes/counts unchanged; an initial registration
+and same-identity status control exercise the public writer positively. Malformed
+original-byte projection and its conservative negative behavior are retained.
