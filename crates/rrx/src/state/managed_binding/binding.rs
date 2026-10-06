@@ -381,6 +381,15 @@ impl Store {
         &mut self,
         plan: &ManagedBindingPlan,
     ) -> Result<ManagedBindingOutcome> {
+        ensure!(
+            plan.proof
+                .allocation()
+                .facts()
+                .state_path
+                .to_str()
+                .is_some_and(|path| self.connection.path() == Some(path)),
+            "Session binder is not the selected owner's database"
+        );
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;

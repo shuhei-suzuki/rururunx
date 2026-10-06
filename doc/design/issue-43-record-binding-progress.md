@@ -32,8 +32,12 @@ consumer are connected.
 
 The complete Workflow projection changes only the original active attempt's
 absent session_id and derived ManagedSessionRef, plus Record version/updated_at.
-Full typed roundtrip prevents unknown Workflow fields from being dropped. A
-single Immediate rechecks original owners/Context/locks/open pair/Workflow/Unit,
+Full typed roundtrip prevents unknown Workflow fields from being dropped. Before
+opening its transaction, the writer compares its SQLite connection path with the
+canonical selected state path retained by the actual allocation. Matching copied
+rows/epoch in another database do not establish the selected owner namespace.
+This uses connection metadata, without a filesystem call under Store. A single
+Immediate rechecks original owners/Context/locks/open pair/Workflow/Unit,
 latest own Session, negative identity inventory and registered relation. It
 writes exactly the Workflow Record and ONE reserved session_bound audit row,
 under exact one-use row images. Task, Project, Goal, Session, Context, locks,
