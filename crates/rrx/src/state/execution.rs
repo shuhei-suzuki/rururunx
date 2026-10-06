@@ -374,13 +374,13 @@ pub(super) fn managed_attempt_retired(
     );
     Ok(!unit.native_effects_open && !unit.result_finalization_open)
 }
-fn validate_authority(
+// Nongrant factual predicates shared with the private marked Native lane. A
+// successful check here is never a Driver, Source, stage or effect permission.
+fn validate_unit_authority_facts(
     tx: &Connection,
     authority: &ExecutionAuthority,
-    native: bool,
-    finalize: bool,
-) -> Result<ExecutionUnit> {
-    let unit = unit_tx(tx, authority.unit_id)?;
+    unit: &ExecutionUnit,
+) -> Result<()> {
     ensure!(
         unit.authority() == *authority,
         "execution authority identity mismatch"
@@ -407,10 +407,65 @@ fn validate_authority(
         generation == authority.generation,
         "execution generation retired"
     );
+    Ok(())
+}
+fn validate_native_effect_open(unit: &ExecutionUnit) -> Result<()> {
+    ensure!(unit.native_effects_open, "native effect permission closed");
+    Ok(())
+}
+fn validate_parent_activity_facts(
+    unit: &ExecutionUnit,
+    project: &Project,
+    goal: &Goal,
+    task: &Task,
+) -> Result<()> {
     ensure!(
-        !native || unit.native_effects_open,
-        "native effect permission closed"
+        task.scope() == unit.scope && !task_terminal(task.state),
+        "inactive/foreign Task"
     );
+    ensure!(
+        project.state == ProjectState::Registered
+            && !matches!(
+                goal.state,
+                GoalState::Paused | GoalState::Completed | GoalState::Cancelled | GoalState::Failed
+            ),
+        "inactive Project/Goal"
+    );
+    if unit.kind == UnitKind::Executor {
+        ensure!(
+            task.worktree.as_ref() == Some(&unit.worktree) && task.branch == unit.branch,
+            "executor projection changed"
+        );
+    }
+    Ok(())
+}
+fn validate_governing_context_facts(
+    tx: &Connection,
+    unit: &ExecutionUnit,
+    expected_digest: &str,
+) -> Result<()> {
+    let saved: String = tx.query_row(
+        "SELECT governing_digest FROM execution_context WHERE unit_id=?1",
+        [unit.id.to_string()],
+        |r| r.get(0),
+    )?;
+    ensure!(
+        saved == expected_digest,
+        "governing instructions changed; fresh admission required"
+    );
+    Ok(())
+}
+fn validate_authority(
+    tx: &Connection,
+    authority: &ExecutionAuthority,
+    native: bool,
+    finalize: bool,
+) -> Result<ExecutionUnit> {
+    let unit = unit_tx(tx, authority.unit_id)?;
+    validate_unit_authority_facts(tx, authority, &unit)?;
+    if native {
+        validate_native_effect_open(&unit)?;
+    }
     ensure!(
         !finalize || unit.result_finalization_open,
         "result finalization permission closed"
@@ -435,36 +490,8 @@ fn validate_authority(
             &unit.scope.task_id.context("Task required")?.to_string(),
         )?
         .context("unknown Task")?;
-        ensure!(
-            task.scope() == unit.scope && !task_terminal(task.state),
-            "inactive/foreign Task"
-        );
-        ensure!(
-            project.state == ProjectState::Registered
-                && !matches!(
-                    goal.state,
-                    GoalState::Paused
-                        | GoalState::Completed
-                        | GoalState::Cancelled
-                        | GoalState::Failed
-                ),
-            "inactive Project/Goal"
-        );
-        let saved: String = tx.query_row(
-            "SELECT governing_digest FROM execution_context WHERE unit_id=?1",
-            [unit.id.to_string()],
-            |r| r.get(0),
-        )?;
-        ensure!(
-            saved == governing_digest(&project, &goal)?,
-            "governing instructions changed; fresh admission required"
-        );
-        if unit.kind == UnitKind::Executor {
-            ensure!(
-                task.worktree.as_ref() == Some(&unit.worktree) && task.branch == unit.branch,
-                "executor projection changed"
-            );
-        }
+        validate_parent_activity_facts(&unit, &project, &goal, &task)?;
+        validate_governing_context_facts(tx, &unit, &governing_digest(&project, &goal)?)?;
     }
     Ok(unit)
 }

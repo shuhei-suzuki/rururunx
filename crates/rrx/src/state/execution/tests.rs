@@ -79,6 +79,151 @@ fn session(unit: &ExecutionUnit) -> Session {
     }
 }
 
+// These ordinary Store and pure-fact controls grant no private marked actor,
+// allocation, helper or Native positive. Genuine chain controls remain required.
+#[test]
+fn nongrant_factoring_rejects_identity_epoch_and_generation_drift() {
+    let (mut store, task, epoch) = fixture();
+    let unit = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    validate_unit_authority_facts(&store.connection, &unit.authority(), &unit).unwrap();
+    let mut foreign = unit.authority();
+    foreign.record_version += 1;
+    assert!(validate_unit_authority_facts(&store.connection, &foreign, &unit).is_err());
+    store.retire_execution(&unit.authority(), false).unwrap();
+    let before = serde_json::to_value(store.execution_unit(unit.id).unwrap()).unwrap();
+    let current_task = store.task(task.id).unwrap().unwrap();
+    let next = store
+        .reserve_execution(draft(&current_task, epoch), current_task.version)
+        .unwrap();
+    assert!(next.generation > unit.generation);
+    assert!(validate_unit_authority_facts(&store.connection, &unit.authority(), &unit).is_err());
+    validate_unit_authority_facts(&store.connection, &next.authority(), &next).unwrap();
+    store.begin_execution_epoch().unwrap();
+    assert!(validate_unit_authority_facts(&store.connection, &next.authority(), &next).is_err());
+    // The read-only predicates never update the old stored Unit.
+    assert_eq!(
+        before,
+        serde_json::to_value(store.execution_unit(unit.id).unwrap()).unwrap()
+    );
+}
+
+#[test]
+fn nongrant_factoring_parent_activity_and_executor_projection_are_conjunctive() {
+    let (mut store, task, epoch) = fixture();
+    let unit = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    let project = store.project(task.project_id).unwrap().unwrap();
+    let goal = store.goal(task.goal_id).unwrap().unwrap();
+    let task = store.task(task.id).unwrap().unwrap();
+    validate_parent_activity_facts(&unit, &project, &goal, &task).unwrap();
+    for state in [ProjectState::Blocked, ProjectState::Removed] {
+        let mut changed = project.clone();
+        changed.state = state;
+        assert!(validate_parent_activity_facts(&unit, &changed, &goal, &task).is_err());
+    }
+    for state in [
+        GoalState::Paused,
+        GoalState::Completed,
+        GoalState::Cancelled,
+        GoalState::Failed,
+    ] {
+        let mut changed = goal.clone();
+        changed.state = state;
+        assert!(validate_parent_activity_facts(&unit, &project, &changed, &task).is_err());
+    }
+    for state in [
+        TaskState::Completed,
+        TaskState::Failed,
+        TaskState::Cancelled,
+    ] {
+        let mut changed = task.clone();
+        changed.state = state;
+        assert!(validate_parent_activity_facts(&unit, &project, &goal, &changed).is_err());
+    }
+    let mut foreign = task.clone();
+    foreign.id = TaskId::new();
+    assert!(validate_parent_activity_facts(&unit, &project, &goal, &foreign).is_err());
+    let mut changed = task.clone();
+    changed.worktree = None;
+    assert!(validate_parent_activity_facts(&unit, &project, &goal, &changed).is_err());
+    let mut changed = task.clone();
+    changed.branch = Some("foreign".into());
+    assert!(validate_parent_activity_facts(&unit, &project, &goal, &changed).is_err());
+    let mut reviewer = unit.clone();
+    reviewer.kind = UnitKind::Reviewer;
+    // The ordinary readonly-role predicate does not adopt executor projection.
+    validate_parent_activity_facts(&reviewer, &project, &goal, &changed).unwrap();
+    assert_eq!(
+        serde_json::to_value(&task).unwrap(),
+        serde_json::to_value(store.task(task.id).unwrap().unwrap()).unwrap()
+    );
+}
+
+#[test]
+fn nongrant_factoring_governing_digest_is_original_and_read_only() {
+    let (mut store, task, epoch) = fixture();
+    let unit = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    let project = store.project(task.project_id).unwrap().unwrap();
+    let mut goal = store.goal(task.goal_id).unwrap().unwrap();
+    let original = governing_digest(&project, &goal).unwrap();
+    validate_governing_context_facts(&store.connection, &unit, &original).unwrap();
+    assert!(validate_governing_context_facts(&store.connection, &unit, "foreign").is_err());
+    goal.constraints.push("new accepted constraint".into());
+    let changed = governing_digest(&project, &goal).unwrap();
+    assert_ne!(original, changed);
+    assert!(validate_governing_context_facts(&store.connection, &unit, &changed).is_err());
+    validate_governing_context_facts(&store.connection, &unit, &original).unwrap();
+    assert!(store.managed_effects(unit.id).unwrap().is_empty());
+    assert_eq!(
+        original,
+        store
+            .connection
+            .query_row(
+                "SELECT governing_digest FROM execution_context WHERE unit_id=?1",
+                [unit.id.to_string()],
+                |r| r.get::<_, String>(0),
+            )
+            .unwrap()
+    );
+}
+
+#[test]
+fn nongrant_factoring_ordinary_native_and_finalization_flags_remain_independent() {
+    let (mut store, task, epoch) = fixture();
+    let unit = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    store
+        .validate_execution(&unit.authority(), true, false)
+        .unwrap();
+    store
+        .validate_execution(&unit.authority(), false, true)
+        .unwrap();
+    let mut closed = unit.clone();
+    closed.native_effects_open = false;
+    assert!(validate_native_effect_open(&closed).is_err());
+    store.retire_execution(&unit.authority(), false).unwrap();
+    let retired = store.execution_unit(unit.id).unwrap();
+    store
+        .validate_execution(&retired.authority(), false, false)
+        .unwrap();
+    assert!(
+        store
+            .validate_execution(&retired.authority(), true, false)
+            .is_err()
+    );
+    assert!(
+        store
+            .validate_execution(&retired.authority(), false, true)
+            .is_err()
+    );
+}
+
 #[test]
 fn workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents() {
     let (mut store, task, epoch) = fixture();
