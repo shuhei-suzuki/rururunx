@@ -229,6 +229,9 @@ pub(in crate::state) fn read_scope(
 }
 
 impl ScopePlan {
+    pub(in crate::state) fn governing_owners(&self) -> (&Project, &Goal) {
+        (self.project.parsed(), self.goal.parsed())
+    }
     pub(in crate::state) fn task(&self) -> &Task {
         self.task.parsed()
     }

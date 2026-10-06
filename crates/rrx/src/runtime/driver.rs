@@ -1,7 +1,7 @@
 //! Live association comes from the actual retained worker, never its durable row.
 use crate::{
     domain::TaskId,
-    state::{InitialDriverPlan, PendingDriverClaim},
+    state::{DriverPreparationAdvance, InitialDriverPlan, PendingDriverClaim},
 };
 use anyhow::{Context as _, Result, ensure};
 use std::future::Future;
@@ -20,6 +20,7 @@ pub(crate) struct DriverRegistry {
     state_path: std::path::PathBuf,
     instance: String,
     entries: Mutex<BTreeMap<TaskId, Arc<DriverSlot>>>,
+    preparation_cursor: Mutex<Option<TaskId>>,
 }
 struct DriverSlot {
     task: TaskId,
@@ -30,6 +31,7 @@ struct DriverSlot {
     worker_entered: AtomicBool,
     activated: AtomicBool,
     initial_claim: Mutex<Option<Arc<InitialDriverPlan>>>,
+    preparation: Mutex<Option<Arc<DriverPreparationAdvance>>>,
     revoked: AtomicBool,
     cancel: tokio::sync::Notify,
     // Installed synchronously immediately after spawn; never detached on caller Drop.
@@ -86,6 +88,17 @@ impl Drop for WorkerLifetime {
         self.slot.active.store(false, Ordering::SeqCst);
         self.slot.revoked.store(true, Ordering::SeqCst);
         self.slot.cancel.notify_waiters();
+        // Actual worker unwind/cancellation makes an unstarted retained plan
+        // observable. No plan is reminted and no resources are released here.
+        if let Some(plan) = self
+            .slot
+            .preparation
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
+            plan.allow_reconciliation();
+        }
     }
 }
 impl Drop for PendingRegistration {
@@ -196,6 +209,64 @@ impl DriverAssociation {
     pub(crate) fn validates(&self, id: Uuid, epoch: u64, version: u64, body: &str) -> bool {
         self.registry
             .is_current(self.slot.task, id, epoch, version, body)
+    }
+    /// The same advance enters actual slot custody BEFORE any SQL or caller await.
+    pub(crate) fn retain_preparation(&self, plan: &Arc<DriverPreparationAdvance>) -> Result<()> {
+        ensure!(plan.belongs_to(self), "preparation association differs");
+        let mut pending = self
+            .slot
+            .preparation
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Driver preparation custody poisoned"))?;
+        ensure!(
+            pending.is_none(),
+            "Driver preparation reconciliation already pending"
+        );
+        let (id, epoch, version, body) = plan.original_binding();
+        let binding = self
+            .slot
+            .binding
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Driver binding poisoned"))?;
+        ensure!(
+            self.slot.id == id
+                && self.slot.epoch == epoch
+                && binding.0 == version
+                && binding.1 == body
+                && self.slot.active.load(Ordering::SeqCst)
+                && self.slot.worker_entered.load(Ordering::SeqCst)
+                && !self.slot.revoked.load(Ordering::SeqCst),
+            "Driver preparation no longer live"
+        );
+        *pending = Some(plan.clone());
+        Ok(())
+    }
+    pub(crate) fn same_association(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.registry, &other.registry) && Arc::ptr_eq(&self.slot, &other.slot)
+    }
+    pub(crate) fn preparation_retained(
+        &self,
+        plan: &Arc<DriverPreparationAdvance>,
+    ) -> Result<bool> {
+        let pending = self
+            .slot
+            .preparation
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Driver preparation custody poisoned"))?;
+        Ok(pending.as_ref().is_some_and(|p| Arc::ptr_eq(p, plan)))
+    }
+    pub(crate) fn retire_preparation(&self, plan: &Arc<DriverPreparationAdvance>) -> Result<()> {
+        let mut pending = self
+            .slot
+            .preparation
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Driver preparation custody poisoned"))?;
+        ensure!(
+            pending.as_ref().is_some_and(|p| Arc::ptr_eq(p, plan)),
+            "Driver preparation custody changed"
+        );
+        pending.take();
+        Ok(())
     }
     pub(crate) fn publish_exact(
         &self,
@@ -308,6 +379,7 @@ impl DriverRegistry {
             state_path: owner.state_path().to_path_buf(),
             instance: owner.instance_id().to_owned(),
             entries: Mutex::new(BTreeMap::new()),
+            preparation_cursor: Mutex::new(None),
         })
     }
     pub(super) fn reserve_pending(
@@ -339,6 +411,7 @@ impl DriverRegistry {
             worker_entered: AtomicBool::new(false),
             activated: AtomicBool::new(false),
             initial_claim: Mutex::new(None),
+            preparation: Mutex::new(None),
             revoked: AtomicBool::new(false),
             cancel: tokio::sync::Notify::new(),
             job: Mutex::new(None),
@@ -425,6 +498,47 @@ impl DriverRegistry {
             }
         }
         Ok(pending)
+    }
+    /// Clone only the actual retained advances; no registry lock crosses Store.
+    pub(super) fn pending_preparations(&self) -> Result<Vec<Arc<DriverPreparationAdvance>>> {
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Driver registry poisoned"))?;
+        let mut cursor = self
+            .preparation_cursor
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Driver preparation cursor poisoned"))?;
+        let mut plans = Vec::new();
+        let mut last = None;
+        // Bounded in-memory registry (4096) and rotating 64-plan page. A held
+        // earliest plan cannot permanently starve a later actual producer.
+        for (task, slot) in entries
+            .iter()
+            .filter(|(task, _)| cursor.is_none_or(|c| **task > c))
+            .chain(
+                entries
+                    .iter()
+                    .filter(|(task, _)| cursor.is_some_and(|c| **task <= c)),
+            )
+        {
+            if let Some(plan) = slot
+                .preparation
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Driver preparation custody poisoned"))?
+                .as_ref()
+            {
+                plans.push(plan.clone());
+                last = Some(*task);
+                if plans.len() == 64 {
+                    break;
+                }
+            }
+        }
+        if let Some(last) = last {
+            *cursor = Some(last);
+        }
+        Ok(plans)
     }
     pub(super) fn pending_exits(&self) -> Result<Vec<DriverExit>> {
         let entries = self

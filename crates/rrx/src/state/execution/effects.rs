@@ -36,6 +36,17 @@ impl Store {
         path: &std::path::Path,
         kind: &str,
     ) -> Result<()> {
+        self.reserve_execution_helper_pinned(authority, id, native, path, kind, None)
+    }
+    pub(crate) fn reserve_execution_helper_pinned(
+        &mut self,
+        authority: &ExecutionAuthority,
+        id: OperationId,
+        native: bool,
+        path: &std::path::Path,
+        kind: &str,
+        driver: Option<&DriverReadTicket>,
+    ) -> Result<()> {
         ensure!(path.is_absolute(), "helper path must be absolute");
         ensure!(
             matches!(kind, "git_helper" | "native_version" | "docker_probe"),
@@ -44,6 +55,9 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(ticket) = driver {
+            ticket.validate_current_tx(&tx)?;
+        }
         let unit = validate_authority(&tx, authority, native, !native)?;
         ensure!(
             !verification::is_command_unit(&tx, unit.id)? || kind == "git_helper",
@@ -53,6 +67,9 @@ impl Store {
             unit.phase != WORKFLOW_SOURCE_BOOTSTRAP || kind == "git_helper",
             "source preparation only permits registered Git helpers"
         );
+        if let Some(ticket) = driver {
+            ticket.preparation_matches(&unit)?;
+        }
         let effect = ManagedEffect {
             id,
             unit_id: authority.unit_id,
@@ -107,6 +124,16 @@ impl Store {
         state: EffectState,
         receipt: BTreeMap<String, String>,
     ) -> Result<()> {
+        self.reconcile_managed_effect_pinned(id, expected, state, receipt, None)
+    }
+    pub(crate) fn reconcile_managed_effect_pinned(
+        &mut self,
+        id: OperationId,
+        expected: u64,
+        state: EffectState,
+        receipt: BTreeMap<String, String>,
+        driver: Option<&DriverReadTicket>,
+    ) -> Result<()> {
         ensure!(
             receipt.len() <= 16
                 && receipt.iter().all(|(k, v)| k.len() <= 64
@@ -117,6 +144,9 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(ticket) = driver {
+            ticket.validate_current_tx(&tx)?;
+        }
         let mut effect = effect_tx(&tx, id)?;
         ensure!(
             effect.version == expected && effect.state != EffectState::Resolved,
@@ -126,6 +156,14 @@ impl Store {
             state != EffectState::Pending,
             "effect intent cannot be replayed"
         );
+        if let Some(ticket) = driver {
+            let unit = unit_tx(&tx, effect.unit_id)?;
+            ticket.preparation_matches(&unit)?;
+            ensure!(
+                effect.scope == ticket.task().scope() && effect.kind == "git_helper",
+                "Driver helper receipt differs"
+            );
+        }
         effect.state = state;
         effect.receipt = receipt;
         effect.version += 1;

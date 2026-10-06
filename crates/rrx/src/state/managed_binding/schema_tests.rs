@@ -118,6 +118,172 @@ fn insert_record(c: &Connection, r: &Record, raw: Option<&str>) -> String {
     c.execute("INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![r.id.to_string(),r.kind.key(),r.scope.project_id.to_string(),r.scope.goal_id.map(|v|v.to_string()),r.scope.task_id.map(|v|v.to_string()),r.version,body]).unwrap();
     body
 }
+
+// These are actual migrated factual history controls for the negative reader.
+// They do not construct a Native actor, Driver, admission or positive binder.
+fn check_negative_history(store: &Store, scope: &Scope, own: &Record) -> anyhow::Result<()> {
+    let s: Session = serde_json::from_value(own.data.clone()).unwrap();
+    super::session_identity::validate_negative_identities(
+        &store.connection,
+        scope,
+        s.id,
+        &s.provider,
+        s.native_ref.as_deref(),
+    )
+}
+
+#[test]
+fn negative_history_unique_identity_is_read_only_and_lost_duplicate_refuses() {
+    for duplicate in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let old = old9(&path);
+        let scope = history(&old);
+        let own = session(&scope, SessionState::Running);
+        insert_record(&old, &own, None);
+        let mut lost = session(&scope, SessionState::Lost);
+        if !duplicate {
+            lost.data["native_ref"] = serde_json::json!("different-native");
+        }
+        insert_record(&old, &lost, None);
+        let store = Store::open(&path).unwrap();
+        let before: i64 = store
+            .connection
+            .query_row("SELECT total_changes()", [], |r| r.get(0))
+            .unwrap();
+        let result = check_negative_history(&store, &scope, &own);
+        if duplicate {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("distinct historical Session owns the same native identity")
+            );
+        } else {
+            result.unwrap();
+        }
+        assert_eq!(
+            store
+                .connection
+                .query_row("SELECT total_changes()", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            before
+        );
+    }
+}
+
+#[test]
+fn negative_history_null_identity_and_different_provider_do_not_invent_conflicts() {
+    for null_own in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let old = old9(&path);
+        let scope = history(&old);
+        let mut own = session(&scope, SessionState::Running);
+        if null_own {
+            own.data["native_ref"] = serde_json::Value::Null;
+        }
+        insert_record(&old, &own, None);
+        let mut other = session(&scope, SessionState::Lost);
+        if !null_own {
+            other.data["provider"] = serde_json::json!("codex");
+        }
+        insert_record(&old, &other, None);
+        let store = Store::open(&path).unwrap();
+        check_negative_history(&store, &scope, &own).unwrap();
+    }
+}
+
+#[test]
+fn negative_history_malformed_unrelated_history_cannot_disappear() {
+    for malformed in ["extra-field", "long-native"] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let old = old9(&path);
+        let scope = history(&old);
+        let own = session(&scope, SessionState::Running);
+        insert_record(&old, &own, None);
+        let mut other = session(&scope, SessionState::Lost);
+        other.data["native_ref"] = serde_json::json!("unrelated-native");
+        if malformed == "extra-field" {
+            other.data["unexpected"] = serde_json::json!(true);
+        } else {
+            other.data["native_ref"] = serde_json::json!("x".repeat(513));
+        }
+        insert_record(&old, &other, None);
+        let store = Store::open(&path).unwrap();
+        assert!(
+            check_negative_history(&store, &scope, &own)
+                .unwrap_err()
+                .to_string()
+                .contains("complete Session identity projection is missing/foreign/malformed")
+        );
+    }
+}
+
+#[test]
+fn negative_history_own_projection_and_presence_are_required() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("state.db");
+    let old = old9(&path);
+    let scope = history(&old);
+    let mut own = session(&scope, SessionState::Running);
+    insert_record(&old, &own, None);
+    let store = Store::open(&path).unwrap();
+    own.data["native_ref"] = serde_json::json!("caller-drift");
+    assert!(
+        check_negative_history(&store, &scope, &own)
+            .unwrap_err()
+            .to_string()
+            .contains("own latest Session identity differs from protected projection")
+    );
+    let absent = session(&scope, SessionState::Running);
+    // Use a null candidate to avoid mistaking a duplicate-UUID refusal for absence.
+    let mut absent = absent;
+    absent.data["native_ref"] = serde_json::Value::Null;
+    assert!(
+        check_negative_history(&store, &scope, &absent)
+            .unwrap_err()
+            .to_string()
+            .contains("own latest Session identity is absent")
+    );
+}
+
+#[test]
+fn negative_history_exact4096_accepts_and4097_refuses_without_cross_scope_charge() {
+    for count in [4096, 4097] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let old = old9(&path);
+        let scope = history(&old);
+        let own = session(&scope, SessionState::Running);
+        insert_record(&old, &own, None);
+        for index in 1..count {
+            let mut other = session(&scope, SessionState::Lost);
+            other.data["native_ref"] = serde_json::json!(format!("history-{index}"));
+            insert_record(&old, &other, None);
+        }
+        let other_scope = Scope {
+            project_id: scope.project_id,
+            goal_id: None,
+            task_id: None,
+        };
+        // Same native UUID in another scope neither conflicts nor consumes this bound.
+        insert_record(&old, &session(&other_scope, SessionState::Lost), None);
+        let store = Store::open(&path).unwrap();
+        let result = check_negative_history(&store, &scope, &own);
+        if count == 4096 {
+            result.unwrap();
+        } else {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("complete scoped Session identity history exceeds4096")
+            );
+        }
+    }
+}
 #[test]
 fn actual9_to10_fences_preopened_cached_all_table_writers_and_reopens() {
     let dir = tempfile::tempdir().unwrap();

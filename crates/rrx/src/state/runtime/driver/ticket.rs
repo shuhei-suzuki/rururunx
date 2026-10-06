@@ -14,7 +14,8 @@ pub(crate) struct DriverReadTicket {
     pub(super) body: String,
     pub(super) preparation: Option<(crate::execution::ExecutionUnit, String)>,
     pub(super) source: Option<(Uuid, u64, String)>,
-    prerequisites: super::claim::PrerequisiteRows,
+    pub(super) prerequisites: super::claim::PrerequisiteRows,
+    pub(super) namespace: Option<super::NamespaceSnapshot>,
 }
 
 pub(crate) fn read_driver_ticket(
@@ -59,6 +60,11 @@ pub(crate) fn read_driver_ticket(
         let preparation = preparation_anchor(tx, scope.task(), pins.generation)?;
         let source = crate::state::execution::source_recovery::driver_anchor(tx, task)?;
         let prerequisites = super::claim::read_prerequisites(tx, scope.task())?;
+        let namespace = if preparation.is_none() && !scope.has_input_history() {
+            Some(super::NamespaceSnapshot::read(tx, scope.task().project_id)?)
+        } else {
+            None
+        };
         ensure!(
             association.validates(id, epoch, version, &body),
             "Driver revoked during coherent planning"
@@ -72,6 +78,7 @@ pub(crate) fn read_driver_ticket(
             preparation,
             source,
             prerequisites,
+            namespace,
         })
     })
 }
@@ -79,6 +86,17 @@ pub(crate) fn read_driver_ticket(
 impl DriverReadTicket {
     pub(crate) fn task(&self) -> &Task {
         self.scope.task()
+    }
+    pub(crate) fn preparation_matches(&self, unit: &crate::execution::ExecutionUnit) -> Result<()> {
+        let (original, body) = self
+            .preparation
+            .as_ref()
+            .context("Driver has no preparation Unit")?;
+        ensure!(
+            original.id == unit.id && *body == serde_json::to_string(unit)?,
+            "helper Driver/Unit snapshot differs"
+        );
+        Ok(())
     }
 
     /// Exact byte/index CAS only. Complete bodies/hashes were decoded outside

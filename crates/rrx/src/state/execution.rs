@@ -305,7 +305,7 @@ fn scope_keys(scope: &Scope) -> Result<(String, String, String)> {
         scope.task_id.context("unit requires Task")?.to_string(),
     ))
 }
-fn insert_unit(tx: &Transaction<'_>, unit: &ExecutionUnit) -> Result<()> {
+pub(in crate::state) fn insert_unit(tx: &Transaction<'_>, unit: &ExecutionUnit) -> Result<()> {
     let (p, g, t) = scope_keys(&unit.scope)?;
     tx.execute("INSERT INTO execution_units(id,project_id,goal_id,task_id,kind,generation,owner_epoch,version,native_effects_open,result_finalization_open,worktree,branch,body) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
         params![unit.id.to_string(),p,g,t,key(unit.kind),unit.generation,unit.owner_epoch,unit.version,unit.native_effects_open,unit.result_finalization_open,unit.worktree.to_string_lossy(),unit.branch,serde_json::to_string(unit)?])?;

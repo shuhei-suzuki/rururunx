@@ -146,6 +146,15 @@ pub(crate) async fn capture_scoped(
     pinned: &super::ExecutionUnit,
     native: bool,
 ) -> Result<CommandCapture> {
+    capture_scoped_pinned(child, owner, pinned, native, None).await
+}
+pub(crate) async fn capture_scoped_pinned(
+    child: OwnedProcess,
+    owner: &super::RuntimeOwner,
+    pinned: &super::ExecutionUnit,
+    native: bool,
+    driver: Option<&crate::state::DriverReadTicket>,
+) -> Result<CommandCapture> {
     let capture = capture_child(child);
     tokio::pin!(capture);
     let mut fence = tokio::time::interval(Duration::from_millis(50));
@@ -153,7 +162,8 @@ pub(crate) async fn capture_scoped(
         tokio::select! {
             observed = &mut capture => return observed,
             _ = fence.tick() => {
-                let store = owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
+                let mut store = owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
+                if let Some(ticket) = driver { store.validate_driver_read(ticket)?; }
                 let current = store.execution_unit(pinned.id)?;
                 ensure!(current.scope == pinned.scope && current.generation == pinned.generation && current.owner_epoch == pinned.owner_epoch && current.session_id == pinned.session_id, "helper execution identity changed");
                 store.validate_execution(&current.authority(), native, !native)?;

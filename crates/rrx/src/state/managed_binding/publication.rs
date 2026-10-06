@@ -57,6 +57,20 @@ impl OriginalMarker {
     pub(super) fn validate_open_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         self.plan.rows.validate_open_tx(tx)
     }
+    /// Recheck the SAME retained Driver/Source post anchor, never a row-derived
+    /// replacement ticket. Callers must also validate current phase facts and
+    /// their actual Native owner in this transaction before a new effect.
+    pub(crate) fn validate_driver_live_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        ensure!(
+            self.plan
+                .owner
+                .state_path()
+                .to_str()
+                .is_some_and(|path| tx.path() == Some(path)),
+            "original marker Driver validation uses another database"
+        );
+        self.plan.driver.validate_live_tx(tx)
+    }
     pub(crate) fn matches_original_plan(&self, plan: &Arc<MarkerPublicationPlan>) -> bool {
         Arc::ptr_eq(&self.plan, plan)
     }
@@ -145,8 +159,7 @@ impl MarkerPublicationPlan {
 /// Complete scoped encoded body costs and open audit reservations. Aggregate
 /// queries copy no bodies; every surface has an explicit row/byte refusal bound.
 /// This is accounting, not a Native/Driver permission or a latency guarantee.
-fn reserve_budget(tx: &Transaction<'_>, plan: &MarkerPublicationPlan) -> Result<()> {
-    let scope = plan.marker.scope();
+pub(super) fn charged_scope_bytes(tx: &Transaction<'_>, scope: &Scope) -> Result<u64> {
     let p = scope.project_id.to_string();
     let g = scope.goal_id.context("budget Goal missing")?.to_string();
     let t = scope.task_id.context("budget Task missing")?.to_string();
@@ -215,9 +228,13 @@ fn reserve_budget(tx: &Transaction<'_>, plan: &MarkerPublicationPlan) -> Result<
         open <= 128 && reserved <= WORKFLOW_BYTES,
         "open marker audit reservation exceeds bound"
     );
-    let required = used
-        .checked_add(reserved)
-        .and_then(|v| v.checked_add(plan.rows.durable_bytes()))
+    used.checked_add(reserved)
+        .context("complete scope budget overflow")
+}
+
+fn reserve_budget(tx: &Transaction<'_>, plan: &MarkerPublicationPlan) -> Result<()> {
+    let required = charged_scope_bytes(tx, &plan.marker.scope())?
+        .checked_add(plan.rows.durable_bytes())
         .and_then(|v| v.checked_add(LINK_RESERVE_BYTES))
         // Conservative full post-image charge, never an optimistic subtraction
         // of a previous body or a reservation belonging to another operation.

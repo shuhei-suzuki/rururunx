@@ -252,3 +252,47 @@ This initial design commit runs no tests/helpers/native accounts and changes no
 production, schema, main, license or README. Public scalar IDs/JSON/test switches
 never issue the proposed authority. All existing failed Runtime fixture matrices
 and unavailable native/MVP gates remain explicitly open.
+
+## Finite preparation implementation correction
+
+The first-preparation, Reserved→Preparing and initial base-OID advances retain the
+same `Arc<DriverPreparationAdvance>` in the actual DriverSlot before entering SQL.
+There is at most one pending advance per slot. A not-yet-attempted plan is not
+eligible for rollback observation while its worker is live: actual Store-call
+return/unwind or actual WorkerLifetime Drop opens reconciliation. The service
+rotates bounded pages of 64 actual retained plans; registry capacity remains 4096.
+No registry/custody lock is held across acquiring SharedStore, FS or await. A
+PreparationGuard whose same advance is pending does not rewrite its Unit to Lost
+and thereby destroy the captured post image. Other existing guard behavior stays
+in place. Poison, changed rows, stop/revocation and uncertain post publication
+retain the plan; neither a generic Err nor a terminal label retires it.
+
+Reconciliation uses the original plan, never a fresh ticket/current-row image.
+It may publish the exact captured post rows to the same live association, or prove
+this plan's complete original own rows and new-Unit absence still hold and retire
+only this plan's custody. Neither path releases any other effects, resource lease,
+claim or native work, and stopped post-image publication cannot reactivate a
+worker. Retained stopped/uncertain plans can keep their actual owner/registry
+alive; authentic recovery remains necessary rather than silently dropping them.
+
+The initial Task namespace inventory is planned in the coherent read snapshot
+outside SharedStore before any body copy/decode: at most 4096 Task rows, at most
+1MiB encoded bytes per Task and at most 16MiB cumulative encoded Task bytes per
+Project. The header pass charges every complete length, refusing surplus rather
+than truncating. It validates ID, indexed Project/Goal/version/issue and body,
+plus paired path/branch. Inside Immediate, complete row count and each original
+indexed identity/full body must still match; the same parsed inventory supplies
+all existing path/branch collision checks. This replaces only the managed initial
+preparation's unbounded foreign-Task decode loop. Other inherited Task writers
+remain unchanged. Own/prerequisite/namespace profiles are separate finite costs;
+this does not claim a mutex latency or physical-memory guarantee.
+
+The OriginalMarker-owned `DriverMarkerAdvance::validate_live_tx` validates the
+same actual association and captured post Driver/Source bytes/current epoch in
+Root's transaction. Root must conjunct its original-derived Workflow successor,
+current Unit/pair and lifecycle/effect checks. Workflow-only binding/diagnostic
+links do not advance Driver or Source7 and therefore cannot refresh these pins.
+This validator is nongrant and cannot be reconstructed from SQL/DTO/PhaseSlot.
+The genuine installed composition issuer, initialized Context/adoption lane and
+positive Driver cancellation/uncertain-commit controls remain qualification gates;
+historical namespace controls do not manufacture their authority.
