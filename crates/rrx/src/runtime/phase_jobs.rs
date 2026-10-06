@@ -260,7 +260,8 @@ impl PhaseJobs {
                     result=&mut start=>break result,
                     changed=parked.changed()=>{
                         if changed.is_err() { continue; }
-                        let observation=if *parked.borrow_and_update() {InvocationObservation::Waiting} else {InvocationObservation::Starting};
+                        let is_parked=*parked.borrow_and_update();
+                        let observation=if preparation.quota_attention() {InvocationObservation::BindingHeld} else if is_parked {InvocationObservation::Waiting} else {InvocationObservation::Starting};
                         { let mut state=job.state.lock().unwrap_or_else(|e|e.into_inner()); if state.outcome.is_none() { state.observation=observation; } }
                         job.changed.send_replace(observation);
                     },

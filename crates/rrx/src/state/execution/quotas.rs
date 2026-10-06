@@ -509,7 +509,7 @@ pub(super) fn release_quota_tx(tx: &Transaction<'_>, id: UnitId) -> Result<()> {
     Ok(())
 }
 
-fn project_capacity_blocked(
+pub(super) fn project_capacity_blocked(
     tx: &Transaction<'_>,
     unit: &ExecutionUnit,
     configured: usize,

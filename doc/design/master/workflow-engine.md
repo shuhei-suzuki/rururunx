@@ -106,8 +106,14 @@ Git planners check the same table before their intents; registration checks the
 same Prepared bound. Codex reserves transport, six setup effects and input within
 256 rows; Claude reserves transport, one setup effect and input within 255 rows.
 The actual producer chain and these journalled dispatches remain unqualified.
-The private quota commit also refuses unresolved Legacy candidates ahead until
-its writer-connection head validator is supplied. Public registration, transport,
+The private quota planner builds complete own-head and other-head images before
+Store entry. Its Immediate selects a branch after exact inventory comparisons,
+evaluating only candidates before the own actual or virtual fair position. Only
+preceding Legacy candidates use the unchanged writer-connected validator, at
+most eight calls after bounded typed Project/Goal/Task structure checks. A
+malformed candidate or ninth required call aborts before any write, reports
+attention and replans cancellably. Known outcomes retain the selected branch;
+uncertain confirmation requires a unique exact committed branch. Public registration, transport,
 composition remain unavailable. A separate bounded nongrant waiting reader joins
 open operation, Unit, readiness and waiter facts for Goal status counts and Task
 pages while preserving the existing wire shape and stored Task version. The

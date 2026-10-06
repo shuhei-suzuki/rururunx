@@ -196,8 +196,9 @@ value and private pre-Session quota plans. Quota parking retains the SAME input,
 helpers and operation; own known postimages supply due-claim lineage. Revoked
 closure never refreshes that lineage from rows. Private Prepared issuance checks
 the SAME allocation's fixed provider/role budget at version, Git, Prepared and
-registration, and unresolved Legacy heads still refuse
-the private commit. Session, transport, public composition and Native capability
+registration. Private quota uses two prebuilt branches and at most eight exact
+writer-connected Legacy validations before the own fair position, with malformed
+owner data or an unresolved ninth call held without a write. Session, transport, public composition and Native capability
 advertisement remain unavailable. Component source
 and primitive real-Git controls do not qualify the actual installed actor chain,
 Git version, authenticated Agent, both-host operation or four-Task acceptance.
