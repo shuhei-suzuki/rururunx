@@ -1657,10 +1657,6 @@ impl Core {
                 binding.record_version(),
             )
         } else {
-            ensure!(
-                invocation.is_some(),
-                "standalone native terminal invocation missing"
-            );
             (
                 self.observed_input.clone(),
                 self.session.clone(),
