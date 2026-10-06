@@ -30,13 +30,14 @@ pub(super) use schema::{
 };
 
 pub(crate) use crate::runtime::phase_supervisor::{PhaseLaunch, PhaseLaunchParts};
-pub(crate) use binding::{ManagedBindingOutcome, ManagedBindingPlan, plan_managed_binding};
+pub(crate) use binding::{ManagedBindingPlan, plan_managed_binding};
 pub(crate) use composition::InstalledDriverComposition;
-pub(crate) use marker_plan::{ManagedMarkerPlan, plan_marker};
+pub(crate) use marker_plan::ManagedMarkerPlan;
 pub(crate) use publication::{
     MarkerPublicationOutcome, MarkerPublicationPlan, MarkerTransactionObservation, OriginalMarker,
     plan_marker_publication,
 };
+#[cfg(test)]
 pub(crate) use snapshot::plan_scope;
 pub(in crate::state) use snapshot::{ScopePlan, read_scope, snapshot};
 pub(in crate::state) use successor::validate_planned_unit_tx;

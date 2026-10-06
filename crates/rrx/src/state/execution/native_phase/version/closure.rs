@@ -161,6 +161,99 @@ impl LatestUnitImage {
     }
 }
 
+/// Constructed only from a retained authentic settlement plus a coherent read.
+/// The latest Unit never replaces the original actor/helper/effect plan.
+pub(crate) struct NativeVersionClosurePlan {
+    settlement: Arc<NativeHelperSettlementPlan>,
+    unit: LatestUnitImage,
+}
+impl NativeVersionClosurePlan {
+    fn validate_original(&self) -> Result<()> {
+        validate_settlement_original(&self.settlement)
+    }
+}
+fn validate_settlement_original(settlement: &NativeHelperSettlementPlan) -> Result<()> {
+    ensure!(
+        settlement.observation.matches_plan(&settlement.original),
+        "nongrant closure lacks SAME authentic observation"
+    );
+    let actor = settlement.original.actor();
+    actor.validate_original()?;
+    actor.launch().validate_preparation_original()
+}
+
+impl Store {
+    /// Hashing/receipt encoding and this bounded snapshot precede SharedStore.
+    /// A revoked actor is allowed to record its work, never to issue a grant.
+    pub(crate) fn plan_phase_version_closure(
+        runtime: &crate::execution::RuntimeOwner,
+        settlement: Arc<NativeHelperSettlementPlan>,
+    ) -> Result<Arc<NativeVersionClosurePlan>> {
+        validate_settlement_original(&settlement)?;
+        let launch = settlement.original.actor().launch();
+        ensure!(
+            std::ptr::eq(
+                runtime,
+                launch
+                    .allocation()
+                    .selected_port()
+                    .selected_adapter()?
+                    .owner
+                    .as_ref()
+            ),
+            "closure snapshot uses another selected owner"
+        );
+        let unit = snapshot(runtime, |tx| {
+            let budget = InventoryBudget::new(tx)?;
+            budget.finish((|| {
+                selected_database(tx, launch)?;
+                validate_settlement_original(&settlement)?;
+                let unit = LatestUnitImage::read(tx, launch.allocation().unit_snapshot())?;
+                let current = Inventory::read(tx, launch.allocation().facts().unit_id)?;
+                ensure!(
+                    current == *settlement.original.pending || current == *settlement.after,
+                    "closure original complete inventory changed"
+                );
+                Ok(unit)
+            })())
+        })?;
+        Ok(Arc::new(NativeVersionClosurePlan { settlement, unit }))
+    }
+    /// No normal authority or permission is returned or reopened. A changed
+    /// Unit/effect image refuses the write and retains SAME observation Held.
+    pub(crate) fn close_phase_version_observation(
+        &mut self,
+        closure: &Arc<NativeVersionClosurePlan>,
+    ) -> Result<NativeHelperSettlementCommit> {
+        closure.validate_original()?;
+        let settlement = &closure.settlement;
+        let plan = &settlement.original;
+        selected_database(&self.connection, plan.actor().launch())?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        {
+            let budget = InventoryBudget::new(&tx)?;
+            budget.finish((|| {
+                closure.validate_original()?;
+                closure.unit.validate_tx(&tx)?;
+                let current = Inventory::read(&tx, plan.actor().launch().allocation().facts().unit_id)?;
+                if current == *settlement.after { return Ok(()); }
+                ensure!(current == *plan.pending, "closure original full inventory CAS changed");
+                let mut values = settlement.effect.values();
+                values.extend(plan.effect.values());
+                ensure!(tx.execute("UPDATE managed_effects SET id=?1,unit_id=?2,project_id=?3,goal_id=?4,task_id=?5,idempotency_key=?6,state=?7,body=?8,version=?9 WHERE id IS ?10 AND unit_id IS ?11 AND project_id IS ?12 AND goal_id IS ?13 AND task_id IS ?14 AND idempotency_key IS ?15 AND state IS ?16 AND body IS ?17 AND version IS ?18",
+                    params_from_iter(values))? == 1, "closure exact original effect CAS conflict");
+                Ok(())
+            })())?;
+        }
+        tx.commit()?;
+        Ok(NativeHelperSettlementCommit {
+            original: closure.settlement.clone(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,98 +421,5 @@ mod tests {
                 "invalid non-NULL projection must remain distinguishable from NULL"
             );
         }
-    }
-}
-
-/// Constructed only from a retained authentic settlement plus a coherent read.
-/// The latest Unit never replaces the original actor/helper/effect plan.
-pub(crate) struct NativeVersionClosurePlan {
-    settlement: Arc<NativeHelperSettlementPlan>,
-    unit: LatestUnitImage,
-}
-impl NativeVersionClosurePlan {
-    fn validate_original(&self) -> Result<()> {
-        validate_settlement_original(&self.settlement)
-    }
-}
-fn validate_settlement_original(settlement: &NativeHelperSettlementPlan) -> Result<()> {
-    ensure!(
-        settlement.observation.matches_plan(&settlement.original),
-        "nongrant closure lacks SAME authentic observation"
-    );
-    let actor = settlement.original.actor();
-    actor.validate_original()?;
-    actor.launch().validate_preparation_original()
-}
-
-impl Store {
-    /// Hashing/receipt encoding and this bounded snapshot precede SharedStore.
-    /// A revoked actor is allowed to record its work, never to issue a grant.
-    pub(crate) fn plan_phase_version_closure(
-        runtime: &crate::execution::RuntimeOwner,
-        settlement: Arc<NativeHelperSettlementPlan>,
-    ) -> Result<Arc<NativeVersionClosurePlan>> {
-        validate_settlement_original(&settlement)?;
-        let launch = settlement.original.actor().launch();
-        ensure!(
-            std::ptr::eq(
-                runtime,
-                launch
-                    .allocation()
-                    .selected_port()
-                    .selected_adapter()?
-                    .owner
-                    .as_ref()
-            ),
-            "closure snapshot uses another selected owner"
-        );
-        let unit = snapshot(runtime, |tx| {
-            let budget = InventoryBudget::new(tx)?;
-            budget.finish((|| {
-                selected_database(tx, launch)?;
-                validate_settlement_original(&settlement)?;
-                let unit = LatestUnitImage::read(tx, launch.allocation().unit_snapshot())?;
-                let current = Inventory::read(tx, launch.allocation().facts().unit_id)?;
-                ensure!(
-                    current == *settlement.original.pending || current == *settlement.after,
-                    "closure original complete inventory changed"
-                );
-                Ok(unit)
-            })())
-        })?;
-        Ok(Arc::new(NativeVersionClosurePlan { settlement, unit }))
-    }
-    /// No normal authority or permission is returned or reopened. A changed
-    /// Unit/effect image refuses the write and retains SAME observation Held.
-    pub(crate) fn close_phase_version_observation(
-        &mut self,
-        closure: &Arc<NativeVersionClosurePlan>,
-    ) -> Result<NativeHelperSettlementCommit> {
-        closure.validate_original()?;
-        let settlement = &closure.settlement;
-        let plan = &settlement.original;
-        selected_database(&self.connection, plan.actor().launch())?;
-        let tx = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        {
-            let budget = InventoryBudget::new(&tx)?;
-            budget.finish((|| {
-                closure.validate_original()?;
-                closure.unit.validate_tx(&tx)?;
-                let current = Inventory::read(&tx, plan.actor().launch().allocation().facts().unit_id)?;
-                if current == *settlement.after { return Ok(()); }
-                ensure!(current == *plan.pending, "closure original full inventory CAS changed");
-                let mut values = settlement.effect.values();
-                values.extend(plan.effect.values());
-                ensure!(tx.execute("UPDATE managed_effects SET id=?1,unit_id=?2,project_id=?3,goal_id=?4,task_id=?5,idempotency_key=?6,state=?7,body=?8,version=?9 WHERE id IS ?10 AND unit_id IS ?11 AND project_id IS ?12 AND goal_id IS ?13 AND task_id IS ?14 AND idempotency_key IS ?15 AND state IS ?16 AND body IS ?17 AND version IS ?18",
-                    params_from_iter(values))? == 1, "closure exact original effect CAS conflict");
-                Ok(())
-            })())?;
-        }
-        tx.commit()?;
-        Ok(NativeHelperSettlementCommit {
-            original: closure.settlement.clone(),
-        })
     }
 }

@@ -41,8 +41,7 @@ fn retire_source_access<T>(tasks: &Mutex<BTreeMap<TaskId, T>>, task: TaskId) -> 
 }
 mod native_handoff;
 pub(crate) use native_handoff::{
-    SourceNativeCustody, SourceNativeHandoff, SourceNativeOrigin, SourceNativePreparationSeal,
-    SourceNativeTransfer, SourceRefusalRestoration,
+    SourceNativeCustody, SourceNativeHandoff, SourceNativePreparationSeal, SourceRefusalRestoration,
 };
 
 /// Only this producer owns the live preparation capability. Ledger hints cannot

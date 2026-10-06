@@ -6,8 +6,8 @@ mod native_dispatch_tests;
 mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
 pub(crate) use runtime::driver::{
-    DriverExitPublication, DriverMarkerAdvance, DriverPreparationAdvance, DriverPublication,
-    DriverReadTicket, InitialDriverPlan, InitialGateEdge, PendingDriverClaim, plan_initial_driver,
+    DriverExitPublication, DriverPreparationAdvance, DriverPublication, DriverReadTicket,
+    InitialDriverPlan, InitialGateEdge, PendingDriverClaim, plan_initial_driver,
     read_driver_ticket,
 };
 use std::{path::Path, time::Duration};
@@ -25,6 +25,8 @@ mod execution;
 pub(crate) use execution::QuotaAdmission;
 pub(crate) use execution::cleanup::CleanupClaim;
 pub(crate) use execution::governing_digest as execution_governing_digest;
+#[cfg(test)]
+pub(crate) use execution::native_phase::RegistrationAckSource;
 pub(crate) use execution::native_phase::{
     KnownTransportRegistration, NativeDispatchCommit, NativeHelperHistoryCommit,
     NativeHelperIntentCommit, NativeHelperSettlementCommit, NativeHelperSettlementPlan,
@@ -33,7 +35,7 @@ pub(crate) use execution::native_phase::{
     NativeQuotaClosurePlan, NativeQuotaConfirmation, NativeQuotaOutcome, NativeQuotaPlan,
     NativeQuotaWrite, NativeReadyLineage, NativeTerminalPlan, NativeTransportSettlementPlan,
     NativeTransportStartPlan, NativeVersionClosurePlan, NativeVersionHelperPlan, RegistrationAck,
-    RegistrationAckSource, RegistrationProbe,
+    RegistrationProbe,
 };
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 

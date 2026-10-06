@@ -21,7 +21,7 @@ use crate::{
     workflow::{Actor, AttemptState, WorkflowSnapshot},
 };
 use anyhow::{Context, Result, ensure};
-use rusqlite::{Connection, Transaction, TransactionBehavior, params, types::Value as SqlValue};
+use rusqlite::{Connection, TransactionBehavior, params, types::Value as SqlValue};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
