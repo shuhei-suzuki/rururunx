@@ -35,6 +35,18 @@ impl Store {
     pub(crate) fn plan_transport_settlement(
         runtime: &crate::execution::RuntimeOwner,
         observation: Arc<NativeTransportObservation>,
+    ) -> Result<Arc<NativeTransportSettlementPlan>> {
+        Self::plan_transport_observation(runtime, observation, false)
+    }
+    pub(crate) fn plan_transport_closure(
+        runtime: &crate::execution::RuntimeOwner,
+        observation: Arc<NativeTransportObservation>,
+    ) -> Result<Arc<NativeTransportSettlementPlan>> {
+        Self::plan_transport_observation(runtime, observation, true)
+    }
+    fn plan_transport_observation(
+        runtime: &crate::execution::RuntimeOwner,
+        observation: Arc<NativeTransportObservation>,
         closure: bool,
     ) -> Result<Arc<NativeTransportSettlementPlan>> {
         observation.validate_original()?;

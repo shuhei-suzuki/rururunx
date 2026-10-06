@@ -37,394 +37,112 @@ struct CustodyState {
 impl NativePreparationCustody {
     /// Runtime snapshots retained custody Arcs before calling this without locks.
     pub(crate) fn request_stop(&self) { self.abandon(); }
-    pub(super) fn retain_transport(
-        &self,
-        transport: Arc<super::transport::NativeTransportCustody>,
-        prepared: &Arc<super::prepared::PreparedNativePhase>,
-    ) -> Result<()> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        ensure!(
-            !state.abandoned
-                && state.transport.is_none()
-                && state
-                    .prepared
-                    .as_ref()
-                    .is_some_and(|p| Arc::ptr_eq(p, prepared))
-                && transport.matches_prepared(prepared),
-            "transport does not consume SAME issued Prepared"
-        );
-        state.transport = Some(transport);
-        Ok(())
+    pub(super) fn retain_transport(&self,transport:Arc<super::transport::NativeTransportCustody>,prepared:&Arc<super::prepared::PreparedNativePhase>)->Result<()> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.transport.is_none() && state.prepared.as_ref().is_some_and(|p|Arc::ptr_eq(p,prepared)) && transport.matches_prepared(prepared),"transport does not consume SAME issued Prepared");
+        state.transport=Some(transport);Ok(())
     }
-    pub(super) fn clear_definitive_closure_conflict(
-        &self,
-        plan: &Arc<crate::state::NativeQuotaClosurePlan>,
-    ) -> Result<()> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        ensure!(
-            state.closed.is_none() && state.closure.as_ref().is_some_and(|p| Arc::ptr_eq(p, plan)),
-            "closure pre-write conflict plan differs"
-        );
-        state.closure = None;
-        Ok(())
+    pub(super) fn clear_definitive_closure_conflict(&self,plan:&Arc<crate::state::NativeQuotaClosurePlan>) -> Result<()> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(state.closed.is_none() && state.closure.as_ref().is_some_and(|p|Arc::ptr_eq(p,plan)),"closure pre-write conflict plan differs");
+        state.closure=None;Ok(())
     }
-    pub(super) fn closure_original(
-        &self,
-    ) -> Result<(
-        Arc<NativePreparationActor>,
-        Arc<super::prepared::PreparedPhaseNoCurrentDispatch>,
-        Arc<crate::state::NativeReadyLineage>,
-        Option<Arc<crate::state::NativeQuotaClosurePlan>>,
-    )> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        ensure!(
-            state.abandoned && state.closed.is_none(),
-            "nongrant closure not revoked or already closed"
-        );
-        let no_dispatch = state
-            .no_dispatch
-            .clone()
-            .context("same no-dispatch closure prerequisite absent")?;
-        Ok((
-            state.actor.clone().context("same closure actor absent")?,
-            no_dispatch.clone(),
-            state
-                .lineage
-                .clone()
-                .unwrap_or_else(|| no_dispatch.issued.clone()),
-            state.closure.clone(),
-        ))
+    pub(super) fn closure_original(&self) -> Result<(Arc<NativePreparationActor>,Arc<super::prepared::PreparedPhaseNoCurrentDispatch>,Arc<crate::state::NativeReadyLineage>,Option<Arc<crate::state::NativeQuotaClosurePlan>>)> {
+        let state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(state.abandoned && state.closed.is_none(),"nongrant closure not revoked or already closed");
+        let no_dispatch=state.no_dispatch.clone().context("same no-dispatch closure prerequisite absent")?;
+        Ok((state.actor.clone().context("same closure actor absent")?,no_dispatch.clone(),state.lineage.clone().unwrap_or_else(||no_dispatch.issued.clone()),state.closure.clone()))
     }
-    pub(super) fn retain_closure_plan(
-        &self,
-        plan: Arc<crate::state::NativeQuotaClosurePlan>,
-    ) -> Result<()> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        let no_dispatch = state
-            .no_dispatch
-            .as_ref()
-            .context("closure no-dispatch absent")?;
-        let lineage = state.lineage.as_ref().unwrap_or(&no_dispatch.issued);
-        ensure!(
-            state.abandoned
-                && state.closed.is_none()
-                && state
-                    .actor
-                    .as_ref()
-                    .is_some_and(|a| plan.matches(a, lineage)),
-            "closure plan replaced original lineage"
-        );
-        state.closure = Some(plan);
-        Ok(())
+    pub(super) fn retain_closure_plan(&self,plan:Arc<crate::state::NativeQuotaClosurePlan>) -> Result<()> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        let no_dispatch=state.no_dispatch.as_ref().context("closure no-dispatch absent")?;
+        let lineage=state.lineage.as_ref().unwrap_or(&no_dispatch.issued);
+        ensure!(state.abandoned && state.closed.is_none() && state.actor.as_ref().is_some_and(|a|plan.matches(a,lineage)),"closure plan replaced original lineage");
+        state.closure=Some(plan);Ok(())
     }
-    pub(super) fn retain_closed(
-        &self,
-        known: crate::state::NativePreparationClosureCommit,
-    ) -> Result<()> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        ensure!(
-            state.closed.is_none()
-                && state
-                    .closure
-                    .as_ref()
-                    .is_some_and(|p| known.matches_plan(p)),
-            "known closure differs from SAME retained plan"
-        );
-        state.closed = Some(Arc::new(known));
-        Ok(())
+    pub(super) fn retain_closed(&self,known:crate::state::NativePreparationClosureCommit) -> Result<()> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(state.closed.is_none() && state.closure.as_ref().is_some_and(|p|known.matches_plan(p)),"known closure differs from SAME retained plan");
+        state.closed=Some(Arc::new(known));Ok(())
     }
     pub(super) fn prepared_original(&self) -> Result<super::prepared::PreparedNativePhase> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        ensure!(
-            !state.abandoned && state.prepared.is_none() && state.parked.is_none(),
-            "prepared issuer operation already ended or parked"
-        );
-        let value = super::prepared::PreparedNativePhase {
-            actor: state.actor.clone().context("same prepared actor absent")?,
-            known: state
-                .known
-                .clone()
-                .context("same known preparation absent")?,
-            version: state
-                .helpers
-                .first()
-                .cloned()
-                .context("same version helper absent")?,
-            completion: state
-                .completion
-                .clone()
-                .context("same helper completion absent")?,
-            compat: state
-                .compat
-                .clone()
-                .context("same captured compatibility absent")?,
-            command: state
-                .command
-                .clone()
-                .context("same retained command absent")?,
-            quota: state
-                .admitted
-                .clone()
-                .context("same quota admission absent")?,
+        let state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.prepared.is_none() && state.parked.is_none(),"prepared issuer operation already ended or parked");
+        let value=super::prepared::PreparedNativePhase {
+            actor:state.actor.clone().context("same prepared actor absent")?,known:state.known.clone().context("same known preparation absent")?,
+            version:state.helpers.first().cloned().context("same version helper absent")?, completion:state.completion.clone().context("same helper completion absent")?,
+            compat:state.compat.clone().context("same captured compatibility absent")?,command:state.command.clone().context("same retained command absent")?,
+            quota:state.admitted.clone().context("same quota admission absent")?,
         };
-        ensure!(
-            state
-                .no_dispatch
-                .as_ref()
-                .is_some_and(|n| value.quota.matches(&value.actor, n)),
-            "prepared quota belongs to another no-dispatch/actor"
-        );
+        ensure!(state.no_dispatch.as_ref().is_some_and(|n|value.quota.matches(&value.actor,n)),"prepared quota belongs to another no-dispatch/actor");
         Ok(value)
     }
-    pub(super) fn retain_prepared(
-        &self,
-        value: Arc<super::prepared::PreparedNativePhase>,
-    ) -> Result<Arc<super::prepared::PreparedNativePhase>> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        ensure!(
-            !state.abandoned
-                && state
-                    .actor
-                    .as_ref()
-                    .is_some_and(|a| Arc::ptr_eq(a, &value.actor))
-                && state
-                    .known
-                    .as_ref()
-                    .is_some_and(|k| Arc::ptr_eq(k, &value.known))
-                && state
-                    .helpers
-                    .first()
-                    .is_some_and(|v| Arc::ptr_eq(v, &value.version))
-                && state
-                    .completion
-                    .as_ref()
-                    .is_some_and(|c| Arc::ptr_eq(c, &value.completion))
-                && state
-                    .compat
-                    .as_ref()
-                    .is_some_and(|c| Arc::ptr_eq(c, &value.compat))
-                && state
-                    .command
-                    .as_ref()
-                    .is_some_and(|c| Arc::ptr_eq(c, &value.command))
-                && state
-                    .admitted
-                    .as_ref()
-                    .is_some_and(|q| Arc::ptr_eq(q, &value.quota)),
-            "prepared conjunct original custody pointers changed"
-        );
-        if let Some(original) = &state.prepared {
-            return Ok(original.clone());
-        }
-        state.prepared = Some(value.clone());
-        Ok(value)
+    pub(super) fn retain_prepared(&self,value:Arc<super::prepared::PreparedNativePhase>) -> Result<Arc<super::prepared::PreparedNativePhase>> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.actor.as_ref().is_some_and(|a|Arc::ptr_eq(a,&value.actor)) && state.known.as_ref().is_some_and(|k|Arc::ptr_eq(k,&value.known))
+            && state.helpers.first().is_some_and(|v|Arc::ptr_eq(v,&value.version)) && state.completion.as_ref().is_some_and(|c|Arc::ptr_eq(c,&value.completion))
+            && state.compat.as_ref().is_some_and(|c|Arc::ptr_eq(c,&value.compat)) && state.command.as_ref().is_some_and(|c|Arc::ptr_eq(c,&value.command))
+            && state.admitted.as_ref().is_some_and(|q|Arc::ptr_eq(q,&value.quota)),"prepared conjunct original custody pointers changed");
+        if let Some(original)=&state.prepared { return Ok(original.clone()); }
+        state.prepared=Some(value.clone());Ok(value)
     }
-    pub(crate) fn parked_updates(&self) -> watch::Receiver<bool> {
-        self.parked_level.subscribe()
-    }
+    pub(crate) fn parked_updates(&self) -> watch::Receiver<bool> { self.parked_level.subscribe() }
     pub(super) async fn revocation(&self) {
         loop {
-            let notified = self.revoked.notified();
-            if self.state.lock().is_ok_and(|s| s.abandoned) {
-                return;
-            }
+            let notified=self.revoked.notified();
+            if self.state.lock().is_ok_and(|s|s.abandoned) { return; }
             notified.await;
         }
     }
-    pub(super) fn quota_original(
-        &self,
-    ) -> Result<(
-        Arc<NativePreparationActor>,
-        Arc<super::prepared::PreparedPhaseNoCurrentDispatch>,
-        Arc<crate::state::NativeReadyLineage>,
-    )> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        ensure!(
-            !state.abandoned && state.admitted.is_none() && state.prepared.is_none(),
-            "quota original operation ended or admitted"
-        );
-        let no_dispatch = state
-            .no_dispatch
-            .clone()
-            .context("same no-dispatch absent")?;
-        Ok((
-            state.actor.clone().context("same actor absent")?,
-            no_dispatch.clone(),
-            state
-                .lineage
-                .clone()
-                .unwrap_or_else(|| no_dispatch.issued.clone()),
-        ))
+    pub(super) fn quota_original(&self) -> Result<(Arc<NativePreparationActor>,Arc<super::prepared::PreparedPhaseNoCurrentDispatch>,Arc<crate::state::NativeReadyLineage>)> {
+        let state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.admitted.is_none() && state.prepared.is_none(),"quota original operation ended or admitted");
+        let no_dispatch=state.no_dispatch.clone().context("same no-dispatch absent")?;
+        Ok((state.actor.clone().context("same actor absent")?,no_dispatch.clone(),state.lineage.clone().unwrap_or_else(||no_dispatch.issued.clone())))
     }
-    pub(super) fn retain_quota_plan(&self, plan: Arc<crate::state::NativeQuotaPlan>) -> Result<()> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        let no_dispatch = state
-            .no_dispatch
-            .as_ref()
-            .context("same no-dispatch absent")?;
-        let lineage = state.lineage.as_ref().unwrap_or(&no_dispatch.issued);
-        ensure!(
-            !state.abandoned
-                && state.admitted.is_none()
-                && state.actor.as_ref().is_some_and(|a| plan.matches_actor(a))
-                && plan.matches_pre(lineage, no_dispatch),
-            "quota plan is not SAME operation/lineage"
-        );
-        state.quota_plan = Some(plan);
-        Ok(())
+    pub(super) fn retain_quota_plan(&self,plan:Arc<crate::state::NativeQuotaPlan>) -> Result<()> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        let no_dispatch=state.no_dispatch.as_ref().context("same no-dispatch absent")?;
+        let lineage=state.lineage.as_ref().unwrap_or(&no_dispatch.issued);
+        ensure!(!state.abandoned && state.admitted.is_none() && state.actor.as_ref().is_some_and(|a|plan.matches_actor(a)) && plan.matches_pre(lineage,no_dispatch),"quota plan is not SAME operation/lineage");
+        state.quota_plan=Some(plan); Ok(())
     }
-    pub(super) fn retain_quota_outcome(
-        &self,
-        outcome: &crate::state::NativeQuotaOutcome,
-    ) -> Result<()> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        let plan = state
-            .quota_plan
-            .as_ref()
-            .context("same quota plan absent")?;
-        ensure!(state.admitted.is_none(), "quota admission already known");
-        let parked = match outcome {
-            crate::state::NativeQuotaOutcome::Admitted(value) => {
-                ensure!(value.matches_plan(plan), "admitted another quota plan");
-                state.lineage = Some(value.lineage().clone());
-                state.parked = None;
-                state.admitted = Some(value.clone());
-                false
-            }
-            crate::state::NativeQuotaOutcome::Parked(value) => {
-                ensure!(value.matches_plan(plan), "parked another quota plan");
-                state.lineage = Some(value.lineage().clone());
-                state.parked = Some(value.clone());
-                state.first_parked_at.get_or_insert(now_ms());
-                true
-            }
+    pub(super) fn retain_quota_outcome(&self,outcome:&crate::state::NativeQuotaOutcome) -> Result<()> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        let plan=state.quota_plan.as_ref().context("same quota plan absent")?;
+        ensure!(state.admitted.is_none(),"quota admission already known");
+        let parked=match outcome {
+            crate::state::NativeQuotaOutcome::Admitted(value) => { ensure!(value.matches_plan(plan),"admitted another quota plan"); state.lineage=Some(value.lineage().clone());state.parked=None;state.admitted=Some(value.clone());false },
+            crate::state::NativeQuotaOutcome::Parked(value) => { ensure!(value.matches_plan(plan),"parked another quota plan");state.lineage=Some(value.lineage().clone());state.parked=Some(value.clone());state.first_parked_at.get_or_insert(now_ms());true },
         };
-        drop(state);
-        self.parked_level.send_replace(parked);
-        Ok(())
+        drop(state); self.parked_level.send_replace(parked);Ok(())
     }
-    pub(super) fn no_dispatch_original(
-        &self,
-    ) -> Result<(
-        Arc<NativePreparationActor>,
-        Arc<crate::state::NativePreparationCommit>,
-        Arc<super::version::NativeReadonlyHelperCompletion>,
-    )> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        ensure!(
-            !state.abandoned
-                && state.no_dispatch.is_none()
-                && state.compat.is_some()
-                && state.command.is_some(),
-            "SAME no-dispatch prerequisites absent"
-        );
+    pub(super) fn no_dispatch_original(&self) -> Result<(Arc<NativePreparationActor>, Arc<crate::state::NativePreparationCommit>, Arc<super::version::NativeReadonlyHelperCompletion>)> {
+        let state = self.state.lock().map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.no_dispatch.is_none() && state.compat.is_some() && state.command.is_some(), "SAME no-dispatch prerequisites absent");
         let actor = state.actor.clone().context("original actor absent")?;
-        let known = state
-            .known
-            .clone()
-            .context("original known preparation absent")?;
-        let completion = state
-            .completion
-            .clone()
-            .context("original helper completion absent")?;
+        let known = state.known.clone().context("original known preparation absent")?;
+        let completion = state.completion.clone().context("original helper completion absent")?;
         let helpers = state.helpers.clone();
         drop(state);
-        ensure!(
-            helpers.len() == super::readonly::GIT_ACTIONS + 1,
-            "finite complete helper manifest absent"
-        );
-        for helper in helpers {
-            helper.closed()?;
-        }
-        Ok((actor, known, completion))
+        ensure!(helpers.len() == super::readonly::GIT_ACTIONS+1, "finite complete helper manifest absent");
+        for helper in helpers { helper.closed()?; }
+        Ok((actor,known,completion))
     }
-    pub(super) fn retain_no_dispatch(
-        &self,
-        value: Arc<super::prepared::PreparedPhaseNoCurrentDispatch>,
-    ) -> Result<()> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        ensure!(
-            !state.abandoned
-                && state.no_dispatch.is_none()
-                && state
-                    .completion
-                    .as_ref()
-                    .is_some_and(|c| Arc::ptr_eq(c, &value.completion)),
-            "no-dispatch install original differs"
-        );
-        state.no_dispatch = Some(value);
-        Ok(())
+    pub(super) fn retain_no_dispatch(&self, value: Arc<super::prepared::PreparedPhaseNoCurrentDispatch>) -> Result<()> {
+        let mut state = self.state.lock().map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.no_dispatch.is_none() && state.completion.as_ref().is_some_and(|c| Arc::ptr_eq(c,&value.completion)), "no-dispatch install original differs");
+        state.no_dispatch = Some(value); Ok(())
     }
-    pub(super) fn no_dispatch_matches(
-        &self,
-        value: &super::prepared::PreparedPhaseNoCurrentDispatch,
-    ) -> bool {
-        self.state.lock().is_ok_and(|s| {
-            s.no_dispatch
-                .as_ref()
-                .is_some_and(|v| std::ptr::eq(v.as_ref(), value))
-        })
+    pub(super) fn no_dispatch_matches(&self, value: &super::prepared::PreparedPhaseNoCurrentDispatch) -> bool {
+        self.state.lock().is_ok_and(|s| s.no_dispatch.as_ref().is_some_and(|v| std::ptr::eq(v.as_ref(),value)))
     }
-    fn retain_compatible_command(
-        &self,
-        compat: Arc<super::compat::NativeCompatQualification>,
-        command: Arc<super::prepared::NativeTransportCommand>,
-    ) -> Result<()> {
+    fn retain_compatible_command(&self, compat: Arc<super::compat::NativeCompatQualification>, command: Arc<super::prepared::NativeTransportCommand>) -> Result<()> {
         // All physical, encoding and compatibility work preceded this lock.
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-        ensure!(
-            !state.abandoned && state.compat.is_none() && state.command.is_none(),
-            "compatible command already installed or revoked"
-        );
-        ensure!(
-            state
-                .actor
-                .as_ref()
-                .zip(state.helpers.first())
-                .is_some_and(|(a, v)| compat.matches(a, v)),
-            "compatible command original actor/version differs"
-        );
-        state.compat = Some(compat);
-        state.command = Some(command);
+        let mut state = self.state.lock().map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.compat.is_none() && state.command.is_none(), "compatible command already installed or revoked");
+        ensure!(state.actor.as_ref().zip(state.helpers.first()).is_some_and(|(a,v)| compat.matches(a,v)), "compatible command original actor/version differs");
+        state.compat = Some(compat); state.command = Some(command);
         Ok(())
     }
     pub(crate) fn new(allocation: Arc<NativeAllocation>) -> Arc<Self> {
@@ -441,7 +159,7 @@ impl NativePreparationCustody {
     pub(crate) fn abandon(&self) {
         // No Store/Unit destruction, guard release or no-child inference. The
         // original sibling plan survives a returned error or canceled future.
-        let transport = if let Ok(mut state) = self.state.lock() {
+        let transport=if let Ok(mut state) = self.state.lock() {
             state.abandoned = true;
             if let Some(actor) = &state.actor {
                 actor.revoked.store(true, Ordering::Release);
@@ -450,12 +168,8 @@ impl NativePreparationCustody {
                 helper.abandon();
             }
             state.transport.clone()
-        } else {
-            None
-        };
-        if let Some(transport) = transport {
-            transport.request_stop();
-        }
+        } else { None };
+        if let Some(transport)=transport {transport.request_stop();}
         self.revoked.notify_waiters();
     }
     fn claim_start(&self) -> Result<()> {
@@ -620,39 +334,18 @@ impl NativePreparationCustody {
     /// Nongrant confirmation of the same saved postimage. A wake cannot
     /// replace the actor/plan, replay preparation, or reopen a revoked actor.
     pub(crate) async fn reconcile_known_commit(self: &Arc<Self>) -> Result<()> {
-        let transport = {
-            let state = self
-                .state
-                .lock()
-                .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-            state.transport.clone().zip(state.actor.clone())
-        };
-        if let Some((transport, actor)) = transport {
-            let sessions = actor
-                .sessions
-                .upgrade()
-                .context("actual transport issuer ended")?;
+        let transport={let state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;state.transport.clone().zip(state.actor.clone())};
+        if let Some((transport,actor))=transport {
+            let sessions=actor.sessions.upgrade().context("actual transport issuer ended")?;
             return transport.reconcile(&sessions.owner).await;
         }
-        let closure_actor = {
-            let state = self
-                .state
-                .lock()
-                .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-            if state.closed.is_some() {
-                return Ok(());
-            }
-            if state.abandoned && state.no_dispatch.is_some() {
-                state.actor.clone()
-            } else {
-                None
-            }
+        let closure_actor={
+            let state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+            if state.closed.is_some() { return Ok(()); }
+            if state.abandoned && state.no_dispatch.is_some() { state.actor.clone() } else { None }
         };
-        if let Some(actor) = closure_actor {
-            let sessions = actor
-                .sessions
-                .upgrade()
-                .context("actual preparation closure issuer ended")?;
+        if let Some(actor)=closure_actor {
+            let sessions=actor.sessions.upgrade().context("actual preparation closure issuer ended")?;
             return sessions.close_prepared_on_revocation(self).await;
         }
         let helper = {
@@ -748,17 +441,8 @@ pub(crate) struct NativePreparationActor {
     _start: Mutex<Option<tokio::sync::OwnedMutexGuard<()>>>,
 }
 impl NativePreparationActor {
-    pub(crate) fn is_revoked(&self) -> bool {
-        self.revoked.load(Ordering::Acquire)
-    }
-    pub(super) fn release_gate(&self) {
-        let gate = self
-            ._start
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
-        drop(gate);
-    }
+    pub(crate) fn is_revoked(&self) -> bool { self.revoked.load(Ordering::Acquire) }
+    pub(super) fn release_gate(&self) { let gate=self._start.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take(); drop(gate); }
     pub(crate) fn launch(&self) -> &Arc<PhaseLaunchParts> {
         &self.launch
     }
@@ -884,12 +568,9 @@ impl NativeSessions {
         drop(admission);
         let compat = super::compat::qualify_compat_static(&actor)?;
         let version = self.prepare_phase_version(custody.clone()).await?;
-        let completion = self
-            .prepare_phase_git(custody.clone(), version.clone())
-            .await?;
+        let completion = self.prepare_phase_git(custody.clone(), version.clone()).await?;
         let compat = compat.observe(version)?;
-        let command =
-            super::prepared::plan_native_command(&self.owner, &actor, &completion, &compat)?;
+        let command = super::prepared::plan_native_command(&self.owner, &actor, &completion, &compat)?;
         custody.retain_compatible_command(compat, command)?;
         self.issue_no_current_dispatch(&custody).await?;
         self.prepare_phase_quota(&custody).await?;

@@ -36,6 +36,7 @@ pub(crate) struct NativeTransportCustody {
     changed: tokio::sync::Notify,
     observation: Mutex<Option<Arc<NativeTransportObservation>>>,
     settlement: Mutex<Option<Arc<NativeTransportSettlementPlan>>>,
+    closure: Mutex<Option<Arc<NativeTransportSettlementPlan>>>,
     terminal: Mutex<Option<Arc<NativeTerminal>>>,
 }
 pub(crate) struct NativeTransportObservation {
@@ -341,21 +342,26 @@ impl NativeTransportCustody {
         };
         if no_core {
             self.request_stop();
-            self.precore_hygiene().await?;
+            // A timed-out best-effort reap remains an unknown factual receipt;
+            // it must not discard transport/terminal reconciliation responsibility.
+            let _ = self.precore_hygiene().await;
         }
         let observation = self.observe()?;
-        let saved = self
-            .settlement
+        let normal = self.candidate.owner.is_live();
+        let slot = if normal { &self.settlement } else { &self.closure };
+        let saved = slot
             .lock()
             .map_err(|_| anyhow::anyhow!("transport settlement poisoned"))?
             .clone();
         let plan = if let Some(saved) = saved {
             saved
         } else {
-            let normal = self.candidate.owner.is_live();
-            let plan = crate::state::Store::plan_transport_settlement(owner, observation, !normal)?;
-            *self
-                .settlement
+            let plan = if normal {
+                crate::state::Store::plan_transport_settlement(owner, observation)?
+            } else {
+                crate::state::Store::plan_transport_closure(owner, observation)?
+            };
+            *slot
                 .lock()
                 .map_err(|_| anyhow::anyhow!("transport settlement poisoned"))? =
                 Some(plan.clone());
@@ -542,6 +548,7 @@ impl NativeSessions {
             changed: tokio::sync::Notify::new(),
             observation: Mutex::new(None),
             settlement: Mutex::new(None),
+            closure: Mutex::new(None),
             terminal: Mutex::new(None),
         });
         let mut command = physical_command(&prepared);
