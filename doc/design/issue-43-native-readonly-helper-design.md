@@ -369,7 +369,7 @@ Legacy `execution/native.rs:303–319` stays unreachable. Command-only verifier 
    - `core.filemode=false` with a chmod drift.
 
    **Mutant kills.** Each compiled omission must fail its intended assertion:
-   - drop the `ConversionIdentity` requirement on Status planning: the canary runs and the correspondence is minted;
+   - drop the `ConversionIdentity` requirement on Status planning: this conjunct is redundant in the planner, so its negative check is primitive-only. A private-planner primitive refusal control must show that the action-13 planner, given no `ConversionIdentity` from the SAME batch for the SAME seal, refuses and records no action-13 intent. Under the compiled omission, that control must fail. This single omission has no genuine-chain causal kill. Through the actual chain, the fixed fail-fast action-12 consumer (§3.4, §5.3) still refuses before Status is planned, and `qualify_status` still requires `ConversionIdentity` before it mints (§6.6). The canary therefore does not run and no correspondence is minted, so this omission is claimed as neither. The genuine-chain rejection-to-spawn controls stay separate and mandatory: every R1 negative above must refuse at action 12 or 9, with no action-13 intent, no Status spawn and no canary marker, and the attribute, autocrlf and filemode mutant kills below are still required;
    - drop any single attribute term (one control per term);
    - drop the autocrlf predicate;
    - drop the filemode predicate.
