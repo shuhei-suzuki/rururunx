@@ -6,8 +6,8 @@ mod native_dispatch_tests;
 mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
 pub(crate) use runtime::driver::{
-    DriverMarkerAdvance, DriverPublication, DriverReadTicket, InitialDriverPlan,
-    PendingDriverClaim, plan_initial_driver, read_driver_ticket,
+    DriverExitPublication, DriverMarkerAdvance, DriverPublication, DriverReadTicket,
+    InitialDriverPlan, PendingDriverClaim, plan_initial_driver, read_driver_ticket,
 };
 use std::{path::Path, time::Duration};
 
@@ -223,6 +223,9 @@ impl Store {
                     }
                     tx.pragma_update(None, "user_version", next)?;
                 }
+            }
+            if locked_version < SCHEMA_VERSION {
+                managed_binding::install_retained_guards(&tx)?;
             }
             if locked_version > 0 && locked_version < 8 {
                 execution::verification::hold_existing_managed(&tx)?;

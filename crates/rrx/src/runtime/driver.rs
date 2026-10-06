@@ -28,6 +28,8 @@ struct DriverSlot {
     binding: Mutex<(u64, String)>,
     active: AtomicBool,
     worker_entered: AtomicBool,
+    activated: AtomicBool,
+    initial_claim: Mutex<Option<Arc<InitialDriverPlan>>>,
     revoked: AtomicBool,
     cancel: tokio::sync::Notify,
     // Installed synchronously immediately after spawn; never detached on caller Drop.
@@ -48,10 +50,14 @@ pub(crate) struct DriverExit {
     id: Uuid,
     epoch: u64,
     kind: DriverExitKind,
+    never_activated: Option<Arc<InitialDriverPlan>>,
 }
 impl DriverExit {
     pub(crate) fn identity(&self) -> (TaskId, Uuid, u64) {
         (self.task, self.id, self.epoch)
+    }
+    pub(crate) fn never_activated(&self) -> Option<&InitialDriverPlan> {
+        self.never_activated.as_deref()
     }
     pub(crate) fn label(&self) -> &'static str {
         match self.kind {
@@ -103,6 +109,29 @@ impl Drop for PendingRegistration {
     }
 }
 impl PendingRegistration {
+    pub(super) fn bind_claim(&self, claim: &PendingDriverClaim) -> Result<()> {
+        let (id, epoch, version, body) = claim.identity();
+        ensure!(
+            id == self.slot.id
+                && epoch == self.slot.epoch
+                && version == 1
+                && *self
+                    .slot
+                    .binding
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("Driver binding poisoned"))?
+                    == (version, body.to_owned()),
+            "pending actual claim differs"
+        );
+        let mut current = self
+            .slot
+            .initial_claim
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Driver initial claim custody poisoned"))?;
+        ensure!(current.is_none(), "Driver initial claim already retained");
+        *current = Some(claim.initial_plan());
+        Ok(())
+    }
     pub(super) fn spawn(
         self,
         work: impl FnOnce(
@@ -246,6 +275,7 @@ impl WorkerLifetime {
         );
         // Caller holds service admission and SharedStore exclusion; SQL's exact
         // committed row/full original plan was checked immediately beforehand.
+        self.slot.activated.store(true, Ordering::SeqCst);
         self.slot.active.store(true, Ordering::SeqCst);
         Ok(())
     }
@@ -300,6 +330,8 @@ impl DriverRegistry {
             binding: Mutex::new((version, body.to_owned())),
             active: AtomicBool::new(false),
             worker_entered: AtomicBool::new(false),
+            activated: AtomicBool::new(false),
+            initial_claim: Mutex::new(None),
             revoked: AtomicBool::new(false),
             cancel: tokio::sync::Notify::new(),
             job: Mutex::new(None),
@@ -400,6 +432,14 @@ impl DriverRegistry {
                     id: slot.id,
                     epoch: slot.epoch,
                     kind,
+                    never_activated: if !slot.activated.load(Ordering::SeqCst) {
+                        slot.initial_claim
+                            .lock()
+                            .map_err(|_| anyhow::anyhow!("Driver initial claim custody poisoned"))?
+                            .clone()
+                    } else {
+                        None
+                    },
                 });
                 if exits.len() == 64 {
                     break;
@@ -408,8 +448,16 @@ impl DriverRegistry {
         }
         Ok(exits)
     }
-    pub(super) fn acknowledge_exit(&self, exit: &DriverExit) -> Result<()> {
-        let entries = self
+    pub(super) fn acknowledge_exit(
+        &self,
+        exit: &DriverExit,
+        publication: &crate::state::DriverExitPublication,
+    ) -> Result<()> {
+        ensure!(
+            publication.identity() == exit.identity(),
+            "Driver exit publication differs"
+        );
+        let mut entries = self
             .entries
             .lock()
             .map_err(|_| anyhow::anyhow!("Driver registry poisoned"))?;
@@ -426,6 +474,11 @@ impl DriverRegistry {
             "Driver exit observation changed"
         );
         *pending = None;
+        let remove = publication.initial_closed() && exit.never_activated.is_some();
+        drop(pending);
+        if remove {
+            entries.remove(&exit.task);
+        }
         Ok(())
     }
 }

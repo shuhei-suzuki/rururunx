@@ -18,7 +18,8 @@ pub(super) use permits::{ExactRowMutation, PrivatePermitManager, register_permit
 #[cfg(test)]
 pub(super) use schema::TABLES;
 pub(super) use schema::{
-    hold_existing_workflows, install_schema, validate_current_layout, validate_legacy_namespace,
+    hold_existing_workflows, install_retained_guards, install_schema, validate_current_layout,
+    validate_legacy_namespace,
 };
 
 pub(crate) use crate::runtime::phase_supervisor::{PhaseLaunch, PhaseLaunchParts};

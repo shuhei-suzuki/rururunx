@@ -1,10 +1,24 @@
 //! Dispatcher join facts do not grant Native work or release an operation.
 use super::*;
+/// Produced only after the matching actual join observation's DB transaction.
+/// It is not a Native/input/settlement certificate.
+pub(crate) struct DriverExitPublication {
+    identity: (TaskId, Uuid, u64),
+    initial_closed: bool,
+}
+impl DriverExitPublication {
+    pub(crate) fn identity(&self) -> (TaskId, Uuid, u64) {
+        self.identity
+    }
+    pub(crate) fn initial_closed(&self) -> bool {
+        self.initial_closed
+    }
+}
 impl Store {
     pub(crate) fn record_driver_exit(
         &mut self,
         exit: &crate::runtime::driver::DriverExit,
-    ) -> Result<()> {
+    ) -> Result<DriverExitPublication> {
         let (task, id, epoch) = exit.identity();
         let tx = self
             .connection
@@ -22,8 +36,19 @@ impl Store {
                 && row.pins.scope.goal_id.map(|v| v.to_string()).as_deref() == Some(goal.as_str()),
             "Driver exit indexed identity differs"
         );
-        // Exact dispatcher identity makes retry idempotent. No Unit/Session,
-        // Driver row or original P/G/T/Workflow/source pin is changed.
+        let initial_closed = if let Some(plan) = exit.never_activated() {
+            ensure!(
+                plan.identity().0 == id && plan.identity().1 == epoch && plan.task() == task,
+                "never-activated actual claim identity differs"
+            );
+            plan.close_unactivated_tx(&tx, &self.binding_permits)?;
+            true
+        } else {
+            false
+        };
+        // Exact dispatcher identity makes retry idempotent. Only the sealed
+        // never-activated route can invalidate its own original initial claim;
+        // no Unit/Session or original P/G/T/Workflow/source pin is changed.
         let prior:bool=tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM audit WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='rrx.private.runtime.driver_exited' AND json_extract(data,'$.driver')=?4 AND json_extract(data,'$.epoch')=?5)",
             params![project,goal,task.to_string(),id.to_string(),epoch],|r|r.get(0),
@@ -37,6 +62,9 @@ impl Store {
             )?;
         }
         tx.commit()?;
-        Ok(())
+        Ok(DriverExitPublication {
+            identity: (task, id, epoch),
+            initial_closed,
+        })
     }
 }
