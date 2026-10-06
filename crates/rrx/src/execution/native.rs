@@ -73,7 +73,7 @@ pub enum NativeStart {
 pub(crate) enum NativePhaseStart {
     Launched {
         handle: ManagedSessionRef,
-        binding: NativePhaseBinding,
+        binding: Box<NativePhaseBinding>,
     },
     Waiting {
         launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
@@ -221,7 +221,10 @@ impl NativeSessions {
         {
             NativeStart::Launched(handle) => {
                 let binding = self.phase_binding(&handle)?;
-                Ok(NativePhaseStart::Launched { handle, binding })
+                Ok(NativePhaseStart::Launched {
+                    handle,
+                    binding: Box::new(binding),
+                })
             }
             NativeStart::Waiting {
                 unit,
