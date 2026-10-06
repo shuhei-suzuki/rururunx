@@ -156,3 +156,32 @@ Drop or service-loop failure can still race an already admitted synchronous
 section; state/Driver checks fence subsequent permission and retain uncertainty,
 but no universal no-effect, child-death or cleanup guarantee follows. Genuine
 enter/drop/stop/effect ordering remains unqualified until real producers work.
+
+## 8. Retained Source transfer increment
+
+The actual Runtime now owns bounded PhaseHandoffs separately from Sources and
+the phase queue. Its concrete synchronous port accepts only the non-Clone actual
+Source envelope. The same envelope/ticket reaches independent registry ownership
+before the invocation future exists; an eager abandonment guard precedes spawn,
+and the actual JoinHandle is saved before returning a nongrant watch observation.
+The future has original owner/queue/control/state objects but no strong Runtime,
+outer registry or own JoinHandle. Ordinary admission refusal returns the SAME
+envelope; a future Engine caller must explicitly retain it, not discard it.
+
+The first-Executor lane conservatively holds at most one handoff per actual Task
+and at most128 total, including refused/Held entries. It never evicts originals
+because an observer or future ended. Under SAME control admission, the consumer
+revalidates the original ticket before Source locks, obtains original Source
+map/tried-slot/custody, takes original allocation/guard, and calls actual queue
+reserve without await or SharedStore acquisition. Actual capacity is saved before
+Source acceptance. Ordinary queue refusal restores SAME assets; malformed returns
+are retained in the independent entry before Source locks end. Abandonment remains
+Held. Shutdown cannot report completion while any such originals remain held.
+
+This increment ends at original capacity custody. It installs no preparation
+origin seal, marker continuation, Engine caller or successful composition issuer.
+In particular, Reserved is a nongrant observation, not proof of prepared input,
+current marker, Native dispatch or Session binding. Genuine offer/observer-drop/
+refusal/stop/uncertainty controls require the missing installed producer; no SQL
+seeds or manufactured tickets qualify them. Full regression/lint and actual
+four-Task/both-OS/authenticated verification remain open.

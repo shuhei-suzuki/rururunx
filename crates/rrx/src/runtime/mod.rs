@@ -3,6 +3,7 @@ pub mod control;
 pub(crate) mod driver;
 pub mod goal;
 pub(crate) mod phase_effect_admission;
+mod phase_handoffs;
 mod phase_jobs;
 pub(crate) mod phase_supervisor;
 mod service;
@@ -20,6 +21,7 @@ pub struct Runtime {
     _drivers: Arc<driver::DriverRegistry>,
     phases: Arc<phase_supervisor::PhaseSupervisor>,
     phase_jobs: Arc<phase_jobs::PhaseJobs>,
+    phase_handoffs: phase_handoffs::PhaseHandoffs,
     started: AtomicBool,
     running: Arc<AtomicBool>,
     stopping: Arc<AtomicBool>,
@@ -56,6 +58,7 @@ impl Runtime {
             _drivers: drivers,
             phases,
             phase_jobs: Arc::new(phase_jobs::PhaseJobs::default()),
+            phase_handoffs: phase_handoffs::PhaseHandoffs::default(),
             started: AtomicBool::new(false),
             running,
             stopping,

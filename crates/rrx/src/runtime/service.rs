@@ -132,6 +132,7 @@ impl Runtime {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         self.phase_jobs.ensure_shutdown_complete()?;
+        self.phase_handoffs.ensure_shutdown_complete()?;
         Ok(())
     }
 }
