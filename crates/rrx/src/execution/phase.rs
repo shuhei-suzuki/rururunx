@@ -55,6 +55,18 @@ pub(crate) struct AllocationFacts<'a> {
 }
 
 impl NativeAllocation {
+    /// The installed private producer that captured this allocation. This
+    /// borrowed identity cannot register a different vtable or authorize start.
+    pub(crate) fn selected_port(&self) -> &crate::adapter::native::NativePhasePort {
+        self.seed.port()
+    }
+
+    /// Original prepared bytes and routing facts for the same selected start.
+    /// Protected entry still requires the actual marker and current pair CAS.
+    pub(crate) fn prepared_input(&self) -> &super::native::ManagedInput {
+        self.seed.input()
+    }
+
     /// Exact captured Unit content, never an additional allocation or grant.
     pub(crate) fn unit_snapshot(&self) -> &ExecutionUnit {
         self.seed.unit()
