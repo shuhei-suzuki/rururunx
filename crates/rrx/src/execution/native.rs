@@ -28,6 +28,7 @@ mod preparation;
 pub(crate) mod prepared;
 pub(crate) mod readonly;
 mod registration;
+pub(crate) mod transport;
 pub(crate) mod version;
 pub(crate) use phase_protocol::{
     ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession, OwnedPhaseSettlement,
@@ -569,6 +570,7 @@ impl NativeSessions {
             native,
             drain,
             phase: None,
+            handoff: None,
         };
         self.entries
             .lock()
@@ -1302,6 +1304,7 @@ struct Core {
     native: String,
     drain: tokio::task::JoinHandle<()>,
     phase: Option<Arc<phase_protocol::PhaseActor>>,
+    handoff: Option<transport::TransportHandoff>,
 }
 impl Core {
     fn retain_input_ack(&mut self, thread: &str, turn: Option<&str>) -> Result<()> {
@@ -1755,6 +1758,16 @@ impl Core {
         effort: Option<String>,
         profile: resources::ResourceProfile,
     ) {
+        if self
+            .handoff
+            .as_ref()
+            .is_some_and(|handoff| handoff.accept().is_err())
+        {
+            if let Some(phase) = &self.phase {
+                phase.owner.revoke();
+            }
+            return;
+        }
         let result = if self.unit.provider == "codex" {
             self.codex(&input, model, effort, &profile).await
         } else {

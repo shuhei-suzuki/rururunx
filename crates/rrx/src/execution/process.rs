@@ -14,6 +14,125 @@ pub(crate) struct OwnedProcess {
     pid: Pid,
     unreaped: bool,
 }
+/// Protected transport custody never exposes a process before final Core handoff.
+#[derive(Default)]
+pub(crate) enum NativeChildCell {
+    #[default]
+    Empty,
+    Raw(RetainedRawProcess),
+    Owned(OwnedProcess),
+    Transferred,
+}
+pub(crate) struct NativePipes {
+    pub(crate) stdin: tokio::process::ChildStdin,
+    pub(crate) stdout: tokio::process::ChildStdout,
+    pub(crate) stderr: tokio::process::ChildStderr,
+}
+pub(crate) struct Refused<S> {
+    pub(crate) shell: S,
+    pub(crate) reason: &'static str,
+}
+impl NativeChildCell {
+    pub(crate) fn adopt(&mut self, child: Child) {
+        // The one-shot spawn checks Empty before creating a Child.
+        *self = Self::Raw(RetainedRawProcess {
+            child: Some(child),
+            pid: None,
+            reaped: false,
+        });
+    }
+    pub(crate) fn qualify(&mut self) -> Result<()> {
+        let Self::Raw(raw) = self else {
+            anyhow::bail!("transport raw custody absent")
+        };
+        raw.qualify()
+    }
+    pub(crate) fn upgrade_in_place(&mut self) -> Result<()> {
+        let Self::Raw(raw) = self else {
+            anyhow::bail!("transport raw custody absent")
+        };
+        ensure!(
+            !raw.reaped && raw.child.is_some(),
+            "transport child no longer unreaped"
+        );
+        let pid = raw.pid.context("transport child unqualified")?;
+        // All checks precede the only move; the emptied raw Drop has no child.
+        let child = raw.child.take().unwrap();
+        *self = Self::Owned(OwnedProcess {
+            child,
+            pid,
+            unreaped: true,
+        });
+        Ok(())
+    }
+    pub(crate) fn take_native_pipes(&mut self) -> Result<NativePipes> {
+        let Self::Owned(process) = self else {
+            anyhow::bail!("transport owned custody absent")
+        };
+        let child = &mut process.child;
+        ensure!(
+            child.stdin.is_some() && child.stdout.is_some() && child.stderr.is_some(),
+            "transport pipes incomplete"
+        );
+        Ok(NativePipes {
+            stdin: child.stdin.take().unwrap(),
+            stdout: child.stdout.take().unwrap(),
+            stderr: child.stderr.take().unwrap(),
+        })
+    }
+    pub(crate) fn transfer_with<S, T>(
+        &mut self,
+        open: bool,
+        shell: S,
+        build: fn(S, OwnedProcess) -> T,
+    ) -> std::result::Result<T, Refused<S>> {
+        let ready = matches!(self, Self::Owned(p) if p.unreaped && p.child.stdin.is_none() && p.child.stdout.is_none() && p.child.stderr.is_none());
+        if !open || !ready {
+            return Err(Refused {
+                shell,
+                reason: "transport transfer refused",
+            });
+        }
+        let Self::Owned(process) = std::mem::replace(self, Self::Transferred) else {
+            unreachable!()
+        };
+        Ok(build(shell, process))
+    }
+    pub(crate) fn hygiene(&mut self) -> &'static str {
+        match self {
+            Self::Raw(raw) => {
+                let qualified = raw.pid.is_some();
+                raw.hygiene();
+                if qualified {
+                    "group_signal_attempted"
+                } else {
+                    "direct_kill_attempted"
+                }
+            }
+            Self::Owned(p) => {
+                if p.unreaped && p.signal_group().is_err() {
+                    let _ = p.child.start_kill();
+                }
+                "group_signal_attempted"
+            }
+            _ => "n/a",
+        }
+    }
+    pub(crate) fn try_reap(&mut self) -> Result<Option<ExitStatus>> {
+        match self {
+            Self::Raw(raw) => raw.reap(),
+            Self::Owned(p) => {
+                let status = p.child.try_wait()?;
+                if status.is_some() {
+                    p.unreaped = false;
+                }
+                Ok(status)
+            }
+            _ => Ok(None),
+        }
+    }
+}
+
 /// Empty nongrant custody allocated before spawn. Adoption is infallible and
 /// precedes every identity/pipe check; unknown identity permits direct hygiene.
 #[derive(Default)]
@@ -302,5 +421,127 @@ mod retained_raw_tests {
         assert!(custody.hygiene());
         assert!(!reaped(&mut custody).await.success());
         assert!(custody.exited_unreaped().is_err());
+    }
+}
+
+#[cfg(test)]
+mod native_child_cell_tests {
+    use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    async fn spawned() -> NativeChildCell {
+        let mut command = Command::new("/bin/sleep");
+        command
+            .arg("30")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .process_group(0)
+            .kill_on_drop(true);
+        let mut cell = NativeChildCell::Empty;
+        let child = command.spawn().unwrap();
+        cell.adopt(child);
+        cell
+    }
+    async fn closed(cell: &mut NativeChildCell) {
+        cell.hygiene();
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if cell.try_reap().unwrap().is_some() {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    #[tokio::test]
+    async fn raw_upgrade_refuses_without_releasing_original_child() {
+        let mut cell = spawned().await;
+        let refused = cell.upgrade_in_place().is_err();
+        let retained =
+            matches!(&cell,NativeChildCell::Raw(raw) if raw.has_child() && raw.pid.is_none());
+        closed(&mut cell).await;
+        assert!(refused && retained);
+    }
+    #[tokio::test]
+    async fn missing_pipe_refuses_before_taking_any_other_pipe() {
+        let mut cell = spawned().await;
+        cell.qualify().unwrap();
+        cell.upgrade_in_place().unwrap();
+        let NativeChildCell::Owned(process) = &mut cell else {
+            panic!()
+        };
+        let stderr = process.child.stderr.take();
+        let refused = cell.take_native_pipes().is_err();
+        let intact = matches!(&cell,NativeChildCell::Owned(p) if p.child.stdin.is_some() && p.child.stdout.is_some());
+        drop(stderr);
+        closed(&mut cell).await;
+        assert!(refused && intact);
+    }
+    struct Shell(Arc<AtomicUsize>);
+    impl Drop for Shell {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    fn build(shell: Shell, process: OwnedProcess) -> (Shell, OwnedProcess) {
+        (shell, process)
+    }
+    #[tokio::test]
+    async fn refused_transfer_returns_same_shell_and_keeps_child_in_cell() {
+        let mut cell = spawned().await;
+        cell.qualify().unwrap();
+        cell.upgrade_in_place().unwrap();
+        let pipes = cell.take_native_pipes().unwrap();
+        let drops = Arc::new(AtomicUsize::new(0));
+        let shell = Shell(drops.clone());
+        let refused = match cell.transfer_with(false, shell, build) {
+            Err(refused) => refused,
+            Ok((shell, mut process)) => {
+                process.stop_and_reap().await.unwrap();
+                drop(pipes);
+                drop(shell);
+                panic!("closed handoff transferred child");
+            }
+        };
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        assert!(matches!(&cell,NativeChildCell::Owned(p) if p.unreaped));
+        drop(refused.shell);
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+        drop(pipes);
+        closed(&mut cell).await;
+    }
+    #[tokio::test]
+    async fn transfer_requires_all_pipes_taken_and_moves_original_once() {
+        let mut cell = spawned().await;
+        cell.qualify().unwrap();
+        cell.upgrade_in_place().unwrap();
+        let original = match &cell {
+            NativeChildCell::Owned(p) => p.child.id(),
+            _ => None,
+        };
+        let drops = Arc::new(AtomicUsize::new(0));
+        let shell = Shell(drops.clone());
+        let refused = cell.transfer_with(true, shell, build).err().unwrap();
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        let pipes = cell.take_native_pipes().unwrap();
+        let (shell, mut process) = match cell.transfer_with(true, refused.shell, build) {
+            Ok(value) => value,
+            Err(_) => panic!("qualified transfer refused"),
+        };
+        assert_eq!(process.child.id(), original);
+        assert!(matches!(cell, NativeChildCell::Transferred));
+        assert!(
+            cell.transfer_with(true, Shell(drops.clone()), build)
+                .is_err()
+        );
+        process.stop_and_reap().await.unwrap();
+        drop(pipes);
+        drop(shell);
     }
 }
