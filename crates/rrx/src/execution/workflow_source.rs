@@ -262,6 +262,9 @@ impl ManagedWorkflowSources {
             configured.provider.as_deref() == Some(provider),
             "prepared provider differs from committed configuration"
         );
+        // Bind the installed in-memory frame to the SAME ticket which read all
+        // committed source bytes; CPU parsing cannot ratify later authority.
+        io.validate_driver_current()?;
         self.owner
             .store
             .lock()

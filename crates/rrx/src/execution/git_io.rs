@@ -40,6 +40,16 @@ impl UnitGit {
         self.driver = Some(ticket);
         Ok(self)
     }
+    pub(crate) fn validate_driver_current(&self) -> Result<()> {
+        if let Some(ticket) = &self.driver {
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .validate_driver_read(ticket)?;
+        }
+        Ok(())
+    }
     pub(crate) fn with_git_lease(mut self, lease: Arc<owner::GitLease>) -> Self {
         self.git_lease = Some(lease);
         self
