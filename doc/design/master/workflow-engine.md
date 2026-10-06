@@ -118,6 +118,21 @@ grant or another Task's admission being stopped. Primitive
 parsing, policy and exact-image tests do not qualify these actor transactions.
 Reviewer artifact lease production, installed composition and genuine
 actor-chain/both-OS/four-Task qualification also remain unavailable.
+
+The private physical transport entry point consumes the retained SAME Prepared
+command and registration acknowledgement. Preparation custody retains its child
+cell before spawn; that cell adopts the returned child before identity and pipe
+qualification, upgrades in place and transfers it to Core only while admission
+remains open. Core acknowledges the original offered handoff before protocol
+work. An unresolved handoff remains retained rather than becoming a terminal
+observation. Factual settlement compares the exact own transport effect and
+records its outcome without granting input authority. Preparation abandonment
+requests stop on its retained transport after releasing the preparation mutex;
+leader signalling and reap are best-effort hygiene, without a descendant-death
+claim. The production preparation-to-transport call, Runtime stop callers and
+installed Driver composition are absent, so this private entry point does not
+make the public Native execution path available.
+
 Preparation and version transactions also conjoin the ordinary nongrant Unit
 identity/epoch/generation, parent activity, executor projection and governing
 context predicates with their original Source lineage, current successor,
