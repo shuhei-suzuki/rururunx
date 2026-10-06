@@ -7,6 +7,29 @@ use crate::state::CandidatePage;
 use anyhow::Result;
 use std::sync::Arc;
 impl Runtime {
+    /// SAME production evaluation used by the finite sweep. Its result is a
+    /// nongrant stage observation; it never makes row content into authority.
+    pub(super) fn evaluate_driver_candidate(
+        self: &Arc<Self>,
+        admission: &tokio::sync::MutexGuard<'_, ()>,
+        key: &crate::state::CandidateKey,
+    ) -> Result<AdmitOutcome> {
+        let current = match self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .current_task_bounded(key)
+        {
+            Ok(task) => task,
+            Err(_) => return Ok(AdmitOutcome::Skipped(SkipReason::CurrentTaskBounded)),
+        };
+        let composition = match self.installed_driver_composition(&current) {
+            Ok(composition) => composition,
+            Err(_) => return Ok(AdmitOutcome::Skipped(SkipReason::Composition)),
+        };
+        self.admit_task_driver(admission, key, current.id, composition)
+    }
     pub(super) fn admit_ready_tasks(self: &Arc<Self>) -> Result<usize> {
         if self.installed.is_err() {
             return Ok(0);
@@ -48,25 +71,7 @@ impl Runtime {
                 for key in keys {
                     evaluations += 1;
                     cursor = Some(key.clone());
-                    let outcome = (|| {
-                        let current = match self
-                            .owner
-                            .store
-                            .lock()
-                            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                            .current_task_bounded(&key)
-                        {
-                            Ok(task) => task,
-                            Err(_) => {
-                                return Ok(AdmitOutcome::Skipped(SkipReason::CurrentTaskBounded));
-                            }
-                        };
-                        let composition = match self.installed_driver_composition(&current) {
-                            Ok(composition) => composition,
-                            Err(_) => return Ok(AdmitOutcome::Skipped(SkipReason::Composition)),
-                        };
-                        self.admit_task_driver(&admission, &key, current.id, composition)
-                    })();
+                    let outcome = self.evaluate_driver_candidate(&admission, &key);
                     match outcome {
                         Ok(AdmitOutcome::Claimed) => {
                             claimed += 1;

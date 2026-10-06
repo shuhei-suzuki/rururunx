@@ -11,6 +11,8 @@ use crate::{
 };
 use std::{os::unix::fs::PermissionsExt, time::Duration};
 
+mod sweep;
+
 fn fixture(provider: &str, declared: bool) -> ControlFixture {
     ControlFixture::configured(|dir| {
         let path = dir.join("configured-protocol-fixture");
@@ -212,8 +214,14 @@ async fn c5_c6_actual_ingress_source_prepared_transport_and_record_only_binding(
                     .iter()
                     .map(|event| (&event.kind, &event.data))
                     .collect();
-                let handoff=f.runtime.observe_source_handoff(tasks[0].id).unwrap().map(|v|v.state());
-                panic!("SETUP: actual producer did not reach bound {provider}; handoff={handoff:?}; events={kinds:?}");
+                let handoff = f
+                    .runtime
+                    .observe_source_handoff(tasks[0].id)
+                    .unwrap()
+                    .map(|v| v.state());
+                panic!(
+                    "SETUP: actual producer did not reach bound {provider}; handoff={handoff:?}; events={kinds:?}"
+                );
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         };

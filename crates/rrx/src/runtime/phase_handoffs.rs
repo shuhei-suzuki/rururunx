@@ -193,7 +193,10 @@ impl Consumer {
     }
     async fn invoke(&self, handoff: &Handoff) -> Result<SourceHandoffState> {
         // transfer returns only after its Source borrows and first admission end.
-        let state = self.transfer(handoff).await.context("actual original Source transfer")?;
+        let state = self
+            .transfer(handoff)
+            .await
+            .context("actual original Source transfer")?;
         if state != SourceHandoffState::Reserved {
             return Ok(state);
         }
@@ -213,12 +216,15 @@ impl Consumer {
             (capacity.allocation_arc().clone(), origin.clone())
         };
         // No Source/custody/queue/control guard spans readonly planning.
-        let plan = self.dispatcher.plan_original_marker(
-            allocation,
-            origin.clone(),
-            handoff.source.ticket().clone(),
-            handoff.source.workflow(),
-        ).context("actual original marker planning")?;
+        let plan = self
+            .dispatcher
+            .plan_original_marker(
+                allocation,
+                origin.clone(),
+                handoff.source.ticket().clone(),
+                handoff.source.workflow(),
+            )
+            .context("actual original marker planning")?;
         let publication = {
             let mut assets = handoff
                 .assets
