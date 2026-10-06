@@ -1402,9 +1402,16 @@ impl Core {
             .map(|u| u.authority())
             .unwrap_or_else(|_| current.authority());
         let saved_receipt = store.native_session_result(self.session.id).ok().flatten();
+        let saved_session = store
+            .session(self.session.id)
+            .ok()
+            .flatten()
+            .map(|(session, _)| session);
         self.update.send_modify(|s| {
             s.authority = final_authority;
-            s.session = self.session.clone();
+            if let Some(session) = saved_session {
+                s.session = session;
+            }
             s.work = current.work;
             s.wait_reason = current.wait_reason;
             s.disposition = current.disposition;
