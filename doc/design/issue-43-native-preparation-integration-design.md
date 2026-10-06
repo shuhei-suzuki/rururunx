@@ -82,6 +82,10 @@ Driver/Sources preparation seal is not carried by the actual marker, its genuine
 consumer must be added with its owning author before this stage can qualify.
 This document does not declare an existing allocation alone a complete proof.
 
+The actual Native command is a distinct effect from preparation helpers. Its
+registration-to-spawn and pre-Core custody replacement is mandatory §4.1 below;
+the helper gate or an earlier successful preparation check cannot authorize it.
+
 ## 3. Private Store seam and transaction validation
 
 Proposed crate-private signatures name real argument producers; they are not
@@ -204,6 +208,92 @@ certifies process death. There is no unbounded helper retry; at most one exact
 postimage/absence reconciliation attempt occurs per wake/timer, with held state
 and capped 100-ms–5-second backoff between unchanged failures.
 
+### 4.1 Actual Native transport registration, spawn and pre-Core custody
+
+Baseline `execution/native.rs:539–586` holds SharedStore through actual child
+spawn; `587–672` then extracts pipes and inserts the registry entry before Core
+ownership is transferred. Releasing only Store would open a stop-versus-spawn
+interval and still leave post-spawn fallible work before retained child custody.
+This path must be replaced together with helper preparation, not treated as an
+ordinary legacy start or granted by its generic registration guard.
+
+The real selected Native start uses a private `NativeTransportStartPlan` derived
+from its SAME `PreparedNativePhase`, original allocation/launch and fixed command.
+Its finite internally generated command is the existing qualified Claude or
+Codex provider profile, with original program/cwd/environment/model/effort and
+bounded pipes. It is not a PhaseHelperAction or arbitrary command callback.
+Registration/transport-start intent use the actual originally allocated Session/
+invocation/operation and same pair. The explicit transport-start effect is distinct
+from later protocol boot-call/input effect intents; none implies input or ACK.
+Its exact durable representation and guard layout must be coordinated/reviewed
+with Root before source installation; this supplement grants no existing generic
+managed-effect kind extra permissions.
+
+Before admission or any process effect, the actual Native registry/Runtime-owned
+start retains a preallocated private `NativePreCoreCustody` for this SAME launch.
+It has the original immutable registration/transport plan and prepared actor,
+allocated Session/invocation and an initially empty owned-child cell. Runtime's
+real original start job retains this actual producer independently of the Engine
+future; no public arbitrary future, callback or returned DTO creates that custody.
+It has no strong return edge to Runtime/phase queue and cannot be constructed from
+SQL or a copied Session. Actual registry entry identity and allocations needed
+for the final move are established before spawn; empty custody grants nothing.
+
+The concrete protected `start_with_launch` replacement is:
+
+1. Plan exact full registration and transport-start intent images outside Store;
+   retain their SAME Arcs and preparation actor in that actual start custody.
+2. Acquire the SAME real Runtime/Driver stop-admission object used for helpers
+   and trusted stop. It is the original object retained by the private launch,
+   with no strong Runtime/job backedge or generic permission callback. Recheck
+   service/Driver revocation and exact selected adapter/prepared stage identity.
+3. Under SharedStore, run the exact last current-successor/Driver-live/full Unit/
+   pair/prepared-input checks and one Immediate registration plus transport-start
+   intent transaction. Retain its actual known-commit acknowledgement and actual
+   registered actor before any later fallible projection. Registration uncertainty
+   is Held; do not spawn based on an unconfirmed return/error or reallocate IDs.
+4. Release SharedStore while still holding that SAME admission guard. Synchronously
+   invoke OwnedProcess::spawn, then immediately move the returned real owned child
+   into the preallocated retained custody, before fallible pipe extraction,
+   Session PID projection, channel/registry work or Core construction. The move
+   has no allocation, fallible locking or await; a dedicated short mutex may
+   recover its poison for ownership retention, but poison cannot grant effects.
+   Actual abort/unwind cannot leave the child solely in an unretained temporary.
+5. Release admission before pipe/I/O/handshake awaits. Transfer child/actor/controls
+   to an actual retained Core job only after all required handoff objects exist.
+   Its abandonment guard is constructed BEFORE task spawn/first poll. The same
+   original pre-Core custody remains until the exact Core accepts ownership; no
+   interval has only an Engine future, Entry DTO or unpolled inner guard as owner.
+   Core input consumption and ACK then follow their separate private protocol.
+
+There is no process call inside Immediate, and no filesystem/hash/await while
+holding Store, actor, queue or child-custody mutex. Admission alone spans the
+short synchronous registration/known-commit/spawn/ownership-move section. It does
+not span child execution, pipe handshake or Core I/O. A stop that wins admission
+first prevents both registration and spawn. If registration wins, stop waits
+until spawn/no-spawn outcome and authentic custody are installed, then targets
+that SAME operation; this is linearization, not a process-death guarantee.
+
+| Actual observation/fault | Required same-original handling |
+| --- | --- |
+| Registration confirmed rollback | No spawn; retain original prepared actor/plan. Only proved unchanged predicates allow an original operation retry; never new allocation/pins |
+| Registration commit uncertain | No spawn. Retain original plan and resolve exact original postimages/preimages under the private known-commit protocol; row equality alone does not construct a registered actor |
+| Known registration but stop/revocation before spawn | No input/ACK/success; actual custody/registration acknowledgement enters nongrant same-original closure. No generic retirement Task rewrite |
+| OwnedProcess::spawn returns error | Retain real invocation/intent and bounded actual error classification; no invented process/Owned success and no blind process replay. Only authentic settled no-child state can contribute to non-success/no-dispatch closure |
+| Child created, pipe/registry/projection failure | Retained pre-Core custody owns child, same original actor and observed outcome BEFORE failure. Actual nongrant stop/drain/terminal reconciliation uses it; missing pipes or poisoned registry cannot discard it or mint NoCurrentDispatch |
+| Caller/start future or Runtime Drop before Core handoff | Actual independently retained custody and its eager abandonment guard remain responsible for exact child/outcome. Original marked operation is Held until genuine nongrant settlement; no new start/input or DTO restoration |
+| Exact Core accepts ownership | One actual move into retained Core; pre-Core responsibility ends only after acknowledged transfer. Later known terminal storage errors retain actual terminal as in the baseline corrections |
+
+Native helper, registered Session and transport intent abandonment share their
+authentic latest full Unit/Session/pair CAS and mandatory closure allowance.
+Normal current-currency failure does not prevent factual stop/known-work retention,
+but that nongrant closure opens no input/effect permission and issues no successful
+settlement from an absent child, Unknown or stored answer. A post-spawn child can
+never qualify pre-Session NoCurrentDispatch. Physical hygiene remains best effort.
+If the real admission/pre-Core retention/closure interfaces are not yet composed,
+this actual Native transport effect stays refused; the old under-Store spawn
+branch is not a temporary protected fallback.
+
 ## 5. Quota and exact original-operation resume
 
 Pre-Session quota runs only after actual preparation helpers are settled.
@@ -288,6 +378,8 @@ implementation. Overall availability cannot be enabled by this component alone.
 | Prepared source | Genuine Driver/Sources→allocation→marker→Native consumes committed config/rules A after live B changes; Context/template/profile/readonly artifact drift refuses before helper/input |
 | Before helpers | Exact selected vtable and original marker; parent/body/lock/Unit/epoch/generation change between plan and Immediate refuses; no helper executes |
 | Helper retention | Real version/Git owned child; intent precedes spawn; cancellation/start-future Drop before first poll/while capture, storage fault before receipt preserves child/outcome and siblings |
+| Native transport admission | Real private registration/intent and SAME stop gate; pause after commit before spawn, race actual stop, verify its winning order and exact retained child/no-child custody; other Tasks proceed after the short section |
+| Pre-Core child handoff | Real child created before injected pipe/registry/projection fault or future Drop; retained actual custody stops/reconciles same child without input/replay/Task write; eager guard survives unpolled Core job; registration uncertainty prevents spawn |
 | Preparation state | Same actor/readiness preparing, registration once; replay or another alias/pair/Session refused; rollback and uncertain commit preserve original plan, no new UUID |
 | Pre-Session wait | Settled helpers and genuine NoCurrentDispatch; exact parked due record resumes SAME operation/Unit/pair once, Task/W versions unchanged; unknown helper/duplicate/stale waiter refuses |
 | Quota independence | Marked plus legacy active lease union, caps/fairness/boundary overflow, foreign/stale bucket; same-lease live recovery, no probe mint or Task/W write, no input resend |
