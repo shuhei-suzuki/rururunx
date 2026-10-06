@@ -150,6 +150,9 @@ pub(crate) struct OwnedPhaseSettlement {
     turn: Option<String>,
 }
 impl NativePhaseSession {
+    pub(crate) fn launch_parts(&self) -> &PhaseLaunchParts {
+        &self.launch
+    }
     pub(crate) fn marker(&self) -> &OriginalMarker {
         self.launch.marker()
     }
@@ -269,6 +272,18 @@ impl NativePhaseBinding {
     }
 }
 impl ConsumedPhaseInput {
+    pub(crate) fn belongs_to(&self, owner: &NativePhaseSession) -> bool {
+        std::ptr::eq(self.owner.as_ref(), owner)
+    }
+    pub(crate) fn acknowledgement(&self) -> Result<Option<(String, Option<String>)>> {
+        let acknowledgement = self
+            .acknowledgement
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native phase acknowledgement unavailable"))?;
+        Ok(acknowledgement
+            .as_ref()
+            .map(|ack| (ack.thread.clone(), ack.turn.clone())))
+    }
     pub(super) fn admitted(
         owner: Arc<NativePhaseSession>,
         effect: OperationId,
@@ -344,6 +359,9 @@ impl ConsumedPhaseInput {
     }
 }
 impl OwnedPhaseSettlement {
+    pub(crate) fn belongs_to(&self, owner: &NativePhaseSession) -> bool {
+        std::ptr::eq(self.owner.as_ref(), owner)
+    }
     pub(super) fn completed(
         consumed: Arc<ConsumedPhaseInput>,
         terminal: Arc<NativeTerminal>,
