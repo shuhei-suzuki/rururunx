@@ -49,6 +49,7 @@ pub struct NativeStatus {
     pub pending: Vec<Value>,
     pub result: Option<Value>,
     pub receipt: Option<NativeResultId>,
+    pub observed_work: Option<WorkOutcome>,
     pub metrics: Option<Value>,
     pub diagnostic: Option<&'static str>,
     pub failure: Option<NativeFailure>,
@@ -75,6 +76,8 @@ struct Entry {
     handle: ManagedSessionRef,
     status: watch::Receiver<NativeStatus>,
     control: mpsc::Sender<Control>,
+    terminal: Arc<Mutex<Option<NativeTerminal>>>,
+    update: watch::Sender<NativeStatus>,
 }
 /// Conservative caps: aliases for a provider share the strictest configured cap.
 /// Counting leases in SQLite includes admission before a Session exists.
@@ -465,6 +468,7 @@ impl NativeSessions {
             pending: vec![],
             result: None,
             receipt: None,
+            observed_work: None,
             metrics: None,
             diagnostic: None,
             failure: None,
@@ -476,6 +480,7 @@ impl NativeSessions {
         } else {
             4 * 1024 * 1024
         };
+        let frozen_terminal = Arc::new(Mutex::new(None));
         let core = Core {
             owner: self.owner.clone(),
             unit,
@@ -484,9 +489,10 @@ impl NativeSessions {
             invocation: seed.id,
             collector: native_result::Collector::default(),
             receipt_saved: false,
+            frozen_terminal: frozen_terminal.clone(),
             wire: Lines::new(stdin, stdout, limit),
             child,
-            update,
+            update: update.clone(),
             controls: receiver,
             native,
             drain,
@@ -500,6 +506,8 @@ impl NativeSessions {
                     handle: handle.clone(),
                     status,
                     control,
+                    terminal: frozen_terminal,
+                    update,
                 },
             );
         preparation_guard.disarm();
@@ -531,11 +539,33 @@ impl NativeSessions {
     }
     pub fn status(&self, handle: &ManagedSessionRef) -> Result<NativeStatus> {
         let mut status = self.entry(handle)?.0.borrow().clone();
-        let store = self
+        let (pending, updater) = {
+            let entries = self
+                .entries
+                .lock()
+                .map_err(|_| anyhow::anyhow!("native registry poisoned"))?;
+            let entry = entries
+                .get(&handle.session)
+                .context("native Session missing")?;
+            (entry.terminal.clone(), entry.update.clone())
+        };
+        let mut reconciled = false;
+        let mut store = self
             .owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+        let mut frozen = pending
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
+        if let Some(proof) = frozen.as_ref() {
+            status.observed_work = Some(proof.receipt.observed_work);
+            if proof.persist(&mut store).is_ok() {
+                *frozen = None;
+                reconciled = true;
+                status.diagnostic = None;
+            }
+        }
         let unit = store.execution_unit(handle.unit)?;
         if let Some((session, _)) = store.session(handle.session)? {
             status.session = session;
@@ -549,6 +579,9 @@ impl NativeSessions {
         status.disposition = unit.disposition;
         status.cleanup = unit.cleanup;
         status.wait_reason = unit.wait_reason;
+        if reconciled {
+            updater.send_modify(|current| current.clone_from(&status));
+        }
         Ok(status)
     }
     pub fn release(&self, handle: &ManagedSessionRef) -> Result<()> {
@@ -981,6 +1014,22 @@ pub(crate) struct NativeTerminal {
     session_version: u64,
 }
 impl NativeTerminal {
+    fn persist(
+        &self,
+        store: &mut crate::state::Store,
+    ) -> Result<(ExecutionUnit, native_result::NativeResultReceipt, Session)> {
+        let current = store.execution_unit(self.receipt.unit_id)?;
+        // Retrying a private observed terminal never reopens permissions. If the
+        // governing input changed during a storage outage, retain it as history.
+        if current.native_effects_open
+            && store
+                .validate_execution(&current.authority(), false, true)
+                .is_err()
+        {
+            store.retire_execution_as(&current.authority(), false, Disposition::Lost)?;
+        }
+        store.finish_native_result(self)
+    }
     pub(crate) fn session_version(&self) -> u64 {
         self.session_version
     }
@@ -1002,6 +1051,7 @@ struct Core {
     invocation: NativeInvocationId,
     collector: native_result::Collector,
     receipt_saved: bool,
+    frozen_terminal: Arc<Mutex<Option<NativeTerminal>>>,
     wire: Lines,
     child: process::OwnedProcess,
     update: watch::Sender<NativeStatus>,
@@ -1262,6 +1312,9 @@ impl Core {
                 (WorkOutcome::Unknown, disposition, None, Some(category))
             }
         };
+        if disposition == Disposition::Completed && work != WorkOutcome::Unknown {
+            self.collector.confirm_complete();
+        }
         if failure == Some(NativeFailure::AuthenticationUnavailable) {
             self.collector.discard_sensitive();
         } else if failure.is_some() {
@@ -1278,17 +1331,19 @@ impl Core {
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            let current = store.execution_unit(self.unit.id)?;
-            if current.native_effects_open
-                && store
-                    .validate_execution(&current.authority(), false, true)
-                    .is_err()
-            {
-                store.retire_execution_as(&current.authority(), false, Disposition::Lost)?;
-            }
             let invocation = store.native_invocation(self.invocation)?;
             let proof = self.capture(&invocation, work, disposition, failure)?;
-            let (_, receipt, session) = store.finish_native_result(&proof)?;
+            let pending = self.frozen_terminal.clone();
+            let mut frozen = pending
+                .lock()
+                .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
+            ensure!(frozen.is_none(), "native terminal already captured");
+            *frozen = Some(proof);
+            let (_, receipt, session) = frozen
+                .as_ref()
+                .expect("captured terminal")
+                .persist(&mut store)?;
+            *frozen = None;
             self.session = session;
             self.receipt_saved = true;
             Ok::<_, anyhow::Error>(receipt)
@@ -1341,6 +1396,7 @@ impl Core {
             s.disposition = current.disposition;
             s.cleanup = CleanupOutcome::Unknown;
             s.pending.clear();
+            s.observed_work = Some(work);
             s.receipt = persisted.as_ref().ok().map(|r| r.id);
             s.result = persisted.as_ref().ok().map(|r| r.projection());
             s.failure = if current.disposition == Disposition::Cancelled {
@@ -1505,6 +1561,7 @@ impl Core {
                                 else {(WorkOutcome::Unknown,Disposition::Lost,None)});
                         },_=>{}
                     }
+                    if self.collector.overflowed() {return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));}
                 },
                 control=self.controls.recv()=>{
                     match control {Some(Control::Approval {authority,id,hash,allow,response})=>{
@@ -1591,6 +1648,12 @@ impl Core {
                         self.update.send_modify(|s|s.pending.push(permission.public(&self.native)));pending.insert(permission.request_id.clone(),permission);continue;
                     }
                     let seen=state.observe(&frame,&self.native,&self.unit.worktree,false);
+                    if frame["type"]=="result" && frame["session_id"]==self.native {
+                        if seen.as_ref().is_ok_and(|accepted|*accepted) {self.collector.claude_terminal(&frame);}
+                        else if seen.as_ref().is_ok_and(|accepted|!*accepted) {self.collector.claude_redelivery(&frame);}
+                    }
+                    if self.collector.overflowed() {return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));}
+
                     if seen.as_ref().is_err_and(|e|e.kind==ErrorKind::ProcessFailure) {
                         // Consult accepted bucket state, not the last telemetry frame.
                         // Budget/turn/output caps remain work failures even during quota exhaustion.
@@ -1605,7 +1668,6 @@ impl Core {
                     if state.initialized && self.session.native_ref.is_none(){self.ack(self.native.clone())?;}
                     if state.complete(){
                         let result=state.result.take().context("native successful result missing")?;
-                        self.collector.claude_terminal(&result);
                         let metrics=claude_wire::Metrics::parse(&result,None,false)?;
                         self.update.send_modify(|s|s.metrics=Some(json!({"input":metrics.input,"output":metrics.output,"cache_read":metrics.cache_read,"cache_write":metrics.cache_write,
                             "cost":metrics.cost,"api_ms":metrics.api_ms,"cumulative_cost":metrics.cumulative_cost,"cumulative_api_ms":metrics.cumulative_api_ms})));
@@ -1639,7 +1701,20 @@ impl Drop for Core {
         let Ok(mut unit) = store.execution_unit(self.unit.id) else {
             return;
         };
-        let abandoned = unit.native_effects_open;
+        let pending = self.frozen_terminal.clone();
+        let Ok(mut frozen) = pending.lock() else {
+            return;
+        };
+        if let Some(proof) = frozen.as_ref()
+            && let Ok((saved, _, session)) = proof.persist(&mut store)
+        {
+            unit = saved;
+            self.session = session;
+            self.receipt_saved = true;
+            *frozen = None;
+        }
+        let terminal_pending = frozen.is_some();
+        let abandoned = unit.native_effects_open && !terminal_pending;
         if abandoned {
             let Ok(retired) =
                 store.retire_execution_as(&unit.authority(), false, Disposition::Lost)
@@ -1648,7 +1723,7 @@ impl Drop for Core {
             };
             unit = retired;
         }
-        if !self.receipt_saved {
+        if !self.receipt_saved && !terminal_pending {
             self.collector.protocol_lost();
             if let Ok(invocation) = store.native_invocation(self.invocation)
                 && let Ok(proof) =
@@ -1659,7 +1734,8 @@ impl Drop for Core {
                 self.receipt_saved = true;
             }
         }
-        if let Ok(Some((mut session, version))) = store.session(self.session.id)
+        if !unit.native_effects_open
+            && let Ok(Some((mut session, version))) = store.session(self.session.id)
             && !matches!(
                 session.state,
                 SessionState::Exited
@@ -1700,6 +1776,10 @@ impl Drop for Core {
                 s.failure = None;
             }
             s.pending.clear();
+            if terminal_pending {
+                s.observed_work = frozen.as_ref().map(|proof| proof.receipt.observed_work);
+                s.diagnostic = Some("native terminal pending persistence");
+            }
             if abandoned {
                 s.diagnostic = Some("native supervisor ended without terminal");
             }

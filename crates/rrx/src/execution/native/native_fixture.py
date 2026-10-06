@@ -81,6 +81,11 @@ for line in sys.stdin:
             send({"id": value["id"], "result": {"turn": {"id": "fixture-turn"}}})
             payload = value["params"]["input"][0]["text"]
             if payload.startswith("answer-"):
+                if payload in ("answer-item-overflow","answer-event-overflow"):
+                    for i in range(257 if payload=="answer-item-overflow" else 1025):
+                        if payload=="answer-item-overflow": send({"method":"item/completed","params":{"threadId":os.environ["RRX_UNIT_ID"],"turnId":"fixture-turn","completedAtMs":0,"item":{"id":str(i),"type":"agentMessage","phase":"commentary","text":"bounded commentary"}}})
+                        else: send({"method":"item/agentMessage/delta","params":{"threadId":os.environ["RRX_UNIT_ID"],"turnId":"fixture-turn","itemId":"draft","delta":"d"}})
+                    while True: time.sleep(0.02)
                 item = {"id":"fixture-answer","type":"agentMessage","phase":"final_answer","text":"APPROVE actual answer"}
                 def emit(i, thread=None, turn="fixture-turn"):
                     send({"method":"item/completed","params":{"threadId":thread or os.environ["RRX_UNIT_ID"],"turnId":turn,"completedAtMs":0,"item":i}})
@@ -141,6 +146,13 @@ for line in sys.stdin:
             send({"type": "system", "subtype": "init", "session_id": native, "cwd": os.getcwd(), "tools": ["Bash"], "mcp_servers": []})
             payload = value["message"]["content"]
             if payload.startswith("answer-"):
+                if payload in ("answer-changing-held","answer-sameuuid-changing-held","answer-identical-held"):
+                    send({"type":"system","subtype":"session_state_changed","session_id":native,"state":"running"})
+                    a={"type":"result","session_id":native,"uuid":"answer-A","subtype":"success","is_error":False,"result":"APPROVE A"}
+                    send(a)
+                    send(dict(a,uuid="answer-A" if payload=="answer-sameuuid-changing-held" else "answer-B",result="APPROVE A" if payload=="answer-identical-held" else "APPROVE B"))
+                    send({"type":"system","subtype":"session_state_changed","session_id":native,"state":"idle"})
+                    continue
                 frame = {"type":"result","session_id":native,"subtype":"success","is_error":payload == "answer-failed","result":"APPROVE actual answer"}
                 if payload == "answer-structured": frame["structured_output"] = {"decision":"APPROVE"}
                 if payload == "answer-encoded-overflow": frame["result"] = "\x01" * 349450
