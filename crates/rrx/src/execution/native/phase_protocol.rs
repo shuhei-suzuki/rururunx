@@ -43,58 +43,6 @@ fn known_ack(state: &AtomicU8, ack: &OnceLock<RegistrationAck>) -> Result<Regist
         .context("SAME activation acknowledgement absent")
 }
 
-#[cfg(test)]
-mod registration_primitive_tests {
-    use super::*;
-    fn ack() -> RegistrationAck {
-        RegistrationAck {
-            readiness: 3,
-            unit_version: 7,
-            source: crate::state::RegistrationAckSource::Committed,
-        }
-    }
-    #[test]
-    fn candidate_and_unacknowledged_revoked_cannot_close() {
-        let cell = OnceLock::new();
-        let state = AtomicU8::new(CANDIDATE);
-        assert!(known_ack(&state, &cell).is_err());
-        state.store(REVOKED, Ordering::SeqCst);
-        assert!(known_ack(&state, &cell).is_err());
-        let acknowledged = OnceLock::new();
-        assert!(acknowledged.set(ack()).is_ok());
-        state.store(CANDIDATE, Ordering::SeqCst);
-        assert!(known_ack(&state, &acknowledged).is_err());
-    }
-    #[test]
-    fn known_commit_activates_once_and_retains_ack_after_revocation() {
-        let cell = OnceLock::new();
-        let state = AtomicU8::new(CANDIDATE);
-        assert!(matches!(
-            activate_ack(&cell, &state, ack()),
-            Activation::Live
-        ));
-        assert_eq!(known_ack(&state, &cell).unwrap().readiness, 3);
-        state.store(REVOKED, Ordering::SeqCst);
-        assert_eq!(known_ack(&state, &cell).unwrap().unit_version, 7);
-        assert!(matches!(
-            activate_ack(&cell, &state, ack()),
-            Activation::Mismatch
-        ));
-        assert_eq!(state.load(Ordering::SeqCst), REVOKED);
-    }
-    #[test]
-    fn stop_before_ack_is_retained_without_reopening() {
-        let cell = OnceLock::new();
-        let state = AtomicU8::new(REVOKED);
-        assert!(matches!(
-            activate_ack(&cell, &state, ack()),
-            Activation::RevokedKnown
-        ));
-        assert_eq!(state.load(Ordering::SeqCst), REVOKED);
-        assert!(known_ack(&state, &cell).is_ok());
-    }
-}
-
 /// Genuine registered owner. Only the actual Native module can issue it, after
 /// its managed registration transaction succeeds with the original launch.
 pub(crate) struct NativePhaseSession {
@@ -720,5 +668,57 @@ impl OwnedPhaseSettlement {
     }
     pub(crate) fn turn(&self) -> Option<&str> {
         self.turn.as_deref()
+    }
+}
+
+#[cfg(test)]
+mod registration_primitive_tests {
+    use super::*;
+    fn ack() -> RegistrationAck {
+        RegistrationAck {
+            readiness: 3,
+            unit_version: 7,
+            source: crate::state::RegistrationAckSource::Committed,
+        }
+    }
+    #[test]
+    fn candidate_and_unacknowledged_revoked_cannot_close() {
+        let cell = OnceLock::new();
+        let state = AtomicU8::new(CANDIDATE);
+        assert!(known_ack(&state, &cell).is_err());
+        state.store(REVOKED, Ordering::SeqCst);
+        assert!(known_ack(&state, &cell).is_err());
+        let acknowledged = OnceLock::new();
+        assert!(acknowledged.set(ack()).is_ok());
+        state.store(CANDIDATE, Ordering::SeqCst);
+        assert!(known_ack(&state, &acknowledged).is_err());
+    }
+    #[test]
+    fn known_commit_activates_once_and_retains_ack_after_revocation() {
+        let cell = OnceLock::new();
+        let state = AtomicU8::new(CANDIDATE);
+        assert!(matches!(
+            activate_ack(&cell, &state, ack()),
+            Activation::Live
+        ));
+        assert_eq!(known_ack(&state, &cell).unwrap().readiness, 3);
+        state.store(REVOKED, Ordering::SeqCst);
+        assert_eq!(known_ack(&state, &cell).unwrap().unit_version, 7);
+        assert!(matches!(
+            activate_ack(&cell, &state, ack()),
+            Activation::Mismatch
+        ));
+        assert_eq!(state.load(Ordering::SeqCst), REVOKED);
+    }
+    #[test]
+    fn stop_before_ack_is_retained_without_reopening() {
+        let cell = OnceLock::new();
+        let state = AtomicU8::new(REVOKED);
+        assert!(matches!(
+            activate_ack(&cell, &state, ack()),
+            Activation::RevokedKnown
+        ));
+        assert_eq!(state.load(Ordering::SeqCst), REVOKED);
+        assert!(known_ack(&state, &cell).is_ok());
     }
 }
