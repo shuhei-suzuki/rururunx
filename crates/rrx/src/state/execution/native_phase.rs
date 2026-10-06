@@ -210,6 +210,7 @@ fn plan_native_owner(
     );
     let (session, owner, readiness) = snapshot(runtime, |tx| {
         validate_current_tx(tx, phase.marker(), &current)?;
+        phase.marker().validate_driver_live_tx(tx)?;
         let session = PairRow::read(tx, "records", &f.session_id.to_string())?;
         let body = session.body()?;
         let record: Record = serde_json::from_value(body)?;
@@ -308,6 +309,7 @@ impl NativeOwnerPlan {
             "actual Native owner revoked"
         );
         validate_current_tx(tx, self.binding.marker(), &self.current)?;
+        self.binding.marker().validate_driver_live_tx(tx)?;
         validate_authority(tx, &self.current.unit().authority(), true, false)?;
         self.session.validate_tx(tx)?;
         self.owner.validate_tx(tx)?;
@@ -620,6 +622,7 @@ pub(crate) fn plan_phase_registration(
     registration_attempt(&current, &launch)?;
     let (owner_before, readiness_before, artifact_version) = snapshot(owner, |tx| {
         validate_current_tx(tx, launch.marker(), &current)?;
+        launch.marker().validate_driver_live_tx(tx)?;
         registration_unit(current.unit(), &launch)?;
         no_registration(tx, &launch)?;
         let artifact_version = current
@@ -763,6 +766,7 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         validate_current_tx(&tx, launch.marker(), current)?;
+        launch.marker().validate_driver_live_tx(&tx)?;
         registration_unit(current.unit(), launch)?;
         validate_authority(&tx, &current.unit().authority(), true, false)?;
         original_owner(&tx, launch)?;
@@ -817,6 +821,7 @@ impl Store {
         self.binding_permits.with_exact_permit(mutations, || {
             let tx = self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             validate_current_tx(&tx,plan.launch.marker(),&plan.current)?;
+            plan.launch.marker().validate_driver_live_tx(&tx)?;
             registration_unit(plan.current.unit(),&plan.launch)?;
             validate_authority(&tx,&plan.current.unit().authority(),true,false)?;
             no_registration(&tx,&plan.launch)?;
