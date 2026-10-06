@@ -18,11 +18,11 @@ use tokio::{
     process::{ChildStdin, ChildStdout, Command},
     sync::{mpsc, watch},
 };
+pub(crate) mod compat;
 #[cfg(test)]
 mod phase_fence_tests;
 mod phase_protocol;
 mod preparation;
-pub(crate) mod compat;
 pub(crate) mod prepared;
 pub(crate) mod readonly;
 pub(crate) mod version;

@@ -294,8 +294,10 @@ impl Store {
             {
                 continue;
             }
-            let eligible = match super::quota_policy::candidate_class(&tx,candidate.id,at)? {
-                super::quota_policy::CandidateClass::Legacy => validate_authority(&tx, &candidate.authority(), true, false).is_ok(),
+            let eligible = match super::quota_policy::candidate_class(&tx, candidate.id, at)? {
+                super::quota_policy::CandidateClass::Legacy => {
+                    validate_authority(&tx, &candidate.authority(), true, false).is_ok()
+                }
                 super::quota_policy::CandidateClass::MarkedParked => true,
                 super::quota_policy::CandidateClass::MarkedStalled => false,
             };
@@ -304,8 +306,21 @@ impl Store {
                 break;
             }
         }
-        let decision = super::quota_policy::decide(&super::quota_policy::QuotaSnapshot { exhausted, next_probe_at:next, foreign_probe:probe.as_ref().is_some_and(|id| id != &unit.id.to_string()), capacity_due, capacity_blocked:capacity, fair_head_is_self:first == Some(unit.id) }, at);
-        let wait = match decision { super::quota_policy::Decision::Wait { reason,due } => Some((reason,due)), super::quota_policy::Decision::Admit { .. } => None };
+        let decision = super::quota_policy::decide(
+            &super::quota_policy::QuotaSnapshot {
+                exhausted,
+                next_probe_at: next,
+                foreign_probe: probe.as_ref().is_some_and(|id| id != &unit.id.to_string()),
+                capacity_due,
+                capacity_blocked: capacity,
+                fair_head_is_self: first == Some(unit.id),
+            },
+            at,
+        );
+        let wait = match decision {
+            super::quota_policy::Decision::Wait { reason, due } => Some((reason, due)),
+            super::quota_policy::Decision::Admit { .. } => None,
+        };
         if let Some((reason, due)) = wait {
             unit.wait_reason = Some(reason);
             if reason == WaitReason::Quota {

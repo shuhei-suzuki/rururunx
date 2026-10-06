@@ -381,8 +381,17 @@ impl AgentRegistry {
                     "native executable unavailable",
                 ));
             }
-            let compatibility = agent.compatibility.as_ref().map(crate::execution::native::compat::NativeCompatDeclaration::installed).transpose()
-                .map_err(|_| error(ErrorKind::InvalidConfiguration, "invalid native compatibility declaration"))?;
+            let compatibility = agent
+                .compatibility
+                .as_ref()
+                .map(crate::execution::native::compat::NativeCompatDeclaration::installed)
+                .transpose()
+                .map_err(|_| {
+                    error(
+                        ErrorKind::InvalidConfiguration,
+                        "invalid native compatibility declaration",
+                    )
+                })?;
             selected.push((name.clone(), provider.to_owned(), program, compatibility));
         }
         let sessions = Arc::new(

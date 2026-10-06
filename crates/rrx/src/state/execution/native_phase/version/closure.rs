@@ -26,7 +26,10 @@ fn unit_projection() -> Vec<String> {
     }).collect()
 }
 impl LatestUnitImage {
-    pub(in crate::state::execution::native_phase) fn read(tx: &Transaction<'_>, original: &ExecutionUnit) -> Result<Self> {
+    pub(in crate::state::execution::native_phase) fn read(
+        tx: &Transaction<'_>,
+        original: &ExecutionUnit,
+    ) -> Result<Self> {
         // First qualify types and all copied byte lengths before text copying.
         let columns = unit_projection().join(",");
         let mut statement = tx.prepare(&format!(
@@ -65,7 +68,10 @@ impl LatestUnitImage {
         image.validate_original(original)?;
         Ok(image)
     }
-    pub(in crate::state::execution::native_phase) fn validate_original(&self, original: &ExecutionUnit) -> Result<()> {
+    pub(in crate::state::execution::native_phase) fn validate_original(
+        &self,
+        original: &ExecutionUnit,
+    ) -> Result<()> {
         ensure!(self.values.len() == 13, "incomplete closure Unit image");
         for (index, value) in self.values.iter().enumerate() {
             match value {
@@ -142,7 +148,10 @@ impl LatestUnitImage {
         );
         Ok(())
     }
-    pub(in crate::state::execution::native_phase) fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+    pub(in crate::state::execution::native_phase) fn validate_tx(
+        &self,
+        tx: &Transaction<'_>,
+    ) -> Result<()> {
         ensure!(
             tx.query_row(UNIT_CAS, params_from_iter(&self.values), |row| row
                 .get::<_, bool>(0))?,

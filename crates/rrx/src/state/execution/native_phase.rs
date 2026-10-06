@@ -15,9 +15,14 @@ const PAIR_BODY_BYTES: usize = 32 * 1024;
 
 mod preparation;
 mod quota;
-pub(crate) use quota::{NativeQuotaAdmitted, NativeQuotaCaps, NativeQuotaConfirmation, NativeQuotaOutcome, NativeQuotaPlan, NativeParkedPhase, NativeQuotaWrite};
-pub(crate) use quota::{NativeQuotaClosurePlan,NativePreparationClosureCommit,NativeQuotaClosureConfirmation};
 pub(crate) use preparation::{NativePreparationCommit, NativePreparationPlan, NativeReadyLineage};
+pub(crate) use quota::{
+    NativeParkedPhase, NativeQuotaAdmitted, NativeQuotaCaps, NativeQuotaConfirmation,
+    NativeQuotaOutcome, NativeQuotaPlan, NativeQuotaWrite,
+};
+pub(crate) use quota::{
+    NativePreparationClosureCommit, NativeQuotaClosureConfirmation, NativeQuotaClosurePlan,
+};
 mod version;
 pub(crate) use version::{
     NativeHelperHistoryCommit, NativeHelperIntentCommit, NativeHelperSettlementCommit,
@@ -45,16 +50,40 @@ struct PairRow {
     values: Vec<SqlValue>,
 }
 impl PairRow {
-    fn copy_image(&self) -> Self { Self { table:self.table,values:self.values.clone() } }
-    fn transition_readiness(&mut self,state:&str,version:i64,parking:Option<i64>,ended:bool) -> Result<()> {
-        ensure!(self.table=="managed_phase_readiness", "readiness transition table differs");
-        let mut body=self.body()?;
-        body["state"]=json!(state); body["version"]=json!(version); body["parking_version"]=json!(parking); body["start_ended"]=json!(ended);
-        self.replace("state",SqlValue::Text(state.into()))?; self.replace("version",SqlValue::Integer(version))?;
-        self.replace("parking_version",parking.map_or(SqlValue::Null,SqlValue::Integer))?; self.replace("start_ended",SqlValue::Integer(i64::from(ended)))?;
+    fn copy_image(&self) -> Self {
+        Self {
+            table: self.table,
+            values: self.values.clone(),
+        }
+    }
+    fn transition_readiness(
+        &mut self,
+        state: &str,
+        version: i64,
+        parking: Option<i64>,
+        ended: bool,
+    ) -> Result<()> {
+        ensure!(
+            self.table == "managed_phase_readiness",
+            "readiness transition table differs"
+        );
+        let mut body = self.body()?;
+        body["state"] = json!(state);
+        body["version"] = json!(version);
+        body["parking_version"] = json!(parking);
+        body["start_ended"] = json!(ended);
+        self.replace("state", SqlValue::Text(state.into()))?;
+        self.replace("version", SqlValue::Integer(version))?;
+        self.replace(
+            "parking_version",
+            parking.map_or(SqlValue::Null, SqlValue::Integer),
+        )?;
+        self.replace("start_ended", SqlValue::Integer(i64::from(ended)))?;
         self.set_body(&body)?;
-        let SqlValue::Text(raw)=self.column("body")? else { anyhow::bail!("readiness body absent") };
-        ensure!(raw.len()<=4096,"readiness postimage exceeds bound");
+        let SqlValue::Text(raw) = self.column("body")? else {
+            anyhow::bail!("readiness body absent")
+        };
+        ensure!(raw.len() <= 4096, "readiness postimage exceeds bound");
         Ok(())
     }
     fn insert_tx(&self, tx: &Transaction<'_>) -> Result<()> {

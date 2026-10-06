@@ -249,13 +249,13 @@ impl PhaseJobs {
         let running = RunningJob(job.clone());
         entry.handle = Some(tokio::spawn(async move {
             let _running = running;
-            let mut parked=preparation.parked_updates();
+            let mut parked = preparation.parked_updates();
             let start = job
                 .allocation
                 .selected_port()
                 .start_phase(launch, preparation.clone());
             tokio::pin!(start);
-            let result=loop {
+            let result = loop {
                 tokio::select! {
                     result=&mut start=>break result,
                     changed=parked.changed()=>{
@@ -266,13 +266,12 @@ impl PhaseJobs {
                     },
                 }
             };
-            let outcome = result
-                .map(|start| match start {
-                    NativePhaseStart::Launched { handle, binding } => RetainedStart::Launched {
-                        _handle: handle,
-                        binding: Arc::from(binding),
-                    },
-                });
+            let outcome = result.map(|start| match start {
+                NativePhaseStart::Launched { handle, binding } => RetainedStart::Launched {
+                    _handle: handle,
+                    binding: Arc::from(binding),
+                },
+            });
             let refused = outcome.is_err();
             let (observation, binding) = match &outcome {
                 Ok(RetainedStart::Launched { binding, .. }) => {

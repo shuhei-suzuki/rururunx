@@ -73,7 +73,10 @@ pub struct NativeCompatConfig {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum NativeHookWrites { Worktree, None }
+pub enum NativeHookWrites {
+    Worktree,
+    None,
+}
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeUserHook {
@@ -83,36 +86,62 @@ pub struct NativeUserHook {
 }
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct NativeProjectConfig { pub required_hooks: Vec<NativeRequiredHook> }
+pub struct NativeProjectConfig {
+    pub required_hooks: Vec<NativeRequiredHook>,
+}
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct NativeRequiredHook { pub path: String, pub writes: NativeHookWrites }
+pub struct NativeRequiredHook {
+    pub path: String,
+    pub writes: NativeHookWrites,
+}
 
 fn hook_text(s: &str) -> bool {
     !s.is_empty() && s.len() <= 1024 && !s.chars().any(char::is_control)
 }
 impl NativeCompatConfig {
     pub(crate) fn canonical(&self) -> Result<Vec<u8>> {
-        if self.user_hooks.len() > 16 || [&self.profile, &self.cli_version, &self.settings].iter().any(|s| !hook_text(s)) {
+        if self.user_hooks.len() > 16
+            || [&self.profile, &self.cli_version, &self.settings]
+                .iter()
+                .any(|s| !hook_text(s))
+        {
             bail!("native compatibility declaration exceeds profile");
         }
         let mut labels = std::collections::BTreeSet::new();
         for hook in &self.user_hooks {
-            if hook.label.is_empty() || hook.label.len() > 64 || !hook.label.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b)) || !labels.insert(&hook.label) || !hook_text(&hook.reference) {
+            if hook.label.is_empty()
+                || hook.label.len() > 64
+                || !hook
+                    .label
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+                || !labels.insert(&hook.label)
+                || !hook_text(&hook.reference)
+            {
                 bail!("invalid native user hook declaration");
             }
         }
         let encoded = serde_json::to_vec(self)?;
-        if encoded.len() > 16 * 1024 { bail!("native compatibility canonical encoding exceeds bound"); }
+        if encoded.len() > 16 * 1024 {
+            bail!("native compatibility canonical encoding exceeds bound");
+        }
         Ok(encoded)
     }
 }
 impl NativeProjectConfig {
     fn validate(&self) -> Result<()> {
-        if self.required_hooks.len() > 16 { bail!("too many native required hooks"); }
+        if self.required_hooks.len() > 16 {
+            bail!("too many native required hooks");
+        }
         let mut paths = std::collections::BTreeSet::new();
         for hook in &self.required_hooks {
-            if !hook_text(&hook.path) || hook.path.starts_with('/') || hook.path.contains('\\') || hook.path.split('/').any(|s| matches!(s, "" | "." | "..")) || !paths.insert(&hook.path) {
+            if !hook_text(&hook.path)
+                || hook.path.starts_with('/')
+                || hook.path.contains('\\')
+                || hook.path.split('/').any(|s| matches!(s, "" | "." | ".."))
+                || !paths.insert(&hook.path)
+            {
                 bail!("native required hook path must be unique and normalized");
             }
         }
@@ -213,7 +242,9 @@ impl Config {
             Some(path) => parse_file(path)?,
             None => Self::default(),
         };
-        if !result.native.required_hooks.is_empty() { bail!("native required_hooks are project-only"); }
+        if !result.native.required_hooks.is_empty() {
+            bail!("native required_hooks are project-only");
+        }
         result.validate().with_context(|| {
             format!(
                 "invalid runtime config {}",
@@ -324,7 +355,9 @@ impl Config {
             bail!("risk workflow mapping must be monotonic");
         }
         for (name, agent) in &self.agents {
-            if let Some(compatibility) = &agent.compatibility { compatibility.canonical()?; }
+            if let Some(compatibility) = &agent.compatibility {
+                compatibility.canonical()?;
+            }
             if agent
                 .provider
                 .as_deref()
@@ -389,26 +422,56 @@ mod tests {
     }
     #[test]
     fn nongrant_native_declaration_placement_closed_writes_and_canonical_bounds() {
-        for input in ["[agents.a.compatibility]\nprofile='rrx-native-inherited-v1'\ncli_version='2.1.283'\nsettings='inherited'","[[native.required_hooks]]\npath='hook.sh'\nwrites='output_only'","[[native.required_hooks]]\npath='hook.sh'\nwrites='none'\nextra=true"] {
-            assert!(toml::from_str::<ProjectOverlay>(input).is_err(),"{input}");
+        for input in [
+            "[agents.a.compatibility]\nprofile='rrx-native-inherited-v1'\ncli_version='2.1.283'\nsettings='inherited'",
+            "[[native.required_hooks]]\npath='hook.sh'\nwrites='output_only'",
+            "[[native.required_hooks]]\npath='hook.sh'\nwrites='none'\nextra=true",
+        ] {
+            assert!(toml::from_str::<ProjectOverlay>(input).is_err(), "{input}");
         }
-        let mut config=Config::default();
-        for path in ["/absolute","../parent","a/./b","a//b","a\\b",""] {
-            assert!(config.with_project_text(&format!("[[native.required_hooks]]\npath='{path}'\nwrites='none'")).is_err(),"{path}");
+        let mut config = Config::default();
+        for path in ["/absolute", "../parent", "a/./b", "a//b", "a\\b", ""] {
+            assert!(
+                config
+                    .with_project_text(&format!(
+                        "[[native.required_hooks]]\npath='{path}'\nwrites='none'"
+                    ))
+                    .is_err(),
+                "{path}"
+            );
         }
-        config=config.with_project_text("[[native.required_hooks]]\npath='hooks/project.sh'\nwrites='none'").unwrap();
-        assert_eq!(config.native.required_hooks.len(),1);
-        let dir=tempfile::tempdir().unwrap();let path=dir.path().join("runtime.toml");
-        std::fs::write(&path,"[[native.required_hooks]]\npath='hook.sh'\nwrites='none'").unwrap();
-        assert!(Config::load(Some(&path),None).is_err());
-        let raw="profile='rrx-native-inherited-v1'\ncli_version='2.1.283'\nsettings='inherited'\n[[user_hooks]]\nlabel='ok'\nreference='opaque'\nwrites='none'";
-        let mut declaration:NativeCompatConfig=toml::from_str(raw).unwrap();
-        let bytes=declaration.canonical().unwrap();assert_eq!(bytes,declaration.clone().canonical().unwrap());
-        declaration.user_hooks[0].reference="x".repeat(1024);assert!(declaration.canonical().is_ok());
-        declaration.user_hooks[0].reference.push('x');assert!(declaration.canonical().is_err());
-        declaration.user_hooks[0].reference="opaque".into();declaration.user_hooks[0].label="x".repeat(64);assert!(declaration.canonical().is_ok());
-        declaration.user_hooks[0].label.push('x');assert!(declaration.canonical().is_err());
-        for n in 0..16 {declaration.user_hooks.push(NativeUserHook {label:format!("hook{n}"),reference:"opaque".into(),writes:NativeHookWrites::None});}
+        config = config
+            .with_project_text("[[native.required_hooks]]\npath='hooks/project.sh'\nwrites='none'")
+            .unwrap();
+        assert_eq!(config.native.required_hooks.len(), 1);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("runtime.toml");
+        std::fs::write(
+            &path,
+            "[[native.required_hooks]]\npath='hook.sh'\nwrites='none'",
+        )
+        .unwrap();
+        assert!(Config::load(Some(&path), None).is_err());
+        let raw = "profile='rrx-native-inherited-v1'\ncli_version='2.1.283'\nsettings='inherited'\n[[user_hooks]]\nlabel='ok'\nreference='opaque'\nwrites='none'";
+        let mut declaration: NativeCompatConfig = toml::from_str(raw).unwrap();
+        let bytes = declaration.canonical().unwrap();
+        assert_eq!(bytes, declaration.clone().canonical().unwrap());
+        declaration.user_hooks[0].reference = "x".repeat(1024);
+        assert!(declaration.canonical().is_ok());
+        declaration.user_hooks[0].reference.push('x');
+        assert!(declaration.canonical().is_err());
+        declaration.user_hooks[0].reference = "opaque".into();
+        declaration.user_hooks[0].label = "x".repeat(64);
+        assert!(declaration.canonical().is_ok());
+        declaration.user_hooks[0].label.push('x');
+        assert!(declaration.canonical().is_err());
+        for n in 0..16 {
+            declaration.user_hooks.push(NativeUserHook {
+                label: format!("hook{n}"),
+                reference: "opaque".into(),
+                writes: NativeHookWrites::None,
+            });
+        }
         assert!(declaration.canonical().is_err());
     }
 }

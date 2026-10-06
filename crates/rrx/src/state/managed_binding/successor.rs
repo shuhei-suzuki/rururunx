@@ -41,7 +41,8 @@ impl CurrentWorkflowSuccessor {
         Ok(Self {
             original: self.original.clone(),
             workflow: self.workflow.clone(),
-            unit: body, count: self.count,
+            unit: body,
+            count: self.count,
             head: self.head.clone(),
         })
     }
@@ -71,15 +72,31 @@ impl CurrentWorkflowSuccessor {
     }
 }
 
-fn validate_unit_identity(unit: &ExecutionUnit, original: &ExecutionUnit, increasing: bool) -> Result<()> {
-    ensure!(unit.id == original.id && unit.scope == original.scope && unit.kind == original.kind
-        && unit.generation == original.generation && unit.owner_epoch == original.owner_epoch
-        && unit.phase == original.phase && unit.provider == original.provider && unit.worktree == original.worktree
-        && unit.branch == original.branch && unit.base_sha == original.base_sha && unit.profile_digest == original.profile_digest
-        && unit.cookie == original.cookie && unit.created_at == original.created_at
-        && unit.version >= original.version && (!increasing || unit.version > original.version)
-        && unit.version <= i64::MAX as u64 && (unit.kind != UnitKind::Reviewer || unit.artifact_id == original.artifact_id),
-        "current allocated Unit immutable identity or version changed");
+fn validate_unit_identity(
+    unit: &ExecutionUnit,
+    original: &ExecutionUnit,
+    increasing: bool,
+) -> Result<()> {
+    ensure!(
+        unit.id == original.id
+            && unit.scope == original.scope
+            && unit.kind == original.kind
+            && unit.generation == original.generation
+            && unit.owner_epoch == original.owner_epoch
+            && unit.phase == original.phase
+            && unit.provider == original.provider
+            && unit.worktree == original.worktree
+            && unit.branch == original.branch
+            && unit.base_sha == original.base_sha
+            && unit.profile_digest == original.profile_digest
+            && unit.cookie == original.cookie
+            && unit.created_at == original.created_at
+            && unit.version >= original.version
+            && (!increasing || unit.version > original.version)
+            && unit.version <= i64::MAX as u64
+            && (unit.kind != UnitKind::Reviewer || unit.artifact_id == original.artifact_id),
+        "current allocated Unit immutable identity or version changed"
+    );
     Ok(())
 }
 

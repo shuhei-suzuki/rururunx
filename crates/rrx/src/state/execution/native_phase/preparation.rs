@@ -20,35 +20,89 @@ pub(crate) struct NativePreparationCommit {
 /// Images advance only from this actor's own known quota transition.
 pub(crate) enum NativeReadyLineage {
     Initial(Arc<NativePreparationCommit>),
-    Quota { commit: Arc<NativePreparationCommit>, current: CurrentWorkflowSuccessor, readiness: PairRow },
+    Quota {
+        commit: Arc<NativePreparationCommit>,
+        current: CurrentWorkflowSuccessor,
+        readiness: PairRow,
+    },
 }
 impl NativeReadyLineage {
-    pub(super) fn validate_closure_tx(&self,tx:&Transaction<'_>) -> Result<()> {
-        let original=&self.commit().original;
+    pub(super) fn validate_closure_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        let original = &self.commit().original;
         original.actor.validate_original()?;
-        selected_database(tx,original.actor.launch())?;
+        selected_database(tx, original.actor.launch())?;
         original.owner_before.validate_tx(tx)?;
-        no_registration(tx,original.actor.launch())?;
+        no_registration(tx, original.actor.launch())?;
         self.readiness().validate_tx(tx)
     }
-    pub(super) fn commit(&self) -> &Arc<NativePreparationCommit> { match self { Self::Initial(c) | Self::Quota { commit:c, .. } => c } }
-    pub(super) fn current(&self) -> &CurrentWorkflowSuccessor { match self { Self::Initial(c) => &c.original.current, Self::Quota { current, .. } => current } }
-    pub(super) fn readiness(&self) -> &PairRow { match self { Self::Initial(c) => &c.original.readiness_after, Self::Quota { readiness, .. } => readiness } }
-    pub(crate) fn unit(&self) -> &ExecutionUnit { self.current().unit() }
+    pub(super) fn commit(&self) -> &Arc<NativePreparationCommit> {
+        match self {
+            Self::Initial(c) | Self::Quota { commit: c, .. } => c,
+        }
+    }
+    pub(super) fn current(&self) -> &CurrentWorkflowSuccessor {
+        match self {
+            Self::Initial(c) => &c.original.current,
+            Self::Quota { current, .. } => current,
+        }
+    }
+    pub(super) fn readiness(&self) -> &PairRow {
+        match self {
+            Self::Initial(c) => &c.original.readiness_after,
+            Self::Quota { readiness, .. } => readiness,
+        }
+    }
+    pub(crate) fn unit(&self) -> &ExecutionUnit {
+        self.current().unit()
+    }
     pub(crate) fn validate_prepared_shape(&self) -> Result<()> {
         let row = self.readiness();
-        ensure!(row.column("state")? == &SqlValue::Text("preparing".into()) && matches!(row.column("version")?, SqlValue::Integer(2 | 4)) && row.column("parking_version")? == &SqlValue::Null && self.unit().state == UnitState::Preparing && self.unit().wait_reason.is_none(), "known admitted lineage is not prepared");
+        ensure!(
+            row.column("state")? == &SqlValue::Text("preparing".into())
+                && matches!(row.column("version")?, SqlValue::Integer(2 | 4))
+                && row.column("parking_version")? == &SqlValue::Null
+                && self.unit().state == UnitState::Preparing
+                && self.unit().wait_reason.is_none(),
+            "known admitted lineage is not prepared"
+        );
         Ok(())
     }
     pub(super) fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
-        match self { Self::Initial(c) => c.validate_version_ready(tx), Self::Quota { commit, current, readiness } => { commit.original.validate_common_with(tx,current)?; readiness.validate_tx(tx) } }
+        match self {
+            Self::Initial(c) => c.validate_version_ready(tx),
+            Self::Quota {
+                commit,
+                current,
+                readiness,
+            } => {
+                commit.original.validate_common_with(tx, current)?;
+                readiness.validate_tx(tx)
+            }
+        }
     }
-    pub(super) fn known_successor(&self, unit: Arc<crate::state::managed_binding::Body<ExecutionUnit>>, readiness: PairRow) -> Result<Arc<Self>> {
-        Ok(Arc::new(Self::Quota { commit: self.commit().clone(), current: self.current().with_known_unit(unit)?, readiness }))
+    pub(super) fn known_successor(
+        &self,
+        unit: Arc<crate::state::managed_binding::Body<ExecutionUnit>>,
+        readiness: PairRow,
+    ) -> Result<Arc<Self>> {
+        Ok(Arc::new(Self::Quota {
+            commit: self.commit().clone(),
+            current: self.current().with_known_unit(unit)?,
+            readiness,
+        }))
     }
 }
 impl NativePreparationCommit {
-    pub(super) fn project_limit(&self) -> usize { self.original.actor.launch().marker().original_plan().project().0.max_tasks }
+    pub(super) fn project_limit(&self) -> usize {
+        self.original
+            .actor
+            .launch()
+            .marker()
+            .original_plan()
+            .project()
+            .0
+            .max_tasks
+    }
     pub(super) fn actor(&self) -> &Arc<NativePreparationActor> {
         self.original.actor()
     }
@@ -70,7 +124,11 @@ impl NativePreparationPlan {
     fn validate_common(&self, tx: &Transaction<'_>) -> Result<()> {
         self.validate_common_with(tx, &self.current)
     }
-    fn validate_common_with(&self, tx: &Transaction<'_>, current: &CurrentWorkflowSuccessor) -> Result<()> {
+    fn validate_common_with(
+        &self,
+        tx: &Transaction<'_>,
+        current: &CurrentWorkflowSuccessor,
+    ) -> Result<()> {
         self.actor.validate_original()?;
         let launch = self.actor.launch();
         selected_database(tx, launch)?;
@@ -99,19 +157,34 @@ impl NativePreparationPlan {
 }
 
 impl Store {
-    pub(crate) fn check_phase_no_current_dispatch(&mut self, actor: &Arc<NativePreparationActor>, lineage: &NativeReadyLineage, completion: &Arc<crate::execution::native::version::NativeReadonlyHelperCompletion>, admission: &PhaseEffectAdmissionGuard) -> Result<()> {
-        let tx = self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    pub(crate) fn check_phase_no_current_dispatch(
+        &mut self,
+        actor: &Arc<NativePreparationActor>,
+        lineage: &NativeReadyLineage,
+        completion: &Arc<crate::execution::native::version::NativeReadonlyHelperCompletion>,
+        admission: &PhaseEffectAdmissionGuard,
+    ) -> Result<()> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         {
             let budget = super::version::InventoryBudget::new(&tx)?;
             budget.finish((|| {
-                admission.validate_for(actor.launch())?; actor.validate_open()?;
+                admission.validate_for(actor.launch())?;
+                actor.validate_open()?;
                 lineage.validate_tx(&tx)?;
-                ensure!(matches!(lineage, NativeReadyLineage::Initial(_)) && completion.matches_actor(actor) && lineage.unit().wait_reason.is_none(), "no-dispatch Initial facts differ");
-                no_registration(&tx,actor.launch())?;
+                ensure!(
+                    matches!(lineage, NativeReadyLineage::Initial(_))
+                        && completion.matches_actor(actor)
+                        && lineage.unit().wait_reason.is_none(),
+                    "no-dispatch Initial facts differ"
+                );
+                no_registration(&tx, actor.launch())?;
                 completion.commit.validate_inventory(&tx)
             })())?;
         }
-        tx.commit()?; Ok(())
+        tx.commit()?;
+        Ok(())
     }
     /// A separate coherent readonly snapshot is bounded by the original Root
     /// frame and finite Native pair profile; never encode under SharedStore.
