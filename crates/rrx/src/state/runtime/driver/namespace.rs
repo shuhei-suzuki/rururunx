@@ -101,12 +101,18 @@ impl NamespaceSnapshot {
         }
         Ok(Self { project, rows })
     }
+    fn current_count(&self, c: &Connection) -> Result<(usize, i32)> {
+        // Compiled sentinel, not a caller budget or truncated admitted inventory.
+        // Production schema supplies the Project-leading covering index.
+        let mut statement=c.prepare("SELECT count(*) FROM (SELECT 1 FROM tasks INDEXED BY tasks_by_project_issue WHERE project_id=?1 LIMIT 4097)")?;
+        let count = statement.query_row([self.project.to_string()], |r| r.get(0))?;
+        Ok((
+            count,
+            statement.get_status(rusqlite::StatementStatus::VmStep),
+        ))
+    }
     pub(in crate::state) fn validate_current(&self, c: &Connection) -> Result<()> {
-        let count: usize = c.query_row(
-            "SELECT count(*) FROM tasks WHERE project_id=?1",
-            [self.project.to_string()],
-            |r| r.get(0),
-        )?;
+        let (count, _) = self.current_count(c)?;
         ensure!(
             count == self.rows.len(),
             "Driver namespace inventory changed"
@@ -143,7 +149,7 @@ mod tests {
     // Historical collision data only. No accepted Goal/Driver/Unit/owner proof.
     fn history(count: usize, size: Option<usize>) -> (Connection, Task, usize) {
         let c = Connection::open_in_memory().unwrap();
-        c.execute_batch("CREATE TABLE tasks(id TEXT PRIMARY KEY,project_id TEXT,goal_id TEXT,version INTEGER,issue INTEGER,body TEXT)").unwrap();
+        c.execute_batch("CREATE TABLE tasks(id TEXT PRIMARY KEY,project_id TEXT,goal_id TEXT,version INTEGER,issue INTEGER,body TEXT); CREATE INDEX tasks_by_project_issue ON tasks(project_id,issue)").unwrap();
         let project = ProjectId::new();
         let goal = GoalId::new();
         let mut first = None;
@@ -362,5 +368,42 @@ mod tests {
                 "{column}: {error}"
             );
         }
+    }
+    #[test]
+    fn namespace_post_capture_surplus_refuses_with_bounded_actual_sql_steps() {
+        let (mut c, task, _) = history(2, None);
+        let captured = NamespaceSnapshot::read(&c, task.project_id).unwrap();
+        let (count, steps) = captured.current_count(&c).unwrap();
+        assert_eq!(count, 2);
+        assert!(steps < 100);
+        captured.validate_current(&c).unwrap();
+        // Historical content only, no accepted Goal/Driver or proof. The current
+        // Project grows after a legitimate snapshot; the actual production index
+        // and count reader must stop at the sentinel before copying/decode/CAS.
+        c.execute("WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<65536) INSERT INTO tasks(id,project_id,goal_id,version,issue,body) SELECT printf('historical-extra-%d',i),?1,?2,0,NULL,'!' FROM n",params![task.project_id.to_string(),task.goal_id.to_string()]).unwrap();
+        let tx = c
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let error = captured.validate_current(&tx).unwrap_err();
+        assert!(error.to_string().contains("inventory changed"));
+        let (count, steps) = captured.current_count(&tx).unwrap();
+        assert!(
+            steps < 65536,
+            "actual current-count VM traversal exceeded finite profile: {steps}"
+        );
+        assert_eq!(
+            count,
+            ROWS + 1,
+            "current reader did not stop at compiled sentinel"
+        );
+        tx.rollback().unwrap();
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM tasks", [], |r| r.get::<_, usize>(0))
+                .unwrap(),
+            65538
+        );
+        eprintln!(
+            "namespace actual SQLite VM steps: unchanged <100; grown sentinel={count}, steps={steps}"
+        );
     }
 }
