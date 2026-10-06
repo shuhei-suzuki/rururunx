@@ -450,7 +450,9 @@ async fn actual_service_loop_failure_is_refused_and_exits_unsuccessfully() {
         .unwrap()
         .execute_batch("DROP TABLE scheduler_tasks")
         .unwrap();
-    let until = Instant::now() + Duration::from_secs(5);
+    // The idle controller deliberately sleeps up to five seconds. Observe its
+    // fault separately from the subsequent service shutdown budget.
+    let until = Instant::now() + Duration::from_secs(8);
     loop {
         if matches!(
             client::request(&f.state, ControlAction::RuntimeStatus)
@@ -474,6 +476,7 @@ async fn actual_service_loop_failure_is_refused_and_exits_unsuccessfully() {
             .await
             .is_err()
     );
+    let until = Instant::now() + Duration::from_secs(10);
     loop {
         if let Some(status) = f.child.as_mut().unwrap().try_wait().unwrap() {
             assert!(
