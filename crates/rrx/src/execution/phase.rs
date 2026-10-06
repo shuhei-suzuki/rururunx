@@ -329,7 +329,10 @@ mod tests {
                 (f.state_path, f.state_root, f.instance_id),
                 (owner.state_path(), owner.state_root(), owner.instance_id())
             );
-            assert_eq!(f.program, _dir.path().join("native-counter"));
+            assert_eq!(
+                f.program,
+                _dir.path().join("native-counter").canonicalize().unwrap()
+            );
             assert_eq!(
                 (f.unit_id, f.generation, f.epoch, f.unit_version),
                 (unit.id, unit.generation, unit.owner_epoch, unit.version)
