@@ -494,13 +494,14 @@ fn checked(
     let goal: Goal = bounded(connection, "goals", &task.goal_id.to_string(), 1024 * 1024)?;
     validate_owners(connection, &project, &goal, &task, &row)?;
     let context = context_read(connection, &task.scope(), claim.context_version)?;
-    let stored: String = connection.query_row(
-        "SELECT claim FROM verification_runs WHERE unit_id=?1 AND profile_digest=?2",
+    let (stored, stored_digest): (String, String) = connection.query_row(
+        "SELECT claim,claim_digest FROM verification_runs WHERE unit_id=?1 AND profile_digest=?2 AND length(CAST(claim AS BLOB))<=262144",
         params![current.id.to_string(), grant.profile_digest()],
-        |r| r.get(0),
+        |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
     ensure!(
         stored == serde_json::to_string(claim)?
+            && stored_digest == hash(stored.as_bytes())
             && row.version == claim.version
             && json_hash(&row)? == claim.workflow_digest
             && w.active == Some(claim.index)
@@ -721,6 +722,11 @@ impl Store {
             |r| r.get(0),
         )?;
         ensure!(n==index as u64 && (index==0 || tx.query_row("SELECT EXISTS(SELECT 1 FROM verification_commands WHERE unit_id=?1 AND state='pending')",[unit.id.to_string()],|r|r.get::<_,bool>(0))?==false),"verification command sequencing mismatch");
+        let prior = read_commands(&tx, unit.id, &p)?;
+        ensure!(
+            prior.len() == index && prior.iter().all(|o| o.certifying()),
+            "verification command cannot follow incomplete/non-certifying work"
+        );
         ensure!(
             cwd == std::fs::canonicalize(unit.worktree.join(&command.cwd))?
                 && cwd.starts_with(&unit.worktree),
@@ -916,7 +922,7 @@ pub(in crate::state) fn accept_tx(
     let run = run_read(tx, unit.id)?;
     let old_task: Task = read_tx(tx, "tasks", &task.id.to_string())?.unwrap();
     let old_context: ContextVersion = decode(tx.query_row(
-        "SELECT body FROM context_versions WHERE project_id=?1 AND owner=?2 AND version=?3",
+        "SELECT body FROM context_versions WHERE project_id=?1 AND owner=?2 AND version=?3 AND length(CAST(body AS BLOB))<=8388608",
         params![
             task.project_id.to_string(),
             context_owner(&task.scope())?,

@@ -611,3 +611,90 @@ async fn actual_command_preparation_then_owner_drift_refuses_before_command_inte
     );
     engine.cancel(f.task.id, "drift complete".into()).unwrap();
 }
+
+#[tokio::test]
+async fn actual_command_cancel_retains_observed_receipt_without_accepting_tests() {
+    let (f, engine, verifier, artifact) = ready(
+        "codex",
+        Some(profile("import os,pathlib,time; pathlib.Path(os.environ['TMPDIR']).joinpath('command-running').write_text('ready'); print('before cancellation',flush=True); time.sleep(30)")),
+    ).await;
+    let engine = Arc::new(engine);
+    let running_engine = engine.clone();
+    let task_id = f.task.id;
+    let running = tokio::spawn(async move { running_engine.step(task_id, BTreeMap::new()).await });
+    let unit = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let workflow = engine.snapshot(task_id).unwrap();
+            if let Some(unit) = workflow
+                .history
+                .iter()
+                .find(|a| a.phase == Phase::Tests)
+                .and_then(|a| a.unit.as_ref())
+            {
+                let unit = f
+                    .owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .execution_unit(unit.unit)
+                    .unwrap();
+                let resources = execution::resources::ResourceManager::new(f.owner.clone())
+                    .profile(&unit)
+                    .unwrap();
+                if resources.temp.join("command-running").is_file() {
+                    break unit.id;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    engine
+        .cancel(task_id, "actual command cancel control".into())
+        .unwrap();
+    let _conservative_result = tokio::time::timeout(Duration::from_secs(5), running)
+        .await
+        .unwrap()
+        .unwrap();
+    let workflow = engine.snapshot(task_id).unwrap();
+    assert!(!workflow.completed.contains_key(&Phase::Tests));
+    assert_eq!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .task(task_id)
+            .unwrap()
+            .unwrap()
+            .state,
+        TaskState::Cancelled
+    );
+    let run = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .verification_run(unit)
+        .unwrap();
+    assert!(!run.certifying && run.commands.len() == 1);
+    assert_eq!(
+        run.commands[0].issue,
+        Some(execution::verification::CaptureIssue::Cancelled)
+    );
+    assert_eq!(
+        verifier.inspect_stream(unit, 0, false, 4096).unwrap(),
+        b"before cancellation\n"
+    );
+    let original = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .result_artifact(artifact)
+        .unwrap();
+    execution::results::ResultStore::new(f.owner.clone())
+        .verify(&original)
+        .await
+        .unwrap();
+}
