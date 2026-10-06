@@ -43,6 +43,7 @@ pub(crate) struct PreparationGuard {
     unit: super::ExecutionUnit,
     armed: bool,
     unmarked_retirement: bool,
+    accepted_source: bool,
     driver_preparation: Option<Arc<crate::state::DriverPreparationAdvance>>,
 }
 impl PreparationGuard {
@@ -63,6 +64,7 @@ impl PreparationGuard {
             unit: unit.clone(),
             armed: true,
             unmarked_retirement: true,
+            accepted_source: false,
             driver_preparation: None,
         }
     }
@@ -71,10 +73,18 @@ impl PreparationGuard {
     pub(crate) fn hold_marker_publication(&mut self) {
         self.unmarked_retirement = false;
     }
-    /// Only the actual supervisor's unpublished-marker transaction may restore
-    /// this policy. It must exclude a concurrent publisher and check the ledger.
+    /// One-way responsibility of the actual Source transfer. Destruction or
+    /// proven marker absence cannot retire an accepted original as Lost.
+    pub(crate) fn hold_accepted_source(&mut self) {
+        self.accepted_source = true;
+        self.unmarked_retirement = false;
+    }
+    /// Only the actual supervisor's unpublished-marker proof may restore this
+    /// legacy policy. Accepted Source responsibility remains one-way.
     pub(crate) fn restore_unmarked_retirement(&mut self) {
-        self.unmarked_retirement = true;
+        if !self.accepted_source {
+            self.unmarked_retirement = true;
+        }
     }
     pub(crate) fn retain_driver_preparation(
         &mut self,
@@ -92,6 +102,7 @@ impl PreparationGuard {
 impl Drop for PreparationGuard {
     fn drop(&mut self) {
         if !self.armed
+            || self.accepted_source
             || !self.unmarked_retirement
             || self
                 .driver_preparation
@@ -151,6 +162,38 @@ impl Drop for HelperGuard {
                 BTreeMap::from([("transport".into(), "helper_wait_abandoned".into())]),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod preparation_policy_tests {
+    use super::*;
+
+    /// Policy-only nongrant control on an actual legacy Unit. It does not
+    /// fabricate accepted Source linkage or qualify a protected Native route.
+    #[tokio::test]
+    async fn accepted_guard_policy_is_one_way_across_restore_and_final_drop() {
+        let (_dir, owner, task) = crate::execution::results::tests::fixture().await;
+        let (unit, _) = super::super::attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, "codex", "Implement", None)
+            .await
+            .unwrap();
+        let mut guard = PreparationGuard::new(owner.clone(), &unit);
+        guard.hold_accepted_source();
+        guard.hold_marker_publication();
+        guard.restore_unmarked_retirement();
+        assert!(guard.armed, "accepted policy disarmed ownership");
+        assert!(
+            !guard.unmarked_retirement,
+            "restore reopened accepted Lost retirement"
+        );
+        drop(guard);
+        let current = owner.store.lock().unwrap().execution_unit(unit.id).unwrap();
+        assert_eq!(
+            serde_json::to_value(current).unwrap(),
+            serde_json::to_value(unit).unwrap(),
+            "final accepted guard Drop rewrote original Unit"
+        );
     }
 }
 

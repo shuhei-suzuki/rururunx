@@ -17,7 +17,7 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 use rusqlite::{Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Complete activation encoding, checked outside the Store mutex. Successful
 /// decoding is nongrant: the real installed activation must already exist.
@@ -49,6 +49,139 @@ pub(crate) struct MarkerPublicationPlan {
 /// Field privacy, no Deserialize and no public constructor preserve provenance.
 pub(crate) struct OriginalMarker {
     plan: Arc<MarkerPublicationPlan>,
+}
+
+/// Factual observations only. An empty cell or commit error never proves that
+/// the marker rolled back; only the original unpublished protocol may do so.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MarkerTransactionObservation {
+    Unobserved,
+    NotConstructedRefused,
+    PrecommitDropped,
+    CommitAttempted,
+    CommitError,
+    Committed,
+}
+struct PublicationFacts {
+    transaction: MarkerTransactionObservation,
+    confirmed: bool,
+    first_marker: Option<Arc<OriginalMarker>>,
+}
+/// Independently retained beside the original plan before admission. Runtime
+/// can read these facts; only this actual Store producer can advance them.
+pub(crate) struct MarkerPublicationOutcome {
+    plan: Arc<MarkerPublicationPlan>,
+    facts: Mutex<PublicationFacts>,
+}
+impl MarkerPublicationOutcome {
+    pub(crate) fn new(plan: Arc<MarkerPublicationPlan>) -> Arc<Self> {
+        Arc::new(Self {
+            plan,
+            facts: Mutex::new(PublicationFacts {
+                transaction: MarkerTransactionObservation::Unobserved,
+                confirmed: false,
+                first_marker: None,
+            }),
+        })
+    }
+    pub(crate) fn transaction(&self) -> Result<MarkerTransactionObservation> {
+        Ok(self
+            .facts
+            .lock()
+            .map_err(|_| anyhow::anyhow!("marker outcome poisoned"))?
+            .transaction)
+    }
+    pub(crate) fn first_marker(&self) -> Result<Option<Arc<OriginalMarker>>> {
+        Ok(self
+            .facts
+            .lock()
+            .map_err(|_| anyhow::anyhow!("marker outcome poisoned"))?
+            .first_marker
+            .clone())
+    }
+    pub(crate) fn is_confirmed(&self) -> Result<bool> {
+        Ok(self
+            .facts
+            .lock()
+            .map_err(|_| anyhow::anyhow!("marker outcome poisoned"))?
+            .confirmed)
+    }
+    fn validate_plan(&self, plan: &Arc<MarkerPublicationPlan>) -> Result<()> {
+        ensure!(
+            Arc::ptr_eq(&self.plan, plan),
+            "different original outcome plan"
+        );
+        Ok(())
+    }
+    fn observe(&self, plan: &Arc<MarkerPublicationPlan>) -> Result<TransactionObserver<'_>> {
+        self.validate_plan(plan)?;
+        ensure!(
+            self.transaction()? == MarkerTransactionObservation::Unobserved,
+            "original marker transaction already observed"
+        );
+        Ok(TransactionObserver {
+            outcome: self,
+            constructed: false,
+            commit_called: false,
+        })
+    }
+    fn retain_transaction(&self, observation: MarkerTransactionObservation) {
+        // Poison recovery preserves an actual observation; it grants no write,
+        // handoff or permission to repeat the transaction.
+        self.facts
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .transaction = observation;
+    }
+    fn retain_confirmation(&self) {
+        self.facts
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .confirmed = true;
+    }
+    fn retain_first_marker(&self) -> Arc<OriginalMarker> {
+        let mut facts = self.facts.lock().unwrap_or_else(|e| e.into_inner());
+        facts
+            .first_marker
+            .get_or_insert_with(|| {
+                Arc::new(OriginalMarker {
+                    plan: self.plan.clone(),
+                })
+            })
+            .clone()
+    }
+}
+/// Constructed before the actual transaction, so precommit error/unwind drops
+/// the transaction before this observer records that control-flow boundary.
+struct TransactionObserver<'a> {
+    outcome: &'a MarkerPublicationOutcome,
+    constructed: bool,
+    commit_called: bool,
+}
+impl TransactionObserver<'_> {
+    fn commit_attempted(&mut self) {
+        self.commit_called = true;
+        self.outcome
+            .retain_transaction(MarkerTransactionObservation::CommitAttempted);
+    }
+    fn commit_returned(&self, success: bool) {
+        self.outcome.retain_transaction(if success {
+            MarkerTransactionObservation::Committed
+        } else {
+            MarkerTransactionObservation::CommitError
+        });
+    }
+}
+impl Drop for TransactionObserver<'_> {
+    fn drop(&mut self) {
+        if !self.commit_called {
+            self.outcome.retain_transaction(if self.constructed {
+                MarkerTransactionObservation::PrecommitDropped
+            } else {
+                MarkerTransactionObservation::NotConstructedRefused
+            });
+        }
+    }
 }
 impl OriginalMarker {
     /// Immutable original lineage; copied rows or a fresh ticket cannot match.
@@ -268,7 +401,9 @@ impl Store {
     pub(crate) fn confirm_retained_marker(
         &mut self,
         plan: &Arc<MarkerPublicationPlan>,
+        outcome: &MarkerPublicationOutcome,
     ) -> Result<Arc<OriginalMarker>> {
+        outcome.validate_plan(plan)?;
         ensure!(
             plan.owner
                 .state_path()
@@ -307,18 +442,21 @@ impl Store {
             "retained marker already has Native admission/history"
         );
         tx.commit()?;
+        outcome.retain_confirmation();
         // Still under SAME SharedStore exclusion: this private advance checks
         // actual selection/Unit/Source and exact committed Driver bytes before
         // accepting its original cache or its own identical planned post-cache.
         self.publish_driver_marker(&plan.driver)?;
-        Ok(Arc::new(OriginalMarker { plan: plan.clone() }))
+        Ok(outcome.retain_first_marker())
     }
     /// Caller is the real Runtime under control admission and retains this exact
     /// plan in its charged slot BEFORE entry. No async/IO/public callbacks here.
     pub(crate) fn publish_managed_marker(
         &mut self,
         plan: &Arc<MarkerPublicationPlan>,
+        outcome: &MarkerPublicationOutcome,
     ) -> Result<Arc<OriginalMarker>> {
+        let mut observed = outcome.observe(plan)?;
         ensure!(
             plan.owner
                 .state_path()
@@ -332,6 +470,7 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        observed.constructed = true;
         // Original old-frame checks MUST precede initial Task/W writes.
         plan.marker.validate_current(&tx)?;
         plan.driver.validate_current_tx(&tx)?;
@@ -358,12 +497,15 @@ impl Store {
             plan.rows.write_tx(&tx)?;
             plan.driver.freeze_marker_tx(&tx)?;
             self.binding_permits.ensure_consumed()?;
-            tx.commit()?;
+            observed.commit_attempted();
+            let committed = tx.commit();
+            observed.commit_returned(committed.is_ok());
+            committed?;
             Ok(())
         })?;
         // A publication failure after commit never creates a replacement plan
         // or rolls the marker back. Runtime keeps this original pending slot.
         self.publish_driver_marker(&plan.driver)?;
-        Ok(Arc::new(OriginalMarker { plan: plan.clone() }))
+        Ok(outcome.retain_first_marker())
     }
 }

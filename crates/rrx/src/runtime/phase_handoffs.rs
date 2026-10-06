@@ -1,6 +1,7 @@
 //! Custody of the actual Source envelope; observations grant no Native authority.
 use super::phase_supervisor::{
-    PendingPhaseCapacity, PendingReservationError, PhaseDispatcher, PhaseSupervisor,
+    OriginalPublicationCustody, PendingPhaseCapacity, PendingReservationError, PhaseDispatcher,
+    PhaseSupervisor,
 };
 use crate::{
     adapter::native::NativePhasePort,
@@ -42,8 +43,7 @@ struct Assets {
     origin: Option<Arc<PhasePreparationOrigin>>,
     malformed_return: Option<Box<PendingReservationError>>,
     error: Option<anyhow::Error>,
-    marker_plan: Option<Arc<crate::state::managed_binding::MarkerPublicationPlan>>,
-    invocation: Option<super::phase_jobs::PhaseInvocation>,
+    publication: Option<Arc<OriginalPublicationCustody>>,
 }
 
 /// Created only below, AFTER the concrete original Source take/reserve/accept.
@@ -208,36 +208,39 @@ impl Consumer {
         // No Source/custody/queue/control guard spans readonly planning.
         let plan = self.dispatcher.plan_original_marker(
             allocation,
-            origin,
+            origin.clone(),
             handoff.source.ticket().clone(),
             handoff.source.workflow(),
         )?;
-        let capacity = {
+        let publication = {
             let mut assets = handoff
                 .assets
                 .lock()
                 .map_err(|_| anyhow::anyhow!("Source custody poisoned"))?;
             ensure!(
-                assets.marker_plan.is_none(),
-                "original Source marker plan already saved"
+                assets.publication.is_none(),
+                "original Source publication already saved"
             );
-            // Save before moving capacity and BEFORE publication admission await.
-            assets.marker_plan = Some(plan.clone());
-            assets
+            let capacity = assets
                 .capacity
                 .take()
-                .ok_or_else(|| anyhow::anyhow!("original Source capacity absent"))?
+                .ok_or_else(|| anyhow::anyhow!("original Source capacity absent"))?;
+            // Actual objects move into an infallibly constructed independent
+            // sibling cell BEFORE publication admission can await or fail.
+            let publication = OriginalPublicationCustody::new(capacity, origin, plan);
+            assets.publication = Some(publication.clone());
+            publication
         };
-        let invocation = self
-            .dispatcher
-            .publish_planned_marker(capacity, plan)
-            .await?;
-        // Preserve actual returned observation before any further fallible action.
-        handoff
-            .assets
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .invocation = Some(invocation);
+        if let Err(error) = self.dispatcher.publish_planned_marker(&publication).await {
+            // Publisher admission has ended. Only its actual producer facts
+            // make this one inline original-proof attempt eligible.
+            if publication.may_attempt_unpublished()? {
+                self.dispatcher
+                    .rollback_marker_publication(&publication)
+                    .await?;
+            }
+            return Err(error);
+        }
         Ok(state)
     }
     async fn transfer(&self, handoff: &Handoff) -> Result<SourceHandoffState> {
@@ -252,9 +255,10 @@ impl Consumer {
         let (allocation, preparation) = transfer.take_original()?;
         // No await or SharedStore acquisition while borrowing Source. The queue
         // uses its existing independent read-only allocation snapshot.
-        match self.phases.reserve(allocation, preparation) {
+        match self.phases.reserve_source(allocation, preparation) {
             Ok(capacity) => {
                 let allocation = capacity.allocation_arc().clone();
+                // Reserve already saved the SAME slot/guard accepted policy.
                 // Save ownership BEFORE the Source's infallible acceptance.
                 // Poison recovery here retains objects only; it grants no effect.
                 handoff
@@ -447,8 +451,7 @@ impl SourceHandoffReservation {
                 origin: None,
                 malformed_return: None,
                 error: None,
-                marker_plan: None,
-                invocation: None,
+                publication: None,
             }),
             changed: self.slot.changed.clone(),
         });

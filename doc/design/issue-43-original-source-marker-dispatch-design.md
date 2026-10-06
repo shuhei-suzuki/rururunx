@@ -254,6 +254,9 @@ control: it cannot publish a marker or start Native, and supplies no accepted
 Source qualification. Do not fabricate a plan or change legacy assertions.
 Remove the uncalled `Runtime::publish_phase_marker` wrapper; concrete
 reconciliation still requires the saved originals.
+Keep a `cfg(test)` never-accepted no-plan rollback port using the existing private
+unpublished proof, so its closed rollback and Lost-retirement assertions remain
+valid without exposing accepted Source publication or Native authority.
 
 **Actual outcomes and rollback.** Publication distinguishes its observed
 precommit, commit-attempt and postcommit-cache boundaries. A known precommit

@@ -12,7 +12,7 @@ use crate::state::managed_binding::{ManagedBindingPlan, plan_managed_binding};
 use anyhow::{Result, ensure};
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
 };
 use tokio::{sync::watch, task::JoinHandle};
 
@@ -59,6 +59,15 @@ struct Entry {
     handle: Option<JoinHandle<()>>,
 }
 
+/// Produced by the actual reservation, retaining SAME entry identity without
+/// a job -> launch -> reservation -> job ownership cycle. Reuse never grants
+/// this call permission to remove somebody else's existing reservation.
+pub(super) struct PhaseJobReservation {
+    job: Weak<Job>,
+    allocation: Arc<NativeAllocation>,
+    fresh: bool,
+}
+
 /// Runtime-owned sibling of PhaseSupervisor. Neither slots nor jobs own it.
 #[derive(Default)]
 pub(super) struct PhaseJobs {
@@ -94,7 +103,10 @@ impl PhaseInvocation {
 impl PhaseJobs {
     /// Caller already holds actual Runtime admission and publishing capacity.
     /// Called before SQL effects; duplicate IDs cannot substitute an allocation.
-    pub(super) fn reserve(&self, allocation: &Arc<NativeAllocation>) -> Result<()> {
+    pub(super) fn reserve(
+        &self,
+        allocation: &Arc<NativeAllocation>,
+    ) -> Result<PhaseJobReservation> {
         let mut entries = self
             .entries
             .lock()
@@ -114,34 +126,48 @@ impl PhaseJobs {
                         .eq(&InvocationObservation::Reserved),
                 "phase job already started"
             );
-            return Ok(());
+            return Ok(PhaseJobReservation {
+                job: Arc::downgrade(&entry.job),
+                allocation: allocation.clone(),
+                fresh: false,
+            });
         }
         ensure!(entries.len() < MAX_JOBS, "phase job capacity unavailable");
         let (changed, _) = watch::channel(InvocationObservation::Reserved);
+        let job = Arc::new(Job {
+            allocation: allocation.clone(),
+            state: Mutex::new(JobState {
+                preparation: NativePreparationCustody::new(allocation.clone()),
+                observation: InvocationObservation::Reserved,
+                launch: None,
+                outcome: None,
+                binding_plan: None,
+                binding_error: None,
+            }),
+            changed,
+        });
         entries.insert(
             operation,
             Entry {
-                job: Arc::new(Job {
-                    allocation: allocation.clone(),
-                    state: Mutex::new(JobState {
-                        preparation: NativePreparationCustody::new(allocation.clone()),
-                        observation: InvocationObservation::Reserved,
-                        launch: None,
-                        outcome: None,
-                        binding_plan: None,
-                        binding_error: None,
-                    }),
-                    changed,
-                }),
+                job: job.clone(),
                 handle: None,
             },
         );
-        Ok(())
+        Ok(PhaseJobReservation {
+            job: Arc::downgrade(&job),
+            allocation: allocation.clone(),
+            fresh: true,
+        })
     }
 
     /// No start or launch flag mutation occurs unless the original reservation
     /// is still available. Its actual allocation, not the key, establishes origin.
-    pub(super) fn ready(&self, allocation: &Arc<NativeAllocation>) -> Result<()> {
+    pub(super) fn ready(&self, reservation: &PhaseJobReservation) -> Result<()> {
+        let allocation = &reservation.allocation;
+        let job = reservation
+            .job
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("original reserved job ended"))?;
         let entries = self
             .entries
             .lock()
@@ -150,7 +176,8 @@ impl PhaseJobs {
             .get(&allocation.facts().operation_id)
             .ok_or_else(|| anyhow::anyhow!("phase job not reserved before marker"))?;
         ensure!(
-            Arc::ptr_eq(&entry.job.allocation, allocation)
+            Arc::ptr_eq(&entry.job, &job)
+                && Arc::ptr_eq(&entry.job.allocation, allocation)
                 && entry.handle.is_none()
                 && entry
                     .job
@@ -167,8 +194,13 @@ impl PhaseJobs {
     /// stores only its Weak identity, avoiding custody -> actor -> launch cycles.
     pub(super) fn preparation_custody(
         &self,
-        allocation: &Arc<NativeAllocation>,
+        reservation: &PhaseJobReservation,
     ) -> Result<Arc<NativePreparationCustody>> {
+        let allocation = &reservation.allocation;
+        let job = reservation
+            .job
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("original reserved job ended"))?;
         let entries = self
             .entries
             .lock()
@@ -177,7 +209,9 @@ impl PhaseJobs {
             .get(&allocation.facts().operation_id)
             .ok_or_else(|| anyhow::anyhow!("actual preparation job not reserved"))?;
         ensure!(
-            Arc::ptr_eq(&entry.job.allocation, allocation) && entry.handle.is_none(),
+            Arc::ptr_eq(&entry.job, &job)
+                && Arc::ptr_eq(&entry.job.allocation, allocation)
+                && entry.handle.is_none(),
             "original preparation job changed"
         );
         let state = entry
@@ -270,29 +304,39 @@ impl PhaseJobs {
     }
 
     /// Only a caller holding the genuine unpublished rollback uses this port.
-    pub(super) fn remove_unstarted(&self, allocation: &Arc<NativeAllocation>) -> Result<()> {
+    pub(super) fn remove_unstarted(&self, reservation: &PhaseJobReservation) -> Result<bool> {
+        if !reservation.fresh {
+            return Ok(false);
+        }
+        let allocation = &reservation.allocation;
         let removed = {
             let mut entries = self
                 .entries
                 .lock()
                 .map_err(|_| anyhow::anyhow!("phase jobs poisoned"))?;
             let operation = allocation.facts().operation_id;
-            if let Some(entry) = entries.get(&operation) {
-                ensure!(
-                    Arc::ptr_eq(&entry.job.allocation, allocation)
-                        && entry.handle.is_none()
-                        && entry
-                            .job
-                            .changed
-                            .borrow()
-                            .eq(&InvocationObservation::Reserved),
-                    "started job cannot roll back"
-                );
-            }
+            let job = reservation
+                .job
+                .upgrade()
+                .ok_or_else(|| anyhow::anyhow!("original reserved job ended"))?;
+            let entry = entries
+                .get(&operation)
+                .ok_or_else(|| anyhow::anyhow!("original reserved job removed"))?;
+            ensure!(
+                Arc::ptr_eq(&entry.job, &job)
+                    && Arc::ptr_eq(&entry.job.allocation, allocation)
+                    && entry.handle.is_none()
+                    && entry
+                        .job
+                        .changed
+                        .borrow()
+                        .eq(&InvocationObservation::Reserved),
+                "started job cannot roll back"
+            );
             entries.remove(&operation)
         };
         drop(removed);
-        Ok(())
+        Ok(true)
     }
 
     pub(super) fn ensure_shutdown_complete(&self) -> Result<()> {
@@ -348,5 +392,86 @@ impl Drop for RunningJob {
         if let Some(preparation) = preparation {
             preparation.abandon();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        adapter::{AgentRegistry, InputKind, PreparedInput},
+        config::{AgentConfig, Config},
+        execution::{attempts::AttemptManager, native::ManagedInput},
+    };
+
+    /// Actual legacy Unit/allocation and EMPTY jobs only. This does not create
+    /// accepted Source, marker, prepared Native input or an installed issuer.
+    #[tokio::test]
+    async fn actual_empty_job_reservation_removes_only_its_fresh_original() {
+        let (_dir, owner, task) = crate::execution::results::tests::fixture().await;
+        let (unit, _) = AttemptManager::new(owner.clone())
+            .prepare(task.id, "codex", "Implement", None)
+            .await
+            .unwrap();
+        let mut config = Config::default();
+        config.agents.insert(
+            "codex".into(),
+            AgentConfig {
+                provider: Some("codex".into()),
+                command: vec!["/usr/bin/false".into()],
+                ..Default::default()
+            },
+        );
+        let agents = AgentRegistry::from_managed_config(&config, owner.clone()).unwrap();
+        let allocation = Arc::new(
+            agents
+                .native_phase_port("codex")
+                .unwrap()
+                .allocate(
+                    ManagedInput {
+                        agent: "codex".into(),
+                        authority: unit.authority(),
+                        artifact: None,
+                        input: PreparedInput {
+                            scope: unit.scope.clone(),
+                            kind: InputKind::ContextPack,
+                            revision: unit.base_sha.clone(),
+                            version: 1,
+                            source_versions: Default::default(),
+                            payload: "nongrant EMPTY job".into(),
+                        },
+                    },
+                    None,
+                    None,
+                )
+                .unwrap(),
+        );
+        let jobs = PhaseJobs::default();
+        let fresh = jobs.reserve(&allocation).unwrap();
+        let reused = jobs.reserve(&allocation).unwrap();
+        let original = fresh.job.upgrade().unwrap();
+        assert!(Arc::ptr_eq(&original, &reused.job.upgrade().unwrap()));
+        assert!(
+            !jobs.remove_unstarted(&reused).unwrap(),
+            "reuse removed original job"
+        );
+        jobs.ready(&fresh).unwrap();
+        assert!(Arc::ptr_eq(&original, &fresh.job.upgrade().unwrap()));
+        let foreign_jobs = PhaseJobs::default();
+        let foreign = foreign_jobs.reserve(&allocation).unwrap();
+        assert!(
+            jobs.remove_unstarted(&foreign).is_err(),
+            "foreign entry token removed same-ID job"
+        );
+        jobs.ready(&fresh).unwrap();
+        assert!(jobs.remove_unstarted(&fresh).unwrap());
+        assert!(jobs.ready(&reused).is_err());
+        jobs.ensure_shutdown_complete().unwrap();
+        assert!(foreign_jobs.remove_unstarted(&foreign).unwrap());
+        let current = owner.store.lock().unwrap().execution_unit(unit.id).unwrap();
+        assert_eq!(
+            serde_json::to_value(current).unwrap(),
+            serde_json::to_value(unit).unwrap()
+        );
     }
 }

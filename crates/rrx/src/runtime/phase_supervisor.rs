@@ -27,6 +27,9 @@ pub(crate) enum PendingObservation {
 }
 struct Slot {
     allocation: Arc<NativeAllocation>,
+    // Constructed only by actual Source reserve, before finish_accepted. This
+    // never becomes false, including after an original unpublished proof.
+    accepted_source: bool,
     origin: Mutex<Option<Arc<super::phase_handoffs::PhasePreparationOrigin>>>,
     preparation: Mutex<Option<PreparationGuard>>,
     observation: Mutex<PendingObservation>,
@@ -58,7 +61,96 @@ pub(crate) struct PendingPhaseCapacity {
 /// Drop leaves the publishing slot charged; it cannot silently abandon it.
 pub(crate) struct MarkerPublicationRetention {
     supervisor: Arc<PhaseSupervisor>,
-    capacity: PendingPhaseCapacity,
+    capacity: Arc<PendingPhaseCapacity>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PublicationObservation {
+    Planned,
+    Reserved,
+    Publishing,
+    KnownMarker,
+    HandedOff,
+    RestoredHeld,
+    Held,
+    RollbackHeld,
+}
+struct PublicationAssets {
+    reservation: Option<Arc<super::phase_jobs::PhaseJobReservation>>,
+    retention: Option<Arc<MarkerPublicationRetention>>,
+    observation: PublicationObservation,
+    publication_error: Option<anyhow::Error>,
+    rollback_error: Option<anyhow::Error>,
+}
+/// Original Handoff-owned publication siblings. No strong Runtime, registry,
+/// dispatcher or handle; the owning slot never holds this cell strongly.
+pub(super) struct OriginalPublicationCustody {
+    capacity: Arc<PendingPhaseCapacity>,
+    origin: Arc<super::phase_handoffs::PhasePreparationOrigin>,
+    plan: Arc<crate::state::managed_binding::MarkerPublicationPlan>,
+    outcome: Arc<crate::state::managed_binding::MarkerPublicationOutcome>,
+    attempted: AtomicBool,
+    assets: Mutex<PublicationAssets>,
+}
+impl OriginalPublicationCustody {
+    pub(super) fn new(
+        capacity: PendingPhaseCapacity,
+        origin: Arc<super::phase_handoffs::PhasePreparationOrigin>,
+        plan: Arc<crate::state::managed_binding::MarkerPublicationPlan>,
+    ) -> Arc<Self> {
+        let outcome = crate::state::managed_binding::MarkerPublicationOutcome::new(plan.clone());
+        Arc::new(Self {
+            capacity: Arc::new(capacity),
+            origin,
+            plan,
+            outcome,
+            attempted: AtomicBool::new(false),
+            assets: Mutex::new(PublicationAssets {
+                reservation: None,
+                retention: None,
+                observation: PublicationObservation::Planned,
+                publication_error: None,
+                rollback_error: None,
+            }),
+        })
+    }
+    fn observation(&self, observation: PublicationObservation) {
+        self.assets
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .observation = observation;
+    }
+    fn retain_error(&self, error: anyhow::Error, rollback: bool) -> anyhow::Error {
+        let diagnostic = anyhow::anyhow!("{error:#}");
+        let mut assets = self.assets.lock().unwrap_or_else(|e| e.into_inner());
+        if rollback {
+            assets.observation = PublicationObservation::RollbackHeld;
+            assets.rollback_error = Some(error);
+        } else {
+            assets.observation = PublicationObservation::Held;
+            assets.publication_error = Some(error);
+        }
+        diagnostic
+    }
+    pub(super) fn may_attempt_unpublished(&self) -> Result<bool> {
+        use crate::state::managed_binding::MarkerTransactionObservation as Tx;
+        Ok(matches!(
+            self.outcome.transaction()?,
+            Tx::NotConstructedRefused | Tx::PrecommitDropped
+        ) && !self.outcome.is_confirmed()?
+            && self.outcome.first_marker()?.is_none())
+    }
+}
+/// Historical no-plan guard control, isolated from actual publication/start.
+#[cfg(test)]
+pub(crate) struct LegacyMarkerPublicationRetention {
+    retention: MarkerPublicationRetention,
+    reservation: super::phase_jobs::PhaseJobReservation,
+}
+#[cfg(test)]
+impl LegacyMarkerPublicationRetention {
+    pub(crate) fn is_retained(&self) -> bool {
+        self.retention.is_retained()
+    }
 }
 /// One non-Clone handoff from the actual known-commit Runtime producer.
 pub(crate) struct PhaseLaunch {
@@ -68,7 +160,7 @@ pub(crate) struct PhaseLaunch {
 /// from a ManagedInput, IDs, SQL rows or another adapter's returned Session.
 pub(crate) struct PhaseLaunchParts {
     marker: Arc<crate::state::managed_binding::OriginalMarker>,
-    retention: MarkerPublicationRetention,
+    retention: Arc<MarkerPublicationRetention>,
     origin: Arc<super::phase_handoffs::PhasePreparationOrigin>,
     preparation: Weak<crate::execution::native::NativePreparationCustody>,
 }
@@ -211,6 +303,24 @@ impl PhaseSupervisor {
         allocation: NativeAllocation,
         preparation: PreparationGuard,
     ) -> std::result::Result<PendingPhaseCapacity, Box<PendingReservationError>> {
+        self.reserve_with_policy(allocation, preparation, false)
+    }
+    /// Only the concrete Source transfer calls this path. Set SAME guard and
+    /// slot policy while constructing the successful reservation, so later
+    /// origin installation failure cannot leave accepted custody drainable.
+    pub(super) fn reserve_source(
+        self: &Arc<Self>,
+        allocation: NativeAllocation,
+        preparation: PreparationGuard,
+    ) -> std::result::Result<PendingPhaseCapacity, Box<PendingReservationError>> {
+        self.reserve_with_policy(allocation, preparation, true)
+    }
+    fn reserve_with_policy(
+        self: &Arc<Self>,
+        allocation: NativeAllocation,
+        mut preparation: PreparationGuard,
+        accepted_source: bool,
+    ) -> std::result::Result<PendingPhaseCapacity, Box<PendingReservationError>> {
         let checked = (|| -> Result<()> {
             let f = allocation.facts();
             ensure!(
@@ -274,8 +384,12 @@ impl PhaseSupervisor {
                 preparation,
             }));
         }
+        if accepted_source {
+            preparation.hold_accepted_source();
+        }
         let slot = Arc::new(Slot {
             allocation: Arc::new(allocation),
+            accepted_source,
             origin: Mutex::new(None),
             preparation: Mutex::new(Some(preparation)),
             observation: Mutex::new(PendingObservation::PendingMarker),
@@ -346,7 +460,7 @@ impl PhaseSupervisor {
     }
     fn begin_publication(
         self: &Arc<Self>,
-        capacity: PendingPhaseCapacity,
+        capacity: Arc<PendingPhaseCapacity>,
     ) -> Result<MarkerPublicationRetention> {
         ensure!(
             capacity
@@ -472,7 +586,8 @@ impl PhaseSupervisor {
                     .publication
                     .lock()
                     .map_err(|_| anyhow::anyhow!("publication state poisoned"))?
-                    == PublicationState::Unmarked,
+                    == PublicationState::Unmarked
+                    && !slot.accepted_source,
                 "publishing operation needs proven rollback or genuine closure"
             );
             let removed = q.entries.remove(&f.operation_id).expect("checked slot");
@@ -584,10 +699,10 @@ impl PhaseSupervisor {
                 .entries
                 .iter()
                 .filter_map(|(id, slot)| {
-                    slot.publication
-                        .lock()
-                        .ok()
-                        .and_then(|state| (*state == PublicationState::Unmarked).then_some(*id))
+                    slot.publication.lock().ok().and_then(|state| {
+                        (*state == PublicationState::Unmarked && !slot.accepted_source)
+                            .then_some(*id)
+                    })
                 })
                 .collect::<BTreeSet<_>>();
             let slots = unmarked
@@ -616,6 +731,17 @@ impl PhaseSupervisor {
         let millis = 100_u64.saturating_mul(1 << (*backoff).min(6)).min(5000);
         *backoff = backoff.saturating_add(1).min(6);
         Duration::from_millis(millis)
+    }
+    pub(super) fn ensure_accepted_shutdown_complete(&self) -> Result<()> {
+        let queue = self
+            .queue
+            .lock()
+            .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
+        ensure!(
+            !queue.entries.values().any(|slot| slot.accepted_source),
+            "Source phase shutdown remains pending with accepted originals"
+        );
+        Ok(())
     }
 }
 impl Drop for PhaseSupervisor {
@@ -660,18 +786,80 @@ impl PhaseDispatcher {
     fn service_running(&self) -> bool {
         self.running.load(Ordering::SeqCst) && !self.stopping.load(Ordering::SeqCst)
     }
-    /// One actual handoff from a retained known marker. This method does not
-    /// resolve a new allocation, restart an old launch, or remove its custody.
+    fn validate_original_custody(&self, publication: &OriginalPublicationCustody) -> Result<()> {
+        let capacity = &publication.capacity;
+        ensure!(
+            capacity.slot.accepted_source
+                && capacity
+                    .supervisor
+                    .upgrade()
+                    .is_some_and(|s| Arc::ptr_eq(&s, &self.phases))
+                && capacity.is_retained()
+                && Arc::ptr_eq(capacity.allocation_arc(), publication.plan.allocation()),
+            "different original accepted publication capacity"
+        );
+        let origin = capacity.preparation_origin()?;
+        ensure!(
+            Arc::ptr_eq(&origin, &publication.origin),
+            "different original Source origin"
+        );
+        origin.validate_publication(&publication.plan)
+    }
+    fn original_retention(
+        &self,
+        publication: &OriginalPublicationCustody,
+    ) -> Result<Arc<MarkerPublicationRetention>> {
+        let assets = publication
+            .assets
+            .lock()
+            .map_err(|_| anyhow::anyhow!("publication custody poisoned"))?;
+        let retention = assets
+            .retention
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("original publication retention absent"))?;
+        ensure!(
+            Arc::ptr_eq(&retention.capacity, &publication.capacity)
+                && Arc::ptr_eq(&retention.supervisor, &self.phases),
+            "different original publication retention"
+        );
+        Ok(retention.clone())
+    }
+    /// The first genuine Arc already belongs to the independent outcome cell.
+    /// Preserve it in the SAME slot before any fallible origin/job lookup.
     fn handoff_phase_marker(
         &self,
-        retention: MarkerPublicationRetention,
+        publication: &OriginalPublicationCustody,
         marker: Arc<crate::state::managed_binding::OriginalMarker>,
-    ) -> Result<super::phase_jobs::PhaseInvocation> {
-        let origin = retention.capacity.preparation_origin()?;
-        origin.validate_marker(&marker)?;
-        let slot = &retention.capacity.slot;
-        self.phase_jobs.ready(&slot.allocation)?;
-        let preparation = self.phase_jobs.preparation_custody(&slot.allocation)?;
+    ) -> Result<()> {
+        ensure!(
+            marker.matches_original_plan(&publication.plan),
+            "different returned marker plan"
+        );
+        let slot = &publication.capacity.slot;
+        let marker = {
+            let first = marker.clone();
+            let mut saved = slot.marker.lock().unwrap_or_else(|e| e.into_inner());
+            let original = saved.get_or_insert(marker).clone();
+            ensure!(
+                original.matches_original_plan(&publication.plan) && Arc::ptr_eq(&original, &first),
+                "different first marker retained"
+            );
+            original
+        };
+        publication.observation(PublicationObservation::KnownMarker);
+        self.validate_original_custody(publication)?;
+        let retention = self.original_retention(publication)?;
+        let reservation = publication
+            .assets
+            .lock()
+            .map_err(|_| anyhow::anyhow!("publication custody poisoned"))?
+            .reservation
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("original job reservation absent"))?;
+        self.phase_jobs.ready(&reservation)?;
+        let preparation = self.phase_jobs.preparation_custody(&reservation)?;
+        publication.origin.validate_marker(&marker)?;
         let q = self
             .phases
             .queue
@@ -679,7 +867,6 @@ impl PhaseDispatcher {
             .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
         ensure!(
             !self.phases.closed.load(Ordering::SeqCst)
-                && Arc::ptr_eq(&retention.supervisor, &self.phases)
                 && q.entries
                     .get(&slot.allocation.facts().operation_id)
                     .is_some_and(|current| Arc::ptr_eq(current, slot))
@@ -698,115 +885,84 @@ impl PhaseDispatcher {
             .publication_plan
             .lock()
             .map_err(|_| anyhow::anyhow!("publication plan poisoned"))?;
-        let original_plan = plan
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("original handoff plan absent"))?;
         ensure!(
-            marker.matches_original_plan(original_plan),
+            plan.as_ref()
+                .is_some_and(|p| Arc::ptr_eq(p, &publication.plan)),
             "marker handoff is not the same retained original plan"
         );
-        let mut saved = slot
-            .marker
-            .lock()
-            .map_err(|_| anyhow::anyhow!("saved marker poisoned"))?;
-        if let Some(original) = saved.as_ref() {
-            ensure!(
-                original.matches_original_plan(original_plan),
-                "different known marker retained"
-            );
-        }
-        // Preserve the first genuine known marker object on reconciliation.
-        let marker = saved.get_or_insert(marker).clone();
         ensure!(
             slot.launch_handed_off
                 .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
                 .is_ok(),
             "original Native launch already handed off"
         );
-        drop(saved);
         drop(plan);
         drop(state);
         drop(q);
-        Ok(self.phase_jobs.start(PhaseLaunch {
+        // PhaseJobs retains its actual launch, eager guard, handle and results.
+        // Handoff does not keep an unused observation receiver.
+        drop(self.phase_jobs.start(PhaseLaunch {
             parts: Arc::new(PhaseLaunchParts {
                 marker,
                 retention,
-                origin,
+                origin: publication.origin.clone(),
                 preparation: Arc::downgrade(&preparation),
             }),
-        }))
+        }));
+        publication.observation(PublicationObservation::HandedOff);
+        Ok(())
     }
-
-    /// An operation ID is a wake hint only. Authority comes from the SAME
-    /// supervisor slot and its private saved pre-transaction plan, never SQL.
-    /// Reconciliation may prove a committed original marker once; it cannot
-    /// replay a handoff or start the marker transaction a second time.
-    pub(crate) async fn reconcile_phase_marker(
+    /// A wake ID cannot replace these independently saved original objects.
+    /// Exact confirmation never republishes the marker or replaces its first Arc.
+    pub(super) async fn reconcile_phase_marker(
         &self,
-        operation: OperationId,
-    ) -> Result<super::phase_jobs::PhaseInvocation> {
-        let _admission = self.control_admission.lock().await;
-        ensure!(
-            self.service_running(),
-            "Runtime stopped before marker reconciliation"
-        );
-        let (retention, plan) = {
-            let q = self
-                .phases
-                .queue
-                .lock()
-                .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
-            let slot = q
-                .entries
-                .get(&operation)
-                .ok_or_else(|| anyhow::anyhow!("original marker slot unavailable"))?
-                .clone();
+        publication: &Arc<OriginalPublicationCustody>,
+    ) -> Result<()> {
+        let result = async {
+            let _admission = self.control_admission.lock().await;
             ensure!(
-                !self.phases.closed.load(Ordering::SeqCst)
-                    && !slot.launch_handed_off.load(Ordering::SeqCst),
-                "original phase already handed off or supervisor ended"
+                self.service_running(),
+                "Runtime stopped before marker reconciliation"
             );
-            let state = slot
-                .publication
-                .lock()
-                .map_err(|_| anyhow::anyhow!("publication state poisoned"))?;
+            self.validate_original_custody(publication)?;
             ensure!(
-                *state == PublicationState::Publishing,
-                "original publication absent"
+                publication.attempted.load(Ordering::SeqCst)
+                    && !publication
+                        .capacity
+                        .slot
+                        .launch_handed_off
+                        .load(Ordering::SeqCst),
+                "original publication absent or already handed off"
             );
-            let plan = slot
-                .publication_plan
+            self.original_retention(publication)?;
+            {
+                let slot = &publication.capacity.slot;
+                let state = slot
+                    .publication
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("publication state poisoned"))?;
+                let plan = slot
+                    .publication_plan
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("publication plan poisoned"))?;
+                ensure!(
+                    *state == PublicationState::Publishing
+                        && plan
+                            .as_ref()
+                            .is_some_and(|p| Arc::ptr_eq(p, &publication.plan)),
+                    "original publishing plan no longer retained"
+                );
+            }
+            let marker = self
+                .owner
+                .store
                 .lock()
-                .map_err(|_| anyhow::anyhow!("publication plan poisoned"))?
-                .as_ref()
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("saved original plan absent"))?;
-            ensure!(
-                Arc::ptr_eq(plan.allocation(), &slot.allocation),
-                "saved marker allocation differs"
-            );
-            drop(state);
-            let capacity = PendingPhaseCapacity {
-                supervisor: Arc::downgrade(&self.phases),
-                slot,
-            };
-            (
-                MarkerPublicationRetention {
-                    supervisor: self.phases.clone(),
-                    capacity,
-                },
-                plan,
-            )
-        };
-        let origin = retention.capacity.preparation_origin()?;
-        origin.validate_publication(&plan)?;
-        let marker = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .confirm_retained_marker(&plan)?;
-        self.handoff_phase_marker(retention, marker)
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .confirm_retained_marker(&publication.plan, &publication.outcome)?;
+            self.handoff_phase_marker(publication, marker)
+        }
+        .await;
+        result.map_err(|error| publication.retain_error(error, false))
     }
     /// Plan from SAME accepted Source originals, without any queue/Store borrow.
     pub(super) fn plan_original_marker(
@@ -830,87 +986,196 @@ impl PhaseDispatcher {
         origin.validate_publication(&plan)?;
         Ok(plan)
     }
-    /// The actual Handoff independently saves this SAME plan BEFORE this await.
+    /// The Handoff saves this SAME custody before admission. All pre-latch
+    /// partial assets are retained; only one original publication may enter SQL.
     pub(super) async fn publish_planned_marker(
         &self,
-        capacity: PendingPhaseCapacity,
-        plan: Arc<crate::state::managed_binding::MarkerPublicationPlan>,
-    ) -> Result<super::phase_jobs::PhaseInvocation> {
-        let origin = capacity.preparation_origin()?;
-        ensure!(
-            Arc::ptr_eq(capacity.allocation_arc(), plan.allocation()),
-            "marker plan has foreign capacity"
-        );
-        origin.validate_publication(&plan)?;
-        let _admission = self.control_admission.lock().await;
-        ensure!(
-            self.service_running(),
-            "Runtime stopped before marker admission"
-        );
-        let retention = self.phases.begin_publication(capacity)?;
-        self.phase_jobs
-            .reserve(&retention.capacity.slot.allocation)?;
-        {
-            let q = self
-                .phases
-                .queue
-                .lock()
-                .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
-            let slot = &retention.capacity.slot;
+        publication: &Arc<OriginalPublicationCustody>,
+    ) -> Result<()> {
+        let result = async {
+            let _admission = self.control_admission.lock().await;
             ensure!(
-                q.entries
-                    .get(&slot.allocation.facts().operation_id)
-                    .is_some_and(|current| Arc::ptr_eq(current, slot))
-                    && Arc::ptr_eq(plan.allocation(), &slot.allocation),
-                "marker plan has foreign capacity"
+                self.service_running(),
+                "Runtime stopped before marker admission"
             );
-            let mut saved = slot
-                .publication_plan
+            self.validate_original_custody(publication)?;
+            ensure!(
+                !publication.attempted.load(Ordering::SeqCst),
+                "original publication already attempted"
+            );
+            {
+                let assets = publication
+                    .assets
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("publication custody poisoned"))?;
+                ensure!(
+                    assets.observation == PublicationObservation::Planned,
+                    "original publication already entered or held"
+                );
+            }
+            let slot = &publication.capacity.slot;
+            {
+                let q = self
+                    .phases
+                    .queue
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
+                ensure!(
+                    !self.phases.closed.load(Ordering::SeqCst)
+                        && q.entries
+                            .get(&slot.allocation.facts().operation_id)
+                            .is_some_and(|current| Arc::ptr_eq(current, slot)),
+                    "original publication slot ended"
+                );
+                let state = slot
+                    .publication
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("publication state poisoned"))?;
+                ensure!(
+                    *state == PublicationState::Unmarked,
+                    "marker publication already begun"
+                );
+                let mut saved = slot
+                    .publication_plan
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("publication plan poisoned"))?;
+                ensure!(saved.is_none(), "publication already has an original plan");
+                *saved = Some(publication.plan.clone());
+            }
+            let reservation = Arc::new(self.phase_jobs.reserve(&slot.allocation)?);
+            {
+                let mut assets = publication.assets.lock().unwrap_or_else(|e| e.into_inner());
+                assets.reservation = Some(reservation);
+                assets.observation = PublicationObservation::Reserved;
+            }
+            let retention = Arc::new(
+                self.phases
+                    .begin_publication(publication.capacity.clone())?,
+            );
+            {
+                let mut assets = publication.assets.lock().unwrap_or_else(|e| e.into_inner());
+                assets.retention = Some(retention);
+                assets.observation = PublicationObservation::Publishing;
+            }
+            ensure!(
+                publication
+                    .attempted
+                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok(),
+                "original publication already attempted"
+            );
+            let marker = self
+                .owner
+                .store
                 .lock()
-                .map_err(|_| anyhow::anyhow!("publication plan poisoned"))?;
-            ensure!(saved.is_none(), "publication already has an original plan");
-            *saved = Some(plan.clone());
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .publish_managed_marker(&publication.plan, &publication.outcome)?;
+            self.handoff_phase_marker(publication, marker)
         }
-        // Caller Drop, transaction failure and uncertainty leave both this
-        // charged slot and the SAME original plan independently retained.
-        let marker = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .publish_managed_marker(&plan)?;
-        self.handoff_phase_marker(retention, marker)
+        .await;
+        result.map_err(|error| publication.retain_error(error, false))
     }
-    /// Protect the genuine same-supervisor slot BEFORE beginning the marker TX.
-    /// This retention alone never authorizes an adapter or private Store writer.
-    pub(crate) async fn retain_marker_publication(
+    /// One inline eligible attempt, after the publisher released admission.
+    /// Observed precommit is eligibility only; the unchanged proof is mandatory.
+    pub(super) async fn rollback_marker_publication(
+        &self,
+        publication: &Arc<OriginalPublicationCustody>,
+    ) -> Result<()> {
+        let result = async {
+            let _admission = self.control_admission.lock().await;
+            ensure!(
+                publication.may_attempt_unpublished()?,
+                "publication outcome cannot qualify unpublished proof"
+            );
+            self.validate_original_custody(publication)?;
+            ensure!(
+                publication.attempted.load(Ordering::SeqCst)
+                    && !publication
+                        .capacity
+                        .slot
+                        .launch_handed_off
+                        .load(Ordering::SeqCst),
+                "publication has no original rollback responsibility"
+            );
+            self.original_retention(publication)?;
+            let reservation = publication
+                .assets
+                .lock()
+                .map_err(|_| anyhow::anyhow!("publication custody poisoned"))?
+                .reservation
+                .as_ref()
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("original job reservation absent"))?;
+            let plan = crate::state::managed_binding::plan_unpublished_marker(
+                &self.owner,
+                publication.capacity.allocation(),
+            )?;
+            let proof = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .confirm_unpublished_marker(plan)?;
+            self.phases
+                .restore_unpublished(&publication.capacity.slot, proof)?;
+            // SAME accepted slot remains retained, even on closed rollback.
+            // Reuse is not this call's removable reservation.
+            self.phase_jobs.remove_unstarted(&reservation)?;
+            publication.observation(PublicationObservation::RestoredHeld);
+            Ok(())
+        }
+        .await;
+        result.map_err(|error| publication.retain_error(error, true))
+    }
+    #[cfg(test)]
+    async fn retain_marker_publication(
         &self,
         capacity: PendingPhaseCapacity,
-    ) -> Result<MarkerPublicationRetention> {
+    ) -> Result<LegacyMarkerPublicationRetention> {
         let _admission = self.control_admission.lock().await;
         ensure!(
             self.service_running(),
             "Runtime is not accepting marker publication"
         );
-        let retention = self.phases.begin_publication(capacity)?;
-        self.phase_jobs
-            .reserve(&retention.capacity.slot.allocation)?;
-        Ok(retention)
-    }
-    /// Roll back only after an actual current Immediate establishes no marker,
-    /// allocated Session or invocation. Any error keeps the same slot protected.
-    pub(crate) async fn rollback_marker_publication(
-        &self,
-        publication: MarkerPublicationRetention,
-    ) -> Result<PendingPhaseCapacity> {
-        let _admission = self.control_admission.lock().await;
         ensure!(
-            Arc::ptr_eq(&publication.supervisor, &self.phases) && publication.is_retained(),
-            "foreign/unretained publication"
+            !capacity.slot.accepted_source
+                && capacity
+                    .slot
+                    .origin
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("Source origin poisoned"))?
+                    .is_none()
+                && capacity
+                    .slot
+                    .publication_plan
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("publication plan poisoned"))?
+                    .is_none(),
+            "legacy no-plan control cannot adopt accepted Source publication"
+        );
+        let reservation = self.phase_jobs.reserve(capacity.allocation_arc())?;
+        let retention = self.phases.begin_publication(Arc::new(capacity))?;
+        Ok(LegacyMarkerPublicationRetention {
+            retention,
+            reservation,
+        })
+    }
+    #[cfg(test)]
+    async fn rollback_legacy_marker_publication(
+        &self,
+        publication: LegacyMarkerPublicationRetention,
+    ) -> Result<Arc<PendingPhaseCapacity>> {
+        let _admission = self.control_admission.lock().await;
+        let retention = publication.retention;
+        ensure!(
+            !retention.capacity.slot.accepted_source
+                && Arc::ptr_eq(&retention.supervisor, &self.phases)
+                && retention.is_retained(),
+            "legacy rollback requires same never-accepted slot"
         );
         let plan = crate::state::managed_binding::plan_unpublished_marker(
             &self.owner,
-            publication.allocation(),
+            retention.allocation(),
         )?;
         let proof = self
             .owner
@@ -918,57 +1183,33 @@ impl PhaseDispatcher {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .confirm_unpublished_marker(plan)?;
-        // Store guard above is gone before queue changes or preparation Drop.
         self.phases
-            .restore_unpublished(&publication.capacity.slot, proof)?;
-        self.phase_jobs
-            .remove_unstarted(&publication.capacity.slot.allocation)?;
+            .restore_unpublished(&retention.capacity.slot, proof)?;
+        self.phase_jobs.remove_unstarted(&publication.reservation)?;
         if self.phases.closed.load(Ordering::SeqCst) {
-            self.phases.remove_unmarked(&publication.capacity.slot)?;
+            self.phases.remove_unmarked(&retention.capacity.slot)?;
         }
-        Ok(publication.capacity)
+        Ok(retention.capacity)
     }
 }
 
 impl super::Runtime {
-    pub(crate) async fn publish_phase_marker(
-        &self,
-        capacity: PendingPhaseCapacity,
-        ticket: Arc<crate::state::DriverReadTicket>,
-        workflow: crate::domain::RecordId,
-    ) -> Result<super::phase_jobs::PhaseInvocation> {
-        let plan = self.phase_dispatcher.plan_original_marker(
-            capacity.allocation_arc().clone(),
-            capacity.preparation_origin()?,
-            ticket,
-            workflow,
-        )?;
-        self.phase_dispatcher
-            .publish_planned_marker(capacity, plan)
-            .await
-    }
-    pub(crate) async fn reconcile_phase_marker(
-        &self,
-        operation: OperationId,
-    ) -> Result<super::phase_jobs::PhaseInvocation> {
-        self.phase_dispatcher
-            .reconcile_phase_marker(operation)
-            .await
-    }
+    #[cfg(test)]
     pub(crate) async fn retain_marker_publication(
         &self,
         capacity: PendingPhaseCapacity,
-    ) -> Result<MarkerPublicationRetention> {
+    ) -> Result<LegacyMarkerPublicationRetention> {
         self.phase_dispatcher
             .retain_marker_publication(capacity)
             .await
     }
+    #[cfg(test)]
     pub(crate) async fn rollback_marker_publication(
         &self,
-        publication: MarkerPublicationRetention,
-    ) -> Result<PendingPhaseCapacity> {
+        publication: LegacyMarkerPublicationRetention,
+    ) -> Result<Arc<PendingPhaseCapacity>> {
         self.phase_dispatcher
-            .rollback_marker_publication(publication)
+            .rollback_legacy_marker_publication(publication)
             .await
     }
     /// Genuine retained queue admission only. Native-ready Driver/marker is absent.

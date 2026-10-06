@@ -32,8 +32,16 @@ awaits admission. Exact marker publication retains the original Native job and
 known marker before the once-only selected launch. Observations remain nongrant:
 installed composition and full Native preparation are unavailable, so this internal
 connection does not yet expose an executable managed Agent or completed Task.
-Publication-fault and accepted-slot shutdown custody repair remain pending
-implementation gates.
+The actual Source reservation saves a one-way accepted witness in its SAME slot
+and armed guard before Source acceptance. Accepted Unmarked custody remains
+charged through unpublished restoration, shutdown and final Drop without a Lost
+retirement from destruction alone. Publication retains an independent original
+plan, one-way attempt latch, actual fresh/reused job reservation and producer-owned
+transaction observations. Commit uncertainty remains held; only observed precommit
+paths may attempt the unchanged same-original unpublished proof. Both publication
+and exact confirmation save their first genuine marker Arc before fallible handoff
+lookup. Genuine producer controls, full regression and lint qualification remain
+open; these source mechanisms alone do not qualify Native execution.
 
 The incremental [production gate integration](../production-workflow-gates-design.md)
 adds a concrete library port for real initial preparation, Implement terminal/result
