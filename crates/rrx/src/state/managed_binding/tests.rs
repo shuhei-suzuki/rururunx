@@ -210,3 +210,112 @@ async fn current_owner_epoch_is_not_recaptured_or_reopened() {
             .is_err()
     );
 }
+
+// These rows are temporary factual projection images in a rolled-back test TX.
+// No Driver, Unit, input/native contract or private authority is manufactured.
+#[tokio::test]
+async fn initial_input_projection_requires_exact_post_head_and_preserves_original_checks() {
+    let f = Fixture::new().await;
+    let plan = plan_scope(&f.owner, &f.scope).unwrap();
+    let mut task = plan.task.parsed().clone();
+    task.version += 1;
+    task.context_version = 1;
+    task.revision = Some("a".repeat(40));
+    let task_raw = serde_json::to_string(&task).unwrap();
+    let mut workflow = Record::new(
+        f.scope.clone(),
+        RecordKind::Workflow,
+        serde_json::json!({"historical_projection":true}),
+    );
+    workflow.version = 1;
+    let workflow_raw = serde_json::to_string(&workflow).unwrap();
+    let context = ContextVersion {
+        scope: f.scope.clone(),
+        version: 1,
+        revision: "a".repeat(40),
+        source_hashes: Default::default(),
+        data: serde_json::json!({"historical_projection":true}),
+    };
+    let context_raw = serde_json::to_string(&context).unwrap();
+    let owner_key = crate::state::context_owner(&f.scope).unwrap();
+    let mut connection = crate::state::current_test_writer(f.owner.state_path()).unwrap();
+    let tx = connection.transaction().unwrap();
+    assert!(
+        plan.validate_input_projection(
+            &tx,
+            &task,
+            &task_raw,
+            (&workflow, &workflow_raw),
+            (&context, &context_raw)
+        )
+        .is_err()
+    );
+    tx.execute(
+        "UPDATE tasks SET version=?1,body=?2 WHERE id=?3",
+        rusqlite::params![task.version, task_raw, task.id.to_string()],
+    )
+    .unwrap();
+    tx.execute("INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,'workflow',?2,?3,?4,?5,?6)",rusqlite::params![workflow.id.to_string(),task.project_id.to_string(),task.goal_id.to_string(),task.id.to_string(),workflow.version,workflow_raw]).unwrap();
+    tx.execute("INSERT INTO context_versions(project_id,goal_id,task_id,owner,version,body) VALUES(?1,?2,?3,?4,1,?5)",rusqlite::params![task.project_id.to_string(),task.goal_id.to_string(),task.id.to_string(),owner_key,context_raw]).unwrap();
+    plan.validate_input_projection(
+        &tx,
+        &task,
+        &task_raw,
+        (&workflow, &workflow_raw),
+        (&context, &context_raw),
+    )
+    .unwrap();
+    assert!(
+        plan.validate_current(&tx).is_err(),
+        "ordinary original CAS must NOT accept prescribed new input"
+    );
+    let mut foreign = context.clone();
+    foreign.scope.task_id = Some(TaskId::new());
+    assert!(
+        plan.validate_input_projection(
+            &tx,
+            &task,
+            &task_raw,
+            (&workflow, &workflow_raw),
+            (&foreign, &context_raw)
+        )
+        .is_err()
+    );
+    let mut changed = context.clone();
+    changed.data = serde_json::json!({"different":true});
+    let changed_raw = serde_json::to_string(&changed).unwrap();
+    assert!(
+        plan.validate_input_projection(
+            &tx,
+            &task,
+            &task_raw,
+            (&workflow, &workflow_raw),
+            (&changed, &changed_raw)
+        )
+        .is_err(),
+        "same-version Context bytes remain exact"
+    );
+    tx.execute("INSERT INTO context_versions(project_id,goal_id,task_id,owner,version,body) VALUES(?1,?2,?3,?4,2,?5)",rusqlite::params![task.project_id.to_string(),task.goal_id.to_string(),task.id.to_string(),owner_key,context_raw]).unwrap();
+    assert!(
+        plan.validate_input_projection(
+            &tx,
+            &task,
+            &task_raw,
+            (&workflow, &workflow_raw),
+            (&context, &context_raw)
+        )
+        .is_err(),
+        "later head cannot ratify first input"
+    );
+    tx.rollback().unwrap();
+    plan.validate_current(&connection).unwrap();
+    assert!(
+        f.owner
+            .store()
+            .lock()
+            .unwrap()
+            .execution_units(Some(&f.scope))
+            .unwrap()
+            .is_empty()
+    );
+}

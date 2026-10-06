@@ -296,3 +296,39 @@ This validator is nongrant and cannot be reconstructed from SQL/DTO/PhaseSlot.
 The genuine installed composition issuer, initialized Context/adoption lane and
 positive Driver cancellation/uncertain-commit controls remain qualification gates;
 historical namespace controls do not manufacture their authority.
+
+
+## Initial input implementation milestone (availability remains closed)
+
+The actual retained dispatcher now calls `Engine::initialize_driven`, which
+requires the Engine's installed Sources Arc to be the same producer as its
+composition. Existing committed configuration/rules, risk escalation, phases,
+mandatory input selection and Context budget construction remain the consumers.
+A private `InitialInputFrame` retains the actual Sources slot/frame and armed
+`PreparedExecutor`; it compares the complete rendered payload/dependencies and
+Context metadata before SharedStore. The corresponding plan is an InitialInput
+variant of the existing retained `DriverPreparationAdvance`, rather than a
+second registry or worker. It is placed in the same actual slot before SQL or
+another await, and retains its genuine preparation through uncertain commit,
+cache publication failure and dispatcher Drop.
+
+The same existing Workflow activation transaction validates original owner,
+Task, Workflow/Context absence, Unit/generation, prerequisites, Source7 absence,
+complete scoped locks and actual association. It preserves the ordinary
+verification activation/lifecycle/transition guards and collision checks, using
+an off-Store bounded complete namespace image. Exact precomputed Task/Workflow
+versions/timestamps/body bytes and the first Context are written together with
+the exact private Driver mutation. Only known commit plus those same post-images
+can publish the cached Driver binding. Reconciliation reuses the same retained
+plan and may prove exact original rollback; neither outcome recreates authority
+from rows. Original P/G/rules/config/governing/artifact pins are not refreshed.
+Existing original/marker projection readers retain their old Context semantics;
+a separate sealed initial projection checks only original-none to first Context.
+
+This first publication lane explicitly refuses prior Workflow/Context or an
+installed Source7 recovery. Subsequent non-native phase transitions, reservation,
+same-Unit adoption and complete marker/native composition remain prerequisites.
+`InstalledDriverComposition` still has no successful issuer. Temporary historical
+projection test images qualify nongrant exact-read checks only, never a Driver,
+prepared input, native lifecycle or end-to-end positive dispatcher. No current
+code milestone alone qualifies Runtime/Binding43/Phase2/native/MVP readiness.

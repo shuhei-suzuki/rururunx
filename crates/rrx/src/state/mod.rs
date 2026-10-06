@@ -109,7 +109,10 @@ enum WorkflowCompletion<'a> {
     Executor(&'a crate::execution::WorkflowPublication),
     Readonly(&'a crate::execution::ReadonlyCompletion),
     Verification(&'a crate::execution::verification::VerificationCompletion),
-    Activation(&'a crate::execution::verification::ManagedVerificationActivation),
+    Activation(
+        &'a crate::execution::verification::ManagedVerificationActivation,
+        Option<&'a std::sync::Arc<DriverPreparationAdvance>>,
+    ),
 }
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -588,7 +591,28 @@ impl Store {
             project_version,
             goal_version,
             WorkflowAccess::StateOnly,
-            Some(WorkflowCompletion::Activation(activation)),
+            Some(WorkflowCompletion::Activation(activation, None)),
+        )
+    }
+    /// Same first-input plan retained by the real worker before this write.
+    pub(crate) fn activate_driven_workflow(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: &ContextVersion,
+        project_version: u64,
+        goal_version: u64,
+        activation: &crate::execution::verification::ManagedVerificationActivation,
+        plan: &std::sync::Arc<DriverPreparationAdvance>,
+    ) -> Result<()> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            Some(context),
+            project_version,
+            goal_version,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::Activation(activation, Some(plan))),
         )
     }
     // Exact owner CAS and optional completion proof are independent inputs.
@@ -607,9 +631,22 @@ impl Store {
             workflow.kind == RecordKind::Workflow && workflow.scope == task.scope(),
             "workflow requires exact owning Task scope"
         );
+        let driver_input = match &publication {
+            Some(WorkflowCompletion::Activation(_, Some(plan))) => Some(*plan),
+            _ => None,
+        };
+        let _applying = driver_input.map(|p| p.begin_input()).transpose()?;
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(plan) = driver_input {
+            plan.validate_input_before_tx(
+                &tx,
+                task,
+                workflow,
+                context.context("initial Driver Context missing")?,
+            )?;
+        }
         let conservative = matches!(
             access,
             WorkflowAccess::TerminalDecision | WorkflowAccess::TerminalRecovery
@@ -942,7 +979,7 @@ impl Store {
             )?;
             crate::workflow::validate_context(task, workflow, &decode(body)?)?;
         }
-        if let Some(WorkflowCompletion::Activation(activation)) = &publication {
+        if let Some(WorkflowCompletion::Activation(activation, _)) = &publication {
             ensure!(
                 previous_workflow.is_none()
                     && workflow.version == 0
@@ -964,7 +1001,7 @@ impl Store {
                     previous,
                     context,
                 )?,
-                WorkflowCompletion::Activation(_) => unreachable!("activation handled above"),
+                WorkflowCompletion::Activation(_, _) => unreachable!("activation handled above"),
                 WorkflowCompletion::Verification(completion) => {
                     execution::verification::accept_tx(
                         &tx, completion, task, workflow, previous, context,
@@ -977,9 +1014,20 @@ impl Store {
                 }
             }
         }
-        let next_task = put_task_tx(&tx, task)?;
-        let next_workflow = put_record_tx(&tx, workflow)?;
-        if let Some(WorkflowCompletion::Activation(activation)) = &publication {
+        let (next_task, next_workflow) = if let Some(plan) = driver_input {
+            let next_task = put_task_tx_at_with_namespace(
+                &tx,
+                task,
+                plan.input_timestamp(),
+                Some(plan.input_namespace()?),
+            )?;
+            guard_record_tx(&tx, workflow)?;
+            let next_workflow = write_record_tx_at(&tx, workflow, plan.input_timestamp())?;
+            (next_task, next_workflow)
+        } else {
+            (put_task_tx(&tx, task)?, put_record_tx(&tx, workflow)?)
+        };
+        if let Some(WorkflowCompletion::Activation(activation, _)) = &publication {
             execution::verification::install_contract(&tx, activation, workflow, &next_task)?;
         }
         execution::source_recovery::after_write(
@@ -988,7 +1036,13 @@ impl Store {
             source_advance,
             conservative,
         )?;
+        if let Some(plan) = driver_input {
+            plan.finish_input_tx(&tx, &self.binding_permits, &next_task, &next_workflow)?;
+        }
         tx.commit()?;
+        if let Some(plan) = driver_input {
+            self.publish_driver_preparation(plan)?;
+        }
         *task = next_task;
         *workflow = next_workflow;
         Ok(())
@@ -1738,9 +1792,12 @@ fn put_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
 }
 /// Private caller must have checked the original Record guards in this transaction.
 fn write_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
+    write_record_tx_at(tx, record, now_ms())
+}
+fn write_record_tx_at(tx: &Transaction<'_>, record: &Record, at: i64) -> Result<Record> {
     let mut next = record.clone();
     bump(&mut next.version)?;
-    next.updated_at = now_ms();
+    next.updated_at = at;
     let body = serde_json::to_string(&next)?;
     write_snapshot(
         tx,

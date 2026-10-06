@@ -39,6 +39,9 @@ impl PreparedExecutor {
     pub fn unit(&self) -> &ExecutionUnit {
         &self.unit
     }
+    pub(crate) fn retains(&self, owner: &Arc<RuntimeOwner>, unit: &ExecutionUnit) -> Result<bool> {
+        self.guard.matches(owner, unit)
+    }
     pub(crate) async fn verify_namespace(&self) -> Result<()> {
         let (task, project) = {
             let store = self

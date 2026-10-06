@@ -84,6 +84,22 @@ pub(crate) fn read_driver_ticket(
 }
 
 impl DriverReadTicket {
+    /// Collision evidence only, added under the same original ticket before
+    /// the writer mutex. It cannot refresh governing/input/Driver authority.
+    pub(crate) fn with_initial_namespace(mut self) -> Result<Self> {
+        ensure!(
+            !self.scope.has_input_history(),
+            "initial input already exists"
+        );
+        self.namespace = Some(crate::state::managed_binding::snapshot(
+            &self.owner,
+            |tx| {
+                self.validate_current_tx(tx)?;
+                super::NamespaceSnapshot::read(tx, self.task().project_id)
+            },
+        )?);
+        Ok(self)
+    }
     pub(crate) fn task(&self) -> &Task {
         self.scope.task()
     }

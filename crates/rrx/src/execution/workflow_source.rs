@@ -50,6 +50,51 @@ struct Frame {
     mandatory: BTreeMap<String, String>,
     governing_digest: String,
 }
+/// Actual first committed frame and its still-owned preparation. This token
+/// retains the real Sources slot, never an input DTO/native permission.
+pub(crate) struct InitialInputFrame {
+    producer: Arc<ManagedWorkflowSources>,
+    slot: Arc<tokio::sync::Mutex<Option<TaskSources>>>,
+    frame: Arc<Frame>,
+    unit: ExecutionUnit,
+}
+impl InitialInputFrame {
+    pub(crate) fn governing(&self) -> &str {
+        &self.frame.governing_digest
+    }
+    pub(crate) fn validate(&self, owner: &Arc<RuntimeOwner>) -> Result<()> {
+        ensure!(
+            Arc::ptr_eq(owner, &self.producer.owner),
+            "initial frame foreign Runtime"
+        );
+        let tasks = self
+            .producer
+            .tasks
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Sources poisoned"))?;
+        ensure!(
+            tasks
+                .get(&self.unit.scope.task_id.context("Task missing")?)
+                .is_some_and(|s| Arc::ptr_eq(s, &self.slot)),
+            "initial frame slot replaced"
+        );
+        let slot = self
+            .slot
+            .try_lock()
+            .map_err(|_| anyhow::anyhow!("initial frame slot busy"))?;
+        let state = slot.as_ref().context("initial frame removed")?;
+        ensure!(
+            Arc::ptr_eq(&state.frame, &self.frame)
+                && state.recovery.is_none()
+                && state
+                    .prepared
+                    .as_ref()
+                    .is_some_and(|p| p.retains(owner, &self.unit).unwrap_or(false)),
+            "initial frame preparation no longer owned"
+        );
+        Ok(())
+    }
+}
 /// Only the complete corpus/rule/config producer below creates this proof.
 pub(crate) struct ReconstructedFrame {
     frame: Arc<Frame>,
@@ -199,6 +244,68 @@ impl ManagedWorkflowSources {
         driver: &crate::runtime::driver::WorkerLifetime,
     ) -> Result<ExecutionUnit> {
         self.prepare_inner(task, provider, Some(driver)).await
+    }
+    /// Only the actual installed Sources/Engine lane calls this constructor.
+    /// Render and complete metadata comparisons happen before SharedStore.
+    pub(crate) async fn initial_input_frame(
+        self: &Arc<Self>,
+        original: &Task,
+        record: &Record,
+        context: &ContextVersion,
+    ) -> Result<(InitialInputFrame, ExecutionUnit)> {
+        let slot = self.slot(original.id)?;
+        let state = slot.lock().await;
+        let state = state.as_ref().context("first frame was not prepared")?;
+        let prepared = state
+            .prepared
+            .as_ref()
+            .context("first preparation missing")?;
+        let unit = prepared.unit().clone();
+        ensure!(
+            state.recovery.is_none()
+                && state.frame.artifact.is_none()
+                && unit.scope == original.scope()
+                && unit.phase == WORKFLOW_SOURCE_BOOTSTRAP
+                && unit.state == UnitState::Preparing
+                && unit.work.is_none()
+                && unit.session_id.is_none()
+                && unit.artifact_id.is_none()
+                && state.frame.scope == original.scope()
+                && state.frame.revision == unit.base_sha
+                && prepared.retains(&self.owner, &unit)?,
+            "initial input lacks actual preparation"
+        );
+        let workflow: WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
+        let phase = *workflow
+            .configured_phases
+            .first()
+            .context("initial phase missing")?;
+        let budget: ContextBudget = serde_json::from_value(context.data["budget"].clone())?;
+        let expected = state.frame.render(original, phase, &budget)?;
+        let mut hashes = expected.source_versions.clone();
+        hashes.insert("workflow:phase".into(), phase.key().into());
+        hashes.insert("workflow:generation".into(), "1".into());
+        ensure!(
+            record.kind == RecordKind::Workflow
+                && record.scope == original.scope()
+                && record.version == 0
+                && context.scope == original.scope()
+                && context.version == 1
+                && context.revision == expected.revision
+                && context.source_hashes == hashes
+                && context.data
+                    == serde_json::json!({"phase":phase,"workflow":workflow.workflow,
+                "generation":1,"budget":budget,"payload":expected.payload})
+                && serde_json::to_value(&workflow.sources)? == serde_json::to_value(&expected)?,
+            "initial Context/frame payload or metadata differs"
+        );
+        let proof = InitialInputFrame {
+            producer: self.clone(),
+            slot: slot.clone(),
+            frame: state.frame.clone(),
+            unit: unit.clone(),
+        };
+        Ok((proof, unit))
     }
     async fn prepare_inner(
         &self,
