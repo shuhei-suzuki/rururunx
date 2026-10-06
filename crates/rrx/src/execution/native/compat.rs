@@ -64,6 +64,7 @@ impl NativeCompatStatic {
     }
 }
 impl NativeCompatQualification {
+    pub(super) fn declaration_digest(&self) -> &str { &self.captured.declaration.digest }
     pub(super) fn matches(&self, actor: &Arc<NativePreparationActor>, version: &Arc<version::NativeVersionHelperCustody>) -> bool {
         Arc::ptr_eq(&self.captured.actor, actor) && Arc::ptr_eq(&self.version, version) && self.captured.role == actor.launch().allocation().facts().role
     }

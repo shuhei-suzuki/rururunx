@@ -24,12 +24,15 @@ mod phase_protocol;
 mod preparation;
 pub(crate) mod compat;
 pub(crate) mod prepared;
+mod registration;
 pub(crate) mod readonly;
 pub(crate) mod version;
 pub(crate) use phase_protocol::{
     ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession, OwnedPhaseSettlement,
 };
 pub(crate) use preparation::{NativePreparationActor, NativePreparationCustody};
+pub(crate) use prepared::PreparedNativePhase;
+pub(crate) use phase_protocol::{Activation, PhaseActor};
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -188,8 +191,7 @@ impl NativeSessions {
         effort: Option<String>,
         executable: Option<std::path::PathBuf>,
     ) -> Result<NativeStart> {
-        self.start_with_launch(input, model, effort, executable, None)
-            .await
+        self.start_legacy(input, model, effort, executable).await
     }
     /// The concrete installed vtable is the only caller supplying a genuine
     /// launch. Allocated DTOs and old public adapters never reach this entry.
@@ -211,13 +213,12 @@ impl NativeSessions {
             "actual private Native helper history retained; full preparation/registration/quota/transport composition unavailable"
         )
     }
-    async fn start_with_launch(
+    async fn start_legacy(
         &self,
         input: ManagedInput,
         model: Option<String>,
         effort: Option<String>,
         executable: Option<std::path::PathBuf>,
-        launch: Option<Arc<crate::state::managed_binding::PhaseLaunchParts>>,
     ) -> Result<NativeStart> {
         // Public ManagedInput/Unit identity is not a managed phase owner. This
         // standalone entry cannot qualify or prepare a protected Workflow.
@@ -228,20 +229,9 @@ impl NativeSessions {
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .managed_phase_required(&input.authority.scope)?;
         ensure!(
-            protected == launch.is_some(),
+            !protected,
             NativeFailure::AuthorityUnavailable
         );
-        // The current frame and exact allocated owner are mandatory before the
-        // first helper. This is a private actual launch, not a legacy bypass.
-        if let Some(parts) = &launch {
-            let current =
-                crate::state::managed_binding::plan_current_phase(&self.owner, parts.marker())?;
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .validate_phase_preparation(parts, &current)?;
-        }
         let gate = {
             let mut starts = self
                 .starts
@@ -425,9 +415,7 @@ impl NativeSessions {
             .execution_unit(unit.id)?;
         preparation_guard.update(&unit);
         let mut session = Session {
-            id: launch.as_ref().map_or_else(SessionId::new, |parts| {
-                parts.allocation().facts().session_id
-            }),
+            id: SessionId::new(),
             scope: unit.scope.clone(),
             agent: input.agent.clone(),
             provider: unit.provider.clone(),
@@ -488,56 +476,18 @@ impl NativeSessions {
             .stderr(Stdio::piped());
         let seed = NativeSeed {
             input: input.input.clone(),
-            id: launch
-                .as_ref()
-                .map_or_else(NativeInvocationId::new, |parts| {
-                    parts.allocation().facts().invocation_id
-                }),
+            id: NativeInvocationId::new(),
             profile: format!("text_v1/{}", unit.profile_digest),
             native_version: version.trim().into(),
         };
         let mut registration_guard = None;
-        let registration = launch
-            .as_ref()
-            .map(|parts| {
-                crate::state::Store::plan_native_phase_registration(
-                    &self.owner,
-                    parts.clone(),
-                    session.clone(),
-                    &seed,
-                )
-            })
-            .transpose()?;
-        let mut phase = None;
         let mut child = {
             let mut store = self
                 .owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            unit = if let Some(plan) = registration {
-                let (registered, projection, version) = store.register_phase_session(plan)?;
-                // Registration is already a known commit. Retain its exact Unit
-                // before a later private-actor construction can fail, rather
-                // than leaving the older preparation version as the only guard.
-                registration_guard = Some(RegistrationGuard {
-                    owner: self.owner.clone(),
-                    unit_id: registered.id,
-                    invocation: seed.id,
-                    armed: true,
-                });
-                preparation_guard.update(&registered);
-                let parts = launch
-                    .as_ref()
-                    .context("actual Native launch disappeared")?
-                    .clone();
-                phase = Some(phase_protocol::PhaseActor::registered(
-                    parts, projection, version,
-                )?);
-                registered
-            } else {
-                store.register_native_session(&unit.authority(), &session, &seed)?
-            };
+            unit = store.register_native_session(&unit.authority(), &session, &seed)?;
             if registration_guard.is_none() {
                 registration_guard = Some(RegistrationGuard {
                     owner: self.owner.clone(),
@@ -622,7 +572,7 @@ impl NativeSessions {
             controls: receiver,
             native,
             drain,
-            phase: phase.clone(),
+            phase: None,
         };
         self.entries
             .lock()
@@ -635,7 +585,7 @@ impl NativeSessions {
                     control,
                     terminal: frozen_terminal,
                     update,
-                    phase,
+                    phase: None,
                 },
             );
         preparation_guard.disarm();
@@ -1415,7 +1365,7 @@ impl Core {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .admit_phase_dispatch(plan)?;
-        let (operation, digest, expected_thread, input) = commit.into_parts();
+        let (operation, digest, expected_thread, input) = phase.retain_dispatch(commit)?;
         if input {
             // Only the successful actual same-TX input intent reaches this
             // private producer; retain it BEFORE the first wire await.
@@ -1464,21 +1414,17 @@ impl Core {
             "transport".into(),
             if sent.is_ok() { "written" } else { "unknown" }.into(),
         )]);
-        self.owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .reconcile_managed_effect(
-                operation,
-                1,
-                if sent.is_ok() {
-                    EffectState::Confirmed
-                } else {
-                    EffectState::Unknown
-                },
-                receipt,
-            )?;
+        self.record_dispatch_observation(operation,if sent.is_ok() {EffectState::Confirmed} else {EffectState::Unknown},receipt)?;
         sent
+    }
+    fn record_dispatch_observation(&self,operation:OperationId,state:EffectState,receipt:BTreeMap<String,String>) -> Result<()> {
+        if let Some(phase)=&self.phase {
+            let original=phase.dispatch(operation)?;
+            let plan=crate::state::Store::plan_phase_dispatch_receipt(&self.owner,&phase.owner,original,state,receipt)?;
+            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.record_phase_dispatch_receipt(plan)
+        } else {
+            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.reconcile_managed_effect(operation,1,state,receipt)
+        }
     }
     async fn boot_call(
         &mut self,
@@ -1535,13 +1481,8 @@ impl Core {
             self.retain_input_ack(&thread, Some(&turn))?;
         }
         if let Some(operation) = operation {
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .reconcile_managed_effect(
+            self.record_dispatch_observation(
                     operation,
-                    1,
                     if result.is_ok() {
                         EffectState::Confirmed
                     } else {

@@ -175,6 +175,7 @@ pub(crate) fn plan_phase_terminal(
     phase: &Arc<NativePhaseSession>,
     terminal: Arc<NativeTerminal>,
 ) -> Result<Arc<NativeTerminalPlan>> {
+    phase.validate_known_registration()?;
     let f = phase.allocation().facts();
     let observed = terminal.receipt();
     observed.validate()?;
@@ -311,7 +312,7 @@ pub(crate) fn plan_phase_terminal(
             ensure!(
                 body == json!({"operation_id":f.operation_id,"origin":f.origin_id,"owner_epoch":f.epoch,
             "state":"registered","start_ended":ended,"known_terminal":false,"parking_version":null,"version":version})
-                    && ((version == 2 && !ended) || (version == 3 && ended)),
+                    && ((version == phase.registered_readiness()? && !ended) || (Some(version) == phase.registered_readiness()?.checked_add(1) && ended)),
                 "terminal readiness changed"
             );
             for (name, value) in [

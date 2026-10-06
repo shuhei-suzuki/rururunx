@@ -34,6 +34,10 @@ struct Link {
     raw: String,
 }
 impl CurrentWorkflowSuccessor {
+    pub(in crate::state) fn copy_original(&self) -> Self {
+        Self { original:self.original.clone(), workflow:self.workflow.clone(), unit:self.unit.clone(),
+            count:self.count, head:self.head.clone() }
+    }
     /// Only an own planned, known committed transition can reach this port.
     /// It copies the original parent/ledger facts and performs no row lookup.
     pub(in crate::state) fn with_known_unit(&self, body: Arc<Body<ExecutionUnit>>) -> Result<Self> {

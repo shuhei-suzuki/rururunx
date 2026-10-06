@@ -110,6 +110,14 @@ impl NativeQuotaPlan {
     }
 }
 impl NativeQuotaAdmitted {
+    pub(super) fn validate_registration_tx(&self, tx:&Transaction<'_>) -> Result<()> {
+        ensure!(matches!(self.plan.decision, Decision::Admit { .. }), "quota original not admitted");
+        self.lineage.validate_prepared_shape()?;
+        let actual=read_images(tx,&self.plan.actor)?;
+        ensure!(actual.lease == self.plan.after.lease && actual.waiter == self.plan.after.waiter,
+            "SAME admitted own lease/waiter changed before registration");
+        Ok(())
+    }
     pub(crate) fn matches_plan(&self,plan:&Arc<NativeQuotaPlan>) -> bool { Arc::ptr_eq(&self.plan,plan) }
     pub(crate) fn lineage(&self) -> &Arc<NativeReadyLineage> { &self.lineage }
     pub(crate) fn matches(&self,actor:&Arc<NativePreparationActor>,no_dispatch:&Arc<PreparedPhaseNoCurrentDispatch>) -> bool { self.plan.matches_actor(actor) && Arc::ptr_eq(&self.plan.no_dispatch,no_dispatch) }

@@ -6,14 +6,19 @@ use crate::{
     execution::phase::NativeAllocation,
     state::managed_binding::{OriginalMarker, PhaseLaunchParts},
 };
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{OnceLock, atomic::{AtomicU8, Ordering}};
+use crate::state::{NativeTransportStartPlan,KnownTransportRegistration,RegistrationAck};
+const CANDIDATE:u8=0; const LIVE:u8=1; const REVOKED:u8=2;
+pub(crate) enum Activation { Live, RevokedKnown, Mismatch }
 
 /// Genuine registered owner. Only the actual Native module can issue it, after
 /// its managed registration transaction succeeds with the original launch.
 pub(crate) struct NativePhaseSession {
     launch: Arc<PhaseLaunchParts>,
     projection: Mutex<Projection>,
-    live: AtomicBool,
+    origin: Arc<NativeTransportStartPlan>,
+    ack: OnceLock<RegistrationAck>,
+    state: AtomicU8,
 }
 struct Projection {
     session: Session,
@@ -47,32 +52,41 @@ struct Acknowledgement {
 /// Shared by the actual Core and its retained Native registry entry. Proofs are
 /// held strongly here, while their owner uses Weak backlinks to avoid a cycle.
 /// Engine future destruction therefore cannot erase an observed input/settlement.
-pub(super) struct PhaseActor {
+pub(crate) struct PhaseActor {
     pub(super) owner: Arc<NativePhaseSession>,
     retained: Mutex<RetainedProofs>,
 }
 struct RetainedProofs {
+    dispatches: BTreeMap<OperationId,Arc<crate::state::NativeDispatchCommit>>,
     consumed: Option<Arc<ConsumedPhaseInput>>,
     settlement: Option<Arc<OwnedPhaseSettlement>>,
     terminal_plan: Option<Arc<crate::state::NativeTerminalPlan>>,
 }
 impl PhaseActor {
-    /// Called by the real Native launch only after its genuine registration
-    /// transaction commits. There is no constructor from a Session row/DTO.
-    pub(super) fn registered(
-        launch: Arc<PhaseLaunchParts>,
-        session: Session,
-        record_version: u64,
-    ) -> Result<Arc<Self>> {
-        let owner = NativePhaseSession::registered(launch, session, record_version)?;
-        Ok(Arc::new(Self {
-            owner,
-            retained: Mutex::new(RetainedProofs {
-                consumed: None,
-                settlement: None,
-                terminal_plan: None,
-            }),
-        }))
+    /// Preallocated outside admission, with no registration or effect authority.
+    pub(crate) fn prepared_candidate(plan:&Arc<NativeTransportStartPlan>) -> Result<Arc<Self>> {
+        let owner=NativePhaseSession::candidate(plan.clone())?;
+        Ok(Arc::new(Self { owner, retained:Mutex::new(RetainedProofs { dispatches:BTreeMap::new(),consumed:None,
+            settlement:None, terminal_plan:None }) }))
+    }
+    /// Admission remains held, SharedStore is released. No allocation or SQL.
+    pub(crate) fn activate(&self, known:KnownTransportRegistration) -> Activation {
+        let Some(ack)=known.activation(&self.owner.origin) else { return Activation::Mismatch };
+        if self.owner.ack.set(ack).is_err() { return Activation::Mismatch; }
+        match self.owner.state.compare_exchange(CANDIDATE,LIVE,Ordering::SeqCst,Ordering::SeqCst) {
+            Ok(_)=>Activation::Live, Err(REVOKED)=>Activation::RevokedKnown,
+            _=>Activation::Mismatch,
+        }
+    }
+    pub(super) fn retain_dispatch(&self,commit:crate::state::NativeDispatchCommit) -> Result<(OperationId,String,Option<String>,bool)> {
+        ensure!(commit.belongs_to(&self.owner),"dispatch belongs to another actor");
+        let facts=commit.facts();
+        let mut retained=self.retained.lock().map_err(|_|anyhow::anyhow!("Native retention unavailable"))?;
+        ensure!(retained.dispatches.len()<256 && !retained.dispatches.contains_key(&facts.0),"Native retained dispatch profile exhausted");
+        retained.dispatches.insert(facts.0,Arc::new(commit));Ok(facts)
+    }
+    pub(super) fn dispatch(&self,id:OperationId) -> Result<Arc<crate::state::NativeDispatchCommit>> {
+        self.retained.lock().map_err(|_|anyhow::anyhow!("Native retention unavailable"))?.dispatches.get(&id).cloned().context("SAME actual dispatch commit absent")
     }
     /// The caller supplies the exact successful before-wire journal, never a
     /// historical effect lookup. The same private input remains retained once.
@@ -247,11 +261,10 @@ impl NativePhaseSession {
     pub(crate) fn allocation(&self) -> &NativeAllocation {
         self.launch.allocation()
     }
-    pub(super) fn registered(
-        launch: Arc<PhaseLaunchParts>,
-        session: Session,
-        record_version: u64,
-    ) -> Result<Arc<Self>> {
+    fn candidate(origin:Arc<NativeTransportStartPlan>) -> Result<Arc<Self>> {
+        let launch=origin.launch().clone();
+        let session=origin.session().clone();
+        let record_version=1;
         ensure!(
             launch.is_retained() && Arc::ptr_eq(launch.marker().allocation(), launch.allocation()),
             "actual phase registration lost original retained launch"
@@ -279,7 +292,7 @@ impl NativePhaseSession {
                 consumed: None,
                 settlement: None,
             }),
-            live: AtomicBool::new(true),
+            origin, ack:OnceLock::new(), state:AtomicU8::new(CANDIDATE),
         }))
     }
     pub(super) fn project(&self, session: &Session, record_version: u64) -> Result<()> {
@@ -316,8 +329,16 @@ impl NativePhaseSession {
         Ok(())
     }
     pub(super) fn revoke(&self) {
-        self.live.store(false, Ordering::SeqCst);
+        self.state.store(REVOKED, Ordering::SeqCst);
     }
+    pub(crate) fn is_live(&self) -> bool { self.state.load(Ordering::SeqCst)==LIVE && self.ack.get().is_some() }
+    pub(crate) fn registration_ack(&self) -> Option<RegistrationAck> { self.ack.get().copied() }
+    pub(crate) fn origin(&self) -> &Arc<NativeTransportStartPlan> { &self.origin }
+    pub(crate) fn validate_known_registration(&self) -> Result<RegistrationAck> {
+        ensure!(matches!(self.state.load(Ordering::SeqCst),LIVE|REVOKED),"unregistered Candidate cannot close");
+        self.registration_ack().context("SAME activation acknowledgement absent")
+    }
+    pub(crate) fn registered_readiness(&self) -> Result<u64> { self.origin.registered_readiness() }
     pub(crate) fn binding_snapshot(self: &Arc<Self>) -> Result<NativePhaseBinding> {
         let projection = self
             .projection
@@ -329,11 +350,12 @@ impl NativePhaseSession {
             record_version: projection.record_version,
             consumed: projection.consumed.as_ref().and_then(Weak::upgrade),
             settlement: projection.settlement.as_ref().and_then(Weak::upgrade),
-            live: self.live.load(Ordering::SeqCst),
+            live: self.is_live(),
         })
     }
 }
 impl NativePhaseBinding {
+    pub(crate) fn owner_arc(&self) -> &Arc<NativePhaseSession> { &self.owner }
     pub(crate) fn owner(&self) -> &NativePhaseSession {
         &self.owner
     }
@@ -356,7 +378,7 @@ impl NativePhaseBinding {
         self.settlement.as_deref()
     }
     pub(crate) fn is_live(&self) -> bool {
-        self.live && self.owner.live.load(Ordering::SeqCst)
+        self.live && self.owner.is_live()
     }
 }
 impl ConsumedPhaseInput {
@@ -379,7 +401,7 @@ impl ConsumedPhaseInput {
         expected_thread: Option<String>,
     ) -> Result<Arc<Self>> {
         ensure!(
-            owner.live.load(Ordering::SeqCst)
+            owner.is_live()
                 && frame_sha256.len() == 64
                 && frame_sha256
                     .bytes()

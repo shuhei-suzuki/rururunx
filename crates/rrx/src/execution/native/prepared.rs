@@ -103,7 +103,7 @@ impl NativeSessions {
     }
 }
 
-pub(super) struct PreparedNativePhase {
+pub(crate) struct PreparedNativePhase {
     pub(super) actor: Arc<NativePreparationActor>,
     pub(super) known: Arc<crate::state::NativePreparationCommit>,
     pub(super) version: Arc<version::NativeVersionHelperCustody>,

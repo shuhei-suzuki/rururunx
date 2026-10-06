@@ -151,6 +151,10 @@ impl NativeVersionObservation {
             _ => None,
         }
     }
+    pub(super) fn version_text(&self) -> Result<&str> {
+        ensure!(self.qualified_profile().is_some(), "SAME version observation unqualified");
+        Ok(std::str::from_utf8(&self.stdout)?)
+    }
     pub(crate) fn safe_receipt(&self) -> BTreeMap<String, String> {
         BTreeMap::from([
             ("action".into(), self.plan.action().label().into()),
