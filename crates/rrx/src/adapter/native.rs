@@ -13,6 +13,118 @@ pub(crate) struct NativeAdapter {
     pub(crate) program: PathBuf,
     pub(crate) sessions: Arc<NativeSessions>,
 }
+
+/// Selected concrete vtable, installed with the same adapter/sessions used by
+/// the Registry. Generic registration, names and capability DTOs cannot mint it.
+pub(crate) struct NativePhasePort {
+    adapter: Arc<NativeAdapter>,
+    origin_id: uuid::Uuid,
+}
+
+/// Opaque producer seed. No other module can initialize its private fields.
+/// It owns a provisional read snapshot, never permission to start or bind.
+pub(crate) struct NativeAllocationSeed {
+    port: Arc<NativePhasePort>,
+    unit: execution::ExecutionUnit,
+    input: ManagedInput,
+    input_bytes: Vec<u8>,
+    role: SessionRole,
+    model: Option<String>,
+    effort: Option<String>,
+}
+
+impl NativePhasePort {
+    pub(super) fn installed(adapter: Arc<NativeAdapter>) -> Self {
+        Self {
+            adapter,
+            origin_id: uuid::Uuid::new_v4(),
+        }
+    }
+    pub(crate) fn origin_id(&self) -> uuid::Uuid {
+        self.origin_id
+    }
+    pub(crate) fn provider(&self) -> &str {
+        &self.adapter.provider
+    }
+    pub(crate) fn alias(&self) -> &str {
+        &self.adapter.name
+    }
+
+    /// Allocate before all version, readonly Git and Native child operations.
+    /// Current owner/input/Workflow/locks still require the marker's final CAS;
+    /// this return value cannot register a Session or authorize a helper.
+    pub(crate) fn allocate(
+        self: &Arc<Self>,
+        input: ManagedInput,
+        model: Option<String>,
+        effort: Option<String>,
+    ) -> anyhow::Result<execution::phase::NativeAllocation> {
+        anyhow::ensure!(
+            input.agent == self.alias()
+                && matches!(self.provider(), "claude" | "codex")
+                && [&model, &effort]
+                    .into_iter()
+                    .flatten()
+                    .all(|v| !v.is_empty() && v.len() <= 128 && !v.chars().any(char::is_control)),
+            "native allocation selection mismatch"
+        );
+        let input_bytes = execution::phase::encode_input(&input.input)?;
+        let unit = execution::phase::allocation_snapshot(&self.adapter.owner, &input.authority)?;
+        let role = match unit.kind {
+            execution::UnitKind::Executor => SessionRole::Executor,
+            execution::UnitKind::Reviewer => SessionRole::Reviewer,
+            _ => anyhow::bail!("native phase requires an executor or readonly reviewer"),
+        };
+        anyhow::ensure!(
+            unit.provider == self.provider()
+                && input.artifact == unit.artifact_id
+                && input.input.scope == unit.scope
+                && input.input.revision == unit.base_sha
+                && input.input.kind
+                    == if role == SessionRole::Executor {
+                        InputKind::ContextPack
+                    } else {
+                        InputKind::ReviewBundle
+                    },
+            "native allocation input/namespace mismatch"
+        );
+        Ok(execution::phase::NativeAllocation::from_selected(
+            NativeAllocationSeed {
+                port: self.clone(),
+                unit,
+                input,
+                input_bytes,
+                role,
+                model,
+                effort,
+            },
+        ))
+    }
+}
+
+impl NativeAllocationSeed {
+    pub(crate) fn port(&self) -> &NativePhasePort {
+        &self.port
+    }
+    pub(crate) fn unit(&self) -> &execution::ExecutionUnit {
+        &self.unit
+    }
+    pub(crate) fn input(&self) -> &ManagedInput {
+        &self.input
+    }
+    pub(crate) fn input_bytes(&self) -> &[u8] {
+        &self.input_bytes
+    }
+    pub(crate) fn role(&self) -> SessionRole {
+        self.role
+    }
+    pub(crate) fn model(&self) -> Option<&str> {
+        self.model.as_deref()
+    }
+    pub(crate) fn effort(&self) -> Option<&str> {
+        self.effort.as_deref()
+    }
+}
 fn mapped(error: anyhow::Error) -> AdapterError {
     // Never turn a provider payload into a durable diagnostic.
     let kind = if let Some(e) = error.downcast_ref::<AdapterError>() {
