@@ -121,6 +121,43 @@ pub struct ControlEndpoint {
     _socket_directory: tempfile::TempDir,
     owner: Arc<RuntimeOwner>,
 }
+/// Only the dedicated listener can construct this accepted peer connection.
+pub struct AcceptedControlConnection(UnixStream);
+impl AcceptedControlConnection {
+    pub(crate) fn stream(&self) -> &UnixStream {
+        &self.0
+    }
+}
+impl tokio::io::AsyncRead for AcceptedControlConnection {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().0).poll_read(cx, buf)
+    }
+}
+impl tokio::io::AsyncWrite for AcceptedControlConnection {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.get_mut().0).poll_write(cx, buf)
+    }
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().0).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().0).poll_shutdown(cx)
+    }
+}
 impl ControlEndpoint {
     pub fn bind(owner: Arc<RuntimeOwner>) -> Result<Self> {
         let directory = control_directory(owner.state_path())?;
@@ -174,14 +211,10 @@ impl ControlEndpoint {
         })
     }
 
-    pub async fn accept(&self) -> Result<UnixStream> {
-        let (mut stream, _) = self.listener.accept().await?;
-        ensure!(
-            stream.peer_cred()?.uid() == rustix::process::getuid().as_raw(),
-            "foreign control peer UID"
-        );
+    pub async fn accept(&self) -> Result<AcceptedControlConnection> {
+        let mut accepted = self.accept_peer().await?;
         transport::send(
-            &mut stream,
+            &mut accepted,
             &Hello {
                 protocol: self.descriptor.protocol,
                 identity: self.descriptor.identity.clone(),
@@ -189,7 +222,15 @@ impl ControlEndpoint {
             transport::RESPONSE_BYTES,
         )
         .await?;
-        Ok(stream)
+        Ok(accepted)
+    }
+    pub(crate) async fn accept_peer(&self) -> Result<AcceptedControlConnection> {
+        let (stream, _) = self.listener.accept().await?;
+        ensure!(
+            stream.peer_cred()?.uid() == rustix::process::getuid().as_raw(),
+            "foreign control peer UID"
+        );
+        Ok(AcceptedControlConnection(stream))
     }
 }
 impl Drop for ControlEndpoint {
@@ -205,6 +246,11 @@ impl Drop for ControlEndpoint {
 /// Selected-state discovery/handshake is read-only, including failure. A missing
 /// service reports an explicit instruction instead of auto-starting an epoch.
 pub async fn connect(state: &Path) -> Result<(ServiceIdentity, BufReader<UnixStream>)> {
+    connect_inner(state)
+        .await
+        .context("Runtime service unavailable or discovery refused; start rrx serve explicitly")
+}
+async fn connect_inner(state: &Path) -> Result<(ServiceIdentity, BufReader<UnixStream>)> {
     let state = state
         .canonicalize()
         .context("state unavailable; start rrx serve explicitly")?;

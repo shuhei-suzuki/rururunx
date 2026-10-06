@@ -92,6 +92,9 @@ impl Runtime {
     fn service_running(&self) -> bool {
         self.running.load(Ordering::SeqCst) && !self.stopping.load(Ordering::SeqCst)
     }
+    pub(crate) fn is_stopping(&self) -> bool {
+        self.stopping.load(Ordering::SeqCst)
+    }
     /// Actual retained service/supervisor identity, not Native admission.
     pub(crate) fn composition_is_current(
         &self,

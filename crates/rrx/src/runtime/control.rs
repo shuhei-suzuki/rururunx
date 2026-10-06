@@ -73,6 +73,10 @@ pub struct ControlRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ControlResponse {
+    /// Sanitized refusal; rejected raw frames and internal errors are never echoed.
+    Rejected {
+        request_id: Option<Uuid>,
+    },
     /// Routing metadata only; actual source identity is checked before effects.
     ProjectResolved {
         project: ProjectId,
@@ -191,7 +195,7 @@ impl HumanIngress {
 impl Runtime {
     /// Trusted controls publish only their specific typed decisions. A public
     /// request never supplies Driver, native input or result authority.
-    pub async fn handle_control(
+    pub(crate) async fn handle_control(
         &self,
         accepted: &UnixStream,
         request: ControlRequest,
