@@ -88,8 +88,8 @@ impl Runtime {
             // Completion (including Err/panic) consumes the JoinHandle result.
             // Take it before propagating that error; polling it again is invalid.
             // Timeout/caller Drop still leaves the pending handle in its owner.
-            completed??;
             slot.take();
+            completed??;
         }
         Ok(())
     }
