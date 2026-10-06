@@ -30,6 +30,7 @@ pub(crate) struct VerificationClaim {
     pub goal_digest: String,
     pub workflow_digest: String,
     pub workflow_updated_at: i64,
+    pub attempt_detail: Option<String>,
     pub context_version: u64,
     pub context_digest: String,
     pub source_digest: String,

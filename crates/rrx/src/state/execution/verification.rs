@@ -226,6 +226,7 @@ fn record_claim(
         goal_digest: json_hash(&goal)?,
         workflow_digest: json_hash(&record)?,
         workflow_updated_at: record.updated_at,
+        attempt_detail: a.detail.clone(),
         context_version: context.version,
         context_digest: json_hash(&context)?,
         source_digest: json_hash(&invocation.sources)?,
@@ -807,6 +808,11 @@ pub(in crate::state) fn accept_tx(
         "verification observation count changed"
     );
     origin.history[claim.index].observations.pop();
+    ensure!(
+        origin.history[claim.index].detail.as_deref() == Some("gate outcome observed"),
+        "verification audited observation detail differs"
+    );
+    origin.history[claim.index].detail = claim.attempt_detail.clone();
     origin_record.data = serde_json::to_value(origin)?;
     origin_record.version = claim.version;
     origin_record.updated_at = claim.workflow_updated_at;
