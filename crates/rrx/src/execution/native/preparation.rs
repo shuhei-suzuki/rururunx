@@ -367,7 +367,7 @@ impl NativeSessions {
         // This helper remains factual only. Quota/transport/full preparation
         // are unavailable; never fall through to generic admission.
         anyhow::bail!(
-            "original Native preparation retained; helper/quota/transport composition unavailable"
+            "original Native version observation retained; full preparation/quota/transport composition unavailable"
         )
     }
 }

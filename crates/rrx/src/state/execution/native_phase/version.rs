@@ -270,6 +270,13 @@ impl Inventory {
         next.validate_bound()?;
         Ok(next)
     }
+    fn with_version_intent(&self, image: EffectImage) -> Result<Self> {
+        ensure!(
+            self.rows.len() <= 254,
+            "version helper reserves one future input slot"
+        );
+        self.with(image)
+    }
 }
 
 pub(crate) struct NativeVersionHelperPlan {
@@ -324,10 +331,6 @@ impl Store {
                 Inventory::read(tx, unit.id)
             })())
         })?;
-        ensure!(
-            before.rows.len() <= 254,
-            "version helper reserves one future input slot"
-        );
         for row in &before.rows {
             let effect = row.decode(unit.id)?;
             ensure!(
@@ -357,7 +360,7 @@ impl Store {
             receipt: BTreeMap::new(),
             version: 1,
         })?;
-        let pending = before.with(effect.clone())?;
+        let pending = before.with_version_intent(effect.clone())?;
         Ok(Arc::new(NativeVersionHelperPlan {
             ready,
             before,
@@ -682,6 +685,53 @@ mod inventory_tests {
         assert!(result.is_err());
         assert!(c.query_row(query, [], |r| r.get::<_, i64>(0)).is_ok());
         assert!(InventoryBudget::new(&c).is_ok());
+    }
+    #[test]
+    fn nongrant_version_postimage_reserves_slot_and_charges_new_body() {
+        let unit = UnitId::new();
+        let row = image(unit);
+        let baseline = Inventory {
+            rows: vec![row.clone(); 254],
+        };
+        assert_eq!(
+            baseline
+                .with_version_intent(row.clone())
+                .unwrap()
+                .rows
+                .len(),
+            255
+        );
+        let full = Inventory {
+            rows: vec![row.clone(); 255],
+        };
+        assert!(full.with_version_intent(row.clone()).is_err());
+        let mut baseline = baseline;
+        for row in &mut baseline.rows {
+            row.text[7] = "x".repeat(7900);
+        }
+        let desired = INVENTORY_BYTES - row.bytes().unwrap() + 1;
+        let used = 16
+            + baseline
+                .rows
+                .iter()
+                .map(|row| row.bytes().unwrap())
+                .sum::<usize>();
+        let mut remaining = desired - used;
+        for row in &mut baseline.rows {
+            let extra = remaining.min(BODY_BYTES - row.text[7].len());
+            row.text[7].push_str(&"x".repeat(extra));
+            remaining -= extra;
+        }
+        assert_eq!(remaining, 0);
+        assert!(baseline.validate_bound().is_ok());
+        assert!(baseline.with_version_intent(row.clone()).is_err());
+        baseline.rows.last_mut().unwrap().text[7].pop();
+        assert!(baseline.with_version_intent(row.clone()).is_ok());
+        let pending = baseline.with_version_intent(row.clone()).unwrap();
+        let mut receipt_postimage = row;
+        receipt_postimage.text[7].push('x');
+        assert!(baseline.with(receipt_postimage).is_err());
+        assert!(pending.validate_bound().is_ok());
     }
     #[test]
     fn nongrant_unrelated_history_is_bounded_by_vm_work_without_partial_inventory() {

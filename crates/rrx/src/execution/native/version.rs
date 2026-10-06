@@ -19,7 +19,10 @@ impl BoundedOutput {
         (OUTPUT_BYTES.saturating_sub(self.bytes) + 1).min(4096)
     }
     fn observe(&mut self, bytes: &[u8], stdout: bool) -> bool {
-        self.bytes = self.bytes.saturating_add(bytes.len());
+        let Some(total) = self.bytes.checked_add(bytes.len()) else {
+            return false;
+        };
+        self.bytes = total;
         if stdout {
             let available = OUTPUT_BYTES.saturating_sub(self.stdout.len());
             self.stdout
