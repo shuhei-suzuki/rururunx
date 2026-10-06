@@ -128,6 +128,7 @@ impl NativeSessions {
             )?;
             custody.retain_quota_plan(plan.clone())?;
             let admission = launch.admission().enter(launch.clone()).await?;
+            let mut unresolved = None;
             let outcome = {
                 let mut store = self
                     .owner
@@ -138,7 +139,7 @@ impl NativeSessions {
                     Ok(crate::state::NativeQuotaWrite::Known(outcome)) => Some(outcome),
                     Ok(crate::state::NativeQuotaWrite::Conflict) => None,
                     Ok(crate::state::NativeQuotaWrite::Unresolved(cause)) => {
-                        custody.report_unresolved_head(&cause);
+                        unresolved = Some(cause);
                         None
                     }
                     Err(error) => match store.confirm_phase_quota(plan, &admission) {
@@ -151,6 +152,9 @@ impl NativeSessions {
                 }
             };
             drop(admission);
+            if let Some(cause) = unresolved {
+                custody.report_unresolved_head(&cause);
+            }
             if let Some(outcome) = outcome {
                 custody.retain_quota_outcome(&outcome)?;
                 conflicts = 0;
