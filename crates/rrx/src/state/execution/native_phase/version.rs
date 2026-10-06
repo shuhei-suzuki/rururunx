@@ -144,7 +144,7 @@ impl EffectImage {
                 g,
                 t,
                 effect.idempotency_key.clone(),
-                key(effect.state).into(),
+                key(effect.state),
                 serde_json::to_string(effect)?,
             ],
             version: effect.version,
