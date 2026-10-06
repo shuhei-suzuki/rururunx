@@ -228,10 +228,7 @@ impl Store {
             }
             // Assert the complete installed/current protection contract before
             // publishing a fresh/migrated schema. No selected-DB reinstallation.
-            // Mutation: a competing current winner bypasses layout validation.
-            if locked_version != SCHEMA_VERSION {
-                managed_binding::validate_current_layout(&tx)?;
-            }
+            managed_binding::validate_current_layout(&tx)?;
             tx.commit()?;
         } else {
             // The initial version read is not a coherent current-schema proof.
