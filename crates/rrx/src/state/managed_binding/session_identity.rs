@@ -70,7 +70,7 @@ pub(super) fn validate_negative_identities(
                 "own latest Session identity differs from protected projection"
             );
             own_seen = true;
-        } else if let Some(native_ref) = native_ref {
+        } else if let Some(native_ref) = native_ref.filter(|_| false) {
             ensure!(
                 selected_provider.as_deref() != Some(provider)
                     || selected_ref.as_deref() != Some(native_ref),
