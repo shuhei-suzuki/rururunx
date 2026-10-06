@@ -159,16 +159,36 @@ returns false. The retained worker, not a caller Drop, owns reconciliation.
 
 ## 4. Marker freeze and Root/B composition
 
-The marker consumes the actual current Driver and its final pre-marker handoff,
-selected NativeAllocation and Root's ManagedMarkerPlan in ONE Immediate transaction.
-It reserves actual project/capacity and mandatory ledger allowance and writes the
-already planned post-marker Task/W/operation/owner/input/audit facts. The Driver's
+Before any marker publication, the actual worker transfers its selected
+`NativeAllocation` and armed `PreparationGuard` to the same Runtime's
+`reserve_pending_phase`. The real bounded supervisor retains that operation's
+allocation and guard and returns its private `PendingPhaseCapacity`. A full,
+closed or mismatched queue returns the original objects; no marker Task/W,
+operation, owner/input or audit write is allowed. Initial distinct-Task Driver
+admission is a separate capacity contract and cannot replace this phase slot.
+
+The worker borrows the original allocation from that retained slot when producing
+Root's `ManagedMarkerPlan`. The marker consumes the actual current Driver/final
+pre-marker handoff, that exact original allocation, the plan and the SAME genuine
+pending-capacity handoff in ONE Immediate transaction. It validates the live
+supervisor and exact retained slot/operation identity and preserves its retention
+across the transaction; an ID, observation or named capacity DTO cannot substitute.
+Its separate durable Project/distinct-Task union, Native quota and mandatory ledger
+allowance checks remain required. It writes the already planned post-marker
+Task/W/operation/owner/input/audit facts. The Driver's
 original marker anchor and Source7 current anchor are installed/checked in that
 same transaction from their validated pre-state. No extra binder write is introduced.
-OriginalMarker is issued only after known commit; actual retained phase supervisor
-then receives PhaseLaunch. The worker's job set retains that supervisor before an
-Engine/start future can be dropped. B's real selected protocol alone registers
-Session, consumes input and produces transport/terminal facts.
+OriginalMarker is issued only after known commit; PhaseLaunch carries the SAME
+retained capacity slot, original allocation, prepared pair and preparation guard
+through the actual supervisor's single handoff. Marker rollback leaves that slot
+unmarked for its exact owner to abandon or retry. An uncertain commit, cancelled
+caller or failed post-commit handoff retains the same slot and original plans for
+owned reconciliation; it never reallocates by ID or calls unmarked abandonment on
+a possibly marked operation. Stop is ordered at the same Runtime admission
+boundary, so it cannot drain a marker-protected slot as unmarked. The worker's job
+set retains that supervisor before an Engine/start future can be dropped. B's real
+selected protocol alone registers Session, consumes input and produces
+transport/terminal facts.
 
 After marker, original P/G/T/Context/source/Unit selection/full locks and marker_W
 are immutable. Root's genuine CurrentWorkflowSuccessor validates only enumerated
@@ -215,6 +235,11 @@ Before enabling production composition, actual account-free consumers must prove
   Published restart use the real Sources consumer and preserve siblings/history.
 - Marker freezes exact originals; bind/diagnostic succeeds via genuine successor
   with W+one audit only, no third authority-row write. Raw drift cannot be refreshed.
+- A genuinely full/stopped pending supervisor refuses BEFORE marker publication,
+  returning the same allocation/guard and leaving Task/W/operation/audit unchanged.
+  Marker rollback, uncertain commit, caller cancellation and handoff failure keep
+  the same real slot under its appropriate unmarked/possibly-marked ownership;
+  no slot is replaced or lost between commit and PhaseLaunch handoff.
 - Real fair distinct-Task capacity and Native quota admission, retained due/held
   processing and at least four Tasks/two Projects remain required acceptance.
   Existing configured-cap generalization/native profile gates are not waived.
