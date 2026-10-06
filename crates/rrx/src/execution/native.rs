@@ -728,8 +728,7 @@ impl NativeSessions {
         let mut reconciled = false;
         let frozen = pending
             .lock()
-            .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?
-            .clone();
+            .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
         if let Some(proof) = frozen.as_ref() {
             status.observed_work = Some(proof.receipt.observed_work);
             if persist_saved_terminal(&self.owner, phase.as_ref(), proof).is_ok() {
