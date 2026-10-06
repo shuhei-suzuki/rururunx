@@ -285,12 +285,16 @@ impl GitFixture {
     fn new(attributes: Option<&str>) -> Self {
         let temp = tempfile::Builder::new()
             .prefix("rrx-native-git-")
-            .tempdir_in("/private/tmp")
+            .tempdir()
             .unwrap();
         let root = temp.path().join("repo");
         let home = temp.path().join("home");
         std::fs::create_dir(&root).unwrap();
         std::fs::create_dir(&home).unwrap();
+        // The platform temp directory can be an alias (for example /var on
+        // macOS); retain the physical paths returned by Git observations.
+        let root = root.canonicalize().unwrap();
+        let home = home.canonicalize().unwrap();
         let git = crate::execution::resources::resolve_program("git")
             .unwrap()
             .canonicalize()
@@ -400,6 +404,9 @@ async fn nongrant_real_git_conversion_positive_executable_large_binary_and_unset
     for attrs in [None, Some("*.bin binary\n"), Some("*.txt -text\n")] {
         let f = GitFixture::new(attrs);
         let r = f.revision();
+        let top = f.collect(PhaseGitAction::SourceTop, &r).await;
+        assert!(top.status.success());
+        exact_path(&top.stdout, &f.root).unwrap();
         let (index, tree) = f.inventory(&r);
         let cfg = f.collect(PhaseGitAction::Config, &r).await;
         qualify_config(&cfg.stdout, cfg.status.code(), 40).unwrap();
