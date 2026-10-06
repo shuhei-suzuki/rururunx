@@ -203,7 +203,12 @@ fn nongrant_e1_malformed_goal_task_abort_before_validator_and_leave_rows_unchang
                 !crate::state::execution::quotas::project_capacity_blocked(&tx, &unit, 4).unwrap()
             );
         }
-        let error = facts.walk(&[candidate], None).unwrap_err();
+        let result = facts.walk(&[candidate], None);
+        assert!(
+            result.is_err(),
+            "malformed {table} must abort before the validator"
+        );
+        let error = result.unwrap_err();
         assert!(format!("{error:#}").contains("legacy head structure"));
         assert_eq!(facts.calls.load(Ordering::SeqCst), 0);
     }
@@ -248,6 +253,10 @@ fn nongrant_e1_exact_legacy_refusal_is_passed_over_and_ninth_call_aborts() {
             assert!(!result.unwrap());
         } else {
             assert!(
+                result.is_err(),
+                "ninth Legacy call must abort before invoking it"
+            );
+            assert!(
                 result
                     .unwrap_err()
                     .to_string()
@@ -279,7 +288,11 @@ fn nongrant_e1_actual_and_virtual_self_stop_before_later_malformed_candidates() 
         let mut own_row = late.clone();
         own_row[0] = t(facts.own.id.to_string());
         own_row[5] = i(10);
-        assert!(!facts.walk(&[late], actual.then_some(&own_row)).unwrap());
+        let result = facts.walk(&[late], actual.then_some(&own_row));
+        assert!(
+            matches!(result, Ok(false)),
+            "later candidate must remain unexamined"
+        );
         assert_eq!(facts.calls.load(Ordering::SeqCst), 0);
     }
     let mut facts = Facts::new();
@@ -289,11 +302,48 @@ fn nongrant_e1_actual_and_virtual_self_stop_before_later_malformed_candidates() 
 
 #[test]
 fn nongrant_e1_whole_plan_charge_includes_both_branches_and_refuses_overflow() {
-    let mut bytes = PLAN_BYTES - 2;
-    charge_plan_bytes(&mut bytes, 1).unwrap();
-    charge_plan_bytes(&mut bytes, 1).unwrap();
-    assert!(charge_plan_bytes(&mut bytes, 1).is_err());
+    let before = PairRow {
+        table: "managed_phase_readiness",
+        values: vec![t("before")],
+    };
+    let branch = QuotaBranch {
+        after: Images {
+            pool: Some(default_pool("claude")),
+            waiter: None,
+            lease: None,
+        },
+        readiness: PairRow {
+            table: "managed_phase_readiness",
+            values: vec![t("after")],
+        },
+        unit: None,
+        decision: Decision::Admit { probe: false },
+        mutation: None,
+    };
+    let charge = branch_bytes(&branch, &before).unwrap();
+    assert_eq!(
+        charge,
+        row_bytes(branch.after.pool.as_ref().unwrap()).unwrap() + 5
+    );
+    let mut bytes = PLAN_BYTES - charge;
+    charge_plan_bytes(&mut bytes, charge).unwrap();
+    assert!(
+        charge_plan_bytes(&mut bytes, charge).is_err(),
+        "second owned branch must be charged"
+    );
     let mut bytes = usize::MAX;
     assert!(charge_plan_bytes(&mut bytes, 1).is_err());
     assert_eq!(row_bytes(&[t("four"), i(1), SqlValue::Null]).unwrap(), 20);
+}
+
+#[test]
+fn nongrant_e1_marked_head_stops_after_seven_exact_legacy_refusals() {
+    let mut facts = Facts::new();
+    let mut rows = (0..7)
+        .map(|n| facts.candidate(n, false))
+        .collect::<Vec<_>>();
+    rows.push(facts.candidate(7, true));
+    rows.push(facts.candidate(8, false));
+    assert!(facts.walk(&rows, None).unwrap());
+    assert_eq!(facts.calls.load(Ordering::SeqCst), 7);
 }
