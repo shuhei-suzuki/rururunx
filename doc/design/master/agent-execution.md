@@ -175,7 +175,13 @@ qualifies all effective check-in conversion attributes before Status can run.
 Clean/process filters, text/eol/crlf, ident and working-tree-encoding refuse when
 the fixed pathspec set differs from the retained Source inventory. Index flags,
 mode/type, sparse/bare/object format and raw-content conversion mismatches refuse.
-Successful correspondence remains a retained nongrant fact and the start still
-refuses before full Prepared, quota, Session, transport or input. Component source
+Successful correspondence remains a retained nongrant fact. The continuation
+retains installed compatibility, one checked nongrant command, a no-dispatch
+value and private pre-Session quota plans. Quota parking retains the SAME input,
+helpers and operation; own known postimages supply due-claim lineage. Revoked
+closure never refreshes that lineage from rows. Full Prepared issuance still
+refuses provider budget qualification, and unresolved Legacy heads still refuse
+the private commit. Session, transport, public composition and Native capability
+advertisement remain unavailable. Component source
 and primitive real-Git controls do not qualify the actual installed actor chain,
 Git version, authenticated Agent, both-host operation or four-Task acceptance.

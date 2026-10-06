@@ -57,7 +57,7 @@ encoded input, committed corpus bytes, complete physical tree inventory and mand
 config/rule pins. Its nongrant seal reaches Native through the same accepted
 Source/ticket/allocation origin. The selected continuation runs a fixed ordered
 13-action private readonly Git batch after the SAME qualified version settlement,
-then refuses at the full preparation/transport boundary. The batch captures source
+before the private quota continuation. The batch captures source
 and Task namespace, original-revision roots, branch/HEAD, seven effective config
 keys, full index entries, index-tree equality, effective conversion attributes and
 empty Status. It uses the unchanged Git command prefix and original real tool,
@@ -74,14 +74,37 @@ A settled prefix is memoized and never reconciled against later rows. Only the
 current tail is reconciled. New intents and capture fences conjoin an explicit
 runtime-epoch SQL check with the original current/Driver/Source/actor/Unit/owner/
 preparing-v2 and stop-admission checks in the same Immediate transaction.
-The first Git intent reserves all 13 maximal row images: at most 242 prior rows,
-255 final rows, and inclusive 2 MiB complete all-column framing. Actions 1–9/11
+The first Git intent reserves all 13 maximal row images and inclusive 2 MiB
+complete all-column framing. Actions 1–9/11
 capture at most 64 KiB combined output; 10/12/13 capture at most 1 MiB. All 14
 helpers total at most 3,866,624 bytes, within the 8-MiB preparation budget, with a
 180-second batch deadline from the first known Git intent. Overflow and incomplete
-capture remain nongrant. Hooks, allocation proof, quota and full prepared-input/
-registration/transport composition remain unavailable. Full Prepared issuance
-remains unreachable.
+capture remain nongrant.
+
+The installed Native adapter retains an optional bounded nonsecret compatibility
+declaration. The selected continuation compares that SAME declaration with the
+retained Frame, the allocation role and committed required-hook inventory before
+running the version helper. Observed qualification retains the SAME closed version
+helper. The continuation builds and checks one nongrant transport command before
+quota planning, preserving inherited Native settings, authentication and hook
+roots. Hook compatibility is a cooperative declaration.
+
+The private pre-Session quota code retains the SAME actor, no-dispatch value,
+helpers and known readiness lineage. Its bounded snapshots count the union of
+marked and legacy active leases. Exact writes cover complete pool, lease and
+waiter images, the indexed Unit and permitted readiness transition. Parking keeps
+the Unit Preparing and advances only its wait reason/version and readiness;
+due-claim uses the own committed postimages. Task, Workflow, Context, Driver and
+Source versions remain unchanged. Root derives Waiting from the custody watch
+while the SAME start future remains retained. Nongrant revoked closure can compare
+the latest factual same-owner Unit, leaves that Unit untouched and releases only
+the own lease, waiter and probe. It cannot refresh a grant lineage.
+
+Full Prepared issuance remains refused at provider effect-budget qualification.
+The private quota commit also refuses unresolved Legacy candidates ahead until
+its writer-connection head validator is supplied. Public registration, transport,
+composition and derived Task/CLI/Driver status remain unavailable. Primitive
+parsing, policy and exact-image tests do not qualify these actor transactions.
 Reviewer artifact lease production, installed composition and genuine
 actor-chain/both-OS/four-Task qualification also remain unavailable.
 Preparation and version transactions also conjoin the ordinary nongrant Unit
