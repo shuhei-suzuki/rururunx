@@ -361,6 +361,43 @@ async fn inline_file_proposals_remain_inert_after_restart_and_reads_write_nothin
 }
 
 #[tokio::test]
+async fn exact_text_boundary_keeps_the_existing_encoded_goal_body_budget() {
+    let mut f = Fixture::new();
+    f.project("one");
+    f.start().await;
+    let objective = format!("x{}", "\0".repeat(16 * 1024 - 1));
+    let path = f.directory.path().join("encoded-objective.txt");
+    std::fs::write(&path, &objective).unwrap();
+    let proposed = f.json(&[
+        "goal",
+        "--file",
+        path.to_str().unwrap(),
+        "--project",
+        "one",
+        "--json",
+    ]);
+    let goal = proposed["facts"]["goal"].as_str().unwrap();
+    assert_eq!(proposed["facts"]["outcome"], "goal_proposed");
+    let encoded_bytes: usize = f
+        .read_db()
+        .query_row(
+            "SELECT length(CAST(body AS BLOB)) FROM goals WHERE id=?1",
+            [goal],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(encoded_bytes > 65536 && encoded_bytes <= 4 * 1024 * 1024);
+    let before = f.stable().await;
+    let status = f.json(&["goal", "status", goal, "--project", "one", "--json"]);
+    assert_eq!(status["facts"]["objective"], objective);
+    assert_eq!(status["facts"]["accepted"], false);
+    assert_eq!(rows(&f.state), before);
+    assert_eq!(f.count("goal_authority"), 0);
+    assert_eq!(f.count("tasks"), 0);
+    f.stop().await;
+}
+
+#[tokio::test]
 async fn independent_observer_revision_cannot_refresh_or_accept_a_proposal() {
     let mut f = Fixture::new();
     f.project("one");

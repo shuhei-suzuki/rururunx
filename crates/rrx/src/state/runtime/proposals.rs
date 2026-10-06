@@ -89,7 +89,10 @@ impl Store {
         goal.state = GoalState::Analyzing;
         goal.version = 1;
         let body = serde_json::to_string(&goal)?;
-        ensure!(body.len() <= 65536, "inert Goal body exceeds bound");
+        ensure!(
+            body.len() <= 4 * 1024 * 1024,
+            "inert Goal body exceeds bound"
+        );
         tx.execute(
             "INSERT INTO goals(id,project_id,version,body) VALUES(?1,?2,1,?3)",
             params![goal.id.to_string(), project.to_string(), body],
@@ -136,7 +139,7 @@ pub(super) fn proposal_facts(
         params![id.to_string(), project.to_string()],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
-    ensure!(bytes <= 65536, "proposal Goal body exceeds bound");
+    ensure!(bytes <= 4 * 1024 * 1024, "proposal Goal body exceeds bound");
     let goal: Goal = read_tx(tx, "goals", &id.to_string())?.context("unknown proposal")?;
     ensure!(
         goal.id == id
