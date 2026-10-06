@@ -89,6 +89,22 @@ pub enum ControlResponse {
         version: u64,
         task_count: usize,
     },
+    /// Persisted inert objective; no accepted definition, evaluator or Task exists.
+    GoalProposed {
+        goal: GoalId,
+        version: u64,
+        state: GoalState,
+    },
+    GoalProposalFacts {
+        goal: GoalId,
+        version: u64,
+        state: GoalState,
+        objective: String,
+        accepted: bool,
+        task_count: usize,
+        dispatch_available: bool,
+        attention: UnavailableReason,
+    },
     GoalFacts {
         goal: GoalId,
         version: u64,
@@ -308,6 +324,19 @@ impl Runtime {
                 .accept_runtime_goal(&ingress, &request, &validated, &digest)?;
             self.wake.notify_one();
             return Ok(response);
+        }
+        if matches!(&request.action, ControlAction::ProposeGoal { .. }) {
+            let _admission = self.control_admission.lock().await;
+            ensure!(
+                !self.stopping.load(std::sync::atomic::Ordering::SeqCst),
+                "Runtime stopping; new proposal refused"
+            );
+            return self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .propose_runtime_goal(&ingress, &request);
         }
         if let ControlAction::GoalStatus { project, goal } = &request.action {
             return self

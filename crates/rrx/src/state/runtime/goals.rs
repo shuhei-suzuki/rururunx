@@ -301,6 +301,16 @@ impl Store {
     ) -> Result<ControlResponse> {
         let tx = self.connection.unchecked_transaction()?;
         owner_current(&tx, ingress)?;
+        let accepted: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM goal_authority WHERE goal_id=?1 AND project_id=?2)",
+            params![id.to_string(), project.to_string()],
+            |r| r.get(0),
+        )?;
+        if !accepted {
+            let response = super::proposals::proposal_facts(&tx, project, id)?;
+            tx.commit()?;
+            return Ok(response);
+        }
         let goal = current_goal(&tx, project, id)?;
         let tasks = scoped_tasks(&tx, &goal)?;
         let mut states = BTreeMap::new();

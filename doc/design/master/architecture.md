@@ -408,8 +408,11 @@ Absent/refused discovery directs the user to explicit `rrx serve`.
 Status is explicitly incomplete Runtime metadata; each bounded Goal Task page
 is an independent observation, not an aggregated complete snapshot. Native
 dispatch remains unavailable and no output establishes effective execution
-capacity. CLI creation/lifecycle/logs/attach, complete operational Goal execution
-and TUI remain unfinished; source presence alone is not operational acceptance.
+capacity. The CLI exposes inert inline/file objectives, explicit bounded TOML
+plan acceptance and Goal pause/resume/cancel with mandatory expected version and
+reason. Proposal and accepted control decisions remain distinct. CLI logs/attach,
+complete operational Goal execution and TUI remain unfinished; source presence
+alone is not operational acceptance.
 
 Initial dependencies are clap, serde/serde_json, TOML and anyhow. Config loading
 accepts explicit runtime and single-project inputs, validates typed limits and

@@ -1,14 +1,23 @@
 use anyhow::{Result, ensure};
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use rrx::{
     cli::{client, service},
     config::Config,
-    domain::{GoalId, TaskId},
+    domain::{GoalId, ProjectId, TaskId},
     project::{AddProject, ProjectRegistry, default_state_path},
-    runtime::control::{ControlAction, ControlResponse},
+    runtime::{
+        control::{ControlAction, ControlResponse, GoalControl},
+        goal::GoalPlan,
+    },
     state::Store,
 };
-use std::{path::PathBuf, process::ExitCode};
+use serde::Deserialize;
+use std::{
+    io::Read,
+    os::unix::fs::OpenOptionsExt,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 #[derive(Parser)]
 #[command(version, about = "Local workflow runtime for native coding agents")]
@@ -36,10 +45,17 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Read scoped Goal facts from the existing control service.
+    /// Propose inert work, accept an explicit plan, or control a scoped Goal.
+    #[command(args_conflicts_with_subcommands = true)]
     Goal {
+        #[command(flatten)]
+        input: GoalInput,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        json: bool,
         #[command(subcommand)]
-        command: GoalCommand,
+        command: Option<GoalCommand>,
     },
     /// Validate configuration without starting sessions or creating state.
     ConfigCheck,
@@ -49,8 +65,42 @@ enum Command {
         command: ProjectCommand,
     },
 }
+#[derive(Args)]
+#[group(multiple = false)]
+struct GoalInput {
+    /// Inert objective only; no executable Tasks or criteria are inferred.
+    objective: Option<String>,
+    #[arg(long)]
+    file: Option<PathBuf>,
+    /// TOML with explicit project, expected_project and typed plan.
+    #[arg(long)]
+    plan: Option<PathBuf>,
+}
+#[derive(Args)]
+struct GoalLifecycle {
+    goal: GoalId,
+    #[arg(long)]
+    project: Option<String>,
+    /// Exact observed Goal version; conflicts are never refreshed or retried.
+    #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
+    expected_version: u64,
+    #[arg(long)]
+    reason: String,
+    #[arg(long)]
+    json: bool,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GoalPlanInput {
+    project: String,
+    expected_project: u64,
+    plan: GoalPlan,
+}
 #[derive(Subcommand)]
 enum GoalCommand {
+    Pause(GoalLifecycle),
+    Resume(GoalLifecycle),
+    Cancel(GoalLifecycle),
     Status {
         goal: GoalId,
         #[arg(long)]
@@ -70,6 +120,188 @@ enum GoalCommand {
         #[arg(long)]
         json: bool,
     },
+}
+fn read_goal_input(path: &Path, maximum: usize) -> Result<String> {
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags((rustix::fs::OFlags::NONBLOCK | rustix::fs::OFlags::NOFOLLOW).bits() as i32)
+        .open(path)
+        .map_err(|_| anyhow::anyhow!("Goal input cannot be opened"))?;
+    ensure!(
+        file.metadata()?.is_file(),
+        "Goal input must be a regular file"
+    );
+    let mut bytes = Vec::new();
+    file.by_ref()
+        .take((maximum + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    ensure!(bytes.len() <= maximum, "Goal input exceeds bound");
+    String::from_utf8(bytes).map_err(|_| anyhow::anyhow!("Goal input must be UTF-8"))
+}
+async fn resolve_project(state: &Path, selector: Option<String>) -> Result<(ProjectId, u64)> {
+    let response = client::request(
+        state,
+        ControlAction::ResolveProject {
+            selector,
+            cwd: std::env::current_dir()?,
+        },
+    )
+    .await?;
+    let ControlResponse::ProjectResolved {
+        project, version, ..
+    } = response
+    else {
+        anyhow::bail!("unexpected Project routing response");
+    };
+    Ok((project, version))
+}
+fn print_decision(response: ControlResponse, json: bool) -> Result<()> {
+    let value = serde_json::json!({
+        "observation": "committed_control_decision", "native_dispatch_available": false,
+        "complete": false, "facts": response,
+    });
+    if json {
+        println!("{}", serde_json::to_string_pretty(&value)?);
+    } else {
+        println!(
+            "{}\nNative dispatch unavailable; full Goal operation remains incomplete.",
+            serde_json::to_string_pretty(&value["facts"])?
+        );
+    }
+    Ok(())
+}
+async fn goal_control(
+    state: &Path,
+    input: GoalInput,
+    selector: Option<String>,
+    json: bool,
+    command: Option<GoalCommand>,
+) -> Result<()> {
+    if let Some(command) = command {
+        let (args, target) = match command {
+            GoalCommand::Pause(args) => (args, GoalControl::Pause),
+            GoalCommand::Resume(args) => (args, GoalControl::Resume),
+            GoalCommand::Cancel(args) => (args, GoalControl::Cancel),
+            read => {
+                let (goal, selector, json, page) = match read {
+                    GoalCommand::Status {
+                        goal,
+                        project,
+                        json,
+                    } => (goal, project, json, None),
+                    GoalCommand::Tasks {
+                        goal,
+                        project,
+                        after,
+                        maximum,
+                        json,
+                    } => (goal, project, json, Some((after, maximum))),
+                    _ => unreachable!(),
+                };
+                let (project, _) = resolve_project(state, selector).await?;
+                let action = match page {
+                    Some((after, maximum)) => ControlAction::GoalTasks {
+                        project,
+                        goal,
+                        after,
+                        maximum: usize::from(maximum),
+                    },
+                    None => ControlAction::GoalStatus { project, goal },
+                };
+                let response = client::request(state, action).await?;
+                ensure!(
+                    matches!(
+                        (&response, page),
+                        (
+                            ControlResponse::GoalFacts { .. }
+                                | ControlResponse::GoalProposalFacts { .. },
+                            None
+                        ) | (ControlResponse::GoalTaskPage { .. }, Some(_))
+                    ),
+                    "unexpected Goal response"
+                );
+                return print_control(response, json, false);
+            }
+        };
+        ensure!(
+            !args.reason.trim().is_empty() && args.reason.len() <= 16 * 1024,
+            "Goal lifecycle reason empty/over budget"
+        );
+        let (project, _) = resolve_project(state, args.project).await?;
+        let response = client::request(
+            state,
+            ControlAction::SetGoalLifecycle {
+                project,
+                goal: args.goal,
+                expected_goal: args.expected_version,
+                target,
+                reason: args.reason,
+            },
+        )
+        .await?;
+        ensure!(
+            matches!(response, ControlResponse::GoalLifecycleChanged { .. }),
+            "Goal lifecycle unavailable; no committed decision"
+        );
+        return print_decision(response, args.json);
+    }
+    let (action, proposed) = if let Some(path) = input.plan {
+        ensure!(
+            selector.is_none(),
+            "--plan supplies its own explicit Project selection"
+        );
+        let text = read_goal_input(&path, rrx::cli::transport::REQUEST_BYTES)?;
+        let plan: GoalPlanInput =
+            toml::from_str(&text).map_err(|_| anyhow::anyhow!("Invalid typed Goal plan"))?;
+        ensure!(
+            !plan.project.trim().is_empty()
+                && plan.project.len() <= 4096
+                && plan.expected_project > 0,
+            "Goal plan requires explicit Project and expected version"
+        );
+        let (project, version) = resolve_project(state, Some(plan.project)).await?;
+        ensure!(
+            version == plan.expected_project,
+            "Goal plan Project version conflict"
+        );
+        (
+            ControlAction::CreateGoal {
+                project,
+                expected_project: plan.expected_project,
+                plan: plan.plan,
+            },
+            false,
+        )
+    } else {
+        let objective = match (input.objective, input.file) {
+            (Some(objective), None) => objective,
+            (None, Some(path)) => read_goal_input(&path, 16 * 1024)?,
+            _ => anyhow::bail!("Goal requires an objective, --file, --plan or subcommand"),
+        };
+        ensure!(
+            !objective.trim().is_empty() && objective.len() <= 16 * 1024,
+            "Goal objective empty/over budget"
+        );
+        let (project, expected_project) = resolve_project(state, selector).await?;
+        (
+            ControlAction::ProposeGoal {
+                project,
+                expected_project,
+                objective,
+            },
+            true,
+        )
+    };
+    let response = client::request(state, action).await?;
+    ensure!(
+        matches!(
+            (&response, proposed),
+            (ControlResponse::GoalProposed { .. }, true)
+                | (ControlResponse::GoalAccepted { .. }, false)
+        ),
+        "Goal creation unavailable; no committed decision"
+    );
+    print_decision(response, json)
 }
 fn print_control(response: ControlResponse, json: bool, metadata: bool) -> Result<()> {
     let observation = if metadata {
@@ -173,52 +405,12 @@ fn run(cli: Cli) -> Result<()> {
                         );
                         print_control(response, json, true)
                     }
-                    Command::Goal { command } => {
-                        let (goal, selector, json, page) = match command {
-                            GoalCommand::Status {
-                                goal,
-                                project,
-                                json,
-                            } => (goal, project, json, None),
-                            GoalCommand::Tasks {
-                                goal,
-                                project,
-                                after,
-                                maximum,
-                                json,
-                            } => (goal, project, json, Some((after, maximum))),
-                        };
-                        let resolved = client::request(
-                            &state,
-                            ControlAction::ResolveProject {
-                                selector,
-                                cwd: std::env::current_dir()?,
-                            },
-                        )
-                        .await?;
-                        let ControlResponse::ProjectResolved { project, .. } = resolved else {
-                            anyhow::bail!("unexpected Project routing response");
-                        };
-                        let action = match page {
-                            Some((after, maximum)) => ControlAction::GoalTasks {
-                                project,
-                                goal,
-                                after,
-                                maximum: usize::from(maximum),
-                            },
-                            None => ControlAction::GoalStatus { project, goal },
-                        };
-                        let response = client::request(&state, action).await?;
-                        ensure!(
-                            matches!(
-                                (&response, page),
-                                (ControlResponse::GoalFacts { .. }, None)
-                                    | (ControlResponse::GoalTaskPage { .. }, Some(_))
-                            ),
-                            "unexpected Goal response"
-                        );
-                        print_control(response, json, false)
-                    }
+                    Command::Goal {
+                        input,
+                        project,
+                        json,
+                        command,
+                    } => goal_control(&state, input, project, json, command).await,
                     _ => unreachable!(),
                 }
             })?;

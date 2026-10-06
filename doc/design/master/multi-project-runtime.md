@@ -152,6 +152,11 @@ never open a Store or owner, start a service, advance an epoch or acknowledge
 controls; absent discovery requires explicit `rrx serve`. The existing legacy
 Project registry commands retain their reconciliation behavior described below.
 
+Goal proposals and explicit typed plan acceptance use the same exact service
+Project routing. Plans bind a supplied expected Project version; Goal lifecycle
+controls bind a supplied expected Goal version. Conflicts never trigger an
+automatic refresh into a different scoped or current decision.
+
 Example:
 
 ```text
