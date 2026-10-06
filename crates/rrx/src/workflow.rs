@@ -530,7 +530,7 @@ fn require_managed_native_binding_composed() -> Result<()> {
     // Capability metadata cannot authorize the legacy Task-rewriting binder.
     // Replace this refusal only when the actual private admission and record-only
     // binding producers are composed, with genuine positive controls.
-    Ok(())
+    Err(NativePreflightRefusal::ManagedBindingUnavailable.into())
 }
 #[cfg(test)]
 #[derive(Default)]
