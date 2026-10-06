@@ -56,6 +56,25 @@ impl Insert {
         );
         Ok(())
     }
+    fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        let names = columns(self.table).context("marker table contract absent")?;
+        let predicates = names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| format!("{name} IS ?{}", index + 1))
+            .collect::<Vec<_>>();
+        let exact: bool = tx.query_row(
+            &format!(
+                "SELECT EXISTS(SELECT 1 FROM {} WHERE {})",
+                self.table,
+                predicates.join(" AND ")
+            ),
+            params_from_iter(&self.values),
+            |r| r.get(0),
+        )?;
+        ensure!(exact, "original marker allocation image differs");
+        Ok(())
+    }
 }
 
 /// Owned exact full column images. There is no public table/action selector,
@@ -75,6 +94,18 @@ fn body(value: &serde_json::Value, bound: usize) -> Result<String> {
 }
 
 impl MarkerRows {
+    pub(super) fn validate_open_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        // Native owner/readiness facts may advance separately. The original
+        // open operation and preparation template stay exact and immutable.
+        for table in ["managed_phase_operations", "managed_phase_inputs"] {
+            self.rows
+                .iter()
+                .find(|row| row.table == table)
+                .context("original open marker image absent")?
+                .validate_tx(tx)?;
+        }
+        Ok(())
+    }
     pub(super) fn plan(marker: &ManagedMarkerPlan, allocation: &NativeAllocation) -> Result<Self> {
         let f = allocation.facts();
         // The owner key is the genuine factory's immutable allocated pair key.
@@ -288,6 +319,14 @@ impl MarkerRows {
         // their identity triggers validate the already inserted operation.
         for row in &self.rows {
             row.write(tx)?;
+        }
+        Ok(())
+    }
+    /// Exact planned rows, including every metadata column and encoded body.
+    /// Neither a successful lookup nor these images reconstructs authority.
+    pub(super) fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        for row in &self.rows {
+            row.validate_tx(tx)?;
         }
         Ok(())
     }

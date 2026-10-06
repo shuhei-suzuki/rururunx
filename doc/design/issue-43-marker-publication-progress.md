@@ -38,8 +38,18 @@ authorize later writes or guarantee their success.
 Caller errors/drop, storage errors, or post-commit cache publication errors retain
 the exact original plan and charged slot. A proven absent marker can restore only
 the original unmarked allocation through the existing Store rollback observation.
-Reconciliation of an uncertain committed marker, sole actual Native handoff,
-full Workflow successor validation, Native private admission/ACK/terminal writers,
+Initial uncertain-commit reconciliation consumes only that saved plan: one
+Immediate checks all five exact allocation images, original owners/Context/locks,
+post-Task/Workflow, unchanged original Unit and absence of Session, invocation or
+input admission. Same-plan Driver publication then checks its actual post-rows
+and accepts only original cache or its own identical post-cache. No replayed write
+or newly captured current marker is allowed. Runtime resolves wake IDs only to
+the actual retained slot, preserves its first known-marker object and atomically
+permits one PhaseLaunch handoff. A second handoff, changed rows, vanished plan,
+poisoned locks or ended Runtime is held. This does not prove a missing launch was
+successful; post-handoff settlement requires the actual Native producer.
+
+Full Workflow successor validation, Native private admission/ACK/terminal writers,
 readiness/removal and record-only normal/late binding remain required work.
 
 No positive fixture fabricates an installed Driver, composed activation, Native

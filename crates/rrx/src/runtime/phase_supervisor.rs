@@ -32,6 +32,7 @@ struct Slot {
     publication: Mutex<PublicationState>,
     publication_plan: Mutex<Option<Arc<crate::state::managed_binding::MarkerPublicationPlan>>>,
     marker: Mutex<Option<Arc<crate::state::managed_binding::OriginalMarker>>>,
+    launch_handed_off: AtomicBool,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PublicationState {
@@ -227,6 +228,7 @@ impl PhaseSupervisor {
             publication: Mutex::new(PublicationState::Unmarked),
             publication_plan: Mutex::new(None),
             marker: Mutex::new(None),
+            launch_handed_off: AtomicBool::new(false),
         });
         if !queue.projects.contains_key(&project) {
             queue.rotation.push_back(project);
@@ -526,6 +528,143 @@ impl Drop for PhaseSupervisor {
 }
 
 impl super::Runtime {
+    /// One actual handoff from a retained known marker. This method does not
+    /// resolve a new allocation, restart an old launch, or remove its custody.
+    fn handoff_phase_marker(
+        &self,
+        retention: MarkerPublicationRetention,
+        marker: Arc<crate::state::managed_binding::OriginalMarker>,
+    ) -> Result<PhaseLaunch> {
+        let slot = &retention.capacity.slot;
+        let q = self
+            .phases
+            .queue
+            .lock()
+            .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
+        ensure!(
+            !self.phases.closed.load(Ordering::SeqCst)
+                && Arc::ptr_eq(&retention.supervisor, &self.phases)
+                && q.entries
+                    .get(&slot.allocation.facts().operation_id)
+                    .is_some_and(|current| Arc::ptr_eq(current, slot))
+                && Arc::ptr_eq(marker.allocation(), &slot.allocation),
+            "marker handoff capacity ended or changed"
+        );
+        let state = slot
+            .publication
+            .lock()
+            .map_err(|_| anyhow::anyhow!("publication state poisoned"))?;
+        ensure!(
+            *state == PublicationState::Publishing,
+            "marker is not publishing"
+        );
+        let plan = slot
+            .publication_plan
+            .lock()
+            .map_err(|_| anyhow::anyhow!("publication plan poisoned"))?;
+        let original_plan = plan
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("original handoff plan absent"))?;
+        ensure!(
+            marker.from_original_plan(original_plan),
+            "marker handoff is not the same retained original plan"
+        );
+        let mut saved = slot
+            .marker
+            .lock()
+            .map_err(|_| anyhow::anyhow!("saved marker poisoned"))?;
+        if let Some(original) = saved.as_ref() {
+            ensure!(
+                original.from_original_plan(original_plan),
+                "different known marker retained"
+            );
+        }
+        // Preserve the first genuine known marker object on reconciliation.
+        let marker = saved.get_or_insert(marker).clone();
+        ensure!(
+            slot.launch_handed_off
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok(),
+            "original Native launch already handed off"
+        );
+        drop(saved);
+        drop(plan);
+        drop(state);
+        drop(q);
+        Ok(PhaseLaunch {
+            parts: Arc::new(PhaseLaunchParts { marker, retention }),
+        })
+    }
+
+    /// An operation ID is a wake hint only. Authority comes from the SAME
+    /// supervisor slot and its private saved pre-transaction plan, never SQL.
+    /// Reconciliation may prove a committed original marker once; it cannot
+    /// replay a handoff or start the marker transaction a second time.
+    pub(crate) async fn reconcile_phase_marker(
+        &self,
+        operation: OperationId,
+    ) -> Result<PhaseLaunch> {
+        let _admission = self.control_admission.lock().await;
+        ensure!(
+            self.service_running(),
+            "Runtime stopped before marker reconciliation"
+        );
+        let (retention, plan) = {
+            let q = self
+                .phases
+                .queue
+                .lock()
+                .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
+            let slot = q
+                .entries
+                .get(&operation)
+                .ok_or_else(|| anyhow::anyhow!("original marker slot unavailable"))?
+                .clone();
+            ensure!(
+                !self.phases.closed.load(Ordering::SeqCst)
+                    && !slot.launch_handed_off.load(Ordering::SeqCst),
+                "original phase already handed off or supervisor ended"
+            );
+            let state = slot
+                .publication
+                .lock()
+                .map_err(|_| anyhow::anyhow!("publication state poisoned"))?;
+            ensure!(
+                *state == PublicationState::Publishing,
+                "original publication absent"
+            );
+            let plan = slot
+                .publication_plan
+                .lock()
+                .map_err(|_| anyhow::anyhow!("publication plan poisoned"))?
+                .as_ref()
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("saved original plan absent"))?;
+            ensure!(
+                Arc::ptr_eq(plan.allocation(), &slot.allocation),
+                "saved marker allocation differs"
+            );
+            drop(state);
+            let capacity = PendingPhaseCapacity {
+                supervisor: Arc::downgrade(&self.phases),
+                slot,
+            };
+            (
+                MarkerPublicationRetention {
+                    supervisor: self.phases.clone(),
+                    capacity,
+                },
+                plan,
+            )
+        };
+        let marker = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .confirm_retained_marker(&plan)?;
+        self.handoff_phase_marker(retention, marker)
+    }
     /// Concrete production producer, still unreachable while the installation
     /// issuer is unavailable. Planning finishes before control/Store admission.
     pub(crate) async fn publish_phase_marker(
@@ -575,19 +714,7 @@ impl super::Runtime {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .publish_managed_marker(&plan)?;
-        {
-            let mut saved = retention
-                .capacity
-                .slot
-                .marker
-                .lock()
-                .map_err(|_| anyhow::anyhow!("saved marker poisoned"))?;
-            ensure!(saved.is_none(), "known marker already retained");
-            *saved = Some(marker.clone());
-        }
-        Ok(PhaseLaunch {
-            parts: Arc::new(PhaseLaunchParts { marker, retention }),
-        })
+        self.handoff_phase_marker(retention, marker)
     }
     /// Protect the genuine same-supervisor slot BEFORE beginning the marker TX.
     /// This retention alone never authorizes an adapter or private Store writer.
