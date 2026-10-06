@@ -964,7 +964,7 @@ mod inventory_tests {
         };
         assert!(full.with_git_intent(row.clone()).is_err());
         let before = Inventory {
-            rows: vec![row.clone(); 242],
+            rows: vec![row.clone(); 254],
         };
         assert_eq!(before.with_git_intent(row).unwrap().rows.len(), 255);
     }
@@ -1186,7 +1186,13 @@ mod inventory_tests {
                 .with_version_intent(row.clone(), tested_budget())
                 .is_err()
         );
-        baseline.rows.last_mut().unwrap().text[7].pop();
+        baseline
+            .rows
+            .iter_mut()
+            .find(|r| !r.text[7].is_empty())
+            .unwrap()
+            .text[7]
+            .pop();
         assert!(
             baseline
                 .with_version_intent(row.clone(), tested_budget())
