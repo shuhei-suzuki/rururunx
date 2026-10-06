@@ -89,7 +89,7 @@ fn shape(lengths: &[usize; 8], version: u64) -> Result<usize> {
             && version <= i64::MAX as u64,
         "Native effect indexed/body bound exceeded"
     );
-    lengths.iter().try_fold(8 * 8 + 8 + 8, |sum, n| {
+    lengths.iter().try_fold(8usize * 8 + 8 + 8, |sum, n| {
         sum.checked_add(*n)
             .context("Native inventory size overflow")
     })
@@ -207,7 +207,10 @@ impl Inventory {
                     "Native effect version is not INTEGER"
                 );
                 let version = u64::try_from(row.get::<_, i64>(17)?)?;
-                ensure!(row.get::<_, bool>(18)?, "Native effect state is not an allowed token");
+                ensure!(
+                    row.get::<_, bool>(18)?,
+                    "Native effect state is not an allowed token"
+                );
                 bytes = bytes
                     .checked_add(shape(&lengths, version)?)
                     .context("Native inventory overflow")?;
