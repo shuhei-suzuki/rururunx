@@ -661,7 +661,7 @@ fn store_initial_none_to_some_and_same_uuid_lifecycle_pid_update_remain_valid() 
     record.data["native_ref"] = serde_json::json!("first-native");
     store.put_record(&mut record).unwrap();
     assert_eq!(record.version, 2);
-    record.data["state"] = serde_json::json!("running");
+    record.data["state"] = serde_json::to_value(SessionState::Running).unwrap();
     record.data["pid"] = serde_json::json!(12345);
     store.put_record(&mut record).unwrap();
     assert_eq!(record.version, 3);
