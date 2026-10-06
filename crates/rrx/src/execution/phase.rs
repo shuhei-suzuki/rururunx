@@ -34,6 +34,10 @@ pub(crate) struct AllocationFacts<'a> {
     pub epoch: u64,
     pub unit_version: u64,
     pub origin_id: Uuid,
+    pub state_path: &'a Path,
+    pub state_root: &'a Path,
+    pub instance_id: &'a str,
+    pub program: &'a Path,
     pub provider: &'a str,
     pub alias: &'a str,
     pub role: SessionRole,
@@ -71,6 +75,10 @@ impl NativeAllocation {
             epoch: unit.owner_epoch,
             unit_version: unit.version,
             origin_id: port.origin_id(),
+            state_path: port.owner().state_path(),
+            state_root: port.owner().state_root(),
+            instance_id: port.owner().instance_id(),
+            program: port.program(),
             provider: port.provider(),
             alias: port.alias(),
             role: self.seed.role(),
@@ -317,6 +325,11 @@ mod tests {
                 )
                 .unwrap();
             let f = allocation.facts();
+            assert_eq!(
+                (f.state_path, f.state_root, f.instance_id),
+                (owner.state_path(), owner.state_root(), owner.instance_id())
+            );
+            assert_eq!(f.program, _dir.path().join("native-counter"));
             assert_eq!(
                 (f.unit_id, f.generation, f.epoch, f.unit_version),
                 (unit.id, unit.generation, unit.owner_epoch, unit.version)
