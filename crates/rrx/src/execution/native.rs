@@ -2217,12 +2217,24 @@ impl Core {
                     if self.collector.overflowed() {return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));}
 
                     if seen.as_ref().is_err_and(|e|e.kind==ErrorKind::ProcessFailure) {
+                        // Capture this accepted owned terminal BEFORE optional Store
+                        // bookkeeping. A quota-sensitive execution error remains
+                        // Unknown if accepted bucket state cannot be read; an outage
+                        // cannot invent work failure or subscription exhaustion.
+                        self.collector.claude_terminal(&frame);
                         let quota_sensitive=matches!(frame["subtype"].as_str(),Some("success"|"error_during_execution"));
+                        let provisional=if quota_sensitive && !quota_buckets.is_empty() {
+                            (WorkOutcome::Unknown,Disposition::Lost,None)
+                        } else if state.terminal_capacity || (unclassified_limit && quota_sensitive) {
+                            (WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)
+                        } else {
+                            (WorkOutcome::Failure,Disposition::Completed,None)
+                        };
+                        self.observed_terminal=Some(provisional);
                         // Consult accepted bucket state, not the last telemetry frame.
                         // Budget/turn/output caps remain work failures even during quota exhaustion.
                         let quota_exhausted=quota_sensitive && !quota_buckets.is_empty() && self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?
                             .quota_observations("claude","unknown")?.iter().any(|o|o.status==QuotaStatus::Exhausted && quota_buckets.contains(&o.bucket));
-                        self.collector.claude_terminal(&frame);
                         let observed=if quota_exhausted {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
                             else if state.terminal_capacity || (unclassified_limit && quota_sensitive) {(WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)}
                             else {(WorkOutcome::Failure,Disposition::Completed,None)};
