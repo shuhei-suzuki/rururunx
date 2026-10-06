@@ -522,12 +522,6 @@ async fn managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_i
         task.workflow = WorkflowClass::Quick;
         task.reviewers = vec!["native-reviewer".into()];
         owner.store.lock().unwrap().put_task(&mut task).unwrap();
-        let seed = results::text(
-            &results::git(&dir.path().join("repo"), ["rev-parse", "HEAD"])
-                .await
-                .unwrap(),
-        )
-        .unwrap();
         let executor = execution::native::tests::program(dir.path(), "codex");
         let reviewer = execution::native::tests::program(dir.path(), "claude");
         let text = std::fs::read_to_string(&reviewer).unwrap();
@@ -551,20 +545,75 @@ async fn managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_i
         );
         let registry =
             Arc::new(AgentRegistry::from_managed_config(&config, owner.clone()).unwrap());
+        let sources = Arc::new(
+            execution::workflow_source::ManagedWorkflowSources::new(owner.clone(), config.clone())
+                .unwrap(),
+        );
+        let verifier = Arc::new(
+            execution::verification::ManagedVerifier::new(owner.clone(), sources.clone()).unwrap(),
+        );
+        use execution::verification::{Applicability, Category, TestCommand, TestsProfile};
+        let project_version = owner
+            .store
+            .lock()
+            .unwrap()
+            .project(task.project_id)
+            .unwrap()
+            .unwrap()
+            .version;
+        // This managed fixture reaches review only through a real Tests command,
+        // admitted before Workflow activation; caller Passed is never Tests proof.
+        verifier
+            .admit_tests(
+                task.project_id,
+                project_version,
+                TestsProfile {
+                    commands: vec![TestCommand {
+                        id: "retained-answer".into(),
+                        category: Category::Tests,
+                        program: std::fs::canonicalize("/usr/bin/python3").unwrap(),
+                        args: vec![
+                            "-c".into(),
+                            "from pathlib import Path; assert Path('fixture-result.txt').is_file()"
+                                .into(),
+                        ],
+                        cwd: ".".into(),
+                        timeout_seconds: 10,
+                        drain_seconds: 1,
+                        stdout_bytes: 4096,
+                        stderr_bytes: 4096,
+                    }],
+                    applicability: BTreeMap::from([
+                        (Category::Tests, Applicability::Required),
+                        (
+                            Category::Typecheck,
+                            Applicability::NotApplicable("fixture has no typed sources".into()),
+                        ),
+                        (
+                            Category::Lint,
+                            Applicability::NotApplicable("fixture has no lint toolchain".into()),
+                        ),
+                        (
+                            Category::Build,
+                            Applicability::NotApplicable("fixture contains data only".into()),
+                        ),
+                    ]),
+                },
+            )
+            .unwrap();
+        sources.prepare(task.id, "codex").await.unwrap();
         let engine = WorkflowEngine::new(
             owner.store(),
             registry.clone(),
             config,
-            Arc::new(Sources {
-                owner: owner.clone(),
-                seed,
-                result: results::ResultStore::new(owner.clone()),
-            }),
+            sources,
             Arc::new(Gates {
                 owner: owner.clone(),
                 control: "publish",
             }),
         )
+        .unwrap()
+        .with_verifier(verifier)
         .unwrap();
         engine.initialize(task.id, None).await.unwrap();
         engine.step(task.id, BTreeMap::new()).await.unwrap();
