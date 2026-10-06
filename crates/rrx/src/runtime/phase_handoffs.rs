@@ -46,6 +46,35 @@ pub(super) struct PhasePreparationOrigin {
     ticket: Weak<DriverReadTicket>,
 }
 impl PhasePreparationOrigin {
+    /// Reject a different genuine but row-equal ticket BEFORE marker planning
+    /// or SQL. Only the Source producer's SAME original Arc can continue.
+    pub(super) fn validate_ticket(&self, ticket: &Arc<DriverReadTicket>) -> Result<()> {
+        let original = self
+            .ticket
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("original Source ticket ended"))?;
+        ensure!(
+            Arc::ptr_eq(&original, ticket),
+            "different original Source ticket"
+        );
+        Ok(())
+    }
+    /// Validate a SAME saved original plan before uncertain-commit confirmation.
+    /// No current row, recaptured ticket or post-commit cache is substituted.
+    pub(super) fn validate_publication(
+        &self,
+        plan: &crate::state::managed_binding::MarkerPublicationPlan,
+    ) -> Result<()> {
+        let ticket = self
+            .ticket
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("original Source ticket ended"))?;
+        ensure!(
+            self.matches_allocation(plan.allocation()) && plan.matches_source_ticket(&ticket),
+            "publication plan lacks same original Source ticket/allocation"
+        );
+        Ok(())
+    }
     pub(super) fn matches_allocation(&self, allocation: &Arc<NativeAllocation>) -> bool {
         Arc::ptr_eq(&self.allocation, allocation)
             && self.source.operation() == allocation.facts().operation_id

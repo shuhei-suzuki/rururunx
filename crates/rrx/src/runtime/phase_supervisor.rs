@@ -753,6 +753,8 @@ impl super::Runtime {
                 plan,
             )
         };
+        let origin = retention.capacity.preparation_origin()?;
+        origin.validate_publication(&plan)?;
         let marker = self
             .owner
             .store
@@ -771,13 +773,15 @@ impl super::Runtime {
     ) -> Result<super::phase_jobs::PhaseInvocation> {
         // Actual accepted Source provenance must exist before marker planning
         // or SQL effects. Bare queue capacity is not this private origin.
-        let _origin = capacity.preparation_origin()?;
+        let origin = capacity.preparation_origin()?;
+        origin.validate_ticket(&ticket)?;
         let plan = crate::state::managed_binding::plan_marker_publication(
             self.owner.clone(),
             capacity.slot.allocation.clone(),
             ticket,
             workflow,
         )?;
+        origin.validate_publication(&plan)?;
         let _admission = self.control_admission.lock().await;
         ensure!(
             self.service_running(),

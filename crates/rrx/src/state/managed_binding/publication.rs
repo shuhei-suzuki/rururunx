@@ -146,6 +146,10 @@ pub(crate) fn plan_marker_publication(
     }))
 }
 impl MarkerPublicationPlan {
+    /// Immutable original-object linkage, never a currency or effect grant.
+    pub(crate) fn matches_source_ticket(&self, ticket: &Arc<DriverReadTicket>) -> bool {
+        self.driver.matches_source_ticket(ticket)
+    }
     pub(crate) fn allocation(&self) -> &Arc<NativeAllocation> {
         &self.allocation
     }

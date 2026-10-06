@@ -216,3 +216,14 @@ uninstalled, and composition issuer remains Err. Source acceptance/lineage and
 all genuine cancellation, capacity, marker uncertainty and stage controls remain
 unqualified until that actual composition exists. No grant-bearing fixture or
 SQL-seeded Native allocation/Driver proof is introduced by this increment.
+
+The corrected pre-planning consumer requires the supplied original ticket Arc
+to match that accepted origin BEFORE making a marker plan or performing SQL.
+A fresh genuine ticket with equal rows is refused before Task/Workflow/Driver/
+operation effects; checking only the eventual marker at launch is too late.
+The completed plan is also checked against the original allocation/ticket before
+admission, and saved-plan reconciliation repeats that same original linkage before
+Store confirmation. The post-commit launch check remains an additional condition.
+This corrects verified independent SPO-A-M1/B-SPO-M1; the genuine second-ticket
+no-effects control and its compiled mutation remain unqualified while the actual
+composition issuer is absent. No setup refusal is credited as such a control.
