@@ -1,5 +1,6 @@
 //! Actual managed Workflow commands, immutable evidence, and caller-Passed refusal.
 use super::*;
+use std::collections::BTreeSet;
 use crate::execution::verification::{
     Applicability, Category, ManagedVerifier, TestCommand, TestsProfile,
 };
