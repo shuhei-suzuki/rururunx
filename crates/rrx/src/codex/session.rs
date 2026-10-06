@@ -5555,13 +5555,20 @@ mod tests {
         }
     }
     fn journal(directory: &std::path::Path, value: &Value) {
-        use std::io::Write;
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(directory.join("journal"))
-            .unwrap();
-        writeln!(file, "{value}").unwrap();
+        // This fixture has one serial writer and live cross-process readers.
+        // Publish the whole snapshot atomically so a reader never parses a
+        // partially appended JSON line. Production protocol behavior is unchanged.
+        let journal = directory.join("journal");
+        let mut bytes = match std::fs::read(&journal) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(error) => panic!("cannot read fixture journal: {error}"),
+        };
+        bytes.extend(serde_json::to_vec(value).unwrap());
+        bytes.push(b'\n');
+        let pending = directory.join("journal.pending");
+        std::fs::write(&pending, bytes).unwrap();
+        std::fs::rename(pending, journal).unwrap();
     }
     fn journal_values(directory: &std::path::Path) -> Vec<Value> {
         std::fs::read_to_string(directory.join("journal"))

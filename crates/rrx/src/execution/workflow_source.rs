@@ -77,6 +77,12 @@ impl ReconstructedFrame {
         &self.digest
     }
 }
+#[cfg(test)]
+struct RecoveryPause {
+    after_verify: bool,
+    reached: tokio::sync::oneshot::Sender<()>,
+    release: tokio::sync::oneshot::Receiver<()>,
+}
 struct RecoveryGuard {
     owner: Arc<RuntimeOwner>,
     binding: Option<crate::state::SourceReadBinding>,
@@ -245,6 +251,18 @@ impl ManagedWorkflowSources {
     // exercised through real retained producers below, never a persisted grant.
     #[allow(dead_code)]
     pub(crate) async fn recover_retained(&self, task: TaskId) -> Result<()> {
+        self.recover_retained_inner(
+            task,
+            #[cfg(test)]
+            None,
+        )
+        .await
+    }
+    async fn recover_retained_inner(
+        &self,
+        task: TaskId,
+        #[cfg(test)] mut pause: Option<RecoveryPause>,
+    ) -> Result<()> {
         let slot = self.slot(task)?;
         let mut state = slot.lock().await;
         let claim = self
@@ -258,6 +276,12 @@ impl ManagedWorkflowSources {
             owner: self.owner.clone(),
             binding: Some(binding.clone()),
         };
+        #[cfg(test)]
+        if pause.as_ref().is_some_and(|p| !p.after_verify) {
+            let p = pause.take().unwrap();
+            let _ = p.reached.send(());
+            let _ = p.release.await;
+        }
         let result = results::ResultStore::new(self.owner.clone());
         result.verify_recovery(&claim.artifact, &binding).await?;
         let io = RetainedGit::for_recovery(self.owner.clone(), &claim.artifact, binding.clone())?;
@@ -288,6 +312,11 @@ impl ManagedWorkflowSources {
             frame: Arc::new(frame),
             digest,
         };
+        #[cfg(test)]
+        if let Some(p) = pause {
+            let _ = p.reached.send(());
+            let _ = p.release.await;
+        }
         let installed = self
             .owner
             .store

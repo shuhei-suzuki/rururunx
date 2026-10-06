@@ -430,7 +430,9 @@ does not claim final Phase2, whole #14/#23/#24/#27, or MVP completion.
 
 Native result receipts own schema6. Published-frame source recovery is the first
 Runtime dependency delivery and owns schema7; first Verifier delivery takes8 and
-future ReviewRound moves to9. The full driver/Goal/Runtime schema needs the next coordinated number. This ordering
+the first operational Runtime/Goal delivery owns9 and future ReviewRound moves
+to10. [Operational integration supplement](runtime-operational-integration-design.md)
+fixes its actual consumer/authority seams. This ordering
 changes allocation only, not reviewed authority/CAS requirements. The first source
 recovery delivery implements section5.1; fresh pre-input section5.2 remains an
 explicit unsupported integration until its genuine producer is implemented.

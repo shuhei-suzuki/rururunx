@@ -48,6 +48,8 @@ pub struct NativeStatus {
     pub wait_reason: Option<WaitReason>,
     pub pending: Vec<Value>,
     pub result: Option<Value>,
+    pub receipt: Option<NativeResultId>,
+    pub observed_work: Option<WorkOutcome>,
     pub metrics: Option<Value>,
     pub diagnostic: Option<&'static str>,
     pub failure: Option<NativeFailure>,
@@ -74,6 +76,8 @@ struct Entry {
     handle: ManagedSessionRef,
     status: watch::Receiver<NativeStatus>,
     control: mpsc::Sender<Control>,
+    terminal: Arc<Mutex<Option<NativeTerminal>>>,
+    update: watch::Sender<NativeStatus>,
 }
 /// Conservative caps: aliases for a provider share the strictest configured cap.
 /// Counting leases in SQLite includes admission before a Session exists.
@@ -197,6 +201,11 @@ impl NativeSessions {
                 && input.input.payload.len() <= 1024 * 1024,
             "native input identity mismatch"
         );
+        self.owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .validate_native_input(&unit.authority(), &input.input)?;
         let mut preparation_guard = owner::PreparationGuard::new(self.owner.clone(), &unit);
         ensure!(
             matches!(unit.provider.as_str(), "codex" | "claude"),
@@ -394,13 +403,26 @@ impl NativeSessions {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        let seed = NativeSeed {
+            input: input.input.clone(),
+            id: NativeInvocationId::new(),
+            profile: format!("text_v1/{}", unit.profile_digest),
+            native_version: version.trim().into(),
+        };
+        let mut registration_guard = None;
         let mut child = {
             let mut store = self
                 .owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            unit = store.register_execution_session(&unit.authority(), &session)?;
+            unit = store.register_native_session(&unit.authority(), &session, &seed)?;
+            registration_guard.replace(RegistrationGuard {
+                owner: self.owner.clone(),
+                unit_id: unit.id,
+                invocation: seed.id,
+                armed: true,
+            });
             preparation_guard.update(&unit);
             match process::OwnedProcess::spawn(&mut command) {
                 Ok(child) => child,
@@ -445,6 +467,8 @@ impl NativeSessions {
             wait_reason: None,
             pending: vec![],
             result: None,
+            receipt: None,
+            observed_work: None,
             metrics: None,
             diagnostic: None,
             failure: None,
@@ -456,14 +480,19 @@ impl NativeSessions {
         } else {
             4 * 1024 * 1024
         };
+        let frozen_terminal = Arc::new(Mutex::new(None));
         let core = Core {
             owner: self.owner.clone(),
             unit,
             session,
             record_version: 1,
+            invocation: seed.id,
+            collector: native_result::Collector::default(),
+            receipt_saved: false,
+            frozen_terminal: frozen_terminal.clone(),
             wire: Lines::new(stdin, stdout, limit),
             child,
-            update,
+            update: update.clone(),
             controls: receiver,
             native,
             drain,
@@ -477,9 +506,14 @@ impl NativeSessions {
                     handle: handle.clone(),
                     status,
                     control,
+                    terminal: frozen_terminal,
+                    update,
                 },
             );
         preparation_guard.disarm();
+        if let Some(guard) = registration_guard.as_mut() {
+            guard.armed = false;
+        }
         tokio::spawn(core.run(input.input, model, effort, profile));
         Ok(NativeStart::Launched(handle))
     }
@@ -505,17 +539,49 @@ impl NativeSessions {
     }
     pub fn status(&self, handle: &ManagedSessionRef) -> Result<NativeStatus> {
         let mut status = self.entry(handle)?.0.borrow().clone();
-        let unit = self
+        let (pending, updater) = {
+            let entries = self
+                .entries
+                .lock()
+                .map_err(|_| anyhow::anyhow!("native registry poisoned"))?;
+            let entry = entries
+                .get(&handle.session)
+                .context("native Session missing")?;
+            (entry.terminal.clone(), entry.update.clone())
+        };
+        let mut reconciled = false;
+        let mut store = self
             .owner
             .store
             .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .execution_unit(handle.unit)?;
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+        let mut frozen = pending
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
+        if let Some(proof) = frozen.as_ref() {
+            status.observed_work = Some(proof.receipt.observed_work);
+            if proof.persist(&mut store).is_ok() {
+                *frozen = None;
+                reconciled = true;
+                status.diagnostic = None;
+            }
+        }
+        let unit = store.execution_unit(handle.unit)?;
+        if let Some((session, _)) = store.session(handle.session)? {
+            status.session = session;
+        }
+        if let Some(receipt) = store.native_session_result(handle.session)? {
+            status.receipt = Some(receipt.id);
+            status.result = Some(receipt.projection());
+        }
         status.authority = unit.authority();
         status.work = unit.work;
         status.disposition = unit.disposition;
         status.cleanup = unit.cleanup;
         status.wait_reason = unit.wait_reason;
+        if reconciled {
+            updater.send_modify(|current| current.clone_from(&status));
+        }
         Ok(status)
     }
     pub fn release(&self, handle: &ManagedSessionRef) -> Result<()> {
@@ -530,14 +596,32 @@ impl NativeSessions {
             entry.handle == *handle,
             "foreign native Session/unit/generation"
         );
+        // Logical terminal state is durable before hygiene/watch publication. A
+        // caller may observe that committed result and release the registry entry;
+        // the supervisor retains its OwnedProcess until stop_and_reap completes.
+        let store = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+        let unit = store.execution_unit(handle.unit)?;
+        let (session, _) = store
+            .session(handle.session)?
+            .context("native Session missing")?;
         ensure!(
-            matches!(
-                entry.status.borrow().session.state,
-                SessionState::Exited
-                    | SessionState::Stopped
-                    | SessionState::Lost
-                    | SessionState::Failed
-            ),
+            unit.scope == handle.scope
+                && unit.generation == handle.generation
+                && unit.owner_epoch == handle.epoch
+                && unit.session_id == Some(handle.session)
+                && session.scope == handle.scope
+                && !unit.native_effects_open
+                && matches!(
+                    session.state,
+                    SessionState::Exited
+                        | SessionState::Stopped
+                        | SessionState::Lost
+                        | SessionState::Failed
+                ),
             "live native Session cannot be released"
         );
         entries.remove(&handle.session);
@@ -595,6 +679,7 @@ struct Lines {
     queued_bytes: usize,
     next: u64,
     limit: usize,
+    evidence: Option<native_result::WireEvidence>,
 }
 impl Lines {
     fn new(stdin: ChildStdin, stdout: ChildStdout, limit: usize) -> Self {
@@ -606,6 +691,7 @@ impl Lines {
             queued_bytes: 0,
             next: 1,
             limit,
+            evidence: None,
         }
     }
     async fn send(&mut self, value: &Value) -> Result<()> {
@@ -622,18 +708,67 @@ impl Lines {
     async fn line(&mut self) -> Result<Value> {
         loop {
             let chunk = self.stdout.fill_buf().await?;
-            ensure!(!chunk.is_empty(), NativeFailure::TransportLost);
+            if chunk.is_empty() {
+                self.evidence = Some(native_result::WireEvidence {
+                    observed_sha256: native_result::digest(&self.partial),
+                    observed_bytes: self.partial.len() as u64,
+                    exact_length: false,
+                    category: "eof".into(),
+                });
+                anyhow::bail!(NativeFailure::TransportLost);
+            }
             let newline = chunk.iter().position(|b| *b == b'\n');
             let n = newline.map_or(chunk.len(), |i| i + 1);
-            ensure!(
-                self.partial.len() + n <= self.limit,
-                "native frame too large"
-            );
+            if self.partial.len() + n > self.limit {
+                use sha2::{Digest, Sha256};
+                let mut digest = Sha256::new();
+                digest.update(&self.partial);
+                digest.update(&chunk[..n]);
+                self.evidence = Some(native_result::WireEvidence {
+                    observed_sha256: format!("{:x}", digest.finalize()),
+                    observed_bytes: (self.partial.len() + n) as u64,
+                    exact_length: false,
+                    category: "frame_bytes".into(),
+                });
+                anyhow::bail!("native frame too large");
+            }
             self.partial.extend_from_slice(&chunk[..n]);
             self.stdout.consume(n);
             if newline.is_some() {
                 let bytes = std::mem::take(&mut self.partial);
-                return Ok(serde_json::from_slice(&bytes)?);
+                let decoded = super::strict_json::decode(
+                    &bytes,
+                    super::strict_json::Limits {
+                        frame_bytes: self.limit.min(4 * 1024 * 1024),
+                        depth: 32,
+                        nodes: 65_536,
+                        string_bytes: 1024 * 1024,
+                        total_string_bytes: 4 * 1024 * 1024,
+                        object_entries: 4096,
+                        array_entries: 4096,
+                    },
+                );
+                if let Err(error) = &decoded {
+                    use super::strict_json::Error;
+                    let category = match error {
+                        Error::InvalidLimits | Error::InvalidJson => "invalid_json",
+                        Error::FrameBytes => "frame_bytes",
+                        Error::Depth => "depth",
+                        Error::Nodes => "nodes",
+                        Error::StringBytes => "string_bytes",
+                        Error::TotalStringBytes => "total_string_bytes",
+                        Error::ObjectEntries => "object_entries",
+                        Error::ArrayEntries => "array_entries",
+                        Error::DuplicateKey => "duplicate_key",
+                    };
+                    self.evidence = Some(native_result::WireEvidence {
+                        observed_sha256: native_result::digest(&bytes),
+                        observed_bytes: bytes.len() as u64,
+                        exact_length: true,
+                        category: category.into(),
+                    });
+                }
+                return decoded.map_err(anyhow::Error::from);
             }
         }
     }
@@ -683,6 +818,7 @@ fn admit_native_frame(
     owner: &RuntimeOwner,
     pinned: &ExecutionUnit,
     session: SessionId,
+    invocation: NativeInvocationId,
     expected: Option<&ExecutionAuthority>,
     kind: &str,
     frame: &Value,
@@ -716,20 +852,22 @@ fn admit_native_frame(
         "native permission authority changed"
     );
     let operation = OperationId::new();
-    store.reserve_managed_effect(
-        &authority,
-        &ManagedEffect {
-            id: operation,
-            unit_id: current.id,
-            scope: current.scope,
-            kind: kind.into(),
-            idempotency_key: format!("native-{operation}"),
-            expected_target: format!("session/{session}/sha256/{digest}"),
-            state: EffectState::Pending,
-            receipt: BTreeMap::new(),
-            version: 1,
-        },
-    )?;
+    let effect = ManagedEffect {
+        id: operation,
+        unit_id: current.id,
+        scope: current.scope,
+        kind: kind.into(),
+        idempotency_key: format!("native-{operation}"),
+        expected_target: format!("session/{session}/sha256/{digest}"),
+        state: EffectState::Pending,
+        receipt: BTreeMap::new(),
+        version: 1,
+    };
+    if kind == "native_input" {
+        store.reserve_native_input(&authority, invocation, &effect, &digest)?;
+    } else {
+        store.reserve_managed_effect(&authority, &effect)?;
+    }
     Ok(operation)
 }
 fn native_authority(
@@ -752,11 +890,168 @@ fn native_authority(
     store.validate_execution(&unit.authority(), true, false)?;
     Ok(unit.authority())
 }
+// These non-Clone private-field values originate only at the actual Native actor.
+// DTO/GenericRecord/tool JSON cannot construct a dispatch or terminal producer.
+pub(crate) struct NativeSeed {
+    input: PreparedInput,
+    id: NativeInvocationId,
+    profile: String,
+    native_version: String,
+}
+impl NativeSeed {
+    pub(crate) fn input(&self) -> &PreparedInput {
+        &self.input
+    }
+    pub(crate) fn invocation(
+        &self,
+        unit: &ExecutionUnit,
+        session: &Session,
+        context_hash: Option<String>,
+        artifact_version: Option<u64>,
+    ) -> native_result::NativeInvocation {
+        native_result::NativeInvocation {
+            id: self.id,
+            unit_id: unit.id,
+            session_id: session.id,
+            scope: unit.scope.clone(),
+            generation: unit.generation,
+            owner_epoch: unit.owner_epoch,
+            provider: unit.provider.clone(),
+            profile: self.profile.clone(),
+            native_version: self.native_version.clone(),
+            unit_version: unit.version,
+            session_version: 1,
+            context_version: context_hash.as_ref().map(|_| self.input.version),
+            context_sha256: context_hash,
+            source_versions: self.input.source_versions.clone(),
+            source_sha256: native_result::digest(
+                &serde_json::to_vec(&self.input.source_versions).expect("source encoding"),
+            ),
+            revision: self.input.revision.clone(),
+            artifact_id: unit.artifact_id,
+            artifact_version,
+            payload_sha256: native_result::digest(self.input.payload.as_bytes()),
+            input_operation: None,
+            frame_sha256: None,
+            native_thread: None,
+            native_turn: None,
+            state: native_result::InvocationState::NotDispatched,
+            version: 1,
+        }
+    }
+}
+struct RegistrationGuard {
+    owner: Arc<RuntimeOwner>,
+    unit_id: UnitId,
+    invocation: NativeInvocationId,
+    armed: bool,
+}
+impl Drop for RegistrationGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let Ok(mut store) = self.owner.store.lock() else {
+            return;
+        };
+        let Ok(invocation) = store.native_invocation(self.invocation) else {
+            return;
+        };
+        if invocation.state == native_result::InvocationState::Closed {
+            return;
+        }
+        let Ok(mut unit) = store.execution_unit(self.unit_id) else {
+            return;
+        };
+        if unit.native_effects_open {
+            let Ok(retired) =
+                store.retire_execution_as(&unit.authority(), false, Disposition::Lost)
+            else {
+                return;
+            };
+            unit = retired;
+        }
+        let Ok(Some((session, version))) = store.session(invocation.session_id) else {
+            return;
+        };
+        let receipt = native_result::NativeResultReceipt {
+            id: NativeResultId::new(),
+            invocation_id: invocation.id,
+            unit_id: unit.id,
+            session_id: session.id,
+            scope: unit.scope.clone(),
+            generation: unit.generation,
+            owner_epoch: unit.owner_epoch,
+            provider: unit.provider.clone(),
+            native_thread: invocation.native_thread,
+            native_turn: invocation.native_turn,
+            acquisition: native_result::AcquisitionStatus::Missing,
+            authority: native_result::ReceiptAuthority::HistoricalDraft,
+            text: None,
+            structured_output: None,
+            prefix: None,
+            answer_sha256: None,
+            terminal_sha256: None,
+            wire: None,
+            observed_work: WorkOutcome::Unknown,
+            disposition: Disposition::Lost,
+            diagnostics: vec!["native_supervisor_unavailable".into()],
+            captured_at: now_ms(),
+            version: 1,
+        };
+        let _ = store.finish_native_result(&NativeTerminal {
+            receipt,
+            session,
+            failure: None,
+            session_version: version,
+        });
+    }
+}
+pub(crate) struct NativeTerminal {
+    receipt: native_result::NativeResultReceipt,
+    session: Session,
+    failure: Option<NativeFailure>,
+    session_version: u64,
+}
+impl NativeTerminal {
+    fn persist(
+        &self,
+        store: &mut crate::state::Store,
+    ) -> Result<(ExecutionUnit, native_result::NativeResultReceipt, Session)> {
+        let current = store.execution_unit(self.receipt.unit_id)?;
+        // Retrying a private observed terminal never reopens permissions. If the
+        // governing input changed during a storage outage, retain it as history.
+        if current.native_effects_open
+            && store
+                .validate_execution(&current.authority(), false, true)
+                .is_err()
+        {
+            store.retire_execution_as(&current.authority(), false, Disposition::Lost)?;
+        }
+        store.finish_native_result(self)
+    }
+    pub(crate) fn session_version(&self) -> u64 {
+        self.session_version
+    }
+    pub(crate) fn receipt(&self) -> &native_result::NativeResultReceipt {
+        &self.receipt
+    }
+    pub(crate) fn session(&self) -> &Session {
+        &self.session
+    }
+    pub(crate) fn failure(&self) -> Option<NativeFailure> {
+        self.failure
+    }
+}
 struct Core {
     owner: Arc<RuntimeOwner>,
     unit: ExecutionUnit,
     session: Session,
     record_version: u64,
+    invocation: NativeInvocationId,
+    collector: native_result::Collector,
+    receipt_saved: bool,
+    frozen_terminal: Arc<Mutex<Option<NativeTerminal>>>,
     wire: Lines,
     child: process::OwnedProcess,
     update: watch::Sender<NativeStatus>,
@@ -779,6 +1074,7 @@ impl Core {
             &self.owner,
             &self.unit,
             self.session.id,
+            self.invocation,
             authority,
             kind,
             value,
@@ -818,6 +1114,7 @@ impl Core {
                     &self.owner,
                     &self.unit,
                     self.session.id,
+                    self.invocation,
                     None,
                     kind,
                     &json!({"id":self.wire.next,"method":method,"params":params}),
@@ -880,12 +1177,92 @@ impl Core {
             .update_execution_session(&authority, &self.session, self.record_version)?;
         self.unit = unit;
         self.record_version = version;
+        if self.unit.provider == "claude" {
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .ack_native_invocation(
+                    &self.unit.authority(),
+                    self.invocation,
+                    &self.native,
+                    None,
+                )?;
+        }
         self.update.send_modify(|s| {
             s.session = self.session.clone();
             s.authority = self.unit.authority();
             s.wait_reason = self.unit.wait_reason;
         });
         Ok(())
+    }
+    fn capture(
+        &mut self,
+        invocation: &native_result::NativeInvocation,
+        work: WorkOutcome,
+        disposition: Disposition,
+        failure: Option<NativeFailure>,
+    ) -> Result<NativeTerminal> {
+        let native_result::Content {
+            acquisition,
+            text,
+            prefix,
+            answer_sha256,
+            terminal_sha256,
+            diagnostics,
+        } = self.collector.content();
+        let mut receipt = native_result::NativeResultReceipt {
+            id: NativeResultId::new(),
+            invocation_id: self.invocation,
+            unit_id: self.unit.id,
+            session_id: self.session.id,
+            scope: self.unit.scope.clone(),
+            generation: self.unit.generation,
+            owner_epoch: self.unit.owner_epoch,
+            provider: self.unit.provider.clone(),
+            native_thread: invocation.native_thread.clone(),
+            native_turn: invocation.native_turn.clone(),
+            acquisition,
+            authority: native_result::ReceiptAuthority::HistoricalDraft,
+            text,
+            structured_output: None,
+            prefix,
+            answer_sha256,
+            terminal_sha256,
+            wire: self.wire.evidence.clone(),
+            observed_work: work,
+            disposition,
+            diagnostics,
+            captured_at: now_ms(),
+            version: 1,
+        };
+        if receipt.validate().is_err() {
+            // JSON escaping can exceed the encoded receipt budget before decoded text does.
+            // Preserve only a bounded UTF-8 evidence prefix, never a misleading full hash.
+            let text = receipt.text.take().unwrap_or_default();
+            let mut n = text.len().min(native_result::PREFIX_BYTES);
+            while !text.is_char_boundary(n) {
+                n -= 1;
+            }
+            let prefix = text[..n].to_owned();
+            receipt.acquisition = native_result::AcquisitionStatus::Overflow;
+            receipt.answer_sha256 = None;
+            receipt.prefix = Some(native_result::PrefixEvidence {
+                prefix_sha256: native_result::digest(prefix.as_bytes()),
+                prefix,
+                observed_bytes: text.len() as u64,
+                exact_length: true,
+                unseen_suffix: text.len() > n,
+            });
+            receipt.diagnostics = vec!["answer_encoded_limit".into()];
+            receipt.validate()?;
+        }
+        Ok(NativeTerminal {
+            receipt,
+            session: self.session.clone(),
+            failure,
+            session_version: self.record_version,
+        })
     }
     async fn run(
         mut self,
@@ -899,7 +1276,7 @@ impl Core {
         } else {
             self.claude(&input).await
         };
-        let (work, disposition, output, failure) = match result {
+        let (work, disposition, _output, failure) = match result {
             Ok(value) => (value.0, value.1, value.2, None),
             Err(error) => {
                 // Never retain raw native errors, output or credentials. Only
@@ -935,32 +1312,57 @@ impl Core {
                 (WorkOutcome::Unknown, disposition, None, Some(category))
             }
         };
-        // Persist work before hygiene; late completions cannot reopen a cancelled generation.
+        if disposition == Disposition::Completed && work != WorkOutcome::Unknown {
+            self.collector.confirm_complete();
+        }
+        if failure == Some(NativeFailure::AuthenticationUnavailable) {
+            self.collector.discard_sensitive();
+        } else if failure.is_some() {
+            self.collector.protocol_lost();
+            if let Some(wire) = &self.wire.evidence {
+                self.collector.wire_failed(wire);
+            }
+        }
+        // Content, native work, Session closure and quota release commit together.
+        // Hygiene runs afterward and cannot replace the known work axis.
         let persisted = (|| {
-            let mut store = self
-                .owner
+            let owner = self.owner.clone();
+            let mut store = owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            let current = store.execution_unit(self.unit.id)?;
-            if current.native_effects_open
-                && let Err(e) = store.finish_execution_with_failure(
-                    &current.authority(),
-                    work,
-                    disposition,
-                    failure,
-                )
-            {
-                let current = store.execution_unit(self.unit.id)?;
-                if current.native_effects_open || current.result_finalization_open {
-                    store.retire_execution(&current.authority(), false)?;
-                }
-                return Err(e);
-            }
-            Ok::<_, anyhow::Error>(())
+            let invocation = store.native_invocation(self.invocation)?;
+            let proof = self.capture(&invocation, work, disposition, failure)?;
+            let pending = self.frozen_terminal.clone();
+            let mut frozen = pending
+                .lock()
+                .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
+            ensure!(frozen.is_none(), "native terminal already captured");
+            *frozen = Some(proof);
+            let (_, receipt, session) = frozen
+                .as_ref()
+                .expect("captured terminal")
+                .persist(&mut store)?;
+            *frozen = None;
+            self.session = session;
+            self.receipt_saved = true;
+            Ok::<_, anyhow::Error>(receipt)
         })();
         let stopped = self.child.stop_and_reap().await;
         self.drain.abort();
+        #[cfg(test)]
+        if profile.output.join("fixture-delay-publication").exists() {
+            // An account-free fixture may schedule a status reconciliation after
+            // native terminal capture but before the supervisor publishes watch.
+            std::fs::write(profile.output.join("fixture-publication-ready"), "ready").unwrap();
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while !profile.output.join("fixture-publication-release").exists() {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap();
+        }
         let mut store = match self.owner.store.lock() {
             Ok(store) => store,
             Err(_) => return,
@@ -969,15 +1371,6 @@ impl Core {
             Ok(unit) => unit,
             Err(_) => return,
         };
-        self.session.state = if current.disposition == Disposition::Cancelled {
-            SessionState::Stopped
-        } else if current.disposition == Disposition::Lost {
-            SessionState::Lost
-        } else {
-            SessionState::Exited
-        };
-        let session_result =
-            store.close_execution_session(self.unit.id, &self.session, self.record_version);
         let group_error = stopped.as_ref().map_or(true, |s| s.group_error.is_some());
         let _ = store.record_execution_cleanup(&CleanupObservation {
             actions: Vec::new(),
@@ -1008,15 +1401,27 @@ impl Core {
             .execution_unit(self.unit.id)
             .map(|u| u.authority())
             .unwrap_or_else(|_| current.authority());
+        let saved_receipt = store.native_session_result(self.session.id).ok().flatten();
+        let saved_session = store
+            .session(self.session.id)
+            .ok()
+            .flatten()
+            .map(|(session, _)| session);
         self.update.send_modify(|s| {
             s.authority = final_authority;
-            s.session = self.session.clone();
+            if let Some(session) = saved_session {
+                s.session = session;
+            }
             s.work = current.work;
             s.wait_reason = current.wait_reason;
             s.disposition = current.disposition;
             s.cleanup = CleanupOutcome::Unknown;
             s.pending.clear();
-            s.result = output;
+            s.observed_work = Some(work);
+            // A concurrent status retry may have committed the sealed terminal
+            // while hygiene awaited. The durable result outranks that stale Err.
+            s.receipt = saved_receipt.as_ref().map(|r| r.id);
+            s.result = saved_receipt.as_ref().map(|r| r.projection());
             s.failure = if current.disposition == Disposition::Cancelled {
                 None
             } else {
@@ -1024,7 +1429,7 @@ impl Core {
             };
             s.diagnostic = if let Some(failure) = s.failure {
                 Some(failure.diagnostic())
-            } else if persisted.is_err() || session_result.is_err() {
+            } else if persisted.is_err() && saved_receipt.is_none() {
                 Some("terminal persistence conflict")
             } else if current.disposition == Disposition::CapacityInterrupted {
                 Some("native capacity unclassified; fresh attempt waits for bounded recheck")
@@ -1117,6 +1522,12 @@ impl Core {
             .boot_call("turn/start", turn, Some("native_input"))
             .await?;
         let turn_id = claude_wire::bounded_id(&started["turn"]["id"])?;
+        let authority = self.authority()?;
+        self.owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .ack_native_invocation(&authority, self.invocation, &thread_id, Some(&turn_id))?;
         let mut approvals =
             crate::codex::managed::Approvals::new(&thread_id, &turn_id, &self.unit.worktree);
         let mut quota_ended = false;
@@ -1135,7 +1546,9 @@ impl Core {
                     if p.get("threadId").is_some_and(|id|id!=&json!(thread_id)){continue;}
                     if p.get("turnId").is_some_and(|id|id!=&json!(turn_id)){continue;}
                     match frame["method"].as_str() {
-                        Some("item/started")=>approvals.item(&p["item"])? ,
+                        Some("item/started")=>{approvals.item(&p["item"])?; if p["threadId"]==thread_id && p["turnId"]==turn_id {self.collector.codex_item(&p["item"],false);}},
+                        Some("item/completed") if p["threadId"]==thread_id && p["turnId"]==turn_id=>self.collector.codex_item(&p["item"],true),
+                        Some("item/agentMessage/delta") if p["threadId"]==thread_id && p["turnId"]==turn_id=>self.collector.codex_delta(p),
                         Some("error") if p["threadId"]==thread_id && p["turnId"]==turn_id && quota::codex_subscription_error(&p["error"])=>{
                             quota_ended = !p["willRetry"].as_bool().context("native retry flag missing")?;
                             quota::QuotaScheduler::new(self.owner.clone()).observe(&QuotaObservation {provider:"codex".into(),account_key:"unknown".into(),bucket:"native.subscription".into(),window_id:"unknown-native".into(),
@@ -1162,6 +1575,7 @@ impl Core {
                                     quota::QuotaScheduler::new(self.owner.clone()).observe_probe(&self.authority()?,&QuotaObservation {status:QuotaStatus::Available,observed_at:now_ms(),source_version:"codex-cli 0.160.0/correlated recovery turn completed".into(),..old})?;
                                 }
                             }
+                            if status=="completed" || status=="failed" {self.collector.codex_terminal(&p["turn"]);}
                             return Ok(if status=="completed" {(WorkOutcome::Success,Disposition::Completed,Some(p["turn"].clone()))}
                                 else if quota_ended {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
                                 else if status=="failed" && p["turn"]["error"]["codexErrorInfo"]=="unauthorized" {anyhow::bail!(NativeFailure::AuthenticationUnavailable)}
@@ -1170,6 +1584,7 @@ impl Core {
                                 else {(WorkOutcome::Unknown,Disposition::Lost,None)});
                         },_=>{}
                     }
+                    if self.collector.overflowed() {return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));}
                 },
                 control=self.controls.recv()=>{
                     match control {Some(Control::Approval {authority,id,hash,allow,response})=>{
@@ -1256,11 +1671,18 @@ impl Core {
                         self.update.send_modify(|s|s.pending.push(permission.public(&self.native)));pending.insert(permission.request_id.clone(),permission);continue;
                     }
                     let seen=state.observe(&frame,&self.native,&self.unit.worktree,false);
+                    if frame["type"]=="result" && frame["session_id"]==self.native {
+                        if seen.as_ref().is_ok_and(|accepted|*accepted) {self.collector.claude_terminal(&frame);}
+                        else if seen.as_ref().is_ok_and(|accepted|!*accepted) {self.collector.claude_redelivery(&frame);}
+                    }
+                    if self.collector.overflowed() {return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));}
+
                     if seen.as_ref().is_err_and(|e|e.kind==ErrorKind::ProcessFailure) {
                         // Consult accepted bucket state, not the last telemetry frame.
                         // Budget/turn/output caps remain work failures even during quota exhaustion.
                         let quota_exhausted=matches!(frame["subtype"].as_str(),Some("success"|"error_during_execution")) && self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?
                             .quota_observations("claude","unknown")?.iter().any(|o|o.status==QuotaStatus::Exhausted && quota_buckets.contains(&o.bucket));
+                        self.collector.claude_terminal(&frame);
                         return Ok(if quota_exhausted{(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
                             else if state.terminal_capacity || (unclassified_limit && matches!(frame["subtype"].as_str(),Some("success"|"error_during_execution"))){(WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)}
                             else{(WorkOutcome::Failure,Disposition::Completed,Some(frame))});
@@ -1295,13 +1717,27 @@ impl Core {
 impl Drop for Core {
     fn drop(&mut self) {
         self.drain.abort();
-        let Ok(mut store) = self.owner.store.lock() else {
+        let owner = self.owner.clone();
+        let Ok(mut store) = owner.store.lock() else {
             return;
         };
         let Ok(mut unit) = store.execution_unit(self.unit.id) else {
             return;
         };
-        let abandoned = unit.native_effects_open;
+        let pending = self.frozen_terminal.clone();
+        let Ok(mut frozen) = pending.lock() else {
+            return;
+        };
+        if let Some(proof) = frozen.as_ref()
+            && let Ok((saved, _, session)) = proof.persist(&mut store)
+        {
+            unit = saved;
+            self.session = session;
+            self.receipt_saved = true;
+            *frozen = None;
+        }
+        let terminal_pending = frozen.is_some();
+        let abandoned = unit.native_effects_open && !terminal_pending;
         if abandoned {
             let Ok(retired) =
                 store.retire_execution_as(&unit.authority(), false, Disposition::Lost)
@@ -1310,7 +1746,19 @@ impl Drop for Core {
             };
             unit = retired;
         }
-        if let Ok(Some((mut session, version))) = store.session(self.session.id)
+        if !self.receipt_saved && !terminal_pending {
+            self.collector.protocol_lost();
+            if let Ok(invocation) = store.native_invocation(self.invocation)
+                && let Ok(proof) =
+                    self.capture(&invocation, WorkOutcome::Unknown, Disposition::Lost, None)
+                && let Ok((_, _, session)) = store.finish_native_result(&proof)
+            {
+                self.session = session;
+                self.receipt_saved = true;
+            }
+        }
+        if !unit.native_effects_open
+            && let Ok(Some((mut session, version))) = store.session(self.session.id)
             && !matches!(
                 session.state,
                 SessionState::Exited
@@ -1338,6 +1786,7 @@ impl Drop for Core {
             .ok()
             .flatten()
             .map(|(session, _)| session);
+        let saved_receipt = store.native_session_result(self.session.id).ok().flatten();
         self.update.send_modify(|s| {
             if let Some(session) = session {
                 s.session = session;
@@ -1347,10 +1796,22 @@ impl Drop for Core {
             s.disposition = unit.disposition;
             s.wait_reason = unit.wait_reason;
             s.cleanup = unit.cleanup;
+            if let Some(receipt) = saved_receipt {
+                s.receipt = Some(receipt.id);
+                s.result = Some(receipt.projection());
+                s.observed_work = Some(receipt.observed_work);
+                if s.diagnostic == Some("native terminal pending persistence") {
+                    s.diagnostic = None;
+                }
+            }
             if unit.disposition == Disposition::Cancelled {
                 s.failure = None;
             }
             s.pending.clear();
+            if terminal_pending {
+                s.observed_work = frozen.as_ref().map(|proof| proof.receipt.observed_work);
+                s.diagnostic = Some("native terminal pending persistence");
+            }
             if abandoned {
                 s.diagnostic = Some("native supervisor ended without terminal");
             }

@@ -13,6 +13,7 @@ use std::{
 pub struct RuntimeOwner {
     _lock: File,
     _database_file: File,
+    state_path: PathBuf,
     pub(crate) store: SharedStore,
     pub(crate) root: PathBuf,
     pub(crate) instance: String,
@@ -186,6 +187,7 @@ impl RuntimeOwner {
         Ok(Arc::new(Self {
             _lock: lock,
             _database_file: database_file,
+            state_path: path,
             store: Arc::new(Mutex::new(store)),
             root,
             instance,
@@ -199,6 +201,10 @@ impl RuntimeOwner {
     }
     pub fn store(&self) -> SharedStore {
         self.store.clone()
+    }
+    /// Canonical database selected by the retained owner, for control identity.
+    pub fn state_path(&self) -> &Path {
+        &self.state_path
     }
     pub fn state_root(&self) -> &Path {
         &self.root

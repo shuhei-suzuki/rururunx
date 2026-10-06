@@ -985,3 +985,81 @@ are not erased; collection stays best effort and no security sandbox is claimed.
 No work/cleanup guarantee, OS conformance, native readiness, release or MVP
 completion follows from this checkpoint. Human approval is still required only
 at the requested completed phase boundary; Phase2 work is already authorized.
+
+## Published committed-source recovery checkpoint
+
+Fixed clean integrated source `5c070d4aa4502e9ef737fe5960e74fbd03cdb92b`
+implements the private Published-artifact source reconstruction route and ordered
+schema7. Root/C independently approved the original source `993d1322`; additional
+source-control tests received Root review. Reconstruction verifies complete retained
+commit graphs and committed rule/configuration bytes, installs no old executor or
+native handle, and checks complete current pins at actual helper admission, waiting,
+receipt and source consumption. Legitimate typed Workflow bookkeeping advances pins
+in its original transaction; generic metadata drift cannot ratify an old frame.
+The actual recovered `prepare_pack` uses the coherent durable Task for source
+rendering while preserving projected Context and transition checks.
+
+Six actual source controls cover new-owner reconstruction and subsequent typed
+Workflow/Unit use, changed caller metadata, competing claims, abandoned reconstruction,
+post-verification instruction/epoch changes, corrupt manifest/DTOs and helper-wait
+changes. State controls verify ordered migration and all-table writer fencing.
+A compiled full-pin omission fails the actual stale-source helper assertion;
+the exact restored tree passes both baseline source controls. Three independently
+inspected author mutants omit helper admission, caller DTO and abandonment guards;
+all fail intended assertions and six restored controls pass. The
+[checkpoint](agent-execution-phase2-source-recovery-checkpoint.json) records exact
+commits, raw reports, commands, log hashes, mutations and qualified coverage.
+
+At this source with four test threads, **579 primary passed, 0 failed, 30 ignored**;
+workspace all-target Clippy `-D warnings`, build and fmt pass. Raw624 passes exclude
+the same45 duplicate child passes. Two earlier failures remain preserved: an old
+schema fixture searched a literal version6 guard after migration7, and a Codex
+fixture reader observed a partial JSON line during append. The latter correction
+uses a single-writer test-only same-directory write/rename; its parser and assertions
+remain unchanged and C approved it independently. Neither fixture fix qualifies
+process recovery, native protocol or crash-durable journal writes.
+
+This is a source-only port. Runtime scheduling, binding genuine Driver claims,
+fresh pre-artifact recovery and the complete design negative matrix remain open.
+No current Native receipt collector, command-only Verifier, ReviewEngine or
+authenticated both-OS/four-Task capability follows. Native schema6 tables and
+Published source recovery7 are integrated; Verifier8 and operational Runtime/Goal
+remain separate source work. Subsequent coordinated design must assign the genuine
+Runtime/Goal migration9 and future ReviewRound10 without an empty migration.
+The existing bounded full PASS does not erase earlier unrestricted failures.
+
+## Owned native receipt consumer checkpoint
+
+Fixed clean integrated source `5d16952cfed3bfd74dd859a47647e2630a48ffff`
+now connects actual managed Core/stdin/stdout acquisition to Native schema6
+invocation/receipt tables under current schema7. Exact acknowledged native
+identity, frozen current input binding and bounded original-byte parsing govern
+the collector. Known work, Session terminal, quota and native receipt commit
+atomically before watch publication. A receipt supplies content/projection, never
+a Review vote or permission. Work and best-effort cleanup remain independent.
+
+Root/A independently approved final author source `b298fe0a` without findings.
+The [checkpoint](agent-execution-phase2-native-consumer-checkpoint.json) preserves
+earlier four Medium findings, the later concurrent retry/watch Medium and Session
+projection Low, their corrections/re-reviews, and original failed or withheld
+checks. Five early compiled dirty-patch mutants are qualified only as causal
+evidence. Two final committed watch mutants fail the actual receipt/Session
+assertions; exact restored trees and the restored control pass. Root inspected
+patches, assertion logs and hashes. Compiled actual old-schema5 writers refuse
+the schema6 contract on synthetic state; this is schema-fencing evidence only.
+
+At the parent fixed source with four test threads: **590 primary passed, 0 failed,
+30 ignored**; fmt, workspace all-target Clippy `-D warnings` and build pass.
+The library contributes472 passes/25 ignored. Raw635 passes exclude45 duplicate
+child passes. The additional Ready-source selection control covers refusal before
+Published source reconstruction; it does not qualify a forged Workflow pointer.
+Three finite CLI transport/Hello controls also pass, but main still lacks an
+operational Runtime service/accepted Goal/Driver consumer.
+
+Verifier8 and operational Runtime9 are separate implementation candidates; their
+shared transaction composition and coordinated checks remain pending. Future
+ReviewRound uses10 after a genuine Runtime/Goal9 migration. No authenticated
+provider, current install, both-OS/native four-Task or complete Phase2 acceptance
+is inferred. Historical unrestricted failures remain open; terminal proof retained
+in memory cannot survive Runtime SIGKILL before a durable receipt. Phase3 still
+requires approval after all Phase2 work, and cleanup remains best effort.

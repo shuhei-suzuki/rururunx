@@ -25,6 +25,9 @@ async fn wait_file(path: &Path) {
     .unwrap();
 }
 async fn published() -> Published {
+    artifact_fixture(true).await
+}
+async fn artifact_fixture(publish: bool) -> Published {
     let (dir, owner, seed) = results::tests::fixture().await;
     let program = native::tests::program(dir.path(), "codex");
     let mut config = Config {
@@ -156,20 +159,44 @@ async fn published() -> Published {
     })
     .await
     .unwrap();
-    assert!(matches!(
-        engine.step(task.id, BTreeMap::new()).await.unwrap(),
-        StepResult::Completed {
-            phase: Phase::Implement
-        }
-    ));
-    let wf = engine.snapshot(task.id).unwrap();
-    let artifact = owner
-        .store
-        .lock()
-        .unwrap()
-        .result_artifact(wf.sources.artifact.unwrap())
-        .unwrap();
-    assert_eq!(artifact.state, ArtifactState::Published);
+    let artifact = if publish {
+        assert!(matches!(
+            engine.step(task.id, BTreeMap::new()).await.unwrap(),
+            StepResult::Completed {
+                phase: Phase::Implement
+            }
+        ));
+        let wf = engine.snapshot(task.id).unwrap();
+        let artifact = owner
+            .store
+            .lock()
+            .unwrap()
+            .result_artifact(wf.sources.artifact.unwrap())
+            .unwrap();
+        assert_eq!(artifact.state, ArtifactState::Published);
+        artifact
+    } else {
+        // This Ready artifact is produced by actual retained capture of the same
+        // owned native terminal. It has not won the Workflow publication TX.
+        let done = owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_unit(prepared.id)
+            .unwrap();
+        assert_eq!(done.work, Some(WorkOutcome::Success));
+        let io = UnitGit::new(owner.clone(), &done, false).unwrap();
+        let revision = io
+            .text(&done.worktree, ["rev-parse", "HEAD"])
+            .await
+            .unwrap();
+        let artifact = results::ResultStore::new(owner.clone())
+            .capture(&done.authority(), &revision, BTreeMap::new())
+            .await
+            .unwrap();
+        assert_eq!(artifact.state, ArtifactState::Ready);
+        artifact
+    };
     // The ordinary live Project copy cannot replace tracked committed rules.
     std::fs::write(root.join("rules.md"), "LIVE_B_MUST_NOT_REPLACE_A\n").unwrap();
     drop(adapter);
@@ -354,4 +381,393 @@ async fn source_claim_checks_helper_admission_competition_and_full_dto_currency(
         "changed instructions cannot recover original frame"
     );
     assert!(capture(&sources, project, task).await.is_err());
+}
+
+#[tokio::test]
+async fn actual_recovery_future_drop_invalidates_only_its_uninstalled_claim() {
+    let f = published().await;
+    let sources = Arc::new(ManagedWorkflowSources::new(f.owner.clone(), f.config).unwrap());
+    let (reached, observed) = tokio::sync::oneshot::channel();
+    let (_release, paused) = tokio::sync::oneshot::channel();
+    let worker = sources.clone();
+    let task_id = f.task;
+    let recovering = tokio::spawn(async move {
+        worker
+            .recover_retained_inner(
+                task_id,
+                Some(RecoveryPause {
+                    after_verify: false,
+                    reached,
+                    release: paused,
+                }),
+            )
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(15), observed)
+        .await
+        .unwrap()
+        .unwrap();
+    let effects_before = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .managed_effects(f.artifact.unit_id)
+        .unwrap();
+    recovering.abort();
+    assert!(recovering.await.unwrap_err().is_cancelled());
+    let (project, task) = owners(&f.owner, f.task);
+    assert!(capture(&sources, project, task).await.is_err());
+    assert_eq!(
+        serde_json::to_value(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(f.artifact.unit_id)
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(effects_before).unwrap()
+    );
+    assert_eq!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .result_artifact(f.artifact.id)
+            .unwrap()
+            .state,
+        ArtifactState::Published
+    );
+    // Actual next reconstruction is possible; no row reconstructs an old capability.
+    sources.recover_retained(f.task).await.unwrap();
+    let (project, task) = owners(&f.owner, f.task);
+    assert!(capture(&sources, project, task).await.is_ok());
+}
+
+#[tokio::test]
+async fn final_recovery_acceptance_refuses_instruction_and_epoch_races() {
+    for epoch_change in [false, true] {
+        let f = published().await;
+        let sources = Arc::new(ManagedWorkflowSources::new(f.owner.clone(), f.config).unwrap());
+        let (reached, observed) = tokio::sync::oneshot::channel();
+        let (release, paused) = tokio::sync::oneshot::channel();
+        let worker = sources.clone();
+        let task_id = f.task;
+        let recovering = tokio::spawn(async move {
+            worker
+                .recover_retained_inner(
+                    task_id,
+                    Some(RecoveryPause {
+                        after_verify: true,
+                        reached,
+                        release: paused,
+                    }),
+                )
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(15), observed)
+            .await
+            .unwrap()
+            .unwrap();
+        if epoch_change {
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .begin_execution_epoch()
+                .unwrap();
+        } else {
+            let (_, mut task) = owners(&f.owner, f.task);
+            task.title = "post-read instruction drift".into();
+            f.owner.store.lock().unwrap().put_task(&mut task).unwrap();
+        }
+        let effects = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .managed_effects(f.artifact.unit_id)
+            .unwrap();
+        release.send(()).unwrap();
+        assert!(
+            recovering.await.unwrap().is_err(),
+            "complete reads cannot ratify changed acceptance authority"
+        );
+        let (project, task) = owners(&f.owner, f.task);
+        assert!(capture(&sources, project, task).await.is_err());
+        assert_eq!(
+            serde_json::to_value(
+                f.owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .managed_effects(f.artifact.unit_id)
+                    .unwrap()
+            )
+            .unwrap(),
+            serde_json::to_value(effects).unwrap()
+        );
+        assert_eq!(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .result_artifact(f.artifact.id)
+                .unwrap()
+                .state,
+            ArtifactState::Published
+        );
+    }
+}
+
+#[tokio::test]
+async fn recovery_rejects_bad_manifest_and_complete_caller_dto_drift() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = published().await;
+    let sources = ManagedWorkflowSources::new(f.owner.clone(), f.config).unwrap();
+    let original = std::fs::read(&f.artifact.manifest).unwrap();
+    let permissions = std::fs::metadata(&f.artifact.manifest)
+        .unwrap()
+        .permissions();
+    std::fs::set_permissions(&f.artifact.manifest, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::write(&f.artifact.manifest, b"{}\n").unwrap();
+    assert!(
+        sources.recover_retained(f.task).await.is_err(),
+        "corrupt retained manifest cannot install a frame"
+    );
+    let (project, task) = owners(&f.owner, f.task);
+    assert!(
+        capture(&sources, project.clone(), task.clone())
+            .await
+            .is_err()
+    );
+    std::fs::write(&f.artifact.manifest, original).unwrap();
+    std::fs::set_permissions(&f.artifact.manifest, permissions).unwrap();
+    sources.recover_retained(f.task).await.unwrap();
+    let mut different_task = task.clone();
+    different_task.blockers.push("caller-only metadata".into());
+    let mut different_project = project.clone();
+    different_project.name = "caller-only name".into();
+    let effects = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .managed_effects(f.artifact.unit_id)
+        .unwrap();
+    assert!(
+        capture(&sources, project.clone(), different_task)
+            .await
+            .is_err()
+    );
+    assert!(
+        capture(&sources, different_project, task.clone())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        serde_json::to_value(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(f.artifact.unit_id)
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(effects).unwrap(),
+        "caller mismatch refuses before retained helpers"
+    );
+    assert!(capture(&sources, project, task).await.is_ok());
+}
+
+#[tokio::test]
+async fn source_bound_inflight_helper_rejects_drift_epoch_and_future_drop() {
+    use std::os::unix::fs::PermissionsExt;
+    for mode in 0..3 {
+        let f = published().await;
+        let claim = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .begin_retained_source_recovery(f.task, f.owner.epoch)
+            .unwrap();
+        let binding = claim.binding();
+        let ready = f.dir.path().join("source-helper-ready");
+        let release = f.dir.path().join("source-helper-release");
+        let program = f.dir.path().join("held-reader.py");
+        // Closed isolated fixture: no subprocesses/accounts/network; self-expiry
+        // bounds the helper even if this control panics. This is not native death proof.
+        std::fs::write(&program, format!(
+            "#!/usr/bin/env python3\nimport pathlib,time\nr=pathlib.Path({:?})\nx=pathlib.Path({:?})\nr.write_text('ready')\nend=time.monotonic()+4\nwhile time.monotonic()<end and not x.exists(): time.sleep(0.01)\n",
+            ready.to_str().unwrap(), release.to_str().unwrap()
+        )).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let io = RetainedGit::for_recovery(f.owner.clone(), &f.artifact, binding.clone())
+            .unwrap()
+            .with_program(program);
+        let original = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .managed_effects(f.artifact.unit_id)
+            .unwrap();
+        let helper = tokio::spawn(async move {
+            io.run(["fsck", "--full", "--strict", "--no-dangling"])
+                .await
+        });
+        wait_file(&ready).await;
+        if mode == 0 {
+            let (_, mut task) = owners(&f.owner, f.task);
+            task.title = "during registered helper".into();
+            f.owner.store.lock().unwrap().put_task(&mut task).unwrap();
+        } else if mode == 1 {
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .begin_execution_epoch()
+                .unwrap();
+        } else {
+            helper.abort();
+        }
+        std::fs::write(&release, "done").unwrap();
+        if mode == 2 {
+            assert!(helper.await.unwrap_err().is_cancelled());
+        } else {
+            assert!(
+                tokio::time::timeout(Duration::from_secs(15), helper)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .is_err()
+            );
+        }
+        let after = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .managed_effects(f.artifact.unit_id)
+            .unwrap();
+        let added = after
+            .iter()
+            .filter(|e| !original.iter().any(|old| old.id == e.id))
+            .collect::<Vec<_>>();
+        assert_eq!(added.len(), 1, "helper owns one actual registered intent");
+        assert_eq!(added[0].kind, "retained_git");
+        assert_eq!(
+            added[0].state,
+            EffectState::Unknown,
+            "stale/dropped helper must not persist a successful source receipt"
+        );
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .abandon_retained_source_recovery(&binding)
+            .unwrap();
+        assert_eq!(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .result_artifact(f.artifact.id)
+                .unwrap()
+                .state,
+            ArtifactState::Published
+        );
+    }
+}
+
+#[tokio::test]
+async fn unpublished_ready_and_foreign_retained_dtos_never_select_recovery() {
+    let f = artifact_fixture(false).await;
+    let sources = ManagedWorkflowSources::new(f.owner.clone(), f.config).unwrap();
+    let before = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .managed_effects(f.artifact.unit_id)
+        .unwrap();
+    assert!(
+        sources.recover_retained(f.task).await.is_err(),
+        "Ready is not Published source selection"
+    );
+    assert_eq!(
+        serde_json::to_value(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(f.artifact.unit_id)
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(before).unwrap(),
+        "Ready refusal precedes reconstruction helpers"
+    );
+    assert_eq!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .result_artifact(f.artifact.id)
+            .unwrap()
+            .state,
+        ArtifactState::Ready
+    );
+    let (project, task) = owners(&f.owner, f.task);
+    assert!(capture(&sources, project, task).await.is_err());
+
+    let f = published().await;
+    let claim = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .begin_retained_source_recovery(f.task, f.owner.epoch)
+        .unwrap();
+    let before = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .managed_effects(f.artifact.unit_id)
+        .unwrap();
+    for field in 0..3 {
+        let mut foreign = f.artifact.clone();
+        match field {
+            0 => foreign.scope.project_id = ProjectId::new(),
+            1 => foreign.scope.task_id = Some(TaskId::new()),
+            _ => foreign.id = ArtifactId::new(),
+        }
+        assert!(
+            RetainedGit::for_recovery(f.owner.clone(), &foreign, claim.binding()).is_err(),
+            "foreign artifact DTO is negative input, never source authority"
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(f.artifact.unit_id)
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(before).unwrap()
+    );
+    f.owner
+        .store
+        .lock()
+        .unwrap()
+        .abandon_retained_source_recovery(&claim.binding())
+        .unwrap();
 }

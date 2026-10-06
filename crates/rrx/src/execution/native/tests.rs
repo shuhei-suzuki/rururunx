@@ -1010,11 +1010,19 @@ async fn native_dispatch_admission_has_a_durable_winner_against_retirement() {
         let pinned = owner.store.lock().unwrap().execution_unit(unit.id).unwrap();
         // Exercise the same private producer used for actual input/ALLOW frames.
         // The fixture does not claim native permission conformance or revoke issued bytes.
+        let invocation = owner
+            .store
+            .lock()
+            .unwrap()
+            .native_session_invocation(handle.session)
+            .unwrap()
+            .id;
         let frame = json!({"owned_permission":"fixture-sensitive-argument"});
         let issued = admit_native_frame(
             &owner,
             &pinned,
             handle.session,
+            invocation,
             Some(&pinned.authority()),
             "native_permission",
             &frame,
@@ -1033,6 +1041,7 @@ async fn native_dispatch_admission_has_a_durable_winner_against_retirement() {
                 &owner,
                 &pinned,
                 handle.session,
+                invocation,
                 Some(&pinned.authority()),
                 "native_permission",
                 &frame
@@ -1044,6 +1053,7 @@ async fn native_dispatch_admission_has_a_durable_winner_against_retirement() {
                 &owner,
                 &pinned,
                 handle.session,
+                invocation,
                 None,
                 "native_input",
                 &json!({"late_input":true})
@@ -1634,4 +1644,781 @@ fn dropped_executor_runtime_preserves_durable_lost_subscription_and_session() {
         drop(owner);
         drop(dir);
     }
+}
+
+#[tokio::test]
+async fn native_answers_are_owned_durable_and_failure_text_is_not_approval() {
+    use crate::execution::native_result::{AcquisitionStatus, InvocationState, ReceiptAuthority};
+    for provider in ["claude", "codex"] {
+        let cases = if provider == "codex" {
+            vec![
+                ("answer-ok", AcquisitionStatus::Complete),
+                ("answer-commentary", AcquisitionStatus::Complete),
+                ("answer-foreign", AcquisitionStatus::Complete),
+                ("answer-duplicate", AcquisitionStatus::Complete),
+                ("answer-change", AcquisitionStatus::Ambiguous),
+                ("answer-null-phase", AcquisitionStatus::Unsupported),
+                ("answer-two-finals", AcquisitionStatus::Ambiguous),
+                ("answer-terminal-only", AcquisitionStatus::Ambiguous),
+                ("answer-summary", AcquisitionStatus::Complete),
+                ("answer-delta-only", AcquisitionStatus::Partial),
+                ("answer-failed", AcquisitionStatus::Complete),
+                ("answer-encoded-overflow", AcquisitionStatus::Overflow),
+            ]
+        } else {
+            vec![
+                ("answer-ok", AcquisitionStatus::Complete),
+                ("answer-failed", AcquisitionStatus::Complete),
+                ("answer-structured", AcquisitionStatus::Unsupported),
+                ("answer-encoded-overflow", AcquisitionStatus::Overflow),
+            ]
+        };
+        for (payload, expected) in cases {
+            let (dir, owner, task) = results::tests::fixture().await;
+            let sessions = NativeSessions::new(owner.clone()).unwrap();
+            let (unit, _) = attempts::AttemptManager::new(owner.clone())
+                .prepare(task.id, provider, "Implement", None)
+                .await
+                .unwrap();
+            let handle = match sessions
+                .start_inner(
+                    input(&unit, payload),
+                    None,
+                    None,
+                    Some(program(dir.path(), provider)),
+                )
+                .await
+                .unwrap()
+            {
+                NativeStart::Launched(handle) => handle,
+                _ => panic!("fixture admission should launch"),
+            };
+            let status = terminal(&sessions, &handle).await;
+            let expected_work = if payload == "answer-failed" {
+                WorkOutcome::Failure
+            } else {
+                WorkOutcome::Success
+            };
+            assert_eq!(
+                status.work,
+                Some(expected_work),
+                "{provider}/{payload}: {status:?}"
+            );
+            let receipt_id = status
+                .receipt
+                .expect("terminal watch follows durable receipt TX");
+            let store = owner.store.lock().unwrap();
+            let receipt = store.native_result(receipt_id).unwrap();
+            let invocation = store.native_session_invocation(handle.session).unwrap();
+            assert_eq!(invocation.state, InvocationState::Closed);
+            assert!(invocation.input_operation.is_some() && invocation.frame_sha256.is_some());
+            assert_eq!(
+                invocation.payload_sha256,
+                native_result::digest(payload.as_bytes())
+            );
+            assert_eq!(
+                invocation.context_version, None,
+                "standalone fixtures do not mint a Context"
+            );
+            assert_eq!(receipt.acquisition, expected, "{provider}/{payload}");
+            assert_eq!(receipt.authority, ReceiptAuthority::OwnedTerminal);
+            assert_eq!(receipt.observed_work, expected_work);
+            assert_eq!(receipt.unit_id, handle.unit);
+            assert_eq!(receipt.session_id, handle.session);
+            assert_eq!(receipt.generation, handle.generation);
+            assert_eq!(receipt.owner_epoch, handle.epoch);
+            assert_eq!(
+                store.session(handle.session).unwrap().unwrap().0.state,
+                if payload == "answer-failed" {
+                    SessionState::Failed
+                } else {
+                    SessionState::Exited
+                }
+            );
+            assert!(!store.execution_unit(unit.id).unwrap().native_effects_open);
+            assert!(
+                !store
+                    .execution_is_quota_probe(unit.id, provider, "unknown")
+                    .unwrap()
+            );
+            let serialized = serde_json::to_string(&receipt).unwrap();
+            assert!(!serialized.contains("FOREIGN must not persist"));
+            assert!(!serialized.contains("commentary must not become final"));
+            if expected == AcquisitionStatus::Complete {
+                assert_eq!(receipt.text.as_deref(), Some("APPROVE actual answer"));
+                assert_eq!(
+                    status.result.as_ref().unwrap()["schema"],
+                    "native_answer_v1"
+                );
+                assert_eq!(
+                    status.result.as_ref().unwrap()["text"],
+                    "APPROVE actual answer"
+                );
+            } else {
+                assert!(receipt.text.is_none() && receipt.answer_sha256.is_none());
+            }
+            // A complete owned receipt preserves native Failure separately from its text.
+            // It is never a reviewer/member grant, read-only proof or round certificate.
+            if payload == "answer-failed" {
+                assert_eq!(status.result.unwrap()["work"], "failure");
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn native_raw_duplicate_and_depth_frames_cannot_mint_complete_content() {
+    use crate::execution::native_result::AcquisitionStatus;
+    for provider in ["claude", "codex"] {
+        for payload in ["answer-raw-duplicate", "answer-depth"] {
+            let (dir, owner, task) = results::tests::fixture().await;
+            let sessions = NativeSessions::new(owner.clone()).unwrap();
+            let (unit, _) = attempts::AttemptManager::new(owner.clone())
+                .prepare(task.id, provider, "Implement", None)
+                .await
+                .unwrap();
+            let handle = match sessions
+                .start_inner(
+                    input(&unit, payload),
+                    None,
+                    None,
+                    Some(program(dir.path(), provider)),
+                )
+                .await
+                .unwrap()
+            {
+                NativeStart::Launched(handle) => handle,
+                _ => panic!("fixture launch"),
+            };
+            let status = terminal(&sessions, &handle).await;
+            assert_eq!(status.work, Some(WorkOutcome::Unknown));
+            assert_eq!(status.failure, Some(NativeFailure::ProtocolFailure));
+            let receipt = owner
+                .store
+                .lock()
+                .unwrap()
+                .native_result(status.receipt.unwrap())
+                .unwrap();
+            assert_ne!(receipt.acquisition, AcquisitionStatus::Complete);
+            assert!(receipt.text.is_none() && receipt.answer_sha256.is_none());
+            let wire = receipt
+                .wire
+                .as_ref()
+                .expect("bounded non-content wire evidence");
+            assert_eq!(
+                wire.category,
+                if payload == "answer-depth" {
+                    "depth"
+                } else {
+                    "duplicate_key"
+                }
+            );
+            assert!(wire.exact_length && wire.observed_bytes > 0);
+            assert!(!serde_json::to_string(&receipt).unwrap().contains("second"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn native_late_draft_preserves_cancellation_and_epoch_fences() {
+    use crate::execution::native_result::{InvocationState, ReceiptAuthority};
+    for restart in [false, true] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, "codex", "Implement", None)
+            .await
+            .unwrap();
+        let handle = match sessions
+            .start_inner(
+                input(&unit, "answer-hold-after-final"),
+                None,
+                None,
+                Some(program(dir.path(), "codex")),
+            )
+            .await
+            .unwrap()
+        {
+            NativeStart::Launched(handle) => handle,
+            _ => panic!("fixture launch"),
+        };
+        let output = owner
+            .root
+            .join("units")
+            .join(unit.id.to_string())
+            .join("output");
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !output.join("fixture-answer-ready").exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        // This owned permission notification follows the final on the same stdio pipe.
+        // Its public pending status is the causal barrier that proves final consumption.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !sessions
+                .status(&handle)
+                .unwrap()
+                .pending
+                .iter()
+                .any(|p| p["id"] == "answer-barrier")
+            {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        if restart {
+            owner.store.lock().unwrap().begin_execution_epoch().unwrap();
+        } else {
+            sessions.cancel(&handle).await.unwrap();
+        }
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .native_session_invocation(handle.session)
+                    .unwrap()
+                    .state
+                    == InvocationState::Closed
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let status = terminal(&sessions, &handle).await;
+        let store = owner.store.lock().unwrap();
+        let receipt = store.native_result(status.receipt.unwrap()).unwrap();
+        assert_eq!(receipt.authority, ReceiptAuthority::HistoricalDraft);
+        assert!(receipt.text.is_none() && receipt.answer_sha256.is_none());
+        assert_eq!(
+            receipt.prefix.as_ref().unwrap().prefix,
+            "APPROVE actual answer"
+        );
+        let current = store.execution_unit(unit.id).unwrap();
+        assert_eq!(current.work, Some(WorkOutcome::Unknown));
+        assert_eq!(
+            current.disposition,
+            if restart {
+                Disposition::Lost
+            } else {
+                Disposition::Cancelled
+            }
+        );
+        assert!(!current.native_effects_open && !current.result_finalization_open);
+        assert_eq!(current.generation, unit.generation);
+    }
+}
+
+#[tokio::test]
+async fn native_invocation_binds_actual_durable_context_and_refuses_altered_input_before_spawn() {
+    use crate::domain::ContextVersion;
+    for provider in ["claude", "codex"] {
+        let (dir, owner, mut task) = results::tests::fixture().await;
+        let revision = results::text(
+            &results::git(&dir.path().join("repo"), ["rev-parse", "HEAD"])
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        let context = ContextVersion {
+            scope: task.scope(),
+            version: 1,
+            revision,
+            source_hashes: BTreeMap::from([("fixture:source".into(), "immutable_a".into())]),
+            data: json!({"instruction":"committed A"}),
+        };
+        {
+            let mut store = owner.store.lock().unwrap();
+            store.put_context(&context).unwrap();
+            task.context_version = 1;
+            store.put_task(&mut task).unwrap();
+        }
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, provider, "Implement", None)
+            .await
+            .unwrap();
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let path = program(dir.path(), provider);
+        let script = std::fs::read_to_string(&path).unwrap().replace(
+            "# Local protocol fixture only:",
+            "WORKFLOW_SCENARIO = 'answer-ok'\n# Local protocol fixture only:",
+        );
+        std::fs::write(&path, script).unwrap();
+        let mut prepared = input(&unit, &serde_json::to_string(&context.data).unwrap());
+        prepared.input.source_versions = context.source_hashes.clone();
+        let mut bad = prepared.clone();
+        bad.input.payload = "live B".into();
+        assert!(
+            sessions
+                .start_inner(bad, None, None, Some(path.clone()))
+                .await
+                .is_err()
+        );
+        let mut bad = prepared.clone();
+        bad.input
+            .source_versions
+            .insert("fixture:source".into(), "live_b".into());
+        assert!(
+            sessions
+                .start_inner(bad, None, None, Some(path.clone()))
+                .await
+                .is_err()
+        );
+        {
+            let store = owner.store.lock().unwrap();
+            assert_eq!(store.execution_unit(unit.id).unwrap().session_id, None);
+            assert!(
+                store
+                    .managed_effects(unit.id)
+                    .unwrap()
+                    .iter()
+                    .all(|e| e.kind != "native_version" && e.kind != "native_input")
+            );
+        }
+        let handle = match sessions
+            .start_inner(prepared, None, None, Some(path))
+            .await
+            .unwrap()
+        {
+            NativeStart::Launched(h) => h,
+            _ => panic!("fixture launch"),
+        };
+        let status = terminal(&sessions, &handle).await;
+        assert_eq!(status.work, Some(WorkOutcome::Success));
+        let invoice = owner
+            .store
+            .lock()
+            .unwrap()
+            .native_session_invocation(handle.session)
+            .unwrap();
+        assert_eq!(invoice.context_version, Some(1));
+        assert_eq!(
+            invoice.context_sha256,
+            Some(native_result::digest(
+                &serde_json::to_vec(&context).unwrap()
+            ))
+        );
+        assert_eq!(invoice.source_versions, context.source_hashes);
+        assert_eq!(
+            invoice.payload_sha256,
+            native_result::digest(serde_json::to_string(&context.data).unwrap().as_bytes())
+        );
+        let receipt = owner
+            .store
+            .lock()
+            .unwrap()
+            .native_result(status.receipt.unwrap())
+            .unwrap();
+        let reopened = crate::state::Store::open(&dir.path().join("state.db")).unwrap();
+        assert_eq!(
+            reopened.native_session_invocation(handle.session).unwrap(),
+            invoice
+        );
+        assert_eq!(reopened.native_result(receipt.id).unwrap(), receipt);
+        let (session, version) = owner
+            .store
+            .lock()
+            .unwrap()
+            .session(handle.session)
+            .unwrap()
+            .unwrap();
+        // Private actor replay path: identical durable receipt is idempotent, changes refuse.
+        // These test-only private constructors do not expose a public minting API.
+        let mut proof = NativeTerminal {
+            receipt: receipt.clone(),
+            session,
+            failure: None,
+            session_version: version,
+        };
+        let before = owner.store.lock().unwrap().execution_unit(unit.id).unwrap();
+        owner
+            .store
+            .lock()
+            .unwrap()
+            .finish_native_result(&proof)
+            .unwrap();
+        proof.receipt.text = Some("changed second result".into());
+        proof.receipt.answer_sha256 = Some(native_result::digest(b"changed second result"));
+        assert!(
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .finish_native_result(&proof)
+                .is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(owner.store.lock().unwrap().execution_unit(unit.id).unwrap())
+                .unwrap(),
+            serde_json::to_value(before).unwrap()
+        );
+        assert_eq!(reopened.native_result(receipt.id).unwrap(), receipt);
+    }
+}
+
+#[tokio::test]
+async fn native_claude_running_hold_does_not_replace_original_answer_with_later_result() {
+    use crate::execution::native_result::AcquisitionStatus;
+    for payload in [
+        "answer-changing-held",
+        "answer-sameuuid-changing-held",
+        "answer-identical-held",
+    ] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, "claude", "Implement", None)
+            .await
+            .unwrap();
+        let handle = match sessions
+            .start_inner(
+                input(&unit, payload),
+                None,
+                None,
+                Some(program(dir.path(), "claude")),
+            )
+            .await
+            .unwrap()
+        {
+            NativeStart::Launched(h) => h,
+            _ => panic!("fixture launch"),
+        };
+        let status = terminal(&sessions, &handle).await;
+        assert_eq!(status.work, Some(WorkOutcome::Success));
+        let receipt = owner
+            .store
+            .lock()
+            .unwrap()
+            .native_result(status.receipt.unwrap())
+            .unwrap();
+        if payload == "answer-identical-held" {
+            assert_eq!(receipt.acquisition, AcquisitionStatus::Complete);
+            assert_eq!(receipt.text.as_deref(), Some("APPROVE A"));
+        } else {
+            assert_eq!(receipt.acquisition, AcquisitionStatus::Ambiguous);
+            assert!(receipt.text.is_none() && receipt.answer_sha256.is_none());
+            assert_eq!(receipt.prefix.unwrap().prefix, "APPROVE A");
+        }
+    }
+}
+
+#[tokio::test]
+async fn native_collector_overflow_stops_a_peer_that_never_sends_a_terminal() {
+    use crate::execution::native_result::AcquisitionStatus;
+    for payload in ["answer-item-overflow", "answer-event-overflow"] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, "codex", "Implement", None)
+            .await
+            .unwrap();
+        let handle = match sessions
+            .start_inner(
+                input(&unit, payload),
+                None,
+                None,
+                Some(program(dir.path(), "codex")),
+            )
+            .await
+            .unwrap()
+        {
+            NativeStart::Launched(h) => h,
+            _ => panic!("fixture launch"),
+        };
+        let status = tokio::time::timeout(Duration::from_secs(5), terminal(&sessions, &handle))
+            .await
+            .unwrap();
+        assert_eq!(status.work, Some(WorkOutcome::Unknown));
+        let store = owner.store.lock().unwrap();
+        let receipt = store.native_result(status.receipt.unwrap()).unwrap();
+        assert_eq!(receipt.acquisition, AcquisitionStatus::Overflow);
+        assert!(!store.execution_unit(unit.id).unwrap().native_effects_open);
+        assert!(
+            !store
+                .execution_is_quota_probe(unit.id, "codex", "unknown")
+                .unwrap()
+        );
+        assert!(matches!(
+            store.session(handle.session).unwrap().unwrap().0.state,
+            SessionState::Lost
+        ));
+    }
+}
+
+#[tokio::test]
+async fn native_transient_receipt_failure_retains_frozen_success_and_reconciles_watch() {
+    use crate::execution::native_result::{AcquisitionStatus, ReceiptAuthority};
+    let (dir, owner, task) = results::tests::fixture().await;
+    let sessions = NativeSessions::new(owner.clone()).unwrap();
+    let (unit, _) = attempts::AttemptManager::new(owner.clone())
+        .prepare(task.id, "codex", "Implement", None)
+        .await
+        .unwrap();
+    let handle = match sessions
+        .start_inner(
+            input(&unit, "answer-hold-after-final"),
+            None,
+            None,
+            Some(program(dir.path(), "codex")),
+        )
+        .await
+        .unwrap()
+    {
+        NativeStart::Launched(h) => h,
+        _ => panic!("fixture launch"),
+    };
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !sessions
+            .status(&handle)
+            .unwrap()
+            .pending
+            .iter()
+            .any(|p| p["id"] == "answer-barrier")
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let connection = rusqlite::Connection::open(dir.path().join("state.db")).unwrap();
+    connection.execute_batch(&format!("CREATE TRIGGER native_receipt_fixture_fault BEFORE INSERT ON native_results WHEN NEW.unit_id='{}' BEGIN SELECT RAISE(ABORT,'synthetic bounded receipt failure'); END;",unit.id)).unwrap();
+    let output = owner
+        .root
+        .join("units")
+        .join(unit.id.to_string())
+        .join("output");
+    std::fs::write(output.join("fixture-release"), "release").unwrap();
+    let mut updates = sessions.subscribe(&handle).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let status = updates.borrow().clone();
+            if status.diagnostic == Some("native terminal pending persistence") {
+                break;
+            }
+            updates.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    let held = sessions.status(&handle).unwrap();
+    assert_eq!(held.observed_work, Some(WorkOutcome::Success));
+    assert_eq!(held.work, None);
+    assert!(held.receipt.is_none());
+    assert!(sessions.release(&handle).is_err());
+    connection
+        .execute_batch("DROP TRIGGER native_receipt_fixture_fault")
+        .unwrap();
+    let restored = sessions.status(&handle).unwrap();
+    assert_eq!(restored.work, Some(WorkOutcome::Success));
+    let receipt = owner
+        .store
+        .lock()
+        .unwrap()
+        .native_result(restored.receipt.unwrap())
+        .unwrap();
+    assert_eq!(receipt.observed_work, WorkOutcome::Success);
+    assert_eq!(receipt.acquisition, AcquisitionStatus::Complete);
+    assert_eq!(receipt.authority, ReceiptAuthority::OwnedTerminal);
+    assert_eq!(receipt.text.as_deref(), Some("APPROVE actual answer"));
+    assert_eq!(updates.borrow().work, Some(WorkOutcome::Success));
+    assert_eq!(updates.borrow().receipt, restored.receipt);
+    sessions.release(&handle).unwrap();
+}
+
+#[tokio::test]
+async fn native_preinput_context_supersession_refuses_before_input_effect() {
+    use crate::domain::ContextVersion;
+    for durable in [false, true] {
+        let (dir, owner, mut task) = results::tests::fixture().await;
+        let revision = results::text(
+            &results::git(&dir.path().join("repo"), ["rev-parse", "HEAD"])
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        let original = ContextVersion {
+            scope: task.scope(),
+            version: 1,
+            revision: revision.clone(),
+            source_hashes: BTreeMap::from([("source".into(), "A".into())]),
+            data: json!({"instruction":"A"}),
+        };
+        if durable {
+            let mut store = owner.store.lock().unwrap();
+            store.put_context(&original).unwrap();
+            task.context_version = 1;
+            store.put_task(&mut task).unwrap();
+        }
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, "codex", "Implement", None)
+            .await
+            .unwrap();
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let path = program(dir.path(), "codex");
+        let script=std::fs::read_to_string(&path).unwrap().replace("def hold_bootstrap():","BOOTSTRAP_HOLD = True\n\ndef hold_bootstrap():").replacen("        while True: time.sleep(0.02)","        while not os.path.exists(os.path.join(os.environ[\"RRX_OUTPUT_DIR\"],\"fixture-bootstrap-release\")): time.sleep(0.02)",1);
+        std::fs::write(&path, script).unwrap();
+        let mut prepared = input(&unit, if durable { "" } else { "answer-ok" });
+        if durable {
+            prepared.input.payload = serde_json::to_string(&original.data).unwrap();
+            prepared.input.source_versions = original.source_hashes.clone();
+        }
+        let handle = match sessions
+            .start_inner(prepared, None, None, Some(path))
+            .await
+            .unwrap()
+        {
+            NativeStart::Launched(h) => h,
+            _ => panic!("fixture launch"),
+        };
+        let output = owner
+            .root
+            .join("units")
+            .join(unit.id.to_string())
+            .join("output");
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !output.join("fixture-bootstrap-ready").exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        {
+            let mut store = owner.store.lock().unwrap();
+            let newer = ContextVersion {
+                scope: task.scope(),
+                version: if durable { 2 } else { 1 },
+                revision,
+                source_hashes: BTreeMap::from([("source".into(), "B".into())]),
+                data: json!({"instruction":"B"}),
+            };
+            store.put_context(&newer).unwrap();
+            let mut current = store.task(task.id).unwrap().unwrap();
+            current.context_version = newer.version;
+            store.put_task(&mut current).unwrap();
+        }
+        std::fs::write(output.join("fixture-bootstrap-release"), "release").unwrap();
+        let status = terminal(&sessions, &handle).await;
+        assert_eq!(status.work, Some(WorkOutcome::Unknown));
+        let store = owner.store.lock().unwrap();
+        let invocation = store.native_session_invocation(handle.session).unwrap();
+        assert!(
+            invocation.input_operation.is_none(),
+            "superseded input was journalled/written"
+        );
+        assert!(
+            store
+                .managed_effects(unit.id)
+                .unwrap()
+                .iter()
+                .all(|e| e.kind != "native_input")
+        );
+        assert_eq!(
+            store.task(task.id).unwrap().unwrap().context_version,
+            if durable { 2 } else { 1 }
+        );
+    }
+}
+
+#[tokio::test]
+async fn native_concurrent_terminal_retry_survives_supervisor_watch_publication() {
+    use crate::execution::native_result::{AcquisitionStatus, ReceiptAuthority};
+    let (dir, owner, task) = results::tests::fixture().await;
+    let sessions = NativeSessions::new(owner.clone()).unwrap();
+    let (unit, _) = attempts::AttemptManager::new(owner.clone())
+        .prepare(task.id, "codex", "Implement", None)
+        .await
+        .unwrap();
+    let handle = match sessions
+        .start_inner(
+            input(&unit, "answer-hold-after-final"),
+            None,
+            None,
+            Some(program(dir.path(), "codex")),
+        )
+        .await
+        .unwrap()
+    {
+        NativeStart::Launched(h) => h,
+        _ => panic!("fixture launch"),
+    };
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !sessions
+            .status(&handle)
+            .unwrap()
+            .pending
+            .iter()
+            .any(|p| p["id"] == "answer-barrier")
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let connection = rusqlite::Connection::open(dir.path().join("state.db")).unwrap();
+    connection.execute_batch(&format!("CREATE TRIGGER native_receipt_fixture_fault BEFORE INSERT ON native_results WHEN NEW.unit_id='{}' BEGIN SELECT RAISE(ABORT,'synthetic bounded receipt failure'); END;",unit.id)).unwrap();
+    let output = owner
+        .root
+        .join("units")
+        .join(unit.id.to_string())
+        .join("output");
+    std::fs::write(output.join("fixture-delay-publication"), "delay").unwrap();
+    std::fs::write(output.join("fixture-release"), "release").unwrap();
+    let mut updates = sessions.subscribe(&handle).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !output.join("fixture-publication-ready").exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let held = sessions.status(&handle).unwrap();
+    assert_eq!(held.observed_work, Some(WorkOutcome::Success));
+    assert_eq!(held.work, None);
+    assert!(held.receipt.is_none());
+    assert!(sessions.release(&handle).is_err());
+    connection
+        .execute_batch("DROP TRIGGER native_receipt_fixture_fault")
+        .unwrap();
+    let restored = sessions.status(&handle).unwrap();
+    assert_eq!(restored.work, Some(WorkOutcome::Success));
+    let receipt = owner
+        .store
+        .lock()
+        .unwrap()
+        .native_result(restored.receipt.unwrap())
+        .unwrap();
+    assert_eq!(receipt.observed_work, WorkOutcome::Success);
+    assert_eq!(receipt.acquisition, AcquisitionStatus::Complete);
+    assert_eq!(receipt.authority, ReceiptAuthority::OwnedTerminal);
+    assert_eq!(receipt.text.as_deref(), Some("APPROVE actual answer"));
+    assert_eq!(updates.borrow().work, Some(WorkOutcome::Success));
+    assert_eq!(updates.borrow().receipt, restored.receipt);
+    assert_eq!(updates.borrow().session.state, SessionState::Exited);
+    // Consume the status retry's watch update. The next observation must come
+    // from the actual supervisor's publication/Drop, without another status read.
+    updates.borrow_and_update();
+    std::fs::write(output.join("fixture-publication-release"), "release").unwrap();
+    tokio::time::timeout(Duration::from_secs(5), updates.changed())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updates.borrow().work, Some(WorkOutcome::Success));
+    assert_eq!(updates.borrow().receipt, restored.receipt);
+    assert_eq!(updates.borrow().session.state, SessionState::Exited);
+    assert_eq!(
+        updates.borrow().result.as_ref().unwrap()["text"],
+        "APPROVE actual answer"
+    );
+    assert_ne!(
+        updates.borrow().diagnostic,
+        Some("terminal persistence conflict")
+    );
+    sessions.release(&handle).unwrap();
 }

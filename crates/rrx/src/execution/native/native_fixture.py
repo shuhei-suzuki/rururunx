@@ -80,6 +80,41 @@ for line in sys.stdin:
         elif method == "turn/start":
             send({"id": value["id"], "result": {"turn": {"id": "fixture-turn"}}})
             payload = value["params"]["input"][0]["text"]
+            if payload.startswith("answer-"):
+                if payload in ("answer-item-overflow","answer-event-overflow"):
+                    for i in range(257 if payload=="answer-item-overflow" else 1025):
+                        if payload=="answer-item-overflow": send({"method":"item/completed","params":{"threadId":os.environ["RRX_UNIT_ID"],"turnId":"fixture-turn","completedAtMs":0,"item":{"id":str(i),"type":"agentMessage","phase":"commentary","text":"bounded commentary"}}})
+                        else: send({"method":"item/agentMessage/delta","params":{"threadId":os.environ["RRX_UNIT_ID"],"turnId":"fixture-turn","itemId":"draft","delta":"d"}})
+                    while True: time.sleep(0.02)
+                item = {"id":"fixture-answer","type":"agentMessage","phase":"final_answer","text":"APPROVE actual answer"}
+                def emit(i, thread=None, turn="fixture-turn"):
+                    send({"method":"item/completed","params":{"threadId":thread or os.environ["RRX_UNIT_ID"],"turnId":turn,"completedAtMs":0,"item":i}})
+                if payload == "answer-null-phase": item["phase"] = None
+                if payload == "answer-encoded-overflow": item["text"] = "\x01" * 349450
+                if payload == "answer-foreign": emit(dict(item,text="FOREIGN must not persist"),"foreign", "foreign-turn")
+                if payload == "answer-commentary": emit(dict(item,id="commentary",phase="commentary",text="commentary must not become final"))
+                if payload == "answer-delta-only":
+                    send({"method":"item/agentMessage/delta","params":{"threadId":os.environ["RRX_UNIT_ID"],"turnId":"fixture-turn","itemId":"draft","delta":"draft only"}})
+                elif payload == "answer-raw-duplicate":
+                    print('{"method":"item/completed","params":{"threadId":'+json.dumps(os.environ["RRX_UNIT_ID"])+',"turnId":"fixture-turn","item":{"id":"fixture-answer","type":"agentMessage","phase":"final_answer","text":"first","text":"second"}}}',flush=True)
+                elif payload == "answer-depth":
+                    nested = None
+                    for _ in range(33): nested = [nested]
+                    emit(dict(item,extra=nested))
+                elif payload != "answer-terminal-only": emit(item)
+                if payload == "answer-duplicate": emit(item)
+                if payload == "answer-change": emit(dict(item,text="CHANGED answer"))
+                if payload == "answer-two-finals": emit(dict(item,id="second-final",text="SECOND answer"))
+                if payload == "answer-hold-after-final":
+                    send({"id":"answer-barrier","method":"item/commandExecution/requestApproval","params":{"threadId":os.environ["RRX_UNIT_ID"],"turnId":"fixture-turn","itemId":"barrier","command":"fixture no execution","cwd":os.getcwd()}})
+                    with open(os.path.join(os.environ["RRX_OUTPUT_DIR"],"fixture-answer-ready"),"w") as ready: ready.write("ready")
+                    while not os.path.exists(os.path.join(os.environ["RRX_OUTPUT_DIR"],"fixture-release")): time.sleep(0.02)
+                turn = {"id":"fixture-turn","status":"failed" if payload == "answer-failed" else "completed","items":[item]}
+                if payload == "answer-failed": turn["error"] = {"codexErrorInfo":"other"}
+                if payload == "answer-summary": turn.update(items=[],itemsView="summary")
+                if payload == "answer-delta-only": turn["items"] = []
+                send({"method":"turn/completed","params":{"threadId":os.environ["RRX_UNIT_ID"],"turn":turn}})
+                continue
             if payload.startswith("capacity-") or payload == "authentication-terminal":
                 info = {"capacity-rate":"rateLimitExceeded", "capacity-flex":"flexUnavailable", "capacity-overload":"serverOverloaded", "capacity-http":{"httpConnectionFailed":{"httpStatusCode":429}}, "capacity-retry-success":"rateLimitExceeded", "authentication-terminal":"unauthorized"}[payload]
                 if payload == "capacity-retry-success":
@@ -94,7 +129,9 @@ for line in sys.stdin:
                 send({"method": "turn/completed", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turn": {"id": "fixture-turn", "status": "failed", "error": error}}})
             else:
                 complete(payload)
-                send({"method": "turn/completed", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turn": {"id": "fixture-turn", "status": "completed"}}})
+                item = {"id":"fixture-answer","type":"agentMessage","phase":"final_answer","text":"fixture complete"}
+                send({"method":"item/completed","params":{"threadId":os.environ["RRX_UNIT_ID"],"turnId":"fixture-turn","completedAtMs":0,"item":item}})
+                send({"method": "turn/completed", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turn": {"id": "fixture-turn", "status": "completed","items":[item]}}})
             continue
         else:
             send({"id": value["id"], "error": {"code": -32601}})
@@ -108,6 +145,26 @@ for line in sys.stdin:
         elif value["type"] == "user":
             send({"type": "system", "subtype": "init", "session_id": native, "cwd": os.getcwd(), "tools": ["Bash"], "mcp_servers": []})
             payload = value["message"]["content"]
+            if payload.startswith("answer-"):
+                if payload in ("answer-changing-held","answer-sameuuid-changing-held","answer-identical-held"):
+                    send({"type":"system","subtype":"session_state_changed","session_id":native,"state":"running"})
+                    a={"type":"result","session_id":native,"uuid":"answer-A","subtype":"success","is_error":False,"result":"APPROVE A"}
+                    send(a)
+                    send(dict(a,uuid="answer-A" if payload=="answer-sameuuid-changing-held" else "answer-B",result="APPROVE A" if payload=="answer-identical-held" else "APPROVE B"))
+                    send({"type":"system","subtype":"session_state_changed","session_id":native,"state":"idle"})
+                    continue
+                frame = {"type":"result","session_id":native,"subtype":"success","is_error":payload == "answer-failed","result":"APPROVE actual answer"}
+                if payload == "answer-structured": frame["structured_output"] = {"decision":"APPROVE"}
+                if payload == "answer-encoded-overflow": frame["result"] = "\x01" * 349450
+                if payload == "answer-foreign": send(dict(frame,session_id="foreign",result="FOREIGN must not persist"))
+                if payload == "answer-raw-duplicate":
+                    print('{"type":"result","session_id":'+json.dumps(native)+',"subtype":"success","is_error":false,"result":"first","result":"second"}',flush=True)
+                elif payload == "answer-depth":
+                    nested = None
+                    for _ in range(33): nested = [nested]
+                    send(dict(frame,extra=nested))
+                else: send(frame)
+                continue
             if payload in ("authentication-terminal", "authentication-structured", "unsupported-control"):
                 if payload == "unsupported-control":
                     send({"type":"control_request", "request_id":"future-control", "request":{"subtype":"future-control","input":{}}})

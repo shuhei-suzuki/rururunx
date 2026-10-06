@@ -228,6 +228,8 @@ impl AgentAdapter for FakeAgent {
                         wait_reason: unit.wait_reason,
                         pending: vec![],
                         result: None,
+                        receipt: None,
+                        observed_work: None,
                         metrics: None,
                         diagnostic: None,
                         failure: None,

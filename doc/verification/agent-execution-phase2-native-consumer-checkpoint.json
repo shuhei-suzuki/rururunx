@@ -1,0 +1,847 @@
+{
+  "status": "REVIEWED_COMPONENT_INTEGRATED_NOT_PHASE2_ACCEPTANCE",
+  "source_commit": "5d16952cfed3bfd74dd859a47647e2630a48ffff",
+  "schema": 7,
+  "platform": "macOS26.6.2/25G83 arm64; Rust/Cargo1.91.1; bounded four test threads",
+  "author_checkpoint": {
+    "author": "B",
+    "source_commit": "b298fe0a28519945786eb88340b277aef0360425",
+    "source_worktree": "/private/tmp/rrx-native-coherent-projection",
+    "author_status": "SUBMITTED_FOR_INDEPENDENT_COMPONENT_ACCEPTANCE",
+    "consumer_integration_chain": [
+      "580ddcd66d21943bae9ab858d295b9b33b89bc13",
+      "92ec3a7c8731de66dfe3101749eef09307ce94d4",
+      "c83db3e30eaae403023e0be2dfc76d1307bec697",
+      "cbff58c6e2a2c626fc37fbe77ee645072d9765dc",
+      "b298fe0a28519945786eb88340b277aef0360425"
+    ],
+    "assumed_already_integrated_dependencies": [
+      "approved native supplement0ed72",
+      "Native6 schema/DTO ledger beb555 and bounded correctioncc5e5cc",
+      "strictJSON utility bff8b27 identical cherry-pick bytes"
+    ],
+    "formal_evidence": {
+      "metadata": "/private/tmp/rrx-native-coherent-projection-formal/metadata.json",
+      "source_clean_before_after": true,
+      "fmt": "PASS",
+      "clippy_alltargets": "PASS",
+      "build_alltargets": "PASS",
+      "native_causal_test_functions": 11,
+      "native_ledger_test_functions": 4,
+      "prior_grok_checkpoint_target": "PASS",
+      "fullworkspace_bounded_threads": 4,
+      "fullworkspace": "PASS",
+      "primary_lib_passed": 458,
+      "primary_lib_ignored": 25,
+      "remaining_integration_groups": "PASS",
+      "full_log_sha256": "70907af25a52908c38380f52e02978f4a0fbecf081d371a46d40fffec82fa27d"
+    },
+    "compiled_old5": {
+      "metadata": "/private/tmp/rrx-native-old5-proof-coherent/metadata.json",
+      "exact_old_source": "bff8b27b72ae68c664764b6e51b549e860266bea",
+      "current_source": "b298fe0a28519945786eb88340b277aef0360425",
+      "preopen_actual_store_owner_audit_session": "all incompatible writer contract refused",
+      "preopen_prepared_statement": "incompatible writer contract refused",
+      "fresh_old_open": "unsupported schema6 supported5 refused",
+      "state_unchanged": "schema6, original Project name/audit2/session absent",
+      "scope": "pure compiled typed current Store opener against old actual compiled library/helper; synthetic state only"
+    },
+    "mutation_evidence": [
+      {
+        "metadata": "/private/tmp/rrx-native-consumer-mutations/metadata.json",
+        "baseline": "c83db3e30eaae403023e0be2dfc76d1307bec697",
+        "class": "compiled dirty patch-based causal evidence only, not clean-head formal mutation acceptance",
+        "count": 5,
+        "actual_assertion_kills": 5,
+        "controls": [
+          "original-byte strict decoder",
+          "current pre-input Context pointer",
+          "Claude final-only replacement",
+          "observed terminal erasure",
+          "foreign thread/turn item"
+        ],
+        "exact_tree_restored": true,
+        "restored_native_controls_passed": 10
+      },
+      {
+        "metadata": "/private/tmp/rrx-native-watch-mutation-proof/metadata.json",
+        "baseline": "b298fe0a28519945786eb88340b277aef0360425",
+        "class": "clean committed mutant-before-run and exact baseline restore commit evidence",
+        "actual_assertion_kills": 2,
+        "receipt_mutant": "b9c5ee034606fcbb7a12b7ae3e34b19094844483",
+        "receipt_restore": "8f82fc4367856b9253d1978ae457564c32dca2d8",
+        "session_current_projection_mutant": "ba700a104aabf141bd1782476137ec50e39e6042",
+        "session_restore": "56b88de44b3c59760cd9de3c84f6cd8b8fb7efdf",
+        "scope_note": "Session mutant removes current-session projection in both supervisor and Drop; not a claim of isolating only the narrow run projection path",
+        "restored_actual_watch_control": "PASS",
+        "exact_baseline_tree_restored": true
+      }
+    ],
+    "failure_history_retained": [
+      {
+        "source": "580ddcd66d21943bae9ab858d295b9b33b89bc13",
+        "metadata": "/private/tmp/rrx-native-consumer-formal/metadata.json",
+        "full": "FAIL",
+        "details": [
+          "release() rejected durable terminal before hygiene/watch settled",
+          "Grok environment checkpoint60s watchdog under original default full load"
+        ]
+      },
+      {
+        "source": "c83db3e30eaae403023e0be2dfc76d1307bec697",
+        "metadata": "/private/tmp/rrx-native-consumer-correction-formal/metadata.json",
+        "full": "PASS",
+        "remaining_source_limit": "self-found concurrent retry/watch projection race; corrected cbff/b298, original source not final acceptance"
+      },
+      {
+        "source": "cbff58c6e2a2c626fc37fbe77ee645072d9765dc",
+        "metadata": "/private/tmp/rrx-native-consumer-projection-formal/metadata.json",
+        "later_full": "rawPASS but exact-head qualification withheld",
+        "reason": "final b298 cargo build overlapped historical cbff test execution on shared target; possible changed child artifact; final b298 full separately stable qualified"
+      }
+    ],
+    "limitations": [
+      "Initial text-only bounded Claude/Codex fixture protocol profile; structured output unsupported.",
+      "Native result receipt/projection does not certify review/approval/member/round authority or readonly provenance.",
+      "Private observed terminal retention survives current Runtime actor/storage retry, not RuntimeSIGKILL while receipt persistence stays unavailable.",
+      "No authenticated official Claude/Codex, credential/model operations, Linux, fourTask native conformance, Release/install or fullRuntime/MVP acceptance claimed.",
+      "Only author-owned component and isolated account-free fixtures; combined SourceRecovery7/Verifier8/migrations require independent integration checks."
+    ],
+    "live_handles": [],
+    "all_owned_commands_closed": true
+  },
+  "independent_review_history": [
+    {
+      "path": "/private/tmp/rrx-native-receipt-consumer-source-review-root.json",
+      "sha256": "6e9ad21a2a7ba31026d988d6b9d9c785025f7b3b0cd84619628da30852f3178d",
+      "report": {
+        "reviewer": "root",
+        "source": "580ddcd66d21943bae9ab858d295b9b33b89bc13",
+        "base": "cc5e5cc588142f5100fa1c95e6e05b7f03a4de04",
+        "verdict": "REQUEST_CHANGES",
+        "findings": [],
+        "method": "Independent static review of fixed Core, raw JSON wire decoder, content collector, invocation/result transaction producers, shared helper factoring and control wiring. Did not inspect peer findings or execution logs.",
+        "assessment": [
+          "NativeSeed and NativeTerminal fields are private, cannot be minted by exported receipt DTOs. Session registration and invocation are one Immediate before child spawn; physical profile digest and current input/Context/source binding are retained.",
+          "Actual native_input intent and serialized frame hash are recorded before send. Native thread/turn acknowledgement is constrained by session ownership and exact input state; complete owned receipt requires acknowledged invocation and confirmed exact input effect.",
+          "Original inbound JSON bytes pass bounded strict decoder before Value. Codex observed item/completed final_answer belongs to exact acknowledged thread/turn; duplicate changed item identity or inconsistent/unobserved full terminal items remain ambiguous. Summary/notLoaded view cannot manufacture an unobserved final. Claude accepted RunState origin/session/background/final-idle governs collector input.",
+          "Complete content and acquisition status remain independent of work Success/Failure/Unknown. Text-only profile rejects structured content, final content is bounded and incomplete evidence is UTF8-bounded with explicit observed-prefix semantics. Auth failure discards raw content; finite diagnostics and hash-only rejected wire evidence avoid copying raw provider errors.",
+          "finish_native_result rechecks current ownership and transactionally writes immutable receipt, closes invocation, records work/releases quota and closes matching Session; stale/cancelled actors can append historical draft only. Later hygiene is separate from work. Drop retires logical authority before historical draft attempt.",
+          "Session/effect/finish helper factoring preserves original checks and transaction semantics; old direct terminal/session API is now test-only, and no schema version/initialize edits occur in this consumer delta."
+        ],
+        "limits": [
+          "Static source approval only. Fixed source formal controls, full regression/build/lint and compiled causal mutations are pending; dirty exploratory results are not credited.",
+          "Actual old5 binary preopen/newopen matrix and exact final integrated schema7/8 composition remain pending.",
+          "No real accounts/auth/settings/hooks, Linux/macOS CI, four native Tasks, ReviewRound authority, complete Phase2 or MVP completion is approved."
+        ],
+        "reviewed_paths": [
+          "execution/native.rs",
+          "execution/native_result.rs",
+          "state/execution/native_results.rs",
+          "state/execution.rs",
+          "state/execution/effects.rs",
+          "state/execution/sessions.rs",
+          "execution/native/tests.rs",
+          "execution/native/native_fixture.py",
+          "doc/design/native-result-receipts-design.md"
+        ],
+        "initial_static_verdict": "APPROVE",
+        "post_review_repository_verification": {
+          "independent_report": "/private/tmp/rrx-native-receipt-consumer-source-review-a.json",
+          "verified_findings": [
+            {
+              "id": "NR-A-M1",
+              "verified": "RunState result assignment at405 with complete requiring idle retains only last candidate; Core collector sees only last terminal. Real same-session ordinary A\u2192B running-state sequence is reachable."
+            },
+            {
+              "id": "NR-A-M2",
+              "verified": "Collector event/items limits poison and return unit; exact owned codex actor never checks status to stop reads. Bounded frames do not bound suffix or permit holding."
+            },
+            {
+              "id": "NR-A-M3",
+              "verified": "reserve_native_input checks old immutable Context hash; validate_authority has no Task.context pointer check. Public put_context/put_task allow current pointer supersession for standalone no-Workflow Task after registration."
+            },
+            {
+              "id": "NR-A-M4",
+              "verified": "NativeTerminal temporary closure drops proof on receipt failure; subsequent Core Drop captures Unknown/Lost, replacing already observed reliable terminal knowledge."
+            }
+          ],
+          "additional_actual_regression": "NativeSessions::status projects persisted Session before cleanup watch update, while release uses old watch state; legitimate terminal release can refuse. Fixed source re-review and execution required.",
+          "verification_method": "Static causal consumer checks independently verified after both original reviews were complete. No execution/exploit claim for the four proposed controls."
+        }
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-native-receipt-consumer-source-review-a.json",
+      "sha256": "fd7695529f11ca5364ecff55fc71dbec26c3d11bb2e40e90e7076cad79970c0d",
+      "report": {
+        "source_commit": "580ddcd66d21943bae9ab858d295b9b33b89bc13",
+        "baseline_native_ledger": "beb555ecf77e9b099592af1dd7319d6a1937bc8a",
+        "baseline_validator_fix": "cc5e5cc588142f5100fa1c95e6e05b7f03a4de04",
+        "review_kind": "independent static STRICT preliminary component source review",
+        "verdict": "REQUEST_CHANGES",
+        "counts": {
+          "Critical": 0,
+          "High": 0,
+          "Medium": 4,
+          "Low": 0
+        },
+        "findings": [
+          {
+            "id": "NR-A-M1",
+            "severity": "Medium",
+            "title": "Changed ordinary Claude results are silently replaced before final idle",
+            "locations": [
+              "crates/rrx/src/execution/claude_wire.rs:405",
+              "crates/rrx/src/execution/native.rs:1588-1590",
+              "crates/rrx/src/execution/native_result.rs:530-558"
+            ],
+            "evidence": "RunState stores every accepted ordinary success result by assignment. If state is running or a background task is outstanding, complete() is false, allowing a second current-session ordinary result with a new UUID to overwrite the first. The Core calls claude_terminal only once, on the last result after idle; Collector therefore emits Complete for the replacement without seeing contradictory content. This contradicts native-result design 2.2 (changed/multiple ordinary final representations are ambiguous).",
+            "legitimate_trigger": "Owned Claude init, session state running, ordinary success text A, distinct-UUID ordinary success text B, then idle. No foreign Session or forged receipt is needed.",
+            "suggested_fix": "Track qualified ordinary candidate identity/content as each result is accepted, and preserve sticky ambiguity; do not rely on the final RunState.result slot as the complete acquisition history. Keep background/origin/final-idle qualification.",
+            "causal_control_not_executed": "Actual stdio fixture emits A then B while completion is held by running state; after idle require Ambiguous/no complete text. Identical redelivery should remain idempotent; foreign-origin content should not poison the owned candidate."
+          },
+          {
+            "id": "NR-A-M2",
+            "severity": "Medium",
+            "title": "Collector overflow never stops the native input loop",
+            "locations": [
+              "crates/rrx/src/execution/native_result.rs:343-350",
+              "crates/rrx/src/execution/native_result.rs:395-413",
+              "crates/rrx/src/execution/native.rs:1452-1500"
+            ],
+            "evidence": "Collector event/item limits only poison status and return (). Core codex loop does not inspect this status or receive a bounded-stop indication. After 1024 relevant events or 256 item IDs it continues reading arbitrary further frames until a terminal or external cancellation, retaining the native lease. The approved supplement 3 explicitly requires stopping collection/invocation at overflow rather than reading an unbounded suffix. Per-frame JSON bounds do not bound total events or elapsed resource ownership.",
+            "legitimate_trigger": "The exact owned thread/turn emits 1025 bounded agentMessage delta notifications and continues emitting without turn/completed.",
+            "suggested_fix": "Return a sticky bounded acquisition overflow signal to the actor, stop reading and invoke existing owned best-effort shutdown. Preserve an already observed native terminal separately; otherwise work remains Unknown and acquisition Overflow.",
+            "causal_control_not_executed": "Owned fixture emits the overflow boundary and then waits without terminal. Require bounded terminal/receipt Overflow and no continued model-frame drain; omission of actor overflow handling must reach and fail that assertion."
+          },
+          {
+            "id": "NR-A-M3",
+            "severity": "Medium",
+            "title": "Pre-wire input admission validates the old immutable Context but not the current Task pointer",
+            "locations": [
+              "crates/rrx/src/state/execution/native_results.rs:268-292",
+              "crates/rrx/src/state/execution/native_results.rs:359-362",
+              "crates/rrx/src/state/execution.rs:394-437"
+            ],
+            "evidence": "register_native_session initially compares Task.context_version to input.version. Later reserve_native_input only reloads invocation.context_version and checks that old immutable row hash is unchanged. validate_authority checks lifecycle/governing Project/Goal and executor namespace, but not the Task Context pointer. A legitimate standalone Task can append Context 2 and update its pointer after registration while native bootstrap is awaiting. Context 1 remains immutable, so the old input is admitted and may later receive OwnedTerminal despite having been superseded before its first input. This is current grant/receipt currency, not missing future Runtime integration.",
+            "legitimate_trigger": "Use the supported standalone current Context fixture, hold Codex thread/start (or Claude initialization) after Session registration, append Context 2 via put_context and update Task.context_version with put_task, then release bootstrap. No Workflow row is required and ordinary Store paths allow the change.",
+            "suggested_fix": "In the native-input Immediate transaction compare current Task pointer (and the managed current input authority where present) to the private invocation binding, including explicit no-Context identity. Refuse before native_input intent/wire on supersession. Keep already admitted immutable input distinct from later publication.",
+            "causal_control_not_executed": "Actual bootstrap barrier plus public Context/Task update; assert no native_input effect/wire occurs and no current OwnedTerminal is minted. An unchanged-pointer control must dispatch normally. Test both Some-to-newer and None-to-Some where allowed."
+          },
+          {
+            "id": "NR-A-M4",
+            "severity": "Medium",
+            "title": "Receipt persistence failure discards a known native terminal before retry or historical retention",
+            "locations": [
+              "crates/rrx/src/execution/native.rs:1257-1277",
+              "crates/rrx/src/execution/native.rs:1614-1642"
+            ],
+            "evidence": "After a reliable native Success/Failure, run builds NativeTerminal only inside a temporary closure. Any receipt transaction error drops that proof and proceeds to cleanup/end. Core does not retain the known work/disposition/failure. Drop then retires the open Unit and calls capture with Unknown/Lost after protocol_lost(), even though the terminal was observed. A transient first insert failure can consequently yield a historical Unknown/Partial receipt and lose the observed known work. Supplement 5 requires preserving bounded acquisition/known work on persistence failure and forbids turning known Success into Unknown merely because persistence/hygiene fails.",
+            "legitimate_trigger": "A genuine native final+terminal is observed, and an isolated test SQL trigger aborts only the first native_results insert (or another recoverable transaction conflict occurs), allowing the subsequent retirement/history path.",
+            "suggested_fix": "Retain the exact private terminal observation/proof in the supervisor across persistence failure; bounded exact retry or historical-only retention must preserve observed work independently of logical Unit retirement. No watch authority may precede commit. Drop-before-native-terminal remains Unknown.",
+            "causal_control_not_executed": "Inject one receipt insert failure after a real terminal, then permit subsequent writes; require historical observation retains Success/Failure with unchanged content evidence while logical retirement remains conservative, and no watch success appears before receipt commit."
+          }
+        ],
+        "coverage": [
+          "Core launch/registration/dispatch/ack/terminal/Drop and NativeStatus projection",
+          "strict raw decoder callsites and finite framing",
+          "Claude RunState origin/background/current-session candidate path",
+          "Codex exact thread/turn item/terminal collector",
+          "typed invocation/result reads and body/index binding",
+          "same-transaction Session/Unit/quota terminal factoring and historical path",
+          "Native6 SQL immutable identity guards and current bounded DTO validator",
+          "new account-free fixture source and retained Context/idempotent/cancel controls inspected statically"
+        ],
+        "positive_observations": [
+          "Native registration and invocation creation are one Immediate transaction before child spawn.",
+          "Input effect intent and invocation transition are committed together before input wire.",
+          "Complete receipt requires acknowledged invocation and exact Confirmed input operation.",
+          "Receipt insertion, invocation closure, owned work, Session closure and lease retirement are atomic; transaction rollback prevents half-publication.",
+          "Structured output is uniformly refused under the text-only profile; raw duplicate/depth checks precede Value conversion.",
+          "Known native Failure and answer content are separate fields; no receipt grants review or round approval."
+        ],
+        "limitations": [
+          "No tests/builds/native/accounts/network/process signals executed. Proposed controls above are not executed evidence.",
+          "No peer findings, aggregate review/progress reports, or dirty/later source were read.",
+          "Runtime/ReviewEngine/native authentication/OS cleanup/full Phase2/MVP are not certified.",
+          "The already-authored ledger design approval is not source approval and own SourceRecovery code is outside this review.",
+          "Static source reachability is assessed; real provider occurrence/frequency and installed output conformance are unverified."
+        ],
+        "live_handles": [],
+        "commands_closed": true
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-native-receipt-consumer-source2-review-root.json",
+      "sha256": "4f0c05b0e896b6fe14c5581bc103d1220b435c3b753f21704e9a4a0043d11ea9",
+      "report": {
+        "reviewer": "root",
+        "kind": "fixed-object component correction source review",
+        "source": "c83db3e30eaae403023e0be2dfc76d1307bec697",
+        "baseline": "580ddcd66d21943bae9ab858d295b9b33b89bc13",
+        "verdict": "REQUEST_CHANGES",
+        "findings": [
+          {
+            "id": "ROOT-NR2-M1",
+            "severity": "Medium",
+            "origin": "Author self-followup independently verified against c83 fixed source",
+            "file": "crates/rrx/src/execution/native.rs",
+            "line": 1400,
+            "problem": "status can commit the frozen proof and project its receipt while Core awaits stop_and_reap. Core then overwrites receipt/result with persisted local Err mapped to None; its stale self.session can overwrite terminal Session. Drop reloads Session/work but does not project the stored receipt. Watch-only consumers can observe terminal logical work with missing answer receipt after successful reconciliation.",
+            "verification": "Core::run awaits hygiene between failed receipt attempt and unconditional final watch projection; NativeSessions::status persists and publishes in that interval. Core::Drop refreshes Session and work but never receipt/result. Store remains durable; issue is actual consumer projection.",
+            "required_change": "Construct the final watch from a coherent current durable receipt/Session projection, preserve the same captured proof, and update receipt/result on successful Drop retry. Add a real retry during hygiene/watch control or equivalent deterministic actor barrier proving a later actor update cannot erase the durable projection."
+          }
+        ],
+        "verified_corrections": [
+          {
+            "id": "NR-A-M1",
+            "actual_consumer": "Core::claude \u2192 RunState::observe \u2192 Collector::claude_terminal/claude_redelivery",
+            "verification": "Accepted ordinary results enter the collector immediately; signatures and previously owned UUIDs make changed representations sticky Ambiguous. Identical redelivery preserves the first answer. confirm_complete is called only after accepted native completion. Origin/background/final-idle consumer checks remain in RunState."
+          },
+          {
+            "id": "NR-A-M2",
+            "actual_consumer": "Collector::poison/event/prefix \u2192 Core::{codex,claude}",
+            "verification": "Overflow has a sticky exhausted flag tested in both owned acquisition loops; item/event/text overflow terminates the actor even with no terminal. run retains bounded overflow evidence and closes logical authority before best-effort hygiene."
+          },
+          {
+            "id": "NR-A-M3",
+            "actual_consumer": "Store::reserve_native_input Immediate transaction",
+            "verification": "Current Task Context pointer must equal the frozen invocation pointer, including None represented by zero. Pinned scope/version/revision/source map/payload are rechecked before reserve_effect_tx and InputPending write. Existing whole Context digest check remains."
+          },
+          {
+            "id": "NR-A-M4",
+            "actual_consumer": "Core::run/Drop, NativeTerminal::persist, NativeSessions::status",
+            "verification": "The actual captured sealed NativeTerminal is placed in the private registry/actor shared slot before receipt write. Failed writes retain the exact proof; Drop retries it without replacing observed work. Status may persist that same proof and refresh durable receipt/watch. Current authority is revalidated, stale terminals become history, and no new CLI/RPC input is replayed."
+          },
+          {
+            "id": "release-terminal-watch",
+            "actual_consumer": "NativeSessions::release",
+            "verification": "Release checks exact durable Unit and Session identity, current closed native authority and terminal Session instead of lagging watch state. Removing a registry lookup does not remove Core OwnedProcess hygiene."
+          }
+        ],
+        "controls_inspected": [
+          "held different and identical Claude results",
+          "nonterminal event/item overflow",
+          "actual SQLite INSERT-trigger receipt failure with original Success reconciliation",
+          "bootstrap barrier Context supersession for standalone and pinned inputs"
+        ],
+        "evidence_method": "Read actual fixed commit deltas and surrounding consumers, typed Store terminal binding and idempotency, Core run/Drop and release. Static review only; no test PASS or authenticated provider claim is inherited.",
+        "limits": [
+          "Storage failures before sealed capture and Runtime SIGKILL before durable receipt remain conservative Unknown/no replay.",
+          "Original 580 approval and subsequent verified defects/full regression failures remain in the original report.",
+          "No complete Phase2, Review counting, real account, Linux, hooks or four-Task qualification.",
+          "c83 correction formal PASS does not close the subsequently verified watch projection race. New fixed source/re-review is required."
+        ],
+        "original_verdict": "APPROVE_COMPONENT_SOURCE"
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-native-receipt-consumer-source2-review-a.json",
+      "sha256": "936eec72a5b6bae490e227d9109190f900faa37d1d13bdd62eeecaf012435597",
+      "report": {
+        "source_commit": "c83db3e30eaae403023e0be2dfc76d1307bec697",
+        "baseline": "580ddcd66d21943bae9ab858d295b9b33b89bc13",
+        "review_kind": "Independent STRICT static component re-review",
+        "verdict": "APPROVE_COMPONENT_SOURCE",
+        "counts": {
+          "Critical": 0,
+          "High": 0,
+          "Medium": 0,
+          "Low": 0
+        },
+        "findings": [],
+        "own_prior_dispositions": [
+          {
+            "id": "NR-A-M1",
+            "disposition": "closed",
+            "evidence": "native.rs:1650-1655 records each accepted owned ordinary result before RunState replacement/final idle; native_result.rs:551-573 freezes first semantic signature and preserves changed UUID/content ambiguity. Known redelivery only reenters already owned UUID. Complete requires independently accepted completion (native.rs:1315-1317).",
+            "control_inspected_not_executed": "native/tests.rs:2067-2109 actual stdio held A/B, same UUID changed and identical repeat controls."
+          },
+          {
+            "id": "NR-A-M2",
+            "disposition": "closed",
+            "evidence": "Collector has sticky exhausted flag (native_result.rs:335-338,373-375); actual Codex and Claude receive loops return ProtocolError/Unknown upon overflow (native.rs:1564,1655). Normal owned terminal remains a separate work observation.",
+            "control_inspected_not_executed": "native/tests.rs:2113-2152 item/event overflow fixture waits without terminal and checks bounded closure, Overflow receipt and no remaining native effects."
+          },
+          {
+            "id": "NR-A-M3",
+            "disposition": "closed",
+            "evidence": "reserve_native_input Immediate transaction now rereads Task.context_version, including None-to-Some, and exact Context scope/version/revision/source hashes/payload digest before effect reservation (state/execution/native_results.rs:293-320).",
+            "control_inspected_not_executed": "native/tests.rs:2236-2326 bootstrap barrier, durable old Context and formerly standalone inputs, actual put_context/put_task supersession; no input operation/effect assertion."
+          },
+          {
+            "id": "NR-A-M4",
+            "disposition": "closed for the verified receipt-write-failure path",
+            "evidence": "native.rs:1335-1346 retains one exact private terminal before its receipt write; Drop retries the same proof and never fabricates Unknown while that proof remains (1704-1735). Scoped status retries same proof and publishes durable watch only after commit (540-585). Late epoch/cancel remains historical via NativeTerminal.persist and Store.finish_native_result.",
+            "control_inspected_not_executed": "native/tests.rs:2156-2233 aborts actual receipt insertion, checks observed Success with no durable work/receipt and refused registry release; after removing fault exact Complete OwnedTerminal and watch reconcile."
+          }
+        ],
+        "release_delta": {
+          "evidence": "native.rs:587-628 requires exact durable unit scope/generation/epoch/session plus closed native effects and terminal own Session. It removes only registry lookup entry; Core independently owns OwnedProcess and stop_and_reap. It grants neither release of unknown escaped processes nor success/finalization authority.",
+          "static_assessment": "Consistent with committed-result-before-hygiene and existing best-effort cleanup contract; receipt-write failure remains unreleasable while native effects are open."
+        },
+        "coverage": [
+          "Complete production delta and relevant unchanged capture, run, Drop, Claude origin/UUID/current Session validation, native input and terminal transactions",
+          "New fixture/test source and docs clarification; no inherited run claims",
+          "Status/release lock ordering and retained private proof identity; no registry reconstruction"
+        ],
+        "limitations": [
+          "Static only: no tests/builds, actual provider/account/auth, network, signals or OS actions. All causal controls above were read but not executed.",
+          "No peer reports, parent test logs, aggregate/progress documents, dirty or later source were read.",
+          "In-memory proof cannot survive Runtime death before durable commit; explicit conservative restart behavior remains. Exceptional failures before terminal capture (for example inability to read the invocation) are not covered by the receipt-insert-fault control.",
+          "SourceRecovery, Runtime, ReviewRound authority, real native protocol conformance, complete Phase2 and MVP acceptance are excluded."
+        ],
+        "live_handles": [],
+        "commands_closed": true
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-native-receipt-consumer-source3-review-root.json",
+      "sha256": "06226c96628936a7a2324744e9f06d88fb612563d3c5ff27c39a45231137f55d",
+      "report": {
+        "reviewer": "root",
+        "source": "cbff58c6e2a2c626fc37fbe77ee645072d9765dc",
+        "baseline": "c83db3e30eaae403023e0be2dfc76d1307bec697",
+        "scope": "Fixed-object terminal watch correction",
+        "verdict": "APPROVE_COMPONENT_SOURCE_WITH_LOW",
+        "findings": [
+          {
+            "id": "ROOT-NR3-L1",
+            "severity": "Low",
+            "file": "crates/rrx/src/execution/native.rs",
+            "line": 1407,
+            "problem": "Run reloads durable result after hygiene but still projects old self.session. A concurrent status retry may therefore briefly have its terminal Session overwritten by actor Starting/Running; immediate Drop reloads/repairs Session. Durable receipt and authority remain correct.",
+            "required_change": "Reload current Session with result under the same Store lock and assert Session terminal state in the watch scheduling control."
+          }
+        ],
+        "verified": [
+          "Core run and Drop now reload typed immutable receipt instead of local persisted Err; exact captured native proof is preserved.",
+          "Actual account-free stdio control places a cfg(test) scheduling barrier after real terminal capture/hygiene, reconciles through status, then inspects supervisor watch without another status call.",
+          "Production build contains no filesystem scheduling barrier; authority and receipt content schema unchanged."
+        ],
+        "limits": [
+          "Static source/control inspection only; no formal/native PASS inherited.",
+          "Remaining transient Session projection Low is fixed in subsequent source b298, not retroactively in cbff."
+        ]
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-native-receipt-consumer-source3-review-a.json",
+      "sha256": "ebc40dad74fb3ae893ee9a278d9c0ab0792886973f72d83a3d101616e3a53b71",
+      "report": {
+        "source_commit": "cbff58c6e2a2c626fc37fbe77ee645072d9765dc",
+        "baseline": "c83db3e30eaae403023e0be2dfc76d1307bec697",
+        "verdict": "APPROVE_COMPONENT_SOURCE_WITH_LOW",
+        "counts": {
+          "Critical": 0,
+          "High": 0,
+          "Medium": 0,
+          "Low": 1
+        },
+        "review_kind": "Independent STRICT static finite component delta review",
+        "findings": [
+          {
+            "id": "NR-A-L1",
+            "severity": "Low",
+            "title": "run publication still briefly pairs durable terminal work/receipt with the pre-terminal Session",
+            "locations": [
+              "crates/rrx/src/execution/native.rs:1404-1417",
+              "crates/rrx/src/execution/native.rs:1777-1798",
+              "crates/rrx/src/execution/native/tests.rs:2389-2420"
+            ],
+            "evidence": "When the first receipt persist fails, self.session is not replaced at1334-1348. Public status can subsequently persist the frozen proof, close the stored Session and publish Exited (540-584) while hygiene awaits. The corrected final run publication reloads the receipt and current Unit, but assigns s.session=self.session.clone() at1407, restoring its older Running/Waiting state into a watch snapshot alongside known Success/receipt. Drop immediately reloads the actual Session and repairs the projection. A concurrent watch receiver can still observe the intervening mixed projection; no durable row is rolled back and public status remains correct.",
+            "legitimate_trigger": "The exact new fault/barrier scenario plus a watch receiver on another executor thread scheduled between run send_modify and Core Drop.",
+            "recommendation": "Reload the exact stored own Session alongside the typed receipt/current Unit before run publication, or preserve the already durable terminal watch Session; retain identity checks and Drop repair. Extend the causal watch control to inspect Session state, with an instrumented post-publication/pre-Drop observation if deterministic sensitivity is needed.",
+            "causal_control_not_executed": "Reconcile through public status at the existing barrier, release supervisor, observe the run publication before Drop and require the same terminal Session state as the durable transaction. Current assertions cover work/receipt/text/diagnostic but do not cover this field.",
+            "blocking_assessment": "Low: transient public watch consistency only; this source does not erase a durable result or grant stale authority, and Drop restores the Session projection."
+          }
+        ],
+        "correction_assessment": {
+          "closure": "The targeted durable receipt/content erasure is corrected: run reloads Store.native_session_result under the Store guard and only reports persistence conflict if no durable receipt; Drop also reloads the typed receipt and retained observed work. It never replays native input.",
+          "test_source": "The real stdio peer is first held after its answer. An actual receipt INSERT-abort trigger makes the first write fail. A cfg(test)-only post-hygiene/pre-publication barrier allows public status to commit the same private terminal. The test consumes that watch generation, releases run and checks a subsequent supervisor watch without another status call. This reaches the intended race boundary; no production profile/readiness toggle is introduced.",
+          "own_prior_findings": "NR-A-M1/M2/M3 remain closed; NR-A-M4 remains closed for its verified receipt-write-error path, with in-memory/restart limitations unchanged."
+        },
+        "limits": [
+          "No tests/builds/native/account/auth/network/signals or OS actions; test source read only, no inherited execution claims.",
+          "Only fixed git objects inspected; no peer/Root reports, dirty/later source, progress or run logs consulted.",
+          "The added publication scheduling barrier is test-only; production provider scheduling/frequency is unverified.",
+          "No Runtime, ReviewRound authorization, authenticated native conformance, final Phase2 or MVP acceptance."
+        ],
+        "live_handles": [],
+        "commands_closed": true
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-native-receipt-consumer-source4-review-root.json",
+      "sha256": "958170b811fffcadb1b102c81bfcdd551474b272849dd7666dca8782b3413adb",
+      "report": {
+        "reviewer": "root",
+        "source": "b298fe0a28519945786eb88340b277aef0360425",
+        "baseline": "cbff58c6e2a2c626fc37fbe77ee645072d9765dc",
+        "scope": "Coherent terminal watch Session delta; all prior corrections retained",
+        "verdict": "APPROVE_COMPONENT_SOURCE",
+        "findings": [],
+        "verified": [
+          "Core run loads durable current Session and result under the same Store lock after hygiene; a failed local persist cannot overwrite the reconciled receipt or terminal Session with its stale actor copy.",
+          "The actual retry-before-supervisor-publication control asserts SessionState::Exited both at status retry and on later watch event without a status read.",
+          "Drop retains existing durable receipt/Session projection and frozen proof handling; no new input replay or schema/authority behavior."
+        ],
+        "limits": [
+          "Static exact-object review, no test/native/OS qualification inherited.",
+          "Before-capture storage failure and Runtime SIGKILL before durable receipt remain conservative Unknown/no replay.",
+          "Original580/c83/cbff findings/checks are retained; complete Phase2/ReviewEngine and authenticated four-Task acceptance remain pending."
+        ]
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-native-receipt-consumer-source4-review-a.json",
+      "sha256": "bf7930e229f19a5b090d4b3962d6945febeef476f206d18763a488c4fc4fcbf5",
+      "report": {
+        "source_commit": "b298fe0a28519945786eb88340b277aef0360425",
+        "baseline": "cbff58c6e2a2c626fc37fbe77ee645072d9765dc",
+        "verdict": "APPROVE_COMPONENT_SOURCE",
+        "counts": {
+          "Critical": 0,
+          "High": 0,
+          "Medium": 0,
+          "Low": 0
+        },
+        "findings": [],
+        "own_prior_dispositions": [
+          {
+            "id": "NR-A-L1",
+            "disposition": "closed",
+            "evidence": "native.rs:1405-1414 now reloads the durable own Session under the same Store guard as current Unit/receipt and never replaces it with self.session. If the read fails it preserves the existing watch Session, rather than introducing the stale local field. Drop retains its durable reload. New test assertions require Exited both after status retry and subsequent supervisor watch."
+          }
+        ],
+        "coverage": [
+          "Exact two-file10+/1- delta and relevant prior receipt/status/run/Drop projection paths",
+          "The previous NR-A-M1..M4 closures remain unchanged"
+        ],
+        "limits": [
+          "Static review only; no tests/build/logs/native/accounts/network/OS/signals or peer reports.",
+          "The watch test may observe a coalesced run/Drop notification; this is not independent timing-mutant evidence. Source directly removes the identified stale assignment.",
+          "Component only; no full Phase2/native/Runtime/review/MVP qualification."
+        ],
+        "live_handles": [],
+        "commands_closed": true
+      }
+    }
+  ],
+  "parent_formal": {
+    "source_commit": "5d16952cfed3bfd74dd859a47647e2630a48ffff",
+    "clean_before": true,
+    "results": [
+      {
+        "name": "fmt",
+        "argv": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-native-consumer-integrated-fmt.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0,
+        "elapsed_seconds": 0.509
+      },
+      {
+        "name": "clippy",
+        "argv": [
+          "cargo",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-native-consumer-integrated-clippy.log",
+        "sha256": "d9b8cb9be9228f9543cc207e550901eb27e0c8692eb4467816af23c933a82295",
+        "bytes": 185,
+        "elapsed_seconds": 15.528
+      },
+      {
+        "name": "build",
+        "argv": [
+          "cargo",
+          "build",
+          "--workspace",
+          "--all-targets",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target"
+        ],
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-native-consumer-integrated-build.log",
+        "sha256": "1b0429c3a11ee8f9e1d7e51b4d943ce9314b2be4f69dd45c2a64add16ae4a889",
+        "bytes": 185,
+        "elapsed_seconds": 26.372
+      },
+      {
+        "name": "cli",
+        "argv": [
+          "cargo",
+          "test",
+          "-p",
+          "rrx",
+          "--lib",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target",
+          "cli::transport::tests",
+          "--",
+          "--test-threads=4"
+        ],
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-native-consumer-integrated-cli.log",
+        "sha256": "dec03ab7e191c34b96ec1457bf4a301a91e1b6faf8489901b99e8f01b3be5f47",
+        "bytes": 598,
+        "elapsed_seconds": 1.05
+      },
+      {
+        "name": "regression",
+        "argv": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--all-targets",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target",
+          "--",
+          "--test-threads=4"
+        ],
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-native-consumer-integrated-regression.log",
+        "sha256": "19e407a623f56eddc4003d202dfa4fb9f0aeaffb70f369d7bfd1ab440b141a26",
+        "bytes": 73285,
+        "elapsed_seconds": 365.377
+      }
+    ],
+    "clean_after": true,
+    "head_after": "5d16952cfed3bfd74dd859a47647e2630a48ffff"
+  },
+  "parent_counts": {
+    "primary_passed": 590,
+    "failed": 0,
+    "ignored": 30,
+    "primary_library_passed": 472,
+    "primary_library_ignored": 25,
+    "raw_passed": 635,
+    "raw_ignored": 31,
+    "duplicate_child_passes_excluded": 45,
+    "duplicate_child_ignored_excluded": 1
+  },
+  "parent_evidence_inspection": {
+    "receipt_projection": {
+      "log_hash_ok": true,
+      "patch_hash_ok": true,
+      "compiled": true,
+      "assertion_excerpt": "panicked at crates/rrx/src/execution/native/tests.rs:2413:5:\nassertion `left == right` failed\n  left: None\n right: Some(NativeResultId(766bc2e8-17c3-4cf2-a966-9bca0cd54c4e))\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest execution::native::tests::native_concurrent_terminal_retry_survives_supervisor_watch_publication ... FAILED\n\nfailures:\n\nfailures:\n    execution::native::tests::native_concurrent_terminal_retry_survives_supervisor_watch_publication\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 482 filtered out; finished in 1.00s\n\nerror: test failed, to rerun pass `-p rrx --lib`\n",
+      "restore_tree": "44461fd3351f7fbd702b790b2fa2bc3fbae8dbac",
+      "baseline_tree": "44461fd3351f7fbd702b790b2fa2bc3fbae8dbac"
+    },
+    "session_projection": {
+      "log_hash_ok": true,
+      "patch_hash_ok": true,
+      "compiled": true,
+      "assertion_excerpt": "panicked at crates/rrx/src/execution/native/tests.rs:2414:5:\nassertion `left == right` failed\n  left: Running\n right: Exited\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest execution::native::tests::native_concurrent_terminal_retry_survives_supervisor_watch_publication ... FAILED\n\nfailures:\n\nfailures:\n    execution::native::tests::native_concurrent_terminal_retry_survives_supervisor_watch_publication\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 482 filtered out; finished in 1.08s\n\nerror: test failed, to rerun pass `-p rrx --lib`\n",
+      "restore_tree": "44461fd3351f7fbd702b790b2fa2bc3fbae8dbac",
+      "baseline_tree": "44461fd3351f7fbd702b790b2fa2bc3fbae8dbac"
+    },
+    "restored_hash_ok": true,
+    "restored_results": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 482 filtered out; finished in 1.60s"
+    ],
+    "old_binary": {
+      "exists": true,
+      "hash_ok": true
+    },
+    "new_binary": {
+      "exists": true,
+      "hash_ok": true
+    },
+    "old_helper_source": {
+      "exists": true,
+      "hash_ok": true
+    },
+    "old_helper_lock": {
+      "exists": true,
+      "hash_ok": true
+    },
+    "current_helper_source": {
+      "exists": true,
+      "hash_ok": true
+    },
+    "parent_logs": {
+      "fmt": true,
+      "clippy": true,
+      "build": true,
+      "cli": true,
+      "regression": true
+    }
+  },
+  "committed_watch_mutations": {
+    "source_commit": "b298fe0a28519945786eb88340b277aef0360425",
+    "results": [
+      {
+        "mutant": "receipt_projection",
+        "mutation_commit": "b9c5ee034606fcbb7a12b7ae3e34b19094844483",
+        "mutation_clean_before": true,
+        "argv": [
+          "cargo",
+          "test",
+          "-p",
+          "rrx",
+          "--lib",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-native-results-target",
+          "execution::native::tests::native_concurrent_terminal_retry_survives_supervisor_watch_publication",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 101,
+        "assertion_kill": true,
+        "log_sha256": "276157fe08cbb3ac060133f0bbeae57acba70dd91d89c2ab5d7ee02e49f6120a",
+        "patch_sha256": "a334c555300599b9a8f5f24e5ee52340d8448c9c08e7afbdaa0e518ae82dffd7",
+        "restore_commit": "8f82fc4367856b9253d1978ae457564c32dca2d8",
+        "exact_baseline_tree_restored": true
+      },
+      {
+        "mutant": "session_projection",
+        "mutation_commit": "ba700a104aabf141bd1782476137ec50e39e6042",
+        "mutation_clean_before": true,
+        "argv": [
+          "cargo",
+          "test",
+          "-p",
+          "rrx",
+          "--lib",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-native-results-target",
+          "execution::native::tests::native_concurrent_terminal_retry_survives_supervisor_watch_publication",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 101,
+        "assertion_kill": true,
+        "log_sha256": "5d37657a27682196632ae9aafdd01549295ac60d340ea2b3d71688912eeb2307",
+        "patch_sha256": "4e3c873b2fb36e0a348ac25565dde60da90084c6e25938588a05b9d6640ce936",
+        "restore_commit": "56b88de44b3c59760cd9de3c84f6cd8b8fb7efdf",
+        "exact_baseline_tree_restored": true
+      }
+    ],
+    "live_handles": [],
+    "exact_tree_restored": true,
+    "restored_exit_code": 0,
+    "restored_log_sha256": "09abece7bfd23b8aab55e5297c85a27ee622379e579feb17002f70280d9f9b56"
+  },
+  "compiled_old5_schema_fencing": {
+    "old_source_commit": "bff8b27b72ae68c664764b6e51b549e860266bea",
+    "current_source_commit": "b298fe0a28519945786eb88340b277aef0360425",
+    "results": [
+      {
+        "argv": [
+          "/private/tmp/rrx-native-current6-helper/rrx-native-coherent6-open-proof",
+          "/private/tmp/rrx-native-old5-proof-coherent/synthetic.db"
+        ],
+        "exit_code": 0,
+        "stdout": "schema6_opened\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/private/tmp/rrx-native-old5-target/debug/rrx-native-old5-live-proof",
+          "/private/tmp/rrx-native-old5-proof-coherent/synthetic.db",
+          "/private/tmp/rrx-native-old5-proof-coherent/synthetic-root",
+          "new-open"
+        ],
+        "exit_code": 0,
+        "stdout": "{\"error\":\"unsupported state schema 6, supported 5\",\"new_open_refused\":true}\n",
+        "stderr": ""
+      }
+    ],
+    "limits": [
+      "Synthetic state only, compiled actual old5 Store plus prepared connection writes",
+      "No Native provider/model/accounts",
+      "Schema writer fencing only, not Native conformance",
+      "Pure typedStore opener compiled with rustc against the fixed formal Cargo-built current library; not a released/install Native consumer claim"
+    ],
+    "live_handles": [],
+    "old_binary": {
+      "path": "/private/tmp/rrx-native-old5-target/debug/rrx-native-old5-live-proof",
+      "sha256": "0c8e31637322210cbcfa125e2d51de70e3fda7ced2de3bce43d483000de817e4"
+    },
+    "new_binary": {
+      "path": "/private/tmp/rrx-native-current6-helper/rrx-native-coherent6-open-proof",
+      "sha256": "c6e60db2b7fe54b4f98117515317457f5a786e2c09a0c9eb4fa42becd81c2439"
+    },
+    "old_helper_source": {
+      "path": "/private/tmp/rrx-native-old5-helper/src/main.rs",
+      "sha256": "b4c9f705e08e4c659d2fa8434e85ac44d3d02e91d92254ed2ae5399e75e0f4e2"
+    },
+    "old_helper_lock": {
+      "path": "/private/tmp/rrx-native-old5-helper/Cargo.lock",
+      "sha256": "e28234e2465090337b02a0c99ce210a0f54176cfe29ba06308fce28eb6bca8ce"
+    },
+    "old_preopen": {
+      "goal": "21a77857-cd40-4208-bed9-d7fb2fb1ffe0",
+      "project": "81209d47-9bf2-4019-ad59-3f763c2e28bb",
+      "ready": true,
+      "schema": 5,
+      "session": "7791472f-295b-4412-b295-7859cbfbe647"
+    },
+    "old_preopen_writes": {
+      "audit": "incompatible rrx writer contract: Error code 1811: A RAISE function within a trigger fired",
+      "owner": "incompatible rrx writer contract: Error code 1811: A RAISE function within a trigger fired",
+      "prepared_statement": "incompatible rrx writer contract",
+      "session": "snapshot insert failed: incompatible rrx writer contract: Error code 1811: A RAISE function within a trigger fired"
+    },
+    "old_exit": 0,
+    "old_stderr": "",
+    "state_after": {
+      "schema": 6,
+      "audit_before": 2,
+      "audit_after": 2,
+      "project_name": "public synthetic old5 fixture",
+      "session_count": 0
+    },
+    "verdict": "PASS",
+    "current_library": {
+      "sha256": "e47cf58db40d184e287a6a63f5b43d443d596bbd51acdabf1f8ebfec8759f866",
+      "formal_build_log": "/private/tmp/rrx-native-coherent-projection-formal/3.log"
+    },
+    "current_helper_source": {
+      "path": "/private/tmp/rrx-native-current6-helper/src/main.rs",
+      "sha256": "cd210a8db6afb6d07379d6b34f79d6d7efa3a58d4da356c49ff3b5f99453328f"
+    }
+  },
+  "qualified_scope": [
+    "Actual managed Core stdio invokes strict original-byte decoding, freezes current input binding before wire, obtains exact own acknowledgment and bounded answer, then commits native receipt/observed work/Session/quota atomically before watch.",
+    "Published SourceRecovery7 and actual native consumer are integrated; schema remains7. An additional actual Ready/foreign-source selection control and reviewed finite CLI transport are included in the parent checks.",
+    "Two final watch mutants were committed before execution and restored to exactly the final author baseline tree; parent inspected patches, actual assertion failures and hashes.",
+    "Five earlier consumer mutants are compiled dirty patch evidence, not clean-head formal mutation acceptance; original failed/withheld runs and superseded reviews remain recorded.",
+    "Compiled old5 proof uses synthetic state and actual typed Store/prepared writers; parent verifies retained binary/helper hashes. Current-library hash is a historical build record, not a claim of an unchanged shared-target library."
+  ],
+  "limits": [
+    "No authenticated Claude/Codex, Linux, current cargo install, native four-Task, hooks/settings/quota-recovery or complete phase qualification.",
+    "The reviewed CLI transport is finite framing/identity code, without a main command or operational service/Goal/Driver consumer.",
+    "Verifier8/resource gate and Runtime9 remain separate source candidates; shared Native transaction guard composition and final integration checks remain pending.",
+    "ReviewEngine vote/member/round authority, ApprovalBroker, actual consult/interactive attach and complete MVP dogfood remain outstanding.",
+    "Bounded regression PASS does not erase historical unrestricted failures.",
+    "In-memory observed-terminal retry does not guarantee recovery after Runtime SIGKILL while durable receipt storage remains unavailable.",
+    "Best-effort cleanup does not prove descendant death; rururunx is not a security sandbox."
+  ]
+}

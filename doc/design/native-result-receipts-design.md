@@ -1,7 +1,11 @@
 # Owned native answer acquisition and durable receipts
 
-Status: proposed STRICT implementation supplement; documentation only. Actual
-source baseline `37c5cc434d8f9c46d4a0f5f86a0285421a773899`. The approved
+Status: reviewed component implementation integrated at fixed source
+`5d16952cfed3bfd74dd859a47647e2630a48ffff`; schema7 includes the actual Native6
+consumer. See the [qualified checkpoint](../verification/agent-execution-phase2-native-consumer-checkpoint.json).
+The sections below retain original design/protocol provenance and do not certify
+authenticated providers, Review authority or complete Phase2. Original design
+baseline `37c5cc434d8f9c46d4a0f5f86a0285421a773899`. The approved
 [ReviewEngine requirements](../requirements/review-engine-integration-requirements.md)
 and [design](review-engine-integration-design.md) already require this component.
 This supplement makes their acquisition/persistence interfaces concrete; it does
@@ -92,7 +96,7 @@ allowed. After an ambiguous/overflow flag, later well-formed text cannot clear i
 
 On exact `turn/completed` bind to that turn's native status. Terminal full items
 may corroborate previously observed completed candidates; they never mint an
-unobserved final item. Where itemsView is partial/notLoaded, absence from the
+unobserved final item. Where itemsView is summary/notLoaded, absence from the
 terminal list does not retract an observed candidate. A full view containing the
 same final ID with changed content or extra final candidates is ambiguous.
 Do not require terminal.items to contain all observed items when the pinned
@@ -125,8 +129,8 @@ Value reserialization cannot prove original duplicate-key absence.
 
 ## 3. Bounded acquisition and privacy
 
-Initial finite limits: native wire frames retain their existing 4MiB ceiling
-(including framing); bound before JSON allocation. Keep at most 256 observed
+Initial finite limits: native wire frames retain their existing ceilings, Claude
+2MiB and Codex 4MiB (including framing); bound before JSON allocation. Keep at most 256 observed
 answer-related item identities, 1024 relevant candidate/delta events and 1MiB
 decoded answer bytes per invocation. Completed response parsing has depth32 and
 finite provider field/ID bounds. At overflow stop collecting/stop the owned native
@@ -278,3 +282,53 @@ model output phase, subscription recovery, authentication/settings/hooks or full
 N-member review. Actor private grants, native qualification/admission envelopes,
 readonly review completion, full-round integration and final acceptance remain
 separate required work.
+
+
+## 8. Initial implementation profile mapping
+
+The first producer implements text_v1 only. Unqualified structured_output is
+rejected as Unsupported and is never persisted, including non-complete receipts.
+An ordinary Claude success-shaped result (`subtype=success`) supplies model text;
+its `is_error` flag remains independent native Failure. Error-subtype/error-only
+strings do not have a qualified model-content interpretation and are unavailable
+content, with a finite Unsupported reason. Authentication classification runs
+before this extraction; no auth/error arrays or stderr enter a receipt. A future
+structured or error-subtype content profile requires its own bounded decoder and
+consumer controls. This stage does not claim such native profile qualification.
+
+The pinned Codex TurnItemsView enum is full/summary/notLoaded; "partial" above is
+a descriptive loaded-view category, not a supported wire enum. Claude's existing
+2MiB raw frame ceiling is retained, alongside Codex's 4MiB ceiling. Raw malformed
+or overflowing frames retain only a hash of observed bytes, length, exact/lower-
+bound flag and finite category. No raw credential-bearing prefix is persisted.
+The receipt reference and compatibility projection follow durable typed reads;
+no plain DTO or projection supplies reviewer, member or round permission.
+
+Correction controls preserve the actual observer boundaries. The collector sees
+accepted ordinary Claude results when they arrive, before running/idle or
+background holds can replace RunState.result. Identical representation repeats
+are idempotent; changed ordinary representations or a changed previously owned
+UUID poison acquisition. A known frame is not Complete acquisition until native
+completion/final-idle has been accepted. Exhausting the item/event/content budget
+ends the owned acquisition loop immediately, including when the peer sends no
+terminal; no unbounded suffix is drained to find a later completion.
+
+The native_input intent transaction rechecks the current Task Context pointer and
+all pinned Context bytes/source/payload digests. A formerly standalone input also
+requires the Task to remain without a durable Context pointer. New Context rows
+cannot supersede the frozen frame silently at the stdin boundary.
+
+A known terminal is captured once as a sealed bounded proof retained privately by
+the Session registry and supervisor. Receipt persistence errors do not recapture
+it as Unknown/Lost. Drop retries the same proof before considering abandonment;
+scoped status reconciliation may commit that same proof after storage recovers
+and updates the watch. No new CLI input or RPC turn is replayed. Until commit,
+observed_work reports only the finite native observation, durable work remains
+unset/uncertain, and registry release is refused. A cancel or epoch fence wins
+normally; a later stored receipt is HistoricalDraft and never reopens permission.
+This in-memory handoff does not survive Runtime SIGKILL before a durable receipt;
+restart retains the existing conservative Unknown/no-replay behavior.
+
+### Watch publication currency
+
+After a private terminal retry commits while the supervisor awaits hygiene, final watch publication and Drop reload the typed durable receipt. A stale local persistence error cannot erase its receipt ID/content projection. The causal fixture pauses publication after actual terminal capture and hygiene, reconciles via public status, then observes the supervisor watch without another status read. The scheduling barrier is test-only and is absent from production builds.

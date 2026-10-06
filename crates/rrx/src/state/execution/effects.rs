@@ -75,46 +75,10 @@ impl Store {
         authority: &ExecutionAuthority,
         effect: &ManagedEffect,
     ) -> Result<()> {
-        ensure!(
-            effect.unit_id == authority.unit_id
-                && effect.scope == authority.scope
-                && effect.state == EffectState::Pending
-                && effect.version == 1
-                && effect.receipt.is_empty()
-                && !effect.expected_target.is_empty()
-                && effect.expected_target.len() <= 4096
-                && effect.idempotency_key.len() <= 256
-                && !effect.idempotency_key.is_empty(),
-            "invalid effect intent"
-        );
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let unit = validate_authority(&tx, authority, true, false)?;
-        ensure!(
-            !verification::is_command_unit(&tx, unit.id)?,
-            "command-only verifier cannot issue generic or delegated effects"
-        );
-        ensure!(
-            unit.phase != WORKFLOW_SOURCE_BOOTSTRAP,
-            "source preparation cannot issue native or delegated effects"
-        );
-        if matches!(effect.kind.as_str(), "publish" | "merge" | "deploy") {
-            let ambiguous:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE project_id=?1 AND state IN ('pending','unknown') AND json_extract(body,'$.kind')=?2 AND json_extract(body,'$.expected_target')=?3)",params![effect.scope.project_id.to_string(),effect.kind,effect.expected_target],|r|r.get(0))?;
-            ensure!(
-                !ambiguous,
-                "unknown external target outcome requires reconciliation before this phase"
-            );
-        }
-        let (p, g, t) = scope_keys(&effect.scope)?;
-        tx.execute("INSERT INTO managed_effects(id,unit_id,project_id,goal_id,task_id,idempotency_key,state,version,body) VALUES(?1,?2,?3,?4,?5,?6,'pending',1,?7)",
-            params![effect.id.to_string(),effect.unit_id.to_string(),p,g,t,effect.idempotency_key,serde_json::to_string(effect)?])?;
-        append_event(
-            &tx,
-            &effect.scope,
-            "execution.effect_intent",
-            json!({"unit":effect.unit_id,"operation":effect.id,"kind":effect.kind}),
-        )?;
+        reserve_effect_tx(&tx, authority, effect)?;
         tx.commit()?;
         Ok(())
     }
@@ -240,4 +204,49 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+}
+
+pub(super) fn reserve_effect_tx(
+    tx: &Transaction<'_>,
+    authority: &ExecutionAuthority,
+    effect: &ManagedEffect,
+) -> Result<()> {
+    ensure!(
+        effect.unit_id == authority.unit_id
+            && effect.scope == authority.scope
+            && effect.state == EffectState::Pending
+            && effect.version == 1
+            && effect.receipt.is_empty()
+            && !effect.expected_target.is_empty()
+            && effect.expected_target.len() <= 4096
+            && effect.idempotency_key.len() <= 256
+            && !effect.idempotency_key.is_empty(),
+        "invalid effect intent"
+    );
+    let unit = validate_authority(tx, authority, true, false)?;
+    ensure!(
+        !verification::is_command_unit(tx, unit.id)?,
+        "command-only verifier cannot issue generic or delegated effects"
+    );
+    ensure!(
+        unit.phase != WORKFLOW_SOURCE_BOOTSTRAP,
+        "source preparation cannot issue native or delegated effects"
+    );
+    if matches!(effect.kind.as_str(), "publish" | "merge" | "deploy") {
+        let ambiguous:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE project_id=?1 AND state IN ('pending','unknown') AND json_extract(body,'$.kind')=?2 AND json_extract(body,'$.expected_target')=?3)",params![effect.scope.project_id.to_string(),effect.kind,effect.expected_target],|r|r.get(0))?;
+        ensure!(
+            !ambiguous,
+            "unknown external target outcome requires reconciliation before this phase"
+        );
+    }
+    let (p, g, t) = scope_keys(&effect.scope)?;
+    tx.execute("INSERT INTO managed_effects(id,unit_id,project_id,goal_id,task_id,idempotency_key,state,version,body) VALUES(?1,?2,?3,?4,?5,?6,'pending',1,?7)",
+            params![effect.id.to_string(),effect.unit_id.to_string(),p,g,t,effect.idempotency_key,serde_json::to_string(effect)?])?;
+    append_event(
+        tx,
+        &effect.scope,
+        "execution.effect_intent",
+        json!({"unit":effect.unit_id,"operation":effect.id,"kind":effect.kind}),
+    )?;
+    Ok(())
 }

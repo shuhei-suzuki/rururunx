@@ -330,3 +330,14 @@ uses it before publishing the Goal and its audit; soft advisory cycles are allow
 The deterministic order includes all declared nodes and grants no readiness or
 dispatch authority. Managed definitions, lifecycle, verified completion, controller
 loop and CLI remain pending in #23/#24 with #19/#43 producer integration.
+
+### Published source reconstruction component checkpoint
+
+The private Published committed-source route is implemented and qualified at
+`5c070d4aa4502e9ef737fe5960e74fbd03cdb92b`; see the
+[source recovery checkpoint](../../verification/agent-execution-phase2-source-recovery-checkpoint.json).
+It reconstructs source bytes through registered retained reads and exact current
+pins, installs no old Unit/Session/native permission, and supports legitimate typed
+Workflow bookkeeping. It does not construct a Runtime Driver or make restart
+scheduling available. Fresh pre-artifact recovery and full operational Goal/CLI
+construction remain required.

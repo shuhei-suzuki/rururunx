@@ -1,8 +1,10 @@
 # Published committed-source recovery integration
 
-Status: proposed STRICT implementation supplement; no source or recovery port is
-implemented by this document. Source baseline
-`a79a3051d41bc122e1e7e88cb7399c3cdfb83787`. This realizes
+Status: STRICT implementation supplement. The private source-only route is
+implemented at fixed source `5c070d4aa4502e9ef737fe5960e74fbd03cdb92b`; qualified
+checks and remaining limits are recorded in the
+[source recovery checkpoint](../verification/agent-execution-phase2-source-recovery-checkpoint.json).
+Original source baseline `a79a3051d41bc122e1e7e88cb7399c3cdfb83787`. This realizes
 [Runtime design §5.1](runtime-scheduler-integration-design.md#51-existing-workflow-retained-frame-recovery)
 and its approved requirements; §5.2 fresh bootstrap recovery stays explicitly
 unsupported in this delivery. No old Unit, Session, native handle, completion or
@@ -40,7 +42,7 @@ Runtime driver must first use genuine retry/reconciliation where necessary.
 ## 2. Schema7 and durable pins
 
 Native receipts own schema6; this supplement owns schema7, first Verifier delivery
-uses8, and future ReviewRound uses9.
+uses8, Runtime/Goal uses9, and future ReviewRound uses10.
 Implementation must first compose the actual schema6 source, then install ordered
 6→7 and fresh7 in the same delivery. All mutable tables, including the new table,
 receive connection-version7 guards; an already-open6 writer must refuse writes,
