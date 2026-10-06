@@ -80,7 +80,10 @@ impl Runtime {
                 lifetime.activate(ack,&claim)?;
                 // Runtime and Store guards end BEFORE Source/helper awaits.
             }
-            drive(claim,lifetime).await
+            let result=drive(claim,lifetime).await;
+            #[cfg(test)]
+            if let Err(error)=&result { eprintln!("actual retained Driver outcome: {error:#}"); }
+            result
         }))?;
         self.wake.notify_one();
         Ok(AdmitOutcome::Claimed)
