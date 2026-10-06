@@ -12,7 +12,7 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut unit = validate_authority(&tx, authority, true, false)?;
         ensure!(
-            true,
+            !verification::is_command_unit(&tx, unit.id)?,
             "command-only verifier cannot register or update native Sessions"
         );
         ensure!(
