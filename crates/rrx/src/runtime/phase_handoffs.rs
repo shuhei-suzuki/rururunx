@@ -13,7 +13,7 @@ use crate::{
     },
     state::{DriverReadTicket, managed_binding::OriginalMarker},
 };
-use anyhow::{Result, ensure};
+use anyhow::{Context as _, Result, ensure};
 use std::{
     collections::BTreeMap,
     future::Future,
@@ -193,7 +193,7 @@ impl Consumer {
     }
     async fn invoke(&self, handoff: &Handoff) -> Result<SourceHandoffState> {
         // transfer returns only after its Source borrows and first admission end.
-        let state = self.transfer(handoff).await?;
+        let state = self.transfer(handoff).await.context("actual original Source transfer")?;
         if state != SourceHandoffState::Reserved {
             return Ok(state);
         }
@@ -218,7 +218,7 @@ impl Consumer {
             origin.clone(),
             handoff.source.ticket().clone(),
             handoff.source.workflow(),
-        )?;
+        ).context("actual original marker planning")?;
         let publication = {
             let mut assets = handoff
                 .assets
@@ -246,7 +246,7 @@ impl Consumer {
                     .rollback_marker_publication(&publication)
                     .await?;
             }
-            return Err(error);
+            return Err(error.context("actual original marker publication"));
         }
         Ok(state)
     }
