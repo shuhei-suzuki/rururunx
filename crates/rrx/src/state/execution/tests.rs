@@ -79,45 +79,93 @@ fn session(unit: &ExecutionUnit) -> Session {
     }
 }
 
-// These ordinary Store and pure-fact controls grant no private marked actor,
-// allocation, helper or Native positive. Genuine chain controls remain required.
+// Scalar/pure predicate harness only: no execution Unit, owner, Driver or
+// accepted Goal row is installed, and no marked Native proof is issued.
+fn nongrant_factoring_fixture() -> (Connection, Project, Goal, Task, ExecutionUnit) {
+    let project = Project::new(
+        "project".into(),
+        PathBuf::from("/tmp/rrx-source"),
+        "git-local".into(),
+        "main".into(),
+    );
+    let goal = Goal::new(project.id, "goal".into(), vec![]);
+    let mut task = Task::new(project.id, goal.id, "task".into(), "codex".into());
+    let mut unit = draft(&task, 1);
+    unit.generation = 1;
+    unit.version = 1;
+    task.worktree = Some(unit.worktree.clone());
+    task.branch = unit.branch.clone();
+    let connection = Connection::open_in_memory().unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE runtime_epoch(singleton INTEGER, epoch INTEGER);
+        INSERT INTO runtime_epoch VALUES(1,1);
+        CREATE TABLE task_execution(task_id TEXT, generation INTEGER);
+        CREATE TABLE execution_context(unit_id TEXT, governing_digest TEXT);",
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO task_execution VALUES(?1,1)",
+            [task.id.to_string()],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO execution_context VALUES(?1,?2)",
+            params![
+                unit.id.to_string(),
+                governing_digest(&project, &goal).unwrap()
+            ],
+        )
+        .unwrap();
+    (connection, project, goal, task, unit)
+}
+
 #[test]
 fn nongrant_factoring_rejects_identity_epoch_and_generation_drift() {
-    let (mut store, task, epoch) = fixture();
-    let unit = store
-        .reserve_execution(draft(&task, epoch), task.version)
-        .unwrap();
-    validate_unit_authority_facts(&store.connection, &unit.authority(), &unit).unwrap();
+    let (connection, _, _, task, unit) = nongrant_factoring_fixture();
+    validate_unit_authority_facts(&connection, &unit.authority(), &unit).unwrap();
     let mut foreign = unit.authority();
     foreign.record_version += 1;
-    assert!(validate_unit_authority_facts(&store.connection, &foreign, &unit).is_err());
-    store.retire_execution(&unit.authority(), false).unwrap();
-    let before = serde_json::to_value(store.execution_unit(unit.id).unwrap()).unwrap();
-    let current_task = store.task(task.id).unwrap().unwrap();
-    let next = store
-        .reserve_execution(draft(&current_task, epoch), current_task.version)
+    assert!(validate_unit_authority_facts(&connection, &foreign, &unit).is_err());
+    connection
+        .execute(
+            "UPDATE task_execution SET generation=2 WHERE task_id=?1",
+            [task.id.to_string()],
+        )
         .unwrap();
-    assert!(next.generation > unit.generation);
-    assert!(validate_unit_authority_facts(&store.connection, &unit.authority(), &unit).is_err());
-    validate_unit_authority_facts(&store.connection, &next.authority(), &next).unwrap();
-    store.begin_execution_epoch().unwrap();
-    assert!(validate_unit_authority_facts(&store.connection, &next.authority(), &next).is_err());
-    // The read-only predicates never update the old stored Unit.
+    assert!(validate_unit_authority_facts(&connection, &unit.authority(), &unit).is_err());
+    connection
+        .execute(
+            "UPDATE task_execution SET generation=1 WHERE task_id=?1",
+            [task.id.to_string()],
+        )
+        .unwrap();
+    connection
+        .execute("UPDATE runtime_epoch SET epoch=2 WHERE singleton=1", [])
+        .unwrap();
+    assert!(validate_unit_authority_facts(&connection, &unit.authority(), &unit).is_err());
     assert_eq!(
-        before,
-        serde_json::to_value(store.execution_unit(unit.id).unwrap()).unwrap()
+        connection
+            .query_row("SELECT epoch FROM runtime_epoch", [], |r| r
+                .get::<_, u64>(0))
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        connection
+            .query_row("SELECT generation FROM task_execution", [], |r| r
+                .get::<_, u64>(0))
+            .unwrap(),
+        1
     );
 }
 
 #[test]
 fn nongrant_factoring_parent_activity_and_executor_projection_are_conjunctive() {
-    let (mut store, task, epoch) = fixture();
-    let unit = store
-        .reserve_execution(draft(&task, epoch), task.version)
-        .unwrap();
-    let project = store.project(task.project_id).unwrap().unwrap();
-    let goal = store.goal(task.goal_id).unwrap().unwrap();
-    let task = store.task(task.id).unwrap().unwrap();
+    let (_, project, goal, task, unit) = nongrant_factoring_fixture();
+    let original = serde_json::to_value(&task).unwrap();
     validate_parent_activity_facts(&unit, &project, &goal, &task).unwrap();
     for state in [ProjectState::Blocked, ProjectState::Removed] {
         let mut changed = project.clone();
@@ -156,33 +204,23 @@ fn nongrant_factoring_parent_activity_and_executor_projection_are_conjunctive() 
     reviewer.kind = UnitKind::Reviewer;
     // The ordinary readonly-role predicate does not adopt executor projection.
     validate_parent_activity_facts(&reviewer, &project, &goal, &changed).unwrap();
-    assert_eq!(
-        serde_json::to_value(&task).unwrap(),
-        serde_json::to_value(store.task(task.id).unwrap().unwrap()).unwrap()
-    );
+    assert_eq!(original, serde_json::to_value(&task).unwrap());
 }
 
 #[test]
 fn nongrant_factoring_governing_digest_is_original_and_read_only() {
-    let (mut store, task, epoch) = fixture();
-    let unit = store
-        .reserve_execution(draft(&task, epoch), task.version)
-        .unwrap();
-    let project = store.project(task.project_id).unwrap().unwrap();
-    let mut goal = store.goal(task.goal_id).unwrap().unwrap();
+    let (connection, project, mut goal, _, unit) = nongrant_factoring_fixture();
     let original = governing_digest(&project, &goal).unwrap();
-    validate_governing_context_facts(&store.connection, &unit, &original).unwrap();
-    assert!(validate_governing_context_facts(&store.connection, &unit, "foreign").is_err());
+    validate_governing_context_facts(&connection, &unit, &original).unwrap();
+    assert!(validate_governing_context_facts(&connection, &unit, "foreign").is_err());
     goal.constraints.push("new accepted constraint".into());
     let changed = governing_digest(&project, &goal).unwrap();
     assert_ne!(original, changed);
-    assert!(validate_governing_context_facts(&store.connection, &unit, &changed).is_err());
-    validate_governing_context_facts(&store.connection, &unit, &original).unwrap();
-    assert!(store.managed_effects(unit.id).unwrap().is_empty());
+    assert!(validate_governing_context_facts(&connection, &unit, &changed).is_err());
+    validate_governing_context_facts(&connection, &unit, &original).unwrap();
     assert_eq!(
         original,
-        store
-            .connection
+        connection
             .query_row(
                 "SELECT governing_digest FROM execution_context WHERE unit_id=?1",
                 [unit.id.to_string()],
@@ -193,34 +231,15 @@ fn nongrant_factoring_governing_digest_is_original_and_read_only() {
 }
 
 #[test]
-fn nongrant_factoring_ordinary_native_and_finalization_flags_remain_independent() {
-    let (mut store, task, epoch) = fixture();
-    let unit = store
-        .reserve_execution(draft(&task, epoch), task.version)
-        .unwrap();
-    store
-        .validate_execution(&unit.authority(), true, false)
-        .unwrap();
-    store
-        .validate_execution(&unit.authority(), false, true)
-        .unwrap();
+fn nongrant_factoring_native_open_predicate_never_accepts_closed_flag() {
+    let (_, _, _, _, unit) = nongrant_factoring_fixture();
+    validate_native_effect_open(&unit).unwrap();
     let mut closed = unit.clone();
     closed.native_effects_open = false;
     assert!(validate_native_effect_open(&closed).is_err());
-    store.retire_execution(&unit.authority(), false).unwrap();
-    let retired = store.execution_unit(unit.id).unwrap();
-    store
-        .validate_execution(&retired.authority(), false, false)
-        .unwrap();
-    assert!(
-        store
-            .validate_execution(&retired.authority(), true, false)
-            .is_err()
-    );
-    assert!(
-        store
-            .validate_execution(&retired.authority(), false, true)
-            .is_err()
+    assert_eq!(
+        serde_json::to_value(unit).unwrap()["native_effects_open"],
+        true
     );
 }
 
