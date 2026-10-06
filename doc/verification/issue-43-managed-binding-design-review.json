@@ -1,0 +1,208 @@
+{
+  "round": 1,
+  "candidate": "cfd1800f8801fecfa47854fbaa0b08ec1f377985",
+  "risk": "STRICT",
+  "scope": "Complete managed phase Session binding design only",
+  "independently_closed_before_raw_reports_shared": true,
+  "raw_reviews": {
+    "root": {
+      "reviewer": "Root",
+      "review_kind": "Independent STRICT complete managed binding component design review",
+      "source_commit": "cfd1800f8801fecfa47854fbaa0b08ec1f377985",
+      "requirements_commit": "7e47421a24225583795245b307e574fb3156dd7e",
+      "requirements_checkpoint": "079f5fd37184240c08fbca3859ec6a0ac78ae139",
+      "legacy_contract_commit": "b191b466d5dea303585cfaf6968c6fb178be79cd",
+      "actual_source_baseline": "802764f03893d0ee8e08ee19045ccb333387ad9b",
+      "verdict": "APPROVE_COMPONENT_DESIGN",
+      "closed": true,
+      "findings": [],
+      "severity_counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "independence": {
+        "author": "B",
+        "candidate_authored_by_reviewer": false,
+        "peer_raw_report_or_findings_read_before_closure": false,
+        "peer_closed_zero_finding_verdict_received": true,
+        "candidate_changed_during_review": false,
+        "source_qualification_inferred_from_design": false
+      },
+      "read_scope": [
+        "All 755 lines of fixed managed-binding design, read in bounded fixed-object slices including allocation/vtable/transaction seams, DDL and writer tokens, binder predicates, retained supervision and NoCurrentDispatch waits, late closure/restart, Source7/Driver successor recognition, complete writer inventory, finite ledger and body-cost classes, qualification/mapping.",
+        "Complete approved managed-binding requirements MB1-MB9 and MB-AC1-MB-AC8 plus MB-AC4.a; fixed master design candidate delta.",
+        "Inherited Requirements9 and complete Design10 mechanics at fixed legacy contract; inherited actual-consumer, writer, derived-capacity/readiness and mutation contracts remain source gates, not replaced by a permissive profile.",
+        "Actual802 Workflow managed Launched/Waiting/error routes and guard handoff, native preparation before Session registration, genuine NativeSeed registration and reserve_native_input, exact SourceRecovery7 snapshot validation and before_write/after_write authority rewriting.",
+        "Current Runtime9 has no genuine native Driver issuer; accepted metadata/read-only routing is explicitly excluded from the genuine consumer claim. Its different source is not qualified by this design review."
+      ],
+      "verified_contracts": [
+        {
+          "requirement": "MB1/MB5",
+          "evidence": "design sections3,3.1,4,7,8",
+          "assessment": "Sole private binding writes exact absent active Session/execution projection, Workflow version/time and one existing audit row only. No Task or owner/readiness/ledger-mirror write; all supported generic/raw/recovery writers and reserved audit kinds are guarded; exact byte permit is transaction-local, not caller access mode."
+        },
+        {
+          "requirement": "MB2/MB3",
+          "evidence": "design sections2.1-2.4,3.1,4",
+          "assessment": "Actual registry vtable/private allocation before helpers, same marker transaction and exact post-marker bodies/frame, actual registration/one-shot preparation-input consumption/ACK and terminal producers are specified. Nonserializable non-Clone owner handles and durable facts do not convert Unit/receipt/Fake/JSON into the missing private protocol. First binding has no intervening ledger link or recaptured original pins."
+        },
+        {
+          "requirement": "MB4",
+          "evidence": "design sections2.1,3.1,4,8.1",
+          "assessment": "Latest own Session is checked inside Immediate with exact allocated identity and actual prepared reviewer namespace; legitimate mutable startup advance does not impose stale Session CAS. Complete indexed negative identity includes Lost/history and invalidity/overflow, never truncated absence; all Session writer/index/migration protections are required."
+        },
+        {
+          "requirement": "MB6/MB7/MB8",
+          "evidence": "design sections2.1,5,6,10",
+          "assessment": "Static actual composition refuses before source/phase/helper/native effects. Real supervisor owns PhaseLaunch and guard before start, retains across Engine drop/error and binding refusal; bounded fair durable-level actual Driver rechecks cover lost notifications. Normal pre-input binding differs from late actual consumed known-owned-success logical settlement; unknown cleanup is neither a grant nor alone blocking. Unsupported across-epoch restore is held, not rows minting a live owner."
+        },
+        {
+          "requirement": "MB9",
+          "evidence": "design sections3.1,7-9",
+          "assessment": "Original Source7 and Driver pins remain immutable; new genuine anchored successor recognition replaces generic after_write authority refresh. Quota and pre-Session waits use separately genuine facts and derived status without Task/W save. Private typed gate/hold/decision/closure ports have full allowed deltas, exactly one audit, finite256 class reservations and mandatory closure capacity; complete planning/hashing stays outside writer mutex with bounded in-transaction owner/identity/body/CHECK costs."
+        },
+        {
+          "requirement": "Delivery/AC",
+          "evidence": "design sections1,10,11 and inherited Design10 qualification",
+          "assessment": "Actual8 -> actual9 -> Binding10 -> Review11 ancestry/composition is explicit; genuine native Driver, complete producer/writer/consumer source, causal Engine/protocol/held-turn/mutation/migration/full-regression/two-OS/native gates remain mandatory. Account-free peers and authentic CLI qualification are separate. No license/README/account/main or full MVP acceptance is claimed."
+        }
+      ],
+      "mandatory_source_gates": [
+        "Retain inherited bounded exactly-one Workflow scope checks, genuine private origin and complete indexed malformed/history negative checks at actual consumer transactions.",
+        "Retain inherited complete derived pre-marker active-claim plus phase-open capacity counting, no dropped/terminal-but-open omission, actual fair Driver retention and unchanged-Held zero repeated Immediate behavior; a queue DTO is insufficient.",
+        "Review final concrete DDL, cached/newopen writer contract, migration total row/byte bound, body-index/permit restoration and every changed production writer with actual composed native producer; this approval does not qualify any absent SQL or source.",
+        "Actual normal/late bind, prewire/ALLOW/DENY/input correlations, guard handoff and Source7/Driver successor consumers must pass genuine producer-based controls and compiled mutants at one fixed complete source.",
+        "Current full-regression failures and absent actual Driver/Binding10/readiness remain open; component design approval is not permission to waive them or open native dispatch.",
+        "Unsupported authentic #14 restore remains held; real credential/hook/settings/four-Task tests remain separate user-approved Phase3 qualification."
+      ],
+      "limits": [
+        "Read-only design review, no production implementation or test/mutation execution by this review.",
+        "No real Agent authentication/settings/hooks/accounts, no root/VM/outer sandbox/credential handling or cleanup guarantee.",
+        "No actual Runtime9 Driver, Source7/Native6/Verifier8 composed requalification, Binding10 migration or Review11 member execution acceptance.",
+        "No whole Phase2/PR52/issue43/CI/merge/release/OSS-readiness/MVP approval.",
+        "No peer raw report was read before saving this independent closed report."
+      ],
+      "owned_live_handles": [],
+      "commands_closed": true
+    },
+    "c": {
+      "reviewer": "C / workflow_source_review_c",
+      "review_mode": "independent STRICT fixed-object static design review",
+      "source_commit": "cfd1800f8801fecfa47854fbaa0b08ec1f377985",
+      "baseline_source_commit": "802764f03893d0ee8e08ee19045ccb333387ad9b",
+      "approved_requirements_commit": "7e47421a24225583795245b307e574fb3156dd7e",
+      "requirements_checkpoint_commit": "079f5fd37184240c08fbca3859ec6a0ac78ae139",
+      "inherited_contract_commit": "b191b466d5dea303585cfaf6968c6fb178be79cd",
+      "scope": [
+        "doc/design/issue-43-managed-binding-design.md, complete 755-line document",
+        "doc/design/master/workflow-engine.md, fixed six-line addition",
+        "Approved managed binding requirements MB1-MB9 and inherited Requirements9/Design10 mechanics",
+        "Actual schema8 Workflow / Store / Native6 / SourceRecovery7 integration boundaries; own Verifier8 source used as inherited interface only, not independently requalified"
+      ],
+      "method": {
+        "candidate_reading": "git show immutable commit objects; candidate HEAD confirmed exact and porcelain output empty",
+        "project_rules": "No AGENTS.md at the fixed candidate root; supplied global no-rtk rule observed",
+        "independence": "No current-round Root or peer findings, raw aggregate, author test claims or logs consulted; no preliminary findings shared",
+        "execution": "No source changes, builds, tests, account access, official CLI/native invocation, network or operating-system probes"
+      },
+      "closed": true,
+      "verdict": "APPROVE_COMPONENT_DESIGN",
+      "finding_counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "findings": [],
+      "verified_contracts": [
+        {
+          "contract": "No new availability claim and correct actual missing protocol boundary",
+          "evidence": [
+            "design:3-7,17-51,696-712,748-755",
+            "802 Workflow::prepare_managed workflow.rs:1653-1657",
+            "802 Store Workflow persistence state/mod.rs:905-910",
+            "802 NativeSessions execution/native.rs:185-342,346-427"
+          ],
+          "actual_guard_condition": "Current launch generates a Session after helper/quota work and writes Task+Workflow after Launched; it does not already carry the new phase-owner/original-marker credential. The design calls for replacing these paths and keeps actual Driver/native readiness unqualified."
+        },
+        {
+          "contract": "Private actual adapter protocol and before-helper allocation",
+          "evidence": [
+            "design:53-98,100-173,175-197"
+          ],
+          "actual_guard_condition": "Implementation-owned composition must be checked before phase Context/reservation/preparation effects, including the Driver initial-source path. Marker transaction allocates exact selected adapter-origin Session owner/prepared input; actual Native registration validates the same pair before child spawn. IDs, DTOs, capability flags and seeded SQL cannot manufacture authority."
+        },
+        {
+          "contract": "Original immutable full post-marker frame and complete identity/lock checks",
+          "evidence": [
+            "requirements MB2/MB4",
+            "design:102-135,257-317,327-376"
+          ],
+          "actual_guard_condition": "Complete P/G/T encoded bodies and versions, Workflow marker/body, instance/epoch/Unit generation, Context/source/input and full scoped locks remain original pins. Current own Session and complete conflicting historical identity/invalid-index queries are rechecked under Immediate. Startup PID/native UUID/lifecycle advancement cannot replace this frame or force stale returned-Session CAS."
+        },
+        {
+          "contract": "Sole record-only binder and one reserved audit link",
+          "evidence": [
+            "design:199-255,319-407,604-653"
+          ],
+          "actual_guard_condition": "First binding permits only absent session_id/execution to the derived exact tuple and Record version/time. W update plus one existing reserved audit link is atomic; no Task/P/G/Session/Context/locks/source/readiness update. Generic/recovery/raw supported writers reject protected deltas; bounded exact private permits cannot become public RecordOnly authority. Same operation replay needs committed link and genuine complete current successor."
+        },
+        {
+          "contract": "Normal prepared registration versus actual consumed successful late binding",
+          "evidence": [
+            "design:155-173,366-372,500-511",
+            "802 reserve_native_input native_results.rs:257-328",
+            "802 ack_native_invocation native_results.rs:330-359",
+            "802 finish_native_result native_results.rs:365-420"
+          ],
+          "actual_guard_condition": "Normal return may bind a genuine preinput/preACK validated pair, but a terminal-winning race needs consumed/ACK-correlated owned success. Known Failure, Unknown, HistoricalDraft, NotDispatched, partial wire or stale epoch cannot become late success. Cleanup Unknown/Leftovers is explicitly separate; terminal receipt is neither captured artifact acceptance nor Review approval."
+        },
+        {
+          "contract": "Retained supervision, deferred commit and quota parking",
+          "evidence": [
+            "design:408-498"
+          ],
+          "actual_guard_condition": "Actual supervisor receives launch and preparation guard before start and retains invocation across Engine drop/abort. NoCurrentDispatch is an actual helper-settled private producer; parking/due resume keeps Task/W/pair/marker unchanged. BUSY with rollback differs from uncertain commit and proof failure. Durable level readiness, bounded retained capacity/fair timer fallback and exact authoritative reconciliation are mandatory, not notification-only passive status."
+        },
+        {
+          "contract": "Nongrant cancellation, logical closure and unsupported restart remain separate",
+          "evidence": [
+            "design:513-548"
+          ],
+          "actual_guard_condition": "Trusted lifecycle revocation/stop remains possible even when factual chain bookkeeping is held. Closure requires separately qualified actual logical effects/result proofs and preserves Unknown work. Across-epoch factual restore requires a distinct actual producer and pre-fence owned known terminal; durable rows cannot reconstruct a live owner, and unavailable restore remains Unsupported/Held."
+        },
+        {
+          "contract": "Actual Source7/Driver consumer adaptation without generic authority refresh",
+          "evidence": [
+            "design:550-602",
+            "802 source_recovery.rs:286-293,306-339,342-367",
+            "802 state/execution.rs:361-449"
+          ],
+          "actual_guard_condition": "Baseline Source7 validates serialized snapshot pins and advances them on generic after_write. New design requires a bounded private anchored successor recognizer in every real source/native/Git/prepare-pack consumer, keeps all other original pins exact, and forbids binder after_write/Driver pin refresh. Genuine separately authorized pre-marker and later closure advances are distinct ports. Read-only Runtime9 does not satisfy the native Driver dependency."
+        },
+        {
+          "contract": "Finite cost, immutable SQL surfaces and migration qualification",
+          "evidence": [
+            "design:199-317,655-694,714-732"
+          ],
+          "actual_guard_condition": "256 per-class links reserve mandatory cancellation/closure capacity; diagnostics cannot spend it. Complete bounded chain/hash planning is outside SharedStore, current CAS/full locks/own Session/negative predicates remain inside Immediate, and total SQL/body cost is explicitly larger than compact proof cost. Ordered 8->9->10->11 schema and cached/new-open writer matrices must be requalified on exact composed source; schema number is no readiness claim."
+        }
+      ],
+      "acceptance_gap": [
+        "This is design approval only. No actual Binding10 DDL, private protocol, sole binder, writer migration, retained phase supervisor or actual Driver/source-successor implementation is qualified by this review.",
+        "Native6 owned acquisition is not the new complete phase-owner/input protocol. Positive controls must traverse real allocation/registration/admission/consumer paths; DTOs, rows and standalone non-Workflow fixtures cannot substitute.",
+        "Actual Runtime9 native Driver and distinct #14 factual-only restore are pending delivery dependencies. Unsupported paths must stay held/refused until composed implementation and causal controls are reviewed.",
+        "All actual generic/private/raw writer positive and negative controls, compiled mutation controls, migration/cached-writer matrix, full fixed-source regression and independent composed source reviews remain required.",
+        "Official authenticated Claude/Codex authentication/settings/hooks, four-Task macOS/Linux behavior and best-effort hygiene are untested here. This grants no Phase2, MVP, native compatibility, Issue43 implementation or OSS release completion."
+      ],
+      "human_or_coordinator_gates": [
+        "Obtain the other independently closed design review and coordinate fixed actual9/Binding10 composition before production development; this report does not install or enable native availability.",
+        "Preserve approved requirements and exact actual producer contracts when updating pending ReviewRound11 input/cohort paths."
+      ]
+    }
+  },
+  "coordinator_disposition": "APPROVED_COMPONENT_DESIGN; no production implementation or native/readiness/migration/Phase2/merge qualification",
+  "source_gates_remain_open": true
+}

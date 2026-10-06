@@ -1,6 +1,9 @@
 # Issue 43: managed native Session binding design
 
-Risk: STRICT. Status: design candidate; requirements approved at
+Risk: STRICT. Status: component design approved by independent Root and C reviews
+of `cfd1800f8801fecfa47854fbaa0b08ec1f377985`; see the
+[review evidence](../verification/issue-43-managed-binding-design-review.json).
+Requirements approved at
 `7e47421a24225583795245b307e574fb3156dd7e`, with the approval checkpoint at
 `079f5fd37184240c08fbca3859ec6a0ac78ae139`. No production implementation,
 native Driver readiness, migration qualification or authenticated CLI acceptance

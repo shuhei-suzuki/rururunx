@@ -17,9 +17,10 @@ sole binding consumer compose and pass their integration controls.
 
 The [managed binding design](../issue-43-managed-binding-design.md) specifies the
 complete actual phase owner/input protocol, original marker, sole record-only
-binder and retained supervision. It is a STRICT design candidate, not production
-availability. Its migration order is Verifier8 → actual Runtime9 → Binding10 →
-ReviewRound11; genuine Driver and source-successor consumers remain delivery gates.
+binder and retained supervision. Its STRICT component design is independently
+approved; production availability remains unimplemented. Its migration order is
+Verifier8 → actual Runtime9 → Binding10 → ReviewRound11; genuine Driver and
+source-successor consumers remain delivery gates.
 
 The incremental [production gate integration](../production-workflow-gates-design.md)
 adds a concrete library port for real initial preparation, Implement terminal/result
