@@ -81,60 +81,6 @@ struct Snapshot {
 }
 struct LegacyCandidate {
     unit: ExecutionUnit,
-    raw: String,
-    project: Body<Project>,
-    goal: Body<Goal>,
-    task: Body<Task>,
-    digest: String,
-}
-impl LegacyCandidate {
-    fn validate(&self, tx: &Transaction<'_>) -> Result<()> {
-        ensure!(
-            crate::state::managed_binding::unit_image_matches(tx, &self.unit, &self.raw)?,
-            "legacy fairness Unit image changed"
-        );
-        for (table, id, raw) in [
-            (
-                "projects",
-                self.project.parsed().id.to_string(),
-                self.project.raw(),
-            ),
-            ("goals", self.goal.parsed().id.to_string(), self.goal.raw()),
-            ("tasks", self.task.parsed().id.to_string(), self.task.raw()),
-        ] {
-            ensure!(
-                tx.query_row(
-                    &format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE id=?1 AND body=?2)"),
-                    params![id, raw],
-                    |r| r.get::<_, bool>(0)
-                )?,
-                "legacy fairness parent image changed"
-            );
-        }
-        validate_unit_authority_facts(tx, &self.unit.authority(), &self.unit)?;
-        validate_native_effect_open(&self.unit)?;
-        crate::state::runtime::driver::validate(
-            tx,
-            self.unit
-                .scope
-                .task_id
-                .context("legacy candidate Task absent")?,
-        )?;
-        source_recovery::validate_task(
-            tx,
-            self.unit
-                .scope
-                .task_id
-                .context("legacy candidate Task absent")?,
-        )?;
-        validate_parent_activity_facts(
-            &self.unit,
-            self.project.parsed(),
-            self.goal.parsed(),
-            self.task.parsed(),
-        )?;
-        validate_governing_context_facts(tx, &self.unit, &self.digest)
-    }
 }
 
 /// All shapes are qualified in one pass before copying any selected values.
@@ -403,50 +349,10 @@ fn read_snapshot(
                     && crate::state::managed_binding::unit_image_matches(tx, &candidate, &raw)?,
                 "candidate complete Unit index/body differs"
             );
-            let mut parent = |table: &str, id: String| -> Result<String> {
-                let sql = format!("SELECT body FROM {table} WHERE id=?1");
-                let r = read(&sql, vec![t(id)], 1, Some((0, 8 * 1024 * 1024)))?;
-                Ok(text(r.first().context("legacy candidate parent absent")?, 0)?.into())
-            };
-            let project = Body::<Project>::decode(
-                parent("projects", candidate.scope.project_id.to_string())?,
-                8 * 1024 * 1024,
-            )?;
-            let goal = Body::<Goal>::decode(
-                parent(
-                    "goals",
-                    candidate
-                        .scope
-                        .goal_id
-                        .context("candidate Goal absent")?
-                        .to_string(),
-                )?,
-                8 * 1024 * 1024,
-            )?;
-            let task = Body::<Task>::decode(
-                parent(
-                    "tasks",
-                    candidate
-                        .scope
-                        .task_id
-                        .context("candidate Task absent")?
-                        .to_string(),
-                )?,
-                8 * 1024 * 1024,
-            )?;
-            let digest = governing_digest(project.parsed(), goal.parsed())?;
-            let saved = LegacyCandidate {
-                unit: candidate,
-                raw,
-                project,
-                goal,
-                task,
-                digest,
-            };
-            // Refused Legacy heads are skipped, as in the existing policy.
-            if saved.validate(tx).is_ok() {
-                candidates.push(saved);
-            }
+            // A query-only connection cannot evaluate Runtime Driver liveness.
+            // Retain every factual Legacy identity; until the reviewed writer
+            // head walk exists, the commit guard refuses rather than skips it.
+            candidates.push(LegacyCandidate { unit: candidate });
         }
     }
     ensure!(
