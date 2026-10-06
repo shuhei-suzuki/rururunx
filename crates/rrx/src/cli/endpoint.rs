@@ -73,7 +73,9 @@ fn private_file(path: &Path, create: bool) -> Result<File> {
         .create(create)
         .truncate(false)
         .mode(0o600)
-        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
+        // Reject special files from the opened descriptor without first
+        // blocking on FIFO open. Regular files retain their normal semantics.
+        .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK).bits() as i32)
         .open(path)?;
     let m = file.metadata()?;
     ensure!(
@@ -335,5 +337,40 @@ mod tests {
         assert!(ControlEndpoint::bind(owner.clone()).is_err());
         assert_eq!(std::fs::read(&target).unwrap(), bytes);
         assert!(path.symlink_metadata().unwrap().file_type().is_symlink());
+    }
+
+    #[test]
+    fn actual_fifo_descriptor_refuses_connect_drop_and_stale_bind_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let endpoint = runtime.block_on(async { ControlEndpoint::bind(owner.clone()).unwrap() });
+        let path = endpoint.descriptor_path.clone();
+        std::fs::remove_file(&path).unwrap();
+        rustix::fs::mkfifoat(
+            rustix::fs::CWD,
+            &path,
+            rustix::fs::Mode::from_raw_mode(0o600),
+        )
+        .unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        // The watchdog belongs to the actual caller. A wrong open may block this
+        // detached thread, but cannot prevent the test's assertion from failing.
+        // Its lifetime does not certify interruption of a filesystem syscall.
+        std::thread::spawn(move || {
+            let refused = runtime.block_on(connect(owner.state_path())).is_err();
+            drop(endpoint);
+            let preserved = path.symlink_metadata().unwrap().file_type().is_fifo();
+            let stale_refused = runtime.block_on(async { ControlEndpoint::bind(owner).is_err() });
+            let _ = tx.send((refused, preserved, stale_refused));
+        });
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(2))
+                .expect("actual FIFO discovery/Drop/stale bind blocked"),
+            (true, true, true)
+        );
     }
 }
