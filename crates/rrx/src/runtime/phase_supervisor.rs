@@ -103,7 +103,7 @@ impl PhaseSupervisor {
         self: &Arc<Self>,
         allocation: NativeAllocation,
         preparation: PreparationGuard,
-    ) -> std::result::Result<PendingPhaseCapacity, PendingReservationError> {
+    ) -> std::result::Result<PendingPhaseCapacity, Box<PendingReservationError>> {
         let checked = (|| -> Result<()> {
             let f = allocation.facts();
             ensure!(
@@ -128,21 +128,21 @@ impl PhaseSupervisor {
             Ok(())
         })();
         if checked.is_err() {
-            return Err(PendingReservationError {
+            return Err(Box::new(PendingReservationError {
                 reason: "pending allocation/preparation identity unavailable",
                 allocation,
                 preparation,
-            });
+            }));
         }
         // All full reads/encoding above finish before the queue mutex is acquired.
         let mut queue = match self.queue.lock() {
             Ok(q) => q,
             Err(_) => {
-                return Err(PendingReservationError {
+                return Err(Box::new(PendingReservationError {
                     reason: "pending queue poisoned",
                     allocation,
                     preparation,
-                });
+                }));
             }
         };
         let facts = allocation.facts();
@@ -161,11 +161,11 @@ impl PhaseSupervisor {
                 .any(|v| v.allocation.facts().unit_id == facts.unit_id);
         if unavailable {
             drop(queue);
-            return Err(PendingReservationError {
+            return Err(Box::new(PendingReservationError {
                 reason: "pending capacity unavailable",
                 allocation,
                 preparation,
-            });
+            }));
         }
         let slot = Arc::new(Slot {
             allocation: Arc::new(allocation),
@@ -325,14 +325,14 @@ impl super::Runtime {
         &self,
         allocation: NativeAllocation,
         preparation: PreparationGuard,
-    ) -> std::result::Result<PendingPhaseCapacity, PendingReservationError> {
+    ) -> std::result::Result<PendingPhaseCapacity, Box<PendingReservationError>> {
         let _admission = self.control_admission.lock().await;
         if !self.service_running() {
-            return Err(PendingReservationError {
+            return Err(Box::new(PendingReservationError {
                 reason: "Runtime service is not accepting pending phases",
                 allocation,
                 preparation,
-            });
+            }));
         }
         let result = self.phases.reserve(allocation, preparation);
         self.wake.notify_one();
