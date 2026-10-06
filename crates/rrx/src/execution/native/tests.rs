@@ -2325,3 +2325,98 @@ async fn native_preinput_context_supersession_refuses_before_input_effect() {
         );
     }
 }
+
+#[tokio::test]
+async fn native_concurrent_terminal_retry_survives_supervisor_watch_publication() {
+    use crate::execution::native_result::{AcquisitionStatus, ReceiptAuthority};
+    let (dir, owner, task) = results::tests::fixture().await;
+    let sessions = NativeSessions::new(owner.clone()).unwrap();
+    let (unit, _) = attempts::AttemptManager::new(owner.clone())
+        .prepare(task.id, "codex", "Implement", None)
+        .await
+        .unwrap();
+    let handle = match sessions
+        .start_inner(
+            input(&unit, "answer-hold-after-final"),
+            None,
+            None,
+            Some(program(dir.path(), "codex")),
+        )
+        .await
+        .unwrap()
+    {
+        NativeStart::Launched(h) => h,
+        _ => panic!("fixture launch"),
+    };
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !sessions
+            .status(&handle)
+            .unwrap()
+            .pending
+            .iter()
+            .any(|p| p["id"] == "answer-barrier")
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let connection = rusqlite::Connection::open(dir.path().join("state.db")).unwrap();
+    connection.execute_batch(&format!("CREATE TRIGGER native_receipt_fixture_fault BEFORE INSERT ON native_results WHEN NEW.unit_id='{}' BEGIN SELECT RAISE(ABORT,'synthetic bounded receipt failure'); END;",unit.id)).unwrap();
+    let output = owner
+        .root
+        .join("units")
+        .join(unit.id.to_string())
+        .join("output");
+    std::fs::write(output.join("fixture-delay-publication"), "delay").unwrap();
+    std::fs::write(output.join("fixture-release"), "release").unwrap();
+    let mut updates = sessions.subscribe(&handle).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !output.join("fixture-publication-ready").exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let held = sessions.status(&handle).unwrap();
+    assert_eq!(held.observed_work, Some(WorkOutcome::Success));
+    assert_eq!(held.work, None);
+    assert!(held.receipt.is_none());
+    assert!(sessions.release(&handle).is_err());
+    connection
+        .execute_batch("DROP TRIGGER native_receipt_fixture_fault")
+        .unwrap();
+    let restored = sessions.status(&handle).unwrap();
+    assert_eq!(restored.work, Some(WorkOutcome::Success));
+    let receipt = owner
+        .store
+        .lock()
+        .unwrap()
+        .native_result(restored.receipt.unwrap())
+        .unwrap();
+    assert_eq!(receipt.observed_work, WorkOutcome::Success);
+    assert_eq!(receipt.acquisition, AcquisitionStatus::Complete);
+    assert_eq!(receipt.authority, ReceiptAuthority::OwnedTerminal);
+    assert_eq!(receipt.text.as_deref(), Some("APPROVE actual answer"));
+    assert_eq!(updates.borrow().work, Some(WorkOutcome::Success));
+    assert_eq!(updates.borrow().receipt, restored.receipt);
+    // Consume the status retry's watch update. The next observation must come
+    // from the actual supervisor's publication/Drop, without another status read.
+    updates.borrow_and_update();
+    std::fs::write(output.join("fixture-publication-release"), "release").unwrap();
+    tokio::time::timeout(Duration::from_secs(5), updates.changed())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updates.borrow().work, Some(WorkOutcome::Success));
+    assert_eq!(updates.borrow().receipt, restored.receipt);
+    assert_eq!(
+        updates.borrow().result.as_ref().unwrap()["text"],
+        "APPROVE actual answer"
+    );
+    assert_ne!(
+        updates.borrow().diagnostic,
+        Some("terminal persistence conflict")
+    );
+    sessions.release(&handle).unwrap();
+}

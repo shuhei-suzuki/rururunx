@@ -322,3 +322,7 @@ unset/uncertain, and registry release is refused. A cancel or epoch fence wins
 normally; a later stored receipt is HistoricalDraft and never reopens permission.
 This in-memory handoff does not survive Runtime SIGKILL before a durable receipt;
 restart retains the existing conservative Unknown/no-replay behavior.
+
+### Watch publication currency
+
+After a private terminal retry commits while the supervisor awaits hygiene, final watch publication and Drop reload the typed durable receipt. A stale local persistence error cannot erase its receipt ID/content projection. The causal fixture pauses publication after actual terminal capture and hygiene, reconciles via public status, then observes the supervisor watch without another status read. The scheduling barrier is test-only and is absent from production builds.

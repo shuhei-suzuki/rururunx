@@ -1350,6 +1350,19 @@ impl Core {
         })();
         let stopped = self.child.stop_and_reap().await;
         self.drain.abort();
+        #[cfg(test)]
+        if profile.output.join("fixture-delay-publication").exists() {
+            // An account-free fixture may schedule a status reconciliation after
+            // native terminal capture but before the supervisor publishes watch.
+            std::fs::write(profile.output.join("fixture-publication-ready"), "ready").unwrap();
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while !profile.output.join("fixture-publication-release").exists() {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap();
+        }
         let mut store = match self.owner.store.lock() {
             Ok(store) => store,
             Err(_) => return,
@@ -1388,6 +1401,7 @@ impl Core {
             .execution_unit(self.unit.id)
             .map(|u| u.authority())
             .unwrap_or_else(|_| current.authority());
+        let saved_receipt = store.native_session_result(self.session.id).ok().flatten();
         self.update.send_modify(|s| {
             s.authority = final_authority;
             s.session = self.session.clone();
@@ -1397,8 +1411,10 @@ impl Core {
             s.cleanup = CleanupOutcome::Unknown;
             s.pending.clear();
             s.observed_work = Some(work);
-            s.receipt = persisted.as_ref().ok().map(|r| r.id);
-            s.result = persisted.as_ref().ok().map(|r| r.projection());
+            // A concurrent status retry may have committed the sealed terminal
+            // while hygiene awaited. The durable result outranks that stale Err.
+            s.receipt = saved_receipt.as_ref().map(|r| r.id);
+            s.result = saved_receipt.as_ref().map(|r| r.projection());
             s.failure = if current.disposition == Disposition::Cancelled {
                 None
             } else {
@@ -1406,7 +1422,7 @@ impl Core {
             };
             s.diagnostic = if let Some(failure) = s.failure {
                 Some(failure.diagnostic())
-            } else if persisted.is_err() {
+            } else if persisted.is_err() && saved_receipt.is_none() {
                 Some("terminal persistence conflict")
             } else if current.disposition == Disposition::CapacityInterrupted {
                 Some("native capacity unclassified; fresh attempt waits for bounded recheck")
@@ -1763,6 +1779,7 @@ impl Drop for Core {
             .ok()
             .flatten()
             .map(|(session, _)| session);
+        let saved_receipt = store.native_session_result(self.session.id).ok().flatten();
         self.update.send_modify(|s| {
             if let Some(session) = session {
                 s.session = session;
@@ -1772,6 +1789,14 @@ impl Drop for Core {
             s.disposition = unit.disposition;
             s.wait_reason = unit.wait_reason;
             s.cleanup = unit.cleanup;
+            if let Some(receipt) = saved_receipt {
+                s.receipt = Some(receipt.id);
+                s.result = Some(receipt.projection());
+                s.observed_work = Some(receipt.observed_work);
+                if s.diagnostic == Some("native terminal pending persistence") {
+                    s.diagnostic = None;
+                }
+            }
             if unit.disposition == Disposition::Cancelled {
                 s.failure = None;
             }
