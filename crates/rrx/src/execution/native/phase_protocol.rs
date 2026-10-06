@@ -293,7 +293,9 @@ impl ConsumedPhaseInput {
         ensure!(
             owner.live.load(Ordering::SeqCst)
                 && frame_sha256.len() == 64
-                && frame_sha256.bytes().all(|byte| byte.is_ascii_hexdigit()),
+                && frame_sha256
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
             "native phase input admission unavailable"
         );
         let input = Arc::new(Self {

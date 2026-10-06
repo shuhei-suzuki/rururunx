@@ -168,17 +168,56 @@ impl NativeSessions {
         effort: Option<String>,
         executable: Option<std::path::PathBuf>,
     ) -> Result<NativeStart> {
+        self.start_with_launch(input, model, effort, executable, None).await
+    }
+    /// The concrete installed vtable is the only caller supplying a genuine
+    /// launch. Allocated DTOs and old public adapters never reach this entry.
+    pub(crate) async fn start_phase(
+        &self,
+        launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
+    ) -> Result<NativeStart> {
+        let allocation = launch.allocation();
+        let selected = allocation.selected_port().selected_adapter()?;
+        ensure!(
+            std::ptr::eq(selected.sessions.as_ref(), self)
+                && Arc::ptr_eq(&selected.owner, &self.owner)
+                && launch.is_retained(),
+            "Native launch lost actual selected sessions/retention"
+        );
+        let input = allocation.prepared_input().clone();
+        let facts = allocation.facts();
+        let model = facts.model.map(str::to_owned);
+        let effort = facts.effort.map(str::to_owned);
+        let executable = facts.program.to_owned();
+        self.start_with_launch(input, model, effort, Some(executable), Some(launch)).await
+    }
+    async fn start_with_launch(
+        &self,
+        input: ManagedInput,
+        model: Option<String>,
+        effort: Option<String>,
+        executable: Option<std::path::PathBuf>,
+        launch: Option<Arc<crate::state::managed_binding::PhaseLaunchParts>>,
+    ) -> Result<NativeStart> {
         // Public ManagedInput/Unit identity is not a managed phase owner. This
         // standalone entry cannot qualify or prepare a protected Workflow.
-        ensure!(
-            !self
+        let protected = self
                 .owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .managed_phase_required(&input.authority.scope)?,
+                .managed_phase_required(&input.authority.scope)?;
+        ensure!(
+            protected == launch.is_some(),
             NativeFailure::AuthorityUnavailable
         );
+        // The current frame and exact allocated owner are mandatory before the
+        // first helper. This is a private actual launch, not a legacy bypass.
+        if let Some(parts) = &launch {
+            let current = crate::state::managed_binding::plan_current_phase(&self.owner, parts.marker())?;
+            self.owner.store.lock().map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .validate_phase_preparation(parts, &current)?;
+        }
         let gate = {
             let mut starts = self
                 .starts
@@ -362,7 +401,7 @@ impl NativeSessions {
             .execution_unit(unit.id)?;
         preparation_guard.update(&unit);
         let mut session = Session {
-            id: SessionId::new(),
+            id: launch.as_ref().map_or_else(SessionId::new, |parts| parts.allocation().facts().session_id),
             scope: unit.scope.clone(),
             agent: input.agent.clone(),
             provider: unit.provider.clone(),
@@ -423,18 +462,29 @@ impl NativeSessions {
             .stderr(Stdio::piped());
         let seed = NativeSeed {
             input: input.input.clone(),
-            id: NativeInvocationId::new(),
+            id: launch.as_ref().map_or_else(NativeInvocationId::new, |parts| parts.allocation().facts().invocation_id),
             profile: format!("text_v1/{}", unit.profile_digest),
             native_version: version.trim().into(),
         };
         let mut registration_guard = None;
+        let registration = launch.as_ref().map(|parts| {
+            crate::state::Store::plan_native_phase_registration(&self.owner, parts.clone(), session.clone(), &seed)
+        }).transpose()?;
+        let mut phase = None;
         let mut child = {
             let mut store = self
                 .owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            unit = store.register_native_session(&unit.authority(), &session, &seed)?;
+            unit = if let Some(plan) = registration {
+                let (registered, projection, version) = store.register_phase_session(plan)?;
+                let parts = launch.as_ref().context("actual Native launch disappeared")?.clone();
+                phase = Some(phase_protocol::PhaseActor::registered(parts, projection, version)?);
+                registered
+            } else {
+                store.register_native_session(&unit.authority(), &session, &seed)?
+            };
             registration_guard.replace(RegistrationGuard {
                 owner: self.owner.clone(),
                 unit_id: unit.id,
@@ -514,7 +564,7 @@ impl NativeSessions {
             controls: receiver,
             native,
             drain,
-            phase: None,
+            phase: phase.clone(),
         };
         self.entries
             .lock()
@@ -527,7 +577,7 @@ impl NativeSessions {
                     control,
                     terminal: frozen_terminal,
                     update,
-                    phase: None,
+                    phase,
                 },
             );
         preparation_guard.disarm();
@@ -947,6 +997,9 @@ pub(crate) struct NativeSeed {
     native_version: String,
 }
 impl NativeSeed {
+    pub(crate) fn id(&self) -> NativeInvocationId {
+        self.id
+    }
     pub(crate) fn input(&self) -> &PreparedInput {
         &self.input
     }
