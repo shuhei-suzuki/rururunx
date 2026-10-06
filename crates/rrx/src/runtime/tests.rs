@@ -1249,13 +1249,15 @@ async fn public_source_preparation_refuses_accepted_goal_before_unit_or_helper_e
         store.events(&task.scope(), 0, 100).unwrap().len()
     };
     let outputs = crate::git::observed_git_outputs();
-    let manager = crate::execution::AttemptManager::new(f.owner.clone());
+    let manager = crate::execution::attempts::AttemptManager::new(f.owner.clone());
     let error = manager
         .prepare(task.id, "codex", "implement", None)
         .await
         .unwrap_err();
     assert!(format!("{error:#}").contains("managed Driver/binding"));
-    let sources = crate::execution::ManagedWorkflowSources::new(f.owner.clone(), config()).unwrap();
+    let sources =
+        crate::execution::workflow_source::ManagedWorkflowSources::new(f.owner.clone(), config())
+            .unwrap();
     let error = sources.prepare(task.id, "codex").await.unwrap_err();
     assert!(format!("{error:#}").contains("managed Driver/binding"));
     let shared = f.owner.store();
