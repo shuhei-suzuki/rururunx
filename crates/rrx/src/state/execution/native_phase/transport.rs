@@ -104,12 +104,11 @@ impl NativeTransportStartPlan {
         &self.effect_raw
     }
     pub(crate) fn registered_readiness(&self) -> Result<u64> {
-        Ok(self
-            .prepared
+        self.prepared
             .lineage()
             .readiness_version()?
             .checked_add(1)
-            .context("readiness exhausted")?)
+            .context("readiness exhausted")
     }
     pub(super) fn governing_digest(&self) -> &str {
         &self.governing_digest

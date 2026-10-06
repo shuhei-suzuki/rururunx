@@ -1030,282 +1030,6 @@ fn insert_cold_pool(tx: &Transaction<'_>, provider: &str) -> Result<Row> {
     Ok(default)
 }
 
-#[cfg(test)]
-mod primitive_tests {
-    use super::*;
-    #[test]
-    fn nongrant_native_virtual_waiter_uses_role_sequence_and_id_position() {
-        for last in ["executor", "reviewer"] {
-            let preferred = if last == "executor" {
-                "reviewer"
-            } else {
-                "executor"
-            };
-            assert!(fair_position(preferred, 999, "z", last) < fair_position(last, 1, "a", last));
-            assert!(fair_position(last, 9, "z", last) < fair_position(last, 10, "a", last));
-            assert!(fair_position(last, 10, "a", last) < fair_position(last, 10, "b", last));
-            assert!(fair_position(last, 11, "a", last) > fair_position(last, 10, "b", last));
-        }
-    }
-    #[test]
-    fn nongrant_native_cold_dependents_include_future_waiters_and_inactive_leases() {
-        let mut c = db();
-        c.execute_batch("CREATE TABLE quota_leases(unit_id TEXT PRIMARY KEY,provider TEXT,account_key TEXT,active INTEGER,FOREIGN KEY(provider,account_key) REFERENCES quota_pools(provider,account_key));CREATE TABLE quota_windows(provider TEXT,account_key TEXT,FOREIGN KEY(provider,account_key) REFERENCES quota_pools(provider,account_key));").unwrap();
-        let tx = c.transaction().unwrap();
-        assert!(cold_dependents_absent(&tx, "claude").unwrap());
-        insert_cold_pool(&tx, "claude").unwrap();
-        tx.execute("INSERT INTO quota_waiters VALUES('future','claude','unknown','capacity',999999,1,'preparing')", []).unwrap();
-        assert!(!cold_dependents_absent(&tx, "claude").unwrap());
-        tx.execute("DELETE FROM quota_waiters", []).unwrap();
-        tx.execute(
-            "INSERT INTO quota_leases VALUES('inactive','claude','unknown',0)",
-            [],
-        )
-        .unwrap();
-        assert!(!cold_dependents_absent(&tx, "claude").unwrap());
-        tx.execute("DELETE FROM quota_leases", []).unwrap();
-        tx.execute("INSERT INTO quota_windows VALUES('claude','unknown')", [])
-            .unwrap();
-        assert!(!cold_dependents_absent(&tx, "claude").unwrap());
-        assert!(cold_dependents_absent(&tx, "codex").unwrap());
-    }
-    fn db() -> Connection {
-        let c = Connection::open_in_memory().unwrap();
-        c.execute_batch("PRAGMA foreign_keys=ON;CREATE TABLE quota_pools(provider TEXT,account_key TEXT,next_probe_at INTEGER,probe_unit TEXT,backoff INTEGER,last_role TEXT,PRIMARY KEY(provider,account_key));CREATE TABLE quota_waiters(unit_id TEXT PRIMARY KEY,provider TEXT,account_key TEXT,reason TEXT,next_due INTEGER,fairness_sequence INTEGER,resume_state TEXT,FOREIGN KEY(provider,account_key) REFERENCES quota_pools(provider,account_key));").unwrap();
-        c
-    }
-    #[test]
-    fn nongrant_native_cold_pool_is_complete_exact_absence_and_preserves_foreign_accounts() {
-        let mut c = db();
-        let tx = c.transaction().unwrap();
-        tx.execute(
-            "INSERT INTO quota_pools VALUES('claude','other',9,'foreign',120000,'executor')",
-            [],
-        )
-        .unwrap();
-        let image = insert_cold_pool(&tx, "claude").unwrap();
-        assert_eq!(
-            image,
-            vec![
-                t("claude"),
-                t("unknown"),
-                i(0),
-                SqlValue::Null,
-                i(60000),
-                t("reviewer")
-            ]
-        );
-        let mut s = 0;
-        let mut b = 0;
-        assert_eq!(
-            rows(&tx, POOL, &[t("claude")], 1, None, &mut s, &mut b).unwrap(),
-            [image]
-        );
-        assert!(insert_cold_pool(&tx, "claude").is_err());
-        let waiter = vec![
-            t("unit"),
-            t("claude"),
-            t("unknown"),
-            t("capacity"),
-            i(1000),
-            i(0),
-            t("preparing"),
-        ];
-        write_image(&tx, "quota_waiters", WAITER_COLUMNS, &None, &Some(waiter)).unwrap();
-        assert_eq!(
-            tx.query_row(
-                "SELECT next_probe_at FROM quota_pools WHERE account_key='other'",
-                [],
-                |r| r.get::<_, i64>(0)
-            )
-            .unwrap(),
-            9
-        );
-        tx.commit().unwrap();
-    }
-    #[test]
-    fn nongrant_native_pool_cas_matches_every_column_without_partial_write() {
-        for column in 0..6 {
-            let mut c = db();
-            let tx = c.transaction().unwrap();
-            let before = insert_cold_pool(&tx, "claude").unwrap();
-            let replacement = match column {
-                0 => t("codex"),
-                1 => t("other"),
-                2 => i(1),
-                3 => t("foreign"),
-                4 => i(120000),
-                _ => t("executor"),
-            };
-            let mut actual = before.clone();
-            actual[column] = replacement.clone();
-            tx.execute(
-                &format!("UPDATE quota_pools SET {}=?1", POOL_COLUMNS[column]),
-                [replacement],
-            )
-            .unwrap();
-            let mut after = before.clone();
-            after[5] = t("executor");
-            assert!(
-                write_image(
-                    &tx,
-                    "quota_pools",
-                    POOL_COLUMNS,
-                    &Some(before),
-                    &Some(after)
-                )
-                .is_err(),
-                "column {column}"
-            );
-            let key = actual[0].clone();
-            assert!(image_matches(&tx, "quota_pools", POOL_COLUMNS, &key, &Some(actual)).unwrap());
-        }
-    }
-    #[test]
-    fn nongrant_native_waiter_delete_requires_complete_seven_column_image() {
-        for column in 0..7 {
-            let mut c = db();
-            let tx = c.transaction().unwrap();
-            insert_cold_pool(&tx, "claude").unwrap();
-            let before = vec![
-                t("unit"),
-                t("claude"),
-                t("unknown"),
-                t("capacity"),
-                i(1000),
-                i(1),
-                t("preparing"),
-            ];
-            write_image(
-                &tx,
-                "quota_waiters",
-                WAITER_COLUMNS,
-                &None,
-                &Some(before.clone()),
-            )
-            .unwrap();
-            // provider/account changes need another legitimate FK pool.
-            tx.execute(
-                "INSERT INTO quota_pools VALUES('codex','other',0,NULL,60000,'reviewer')",
-                [],
-            )
-            .unwrap();
-            tx.execute(
-                "INSERT INTO quota_pools VALUES('codex','unknown',0,NULL,60000,'reviewer')",
-                [],
-            )
-            .unwrap();
-            tx.execute(
-                "INSERT INTO quota_pools VALUES('claude','other',0,NULL,60000,'reviewer')",
-                [],
-            )
-            .unwrap();
-            let replacement = match column {
-                0 => t("other-unit"),
-                1 => t("codex"),
-                2 => t("other"),
-                3 => t("quota"),
-                4 => i(2000),
-                5 => i(2),
-                _ => t("running"),
-            };
-            tx.execute(
-                &format!("UPDATE quota_waiters SET {}=?1", WAITER_COLUMNS[column]),
-                [replacement],
-            )
-            .unwrap();
-            assert!(
-                write_image(&tx, "quota_waiters", WAITER_COLUMNS, &Some(before), &None).is_err(),
-                "column {column}"
-            );
-            assert_eq!(
-                tx.query_row("SELECT count(*) FROM quota_waiters", [], |r| r
-                    .get::<_, usize>(0))
-                    .unwrap(),
-                1
-            );
-        }
-    }
-    #[test]
-    fn nongrant_native_quota_inventory_limit_plus_one_and_byte_bounds_refuse() {
-        let mut c = Connection::open_in_memory().unwrap();
-        c.execute_batch("CREATE TABLE inventory(id INTEGER,body TEXT)")
-            .unwrap();
-        let tx = c.transaction().unwrap();
-        for limit in [64usize, 256, 4096] {
-            tx.execute("DELETE FROM inventory", []).unwrap();
-            for n in 0..limit {
-                tx.execute("INSERT INTO inventory VALUES(?1,'x')", [n])
-                    .unwrap();
-            }
-            let mut s = 0;
-            let mut b = 0;
-            assert_eq!(
-                rows(
-                    &tx,
-                    "SELECT id,body FROM inventory",
-                    &[],
-                    limit,
-                    Some((1, 8192)),
-                    &mut s,
-                    &mut b
-                )
-                .unwrap()
-                .len(),
-                limit
-            );
-            tx.execute("INSERT INTO inventory VALUES(?1,'x')", [limit])
-                .unwrap();
-            let mut s = 0;
-            let mut b = 0;
-            assert!(
-                rows(
-                    &tx,
-                    "SELECT id,body FROM inventory",
-                    &[],
-                    limit,
-                    Some((1, 8192)),
-                    &mut s,
-                    &mut b
-                )
-                .is_err()
-            );
-        }
-        tx.execute("DELETE FROM inventory", []).unwrap();
-        tx.execute("INSERT INTO inventory VALUES(1,?1)", ["x".repeat(8192)])
-            .unwrap();
-        let mut s = 0;
-        let mut b = 0;
-        assert!(
-            rows(
-                &tx,
-                "SELECT id,body FROM inventory",
-                &[],
-                1,
-                Some((1, 8192)),
-                &mut s,
-                &mut b
-            )
-            .is_ok()
-        );
-        tx.execute("UPDATE inventory SET body=?1", ["x".repeat(8193)])
-            .unwrap();
-        let mut s = 0;
-        let mut b = 0;
-        assert!(
-            rows(
-                &tx,
-                "SELECT id,body FROM inventory",
-                &[],
-                1,
-                Some((1, 8192)),
-                &mut s,
-                &mut b
-            )
-            .is_err()
-        );
-    }
-}
 impl Store {
     pub(crate) fn plan_phase_quota_closure(
         owner: &Arc<crate::execution::RuntimeOwner>,
@@ -1575,5 +1299,282 @@ impl Store {
         } else {
             Ok(NativeQuotaConfirmation::RolledBack)
         }
+    }
+}
+
+#[cfg(test)]
+mod primitive_tests {
+    use super::*;
+    #[test]
+    fn nongrant_native_virtual_waiter_uses_role_sequence_and_id_position() {
+        for last in ["executor", "reviewer"] {
+            let preferred = if last == "executor" {
+                "reviewer"
+            } else {
+                "executor"
+            };
+            assert!(fair_position(preferred, 999, "z", last) < fair_position(last, 1, "a", last));
+            assert!(fair_position(last, 9, "z", last) < fair_position(last, 10, "a", last));
+            assert!(fair_position(last, 10, "a", last) < fair_position(last, 10, "b", last));
+            assert!(fair_position(last, 11, "a", last) > fair_position(last, 10, "b", last));
+        }
+    }
+    #[test]
+    fn nongrant_native_cold_dependents_include_future_waiters_and_inactive_leases() {
+        let mut c = db();
+        c.execute_batch("CREATE TABLE quota_leases(unit_id TEXT PRIMARY KEY,provider TEXT,account_key TEXT,active INTEGER,FOREIGN KEY(provider,account_key) REFERENCES quota_pools(provider,account_key));CREATE TABLE quota_windows(provider TEXT,account_key TEXT,FOREIGN KEY(provider,account_key) REFERENCES quota_pools(provider,account_key));").unwrap();
+        let tx = c.transaction().unwrap();
+        assert!(cold_dependents_absent(&tx, "claude").unwrap());
+        insert_cold_pool(&tx, "claude").unwrap();
+        tx.execute("INSERT INTO quota_waiters VALUES('future','claude','unknown','capacity',999999,1,'preparing')", []).unwrap();
+        assert!(!cold_dependents_absent(&tx, "claude").unwrap());
+        tx.execute("DELETE FROM quota_waiters", []).unwrap();
+        tx.execute(
+            "INSERT INTO quota_leases VALUES('inactive','claude','unknown',0)",
+            [],
+        )
+        .unwrap();
+        assert!(!cold_dependents_absent(&tx, "claude").unwrap());
+        tx.execute("DELETE FROM quota_leases", []).unwrap();
+        tx.execute("INSERT INTO quota_windows VALUES('claude','unknown')", [])
+            .unwrap();
+        assert!(!cold_dependents_absent(&tx, "claude").unwrap());
+        assert!(cold_dependents_absent(&tx, "codex").unwrap());
+    }
+    fn db() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch("PRAGMA foreign_keys=ON;CREATE TABLE quota_pools(provider TEXT,account_key TEXT,next_probe_at INTEGER,probe_unit TEXT,backoff INTEGER,last_role TEXT,PRIMARY KEY(provider,account_key));CREATE TABLE quota_waiters(unit_id TEXT PRIMARY KEY,provider TEXT,account_key TEXT,reason TEXT,next_due INTEGER,fairness_sequence INTEGER,resume_state TEXT,FOREIGN KEY(provider,account_key) REFERENCES quota_pools(provider,account_key));").unwrap();
+        c
+    }
+    #[test]
+    fn nongrant_native_cold_pool_is_complete_exact_absence_and_preserves_foreign_accounts() {
+        let mut c = db();
+        let tx = c.transaction().unwrap();
+        tx.execute(
+            "INSERT INTO quota_pools VALUES('claude','other',9,'foreign',120000,'executor')",
+            [],
+        )
+        .unwrap();
+        let image = insert_cold_pool(&tx, "claude").unwrap();
+        assert_eq!(
+            image,
+            vec![
+                t("claude"),
+                t("unknown"),
+                i(0),
+                SqlValue::Null,
+                i(60000),
+                t("reviewer")
+            ]
+        );
+        let mut s = 0;
+        let mut b = 0;
+        assert_eq!(
+            rows(&tx, POOL, &[t("claude")], 1, None, &mut s, &mut b).unwrap(),
+            [image]
+        );
+        assert!(insert_cold_pool(&tx, "claude").is_err());
+        let waiter = vec![
+            t("unit"),
+            t("claude"),
+            t("unknown"),
+            t("capacity"),
+            i(1000),
+            i(0),
+            t("preparing"),
+        ];
+        write_image(&tx, "quota_waiters", WAITER_COLUMNS, &None, &Some(waiter)).unwrap();
+        assert_eq!(
+            tx.query_row(
+                "SELECT next_probe_at FROM quota_pools WHERE account_key='other'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            9
+        );
+        tx.commit().unwrap();
+    }
+    #[test]
+    fn nongrant_native_pool_cas_matches_every_column_without_partial_write() {
+        for (column, name) in POOL_COLUMNS.iter().enumerate() {
+            let mut c = db();
+            let tx = c.transaction().unwrap();
+            let before = insert_cold_pool(&tx, "claude").unwrap();
+            let replacement = match column {
+                0 => t("codex"),
+                1 => t("other"),
+                2 => i(1),
+                3 => t("foreign"),
+                4 => i(120000),
+                _ => t("executor"),
+            };
+            let mut actual = before.clone();
+            actual[column] = replacement.clone();
+            tx.execute(
+                &format!("UPDATE quota_pools SET {}=?1", name),
+                [replacement],
+            )
+            .unwrap();
+            let mut after = before.clone();
+            after[5] = t("executor");
+            assert!(
+                write_image(
+                    &tx,
+                    "quota_pools",
+                    POOL_COLUMNS,
+                    &Some(before),
+                    &Some(after)
+                )
+                .is_err(),
+                "column {column}"
+            );
+            let key = actual[0].clone();
+            assert!(image_matches(&tx, "quota_pools", POOL_COLUMNS, &key, &Some(actual)).unwrap());
+        }
+    }
+    #[test]
+    fn nongrant_native_waiter_delete_requires_complete_seven_column_image() {
+        for (column, name) in WAITER_COLUMNS.iter().enumerate() {
+            let mut c = db();
+            let tx = c.transaction().unwrap();
+            insert_cold_pool(&tx, "claude").unwrap();
+            let before = vec![
+                t("unit"),
+                t("claude"),
+                t("unknown"),
+                t("capacity"),
+                i(1000),
+                i(1),
+                t("preparing"),
+            ];
+            write_image(
+                &tx,
+                "quota_waiters",
+                WAITER_COLUMNS,
+                &None,
+                &Some(before.clone()),
+            )
+            .unwrap();
+            // provider/account changes need another legitimate FK pool.
+            tx.execute(
+                "INSERT INTO quota_pools VALUES('codex','other',0,NULL,60000,'reviewer')",
+                [],
+            )
+            .unwrap();
+            tx.execute(
+                "INSERT INTO quota_pools VALUES('codex','unknown',0,NULL,60000,'reviewer')",
+                [],
+            )
+            .unwrap();
+            tx.execute(
+                "INSERT INTO quota_pools VALUES('claude','other',0,NULL,60000,'reviewer')",
+                [],
+            )
+            .unwrap();
+            let replacement = match column {
+                0 => t("other-unit"),
+                1 => t("codex"),
+                2 => t("other"),
+                3 => t("quota"),
+                4 => i(2000),
+                5 => i(2),
+                _ => t("running"),
+            };
+            tx.execute(
+                &format!("UPDATE quota_waiters SET {}=?1", name),
+                [replacement],
+            )
+            .unwrap();
+            assert!(
+                write_image(&tx, "quota_waiters", WAITER_COLUMNS, &Some(before), &None).is_err(),
+                "column {column}"
+            );
+            assert_eq!(
+                tx.query_row("SELECT count(*) FROM quota_waiters", [], |r| r
+                    .get::<_, usize>(0))
+                    .unwrap(),
+                1
+            );
+        }
+    }
+    #[test]
+    fn nongrant_native_quota_inventory_limit_plus_one_and_byte_bounds_refuse() {
+        let mut c = Connection::open_in_memory().unwrap();
+        c.execute_batch("CREATE TABLE inventory(id INTEGER,body TEXT)")
+            .unwrap();
+        let tx = c.transaction().unwrap();
+        for limit in [64usize, 256, 4096] {
+            tx.execute("DELETE FROM inventory", []).unwrap();
+            for n in 0..limit {
+                tx.execute("INSERT INTO inventory VALUES(?1,'x')", [n])
+                    .unwrap();
+            }
+            let mut s = 0;
+            let mut b = 0;
+            assert_eq!(
+                rows(
+                    &tx,
+                    "SELECT id,body FROM inventory",
+                    &[],
+                    limit,
+                    Some((1, 8192)),
+                    &mut s,
+                    &mut b
+                )
+                .unwrap()
+                .len(),
+                limit
+            );
+            tx.execute("INSERT INTO inventory VALUES(?1,'x')", [limit])
+                .unwrap();
+            let mut s = 0;
+            let mut b = 0;
+            assert!(
+                rows(
+                    &tx,
+                    "SELECT id,body FROM inventory",
+                    &[],
+                    limit,
+                    Some((1, 8192)),
+                    &mut s,
+                    &mut b
+                )
+                .is_err()
+            );
+        }
+        tx.execute("DELETE FROM inventory", []).unwrap();
+        tx.execute("INSERT INTO inventory VALUES(1,?1)", ["x".repeat(8192)])
+            .unwrap();
+        let mut s = 0;
+        let mut b = 0;
+        assert!(
+            rows(
+                &tx,
+                "SELECT id,body FROM inventory",
+                &[],
+                1,
+                Some((1, 8192)),
+                &mut s,
+                &mut b
+            )
+            .is_ok()
+        );
+        tx.execute("UPDATE inventory SET body=?1", ["x".repeat(8193)])
+            .unwrap();
+        let mut s = 0;
+        let mut b = 0;
+        assert!(
+            rows(
+                &tx,
+                "SELECT id,body FROM inventory",
+                &[],
+                1,
+                Some((1, 8192)),
+                &mut s,
+                &mut b
+            )
+            .is_err()
+        );
     }
 }

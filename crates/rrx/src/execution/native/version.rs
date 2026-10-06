@@ -362,7 +362,7 @@ fn physical_command(
     let facts = actor.launch().allocation().facts();
     let unit = actor.launch().allocation().unit_snapshot();
     let overlay = profile.environment(&unit.cookie, &owner.socket)?;
-    build_helper_command(owner, actor, action, seal, lease, &profile, overlay, facts)
+    build_helper_command(actor, action, seal, lease, &profile, overlay, facts)
 }
 
 pub(super) fn qualified_physical_profile(
@@ -424,7 +424,6 @@ pub(super) fn qualified_physical_profile(
 }
 
 fn build_helper_command(
-    _owner: &Arc<RuntimeOwner>,
     actor: &Arc<NativePreparationActor>,
     action: &readonly::NativePhaseHelperAction,
     seal: Option<&Arc<readonly::NativeGitSourceSeal>>,

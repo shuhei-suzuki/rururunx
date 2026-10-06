@@ -57,35 +57,6 @@ fn registered_readiness_matches(registered: u64, version: u64, ended: bool) -> b
             registered == version
         }
 }
-#[cfg(test)]
-mod registration_readiness_primitive_tests {
-    use super::registered_readiness_matches;
-    #[test]
-    fn known_admit_and_park_lineage_choose_their_own_readiness() {
-        for registered in [3, 5] {
-            assert!(registered_readiness_matches(registered, registered, false));
-            assert!(registered_readiness_matches(
-                registered,
-                registered + 1,
-                true
-            ));
-            for version in 1..=7 {
-                assert_eq!(
-                    registered_readiness_matches(registered, version, false),
-                    version == registered
-                );
-                assert_eq!(
-                    registered_readiness_matches(registered, version, true),
-                    version == registered + 1
-                );
-            }
-        }
-        for unprepared in [0, 1, 2, 4, u64::MAX] {
-            assert!(!registered_readiness_matches(unprepared, unprepared, false));
-        }
-    }
-}
-
 /// Complete indexed image, never a persisted owner-to-authority conversion.
 struct PairRow {
     table: &'static str,
@@ -1450,5 +1421,34 @@ impl Store {
             tx.commit()?;
             Ok((plan.unit,plan.session,version))
         })
+    }
+}
+
+#[cfg(test)]
+mod registration_readiness_primitive_tests {
+    use super::registered_readiness_matches;
+    #[test]
+    fn known_admit_and_park_lineage_choose_their_own_readiness() {
+        for registered in [3, 5] {
+            assert!(registered_readiness_matches(registered, registered, false));
+            assert!(registered_readiness_matches(
+                registered,
+                registered + 1,
+                true
+            ));
+            for version in 1..=7 {
+                assert_eq!(
+                    registered_readiness_matches(registered, version, false),
+                    version == registered
+                );
+                assert_eq!(
+                    registered_readiness_matches(registered, version, true),
+                    version == registered + 1
+                );
+            }
+        }
+        for unprepared in [0, 1, 2, 4, u64::MAX] {
+            assert!(!registered_readiness_matches(unprepared, unprepared, false));
+        }
     }
 }

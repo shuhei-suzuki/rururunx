@@ -316,6 +316,66 @@ pub(crate) fn validate_current_tx(
     validate_current_unit_tx(tx, marker, current, current.unit(), current.unit_raw())
 }
 
+/// A planned exact quota postimage is factual until the confirming transaction
+/// commits. This port validates it without constructing a successor lineage.
+pub(in crate::state) fn validate_planned_unit_tx(
+    tx: &Transaction<'_>,
+    marker: &OriginalMarker,
+    current: &CurrentWorkflowSuccessor,
+    body: &Body<ExecutionUnit>,
+) -> Result<()> {
+    validate_unit_identity(body.parsed(), current.unit(), true)?;
+    validate_current_unit_tx(tx, marker, current, body.parsed(), body.raw())
+}
+
+fn validate_current_unit_tx(
+    tx: &Transaction<'_>,
+    marker: &OriginalMarker,
+    current: &CurrentWorkflowSuccessor,
+    unit: &ExecutionUnit,
+    raw: &str,
+) -> Result<()> {
+    ensure!(
+        marker.matches_original_plan(&current.original),
+        "different original marker current plan"
+    );
+    let original = marker.original_plan();
+    marker.validate_open_tx(tx)?;
+    original.before.validate_projection(
+        tx,
+        original.task_after.parsed(),
+        original.task_after.raw(),
+        Some((current.workflow.parsed(), current.workflow.raw())),
+    )?;
+    ensure!(
+        unit_index_matches(tx, unit, raw)?,
+        "complete current allocated Unit changed before effect admission"
+    );
+    let sql = format!(
+        "SELECT count(*),COALESCE(max(sequence),0) FROM (SELECT sequence FROM audit WHERE kind IN ({KINDS}) AND json_extract(data,'$.private_operation_ref')=?1 ORDER BY sequence LIMIT 257)"
+    );
+    let actual: (usize, i64) = tx.query_row(&sql, [marker.operation().to_string()], |r| {
+        Ok((r.get(0)?, r.get(1)?))
+    })?;
+    ensure!(
+        actual
+            == (
+                current.count,
+                current.head.as_ref().map_or(0, |h| h.event.sequence)
+            ),
+        "complete immutable Workflow ledger head changed"
+    );
+    if let Some(head) = &current.head {
+        let event = &head.event;
+        let exact: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM audit WHERE sequence=?1 AND project_id=?2 AND goal_id IS ?3 AND task_id IS ?4 AND kind=?5 AND at=?6 AND data=?7)",
+            params![event.sequence,event.scope.project_id.to_string(),event.scope.goal_id.map(|v|v.to_string()),event.scope.task_id.map(|v|v.to_string()),event.kind,event.at,head.raw],|r|r.get(0),
+        )?;
+        ensure!(exact, "exact Workflow ledger endpoint changed");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod primitive_tests {
     use super::*;
@@ -395,64 +455,4 @@ mod primitive_tests {
             );
         }
     }
-}
-
-/// A planned exact quota postimage is factual until the confirming transaction
-/// commits. This port validates it without constructing a successor lineage.
-pub(in crate::state) fn validate_planned_unit_tx(
-    tx: &Transaction<'_>,
-    marker: &OriginalMarker,
-    current: &CurrentWorkflowSuccessor,
-    body: &Body<ExecutionUnit>,
-) -> Result<()> {
-    validate_unit_identity(body.parsed(), current.unit(), true)?;
-    validate_current_unit_tx(tx, marker, current, body.parsed(), body.raw())
-}
-
-fn validate_current_unit_tx(
-    tx: &Transaction<'_>,
-    marker: &OriginalMarker,
-    current: &CurrentWorkflowSuccessor,
-    unit: &ExecutionUnit,
-    raw: &str,
-) -> Result<()> {
-    ensure!(
-        marker.matches_original_plan(&current.original),
-        "different original marker current plan"
-    );
-    let original = marker.original_plan();
-    marker.validate_open_tx(tx)?;
-    original.before.validate_projection(
-        tx,
-        original.task_after.parsed(),
-        original.task_after.raw(),
-        Some((current.workflow.parsed(), current.workflow.raw())),
-    )?;
-    ensure!(
-        unit_index_matches(tx, unit, raw)?,
-        "complete current allocated Unit changed before effect admission"
-    );
-    let sql = format!(
-        "SELECT count(*),COALESCE(max(sequence),0) FROM (SELECT sequence FROM audit WHERE kind IN ({KINDS}) AND json_extract(data,'$.private_operation_ref')=?1 ORDER BY sequence LIMIT 257)"
-    );
-    let actual: (usize, i64) = tx.query_row(&sql, [marker.operation().to_string()], |r| {
-        Ok((r.get(0)?, r.get(1)?))
-    })?;
-    ensure!(
-        actual
-            == (
-                current.count,
-                current.head.as_ref().map_or(0, |h| h.event.sequence)
-            ),
-        "complete immutable Workflow ledger head changed"
-    );
-    if let Some(head) = &current.head {
-        let event = &head.event;
-        let exact: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM audit WHERE sequence=?1 AND project_id=?2 AND goal_id IS ?3 AND task_id IS ?4 AND kind=?5 AND at=?6 AND data=?7)",
-            params![event.sequence,event.scope.project_id.to_string(),event.scope.goal_id.map(|v|v.to_string()),event.scope.task_id.map(|v|v.to_string()),event.kind,event.at,head.raw],|r|r.get(0),
-        )?;
-        ensure!(exact, "exact Workflow ledger endpoint changed");
-    }
-    Ok(())
 }
