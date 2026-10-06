@@ -13,6 +13,9 @@ use std::sync::Arc;
 
 const PAIR_BODY_BYTES: usize = 32 * 1024;
 
+mod terminal;
+pub(crate) use terminal::NativeTerminalPlan;
+
 fn selected_database(connection: &rusqlite::Connection, launch: &PhaseLaunchParts) -> Result<()> {
     ensure!(
         launch

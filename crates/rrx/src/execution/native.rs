@@ -708,7 +708,7 @@ impl NativeSessions {
     }
     pub fn status(&self, handle: &ManagedSessionRef) -> Result<NativeStatus> {
         let mut status = self.entry(handle)?.0.borrow().clone();
-        let (pending, updater) = {
+        let (pending, updater, phase) = {
             let entries = self
                 .entries
                 .lock()
@@ -716,25 +716,30 @@ impl NativeSessions {
             let entry = entries
                 .get(&handle.session)
                 .context("native Session missing")?;
-            (entry.terminal.clone(), entry.update.clone())
+            (
+                entry.terminal.clone(),
+                entry.update.clone(),
+                entry.phase.clone(),
+            )
         };
         let mut reconciled = false;
-        let mut store = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
         let mut frozen = pending
             .lock()
             .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
         if let Some(proof) = frozen.as_ref() {
             status.observed_work = Some(proof.receipt.observed_work);
-            if proof.persist(&mut store).is_ok() {
+            if persist_saved_terminal(&self.owner, phase.as_ref(), proof).is_ok() {
                 *frozen = None;
                 reconciled = true;
                 status.diagnostic = None;
             }
         }
+        drop(frozen);
+        let store = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
         let unit = store.execution_unit(handle.unit)?;
         if let Some((session, _)) = store.session(handle.session)? {
             status.session = session;
@@ -1252,6 +1257,74 @@ impl NativeTerminal {
         self.failure
     }
 }
+/// Retry only the actual saved terminal and its original private phase plan.
+/// Full planning/projection runs outside SharedStore; no persisted DTO issues a
+/// phase owner or a new input/settlement proof.
+fn persist_saved_terminal(
+    owner: &RuntimeOwner,
+    phase: Option<&Arc<phase_protocol::PhaseActor>>,
+    terminal: &Arc<NativeTerminal>,
+) -> Result<(
+    ExecutionUnit,
+    native_result::NativeResultReceipt,
+    Session,
+    u64,
+)> {
+    if let Some(phase) = phase {
+        let original = phase.terminal_plan(owner, terminal)?;
+        let first = owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .finish_phase_terminal(&original);
+        let commit = match first {
+            Ok(commit) => commit,
+            Err(error) => {
+                // A failed commit might actually have committed. Only actual
+                // receipt absence permits replacing its original plan. At most
+                // one confirmed-rollback replan is attempted per observation.
+                if !original.confirmed_absent(owner)? {
+                    return Err(error);
+                }
+                let next = phase.replan_terminal_after_absence(owner, &original, terminal)?;
+                owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .finish_phase_terminal(&next)?
+            }
+        };
+        let (saved, actual_owner, unit, receipt, session, version, owned_success) =
+            commit.into_parts();
+        ensure!(
+            Arc::ptr_eq(&saved, terminal) && Arc::ptr_eq(&actual_owner, &phase.owner),
+            "native terminal transaction changed private origin"
+        );
+        if owned_success {
+            phase.settled(
+                saved,
+                unit.clone(),
+                receipt.clone(),
+                session.clone(),
+                version,
+            )?;
+        } else {
+            phase.owner.project(&session, version)?;
+            phase.owner.revoke();
+        }
+        return Ok((unit, receipt, session, version));
+    }
+    let mut store = owner
+        .store
+        .lock()
+        .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+    let (unit, receipt, session) = terminal.persist(&mut store)?;
+    let version = store
+        .session(session.id)?
+        .context("native terminal Session missing")?
+        .1;
+    Ok((unit, receipt, session, version))
+}
 struct Core {
     owner: Arc<RuntimeOwner>,
     unit: ExecutionUnit,
@@ -1415,6 +1488,19 @@ impl Core {
                 }
             }
         };
+        if method == "turn/start"
+            && let (Some(phase), Ok(response)) = (&self.phase, &result)
+        {
+            let turn = claude_wire::bounded_id(&response["turn"]["id"])?;
+            let thread = self
+                .session
+                .native_ref
+                .as_deref()
+                .context("actual turn response lacks established thread")?;
+            // Save the owned response BEFORE any transport-receipt write. A
+            // Store fault below must not erase an ACK that was already read.
+            phase.consumed()?.acknowledge(thread, Some(&turn))?;
+        }
         if let Some(operation) = operation {
             self.owner
                 .store
@@ -1442,6 +1528,13 @@ impl Core {
         result
     }
     fn ack(&mut self, native: String) -> Result<()> {
+        if self.unit.provider == "claude"
+            && let Some(phase) = &self.phase
+        {
+            // RunState accepted this exact owned initialize observation. Retain
+            // input consumption before Session/Unit projection can fail.
+            phase.consumed()?.acknowledge(&native, None)?;
+        }
         let mut session = self.session.clone();
         session.native_ref = Some(native);
         session.state = SessionState::Running;
@@ -1498,6 +1591,16 @@ impl Core {
             terminal_sha256,
             diagnostics,
         } = self.collector.content();
+        let actual_ack = if let Some(phase) = &self.phase {
+            let binding = phase.owner.binding_snapshot()?;
+            binding
+                .consumed()
+                .map(|input| input.acknowledgement())
+                .transpose()?
+                .flatten()
+        } else {
+            None
+        };
         let mut receipt = native_result::NativeResultReceipt {
             id: NativeResultId::new(),
             invocation_id: self.invocation,
@@ -1507,8 +1610,16 @@ impl Core {
             generation: self.unit.generation,
             owner_epoch: self.unit.owner_epoch,
             provider: self.unit.provider.clone(),
-            native_thread: invocation.native_thread.clone(),
-            native_turn: invocation.native_turn.clone(),
+            native_thread: if self.phase.is_some() {
+                actual_ack.as_ref().map(|ack| ack.0.clone())
+            } else {
+                invocation.native_thread.clone()
+            },
+            native_turn: if self.phase.is_some() {
+                actual_ack.as_ref().and_then(|ack| ack.1.clone())
+            } else {
+                invocation.native_turn.clone()
+            },
             acquisition,
             authority: native_result::ReceiptAuthority::HistoricalDraft,
             text,
@@ -1613,12 +1724,14 @@ impl Core {
         // Content, native work, Session closure and quota release commit together.
         // Hygiene runs afterward and cannot replace the known work axis.
         let persisted = (|| {
-            let owner = self.owner.clone();
-            let mut store = owner
+            // Read the finite invocation under Store, then release it before
+            // collector hashing, terminal encoding and phase snapshot planning.
+            let invocation = self
+                .owner
                 .store
                 .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            let invocation = store.native_invocation(self.invocation)?;
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .native_invocation(self.invocation)?;
             let proof = self.capture(&invocation, work, disposition, failure)?;
             let pending = self.frozen_terminal.clone();
             let mut frozen = pending
@@ -1626,12 +1739,15 @@ impl Core {
                 .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
             ensure!(frozen.is_none(), "native terminal already captured");
             *frozen = Some(Arc::new(proof));
-            let (_, receipt, session) = frozen
-                .as_ref()
-                .expect("captured terminal")
-                .persist(&mut store)?;
+            let (unit, receipt, session, version) = persist_saved_terminal(
+                &self.owner,
+                self.phase.as_ref(),
+                frozen.as_ref().expect("captured terminal"),
+            )?;
             *frozen = None;
+            self.unit = unit;
             self.session = session;
+            self.record_version = version;
             self.receipt_saved = true;
             Ok::<_, anyhow::Error>(receipt)
         })();
@@ -1727,6 +1843,85 @@ impl Core {
             } else {
                 None
             };
+        });
+    }
+    fn drop_phase(&mut self) {
+        self.drain.abort();
+        let pending = self.frozen_terminal.clone();
+        let Ok(mut frozen) = pending.lock() else {
+            return;
+        };
+        let saved_receipt = self
+            .owner
+            .store
+            .lock()
+            .ok()
+            .and_then(|store| store.native_session_result(self.session.id).ok().flatten());
+        if saved_receipt.is_some() {
+            self.receipt_saved = true;
+        }
+        if frozen.is_none() && !self.receipt_saved {
+            self.collector.protocol_lost();
+            // Snapshot copying finishes before collector hashing. This is a
+            // conservative observation by the same actual Core, not SQL proof.
+            let invocation = self
+                .owner
+                .store
+                .lock()
+                .ok()
+                .and_then(|store| store.native_invocation(self.invocation).ok());
+            if let Some(invocation) = invocation
+                && let Ok(proof) =
+                    self.capture(&invocation, WorkOutcome::Unknown, Disposition::Lost, None)
+            {
+                *frozen = Some(Arc::new(proof));
+            }
+        }
+        if let Some(proof) = frozen.as_ref()
+            && let Ok((unit, _, session, version)) =
+                persist_saved_terminal(&self.owner, self.phase.as_ref(), proof)
+        {
+            self.unit = unit;
+            self.session = session;
+            self.record_version = version;
+            self.receipt_saved = true;
+            *frozen = None;
+        }
+        let terminal_pending = frozen.is_some();
+        let observed = frozen.as_ref().map(|proof| proof.receipt.observed_work);
+        drop(frozen);
+        let Ok(store) = self.owner.store.lock() else {
+            return;
+        };
+        let Ok(unit) = store.execution_unit(self.unit.id) else {
+            return;
+        };
+        let session = store.session(self.session.id).ok().flatten().map(|s| s.0);
+        let receipt = store.native_session_result(self.session.id).ok().flatten();
+        self.update.send_modify(|s| {
+            if let Some(session) = session {
+                s.session = session;
+            }
+            s.authority = unit.authority();
+            s.work = unit.work;
+            s.disposition = unit.disposition;
+            s.wait_reason = unit.wait_reason;
+            s.cleanup = unit.cleanup;
+            s.pending.clear();
+            if let Some(receipt) = receipt {
+                s.receipt = Some(receipt.id);
+                s.result = Some(receipt.projection());
+                s.observed_work = Some(receipt.observed_work);
+            }
+            if unit.disposition == Disposition::Cancelled {
+                s.failure = None;
+            }
+            if terminal_pending {
+                s.observed_work = observed;
+                s.diagnostic = Some("native terminal pending persistence");
+            } else if s.diagnostic == Some("native terminal pending persistence") {
+                s.diagnostic = None;
+            }
         });
     }
     async fn codex(
@@ -2009,6 +2204,8 @@ impl Drop for Core {
             // Revoke normal/live delivery before every early Drop return. A
             // previously retained known settlement has its separate late path.
             phase.owner.revoke();
+            self.drop_phase();
+            return;
         }
         self.drain.abort();
         let owner = self.owner.clone();

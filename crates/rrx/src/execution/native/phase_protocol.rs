@@ -54,6 +54,7 @@ pub(super) struct PhaseActor {
 struct RetainedProofs {
     consumed: Option<Arc<ConsumedPhaseInput>>,
     settlement: Option<Arc<OwnedPhaseSettlement>>,
+    terminal_plan: Option<Arc<crate::state::NativeTerminalPlan>>,
 }
 impl PhaseActor {
     /// Called by the real Native launch only after its genuine registration
@@ -69,6 +70,7 @@ impl PhaseActor {
             retained: Mutex::new(RetainedProofs {
                 consumed: None,
                 settlement: None,
+                terminal_plan: None,
             }),
         }))
     }
@@ -105,6 +107,75 @@ impl PhaseActor {
             .clone()
             .context("actual phase input not consumed")
     }
+    pub(super) fn terminal_plan(
+        &self,
+        runtime: &RuntimeOwner,
+        terminal: &Arc<NativeTerminal>,
+    ) -> Result<Arc<crate::state::NativeTerminalPlan>> {
+        if let Some(plan) = self
+            .retained
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native phase retention unavailable"))?
+            .terminal_plan
+            .clone()
+        {
+            ensure!(
+                plan.belongs_to(&self.owner, terminal),
+                "native phase terminal plan changed"
+            );
+            return Ok(plan);
+        }
+        // Full snapshots and encoding do not run under the actor retention or
+        // SharedStore mutex. Install once only after that finite work finishes.
+        let plan = crate::state::Store::plan_native_phase_terminal(
+            runtime,
+            &self.owner,
+            terminal.clone(),
+        )?;
+        let mut retained = self
+            .retained
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native phase retention unavailable"))?;
+        if let Some(original) = &retained.terminal_plan {
+            ensure!(
+                original.belongs_to(&self.owner, terminal),
+                "native phase terminal plan changed"
+            );
+            return Ok(original.clone());
+        }
+        retained.terminal_plan = Some(plan.clone());
+        Ok(plan)
+    }
+    pub(super) fn replan_terminal_after_absence(
+        &self,
+        runtime: &RuntimeOwner,
+        original: &Arc<crate::state::NativeTerminalPlan>,
+        terminal: &Arc<NativeTerminal>,
+    ) -> Result<Arc<crate::state::NativeTerminalPlan>> {
+        ensure!(
+            original.belongs_to(&self.owner, terminal) && original.confirmed_absent(runtime)?,
+            "native terminal commit remains uncertain"
+        );
+        let next = crate::state::Store::plan_native_phase_terminal(
+            runtime,
+            &self.owner,
+            terminal.clone(),
+        )?;
+        let mut retained = self
+            .retained
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native phase retention unavailable"))?;
+        let saved = retained
+            .terminal_plan
+            .as_ref()
+            .context("native terminal plan lost")?;
+        ensure!(
+            Arc::ptr_eq(saved, original),
+            "native terminal replan raced with another original plan"
+        );
+        retained.terminal_plan = Some(next.clone());
+        Ok(next)
+    }
     /// Called only after the same actual terminal commits own logical closure.
     /// The saved Arc is retained unchanged, including when binder delivery fails.
     pub(super) fn settled(
@@ -115,6 +186,23 @@ impl PhaseActor {
         session: Session,
         record_version: u64,
     ) -> Result<Arc<OwnedPhaseSettlement>> {
+        if let Some(previous) = self
+            .retained
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native phase retention unavailable"))?
+            .settlement
+            .clone()
+        {
+            ensure!(
+                Arc::ptr_eq(&previous.terminal, &terminal)
+                    && previous.receipt == receipt
+                    && previous.record_version == record_version
+                    && serde_json::to_value(&previous.unit)? == serde_json::to_value(&unit)?
+                    && serde_json::to_value(&previous.session)? == serde_json::to_value(&session)?,
+                "native phase changed settlement replay"
+            );
+            return Ok(previous);
+        }
         let consumed = self.consumed()?;
         let settlement = OwnedPhaseSettlement::completed(
             consumed,
