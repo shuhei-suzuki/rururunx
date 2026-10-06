@@ -29,7 +29,15 @@
 
    rrx is not a security sandbox. Native Agents and hooks keep the user's host authority. No process-death claim is made or needed.
 
-7. **Correction scope.** This revision resolves the seven confirmed findings RN1-SOL-01 to RN1-SOL-07 of the independent Sol high review of `b03b6622`. The source pin is unchanged. The G5 component `c51af44` was read only to locate the replaced bail and the driven entry (§§9, 15); it is not a source pin of this HOW.
+7. **Correction scope.** Revision `57e7eb9a` addressed the seven confirmed findings RN1-SOL-01 to RN1-SOL-07 of the independent Sol high review of `b03b6622`. This revision corrects the six findings still open or newly raised by the finding-side delta review of `57e7eb9a`:
+   - RN1-SOL-01: legal consumer APIs (§4);
+   - RN1-SOL-05: validator allocations and encoded budgets (§7.5);
+   - RN1-SOL-06: borrowed turn material and frees under locks (§6);
+   - RN1-SOL-07: the transport pair is defense only (§15);
+   - RN1-SOL-08: the preparation step state machine (§5.1);
+   - RN1-SOL-09: the turn protocol, and delivery versus completion bounds (§6).
+
+   RN1-SOL-02 to 04 stay resolved and unchanged. The source pin is unchanged. The G5 component `c51af44` was read only to locate the replaced bail and the driven entry (§§9, 15); it is not a source pin of this HOW.
 
 ### 1.1 One-line acceptance condition (P)
 
@@ -118,7 +126,7 @@ All new types are crate-private, non-Clone, not Serialize/Deserialize, with priv
 
 ```rust
 // execution/native/nonsuccess.rs (new); execution/native.rs adds `mod nonsuccess;`
-// and `pub(crate) use nonsuccess::{NativeClosureStep, NativeNoDispatchClosureProof};`
+// and `pub(crate) use nonsuccess::{NativeClosureStep, NativeNoDispatchClosureProof, PreparationYield};`
 pub(crate) struct NativeNoDispatchClosureProof {
     custody: Weak<NativePreparationCustody>,           // SAME job custody, never strong
     actor: Arc<NativePreparationActor>,                // SAME original actor, revoked
@@ -128,10 +136,11 @@ pub(crate) struct NativeNoDispatchClosureProof {
 }
 pub(crate) enum NativeClosureStep {
     NotEligible,                                       // not revoked, or transport installed
-    PreparationPending,                                // closure conflict or rolled back; later turn
-    Held(anyhow::Error),                               // bounded reason; nothing written
-    Proof(Arc<NativeNoDispatchClosureProof>),
+    Preparation(PreparationYield),                     // ran ONE preparation transaction (§5.1); the turn ends
+    Held(anyhow::Error),                               // bounded reason; RN-1 wrote nothing
+    Proof(Arc<NativeNoDispatchClosureProof>),          // memory only; no Store transaction ran
 }
+pub(crate) enum PreparationYield { Closed, RolledBack, Conflict, Uncertain }   // scheduling only; no authority
 impl NativeNoDispatchClosureProof {
     /// Visible only inside execution::native; its sole caller is `nonsuccess_step`.
     pub(super) fn issue(custody: &Arc<NativePreparationCustody>, actor: Arc<NativePreparationActor>,
@@ -151,11 +160,12 @@ impl NativePreparationCustody {
 }
 
 // execution/native/prepared.rs (extended)
-pub(super) enum PreparationStep { Known, Conflict, RolledBack, Held(anyhow::Error) }
+pub(super) enum PreparationStep { Closed, RolledBack, Conflict, Uncertain(anyhow::Error), Held(anyhow::Error) }
 impl NativeSessions {
-    /// One bounded step; `close_prepared_on_revocation` loops it with its unchanged backoff.
+    /// §5.1: at most one query-only snapshot and exactly ONE Store-mutex transaction; never sleeps.
+    /// `close_prepared_on_revocation` loops it, keeping its backoff and return values.
     pub(super) fn close_prepared_step(&self, custody: &Arc<NativePreparationCustody>)
-        -> Result<PreparationStep>;
+        -> PreparationStep;
 }
 
 // runtime/phase_jobs.rs (extended); runtime/mod.rs adds `pub(crate) use phase_jobs::StartEnded;`
@@ -165,8 +175,12 @@ impl StartEnded {
 }
 pub(crate) enum InvocationObservation { /* existing */ ClosedNonSuccess }
 
-// state/managed_binding/closure.rs (new). ManagedMarkerPlan fields are pub(super),
-// so marker-derived images are planned and validated inside managed_binding.
+// state/managed_binding/closure.rs (new); managed_binding/mod.rs adds `mod closure;` and
+// `pub(in crate::state) use closure::{PhaseClosedFacts, PhaseClosureImages, PhaseImage,
+//     UnlinkedPhaseClosure, plan_unlinked_closure, validate_original_phase_tx};` (as `mod.rs:8`).
+// ManagedMarkerPlan fields are pub(super), so marker-derived images are planned, validated
+// and written only here. No field below is readable outside closure.rs. The planning and
+// write entry points take `&NonSuccessReader`, so only native_phase::nonsuccess reaches them.
 pub(in crate::state) struct UnlinkedPhaseClosure {   // compact, retained (§7.5)
     attempt: usize,
     workflow_version_after: u64,
@@ -175,25 +189,82 @@ pub(in crate::state) struct UnlinkedPhaseClosure {   // compact, retained (§7.5
     workflow_after_sha256: String,                    // WORKFLOW_DOMAIN digest, 64 hex
     operation_body_after_sha256: String,              // 64 hex
 }
-pub(in crate::state) struct PhaseClosureImages {     // transient, never retained
+pub(in crate::state) struct PhaseClosureImages {     // one turn, inside the Material; never retained
     workflow_after: Record,
     workflow_after_raw: String,
     operation_after: Vec<SqlValue>,                   // 32 columns
+}
+pub(in crate::state) struct PhaseClosedFacts {       // payload scalars only (§7.4); grants nothing
+    pub(in crate::state) allocated_session_id: String,
+    pub(in crate::state) unit_id: String,
+    pub(in crate::state) unit_versions: (u64, u64),
+    pub(in crate::state) readiness_version: i64,
+    pub(in crate::state) lease_released: bool,
+    pub(in crate::state) probe_released: bool,
 }
 pub(in crate::state) enum PhaseImage<'a> {
     Open,
     Closed { images: &'a PhaseClosureImages, at: i64, data: &'a str },
 }
-pub(in crate::state) fn plan_unlinked_closure(tx: &Transaction<'_>, marker: &OriginalMarker, at: i64)
-    -> Result<UnlinkedPhaseClosure>;
+pub(in crate::state) fn plan_unlinked_closure(_: &NonSuccessReader, tx: &Transaction<'_>,
+    marker: &OriginalMarker, at: i64) -> Result<UnlinkedPhaseClosure>;
+/// Operation/input/owner images, projection and ledger (§7.2 item 2, §8). The Unit is
+/// checked separately through its own sealed image; nothing here decodes a Unit.
 pub(in crate::state) fn validate_original_phase_tx(tx: &Transaction<'_>, marker: &OriginalMarker,
-    unit: (&ExecutionUnit, &str), image: PhaseImage<'_>) -> Result<()>;      // §7.2 item 2, §8
+    image: PhaseImage<'_>) -> Result<()>;
 impl UnlinkedPhaseClosure {
+    pub(in crate::state) fn attempt(&self) -> usize;
+    pub(in crate::state) fn at(&self) -> i64;
+    pub(in crate::state) fn audit_data(&self, marker: &OriginalMarker, facts: &PhaseClosedFacts)
+        -> Result<String>;                            // exact §7.4 key set, <= 4096 bytes
     pub(in crate::state) fn materialize(&self, marker: &OriginalMarker) -> Result<PhaseClosureImages>;
-    pub(in crate::state) fn mutations(&self, marker: &OriginalMarker, images: &PhaseClosureImages)
-        -> Result<[ExactRowMutation; 2]>;             // operation and records UPDATE
     pub(in crate::state) fn validate_budget_tx(&self, tx: &Transaction<'_>, marker: &OriginalMarker,
         audit_bytes: u64) -> Result<()>;
+}
+impl PhaseClosureImages {
+    /// Sole W1–W4 sequencer (§7.3). Reads `sequence` under the TX, then builds the three
+    /// one-use permit rows (operation and Workflow UPDATE copies, audit INSERT) from its own
+    /// images and the marker originals. Inside `permits.with_exact_permit` it runs `w1(tx)`,
+    /// then W2, W3 and W4 (rowcount 1 each), then `ensure_consumed`. The caller commits.
+    /// Returns no image.
+    pub(in crate::state) fn write_tx(&self, _: &NonSuccessReader, tx: &Transaction<'_>,
+        permits: &PrivatePermitManager, marker: &OriginalMarker, closure: &UnlinkedPhaseClosure,
+        audit_data: &str, w1: impl FnOnce(&Transaction<'_>) -> Result<()>) -> Result<()>;
+}
+
+// state/managed_binding/successor.rs (extended). `rows`, `Link` and `KINDS` stay private.
+pub(super) enum ClosureLedger<'a> { Empty, SolePhaseClosed { at: i64, data: &'a str } }
+/// Empty: one EXISTS query with the `rows` predicate is false. SolePhaseClosed: the same
+/// predicate with `LIMIT 2` returns exactly one `phase_closed` row in the marker scope, with
+/// this `at`, byte-equal `data` (<= 4096) and `sequence` > 0. Retains nothing.
+pub(super) fn validate_closure_ledger_tx(c: &Connection, marker: &OriginalMarker,
+    expected: ClosureLedger<'_>) -> Result<()>;
+
+// state/execution/native_phase/version/closure.rs (extended); same visibility as LatestUnitImage.
+pub(in crate::state::execution::native_phase) struct RetiredUnitImage {
+    values: Vec<SqlValue>,                            // 13 columns
+    before: u64,                                      // preimage Unit version
+}
+impl LatestUnitImage {
+    /// Decodes its own private body under the existing strict limits (`closure.rs:84–95`).
+    /// Requires the parent's private `registration_unit` and `wait_reason ∈ {None, Quota, Capacity}`,
+    /// then applies §10 and re-encodes. A body over 16 KiB is refused, never truncated.
+    /// Checks the identity with a strictly greater version. Reads no row.
+    pub(in crate::state::execution::native_phase) fn plan_retired(&self, launch: &PhaseLaunchParts,
+        at: i64) -> Result<RetiredUnitImage>;
+    /// 13-column CAS plus the `task_execution` generation join of `unit_index_matches`
+    /// (`marker_plan.rs:141–154`), bound from the image's own validated values; no decode.
+    pub(in crate::state::execution::native_phase) fn validate_indexed_tx(&self, tx: &Transaction<'_>)
+        -> Result<()>;
+    /// W1: UPDATE all 13 columns to `after` WHERE all 13 IS this image; rowcount exactly 1.
+    pub(in crate::state::execution::native_phase) fn write_retired_tx(&self, tx: &Transaction<'_>,
+        after: &RetiredUnitImage) -> Result<()>;
+}
+impl RetiredUnitImage {
+    pub(in crate::state::execution::native_phase) fn validate_indexed_tx(&self, tx: &Transaction<'_>)
+        -> Result<()>;
+    pub(in crate::state::execution::native_phase) fn unit_id(&self) -> &str;
+    pub(in crate::state::execution::native_phase) fn versions(&self) -> (u64, u64);   // before, after
 }
 
 // state/execution/native_phase/nonsuccess.rs (new); re-exported like `native_phase.rs:23–25`
@@ -201,10 +272,11 @@ pub(crate) struct NonSuccessReader(());              // private field: built onl
 pub(crate) struct NativeNonSuccessClosurePlan {
     proof: Arc<NativeNoDispatchClosureProof>,
     images: UnlinkedPhaseClosure,
-    unit_after: Vec<SqlValue>,                       // 13 columns; body <= 16 KiB
+    unit_after: RetiredUnitImage,                    // 13 sealed columns (§7.5 budget)
     audit_data: String,                              // <= 4096 bytes
 }
-pub(crate) struct NativeNonSuccessMaterial {         // one turn; consumed by one Store call
+pub(crate) struct NativeNonSuccessMaterial {         // one turn; borrowed by one Store call,
+                                                     // dropped by Root after the Store guard
     plan: Arc<NativeNonSuccessClosurePlan>,
     images: PhaseClosureImages,
 }
@@ -216,9 +288,9 @@ impl Store {
         proof: Arc<NativeNoDispatchClosureProof>) -> Result<Arc<NativeNonSuccessClosurePlan>>;
     pub(crate) fn materialize_phase_nonsuccess(plan: &Arc<NativeNonSuccessClosurePlan>)
         -> Result<NativeNonSuccessMaterial>;         // no Store mutex
-    pub(crate) fn close_phase_nonsuccess(&mut self, material: NativeNonSuccessMaterial)
+    pub(crate) fn close_phase_nonsuccess(&mut self, material: &NativeNonSuccessMaterial)
         -> Result<NativeNonSuccessWrite>;            // Err = uncertain
-    pub(crate) fn confirm_phase_nonsuccess(&mut self, material: NativeNonSuccessMaterial)
+    pub(crate) fn confirm_phase_nonsuccess(&mut self, material: &NativeNonSuccessMaterial)
         -> Result<NativeNonSuccessConfirmation>;     // Err = Held
 }
 impl PhaseClosedAcknowledgment {
@@ -239,10 +311,26 @@ impl PhaseSupervisor {
 }
 ```
 
-Supporting accessors, each at a legal and narrowest visibility:
-- `quota.rs`: `NativeQuotaClosurePlan::validate_original` becomes `pub(super)` (visible in `native_phase` and its child `nonsuccess`); new `pub(super)` `unit()` and `validate_after_tx(tx)` (readiness equals the `closed` image, own waiter absent, own lease equal to the after-image or absent); new `pub(crate)` `matches_no_dispatch(&Arc<PreparedPhaseNoCurrentDispatch>) -> bool` (pointer check only).
-- `publication.rs`: `OriginalMarker::validate_unadvanced_tx(tx)` (operation, input and owner rows equal their retained insert images, reusing `Insert::validate_tx`, `marker_rows.rs:59–77`) and `original_operation_image()`, both `pub(super)`.
-- `successor.rs`: the ledger reader `rows` and `KINDS` become `pub(super)` for `closure.rs`. `CurrentWorkflowSuccessor::workflow_raw` stays `pub(super)`; RN-1 builds no successor (§7.1).
+Supporting accessors on existing types, each at a legal and narrowest visibility:
+- `quota.rs`:
+  - `NativeQuotaClosurePlan::validate_original` becomes `pub(super)` (visible in `native_phase` and its child `nonsuccess`);
+  - new `pub(super)` methods: `unit() -> &LatestUnitImage` (borrows the field); `validate_after_tx(tx)` (readiness equals the `closed` image, own waiter absent, own lease equal to the after-image or absent); `payload_facts() -> (i64, bool, bool)` (readiness version, lease released, probe released, read from its own images);
+  - new `pub(crate)` `matches_no_dispatch(&Arc<PreparedPhaseNoCurrentDispatch>) -> bool` (pointer check only).
+- `publication.rs`: `OriginalMarker::validate_unadvanced_tx(tx)` (operation, input and owner rows equal their retained insert images, reusing `Insert::validate_tx`, `marker_rows.rs:59–77`) and `original_operation_image()`, both `pub(super)`. Their only new consumer is `closure.rs`.
+- `successor.rs`: only `validate_closure_ledger_tx` above. `CurrentWorkflowSuccessor::workflow_raw` stays `pub(super)`; RN-1 builds no successor (§7.1).
+
+**Type graph and consumers.** Each consumer reads its inputs only through the methods below. No consumer receives a field, a raw caller image or an image regenerated from current rows.
+
+| Value (module) | Built only by | Consumer → method used | Sealed |
+|---|---|---|---|
+| `NativeNoDispatchClosureProof` (`execution::native::nonsuccess`) | `issue`, from `nonsuccess_step` | custody cell (Arc); `native_phase::nonsuccess` → `launch()`, `validate_original()`, `closure(&NonSuccessReader)`; Root → opaque Arc | all fields |
+| `NativeQuotaClosurePlan` (A, `quota.rs`) | existing `plan_phase_quota_closure` | issuer → `matches`, `matches_no_dispatch`; `native_phase::nonsuccess` → `validate_original`, `validate_after_tx`, `unit()`, `payload_facts()` | images, readiness |
+| `LatestUnitImage` (A, `version/closure.rs`) | existing `read` | `native_phase::nonsuccess` → `plan_retired`, `validate_tx`, `validate_indexed_tx`, `write_retired_tx` | `values` |
+| `RetiredUnitImage` (new, same module) | `plan_retired` | plan field; ports → `validate_indexed_tx`, `write_retired_tx` argument; payload → `unit_id()`, `versions()` | `values`, `before` |
+| `UnlinkedPhaseClosure` (`managed_binding::closure`) | `plan_unlinked_closure` | plan field; → `attempt()`, `at()`, `audit_data`, `materialize`, `validate_budget_tx` | digests, growth |
+| `PhaseClosureImages` (same) | `materialize` | Material field; → `validate_original_phase_tx(…, Closed)`, `write_tx` | Record, raw, 32 columns; permit rows exist only inside `write_tx` |
+| Ledger links (`successor.rs`) | — | `closure.rs` → `validate_closure_ledger_tx` | `rows`, `Link`, `KINDS` |
+| `NativeNonSuccessClosurePlan`, `NativeNonSuccessMaterial`, `PhaseClosedAcknowledgment`, `NonSuccessReader` | `native_phase::nonsuccess` | Root → opaque Arc, `&material`, `matches_allocation`, `matches_marker` | all fields |
 
 Nothing in `runtime` can build a proof, plan, material, reader or acknowledgment.
 
@@ -271,13 +359,10 @@ There is no ownership cycle. The custody's proof edge returns to the custody onl
    - not `abandoned`, or the actor absent or not revoked: `NotEligible`;
    - `transport` present: `NotEligible` (transport paths);
    - `no_dispatch` absent: `Held("pre-no-dispatch: RN-1b")`.
-3. If `closed` is empty, run exactly one `close_prepared_step` through `actor.sessions.upgrade()`; an ended `Weak` is `Held`. The step:
-   - first confirms a retained closure plan, otherwise plans and closes once;
-   - on Known: `retain_closed` and `release_gate`, then continues to step 4;
-   - on Conflict or RolledBack: `PreparationPending`;
-   - on a mixed image: `Held`.
-
-   The step never sleeps; Root owns the backoff.
+3. If `closed` is empty, run exactly one `close_prepared_step` (§5.1) through `actor.sessions.upgrade()`; an ended `Weak` is `Held`.
+   - Return `Preparation(Closed | RolledBack | Conflict | Uncertain)` or `Held`.
+   - The turn ends here, even on `Closed`. Steps 4–6 run in the job's next turn (§6 item 3).
+   - The step never sleeps; Root owns the backoff.
 4. Under the custody mutex, clone `closure` and `closed`, then drop the lock. Require:
    - `closed.matches_plan(&closure)`;
    - `closure.matches(&actor, lineage)` and `closure.matches_no_dispatch(&no_dispatch)`;
@@ -289,6 +374,29 @@ There is no ownership cycle. The custody's proof edge returns to the custody onl
 
 **Not inputs:** error text, observation labels, rows, IDs, readiness `closed`, `start_ended`, Session or process absence, `NativePhaseStartError`. The proof grants no dispatch, input, binding, settlement, refresh, retry or stop. It has no persisted form; Runtime exit drops it, which leaves the operation Held across epochs.
 
+### 5.1 Preparation step state machine (P)
+
+`close_prepared_step` reads the custody cells under the custody mutex (`closure_original`, `preparation.rs:88–110`; `closed`), then drops the lock. It then runs at most one query-only snapshot and ONE Store-mutex transaction:
+
+| State (custody cells) | Action | Outcome → next state |
+|---|---|---|
+| **N**: no saved plan (`closure` None, `closed` None) | plan (existing `plan_phase_quota_closure`, query-only), `retain_closure_plan`, then `close_phase_quota` once | `Ok(Some)` → `retain_closed`, `release_gate` → `Closed` (**K**). `Ok(None)` → `clear_definitive_closure_conflict(&plan)` → `Conflict` (**N**). `Err` → plan kept → `Uncertain` (**U**). Planning refusal → `Held` (**N**, nothing written) |
+| **U**: saved plan, outcome unknown (`closure` Some, `closed` None) | `confirm_phase_quota_closure(saved)` only | `Known` → `retain_closed`, `release_gate` → `Closed` (**K**). `RolledBack` → `clear_definitive_closure_conflict(&saved)` → `RolledBack` (**N**). `Err` (mixed images) → `Held`, saved plan kept (**U**) |
+| **K**: known (`closed` Some) | none; the issuer continues at step 4 in a later turn | — |
+
+- **Confirmation does not repeat.** A confirmed `RolledBack` proves, under the Store mutex, that the SAME saved plan's preimage is current and that nothing of it committed. The step therefore removes that plan with the existing pointer-checked `clear_definitive_closure_conflict` (`preparation.rs:73–87`), and the next step starts in state **N**, which plans and writes. An unchanged rollback is confirmed at most once. This matches the existing loop, which falls through to planning after a confirmed rollback (`prepared.rs:34–47`).
+- **Two different plans.** The preparation closure plan is nongrant quota/readiness bookkeeping. Its write re-checks a 5 s plan clock (`quota.rs:1323`) and carries no audit link or digest, so after a confirmed rollback it is replanned with a fresh `at`, as the existing loop does. The RN-1 plan (§6) is different: classifying its uncertain commit requires its `at`, digests, Unit postimage and payload to be byte-equal. It therefore stays the SAME plan through uncertainty, rollback and retry. Neither plan is derived from the other.
+- **Uncertain evidence is kept until classified.** In state **U**, the saved plan is replaced or discarded only by its own confirm's `Known` or `RolledBack`. A mixed image keeps it Held, reconfirmed read-only at most every 5 s, and it is never rewritten.
+- **Eventual progress.** Each step is one transaction. **N** reaches **K** in one step unless that step meets a definitive conflict or `Err`; **U** reaches **K** in at most two steps (confirm, then write). `Conflict` and `Uncertain` arise only from a genuine foreign change to the compared pool/waiter/lease/readiness/Unit images, or from SQLite contention. Once that stops, the job reaches **K** within two steps. A mixed image stays Held for TerminalRecovery, by design.
+- **Locks.** The step keeps its own clone of the plan across `retain_closure_plan`, `clear_definitive_closure_conflict` and the Store calls, so the cell's reference never drops last under the custody mutex. The existing Arc-by-value Store ports drop only non-last clones. `release_gate` runs without a lock.
+- **In-task loop.** `close_prepared_on_revocation` keeps its return values and backoff, and loops the step:
+  - after `Uncertain`, it runs one more step at once (the confirm);
+  - a `RolledBack` directly after its own `Uncertain` returns the original write error, as today; any other `RolledBack` continues to the next step;
+  - `Conflict` counts toward its existing replan backoff;
+  - `Held` returns `Err`.
+
+  The step and the in-task loop never overlap, because `StartEnded` requires the start future to have returned (§3.1).
+
 ## 6. Root sweep, fairness and lock order (P)
 
 `PhaseDispatcher::reconcile_nonsuccess()` is synchronous and delegates to `PhaseJobs::reconcile_nonsuccess(&self.phases, &self.stopping)`, because `Job` is private to `phase_jobs`. The service loop calls it right after `reconcile_pending()` (`service.rs:80`), and its `bool` ORs into `pending`. Each sweep:
@@ -299,19 +407,52 @@ There is no ownership cycle. The custody's proof edge returns to the custody onl
    - derive `StartEnded` from this job alone: `outcome` is `Some(Err(_))`, or `observation` is `Uncertain` with `outcome` `None` and `handle_finished`; otherwise skip;
    - `closure_due > now`: skip;
    - otherwise the job is **due**: clone the custody, the retained plan and `uncertain`, then drop the lock.
-3. **Turns.** A sweep grants at most `TURNS = 8` execution turns, one per due job, in snapshot order. If a due job finds no turn left, `closure_cursor` is set to its operation and the sweep stops; otherwise the cursor is cleared after the pass. Jobs that are not ended, not due or only awaiting removal take no turn. Every due job therefore gets a turn within ⌈128/8⌉ = 16 sweeps, whatever precedes it. A turn runs steps 4–7 until its first Store outcome.
-4. **Proof** (only without a retained plan). Call `custody.nonsuccess_step(&ended)`.
+3. **Turns.** A sweep grants at most `TURNS = 8` execution turns, one per due job, in snapshot order. If a due job finds no turn left, `closure_cursor` is set to its operation and the sweep stops; otherwise the cursor is cleared after the pass. Jobs that are not ended, not due or only awaiting removal take no turn.
+
+   **A turn runs at most ONE Store-mutex transaction**, preceded by at most one query-only planning snapshot without the Store mutex, and then yields. After its Store outcome, a turn does only `JobState` bookkeeping and, on `Known`, the memory-only acknowledgment of step 8. A turn is one of two exclusive kinds:
+   - a **preparation turn**: step 4 returns `Preparation(…)` after one §5.1 step;
+   - an **RN-1 turn**: memory-only proof issuance (step 4) or a retained plan, then steps 5–8 with one Immediate, either a write or a confirm.
+
+   **Delivery** (fairness): every due job gets a turn within ⌈n/8⌉ sweeps, whatever precedes it, where n ≤ `MAX_JOBS` = 128 is the number of due jobs. Delivery is not completion; a job may need several turns (Completion, below).
+4. **Proof or preparation** (only without a retained plan). Call `custody.nonsuccess_step(&ended)`.
    - `NotEligible` or `Held`: for `Held`, record bounded attention (an allowlisted category, ≤128 bytes); due now+5 s.
-   - `PreparationPending`: due by backoff 100 ms–5 s.
-   - `Proof`: continue.
-5. **Plan.** `Store::plan_phase_nonsuccess_closure` on a query-only snapshot, without the Store mutex. Install it once under `job.state`, pointer-checked. A planning refusal is Held attention; due now+5 s.
-6. **Material.** `Store::materialize_phase_nonsuccess(&plan)`, outside every lock (§7.5).
-7. **Write or confirm**, under the Store mutex only:
-   - `uncertain` unset: `close_phase_nonsuccess`. `Known` goes to step 8. `Conflict(cause)` is a definitive pre-write refusal: the plan is dropped, attention is recorded, due now+5 s. A later turn may plan again from the SAME proof, but plans derive only from the marker's original images, so drift is never laundered (no pin refresh). `Err` sets `uncertain`; due now.
-   - `uncertain` set: `confirm_phase_nonsuccess`. `Known` goes to step 8. `RolledBack` clears `uncertain` and keeps the SAME plan and `at` for a bookkeeping write in a later turn. `Err` is Held with the plan retained; due now+5 s.
+   - `Preparation(Closed)` or `Preparation(RolledBack)`: the turn ends; due now, so the next sweep may serve it.
+   - `Preparation(Conflict)` or `Preparation(Uncertain)`: the turn ends; due after `closure_backoff` (100 ms, doubling to 5 s; reset by any other outcome).
+   - `Proof`: continue in this turn; no Store transaction has run yet.
+5. **Plan.** `Store::plan_phase_nonsuccess_closure` on a query-only snapshot, without the Store mutex. Install it once under `job.state`, pointer-checked. A planning refusal is Held attention; due now+5 s; the turn ends.
+6. **Material.** `Store::materialize_phase_nonsuccess(&plan)`, outside every lock (§7.5). A digest mismatch is Held with the plan kept; due now+5 s; the turn ends.
+7. **Write or confirm**: the turn's one Store-mutex transaction. Root passes `&material` and drops the material only after the Store guard is released, on every result, error and poisoned-lock path. The guard is a temporary of the port call; `drop(material)` follows it.
+   - `uncertain` unset: `close_phase_nonsuccess(&material)`.
+     - `Known` goes to step 8.
+     - `Conflict(cause)` is a definitive pre-write refusal. The plan is taken out of `JobState` under `job.state` and dropped after unlocking; attention is recorded; due now+5 s. A later turn may plan again from the SAME proof. Plans derive only from the marker's original images, so drift is never laundered (no pin refresh).
+     - `Err` sets `uncertain`; due after `closure_backoff`.
+   - `uncertain` set: `confirm_phase_nonsuccess(&material)`.
+     - `Known` goes to step 8.
+     - `RolledBack` clears `uncertain` and keeps the SAME plan and `at`; due now, for the bookkeeping write in a later turn.
+     - `Err` is Held with the plan retained; due now+5 s.
 8. **Acknowledge** (§11): install `closed_ack`, then `retire_closed_marked`, then `retire_closed`.
 
-**Plan lifetime.** A job retains at most one compact plan (§7.5). An uncertain plan lives until its own confirm is Known, until it is confirmed RolledBack and then refused definitively, or until the Runtime exits (Held across epochs). Its `at`, digests, Unit postimage and payload are never discarded or rebuilt while it lives. There is no Root-wide plan-credit cap, so uncertain plans of other jobs never take a due job's turn.
+**Plan lifetime.** A job retains at most one compact RN-1 plan (§7.5). An uncertain plan lives until one of these:
+- its own confirm is Known;
+- it is confirmed RolledBack and then refused definitively;
+- the Runtime exits (Held across epochs).
+
+Its `at`, digests, Unit postimage and payload are never discarded or rebuilt while it lives. There is no Root-wide plan-credit cap, so uncertain plans of other jobs never take a due job's turn. Preparation closure plans live only in the custody (§5.1), never in `JobState`. An RN-1 plan exists only after preparation state **K**.
+
+**Completion (separate from delivery).** Count the turns T that a closable job needs when no fault occurs, starting from its first due turn:
+
+| Entry state (§5.1) | T | Turns |
+|---|---|---|
+| **K**: in-task closure already known | 1 | RN-1 Immediate `Known`, then acknowledgment |
+| **N**: no saved preparation plan | 2 | preparation write `Closed`; RN-1 |
+| **U**: saved uncertain preparation plan | 3, or 2 if the confirm is `Known` | confirm `RolledBack`; preparation write `Closed`; RN-1 |
+
+Faults add turns:
+- a preparation `Conflict` or `Uncertain` adds one turn, after `closure_backoff` (≤5 s);
+- an RN-1 `Err` adds one confirm turn after `closure_backoff`, plus a write turn if that confirm is `RolledBack`;
+- Held outcomes (drift, mixed images, planning refusals) do not complete, by design.
+
+Each successor turn is due immediately or after the stated backoff. So once faults stop, a job that needs T more turns is acknowledged within T·⌈n/8⌉ sweeps plus its accumulated backoff. Sweeps run at the service-loop cadence: at most 5 s apart (`phase_supervisor.rs:737–745`), and sooner while `pending`. `reconcile_nonsuccess` returns `true` while a due-now job or a retained cursor exists. Acknowledgment is never promised within one sweep when T > 1, and cursor visitation is not acknowledgment.
 
 **Lock order.**
 
@@ -321,12 +462,24 @@ There is no ownership cycle. The custody's proof edge returns to the custody onl
 | `job.state` | nothing |
 | `PhaseJobs.closure_cursor` (new) | nothing |
 | `PhaseSupervisor.queue` | the slot's `publication` and `marker` leaves, as the existing `remove_unmarked` (`phase_supervisor.rs:582–603`) |
-| Store mutex | the permit manager (existing); custody `state` as the existing short leaf through `no_dispatch_matches` (`prepared.rs:10–21`, `preparation.rs:407–416`) and the proof's own check (§5) |
+| Store mutex | the permit-manager `state` leaf (existing, `permits.rs:267–330`); custody `state` as the existing short leaf through `no_dispatch_matches` (`prepared.rs:10–21`, `preparation.rs:407–416`) and the proof's own pointer check (§5) |
 | custody `state` | only the existing helper leaves inside `abandon` |
 
-RN-1 holds at most one of {`entries`, `job.state`, `closure_cursor`, `queue`, Store mutex} at a time. `StartEnded` is derived under `job.state` from the `handle_finished` value copied out of the snapshot. Removal reads the set-once `closed_ack` and `slot_released` under `job.state`, then takes `entries` alone (§11). No reverse edge is added: nothing under custody `state`, `job.state` or `queue` takes the Store, and nothing under `job.state` takes `entries`. No await, gate action or Drop of a removed Job, Slot, plan, material or acknowledgment happens under any lock. The validators' temporary custody upgrade is never the last strong reference: only this sweep thread removes a started job, after its Store call returns.
+RN-1 holds at most one of {`entries`, `job.state`, `closure_cursor`, `queue`, Store mutex} at a time. `StartEnded` is derived under `job.state` from the `handle_finished` value copied out of the snapshot. Removal reads the set-once `closed_ack` and `slot_released` under `job.state`, then takes `entries` alone (§11). No reverse edge is added: nothing under custody `state`, `job.state` or `queue` takes the Store, and nothing under `job.state` takes `entries`.
 
-In debug builds, RN-1's lock guards increment a thread-local `ROOT_LOCK_DEPTH`; `nonsuccess_step`, materialization and the RN-1 Store ports `debug_assert!` that it is zero.
+**Drops under locks.** No await, gate action (`release_gate`) or lifecycle Drop happens under any lock. Lifecycle Drop means any of these:
+- a removed Job, Entry or `JoinHandle`;
+- a Slot or `PreparationGuard`;
+- the last reference to a custody, actor, proof, no-dispatch value, preparation plan or RN-1 plan;
+- a Material or an acknowledgment.
+
+The ports borrow the Material, so Root frees its Record, vectors and strings after the Store guard is released, on every path. A plan leaving `JobState` is taken out under `job.state` and dropped after unlocking. The only frees under a lock are plain data with no Drop logic, which existing primitives already free there:
+- permit-row copies, consumed inside the permit-manager leaf or revoked by its `Revoke` guard (`permits.rs:246–260`), as in the binder (`binding.rs:452–462`) and `close_phase_quota`;
+- validator-local buffers and SQLite statement copies;
+- `anyhow` errors;
+- non-last Arc clones: the existing Arc-by-value preparation ports, and the validators' temporary custody upgrade. That upgrade is never the last strong reference, because only this sweep thread removes a started job, and only after its Store call returns.
+
+In debug builds, RN-1's lock guards increment a thread-local `ROOT_LOCK_DEPTH`; `nonsuccess_step`, materialization and the RN-1 Store ports `debug_assert!` that it is zero. Each turn also counts its Store-mutex transactions and `debug_assert!`s that there is at most one.
 
 **Cancellation and shutdown.** The sweep checks `stopping` before each job. Retained proof, plan and acknowledgment live in `JobState` until consumed, independent of Engine or Driver futures. Shutdown runs no extra RN-1 sweep. Jobs that are closed but unacknowledged keep `ensure_*shutdown_complete` failing, as today.
 
@@ -337,35 +490,35 @@ In debug builds, RN-1's lock guards increment a thread-local `ROOT_LOCK_DEPTH`; 
 In one query-only snapshot, without the Store mutex:
 1. **Original and owner.** `proof.validate_original()`. The selected owner must be pointer-equal (as `quota.rs:1237–1243`), and the allocation's `state_path`, `instance_id` and `epoch` must equal the owner's (as `successor.rs:212–217`).
 2. **Currency.** The complete open-preimage conjunct set of §7.2 items 1–4, through the same code as the Immediate, so planning and writing cannot diverge. The Workflow image is the marker's retained `workflow_after`; with zero links it equals the current row byte for byte (`successor.rs:241–246`). No `CurrentWorkflowSuccessor` is built or retained, so `workflow_raw` keeps its `pub(super)` visibility.
-3. **Unit preimage.** The closure's `LatestUnitImage` must decode and pass `registration_unit` (Preparing, Session None, both flags 1, work None, disposition Active, original identity) with `wait_reason ∈ {None, Quota, Capacity}`. Build the 13-column `unit_after` (§10). The identity predicate is that of `with_known_unit` (`successor.rs:48–57`), with a strictly increasing version.
-4. **Operation and Workflow** (`plan_unlinked_closure`, inside `managed_binding`):
+3. **Unit preimage and postimage.** `closure.unit().plan_retired(launch, at)` (§4) decodes the closure's own retained `LatestUnitImage`. It requires `registration_unit` (Preparing, Session None, both flags 1, work None, disposition Active, original identity) and `wait_reason ∈ {None, Quota, Capacity}`, applies §10, and returns the sealed 13-column `RetiredUnitImage`. A re-encoded body over 16 KiB is refused, never truncated. The identity predicate is that of `with_known_unit` (`successor.rs:48–57`), with a strictly increasing version. The postimage comes only from the retained image; the current row is only compared (item 2).
+4. **Operation and Workflow** (`plan_unlinked_closure(&reader, …)`, inside `managed_binding`):
    - Operation: the marker's original insert image with `phase_open` 0 and `version` 2. Its body is the canonical re-encode of the original body object with exactly `phase_open:false` and `version:2` changed; every other key is byte-identical after decode. The body stays ≤4 MiB.
    - Workflow: decode the marker's `workflow_after` Record and `WorkflowSnapshot` with a complete typed roundtrip (as `binding.rs:244–250`). The active index must be the marker attempt.
    - Preconditions: state Running; `dispatch_started`; `session_id` and `execution` None; `unit == ManagedUnitRef::from(original)`; `completed_at`, `native_wait` and `next_due` None; no observations; `claimed_observations` 0.
    - Apply only: state Failed, `completed_at=at`, `detail=REASON_DETAIL`; Record `version+1`, `updated_at=at`.
    - Check `workflow::validate_transition(task_after, &after, Some(&before))`, and that the decoded before and after bodies, with exactly these fields neutralized, are canonically byte-equal.
    - Retain only the compact `UnlinkedPhaseClosure`: attempt index, versions, `at`, Workflow growth, and the SHA-256 digests of the canonical Workflow postimage (`WORKFLOW_DOMAIN`, equal to the payload's `workflow_body_sha256_after`) and of the operation post-body. Every parsed and encoded postimage is dropped before the plan is installed.
-5. **Payload.** Build `audit_data` (§7.4). `at` is bookkeeping time and is not re-checked under the lock.
+5. **Payload.** `UnlinkedPhaseClosure::audit_data(marker, &facts)` (§7.4). The `PhaseClosedFacts` come from the allocation, `RetiredUnitImage::unit_id()`/`versions()` and the closure plan's `payload_facts()`. `at` is bookkeeping time and is not re-checked under the lock.
 
 ### 7.2 Immediate conjuncts (`close_phase_nonsuccess`), all before any write
 
-The material (§7.5) is built before the Store mutex and supplies this attempt's exact operation and Workflow postimages. Then one `TransactionBehavior::Immediate` under `InventoryBudget`:
+The material (§7.5) is built before the Store mutex and supplies this attempt's exact operation and Workflow postimages; the port only borrows it. Then one `TransactionBehavior::Immediate` under `InventoryBudget`:
 1. **Database and memory.** `selected_database(&self.connection, launch)` (`native_phase.rs:40–50`); `proof.validate_original()`; `launch.validate_preparation_original()` (SAME Source, ticket and allocation linkage).
 2. **Open original preimage**, `validate_original_phase_tx(…, PhaseImage::Open)`:
    - the operation, input **and owner** rows equal their retained original insert images in every column, through the new `OriginalMarker::validate_unadvanced_tx` (the existing exact-row validator, `marker_rows.rs:59–77`). The owner is therefore still the unregistered version-1 image, and the operation is `phase_open=1`, version 1;
    - the original projection with the marker's `task_after` and `workflow_after`: runtime instance and epoch, P/G/T versions and bodies, the Workflow row, locks and Context (`snapshot.rs:349–374`);
-   - the complete Unit index equals the closure's factual image (`unit_index_matches`);
-   - ledger count 0 with no head;
+   - the complete Unit index equals the closure's factual image, through `closure.unit().validate_indexed_tx` (§4: the `unit_index_matches` predicate, bound from the image's own values);
+   - ledger count 0 with no head, through `validate_closure_ledger_tx(…, Empty)`;
    - the SAME retained Driver post anchor and Source result are live (`marker.validate_driver_live_tx`, `driver/marker.rs:135–154`), which rechecks the database path too.
 3. **Closure facts.** `closure.validate_original(&tx)`: actor revoked, SAME custody no-dispatch, `no_registration`, inventory equal to the completion's `after`, Unit original identity.
 4. **Closure postimages.** `closure.validate_after_tx(&tx)`: readiness equals the closure `closed` image; own waiter absent; own lease equal to the closure after-image, or absent. `closure.unit().validate_tx` (all 13 columns).
 5. **Budget.** `charged_scope_bytes(scope) + workflow growth + audit bytes ≤ WORKFLOW_BYTES`, through `UnlinkedPhaseClosure::validate_budget_tx`.
 
-Any failure rolls back and returns `Conflict(cause)`, with no write. No hashing, encoding, policy or image building runs under SharedStore.
+Any failure rolls back and returns `Conflict(cause)`, with no write. No hashing, encoding, decoding, policy or image building runs under SharedStore. The only image work there is copying already-built images into the one-use permit rows (§7.3), as the binder does (`binding.rs:453–455`).
 
 ### 7.3 Writes, images and guards
 
-Writes run in this order, each with rowcount exactly 1; then `ensure_consumed` and commit.
+Writes run in this order inside `PhaseClosureImages::write_tx` (§4), each with rowcount exactly 1. W1 is the supplied `closure.unit().write_retired_tx`; W2–W4 run under the three one-use permits. Then `ensure_consumed` runs, and the port commits.
 
 | # | Row | Preimage (complete) | Postimage | Guard |
 |---|---|---|---|---|
@@ -396,26 +549,53 @@ The key set is exact. The payload carries no error text, argv, environment, cred
 
 ### 7.5 Budgets
 
-Owned representations:
+All figures are **encoded** lengths (UTF-8 text and 8-byte integers), taken from the existing bounds cited. They are not heap or RSS bounds. They do not count parsed trees, allocator slack, string capacity, the SQLite page cache or trigger-internal JSON work, and no expansion factor is asserted. Control M1 (§15) measures these. Concurrent Store users outside RN-1 are not included.
 
-| Representation | Owner and lifetime | Bytes |
+**Retained (owned beyond one turn).**
+
+| Representation | Owner and lifetime | Encoded bound |
 |---|---|---|
 | Proof | custody and plan; shared Arcs | pointers only; actor, no-dispatch, closure plan and commit already exist (§2) |
 | Marker preimages: `workflow_after` (raw, canonical and parsed), operation, input and owner images | the existing marker, for the slot lifetime | existing; RN-1 retains no copy |
-| Compact plan: `unit_after` (13 columns), `audit_data`, two digests, scalars | `JobState.nonsuccess`, until acknowledgment or a definitive `Conflict` | ≤16 KiB body + ≤1 KiB columns + ≤4 KiB + 128 B + scalars: ≤24 KiB |
+| Compact plan: `RetiredUnitImage` | `JobState.nonsuccess`, until acknowledgment or a definitive `Conflict` | body ≤16 KiB; seven text columns (id, project, goal, task, kind, worktree, branch) ≤4 KiB each (`version/closure.rs:5,15–26`); five integers plus `before`: ≤44 KiB + 48 B |
+| Compact plan: `audit_data`, two 64-hex digests, scalars, two Arcs | same | ≤4096 B + 128 B + ≤64 B |
 | Acknowledgment | `JobState.closed_ack` | one Arc |
-| Material | one turn; dropped before the next turn | Workflow: one deep copy of the marker's parsed Record (P_W) plus its encoding ≤8 MiB; operation: one transient parse of the ≤4 MiB original body (P_O) plus its encoding ≤4 MiB |
-| Mutations | one Store call | operation old/new ≤4+4 MiB; Workflow old/new ≤8+8 MiB; audit ≤8 KiB |
-| Immediate reads | one Store call | projection Workflow row ≤8 MiB plus its expected copy ≤8 MiB (`snapshot.rs:368–373`); Unit ≤16 KiB; readiness ≤4 KiB; ledger `LIMIT 257` × ≤4 KiB; own waiter and lease rows |
 
-- **Retained.** At most one compact plan per job, so ≤128 × 24 KiB = 3 MiB Root-wide, however many plans are uncertain. There is no plan-credit cap.
-- **Peak.** The sweep is synchronous, so one turn's transients exist at a time: ≤3 MiB retained + P_W + P_O + 12 MiB encodings + 24 MiB mutation copies + ≤17 MiB Immediate reads + SQLite's own copies of bound parameters (≤24 MiB). A planning turn instead holds the typed before/after `WorkflowSnapshot` pair (≤2·P_W) and encodings ≤16 MiB, all dropped before the plan is installed.
-- **Parsed trees.** P_W and P_O are parsed-tree sizes; this HOW asserts no numeric expansion factor. P_W is at most the tree the marker already retains for the same operation. Control M1 (§15) measures both.
+A compact plan is therefore ≤49 KiB encoded. Root retains at most one per job, so ≤128 × 49 KiB ≈ 6.2 MiB in total, however many plans are uncertain. Nothing is truncated to meet this bound: an over-bound Unit body or payload is refused at planning (Held). There is no plan-credit cap, so no retained plan takes a due job's turn.
+
+**Per turn (freed by the end of the turn).**
+
+| Allocation | Lifetime | Encoded bound |
+|---|---|---|
+| Planning transients | the planning snapshot | the §7.2 validators below; the typed before/after `WorkflowSnapshot` pair (≤2·P_W) and encodings ≤16 MiB; one Unit decode and re-encode ≤2 × 16 KiB. All dropped before the plan is installed |
+| Material: Workflow postimage | Root, one turn; borrowed by the port | raw ≤8 MiB, plus its parsed Record (P_W, a deep copy with the shape of the marker's retained tree) |
+| Material: operation postimage | same | 32 columns, equal to the marker's original insert image (`MarkerRows.bytes`) except `phase_open`, `version` and the body. Body ≤4 MiB; over that it is refused. Materialization parses the original body once (P_O) and drops the parse before returning |
+| Permit rows (write only) | inside `write_tx`; owned by the permit manager until consumed or revoked | operation old + new ≤2 × the operation image; Workflow old + new ≤2 × (8 MiB + six short columns); audit ≤4 KiB + six columns |
+
+**Immediate validators (one Store call).** The validators run in sequence and each frees its locals when it returns, so at most one validator's set coexists with the Material.
+
+| Validator | Allocations, all live until it returns | Encoded bound |
+|---|---|---|
+| `validate_unadvanced_tx` (operation, input, owner) | SQLite copies of each bound original image, per statement | ≤ the marker's `MarkerRows.bytes` |
+| Projection, `validate_projection_context` (`snapshot.rs:349–401`) | First the P/G/T statement, whose SQLite copies of three bodies are freed when it ends. Then Workflow actual plus expected copy, locks actual plus expected copy, Context actual plus expected copy, and the Context index statement copy (`:374–398`). Shadowed bindings are not dropped early | P/G/T ≤3 × 8 MiB (`BODY_BYTES`, `canonical.rs:12`). Then: Workflow ≤8 + 8 MiB, plus a second fetched row ≤8 MiB only when the validator refuses (`LIMIT limit+1`, `snapshot.rs:403–440`); locks ≤257 × 16 KiB + ≤256 × 16 KiB (`snapshot.rs:13–14`); Context ≤8 + 8 MiB; Context index copy ≤8 MiB. At most ≤48.1 MiB coexist |
+| Unit (`validate_tx`, `validate_indexed_tx`) | SQLite copies of 13 values, per statement | ≤44 KiB |
+| Ledger (`validate_closure_ledger_tx`) | Empty: none. SolePhaseClosed: ≤2 rows | ≤2 × 4 KiB |
+| Closure `validate_original` | the actual `Inventory::read`, a temporary freed after its comparison (`version.rs:390–401`); own pool, waiter, lease and readiness images | ≤257 rows and ≤2 MiB (`version.rs:18–20`); fixed column sets |
+| `validate_after_tx`, budget | fixed rows; one aggregate | small, fixed |
+| Writes W1–W4 | SQLite copies per statement, while the permit rows live | W3 ≤2 × 8 MiB; W2 ≤2 × the operation image; W1 ≤2 × 44 KiB; W4 ≤4 KiB |
+
+- **Accounting, not a ceiling.** The encoded set of one RN-1 Store call is at most the sum of:
+  - the retained plans (≤6.2 MiB);
+  - the Material (≤8 MiB + the operation image + P_W);
+  - the largest single set above. That is the projection (≤48.1 MiB), unless the write phase is larger: permit rows plus W3 copies, ≤2 × the operation image + 32 MiB + 8 KiB.
+
+  A planning turn replaces the Material with its planning transients. A preparation turn holds only the existing preparation ports' sets (inventory ≤2 MiB, own quota images, Unit image ≤44 KiB). This HOW asserts no heap or RSS number; M1 reports the measured peak against these terms.
+- **Parsed trees.** P_W and P_O are parsed-tree sizes, and no numeric expansion factor is asserted. M1 measures both.
 - **Materialization.** Postimages are re-derived only from the SAME marker originals and plan scalars, outside every lock, and their digests must equal the plan's. No row is read. A mismatch is Held; the plan is neither rebuilt nor discarded.
 
 | Item | Bound |
 |---|---|
-| One sweep | ≤128 jobs classified; ≤8 execution turns, each ≤1 preparation-closure step (≤3 Store transactions) or ≤1 RN-1 Immediate or confirm; removals use no Store |
+| One sweep | ≤128 jobs classified; ≤8 execution turns. Each turn runs ≤1 query-only snapshot plus ≤1 Store-mutex transaction (a preparation write or confirm, or an RN-1 Immediate or confirm). Acknowledgment and removals use no Store |
 | Immediate reads | Existing bounded validators only (above), plus `InventoryBudget` |
 | Writes | 4 rows, 3 permits (≤128) |
 | Ledger | 0 → 1 link (≤256); link ≤4096 bytes |
@@ -426,13 +606,13 @@ Owned representations:
 
 ## 8. Uncertain commit (P)
 
-`confirm_phase_nonsuccess(material)` runs one Immediate with no write. Its material is re-derived from the SAME plan outside the Store mutex (§7.5); nothing comes from current rows. Both classifications first require the complete original currency of §7.2: item 1; the input and owner images and Driver liveness of item 2; item 3; and the readiness, waiter and lease part of item 4.
+`confirm_phase_nonsuccess(&material)` runs one Immediate with no write. Its material is re-derived from the SAME plan outside the Store mutex (§7.5), and Root frees it after the guard (§6). Nothing comes from current rows. Both classifications first require the complete original currency of §7.2: item 1; the input and owner images and Driver liveness of item 2; item 3; and the readiness, waiter and lease part of item 4.
 
 - **Known** iff, in addition, the closed branch `validate_original_phase_tx(…, PhaseImage::Closed)` holds:
   - the operation equals the materialized postimage in all 32 columns, whose other 29 columns equal the original image;
   - the projection (runtime instance and epoch, P/G/T, locks, Context) passes with the materialized Workflow postimage;
-  - the Unit equals `unit_after` in all 13 columns, and its index matches;
-  - exactly one link exists: `phase_closed` with the marker scope, the plan's `at` and byte-equal `audit_data`, and any `sequence` > 0.
+  - the Unit equals `unit_after` in all 13 columns and its index matches (`RetiredUnitImage::validate_indexed_tx`);
+  - exactly one link exists: `phase_closed` with the marker scope, the plan's `at` and byte-equal `audit_data`, and any `sequence` > 0 (`validate_closure_ledger_tx(…, SolePhaseClosed { at, data })`).
 
   Returns an acknowledgment for the SAME plan Arc.
 - **RolledBack** iff all of §7.2 items 1–4 hold, including the open operation, Workflow and Unit preimages and zero links. This permits a bookkeeping retry of the SAME plan only; there is no new plan and no new `at`.
@@ -508,8 +688,9 @@ The retirement is never inferred from readiness `closed`, `start_ended`, a Faile
 | Start still running / outcome `Ok(Launched)` | Not eligible / not RN-1 | none |
 | `no_dispatch` absent | Held, "pre-no-dispatch" (RN-1b) | none |
 | Transport installed | Not RN-1 (transport/terminal paths) | none |
-| Preparation-closure conflict or rollback | `PreparationPending`; one step per job per sweep; 100 ms–5 s backoff | only that closure's own rows |
-| Preparation-closure mixed images / selected sessions ended | Held | none |
+| Preparation closure: definitive conflict, uncertain write, or confirmed rollback | §5.1, one transaction per turn. `Conflict` or `Uncertain`: job backoff 100 ms–5 s. `RolledBack`: the SAME saved plan is cleared, and the next turn plans and writes. An unchanged rollback is never reconfirmed | only that closure's own rows |
+| Preparation closure `Closed` | The turn ends; proof and RN-1 run in the next turn | that closure's own rows |
+| Preparation-closure mixed images / selected sessions ended | Held; a saved plan is kept and reconfirmed read-only every 5 s | none |
 | Parent, Context, Workflow, Source or lock drift; Driver not live | `Conflict` → Held; plan dropped; read-only re-probe at most every 5 s; **no pin refresh, no drift laundering** | none |
 | Unit changed after the preparation closure (fence, legacy, raw SQL) | Held | none |
 | Ledger non-empty / epoch changed | Held | none |
@@ -558,9 +739,11 @@ The roles are local Runtime and cross-Task roles; there are no web roles.
 | Changed or consumed | Consumers checked (V) | Impact / handling |
 |---|---|---|
 | Custody `nonsuccess` slot; `closure_original` + `transport.is_none()`; `retain_transport` clears `no_dispatch` (C-R1) | `prepared.rs:24–185`; `preparation.rs:51–72,88–154,636–726`; `transport.rs:563` | Pre-transport behavior is unchanged. After transport, `reconcile_known_commit` already takes the transport branch first |
-| `close_prepared_on_revocation` → loop over `close_prepared_step` | `prepared.rs:173,179`; `preparation.rs:670` | Same semantics and backoff |
-| Closure-plan accessors: `validate_original`, `unit`, `validate_after_tx` (`pub(super)`); `matches_no_dispatch` | `quota.rs`; `native_phase/nonsuccess.rs` | Read-only; no new constructor |
-| `OriginalMarker::validate_unadvanced_tx`, `original_operation_image`; successor `rows`/`KINDS` `pub(super)`; new `managed_binding/closure.rs` | `marker_rows.rs:59–108`; `publication.rs:186–233`; `successor.rs:19,151–190` | Read-only; `validate_open_tx` and `validate_current_tx` unchanged |
+| `close_prepared_on_revocation` → loop over `close_prepared_step` (§5.1); `clear_definitive_closure_conflict` is also used after a confirmed rollback | `prepared.rs:24–101,173,179`; `preparation.rs:73–110,670` | Same return values and backoff; after `Uncertain`, the loop confirms at once, as today. A confirmed rollback now also clears the SAME saved plan, which it proved uncommitted, so a later step plans afresh instead of reconfirming |
+| Closure-plan accessors: `validate_original`, `unit`, `validate_after_tx`, `payload_facts` (`pub(super)`); `matches_no_dispatch` | `quota.rs`; `native_phase/nonsuccess.rs` | Read-only; no new constructor |
+| `LatestUnitImage::plan_retired`, `validate_indexed_tx`, `write_retired_tx`; new `RetiredUnitImage` | `version/closure.rs:11–160`; `registration_unit` (`native_phase.rs:1180–`, private, visible to descendants); predicate of `unit_index_matches` (`marker_plan.rs:141–154`, unchanged) | Additive; `read`, `validate_original`, `validate_tx` and `NativeVersionClosurePlan` unchanged |
+| `OriginalMarker::validate_unadvanced_tx`, `original_operation_image`; successor `validate_closure_ledger_tx` (`rows`, `Link`, `KINDS` stay private); new `managed_binding/closure.rs` and its `mod.rs` re-exports | `marker_rows.rs:59–108`; `publication.rs:186–233`; `successor.rs:19,32–35,151–190`; `managed_binding/mod.rs:5–44` | Read-only, except `write_tx`, which takes `&NonSuccessReader`; `validate_open_tx` and `validate_current_tx` unchanged |
+| Permit manager: `ExactRowMutation::new`, `with_exact_permit` and `ensure_consumed`, used by `write_tx` | `permits.rs:185–330`; binder `binding.rs:452–462`; `close_phase_quota` (`quota.rs:1304–1363`) | API unchanged; one more one-use set of 3 rows (≤128) |
 | First `phase_closed` producer | `schema.rs:358–414`; `successor.rs:19` (KINDS) | After close, `validate_open_tx` fails, so every open-currency consumer refuses: binder, registration, quota, transport, version helpers, `plan_current_phase`. Intended |
 | `phase_open=0` | `publication.rs:366` (reservation release); `waiting.rs:60`; `driver/claim.rs:337`; `quota_policy.rs:118`; `quota.rs:13`; admission trigger `schema.sql:195` | Status stops; the reservation and the operation member of the occupancy union free; the Task stays occupied by its `driving` Driver (§9); consumption impossible |
 | Unit flags/state | `state/mod.rs:935,946`; `workflow.rs:3104–3157`; `cleanup.rs:82`; `execution.rs:325`; `verification.rs:452`; quota WAITERS | Retired and inert; no cleanup job |
@@ -568,7 +751,7 @@ The roles are local Runtime and cross-Task roles; there are no web roles.
 | PhaseJobs, PhaseSupervisor, service loop; `ClosedNonSuccess` | `service.rs:80,134–136`; `phase_jobs.rs:84–99` (`wait` treats it as terminal); handoff drops `PhaseInvocation` (`phase_supervisor.rs:915`) | Unmarked paths and `fair_page` unchanged |
 | `StartEnded` re-export; `PhaseJobs::reconcile_nonsuccess`; `closure_cursor` | `runtime/mod.rs:7`; `phase_jobs.rs` | Crate-visible type with a phase_jobs-only constructor |
 | Driven Failed branch | `driven_initial.rs:36–40` (G5: same branch, new signature); `task_driver.rs:97–115`; G5 `preflight_installed_native` (not reached for a Failed attempt) | Read-only `Failed`; no handoff observation or offer for a Failed active Executor |
-| Constants: `TURNS` 8, snapshot bound `MAX_JOBS` 128 (existing), backoff 100 ms–5 s, `REASON_DETAIL` ≤128, payload ≤4096, ledger ≤256 | New, RN-1 only; trigger header list `schema.rs:368–396` | Header keys satisfied; projection keys free; no plan-credit cap |
+| Constants. New: `TURNS` 8, one Store-mutex transaction per turn, backoff 100 ms–5 s, `REASON_DETAIL` ≤128, payload ≤4096, ledger ≤256. Existing, consumed unchanged: snapshot bound `MAX_JOBS` 128, Unit 16 KiB body and 4 KiB columns, `INVENTORY_BYTES` 2 MiB, locks 256 × 16 KiB, `BODY_BYTES` 8 MiB | New ones are RN-1 only; trigger header list `schema.rs:368–396`; existing bounds `version/closure.rs:5,15–26`, `version.rs:18–20`, `snapshot.rs:13–14`, `canonical.rs:12` | Header keys satisfied; projection keys free; no plan-credit cap; existing bounds unchanged |
 | Environment variables, input lists, paths | None | No impact |
 
 **Not affected:**
@@ -586,7 +769,9 @@ The roles are local Runtime and cross-Task roles; there are no web roles.
    - the confirm classifier: every post/pre/mixed (Unit, operation, Workflow, link) combination, and each currency member of §8 changed alone in the post and in the pre branch;
    - the Unit delta identity predicate;
    - materialization determinism and its digest refusal;
-   - the turn scheduler (§6 item 3): a due job behind persistent due jobs, and four uncertain plans plus a fifth due job, each served within ⌈n/8⌉ sweeps.
+   - the turn scheduler (§6 item 3): a due job behind persistent due jobs, and four uncertain plans plus a fifth due job, each **delivered** a turn within ⌈n/8⌉ sweeps; at most one Store-mutex transaction per turn; a preparation `Closed` ends the turn;
+   - the §5.1 preparation step: every state × outcome. A confirmed `RolledBack` leaves state **U**, so an unchanged rollback is confirmed once and the next step writes a fresh plan. `Err` keeps the SAME saved plan. The in-task loop's return values are unchanged;
+   - port ownership: on the `Ok`, `Conflict`, `Err` and poisoned-lock paths, the Material is freed after the Store guard (a test drop probe), and no plan's last reference drops under `job.state` or the custody mutex.
 2. **Normal producer.** Every genuine row needs a genuine composed start that issued the S5 no-dispatch value and then ended `Err` before `retain_transport`. That requires G5 and the authentic composed Workflow activation producer (§17); RN-1 never synthesizes an activation row or relaxes `publication.rs:244–271`. Candidates, each to be shown reachable by the implementation evidence:
    - (a) S6: the quota commit returns `Err` and its own confirm returns RolledBack (`prepared.rs:145–147`), under genuine writer contention on the selected database;
    - (b) a refusal in `start_prepared_transport` before `retain_transport` (`transport.rs:503–562`), for example `qualified_physical_profile` (`version.rs:376–383`) after the selected program stops being a regular file while the start is parked at S6 behind genuine sibling Tasks.
@@ -611,9 +796,10 @@ The roles are local Runtime and cross-Task roles; there are no web roles.
    | W1 caller wiring | the service loop drives RN-1 | service call removed (mutant) | H1 fails: no link |
    | W2 visibility | the production Driver reports `Failed` with `REASON_DETAIL`; no write, handoff observation or offer while it polls; waiting None; Task unchanged | driven Failed branch removed (mutant) | the Driver reports the handoff Waiting reason |
    | O1 occupancy | after acknowledgment: no open Unit or operation for the Task; own lease inactive; slot and job removed | — | the capacity union still counts the Task through its `driving` Driver |
-   | F1 fairness | ≥9 genuine due jobs (Held pre-S5 jobs or failpoint-held confirms) precede a closable genuine job | — | the closable job is acknowledged within ⌈n/8⌉ sweeps |
-   | F2 | four jobs with failpoint-held confirms, then a fifth genuine job | — | the fifth is acknowledged; the four keep their SAME plans and `at` |
-   | M1 memory | Workflow body near 8 MiB and operation body near 4 MiB; four retained uncertain plans | — | retained ≤24 KiB per plan; measured peak within §7.5 with P_W and P_O reported; no truncation or evidence loss |
+   | P1 preparation progress | A Root preparation step in state **N** meets genuine writer-lock contention: a test-held SQLite write transaction that injects no row. Then the contention ends | — | `Uncertain`; one confirm `RolledBack` of the SAME saved plan; a fresh plan commits `Closed`; RN-1 runs in a later turn; one link; turn and transaction counts match §6, Completion |
+   | F1 fairness | ≥9 due jobs in genuine pending states precede a closable job: Held pre-S5 jobs (genuine S4b refusal), preparation `Conflict` from genuine sibling-Task pool writes, and RN-1 `Err` → confirm cycles under writer-lock contention | — | Delivery: each due job gets a turn within ⌈n/8⌉ sweeps. Completion: the closable job is acknowledged within T·⌈n/8⌉ sweeps plus its own backoff, with T from its §5.1 entry state. Per-job turns, transactions and backoff are recorded |
+   | F2 | four jobs whose RN-1 confirms are Held (L2-x: commit failpoint, then a genuine C1 change), then a fifth genuine job | — | The fifth is acknowledged within T·⌈5/8⌉ = T sweeps plus its backoff. The four keep their SAME plans and `at`, re-probed read-only every 5 s |
+   | M1 memory | Workflow and Context bodies near 8 MiB, operation body near 4 MiB, 256 locks near 16 KiB, worst-case Unit columns; 128 retained plans, four of them uncertain | — | Each retained plan is ≤49 KiB encoded. The measured heap/RSS peak of a planning, a write and a confirm turn is reported per §7.5 term, with P_W and P_O. No truncation, evidence loss or starved due job. No numeric heap ceiling is asserted before this measurement |
    | R1 retry | `Engine::retry` on a closed protected Workflow | — | refused; zero writes |
    | Q1 lease | own lease released; a sibling genuine Unit is admitted | — | — |
 
@@ -633,8 +819,10 @@ The roles are local Runtime and cross-Task roles; there are no web roles.
    | Task written, `session_id` set, detail from error text, flags left open, or `phase_open` unchanged | §7.3, §10 images | H1 | a durable image differs from §7.3/§10 | kill |
    | Audit inserted before W2/W3 | chain trigger | H1 | the trigger refuses; no link | kill (trigger) |
    | Root lock held across a Store call | §6 lock order | H1 | the `ROOT_LOCK_DEPTH` debug assertion fires | kill (debug) |
-   | `retain_transport` keeps `no_dispatch` and the issuer omits the transport check | issuer | a genuine start error after `retain_transport` | a proof is issued for a transported operation | kill (pair); UNVERIFIED until that error is shown |
+   | `retain_transport` keeps `no_dispatch` and the issuer omits its transport check | redundant: `closure_original` (C-R1) still refuses an installed transport, so no known SAME closure can be produced; and `issue` requires `closed` | — | — | defense only; both checks stay |
    | Transport check omitted alone | redundant with C-R1 | — | — | defense only |
+   | A confirmed preparation `RolledBack` keeps the saved plan | §5.1 state **U** | P1 | the SAME plan is reconfirmed every turn; no `Closed` and no link within the bound | kill |
+   | Preparation `Closed` continues to RN-1 in the same turn | §6 item 3 | P1 | the per-turn transaction `debug_assert!` fires | kill (debug) |
    | Epoch or instance check omitted alone | overlaps snapshot, projection and Driver epoch | — | — | defense only |
    | Owner exact image omitted | §7.2 item 2 owner | no genuine pre-transport owner writer exists; permits refuse others | — | defense only; required by §1.1 |
    | Ledger-zero conjunct omitted | §7.2 item 2 ledger | no pre-transport link producer exists; the trigger refuses a second `phase_closed` | — | defense only |
