@@ -564,6 +564,26 @@ pub struct WorkflowEngine {
     hooks: EngineHooks,
 }
 impl WorkflowEngine {
+    /// Pure identity checks against the real retained producer/vtable. Public
+    /// trait callbacks, capability descriptors and ledger DTOs are not consulted.
+    pub(crate) fn matches_composition(
+        &self,
+        owner: &Arc<crate::execution::RuntimeOwner>,
+        sources: &Arc<crate::execution::workflow_source::ManagedWorkflowSources>,
+        selected: &Arc<crate::adapter::native::NativePhasePort>,
+    ) -> bool {
+        let erased: Arc<dyn WorkflowSources> = sources.clone();
+        Arc::ptr_eq(&self.store, &owner.store())
+            && Arc::ptr_eq(&self.sources, &erased)
+            && self
+                .registry
+                .managed_owner()
+                .is_some_and(|o| Arc::ptr_eq(&o, owner))
+            && self
+                .registry
+                .native_phase_port(selected.alias())
+                .is_ok_and(|p| Arc::ptr_eq(&p, selected))
+    }
     pub fn new(
         store: SharedStore,
         registry: Arc<AgentRegistry>,

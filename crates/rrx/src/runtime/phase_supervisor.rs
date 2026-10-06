@@ -111,6 +111,9 @@ pub(crate) struct PhaseSupervisor {
     queue: Mutex<Queue>,
 }
 impl PhaseSupervisor {
+    pub(crate) fn belongs_to(&self, owner: &Arc<RuntimeOwner>) -> bool {
+        Arc::ptr_eq(&self.owner, owner)
+    }
     pub(super) fn new(owner: Arc<RuntimeOwner>, global: usize, per_project: usize) -> Arc<Self> {
         Arc::new(Self {
             owner,

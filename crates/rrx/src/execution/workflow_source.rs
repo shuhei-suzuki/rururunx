@@ -34,6 +34,12 @@ pub struct ManagedWorkflowSources {
     runtime: Config,
     tasks: Mutex<BTreeMap<TaskId, Arc<tokio::sync::Mutex<Option<TaskSources>>>>>,
 }
+impl ManagedWorkflowSources {
+    /// Exact retained producer owner; no reconstructed source/Driver authority.
+    pub(crate) fn belongs_to(&self, owner: &Arc<RuntimeOwner>) -> bool {
+        Arc::ptr_eq(&self.owner, owner)
+    }
+}
 struct TaskSources {
     prepared: Option<PreparedExecutor>,
     frame: Arc<Frame>,
