@@ -148,6 +148,9 @@ impl NativeCompatStatic {
     }
 }
 impl NativeCompatQualification {
+    pub(super) fn declaration_digest(&self) -> &str {
+        &self.captured.declaration.digest
+    }
     pub(super) fn matches(
         &self,
         actor: &Arc<NativePreparationActor>,

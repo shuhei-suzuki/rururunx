@@ -27,6 +27,13 @@ pub(crate) enum NativeReadyLineage {
     },
 }
 impl NativeReadyLineage {
+    pub(super) fn validate_registration_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        self.validate_prepared_shape()?;
+        self.commit()
+            .original
+            .validate_common_with(tx, self.current())?;
+        self.readiness().validate_tx(tx)
+    }
     pub(super) fn validate_planned_post_tx(
         &self,
         tx: &Transaction<'_>,

@@ -2,7 +2,7 @@
 //! needs the genuine retained launch and the actual Native issuer after commit.
 use super::*;
 use crate::{
-    execution::native::{ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession, NativeSeed},
+    execution::native::{ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession},
     state::managed_binding::{
         CurrentWorkflowSuccessor, ExactRowMutation, PhaseLaunchParts, phase_pair_columns,
         plan_current_phase, snapshot, validate_current_tx,
@@ -28,6 +28,12 @@ pub(crate) use version::{
     NativeHelperHistoryCommit, NativeHelperIntentCommit, NativeHelperSettlementCommit,
     NativeHelperSettlementPlan, NativeVersionClosurePlan, NativeVersionHelperPlan,
 };
+mod live_quota;
+mod transport;
+pub(crate) use transport::{
+    KnownTransportRegistration, NativeTransportStartPlan, RegistrationAck, RegistrationAckSource,
+    RegistrationProbe,
+};
 mod terminal;
 pub(crate) use terminal::NativeTerminalPlan;
 
@@ -42,6 +48,42 @@ fn selected_database(connection: &rusqlite::Connection, launch: &PhaseLaunchPart
         "Native phase writer is not the selected owner's database"
     );
     Ok(())
+}
+fn registered_readiness_matches(registered: u64, version: u64, ended: bool) -> bool {
+    matches!(registered, 3 | 5)
+        && if ended {
+            registered.checked_add(1) == Some(version)
+        } else {
+            registered == version
+        }
+}
+#[cfg(test)]
+mod registration_readiness_primitive_tests {
+    use super::registered_readiness_matches;
+    #[test]
+    fn known_admit_and_park_lineage_choose_their_own_readiness() {
+        for registered in [3, 5] {
+            assert!(registered_readiness_matches(registered, registered, false));
+            assert!(registered_readiness_matches(
+                registered,
+                registered + 1,
+                true
+            ));
+            for version in 1..=7 {
+                assert_eq!(
+                    registered_readiness_matches(registered, version, false),
+                    version == registered
+                );
+                assert_eq!(
+                    registered_readiness_matches(registered, version, true),
+                    version == registered + 1
+                );
+            }
+        }
+        for unprepared in [0, 1, 2, 4, u64::MAX] {
+            assert!(!registered_readiness_matches(unprepared, unprepared, false));
+        }
+    }
 }
 
 /// Complete indexed image, never a persisted owner-to-authority conversion.
@@ -284,6 +326,7 @@ fn plan_owner_currency(
         (terminal_ending || binding.is_live()) && phase.launch_parts().is_retained(),
         "actual Native owner ended"
     );
+    phase.validate_known_registration()?;
     let current = plan_current_phase(runtime, phase.marker())?;
     let f = phase.allocation().facts();
     let unit = current.unit();
@@ -361,7 +404,7 @@ fn plan_owner_currency(
         ensure!(
             r == json!({"operation_id":f.operation_id,"origin":f.origin_id,"owner_epoch":f.epoch,
             "state":"registered","start_ended":ended,"known_terminal":false,"parking_version":null,"version":version})
-                && ((version == 2 && !ended) || (version == 3 && ended))
+                && registered_readiness_matches(phase.registered_readiness()?, version, ended)
                 && readiness.column("operation_id")? == &SqlValue::Text(f.operation_id.to_string())
                 && readiness.column("origin")? == &SqlValue::Text(f.origin_id.to_string())
                 && readiness.column("owner_epoch")? == &SqlValue::Integer(i64::try_from(f.epoch)?)
@@ -394,6 +437,24 @@ fn plan_owner_currency(
     })
 }
 impl NativeOwnerPlan {
+    fn validate_registered_facts_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        let phase = self.binding.owner();
+        phase.validate_known_registration()?;
+        phase.origin().prepared().validate_original()?;
+        phase
+            .launch_parts()
+            .validate_preparation_origin_tx(tx, &self.current)?;
+        validate_unit_authority_facts(tx, &self.current.unit().authority(), self.current.unit())?;
+        let original = phase.marker().original_plan();
+        validate_parent_activity_facts(
+            self.current.unit(),
+            original.project().0,
+            original.goal().0,
+            original.task_after().0,
+        )?;
+        validate_governing_context_facts(tx, self.current.unit(), phase.origin().governing_digest())
+    }
+
     fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         ensure!(
             self.binding.is_live() && self.binding.owner().launch_parts().is_retained(),
@@ -401,7 +462,9 @@ impl NativeOwnerPlan {
         );
         validate_current_tx(tx, self.binding.marker(), &self.current)?;
         self.binding.marker().validate_driver_live_tx(tx)?;
-        validate_authority(tx, &self.current.unit().authority(), true, false)?;
+        self.binding.owner().origin().prepared().validate_open()?;
+        self.validate_registered_facts_tx(tx)?;
+        validate_native_effect_open(self.current.unit())?;
         self.session.validate_tx(tx)?;
         self.owner.validate_tx(tx)?;
         self.readiness.validate_tx(tx)?;
@@ -414,7 +477,12 @@ impl NativeOwnerPlan {
         );
         validate_current_tx(tx, self.binding.marker(), &self.current)?;
         self.binding.marker().validate_driver_live_tx(tx)?;
-        validate_authority(tx, &self.current.unit().authority(), false, true)?;
+        self.binding.owner().validate_known_registration()?;
+        self.validate_registered_facts_tx(tx)?;
+        ensure!(
+            self.current.unit().result_finalization_open,
+            "result finalization permission closed"
+        );
         self.session.validate_tx(tx)?;
         self.owner.validate_tx(tx)?;
         self.readiness.validate_tx(tx)?;
@@ -482,6 +550,7 @@ pub(crate) struct NativeDispatchPlan {
     before: InvocationImage,
     after: Option<InvocationImage>,
     effect: ManagedEffect,
+    effect_raw: String,
     admission: Option<PairRow>,
     digest: String,
     expected_thread: Option<String>,
@@ -493,10 +562,114 @@ pub(crate) struct NativeDispatchCommit {
     digest: String,
     expected_thread: Option<String>,
     input: bool,
+    owner: Arc<NativePhaseSession>,
+    original: ManagedEffect,
+    raw: String,
 }
 impl NativeDispatchCommit {
-    pub(crate) fn into_parts(self) -> (OperationId, String, Option<String>, bool) {
-        (self.effect, self.digest, self.expected_thread, self.input)
+    pub(crate) fn facts(&self) -> (OperationId, String, Option<String>, bool) {
+        (
+            self.effect,
+            self.digest.clone(),
+            self.expected_thread.clone(),
+            self.input,
+        )
+    }
+    pub(crate) fn belongs_to(&self, owner: &NativePhaseSession) -> bool {
+        std::ptr::eq(self.owner.as_ref(), owner)
+    }
+}
+
+fn reserve_phase_effect_tx(tx: &Transaction<'_>, plan: &NativeDispatchPlan) -> Result<()> {
+    let unit = plan.owner.current.unit();
+    ensure!(
+        matches!(
+            plan.effect.kind.as_str(),
+            "native_input" | "native_permission" | "native_setup"
+        ) && plan.effect.unit_id == unit.id
+            && plan.effect.scope == unit.scope
+            && plan.effect.version == 1
+            && plan.effect.state == EffectState::Pending
+            && plan.effect.receipt.is_empty()
+            && unit.phase != WORKFLOW_SOURCE_BOOTSTRAP
+            && !verification::is_command_unit(tx, unit.id)?,
+        "invalid SAME Native phase effect"
+    );
+    let (p, g, t) = scope_keys(&unit.scope)?;
+    tx.execute("INSERT INTO managed_effects(id,unit_id,project_id,goal_id,task_id,idempotency_key,state,version,body) VALUES(?1,?2,?3,?4,?5,?6,'pending',1,?7)",params![plan.effect.id.to_string(),unit.id.to_string(),p,g,t,plan.effect.idempotency_key,plan.effect_raw])?;
+    append_event(
+        tx,
+        &unit.scope,
+        "execution.effect_intent",
+        json!({"unit":unit.id,"operation":plan.effect.id,"kind":plan.effect.kind}),
+    )?;
+    Ok(())
+}
+
+pub(crate) struct NativeDispatchReceiptPlan {
+    owner: NativeOwnerPlan,
+    original: Arc<NativeDispatchCommit>,
+    after: ManagedEffect,
+    raw: String,
+}
+impl Store {
+    pub(crate) fn plan_phase_dispatch_receipt(
+        runtime: &crate::execution::RuntimeOwner,
+        phase: &Arc<NativePhaseSession>,
+        original: Arc<NativeDispatchCommit>,
+        state: EffectState,
+        receipt: BTreeMap<String, String>,
+    ) -> Result<NativeDispatchReceiptPlan> {
+        ensure!(
+            original.belongs_to(phase)
+                && matches!(state, EffectState::Confirmed | EffectState::Unknown)
+                && receipt.len() <= 16
+                && receipt.iter().all(|(k, v)| !k.is_empty()
+                    && k.len() <= 64
+                    && v.len() <= 256
+                    && !k.chars().chain(v.chars()).any(char::is_control)),
+            "invalid actual Native dispatch observation"
+        );
+        let owner = plan_native_owner(runtime, phase)?;
+        let mut after = original.original.clone();
+        after.state = state;
+        after.receipt = receipt;
+        after.version = 2;
+        let raw = serde_json::to_string(&after)?;
+        Ok(NativeDispatchReceiptPlan {
+            owner,
+            original,
+            after,
+            raw,
+        })
+    }
+    pub(crate) fn record_phase_dispatch_receipt(
+        &mut self,
+        plan: NativeDispatchReceiptPlan,
+    ) -> Result<()> {
+        selected_database(&self.connection, plan.owner.binding.owner().launch_parts())?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        plan.owner.validate_tx(&tx)?;
+        ensure!(
+            plan.original.belongs_to(plan.owner.binding.owner()),
+            "Native receipt original owner differs"
+        );
+        let e = &plan.original.original;
+        let (p, g, t) = scope_keys(&e.scope)?;
+        let post:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE id=?1 AND unit_id=?2 AND project_id=?3 AND goal_id=?4 AND task_id=?5 AND idempotency_key=?6 AND state=?7 AND version=2 AND body=?8)",params![e.id.to_string(),e.unit_id.to_string(),p,g,t,e.idempotency_key,key(plan.after.state),plan.raw],|r|r.get(0))?;
+        if !post {
+            ensure!(tx.execute("UPDATE managed_effects SET state=?1,version=2,body=?2 WHERE id=?3 AND unit_id=?4 AND project_id=?5 AND goal_id=?6 AND task_id=?7 AND idempotency_key=?8 AND state='pending' AND version=1 AND body=?9",params![key(plan.after.state),plan.raw,e.id.to_string(),e.unit_id.to_string(),p,g,t,e.idempotency_key,plan.original.raw])?==1,"SAME Native dispatch receipt CAS changed");
+            append_event(
+                &tx,
+                &e.scope,
+                "execution.effect_reconciled",
+                json!({"unit":e.unit_id,"operation":e.id,"state":plan.after.state}),
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
     }
 }
 
@@ -676,6 +849,7 @@ fn plan_phase_dispatch(
         owner,
         before,
         after,
+        effect_raw: serde_json::to_string(&effect)?,
         effect,
         admission,
         digest,
@@ -880,6 +1054,7 @@ fn plan_phase_projection(
             && session.effort == old.effort
             && session.started_at == old.started_at
             && session.recovery == old.recovery
+            && old.pid.is_none_or(|pid| session.pid == Some(pid))
             && session.state == SessionState::Running
             && session.native_ref.as_ref().is_some_and(|s| !s.is_empty()
                 && s.len() <= 512
@@ -926,24 +1101,6 @@ fn plan_phase_projection(
         unit,
         unit_raw,
     })
-}
-
-/// A finite unconsumed registration plan. No public ID/DTO can construct this.
-/// The retained launch is rechecked at commit; this value is not a Native owner.
-pub(crate) struct NativeRegistrationPlan {
-    launch: Arc<PhaseLaunchParts>,
-    current: CurrentWorkflowSuccessor,
-    owner_before: PairRow,
-    owner_after: PairRow,
-    readiness_before: PairRow,
-    readiness_after: PairRow,
-    session: Session,
-    record: Record,
-    record_raw: String,
-    unit_after: ExecutionUnit,
-    unit_raw: String,
-    invocation: crate::execution::native_result::NativeInvocation,
-    invocation_raw: String,
 }
 
 fn original_owner(tx: &Transaction<'_>, launch: &PhaseLaunchParts) -> Result<PairRow> {
@@ -1126,132 +1283,6 @@ fn registration_attempt(
     Ok(())
 }
 
-/// Exact current planning, hashing and complete encoded output preparation are
-/// outside SharedStore. The same original actual launch is mandatory at commit.
-pub(crate) fn plan_phase_registration(
-    owner: &crate::execution::RuntimeOwner,
-    launch: Arc<PhaseLaunchParts>,
-    session: Session,
-    seed: &NativeSeed,
-) -> Result<NativeRegistrationPlan> {
-    ensure!(
-        launch.is_retained() && Arc::ptr_eq(launch.marker().allocation(), launch.allocation()),
-        "Native registration lost original retained launch"
-    );
-    let f = launch.allocation().facts();
-    ensure!(
-        session.id == f.session_id
-            && session.scope == *f.scope
-            && session.agent == f.alias
-            && session.provider == f.provider
-            && session.role == f.role
-            && session.worktree == f.path
-            && session.model.as_deref() == f.model
-            && session.effort.as_deref() == f.effort
-            && session.pid.is_none()
-            && session.native_ref.is_none()
-            && session.state == SessionState::Starting
-            && seed.id() == f.invocation_id
-            && crate::execution::phase::encode_input(seed.input())? == f.input_bytes,
-        "Native registration seed or Session differs from original selected allocation"
-    );
-    let current = plan_current_phase(owner, launch.marker())?;
-    registration_attempt(&current, &launch)?;
-    let (owner_before, readiness_before, artifact_version) = snapshot(owner, |tx| {
-        validate_current_tx(tx, launch.marker(), &current)?;
-        launch.marker().validate_driver_live_tx(tx)?;
-        registration_unit(current.unit(), &launch)?;
-        no_registration(tx, &launch)?;
-        let artifact_version = current
-            .unit()
-            .artifact_id
-            .map(|id| self_artifact_tx(tx, id).map(|a| a.version))
-            .transpose()?;
-        Ok((
-            original_owner(tx, &launch)?,
-            initial_readiness(tx, &launch)?,
-            artifact_version,
-        ))
-    })?;
-    let mut owner_after = PairRow {
-        table: owner_before.table,
-        values: owner_before.values.clone(),
-    };
-    let mut body = owner_before.body()?;
-    body["native_invocation_id"] = json!(f.invocation_id);
-    body["validated"] = json!(true);
-    body["version"] = json!(2);
-    owner_after.replace(
-        "native_invocation_id",
-        SqlValue::Text(f.invocation_id.to_string()),
-    )?;
-    owner_after.replace("validated", SqlValue::Integer(1))?;
-    owner_after.replace("version", SqlValue::Integer(2))?;
-    owner_after.set_body(&body)?;
-    let mut readiness_after = PairRow {
-        table: readiness_before.table,
-        values: readiness_before.values.clone(),
-    };
-    let mut body = readiness_before.body()?;
-    body["state"] = json!("registered");
-    body["version"] = json!(2);
-    readiness_after.replace("state", SqlValue::Text("registered".into()))?;
-    readiness_after.replace("version", SqlValue::Integer(2))?;
-    readiness_after.set_body(&body)?;
-    let at = now_ms();
-    let record = Record {
-        id: RecordId(session.id.0),
-        scope: session.scope.clone(),
-        kind: RecordKind::Session,
-        version: 1,
-        data: serde_json::to_value(&session)?,
-        created_at: at,
-        updated_at: at,
-    };
-    let record_raw = serde_json::to_string(&record)?;
-    ensure!(
-        record_raw.len() <= PAIR_BODY_BYTES,
-        "Native Session registration exceeds profile"
-    );
-    let mut unit_after = current.unit().clone();
-    unit_after.version = unit_after
-        .version
-        .checked_add(1)
-        .context("Native Unit version exhausted")?;
-    unit_after.updated_at = at;
-    unit_after.session_id = Some(session.id);
-    unit_after.state = UnitState::DispatchPending;
-    let unit_raw = serde_json::to_string(&unit_after)?;
-    ensure!(
-        unit_raw.len() <= 16 * 1024,
-        "Native Unit registration exceeds profile"
-    );
-    let context = launch.marker().original_plan().context().0;
-    let context_hash = crate::execution::native_result::digest(&serde_json::to_vec(context)?);
-    let invocation = seed.invocation(&unit_after, &session, Some(context_hash), artifact_version);
-    invocation.validate()?;
-    let invocation_raw = serde_json::to_string(&invocation)?;
-    ensure!(
-        invocation_raw.len() <= crate::execution::native_result::INVOCATION_BYTES,
-        "Native registration invocation exceeds profile"
-    );
-    Ok(NativeRegistrationPlan {
-        launch,
-        current,
-        owner_before,
-        owner_after,
-        readiness_before,
-        readiness_after,
-        session,
-        record,
-        record_raw,
-        unit_after,
-        unit_raw,
-        invocation,
-        invocation_raw,
-    })
-}
-
 impl Store {
     pub(crate) fn plan_native_phase_input_ack(
         runtime: &crate::execution::RuntimeOwner,
@@ -1344,11 +1375,7 @@ impl Store {
                 let f = plan.owner.binding.allocation().facts();
                 let absent:bool=tx.query_row("SELECT NOT EXISTS(SELECT 1 FROM managed_phase_admissions WHERE pair_id=?1 OR operation_id=?2 OR native_invocation_id=?3)",params![f.pair_id.to_string(),f.operation_id.to_string(),f.invocation_id.to_string()],|r|r.get(0))?;
                 ensure!(absent, "actual Native input pair already consumed");
-                effects::reserve_effect_tx(
-                    &tx,
-                    &plan.owner.current.unit().authority(),
-                    &plan.effect,
-                )?;
+                reserve_phase_effect_tx(&tx, &plan)?;
                 plan.before.update_tx(
                     &tx,
                     plan.after.as_ref().context("Native input image absent")?,
@@ -1356,11 +1383,7 @@ impl Store {
                 admission.insert_tx(&tx)?;
                 self.binding_permits.ensure_consumed()?;
             } else {
-                effects::reserve_effect_tx(
-                    &tx,
-                    &plan.owner.current.unit().authority(),
-                    &plan.effect,
-                )?;
+                reserve_phase_effect_tx(&tx, &plan)?;
             }
             Ok(())
         };
@@ -1376,6 +1399,9 @@ impl Store {
             digest: plan.digest,
             expected_thread: plan.expected_thread,
             input: plan.admission.is_some(),
+            owner: plan.owner.binding.owner_arc().clone(),
+            original: plan.effect,
+            raw: plan.effect_raw,
         })
     }
     pub(crate) fn validate_phase_owner(
@@ -1423,102 +1449,6 @@ impl Store {
             self.binding_permits.ensure_consumed()?;
             tx.commit()?;
             Ok((plan.unit,plan.session,version))
-        })
-    }
-    pub(crate) fn plan_native_phase_registration(
-        owner: &crate::execution::RuntimeOwner,
-        launch: Arc<PhaseLaunchParts>,
-        session: Session,
-        seed: &NativeSeed,
-    ) -> Result<NativeRegistrationPlan> {
-        plan_phase_registration(owner, launch, session, seed)
-    }
-    /// Rechecks a real launch before any Native-owned preparation helper. This
-    /// check grants no generic caller permission and never reconstructs an owner.
-    pub(crate) fn validate_phase_preparation(
-        &mut self,
-        launch: &PhaseLaunchParts,
-        current: &CurrentWorkflowSuccessor,
-    ) -> Result<ExecutionUnit> {
-        ensure!(launch.is_retained(), "Native preparation retention ended");
-        selected_database(&self.connection, launch)?;
-        let tx = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        validate_current_tx(&tx, launch.marker(), current)?;
-        launch.marker().validate_driver_live_tx(&tx)?;
-        registration_unit(current.unit(), launch)?;
-        validate_authority(&tx, &current.unit().authority(), true, false)?;
-        original_owner(&tx, launch)?;
-        initial_readiness(&tx, launch)?;
-        no_registration(&tx, launch)?;
-        tx.commit()?;
-        Ok(current.unit().clone())
-    }
-    /// One exact permission/Immediate transaction journals actual Session and
-    /// invocation and validates the SAME allocated owner before Native spawn.
-    /// The caller issues its private owner only after this known commit succeeds.
-    pub(crate) fn register_phase_session(
-        &mut self,
-        plan: NativeRegistrationPlan,
-    ) -> Result<(ExecutionUnit, Session, u64)> {
-        ensure!(
-            plan.launch.is_retained(),
-            "Native registration retention ended"
-        );
-        selected_database(&self.connection, &plan.launch)?;
-        let mutations = vec![
-            plan.owner_before.update_permission(&plan.owner_after)?,
-            plan.readiness_before
-                .update_permission(&plan.readiness_after)?,
-            ExactRowMutation::new(
-                "records",
-                "INSERT",
-                None,
-                Some(vec![
-                    SqlValue::Text(plan.record.id.to_string()),
-                    SqlValue::Text("session".into()),
-                    SqlValue::Text(plan.record.scope.project_id.to_string()),
-                    SqlValue::Text(
-                        plan.record
-                            .scope
-                            .goal_id
-                            .context("Native Goal absent")?
-                            .to_string(),
-                    ),
-                    SqlValue::Text(
-                        plan.record
-                            .scope
-                            .task_id
-                            .context("Native Task absent")?
-                            .to_string(),
-                    ),
-                    SqlValue::Integer(1),
-                    SqlValue::Text(plan.record_raw.clone()),
-                ]),
-            )?,
-        ];
-        self.binding_permits.with_exact_permit(mutations, || {
-            let tx = self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-            validate_current_tx(&tx,plan.launch.marker(),&plan.current)?;
-            plan.launch.marker().validate_driver_live_tx(&tx)?;
-            registration_unit(plan.current.unit(),&plan.launch)?;
-            validate_authority(&tx,&plan.current.unit().authority(),true,false)?;
-            no_registration(&tx,&plan.launch)?;
-            plan.owner_before.validate_tx(&tx)?; plan.readiness_before.validate_tx(&tx)?;
-            let (p,g,t) = scope_keys(&plan.session.scope)?;
-            tx.execute("INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,'session',?2,?3,?4,1,?5)",params![plan.session.id.to_string(),p,g,t,plan.record_raw])?;
-            tx.execute("INSERT INTO session_units(session_id,unit_id,project_id,goal_id,task_id,dispatch_state) VALUES(?1,?2,?3,?4,?5,'pending')",params![plan.session.id.to_string(),plan.unit_after.id.to_string(),p,g,t])?;
-            ensure!(tx.execute("UPDATE execution_units SET version=?1,body=?2 WHERE id=?3 AND version=?4 AND body=?5",params![plan.unit_after.version,plan.unit_raw,plan.unit_after.id.to_string(),plan.current.unit().version,plan.current.unit_raw()])?==1,"Native registration Unit full CAS changed");
-            let i=&plan.invocation;
-            tx.execute("INSERT INTO native_invocations(id,unit_id,session_id,project_id,goal_id,task_id,generation,owner_epoch,provider,state,version,body) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,'not_dispatched',1,?10)",params![i.id.to_string(),i.unit_id.to_string(),i.session_id.to_string(),p,g,t,i.generation,i.owner_epoch,i.provider,plan.invocation_raw])?;
-            plan.owner_before.update_tx(&tx,&plan.owner_after)?;
-            plan.readiness_before.update_tx(&tx,&plan.readiness_after)?;
-            append_event(&tx,&plan.session.scope,"execution.session_intent",json!({"unit":plan.unit_after.id,"session":plan.session.id}))?;
-            append_event(&tx,&plan.session.scope,"execution.native_invocation",json!({"unit":plan.unit_after.id,"session":plan.session.id,"invocation":i.id}))?;
-            self.binding_permits.ensure_consumed()?;
-            tx.commit()?;
-            Ok((plan.unit_after,plan.session,1))
         })
     }
 }

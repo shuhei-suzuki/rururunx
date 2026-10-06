@@ -26,12 +26,14 @@ pub(crate) use execution::QuotaAdmission;
 pub(crate) use execution::cleanup::CleanupClaim;
 pub(crate) use execution::governing_digest as execution_governing_digest;
 pub(crate) use execution::native_phase::{
-    NativeHelperHistoryCommit, NativeHelperIntentCommit, NativeHelperSettlementCommit,
-    NativeHelperSettlementPlan, NativeParkedPhase, NativePreparationClosureCommit,
-    NativePreparationCommit, NativePreparationPlan, NativeQuotaAdmitted, NativeQuotaCaps,
-    NativeQuotaClosureConfirmation, NativeQuotaClosurePlan, NativeQuotaConfirmation,
-    NativeQuotaOutcome, NativeQuotaPlan, NativeQuotaWrite, NativeReadyLineage, NativeTerminalPlan,
-    NativeVersionClosurePlan, NativeVersionHelperPlan,
+    KnownTransportRegistration, NativeDispatchCommit, NativeHelperHistoryCommit,
+    NativeHelperIntentCommit, NativeHelperSettlementCommit, NativeHelperSettlementPlan,
+    NativeParkedPhase, NativePreparationClosureCommit, NativePreparationCommit,
+    NativePreparationPlan, NativeQuotaAdmitted, NativeQuotaCaps, NativeQuotaClosureConfirmation,
+    NativeQuotaClosurePlan, NativeQuotaConfirmation, NativeQuotaOutcome, NativeQuotaPlan,
+    NativeQuotaWrite, NativeReadyLineage, NativeTerminalPlan, NativeTransportStartPlan,
+    NativeVersionClosurePlan, NativeVersionHelperPlan, RegistrationAck, RegistrationAckSource,
+    RegistrationProbe,
 };
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 

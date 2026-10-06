@@ -1278,6 +1278,7 @@ pub(super) mod verification;
 pub(super) use artifacts::{complete_workflow_readonly_tx, publish_workflow_result_tx};
 pub(crate) mod cleanup;
 mod effects;
+mod quota_observation;
 mod quota_policy;
 mod quotas;
 pub(crate) use quotas::QuotaAdmission;

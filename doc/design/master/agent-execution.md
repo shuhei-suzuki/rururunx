@@ -1,5 +1,20 @@
 # Native Agent Result Protection Design
 
+The private registration source consumes the same retained Prepared object and
+its known quota readiness/Unit lineage. Registration and its distinct transport
+intent share an exact Immediate transaction. A preallocated Candidate retains
+the plan and activates once from that plan's known commit acknowledgement;
+revocation cannot reopen it. Registered dispatch, ACK, projection and terminal
+currency use the original Source/frame and current Driver conjunction. Public
+Native composition remains refused. Genuine registration lifecycle controls,
+transport custody and independent source review remain
+unverified; these source primitives do not establish Native availability.
+Registered Codex retry/probe and Claude wait/recovery callbacks use the SAME Live
+actor and exact active own lease through bounded private snapshot/Immediate plans.
+Their window and pool images are compared before writes; cooldown and recovery
+conditions match the existing quota routes. Genuine registered quota lifecycle
+qualification remains unverified.
+
 Status: proposed Phase1 policy. Production behavior is unchanged until the
 coordinated STRICT implementation is reviewed and delivered. This document is
 not native acceptance or permission to begin the next phase.
