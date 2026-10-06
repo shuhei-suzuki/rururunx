@@ -77,6 +77,7 @@ struct Snapshot {
     waiters: Vec<Row>,
     windows: Vec<Row>,
     history: Vec<Row>,
+    owned_bytes: usize,
 }
 
 /// All shapes are qualified in one pass before copying any selected values.
@@ -366,6 +367,7 @@ fn read_snapshot(tx: &Transaction<'_>, lineage: &NativeReadyLineage, at: i64) ->
         waiters,
         windows,
         history,
+        owned_bytes: scalar_bytes + body_bytes,
     })
 }
 
@@ -594,6 +596,10 @@ impl Store {
         let other = other_decision
             .map(|(decision, _)| build_branch(&before, &pre, decision, at))
             .transpose()?;
+        let mut owned_bytes = before.owned_bytes;
+        for branch in std::iter::once(&own).chain(other.iter()) {
+            charge_plan_bytes(&mut owned_bytes, branch_bytes(branch, pre.readiness())?)?;
+        }
         Ok(Arc::new(NativeQuotaPlan {
             actor,
             no_dispatch,
@@ -688,14 +694,40 @@ fn preceding_head(tx: &Transaction<'_>, plan: &NativeQuotaPlan) -> Result<bool> 
         .pool
         .clone()
         .unwrap_or_else(|| default_pool(&own.provider));
+    preceding_head_inventory(
+        tx,
+        HeadInventory {
+            own,
+            own_waiter: plan.before.images.waiter.as_ref(),
+            last_role: text(&pool, 5)?,
+            waiters: &plan.before.waiters,
+            at: plan.at,
+            project_max: plan.project_max,
+            executor_throttled: plan.executor_throttled,
+        },
+    )
+}
+
+// Borrowed facts for the nongrant head calculation. Only the authentic plan
+// wrapper above can turn the returned choice into a quota transaction branch.
+struct HeadInventory<'a> {
+    own: &'a ExecutionUnit,
+    own_waiter: Option<&'a Row>,
+    last_role: &'a str,
+    waiters: &'a [Row],
+    at: i64,
+    project_max: usize,
+    executor_throttled: bool,
+}
+fn preceding_head_inventory(tx: &Transaction<'_>, inventory: HeadInventory<'_>) -> Result<bool> {
     let mut calls = 0;
-    for row in &plan.before.waiters {
+    for row in inventory.waiters {
         if !ahead_of_own(
             row,
-            own,
-            plan.before.images.waiter.as_ref(),
-            text(&pool, 5)?,
-            plan.at,
+            inventory.own,
+            inventory.own_waiter,
+            inventory.last_role,
+            inventory.at,
         )? {
             break;
         }
@@ -708,13 +740,13 @@ fn preceding_head(tx: &Transaction<'_>, plan: &NativeQuotaPlan) -> Result<bool> 
             candidate.scope.goal_id.is_some() && candidate.scope.task_id.is_some(),
             "legacy head scope: missing Goal or Task"
         );
-        if super::super::quotas::project_capacity_blocked(tx, &candidate, plan.project_max)
+        if super::super::quotas::project_capacity_blocked(tx, &candidate, inventory.project_max)
             .context("legacy head capacity")?
-            || (candidate.kind == UnitKind::Executor && plan.executor_throttled)
+            || (candidate.kind == UnitKind::Executor && inventory.executor_throttled)
         {
             continue;
         }
-        match quota_policy::candidate_class(tx, id, plan.at)? {
+        match quota_policy::candidate_class(tx, id, inventory.at)? {
             CandidateClass::MarkedParked => return Ok(true),
             CandidateClass::MarkedStalled => continue,
             CandidateClass::Legacy => {
@@ -731,6 +763,61 @@ fn preceding_head(tx: &Transaction<'_>, plan: &NativeQuotaPlan) -> Result<bool> 
         }
     }
     Ok(false)
+}
+
+const PLAN_BYTES: usize = 8 * 1024 * 1024;
+fn charge_plan_bytes(total: &mut usize, bytes: usize) -> Result<()> {
+    *total = total
+        .checked_add(bytes)
+        .context("private quota plan byte overflow")?;
+    ensure!(
+        *total <= PLAN_BYTES,
+        "private quota owned plan exceeds 8-MiB profile"
+    );
+    Ok(())
+}
+fn row_bytes(row: &[SqlValue]) -> Result<usize> {
+    row.iter().try_fold(0usize, |total, value| {
+        let bytes = match value {
+            SqlValue::Text(value) => value.len(),
+            SqlValue::Blob(value) => value.len(),
+            _ => 8,
+        };
+        total
+            .checked_add(bytes)
+            .context("private quota image byte overflow")
+    })
+}
+fn branch_bytes(branch: &QuotaBranch, before: &PairRow) -> Result<usize> {
+    let mut bytes = 0;
+    for row in [
+        &branch.after.pool,
+        &branch.after.waiter,
+        &branch.after.lease,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        charge_plan_bytes(&mut bytes, row_bytes(row)?)?;
+    }
+    charge_plan_bytes(&mut bytes, row_bytes(&branch.readiness.values)?)?;
+    if branch.mutation.is_some() {
+        // The exact permission owns another copy of both readiness images.
+        charge_plan_bytes(&mut bytes, row_bytes(&before.values)?)?;
+        charge_plan_bytes(&mut bytes, row_bytes(&branch.readiness.values)?)?;
+    }
+    if let Some(unit) = &branch.unit {
+        // Body owns raw, canonical and parsed representations. The latter two
+        // each fit the complete Unit profile; none is a borrowed manifest.
+        charge_plan_bytes(
+            &mut bytes,
+            unit.raw()
+                .len()
+                .checked_add(2 * 16 * 1024)
+                .context("private quota Unit byte overflow")?,
+        )?;
+    }
+    Ok(bytes)
 }
 
 fn build_branch(
@@ -1418,6 +1505,10 @@ impl Store {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "quota/head_tests.rs"]
+mod head_tests;
 
 #[cfg(test)]
 mod primitive_tests {
