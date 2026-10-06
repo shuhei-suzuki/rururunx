@@ -15,6 +15,7 @@ fn fixture() -> (Store, Task, u64) {
         p.id,
         "goal".into(),
         vec![CompletionCriterion {
+            evaluator: Default::default(),
             id: "result".into(),
             description: "accepted commit".into(),
             evidence: None,
@@ -180,16 +181,17 @@ fn schema5_replaces_contract4_guards_and_fences_already_open_writer() {
     )
     .unwrap();
     for table in MUTABLE_TABLES.iter().filter(|table| {
-        !matches!(
-            **table,
-            "native_invocations"
-                | "native_results"
-                | "source_recoveries"
-                | "verification_profiles"
-                | "workflow_verification_contracts"
-                | "verification_runs"
-                | "verification_commands"
-        )
+        !crate::state::runtime::TABLES.contains(table)
+            && !matches!(
+                **table,
+                "native_invocations"
+                    | "native_results"
+                    | "source_recoveries"
+                    | "verification_profiles"
+                    | "workflow_verification_contracts"
+                    | "verification_runs"
+                    | "verification_commands"
+            )
     }) {
         for action in ["INSERT", "UPDATE", "DELETE"] {
             old.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>4 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();

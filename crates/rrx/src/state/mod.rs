@@ -2,6 +2,7 @@
 mod environment;
 #[cfg(test)]
 mod native_dispatch_tests;
+mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
 use std::{path::Path, time::Duration};
 
@@ -12,7 +13,7 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 8;
+pub const SCHEMA_VERSION: i64 = 9;
 pub(crate) use execution::source_recovery::SourceReadBinding;
 mod execution;
 pub(crate) use execution::QuotaAdmission;
@@ -71,6 +72,7 @@ pub struct Store {
 }
 
 fn register_writer_contract(connection: &Connection) -> Result<()> {
+    runtime::driver::register_liveness(connection, std::sync::Weak::new())?;
     connection.create_scalar_function(
         "rrx_writer_contract_version",
         0,
@@ -141,6 +143,7 @@ impl Store {
                     "refusing to initialize a nonempty or foreign database"
                 );
                 tx.execute_batch(include_str!("schema.sql"))?;
+                runtime::install_schema(&tx)?;
                 execution::install_schema(&tx)?;
                 tx.pragma_update(None, "application_id", APPLICATION_ID)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -165,6 +168,10 @@ impl Store {
                     execution::verification::validate_legacy_namespace(&tx)?;
                     execution::verification::install_schema(&tx)?;
                 }
+                if locked_version < 9 {
+                    runtime::validate_legacy_namespace(&tx)?;
+                    runtime::install_schema(&tx)?;
+                }
                 for next in (locked_version + 1)..=SCHEMA_VERSION {
                     if next == 4 {
                         execution::install_schema(&tx)?;
@@ -180,7 +187,7 @@ impl Store {
                         execution::native_results::install_schema(&tx)?;
                         execution::install_writer_guards(&tx)?;
                     }
-                    if matches!(next, 7 | 8) {
+                    if matches!(next, 7..=9) {
                         execution::install_writer_guards(&tx)?;
                     }
                     tx.pragma_update(None, "user_version", next)?;
@@ -323,66 +330,34 @@ impl Store {
         Ok(())
     }
 
+    /// Generic Goal DTOs cannot create accepted definitions or change lifecycle.
+    /// Exact persisted replay is a no-op, without version/audit mutation.
     pub fn put_goal(&mut self, goal: &mut Goal) -> Result<()> {
+        let tx = self.connection.unchecked_transaction()?;
+        let size: usize = tx
+            .query_row(
+                "SELECT length(CAST(body AS BLOB)) FROM goals WHERE id=?1",
+                [goal.id.to_string()],
+                |r| r.get(0),
+            )
+            .optional()?
+            .context("Goal creation requires trusted control ingress")?;
+        ensure!(size <= 4 * 1024 * 1024, "Goal replay body exceeds bound");
+        let old: Goal = read_tx(&tx, "goals", &goal.id.to_string())?.context("unknown Goal")?;
+        let indexed: (String, u64) = tx.query_row(
+            "SELECT project_id,version FROM goals WHERE id=?1",
+            [goal.id.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
         ensure!(
-            !goal.objective.trim().is_empty() && !goal.completion_criteria.is_empty(),
-            "goal needs objective and explicit completion criteria"
+            indexed == (old.project_id.to_string(), old.version) && old.id == goal.id,
+            "Goal replay body/index differs"
         );
-        let tx = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if !goal_terminal(goal.state) {
-            let previous = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())?;
-            let safe_update = if let Some(old) = &previous {
-                let mut metadata = goal.clone();
-                metadata.state = old.state;
-                metadata.blockers = old.blockers.clone();
-                !goal_terminal(old.state)
-                    && (old.state == goal.state
-                        || matches!(
-                            goal.state,
-                            GoalState::Blocked | GoalState::WaitingHuman | GoalState::Paused
-                        ))
-                    && serde_json::to_value(metadata)? == serde_json::to_value(old)?
-            } else {
-                false
-            };
-            ensure_activity_write(&tx, goal.project_id, safe_update)?;
-        }
-        if let Some(previous) = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())? {
-            ensure!(
-                previous.project_id == goal.project_id,
-                "goal project binding is immutable"
-            );
-        }
-        validate_goal_references(&tx, goal)?;
-        let mut next = goal.clone();
-        bump(&mut next.version)?;
-        next.updated_at = now_ms();
-        let body = serde_json::to_string(&next)?;
-        write_snapshot(
-            &tx,
-            "goals",
-            &next.id.to_string(),
-            goal.version,
-            "INSERT INTO goals(id,project_id,version,body) VALUES(?1,?2,?3,?4)",
-            params![
-                next.id.to_string(),
-                next.project_id.to_string(),
-                next.version,
-                body
-            ],
-            &body,
-            next.version,
-        )?;
-        append_event(
-            &tx,
-            &next.scope(),
-            "goal.saved",
-            json!({"version":next.version,"state":next.state}),
-        )?;
+        ensure!(
+            serde_json::to_value(&old)? == serde_json::to_value(&*goal)?,
+            "Goal changes require trusted typed control ingress"
+        );
         tx.commit()?;
-        *goal = next;
         Ok(())
     }
 
@@ -390,6 +365,47 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let accepted: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM goal_authority WHERE goal_id=?1 AND project_id=?2)",
+            params![task.goal_id.to_string(), task.project_id.to_string()],
+            |r| r.get(0),
+        )?;
+        if accepted {
+            let bytes: usize = tx
+                .query_row(
+                    "SELECT length(CAST(body AS BLOB)) FROM tasks WHERE id=?1",
+                    [task.id.to_string()],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .context("managed Task creation requires trusted graph control")?;
+            ensure!(
+                bytes <= 1024 * 1024,
+                "managed Task replay body exceeds bound"
+            );
+            let old: Task = read_tx(&tx, "tasks", &task.id.to_string())?
+                .context("managed Task creation requires trusted graph control")?;
+            let indexed: (String, String, u64) = tx.query_row(
+                "SELECT project_id,goal_id,version FROM tasks WHERE id=?1",
+                [task.id.to_string()],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )?;
+            ensure!(
+                indexed
+                    == (
+                        old.project_id.to_string(),
+                        old.goal_id.to_string(),
+                        old.version
+                    ),
+                "managed Task replay body/index differs"
+            );
+            ensure!(
+                old.id == task.id && serde_json::to_value(&old)? == serde_json::to_value(&*task)?,
+                "managed Task changes require typed owned control/Workflow transaction"
+            );
+            tx.commit()?;
+            return Ok(());
+        }
         if owns_workflow(&tx, &task.scope())? {
             let old: Task = read_tx(&tx, "tasks", &task.id.to_string())?.context("unknown Task")?;
             ensure!(
@@ -542,6 +558,9 @@ impl Store {
             access,
             WorkflowAccess::TerminalDecision | WorkflowAccess::TerminalRecovery
         );
+        if !conservative {
+            runtime::driver::validate(&tx, task.id)?;
+        }
         let source_advance = execution::source_recovery::before_write(&tx, task.id, conservative)?;
         if !conservative {
             ensure_project_registered(&tx, task.project_id)?;
@@ -1175,6 +1194,18 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let accepted: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM goal_authority WHERE goal_id=?1 AND project_id=?2)",
+            params![
+                str_id(context.scope.goal_id),
+                context.scope.project_id.to_string()
+            ],
+            |r| r.get(0),
+        )?;
+        ensure!(
+            !accepted,
+            "accepted Goal Context requires genuine owned publication"
+        );
         ensure!(
             !owns_workflow(&tx, &context.scope)?,
             "workflow-owned ContextVersion requires atomic transition"
@@ -1999,7 +2030,8 @@ fn append_event(tx: &Transaction<'_>, scope: &Scope, kind: &str, data: Value) ->
 }
 
 fn reserved_audit_kind(kind: &str) -> bool {
-    kind.ends_with(".saved")
+    kind.starts_with("rrx.private.")
+        || kind.ends_with(".saved")
         || matches!(
             kind,
             "context.created" | "usage.recorded" | "workflow.gate_observed"

@@ -71,6 +71,7 @@ impl Fixture {
             project.id,
             "native".into(),
             vec![CompletionCriterion {
+                evaluator: Default::default(),
                 id: "fixture".into(),
                 description: "owned ACP edit".into(),
                 satisfied: false,

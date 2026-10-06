@@ -105,6 +105,7 @@ fn store_rejects_invalid_graph_changes_without_rows_versions_or_audit() {
         project.id,
         "all required work".into(),
         vec![CompletionCriterion {
+            evaluator: Default::default(),
             id: "work".into(),
             description: "verified work".into(),
             evidence: None,
@@ -215,6 +216,7 @@ fn legacy_invalid_graph_hold_and_terminal_refusals_preserve_original_history() {
         project.id,
         "preserve legacy history".into(),
         vec![CompletionCriterion {
+            evaluator: Default::default(),
             id: "legacy".into(),
             description: "requires future typed reconciliation".into(),
             evidence: None,

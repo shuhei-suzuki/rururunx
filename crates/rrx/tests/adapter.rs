@@ -83,6 +83,7 @@ impl Fixture {
             project.id,
             "test".into(),
             vec![CompletionCriterion {
+                evaluator: Default::default(),
                 id: "fixture".into(),
                 description: "fake agent exits".into(),
                 evidence: None,

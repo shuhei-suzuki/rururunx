@@ -4,7 +4,7 @@ use crate::execution::{model::key, *};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-const MUTABLE_TABLES: &[&str] = &[
+pub(super) const MUTABLE_TABLES: &[&str] = &[
     "projects",
     "goals",
     "tasks",
@@ -34,6 +34,14 @@ const MUTABLE_TABLES: &[&str] = &[
     "workflow_verification_contracts",
     "verification_runs",
     "verification_commands",
+    "goal_authority",
+    "runtime_control_acks",
+    "scheduler_clock",
+    "scheduler_projects",
+    "scheduler_goals",
+    "scheduler_tasks",
+    "task_drivers",
+    "goal_observations",
 ];
 
 pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
@@ -400,6 +408,10 @@ fn validate_authority(
         "result finalization permission closed"
     );
     if native || finalize {
+        crate::state::runtime::driver::validate(
+            tx,
+            authority.scope.task_id.context("Driver Task required")?,
+        )?;
         source_recovery::validate_task(tx, authority.scope.task_id.context("Task required")?)?;
         let project: Project = read_tx(tx, "projects", &unit.scope.project_id.to_string())?
             .context("unknown Project")?;
@@ -733,6 +745,7 @@ impl Store {
         let goal: Goal =
             read_tx(&tx, "goals", &task.goal_id.to_string())?.context("unknown Goal")?;
         let source_advance = source_recovery::before_write(&tx, task.id, false)?;
+        crate::state::runtime::driver::validate(&tx, task.id)?;
         let workflow_binding = reservation
             .map(|r| checked_workflow_binding(&tx, &task, &project, &goal, &unit, r))
             .transpose()?;

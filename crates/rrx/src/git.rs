@@ -96,7 +96,7 @@ pub fn validate_worktree_ownership(
 pub struct WorktreeManager;
 impl WorktreeManager {
     pub fn create(store: &mut Store, task_id: TaskId) -> Result<WorktreeStatus> {
-        let mut task = task(store, task_id)?;
+        let mut task = store.legacy_worktree_task(task_id)?;
         let project = project(store, &task)?;
         let root = project_root(&project)?;
         ensure!(
@@ -186,16 +186,17 @@ impl WorktreeManager {
     }
 
     pub fn status(store: &Store, task_id: TaskId) -> Result<WorktreeStatus> {
-        let task = task(store, task_id)?;
+        let task = store.legacy_worktree_task(task_id)?;
         let project = project(store, &task)?;
         owned_status(&project, &task)
     }
 
     /// Call before every runtime-controlled mutating operation, including continuation.
     pub fn ensure_mutation_allowed(store: &Store, task_id: TaskId) -> Result<WorktreeStatus> {
-        let task = task(store, task_id)?;
+        let task = store.legacy_worktree_task(task_id)?;
         ensure_no_lock(store, &task.scope())?;
-        Self::status(store, task_id)
+        let project = project(store, &task)?;
+        owned_status(&project, &task)
     }
 
     pub fn lock_review(
@@ -205,8 +206,9 @@ impl WorktreeManager {
         reason: &str,
     ) -> Result<RecordId> {
         ensure!(!reason.trim().is_empty(), "lock reason required");
-        let task = task(store, task_id)?;
-        let status = Self::status(store, task_id)?;
+        let task = store.legacy_worktree_task(task_id)?;
+        let project = project(store, &task)?;
+        let status = owned_status(&project, &task)?;
         ensure!(!status.dirty, "review requires a clean worktree");
         ensure!(
             status.revision == expected_revision,
@@ -245,35 +247,26 @@ impl WorktreeManager {
 
     pub fn verify_review(store: &Store, lock_id: RecordId) -> Result<WorktreeStatus> {
         let record = store.record(lock_id)?.context("unknown review lock")?;
-        ensure!(
-            record.kind == RecordKind::WorktreeLock,
-            "not a worktree lock"
-        );
-        let lock: WorktreeLock = serde_json::from_value(record.data)?;
-        ensure!(lock.active, "review lock is inactive");
-        let status = Self::status(
-            store,
-            record.scope.task_id.context("lock needs task scope")?,
-        )?;
-        ensure!(
-            status.worktree == lock.worktree
-                && status.branch == lock.branch
-                && status.revision == lock.revision
-                && !status.dirty,
-            "immutable review worktree changed externally"
-        );
-        Ok(status)
+        let task =
+            store.legacy_worktree_task(record.scope.task_id.context("lock needs Task scope")?)?;
+        verify_review_snapshot(store, &record, &task)
     }
 
     pub fn unlock_review(store: &mut Store, lock_id: RecordId) -> Result<()> {
         let mut record = store.record(lock_id)?.context("unknown review lock")?;
+        let task =
+            store.legacy_worktree_task(record.scope.task_id.context("lock needs Task scope")?)?;
+        ensure!(
+            record.scope == task.scope(),
+            "review lock Task scope differs"
+        );
         ensure!(
             record.kind == RecordKind::WorktreeLock,
             "not a worktree lock"
         );
         let mut lock: WorktreeLock = serde_json::from_value(record.data.clone())?;
-        // Verify before release; changed source requires explicit recovery, never accepted review.
-        Self::verify_review(store, lock_id)?;
+        // Verify this same admitted Task snapshot before release.
+        verify_review_snapshot(store, &record, &task)?;
         lock.active = false;
         record.data = serde_json::to_value(lock)?;
         store.put_record(&mut record)
@@ -281,14 +274,15 @@ impl WorktreeManager {
 
     /// Only clean, merged, task-owned worktrees can be removed. Binding remains as provenance.
     pub fn cleanup(store: &mut Store, task_id: TaskId) -> Result<()> {
-        let task = task(store, task_id)?;
+        let task = store.legacy_worktree_task(task_id)?;
         ensure_no_executor(store, &task.scope())?;
-        let status = Self::ensure_mutation_allowed(store, task_id)?;
+        ensure_no_lock(store, &task.scope())?;
+        let project = project(store, &task)?;
+        let status = owned_status(&project, &task)?;
         ensure!(
             !status.dirty,
             "refusing cleanup of dirty/ignored worktree files"
         );
-        let project = project(store, &task)?;
         let root = project_root(&project)?;
         ensure!(
             git_success(
@@ -349,6 +343,29 @@ impl WorktreeManager {
     }
 }
 
+fn verify_review_snapshot(store: &Store, record: &Record, task: &Task) -> Result<WorktreeStatus> {
+    ensure!(
+        record.scope == task.scope(),
+        "review lock Task scope differs"
+    );
+    ensure!(
+        record.kind == RecordKind::WorktreeLock,
+        "not a worktree lock"
+    );
+    let lock: WorktreeLock = serde_json::from_value(record.data.clone())?;
+    ensure!(lock.active, "review lock is inactive");
+    let project = project(store, task)?;
+    let status = owned_status(&project, task)?;
+    ensure!(
+        status.worktree == lock.worktree
+            && status.branch == lock.branch
+            && status.revision == lock.revision
+            && !status.dirty,
+        "immutable review worktree changed externally"
+    );
+    Ok(status)
+}
+
 fn release(store: &mut Store, record: &mut Record) -> Result<()> {
     let mut lock: WorktreeLock = serde_json::from_value(record.data.clone())?;
     lock.active = false;
@@ -383,9 +400,6 @@ fn ensure_no_lock(store: &Store, scope: &Scope) -> Result<()> {
         ensure!(!lock.active, "worktree is locked for immutable review");
     }
     Ok(())
-}
-fn task(store: &Store, id: TaskId) -> Result<Task> {
-    store.task(id)?.context("unknown task")
 }
 fn project(store: &Store, task: &Task) -> Result<Project> {
     let project = store.project(task.project_id)?.context("unknown project")?;
@@ -575,6 +589,8 @@ fn command(cwd: &Path, args: &[&str]) -> Result<Command> {
 
 fn git(cwd: &Path, args: &[&str]) -> Result<Output> {
     let output = command(cwd, args)?.output().context("cannot start Git")?;
+    #[cfg(test)]
+    GIT_OUTPUTS.with(|n| n.set(n.get() + 1));
     ensure!(
         output.status.success(),
         "Git {:?} failed: {}",
@@ -595,4 +611,13 @@ pub(crate) fn git_text(cwd: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8(git(cwd, args)?.stdout)?
         .trim_end_matches(['\n', '\r'])
         .to_owned())
+}
+
+// Observes completed native Git subprocess outputs on this test's actual thread;
+// it supplies no source, Unit, native readiness or authority.
+#[cfg(test)]
+std::thread_local! { static GIT_OUTPUTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+#[cfg(test)]
+pub(crate) fn observed_git_outputs() -> usize {
+    GIT_OUTPUTS.with(std::cell::Cell::get)
 }

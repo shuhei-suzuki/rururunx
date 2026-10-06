@@ -23,6 +23,7 @@ pub(crate) async fn fixture() -> (tempfile::TempDir, Arc<RuntimeOwner>, Task) {
         project.id,
         "fixture".into(),
         vec![CompletionCriterion {
+            evaluator: Default::default(),
             id: "answer".into(),
             description: "pinned result".into(),
             evidence: None,

@@ -1662,6 +1662,7 @@ mod registry_tests {
             project.id,
             "fixture".into(),
             vec![CompletionCriterion {
+                evaluator: Default::default(),
                 id: "effect".into(),
                 description: "observe actual failed write".into(),
                 satisfied: false,

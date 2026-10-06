@@ -1940,6 +1940,7 @@ mod tests {
             project.id,
             "bounded preflight".into(),
             vec![CompletionCriterion {
+                evaluator: Default::default(),
                 id: "bounded".into(),
                 description: "Git must terminate".into(),
                 evidence: None,

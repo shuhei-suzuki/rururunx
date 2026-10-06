@@ -1063,3 +1063,43 @@ provider, current install, both-OS/native four-Task or complete Phase2 acceptanc
 is inferred. Historical unrestricted failures remain open; terminal proof retained
 in memory cannot survive Runtime SIGKILL before a durable receipt. Phase3 still
 requires approval after all Phase2 work, and cleanup remains best effort.
+
+
+## Runtime9 controller development-branch checkpoint
+
+Fixed source `d87da70750274417851756496178d0b8ac5b2b68` provides the trusted
+Unix-peer controller, accepted Goal definition/status and logical lifecycle facts,
+schema9 writer fencing and explicit missing-Driver holds. It does not implement
+the complete operational Runtime design. Source3 Root/C static reviews both closed
+`APPROVE_COMPONENT_SOURCE` with zero findings for the same-row bounded Task
+admission correction and actual legacy helper consumers. Their raw scope and
+independence statements are retained in the
+[checkpoint](agent-execution-phase2-runtime9-controller-checkpoint.json).
+
+The author measured **18 controls passing in Debug and Release**, including the
+same two schema cases in each filtered run; these are not36 distinct controls.
+Fmt, workspace all-target Clippy `-D warnings`, all-target build and two doctests
+pass. Five committed single-operator mutations compile and fail their intended
+actual consumer assertions: early Worktree helper admission, indexed Context
+history, shared Goal/Stop publication admission, completed JoinHandle retirement
+and exact Task body/index identity. Each exact source-tree restoration passes its
+control; final restored18 controls pass. Account-free valid Git and actual Unix
+ingress establish prerequisites. Historical unaccepted legacy fixture content
+qualifies only public legacy-helper compatibility, not managed ownership.
+
+The unchanged default-parallel workspace all-target Debug regression is **RED:
+253 passed,373 failed,30 ignored** (library222/286/25). All373 primary failure
+names are retained.349 directly show old trusted-ingress Goal setup refusal;
+fixture migration through genuine ports remains required.24 wrapper/other
+failures remain unclassified below their outer observation. Nested child/audit
+outputs are not extra primary cases. Earlier compilation, fixture, Clippy and
+full-regression failures remain preserved. Full Release regression was not run.
+
+The Driver registry remains EMPTY and `operational:false`; genuine Driver and
+Binding10 issuer/session binding are dependencies, not row/JSON authority. Old
+native-positive expectations were not weakened or replaced with refusal tests.
+The coordinated candidate order is actual8→Runtime9→Binding10→ReviewRound11.
+Complete scheduling/recovery/evaluator/CLI and4-Task/2-Project acceptance remains
+open. This development-branch checkpoint grants no main/PR merge, full Runtime,
+Phase2, native-profile or MVP qualification. Owned check/mutation handles are
+closed and only owned clean mutation worktrees were removed; source is retained.

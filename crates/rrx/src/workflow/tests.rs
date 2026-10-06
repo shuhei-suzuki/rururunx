@@ -480,6 +480,7 @@ impl Fixture {
             project.id,
             "fixture objective".into(),
             vec![CompletionCriterion {
+                evaluator: Default::default(),
                 id: "workflow".into(),
                 description: "workflow evidence recorded".into(),
                 evidence: None,
