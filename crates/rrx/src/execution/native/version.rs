@@ -731,14 +731,24 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
     });
     // This original observation precedes optional parsing, hashing and SQL.
     helper.state().observation = Some(observation);
-    if !helper.raw().has_child() {
-        helper
-            .git_lease
+    release_git_serialization(&helper.raw(), &helper.git_lease);
+    drop(guard);
+}
+
+/// Serialization only: drops THIS helper's lease clone after a known leader
+/// reap, or when the completed capture never returned a child. Raw Child,
+/// observation and custody stay retained; this infers no descendant death,
+/// NoChild, success or grant. An unreaped/unknown leader keeps the gate.
+fn release_git_serialization(
+    raw: &process::RetainedRawProcess,
+    lease: &Mutex<Option<Arc<owner::GitLease>>>,
+) {
+    if raw.leader_reaped() || !raw.has_child() {
+        lease
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
     }
-    drop(guard);
 }
 
 #[cfg(test)]
@@ -768,5 +778,129 @@ mod output_tests {
         assert!(out_only.observe(&vec![b'o'; OUTPUT_BYTES], true));
         assert!(!out_only.observe(b"o", true));
         assert_eq!(out_only.stdout.len(), OUTPUT_BYTES);
+    }
+}
+
+#[cfg(test)]
+mod git_serialization_tests {
+    // Nongrant raw/gate primitives only: real spawned leaders and the actual
+    // Runtime Git gate. Not Native actor, Task or helper qualification proof.
+    use super::*;
+
+    type LeaseCell = Mutex<Option<Arc<owner::GitLease>>>;
+
+    fn retained(script: &str) -> process::RetainedRawProcess {
+        let mut command = Command::new("/bin/sh");
+        command
+            .args(["-c", script])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .kill_on_drop(true);
+        let mut raw = process::RetainedRawProcess::default();
+        raw.adopt(command.spawn().unwrap());
+        raw.qualify().unwrap();
+        raw
+    }
+    async fn known_reap(raw: &mut process::RetainedRawProcess) -> std::process::ExitStatus {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if let Some(status) = raw.reap().unwrap() {
+                    return status;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap()
+    }
+    async fn held_lease(dir: &tempfile::TempDir) -> (Arc<RuntimeOwner>, LeaseCell) {
+        let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+        let lease = owner.git_lease(UnitId::new(), None).await.unwrap();
+        (owner, Mutex::new(Some(lease)))
+    }
+    /// A different Unit obtains (then drops) the SAME Runtime common gate.
+    async fn other_unit_admitted(owner: &RuntimeOwner) -> bool {
+        let admission = owner.git_lease(UnitId::new(), None);
+        tokio::time::timeout(Duration::from_millis(300), admission)
+            .await
+            .is_ok_and(|lease| lease.is_ok())
+    }
+    fn held(cell: &LeaseCell) -> bool {
+        cell.lock().unwrap().is_some()
+    }
+
+    #[tokio::test]
+    async fn nongrant_known_reap_releases_only_serialization_for_any_exit() {
+        // Success and a mismatch-shaped nonzero exit release alike.
+        for (script, success) in [("exit 0", true), ("echo mismatch; exit 3", false)] {
+            let dir = tempfile::tempdir().unwrap();
+            let (owner, lease) = held_lease(&dir).await;
+            let mut raw = retained(script);
+            assert_eq!(known_reap(&mut raw).await.success(), success);
+            assert!(!other_unit_admitted(&owner).await);
+            release_git_serialization(&raw, &lease);
+            assert!(!held(&lease));
+            assert!(other_unit_admitted(&owner).await);
+            // Original raw Child custody remains; reap is not workload absence.
+            assert!(raw.has_child() && raw.leader_reaped());
+        }
+    }
+    #[tokio::test]
+    async fn nongrant_stopped_and_reaped_leader_releases_serialization() {
+        let dir = tempfile::tempdir().unwrap();
+        let (owner, lease) = held_lease(&dir).await;
+        let mut raw = retained("exec /bin/sleep 30");
+        assert!(raw.hygiene());
+        assert!(!known_reap(&mut raw).await.success());
+        release_git_serialization(&raw, &lease);
+        assert!(!held(&lease));
+        assert!(other_unit_admitted(&owner).await);
+        assert!(raw.has_child());
+    }
+    #[tokio::test]
+    async fn nongrant_live_unreaped_leader_retains_gate_until_stop_and_reap() {
+        let dir = tempfile::tempdir().unwrap();
+        let (owner, lease) = held_lease(&dir).await;
+        let mut raw = retained("exec /bin/sleep 30");
+        assert!(raw.reap().unwrap().is_none());
+        release_git_serialization(&raw, &lease);
+        assert!(held(&lease));
+        assert!(!other_unit_admitted(&owner).await);
+        assert!(raw.hygiene());
+        assert!(!known_reap(&mut raw).await.success());
+        release_git_serialization(&raw, &lease);
+        assert!(!held(&lease));
+        assert!(other_unit_admitted(&owner).await);
+    }
+    #[tokio::test]
+    async fn nongrant_exited_unreaped_leader_retains_gate() {
+        let dir = tempfile::tempdir().unwrap();
+        let (owner, lease) = held_lease(&dir).await;
+        let mut raw = retained("exit 0");
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !raw.exited_unreaped().unwrap() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+        // Observed exit is not a reap; serialization stays conservative.
+        release_git_serialization(&raw, &lease);
+        assert!(held(&lease));
+        assert!(!other_unit_admitted(&owner).await);
+        assert!(known_reap(&mut raw).await.success());
+        release_git_serialization(&raw, &lease);
+        assert!(!held(&lease));
+        assert!(other_unit_admitted(&owner).await);
+    }
+    #[tokio::test]
+    async fn nongrant_capture_without_returned_child_releases_serialization() {
+        let dir = tempfile::tempdir().unwrap();
+        let (owner, lease) = held_lease(&dir).await;
+        release_git_serialization(&process::RetainedRawProcess::default(), &lease);
+        assert!(!held(&lease));
+        assert!(other_unit_admitted(&owner).await);
     }
 }

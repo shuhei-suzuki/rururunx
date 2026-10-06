@@ -26,6 +26,10 @@ impl RetainedRawProcess {
     pub(crate) fn has_child(&self) -> bool {
         self.child.is_some()
     }
+    /// Known leader reap only; never group/descendant death or workload absence.
+    pub(crate) fn leader_reaped(&self) -> bool {
+        self.reaped
+    }
     pub(crate) fn adopt(&mut self, child: Child) {
         // The private one-shot producer ensures this cell is empty.
         self.child = Some(child);
