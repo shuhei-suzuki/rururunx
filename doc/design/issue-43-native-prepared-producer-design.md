@@ -14,6 +14,7 @@
 2. **Exact source.** `a913203f0a0e7cdb8b4c3534a24082c0f16a59c8`, clean. All line references are to this commit.
    - This commit contains the new first-Executor readonly Git batch. That batch's source tests and independent source review are still pending.
    - The batch is a component. It does not qualify Native execution.
+   - The G1 delta was re-read at `0ca61b37a4bdc52e59143d71867a8284088bc401`, whose only change from `a913203f` is this document, so every source line reference is unchanged.
 3. Categories are kept strictly separate:
    - **A (Actual):** present in source at the pinned commit.
    - **P (Proposed):** this contract. Not implemented.
@@ -35,11 +36,12 @@
 The actual selected Native start, consuming only the SAME retained original Source/Driver allocation, marker, launch and actor, issues exactly one `PreparedNativePhase`, and only after all of the following, all in the SAME preparation custody:
 - the SAME qualified version observation with known closed settlement;
 - the SAME completed 13-action Git history and physical correspondence (Executor), or the SAME Reviewer seal batch;
-- the SAME captured compatibility qualification of the selected installed adapter's nonsecret declaration against that version observation and the SAME original Frame;
+- the SAME captured compatibility qualification of the selected installed adapter's nonsecret declaration, for the SAME allocation role, against that version observation and the SAME original Frame;
+- the SAME retained transport command, built once from the SAME actor/allocation and closed preparation facts and checked by that qualification before any quota write;
 - a SAME-custody `PreparedPhaseNoCurrentDispatch`;
 - a known-committed admission in the bounded private quota transaction.
 
-That quota transaction counts every active lease, marked or legacy. Its fairness does not treat a refusal as absence. Parking is the only alternative to admission. It writes only the exact Unit, waiter, lease, pool and readiness images, under the SAME stop admission. It is resumed only by the SAME in-task exact due-claim of the original operation, pair, input and helpers, with Task, Workflow, Context, Driver and Source rows and versions unchanged.
+That quota transaction counts every active lease, marked or legacy. Its fairness does not treat a refusal as absence. Parking is the only alternative to admission. It writes only the exact Unit, waiter, lease, pool (including a cold pool's complete default image) and readiness images, under the SAME stop admission, each against the SAME known readiness lineage. It is resumed only by the SAME in-task exact due-claim of the original operation, pair, input and helpers, with Task, Workflow, Context, Driver and Source rows and versions unchanged.
 
 Prepared is consumed once by the approved transport registration, which never uses allocated-v1 or generic marked validators. Composition stays refused until G1–G5 are real. Every other path is no-effect refusal, Held, or nongrant closure.
 
@@ -53,15 +55,16 @@ Paths are relative to `crates/rrx/src/`.
 | Absent types | `PreparedNativePhase`, `PreparedPhaseNoCurrentDispatch`, `NativeQuotaPlan`, `NativeTransportStartPlan` and `NativePreCoreCustody` do not exist (zero grep hits). `NativePhaseStart::Launched`/`::Waiting` are never constructed; they are only matched in `runtime/phase_jobs.rs:259,263` |
 | Version | `NativeVersionObservation::qualified_profile` (`native/version.rs:138–153`) passes **untrimmed** stdout. Codex `verify_native_version` requires exact equality with `"codex-cli 0.160.0"` (`codex/protocol.rs:24–34`), so output ending in a newline never qualifies. Claude uses its first whitespace token `2.1.283` (`execution/claude_wire.rs:26–37`). Legacy paths trim (`results.rs:702–704`). Closed settlement: `NativeHelperSettlementCommit` (`state/execution/native_phase/version.rs:323–327`), issued only by `close_phase_version_observation` (`version/closure.rs:385–415`) |
 | Git batch | `prepare_phase_git` (`native/version.rs:460–538`) returns `NativeReadonlyHelperCompletion` (`:15–23`, documented as nongrant) after `confirm_phase_helper_history`. That function requires 14 linked entries, current inventory == last `after`, all confirmed (`state/.../version.rs:393–475`), and `reserve_git_batch` ≤242 rows (`:280–298`). Seal/actions: `native/readonly.rs:31–61,194–302,465–552` |
+| Preparation lineage | `NativePreparationPlan` freezes `current: CurrentWorkflowSuccessor`, `owner_before`, `readiness_before` and `readiness_after` (`state/execution/native_phase/preparation.rs:9–16`); `readiness_after` is fixed to `preparing`/version 2 (`:108–117`). `NativePreparationCommit::validate_version_ready` (`:24–27`) always runs `validate_common` against that original successor and then that v2 image. `validate_common` (`:39–49`) calls `validate_preparation_origin_tx` (`runtime/phase_supervisor.rs:186–194`) → `validate_current_tx` (`managed_binding/successor.rs:261–281`), which requires the complete Unit row (version, body and index columns, `marker_plan.rs:141–151`) to equal the successor's Unit. Helper consumers: `state/.../version.rs:371,444,490`. Any later Unit or readiness version change therefore makes these validators refuse permanently |
 | Source handoff | First Executor only: `workflow_source/native_handoff.rs:448–519` requires generation 1, Unit generation 1, no artifact and Preparing. `qualify_git` refuses an artifact frame with "actual readonly artifact lease unavailable" (`:102–110`). `driven_initial.rs:56–59` refuses continuation after initial Evidence |
-| Reviewer | `ResultSnapshot` (`results.rs:66–80,521–626`) is created by `prepare_snapshot_inner` (`attempts.rs:604–711`). It is retained only in the Engine's in-memory `managed_snapshots` map (`workflow.rs:560–562,1749–1752`). `GitLease` is process-local (`execution/owner.rs:33–37,292–326`) |
+| Reviewer | `ResultSnapshot` (`results.rs:66–80,521–626`) is created by `prepare_snapshot_inner` (`attempts.rs:604–711`). Its checkout ends with `readonly_tree(&unit.worktree, true)` (`results.rs:602–626`), so the Reviewer's source tree is readonly. It is retained only in the Engine's in-memory `managed_snapshots` map (`workflow.rs:560–562,1749–1752`). `GitLease` is process-local (`execution/owner.rs:33–37,292–326`) |
 | Registration | `plan_phase_registration`/`register_phase_session`/`validate_phase_preparation` require allocated v1 (`state/execution/native_phase.rs:982–1000,1128,1409`) and call generic `validate_authority` (`:1407,1462`). `NativeOwnerPlan::validate_tx`/`validate_terminal_tx` use it at `:360,373`. Only caller is `start_with_launch(…, None)` (`native.rs:195`) |
 | Readiness DDL | `managed_binding/schema.sql:110–120`: `state ∈ {allocated, preparing, parked, registered, deferred, held, closed}`; nullable positive `parking_version`; body ≤4096. Permit-gated triggers (`:173–175`); core trigger `version=OLD+1`, monotonic flags (`:178`); `binding_admission_not_parked` and the parked/consumed exclusion (`:179–181`). Nothing writes `parked` or a non-NULL `parking_version` today |
-| Quota DDL | `execution.sql:117–142`. `quota_pools` (PK provider+account_key; `next_probe_at`, `probe_unit`, `backoff ∈[60000,1800000]`, `last_role`), `quota_windows` (PK +bucket; `observed_at`, json body), `quota_leases` (PK unit_id; provider, account_key, role, epoch>0, active∈{0,1}), `quota_waiters` (PK unit_id; provider, account_key, reason, next_due, fairness_sequence, resume_state). **No version column on any quota table**; no triggers other than the writer-contract guards |
-| Quota code | `state/execution/quotas.rs:149–370` uses generic `validate_authority` (`:172`). Its COUNTs are unfiltered (`:207–213,534`), so they include every active lease. History read is unbounded (`:239–268`). Due waiters are materialized unbounded (`:278`). The fairness loop **skips** a candidate whose generic validation fails (`:286–300`). `fairness_sequence` is an epoch-ms timestamp. `resume_state` is the snake_case `UnitState`. Account key is always `"unknown"` (`execution/quota.rs:60–68,130,220`). Caps: `QuotaScheduler::new` 6/2/3/4 (`quota.rs:15–23`); `NativeLimits::configured` (`native.rs:114–153`) only lowers them; Store `ensure!` ≤1024 |
+| Quota DDL | `execution.sql:117–142`. `quota_pools` (PK provider+account_key; `next_probe_at` default 0, `probe_unit` nullable, `backoff` default 60000 ∈[60000,1800000], `last_role` default `'reviewer'`), `quota_windows` (PK +bucket; `observed_at`, json body), `quota_leases` (PK unit_id; provider, account_key, role, epoch>0, active∈{0,1}), `quota_waiters` (PK unit_id; provider, account_key, reason, next_due, fairness_sequence, resume_state). Windows, leases and waiters each have a FOREIGN KEY to `quota_pools(provider,account_key)` (`:124–142`), so none can exist before the pool row. **No version column on any quota table**; no triggers other than the writer-contract guards |
+| Quota code | `state/execution/quotas.rs:149–370` uses generic `validate_authority` (`:172`) and creates the pool only after it (`:178–181`, `INSERT … ON CONFLICT DO NOTHING`); `observe_quota_inner` creates it the same way (`:60`). Its COUNTs are unfiltered (`:207–213,534`), so they include every active lease. History read is unbounded (`:239–268`). Due waiters are materialized unbounded (`:278`). The fairness loop **skips** a candidate whose generic validation fails (`:286–300`). An exhausted pool makes every Unit wait while `at < next_probe_at` or another Unit is `probe_unit` (`:302–305`). `release_quota_tx` (`:515–521`) deactivates the lease and, only where `probe_unit` is that Unit, sets `probe_unit=NULL, next_probe_at=MAX(next_probe_at, now+backoff)`. `fairness_sequence` is an epoch-ms timestamp. `resume_state` is the snake_case `UnitState`. Account key is always `"unknown"` (`execution/quota.rs:60–68,130,220`). Caps: `QuotaScheduler::new` 6/2/3/4 (`quota.rs:15–23`); `NativeLimits::configured` (`native.rs:114–153`) only lowers them; Store `ensure!` ≤1024 |
 | Unit | `execution_units` (`execution.sql:6–23`): version CAS via `write_unit` (`state/execution.rs:314–321`). Body `ExecutionUnit` (`execution/model.rs:~199–221`) has `state`, `wait_reason`, `capacity_retry_at`. `UnitState` includes `Preparing` and `WaitingQuota` (`model.rs:91–101`) |
 | Permit catalogue | `managed_binding/permits.rs:23–180` covers workflow_native_contracts, managed_phase_operations, managed_marker_bodies, managed_phase_owners, managed_phase_inputs, managed_phase_admissions, managed_phase_readiness, task_drivers, source_recoveries, records, audit. `ExactRowMutation` (`:185–232`) and `with_exact_permit` (`:243–350`) handle 1..=128 rows. `execution_units`, `managed_effects`, `quota_*`, `native_invocations` and `session_units` are **not** permit tables; they carry only writer-contract10 guards (`state/execution.rs:124–138`) |
-| Epoch | `begin_execution_epoch` deactivates all leases, nulls `probe_unit` and deletes all waiters (`state/execution.rs:589–591`). `fence_task_tx` (`:340–345`) and terminal (`native_phase/terminal.rs:736–737`) release leases and delete waiters |
+| Epoch | `begin_execution_epoch` deactivates all leases, nulls `probe_unit` and deletes all waiters (`state/execution.rs:589–591`). `fence_task_tx` (`:340–345`) and terminal (`native_phase/terminal.rs:736–737`) release leases through `release_quota_tx` and delete waiters |
 | Config | `config.rs:52–61` `AgentConfig {provider, command, model, effort, max_concurrent}`. There is no compatibility, version or hook representation. Project overlay may set only agent `model`/`effort` (`:133–138`). Frame `config` is the runtime config merged with the committed project text (`workflow_source.rs:1051–1079`). Only project bytes are digested (`rules:config`). Committed provider/command must equal the Runtime registry |
 | Launch environment | Managed launch and version helper inherit the full environment (no `env_clear`). The overlay is `ResourceProfile::environment` (`resources.rs:36–104`), which adds three `GIT_CONFIG_*` entries (gc/maintenance/fsmonitor) and no hooks override. Claude argv carries `--settings {"forceLoginMethod":"claudeai"}`. Initialize sends `"hooks":null` (`claude_wire.rs:38–45`), which registers no SDK hooks |
 | Composition | `Runtime::installed_driver_composition` always bails (`state/managed_binding/composition.rs:70–75`) and has no callers. `require_managed_native_binding_composed` always errors (`workflow.rs:529–534`). `PreparedInputAdmission` is never advertised (`adapter/native.rs:263–271`). `AgentRegistry::from_managed_config` has only a test caller (`execution/phase.rs:307`) |
@@ -76,16 +79,17 @@ The bail at `native/preparation.rs:426–430` is replaced by S4–S8. There is n
 | Stage | Producer | Effect | Grants |
 |---|---|---|---|
 | S0 | (A) actor + readiness allocated1→preparing2 | readiness | nothing |
-| S1 | (P) `qualify_compat_static`, outside all locks | none | nothing; refuses before S2 when undeclared |
+| S1 | (P) `qualify_compat_static`, outside all locks, role-specific (§4.2) | none | nothing; refuses before S2 when undeclared or role-incompatible |
 | S2 | (A) version helper | `native_phase_version` | closed qualified observation (nongrant) |
 | S3 | (A, Executor) 13-action Git batch / (P, Reviewer) §9 batch | `native_phase_git` | `NativeReadonlyHelperCompletion` (nongrant) |
 | S4 | (P) `qualify_compat_observed` | none | `NativeCompatQualification` (nongrant) |
-| S5 | (P) `issue_no_current_dispatch` | none (one read-only Immediate) | `PreparedPhaseNoCurrentDispatch` |
-| S6 | (P) quota plan → Admit, or Park ⇄ due-claim loop | quota/Unit/readiness | `NativeQuotaAdmitted` (known commit) |
-| S7 | (P) `issue_prepared` | none | `PreparedNativePhase` (one per operation) |
-| S8 | (approved transport HOW §7) | registration + transport | per that HOW, requires G2–G4 |
+| S4b | (P) `plan_native_command`, outside all locks, then `compat.check_command` | none | retained `Arc<NativeTransportCommand>` (nongrant data) |
+| S5 | (P) `issue_no_current_dispatch` | none (one read-only Immediate, Initial lineage) | `PreparedPhaseNoCurrentDispatch` |
+| S6 | (P) quota plan → Admit, or Park ⇄ due-claim loop | quota/Unit/readiness; pool default INSERT when cold | `NativeQuotaAdmitted` (known commit) with its known lineage |
+| S7 | (P) `issue_prepared` | none | `PreparedNativePhase` (one per operation), retaining the SAME S4b command |
+| S8 | (approved transport HOW §7, as corrected by C-7 and C-8) | registration + transport | per that HOW, requires G2–G4 |
 
-S1 runs before any further process effect, so an undeclared alias wastes no helper. S4 needs the SAME version observation.
+S1 runs before any further process effect, so an undeclared alias or a role-incompatible hook declaration wastes no helper. S4 needs the SAME version observation. S4b runs once, before any quota write, so a doomed command never holds a lease; nothing rebuilds it later.
 
 ### 3.2 Types (all crate-private, non-Clone, non-Serialize/Deserialize, private fields, no row/ID/DTO constructor)
 
@@ -95,24 +99,36 @@ struct NativeCompatDeclaration { /* parsed, canonical, bounded; digest */ }
 struct NativeCompatQualification {
     declaration: Arc<NativeCompatDeclaration>,       // SAME Arc as installed adapter
     version: Arc<NativeVersionHelperCustody>,        // SAME qualified closed observation
+    role: SessionRole,                               // SAME allocation f.role (§4.2)
     project_hooks: Box<[QualifiedHookRef]>,          // borrowed facts from SAME Frame inventory
     frame: Arc<Frame>,                               // SAME original Frame (via seal)
 }
 // execution/native/prepared.rs (new)
+fn plan_native_command(owner: &Arc<RuntimeOwner>, actor: &Arc<NativePreparationActor>,
+    completion: &Arc<NativeReadonlyHelperCompletion>, compat: &Arc<NativeCompatQualification>)
+    -> Result<Arc<NativeTransportCommand>>;          // sole protected command producer (C-7)
 struct PreparedPhaseNoCurrentDispatch { custody: Weak<NativePreparationCustody>,
-    completion: Arc<NativeReadonlyHelperCompletion>, readiness: PairRowImage, unit: UnitImage }
-struct NativeQuotaAdmitted { plan: Arc<NativeQuotaPlan>, unit_after: UnitImage,
-    readiness_after: PairRowImage }                   // only from Store known commit / exact confirm
+    completion: Arc<NativeReadonlyHelperCompletion>,
+    issued: Arc<NativeReadyLineage> }                 // the Initial lineage it was issued under
+struct NativeQuotaAdmitted { plan: Arc<NativeQuotaPlan>,
+    lineage: Arc<NativeReadyLineage> }                // only from Store known commit / exact confirm
 struct PreparedNativePhase { actor: Arc<NativePreparationActor>,
     known: Arc<NativePreparationCommit>, version: Arc<NativeVersionHelperCustody>,
     completion: Arc<NativeReadonlyHelperCompletion>, compat: Arc<NativeCompatQualification>,
-    quota: Arc<NativeQuotaAdmitted>, readiness: PairRowImage /* preparing, P */,
-    unit: UnitImage /* Preparing, U */ }
+    command: Arc<NativeTransportCommand>,            // SAME S4b command
+    quota: Arc<NativeQuotaAdmitted> }                // its lineage: readiness (preparing,P,NULL), Unit Preparing U
+// state/execution/native_phase/preparation.rs (extended)
+enum NativeReadyLineage {
+    Initial(Arc<NativePreparationCommit>),           // (preparing,2,NULL) + original Unit; A validator
+    Quota { commit: Arc<NativePreparationCommit>,    // SAME original known commit
+            current: CurrentWorkflowSuccessor,       // SAME original successor; Unit = known postimage
+            readiness: PairRow, unit: Body<ExecutionUnit> },
+}
 // state/execution/native_phase/quota.rs (new) + state/execution/quota_policy.rs (factored)
-struct NativeQuotaPlan { /* SAME actor, SAME no-dispatch, snapshot, decision, exact images */ }
+struct NativeQuotaPlan { /* SAME actor, SAME no-dispatch, SAME pre-lineage, snapshot, decision, exact images */ }
 enum NativeQuotaOutcome { Admitted(Arc<NativeQuotaAdmitted>), Parked(Arc<NativeParkedPhase>) }
-struct NativeParkedPhase { plan: Arc<NativeQuotaPlan>, parking_version: u64, due: i64,
-    reason: WaitReason, waiter: WaiterImage }
+struct NativeParkedPhase { plan: Arc<NativeQuotaPlan>, lineage: Arc<NativeReadyLineage>,
+    parking_version: u64, due: i64, reason: WaitReason, waiter: WaiterImage, pool: PoolImage }
 ```
 
 ### 3.3 Ownership graph
@@ -122,22 +138,48 @@ Root PhaseJobs Entry -> Job -> JobState.preparation -> NativePreparationCustody 
   slots (each one-time, no history lists):
     actor, plan, known, helpers[<=32] (A); completion (A)
     compat: Option<Arc<NativeCompatQualification>>            (P)
+    command: Option<Arc<NativeTransportCommand>>               (P, set once at S4b)
     no_dispatch: Option<Arc<PreparedPhaseNoCurrentDispatch>>   (P; cleared by S8 install)
     quota: QuotaSlot{ current: Option<Arc<NativeQuotaPlan>>,
+                      lineage: Option<Arc<NativeReadyLineage>>,  // latest known lineage
                       parked: Option<Arc<NativeParkedPhase>>,
                       admitted: Option<Arc<NativeQuotaAdmitted>> } (P)
     prepared: Option<Arc<PreparedNativePhase>>                 (P, set once)
     transport: Option<Arc<NativeTransportCustody>>             (transport HOW)
     parked_level: watch::Sender<ParkedLevel>                   (P, nongrant observation)
-Prepared -> actor, known, version, completion, compat, quota   (siblings, all strong)
-NativeQuotaPlan -> actor, no_dispatch; never -> custody/Prepared
+Prepared -> actor, known, version, completion, compat, command, quota (siblings, all strong)
+NativeQuotaPlan -> actor, no_dispatch, pre-lineage; never -> custody/Prepared
+NativeReadyLineage -> NativePreparationCommit only (no actor/custody edge beyond A)
 PreparedPhaseNoCurrentDispatch -Weak-> custody
+NativeTransportCommand: immutable data, no edges
 NativeCompatDeclaration <- NativeAdapter (installed) and <- compat qualification
 ```
 
-- No new strong edge returns to Runtime, PhaseJobs, JobState, NativeSessions, the NativeAdapter registry or a JoinHandle. The declaration Arc is immutable data with no back-edges.
-- Hashing, parsing, filesystem work and awaits happen outside the Store, custody, queue and child mutexes. A custody mutex is held only to install a slot (pointer-checked, exactly once).
+- No new strong edge returns to Runtime, PhaseJobs, JobState, NativeSessions, the NativeAdapter registry or a JoinHandle. The declaration Arc and the command Arc are immutable data with no back-edges.
+- Hashing, parsing, encoding, profile/filesystem work and awaits happen outside the Store, custody, queue and child mutexes. A custody mutex is held only to install a slot (pointer-checked, exactly once; the `lineage` slot is replaced only by the Store method's known value for the SAME plan).
 - No caller-supplied authority callback exists. `parked_level` is a nongrant `watch` level that Root only reads.
+
+### 3.4 Known readiness lineage (P)
+
+1. **Initial.** Created once from the SAME known `NativePreparationCommit`. Its validator is the unchanged A `validate_version_ready` (original successor, readiness `(preparing,2,NULL)`). It is used only while those original images are current: S5 issuance, Admit-first and the first Park. The helper validators (`state/.../version.rs:371,444,490`) keep using it unchanged; they run only before S5.
+2. **Quota.** Created only inside the quota Store method, or `confirm_phase_quota`, for the SAME plan Arc, after a known commit or an exact-postimage confirm. Its readiness and Unit are that plan's own planned postimages; versions are never recomputed. Its successor comes from a new crate-private `CurrentWorkflowSuccessor::with_known_unit(&self, Body<ExecutionUnit>)`. That constructor:
+   - keeps the SAME original marker plan, Workflow body and ledger count/head of the predecessor lineage's successor;
+   - re-applies the immutable-identity predicate of `current_unit` (`successor.rs:63–99`) to the new body, requiring a strictly greater version;
+   - reads no row.
+
+   Its validator runs `validate_common` factored as `validate_common_with(tx, &current)`: actor original, selected DB, `validate_preparation_origin_tx` with the lineage successor, Unit facts and governing digest, `registration_unit`, `no_registration` and owner v1. It then validates the complete lineage readiness image. The original successor is never re-applied after the first quota write.
+3. **Transitions.** Exactly these:
+
+   | Transaction | Preimage lineage | Postimage lineage |
+   |---|---|---|
+   | Admit-first | Initial | Initial (no readiness/Unit change) |
+   | Park | Initial: `(preparing,2,NULL)`, Unit U₀ | Quota: `(parked,3,3)`, U₀+1 |
+   | Re-park | Quota parked `(parked,3,3)`, Uₖ | SAME lineage when the reason is unchanged; otherwise Quota `(parked,3,3)`, Uₖ+1 |
+   | Due-claim admit | Quota parked | Quota: `(preparing,4,NULL)`, Uₖ+1 |
+   | Closure | latest lineage, images only (§7.4) | none (closed) |
+
+   A due-claim admit always proceeds to S7, so no Park ever starts from a Quota `preparing` lineage.
+4. **Not authority.** Rows, IDs and equal-looking images never create or advance a lineage. A lineage only fixes the preimages that the SAME actor's next write must match.
 
 ## 4. Compatibility declaration (P)
 
@@ -156,20 +198,31 @@ settings     = "inherited"                 # only supported value
 [[agents.claude-main.compatibility.user_hooks]]
 label     = "fmt-on-edit"                  # 1..64 B, [A-Za-z0-9._-]
 reference = "/Users/me/.claude/settings.json#hooks.PostToolUse"  # opaque, never read
-writes    = "worktree"                     # only supported value
+writes    = "worktree"                     # "worktree" | "none"
 ```
 
-The committed project config gains `[native] required_hooks = ["<repo-relative path>", …]`. This is merged into a new `Config.native.required_hooks`.
+The committed project config gains a list of required hooks, merged into a new `Config.native.required_hooks`:
+
+```toml
+[[native.required_hooks]]
+path   = "<repo-relative path>"
+writes = "none"                            # "worktree" | "none"
+```
 
 - **Bounds.** `user_hooks` and `required_hooks` each hold at most 16 entries. Each `reference` and path is 1..1024 B, UTF-8, with no NUL or control characters.
-  - A project path is relative and normalized: no `.` or `..` segment, no leading `/`, no backslash. Entries are unique.
+  - A project path is relative and normalized: no `.` or `..` segment, no leading `/`, no backslash. Entries are unique by path.
+  - `writes` is a closed, nonsecret enum of exactly two values. An unknown value, including any output-only or common-repository value, refuses at load.
   - The canonical declaration encoding is ≤16 KiB. Every struct uses `deny_unknown_fields`.
+- **`writes` meaning (cooperative statement, not verified by rrx).**
+  - `none`: the hook declares no filesystem writes.
+  - `worktree`: the hook may write tracked or untracked files inside the SAME Unit worktree (the Agent's source tree).
+  - No vocabulary exists for a derived-output profile. agent-execution design §5 requires one to be separately qualified, and none is provided here.
 - **Ownership.**
   - `compatibility` is runtime-only. `ProjectAgentOverlay` is unchanged, so a project cannot set it; `deny_unknown_fields` already refuses it.
   - `native.required_hooks` is project-only. `Config::load` refuses a non-empty runtime-file `[native]` before the project is applied.
 - **Defaults and semantics.**
   - An absent `compatibility` means the alias is **undeclared**. A managed Native start refuses at S1 with typed `UnsupportedCompatibility("native compatibility undeclared")`.
-  - There is no default profile and no universal compatibility. An absent project `[native]` means no project-declared required hooks.
+  - There is no default profile, no default `writes` value and no universal compatibility. An absent project `[native]` means no project-declared required hooks.
   - Legacy, unprotected adapters ignore both fields.
   - The fields are not a claim flag. They are cooperative user evidence, not a security proof.
 
@@ -182,18 +235,25 @@ The committed project config gains `[native] required_hooks = ["<repo-relative p
    - The declaration exists.
    - `profile` and `settings` are the supported values.
    - `cli_version` equals the provider pin: claude `2.1.283`, codex `codex-cli 0.160.0`.
-   - Every hook entry has `writes == "worktree"`.
    - The SAME Frame's merged `config.agents[alias].compatibility` encodes to the SAME canonical digest as the installed declaration. This connects the declaration to the original Source pin. Projects cannot alter it, and it is runtime-frozen just like `command`/`provider` (`workflow_source.rs:1068–1079`).
-   - Each `Config.native.required_hooks` path exists in the SAME Frame's `CommittedIndex::inventory()` as an ordinary, non-skipped blob. Its `{path, oid, sha256, bytes}` is borrowed, never re-read. Because `rules:config` is digested, the list itself is pinned by `R`.
+   - Each `Config.native.required_hooks` path exists in the SAME Frame's `CommittedIndex::inventory()` as an ordinary, non-skipped blob. Its `{path, oid, sha256, bytes}` is borrowed, never re-read. Because `rules:config` is digested, the list and each `writes` value are pinned by `R`.
+   - **Role rule.** The role is the SAME allocation `f.role`, cross-checked against the original Unit kind (Executor↔Executor, Reviewer↔Reviewer). One function, `qualify_role_hooks(role, declaration, required_hooks)`, applies one rule to every user hook and every project required hook:
+     - Executor: each `writes` is `worktree` or `none`.
+     - Reviewer: each `writes` is `none`. Any `worktree` entry refuses with typed `UnsupportedCompatibility("reviewer source is readonly; source-writing hook declared")`. This happens before S2, so no helper runs. The Reviewer source is readonly (`results.rs:602–626`), and agent-execution design §5 requires source-writing hooks to use a separately qualified derived-output profile or refuse before effects. Native never falls back to writable source, never disables or overrides a required hook, and never substitutes a derived-output profile.
+
+     The result is captured as `NativeCompatQualification.role`; S4 and S4b reuse it and never re-decide it.
 3. **S4 observed check.** The SAME closed version observation's `qualified_profile()` must equal the label derived from `cli_version` (`claude-2.1.283` / `codex-cli-0.160.0`). Provider, program and origin must equal the SAME allocation facts (`allocation.facts().provider/program`, `launch` origin). A mismatch refuses with no further effect.
-4. **Command guard (consumed in S7 and S8).** `NativeCompatQualification::check_command(&NativeTransportCommand)` requires all of:
-   - argv equals the approved transport HOW §6 vector exactly. The `--settings` JSON is exactly `{"forceLoginMethod":"claudeai"}`, with no `hooks`, `disableAllHooks` or `permissions` key. No `--setting-sources`, `--dangerously-skip-permissions` or `--bare`. No Codex `-c` or `--config` override.
-   - Environment overlay keys are a subset of the fixed `ResourceProfile::environment` key set.
-   - None of `HOME`, `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `XDG_CONFIG_HOME`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM` or `GIT_CONFIG_NOSYSTEM` is set.
-   - `GIT_CONFIG_*` pairs are exactly `{gc.auto, maintenance.auto, core.fsmonitor}`; never `core.hooksPath`.
+4. **Command producer and guard (S4b; re-checked in S7 and S8).**
+   - `plan_native_command(owner, actor, completion, compat)` is the sole protected producer of `NativeTransportCommand` (C-7). It runs once, outside all locks, after S4 and before S5. It builds the transport HOW §6 vector from the SAME actor's allocation facts only (`f.program`, `f.path`, `f.role`, `f.model`, `f.effort`, `f.provider`). It requires the SAME closed completion whose seal worktree is `f.path`, and it reuses the version helper's bounded physical profile qualification. The Claude native session UUID is generated here, once. It takes no Prepared value, row, ID, callback or DTO, and its output grants nothing. The result is installed once in the custody `command` slot.
+   - `NativeCompatQualification::check_command(&NativeTransportCommand)` then requires all of:
+     - argv equals the approved transport HOW §6 vector exactly. The `--settings` JSON is exactly `{"forceLoginMethod":"claudeai"}`, with no `hooks`, `disableAllHooks` or `permissions` key. No `--setting-sources`, `--dangerously-skip-permissions` or `--bare`. No Codex `-c` or `--config` override. `--permission-mode plan` is present exactly when `compat.role` is not Executor.
+     - Environment overlay keys are a subset of the fixed `ResourceProfile::environment` key set.
+     - None of `HOME`, `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `XDG_CONFIG_HOME`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM` or `GIT_CONFIG_NOSYSTEM` is set.
+     - `GIT_CONFIG_*` pairs are exactly `{gc.auto, maintenance.auto, core.fsmonitor}`; never `core.hooksPath`.
+   - S7 re-runs `check_command` on the SAME retained command (pointer-equal to the slot). S8 re-runs it, together with transport HOW §6's physical program/cwd recheck, on that SAME command before `plan_prepared_transport`, and never rebuilds it.
 
    This is a mutation-detection conjunct over rrx's own command. It does not prove the Agent's behavior.
-5. **Persistence.** The canonical declaration digest is added to the transport HOW §4.3 `command_digest` material (correction C-2). No raw reference, path or settings value is persisted, logged or hashed beyond that digest. rrx never opens, stats or hashes a `user_hooks.reference`, a user settings file or credential storage.
+5. **Persistence.** The canonical declaration digest is added to the transport HOW §4.3 `command_digest` material (correction C-2). No raw reference, path or settings value is persisted, logged or hashed beyond that digest. rrx never opens, stats or hashes a `user_hooks.reference`, a user settings file, hook storage or credential storage.
 
 ### 4.3 Honest supported/unsupported behavior
 
@@ -202,31 +262,34 @@ The committed project config gains `[native] required_hooks = ["<repo-relative p
 | User-level settings/hooks (`~/.claude/settings.json`, `~/.codex/config.toml`) | Inherited by the official CLI through the unchanged environment and HOME. rrx does not parse them. `user_hooks` only records the user's cooperative statement |
 | Committed project settings/hooks (e.g. tracked `.claude/settings.json`, tracked hook scripts) | Present in the fresh worktree with bytes proven equal to `R` by the Status correspondence (readonly HOW §6). Declared paths are checked against the SAME inventory |
 | Untracked or ignored local project settings (e.g. `.claude/settings.local.json`) | Not present in a fresh worktree; Status refuses if they appear. Hooks configured only there are **unsupported** for managed runs. Declaring them is impossible (not in the inventory) |
-| Hooks needing a mutable common repository or sibling writes | `writes` vocabulary admits only `worktree`, so they are refused when declared. Undeclared behavior is uncovered and reported if discovered |
+| Hooks declared `worktree` on a Reviewer (user or project required) | Refused at S1 before any helper effect. The Reviewer source is readonly; no derived-output hook profile exists in this HOW |
+| Hooks writing only to an output directory, a mutable common repository or sibling paths | No `writes` value exists for them, so declaring them refuses at load. A derived-output hook profile needs its own HOW and conformance. Undeclared behavior is uncovered and reported if discovered |
+| Undeclared hooks that write the Reviewer's source | Uncovered. The readonly tree makes such writes fail cooperatively; this is not proof that no write was attempted |
 | Git hooks used by the Agent's own Git commands | Inherited through the common directory or `core.hooksPath`. rrx sets no hooks override. rrx's own readonly actions run no hook |
 | Other CLI versions | Refused as `UnsupportedCapability`. Extending pins needs its own conformance fixtures and review |
 | Native permission mechanisms | Preserved: Claude `--permission-prompt-tool stdio` routing and `--permission-mode plan` for non-Executor; Codex app-server permission framing. Nothing is skipped or downgraded |
 
 ## 5. `PreparedPhaseNoCurrentDispatch` (P)
 
-1. **Issuer.** Only `issue_no_current_dispatch(custody)` creates one, inline in the SAME start after S4. It requires all of:
+1. **Issuer.** Only `issue_no_current_dispatch(custody)` creates one, inline in the SAME start after S4b. It requires all of:
    - the actor is open;
-   - the known readiness commit;
+   - the known readiness commit and its Initial lineage;
    - the SAME `NativeReadonlyHelperCompletion` (Executor, or the §9 Reviewer equivalent), whose history is 14 (Reviewer: 10) linked, Confirmed and qualified helpers;
    - the `transport` slot is empty and no `KnownTransportRegistration` was ever produced;
    - no delegated effect is admitted in this lane (none exists);
    - the count of attempted helpers equals the count of settled helpers (from the custody helper manifest, not rows).
 2. **Read-only Immediate.** Under a NEW guard from the SAME `PhaseEffectAdmission`, it checks all of:
-   - `validate_preparation_origin_tx`, `actor.validate_open`, and `NativePreparationCommit::validate_version_ready` with readiness exactly `(preparing, P, parking_version NULL)`;
-   - Session record absent for `allocated_session_id`;
-   - owner v1 with `validated=0` and `native_invocation_id NULL`;
-   - no `native_invocations` row for the invocation ID;
-   - no `managed_phase_admissions` row for the pair;
-   - the complete effect inventory, under `InventoryBudget`, equals the completion's SAME final `after`;
-   - the exact Unit image (`Preparing`, `session_id None`, `wait_reason None`).
+   - the Initial lineage validator, i.e. the unchanged `NativePreparationCommit::validate_version_ready` (which includes `validate_preparation_origin_tx` against the original successor), with readiness exactly `(preparing, 2, parking_version NULL)`, and `actor.validate_open`;
+   - the negative conjuncts `validate_negative_tx`:
+     - Session record absent for `allocated_session_id`;
+     - owner v1 with `validated=0` and `native_invocation_id NULL`;
+     - no `native_invocations` row for the invocation ID;
+     - no `managed_phase_admissions` row for the pair;
+     - the complete effect inventory, under `InventoryBudget`, equals the completion's SAME final `after`;
+   - the exact Unit image (`Preparing`, `session_id None`, `wait_reason None`), which here is the original successor's Unit.
 
    A row-absence result alone never issues the value; the local conjunct comes first.
-3. **Lifetime.** It is stored once in custody. It is invalidated, by clearing the slot, when the transport custody is installed. A parked→preparing due-claim re-validates it in the same Immediate. Restart, epoch change, or a missing custody means none can exist. It is no permission, input or success. Consumers:
+3. **Lifetime.** It is stored once in custody. It is invalidated, by clearing the slot, when the transport custody is installed. The negative conjuncts are lineage-independent. A parked→preparing due-claim re-runs them in its own Immediate under the SAME parked Quota lineage validator (§3.4); the issued Initial images are never used as a later preimage. Restart, epoch change, or a missing custody means none can exist. It is no permission, input or success. Consumers:
    - the S6 quota plan (both Admit and Park);
    - the nongrant preparation closure (§7.4);
    - Root's typed non-success closure (absent prerequisite RN-1, §15).
@@ -238,7 +301,7 @@ The committed project config gains `[native] required_hooks = ["<repo-relative p
 - **Pool.** Exactly one selected pool: `(provider, "unknown")`, with `provider` taken from the SAME allocation facts. This is the existing conservative provider-wide pool (`execution/quota.rs:60–68`). No account alias or credential-derived identity is used. A future official native account identifier needs its own HOW.
 - **Caps.** Taken from the SAME selected `NativeSessions`' configured `NativeLimits` and `QuotaScheduler` values, which are immutable after installation: `global_total ≤ 6`, `provider_total`, `provider_executor`, and project = `min(configured, current Project.max_tasks)`. Also the existing Store bound ≤1024.
 - **Four-Task consequence (V by reading).** Executor slots are `global_total − 2 = 4` globally and `provider_executor = 2` per provider. So four concurrent Executor Tasks need two Claude and two Codex. Configuration can only lower caps. This matches agent-execution design §8 and is stated as an honest limit.
-- **Policy factoring.** The decision logic of `quotas.rs:160–312` moves into a pure `quota_policy::decide(&QuotaSnapshot, at) -> Decision { Admit { probe }, Wait { reason, due } }`, shared by the legacy and private routes. It covers: caps; the high-utilization executor throttle; exhausted/probe/backoff; same-Task capacity due; role alternation by `last_role`; first eligible candidate. Legacy behavior is unchanged except for §6.4 classification.
+- **Policy factoring.** The decision logic of `quotas.rs:160–312` moves into a pure `quota_policy::decide(&QuotaSnapshot, at) -> Decision { Admit { probe }, Wait { reason, due } }`, shared by the legacy and private routes. It covers: caps; the high-utilization executor throttle; exhausted/probe/backoff; same-Task capacity due; role alternation by `last_role`; first eligible candidate. Legacy behavior is unchanged except for §6.4 classification. For an absent pool, `decide` receives the default image D (§6.3) and no windows.
 
 ### 6.2 Bounded snapshot (two-pass, limit+1, outside SharedStore)
 
@@ -249,11 +312,12 @@ The committed project config gains `[native] required_hooks = ["<repo-relative p
 | Same-Task capacity history | `execution_units WHERE task_id=? AND id<>?` | 256 | bodies each ≤16 KiB |
 | Legacy candidates ahead of self | full bodies only for those ahead in fair order | ≤4096 | all candidate+history bodies ≤72 MiB |
 | Windows | selected pool | 64 | body ≤8192 each |
-| Pool / own waiter / own lease | exact rows | 1 each | ≤8192 each |
-| Own Unit / readiness | exact | 1 | ≤16 KiB / ≤4096 |
+| Pool / own waiter / own lease | exact row, or exact absence | 1 each | ≤8192 each |
+| Own Unit / readiness | exact, equal to the SAME pre-lineage images | 1 | ≤16 KiB / ≤4096 |
 | Whole plan | — | — | ≤8 MiB excluding borrowed manifest |
 
 - The first pass uses `typeof`/`length(CAST(… AS BLOB))` with checked arithmetic before copying. The second pass extracts and compares only after a complete first pass, in the SAME read transaction, under the existing `InventoryBudget`.
+- **Cold pool.** An absent selected pool is a normal preimage: a genuine first start for that provider has no observation and no legacy admission. Absence is recorded as `PoolImage::Absent`, together with zero windows, zero leases and zero waiters for that pool (all FK-dependent and compared).
 - An overflow, a VM interrupt or an oversize value is a refusal with no effect. A refusal is never truncated success, and nothing is silently pruned.
 - Cost: one admission is O(due waiters ahead + leases), as in legacy. A large unrelated history can cause an honest refusal.
 
@@ -261,38 +325,39 @@ The committed project config gains `[native] required_hooks = ["<repo-relative p
 
 Every private quota Immediate runs under a NEW guard from the SAME launch admission, and its common conjunct is all of:
 - `admission.validate_for(launch)` and `actor.validate_open()`;
-- `validate_preparation_origin_tx` (current successor + Driver-live);
-- Unit authority facts, effect-open, parent activity and governing digest, exactly as in transport HOW §9 (never generic `validate_authority` for the own unit);
+- the SAME pre-lineage validator (§3.4): Initial for Admit-first and Park; the parked Quota lineage for Re-park and Due-claim admit. This includes `validate_preparation_origin_tx` (current successor + Driver-live) with that lineage's successor, and the Unit authority facts, effect-open, parent activity and governing digest, exactly as in transport HOW §9 (never generic `validate_authority` for the own unit);
 - `no_registration`, owner v1, and the complete inventory == completion `after`;
-- the SAME no-dispatch value;
+- the SAME no-dispatch value and its negative conjuncts;
 - planned `at` within 5 s of now; otherwise replan.
 
 Images below are complete columns, with full body bytes where present. Every write is `WHERE` all columns `IS` the preimage, and the rowcount must be exactly 1. An INSERT requires exact absence.
 
+The pool default image is D = `(provider, 'unknown', next_probe_at 0, probe_unit NULL, backoff 60000, last_role 'reviewer')`, which equals the DDL defaults (`execution.sql:117–123`).
+
 | Transaction | Readiness (permit, `ExactRowMutation`) | `quota_waiters` | `quota_leases` | `quota_pools` | `execution_units` |
 |---|---|---|---|---|---|
-| **Admit-first** (never parked) | unchanged `(preparing,P,NULL)`, compared | absent, compared | INSERT `(unit, provider, 'unknown', role, owner_epoch, 1)`, or UPDATE of an exact inactive own row | UPDATE `last_role`, and probe fields if `probe` (as `quotas.rs:329–335`) | unchanged `(Preparing, U, wait_reason None)`, compared |
-| **Park** | `(preparing,P,NULL)` → `(parked,P+1,P+1)`; body keys unchanged except state/version/parking_version | INSERT `(unit, provider, 'unknown', reason, due, fairness_sequence=at, resume_state='preparing')` | none, compared | compared | `wait_reason None→Some(reason)`, `version U→U+1`, `updated_at`; `state` stays `Preparing` |
-| **Re-park** (due, still waiting) | unchanged `(parked,PV,PV)`, compared | UPDATE `reason, next_due` only (fairness kept) | compared | compared | `wait_reason` updated only if the reason changes (+1) |
-| **Due-claim admit** | `(parked,PV,PV)` → `(preparing,PV+1,NULL)` | DELETE exact image | as Admit-first | as Admit-first | `wait_reason Some→None`, +1 |
-| **Closure** (§7.4) | `(parked\|preparing, V, …)` → `(closed, V+1, start_ended=1, parking_version NULL)` | DELETE exact image, or accept absence only when the actor is revoked | `active 1→0` on an exact own image, or accept absent/inactive | untouched | untouched (Unit retirement belongs to the trusted cancel/fence owner) |
+| **Admit-first** (never parked) | unchanged `(preparing,2,NULL)`, compared | absent, compared | INSERT `(unit, provider, 'unknown', role, owner_epoch, 1)`, or UPDATE of an exact inactive own row | cold: INSERT D (exact absence), then the UPDATE below against D in the SAME Immediate; existing: complete image compared. UPDATE `last_role`, and probe fields if `probe` (as `quotas.rs:329–335`). A cold pool has no windows, so it is never exhausted and never probes | unchanged `(Preparing, U₀, wait_reason None)`, compared |
+| **Park** | `(preparing,2,NULL)` → `(parked,3,3)`; body keys unchanged except state/version/parking_version | INSERT `(unit, provider, 'unknown', reason, due, fairness_sequence=at, resume_state='preparing')` | none, compared | cold: INSERT D (postimage D); existing: complete image compared, unchanged | `wait_reason None→Some(reason)`, `version U₀→U₀+1`, `updated_at`; `state` stays `Preparing` |
+| **Re-park** (due, still waiting) | unchanged `(parked,3,3)`, compared | UPDATE `reason, next_due` only (fairness kept) | compared | exists (waiter FK); complete image compared | `wait_reason` updated only if the reason changes (+1) |
+| **Due-claim admit** | `(parked,3,3)` → `(preparing,4,NULL)` | DELETE exact image | as Admit-first | exists; as Admit-first for an existing pool | `wait_reason Some→None`, +1 |
+| **Closure** (§7.4) | latest lineage `(parked,3,3)` or `(preparing,2\|4,NULL)` → `(closed, V+1, start_ended=1, parking_version NULL)` | DELETE exact image, or accept absence only when the actor is revoked | `active 1→0` on an exact own image, or accept absent/inactive | own probe (`probe_unit` = own unit): `probe_unit→NULL`, `next_probe_at→MAX(pre.next_probe_at, at+pre.backoff)`, `backoff` and `last_role` unchanged (as `release_quota_tx`, `quotas.rs:515–521`). Foreign or NULL probe: complete image compared, unchanged. Absent pool: absence compared | untouched (Unit retirement belongs to the trusted cancel/fence owner) |
 
-1. **Unit state stays `Preparing`.** Because of this, the transport HOW §5.3 `registration_unit` predicate is unchanged. Prepared's Unit image is exactly the `NativeQuotaAdmitted` postimage. Its version U is whatever that known commit wrote; it is never recomputed.
-2. **Readiness lineage.** P = 2 + 2k after k park/claim cycles. `parking_version` is non-NULL only in `parked`, where it equals that row's version. This is the actual representation of the approved "readiness parkingVersion". The existing `binding_admission_not_parked` trigger keeps consumption impossible while parked.
+1. **Unit state stays `Preparing`.** Because of this, the transport HOW §5.3 `registration_unit` predicate is unchanged. Prepared's Unit image is exactly the `NativeQuotaAdmitted` lineage Unit: U₀ after Admit-first, or the due-claim postimage. It is never recomputed.
+2. **Readiness lineage.** P is 2 when never parked, or 4 after one Park to `(parked,3,3)`, any number of Re-parks at version 3, and one due-claim admit (§3.4). `parking_version` is non-NULL only in `parked`, where it equals that row's version. This is the actual representation of the approved "readiness parkingVersion". The existing `binding_admission_not_parked` trigger keeps consumption impossible while parked.
 3. **Approved "waiter version" (correction C-6).** `quota_waiters` has no version column. The approved exact waiter/version promise is represented by three things together:
    - (a) complete seven-column image CAS;
    - (b) the Unit version, which advances on every park and reason change;
    - (c) the readiness `parking_version`.
 
    No DDL is added. A delete-and-recreate of an identical image by another writer is not an authority, because authority is the in-memory custody plus the readiness row. It is a cooperative limit.
-4. **Known commit.** `NativeQuotaAdmitted` and `NativeParkedPhase` are issued only by the Store method for the SAME plan Arc, after the commit returns `Ok`. Uncertain commit leads to `confirm_phase_quota(plan)`:
-   - exact postimage of every planned row → issue for the SAME plan;
-   - exact preimage of all rows → definitive rollback → replan allowed (no external effect exists);
+4. **Known commit.** `NativeQuotaAdmitted`, `NativeParkedPhase` and the next `NativeReadyLineage` are issued only by the Store method for the SAME plan Arc, after the commit returns `Ok`. An uncertain commit, for any transaction above including Closure, leads to `confirm_phase_quota(plan)`:
+   - exact postimage of every planned row, including the pool default or postimage → issue for the SAME plan;
+   - exact preimage of all rows, including pool absence → definitive rollback → replan allowed (Closure: the SAME closure plan may be retried), because no external effect exists;
    - anything else → Held.
 
-   Rows never construct either value.
-5. **Contention.** A foreign change to the compared lease, waiter, pool or window inventory is a conflict detected before any write. It is a definitive pre-write refusal, so it may replan with the SAME actor. At most 8 replans per wake are allowed, then 100 ms–5 s capped backoff. This costs liveness, not safety.
-6. **Probe.** A marked unit may become the pool probe through `decide`. Recording a probe observation (`observe_quota_from_probe`, generic authority) stays refused for marked units until G2 (§10.2). Non-probe `observe_quota` (pool metadata, no authority) is unchanged. Lease release on terminal (`terminal.rs:736–737`) or closure bumps `next_probe_at` as today.
+   Rows never construct any of these values.
+5. **Contention.** A foreign change to the compared lease, waiter, pool or window inventory is a conflict detected before any write. This includes a pool created by legacy admission or `observe_quota` (`quotas.rs:60,179`) after a cold snapshot. It is a definitive pre-write refusal, so it may replan with the SAME actor. At most 8 replans per wake are allowed, then 100 ms–5 s capped backoff. This costs liveness, not safety.
+6. **Probe.** A marked unit may become the pool probe through `decide`. Admit with `probe` sets `probe_unit` to the own unit, `next_probe_at = at+backoff` and `backoff = MIN(backoff*2, 1800000)`, as `quotas.rs:329–331`. Recording a probe observation (`observe_quota_from_probe`, generic authority) stays refused for marked units until G2 (§10.2). Non-probe `observe_quota` (pool metadata, no authority) is unchanged. Before registration, the only release of an own probe is the Closure row. It clears the own probe with the same cooldown as `release_quota_tx`, so a sibling genuine Unit may obtain the probe once `at ≥ next_probe_at` (`quotas.rs:302–305`). It never clears or changes a foreign probe. After registration, terminal `release_quota_tx` (`terminal.rs:736–737`) is unchanged.
 
 ### 6.4 Candidate classification (both routes) and marked-sibling accounting
 
@@ -317,15 +382,16 @@ Images below are complete columns, with full body bytes where present. Every wri
 
 | Writer | Quota/Unit/readiness behavior | Private consumer result |
 |---|---|---|
-| Private route (this HOW) | exact-image writes above | — |
-| Legacy admission (other Tasks) | own unit only; changes pool/lease inventory | conflict → replan |
-| `fence_task_tx` / trusted cancel | deletes Task waiters, releases leases | revoked actor → closure accepts absence; open actor → Held |
-| `begin_execution_epoch` (new epoch) | deletes all waiters, deactivates leases | in-memory custody is gone; readiness remains `parked`/`preparing` → Held visible (cross-epoch gate) |
-| Terminal (`terminal.rs:736–737`) | releases own lease | after registration only |
+| Private route (this HOW) | exact-image writes above, including a cold pool's D INSERT and the Closure own-probe release | — |
+| Legacy admission (other Tasks) | own unit only; may create the pool; changes pool/lease inventory | conflict → replan |
+| `observe_quota` (non-probe) | may create the pool; writes windows | conflict → replan |
+| `fence_task_tx` / trusted cancel | deletes Task waiters, releases leases (including an own probe, through `release_quota_tx`) | revoked actor → closure accepts absence; open actor → Held |
+| `begin_execution_epoch` (new epoch) | deletes all waiters, deactivates leases, nulls every probe | in-memory custody is gone; readiness remains `parked`/`preparing` → Held visible (cross-epoch gate) |
+| Terminal (`terminal.rs:736–737`) | releases own lease and own probe | after registration only |
 | Old10 cached/new-open binary | generic validation refuses marked candidates → skip (fairness only); may self-admit legacy units | conflict → replan; never a grant |
 | Raw same-user SQL | outside the cooperative model | — |
 
-**Permission layout, stated honestly.** Readiness writes use `with_exact_permit` (permit table). The quota tables and `execution_units` are not permit tables. Their protection is the private producer, exact-image CAS and the writer-contract10 compatibility guard. The guard is not authority, and these writes are not called ExactRowMutation. No DDL, trigger, permit slice, catalogue or `SCHEMA_VERSION` change is required. Existing complete images suffice: readiness `parking_version`, Unit version, the seven waiter columns. A DB-level fence against compatible writers would need its own ordered Binding11 migration and is not delivered here.
+**Permission layout, stated honestly.** Readiness writes use `with_exact_permit` (permit table). The quota tables and `execution_units` are not permit tables. Their protection is the private producer, exact-image CAS and the writer-contract10 compatibility guard. The guard is not authority, and these writes are not called ExactRowMutation. No DDL, trigger, permit slice, catalogue or `SCHEMA_VERSION` change is required. Existing complete images suffice: readiness `parking_version`, Unit version, the seven waiter columns, the four pool columns and the DDL pool defaults. A DB-level fence against compatible writers would need its own ordered Binding11 migration and is not delivered here.
 
 ## 7. Parking, due-claim, cancel and restart (P)
 
@@ -344,11 +410,11 @@ Images below are complete columns, with full body bytes where present. Every wri
 1. The loop runs `select!(sleep_until(due.min(now+cap)), custody.revocation())`.
    - `cap` is 1 s for Capacity.
    - For Quota, `due` follows the pool's `next_probe_at`. It uses the reported reset when present, otherwise the existing 60 s–30 min backoff. No busy loop.
-2. On wake it makes a fresh bounded snapshot and a plan for the SAME actor, no-dispatch and parked value. The Immediate requires readiness `(parked, PV, PV)`, the exact waiter image and the exact Unit image. Then:
+2. On wake it makes a fresh bounded snapshot and a plan for the SAME actor, no-dispatch and parked value, with the SAME parked Quota lineage as pre-lineage. The Immediate validates that lineage (readiness `(parked,3,3)`, its Unit image and successor), the exact waiter image, the complete pool image and the no-dispatch negative conjuncts. Then:
    - `decide → Admit`: the due-claim admit row of §6.3;
    - `decide → Wait`: re-park.
 3. The claim consumes the parked record once. Readiness leaves `parked`, so a second claim fails the CAS.
-4. **What resume reuses.** The SAME actor, pair, Session/invocation IDs, input bytes, version observation, Git completion and compat qualification. No helper is relaunched. Uncertain helpers can never reach here, because S5 requires all settled. No new Unit, Context, marker, Session, owner or PhaseAttempt is created. `claim_start`, `prepare_managed` and the Workflow Waiting path are not re-entered.
+4. **What resume reuses.** The SAME actor, pair, Session/invocation IDs, input bytes, version observation, Git completion, compat qualification and S4b command. No helper is relaunched and no command is rebuilt. Uncertain helpers can never reach here, because S5 requires all settled. No new Unit, Context, marker, Session, owner or PhaseAttempt is created. `claim_start`, `prepare_managed` and the Workflow Waiting path are not re-entered.
 5. Due changes never reset the custody's retained `first_parked_at`. No new expiry is invented. Waits are cancellable.
 
 ### 7.3 Original elapsed bound and Unknown
@@ -361,13 +427,14 @@ Images below are complete columns, with full body bytes where present. Every wri
 
 1. Root's trusted stop (G3 `request_stop`) revokes the actor and notifies the parked loop. The SAME task then plans the nongrant **preparation closure**, using the readonly HOW §10 same-owner/epoch snapshot rules. It omits the current/Driver/admission conjuncts, and it keeps:
    - `validate_preparation_original`;
-   - the latest full Unit CAS (unchanged);
+   - the latest known lineage's complete Unit image as an exact CAS (the Unit is not changed by closure);
+   - the latest known lineage's complete readiness image as the preimage;
    - the inventory == completion `after`;
    - the no-dispatch value (still valid: no registration).
-2. It writes the Closure row of §6.3. It then releases the same-Unit gate once, outside all locks (preparation HOW §3.2 "trusted cancel/genuine closure"). It offers the SAME no-dispatch value to Root's typed non-success closure (RN-1). Until RN-1 exists, the operation stays Held after the factual closure.
-3. **Invariants.** Closure issues no permission, input or success. Unknown is never upgraded. Known work is not overwritten.
-4. **Failures.** A Store error keeps the SAME plan. At most one exact probe runs per wake, with 100 ms–5 s backoff.
-5. The same closure applies after Admit but before S8. That path releases the own lease.
+2. It writes the Closure row of §6.3, including the own-probe release. It then releases the same-Unit gate once, outside all locks (preparation HOW §3.2 "trusted cancel/genuine closure"). It offers the SAME no-dispatch value to Root's typed non-success closure (RN-1). Until RN-1 exists, the operation stays Held after the factual closure.
+3. **Invariants.** Closure issues no permission, input or success. Unknown is never upgraded. Known work is not overwritten. A foreign probe is preserved.
+4. **Failures.** A Store error keeps the SAME plan. An uncertain closure commit runs `confirm_phase_quota` on the SAME closure plan (§6.3 item 4). At most one exact probe runs per wake, with 100 ms–5 s backoff.
+5. The same closure applies after Admit but before S8. That path releases the own lease and, if held, the own probe.
 
 ### 7.5 Restart and lost owner
 
@@ -382,14 +449,14 @@ Images below are complete columns, with full body bytes where present. Every wri
    - known commit;
    - the version helper `closed()` with `qualified_profile` Some;
    - the completion's history whose first link is that version ack (C1 of the transport HOW);
-   - compat whose `version` is `Arc::ptr_eq` to that helper;
+   - compat whose `version` is `Arc::ptr_eq` to that helper, and whose `role` equals `f.role`;
+   - the SAME S4b command, `Arc::ptr_eq` to the custody `command` slot, and `compat.check_command` re-run on it;
    - quota `Admitted` whose plan holds the SAME no-dispatch value;
-   - readiness `(preparing, P, NULL)` and Unit image from the `Admitted` postimage;
+   - readiness and Unit images taken from the `Admitted` lineage: `(preparing,2,NULL)` with U₀ (Initial), or `(preparing,4,NULL)` with the due-claim Unit postimage (Quota); never recomputed;
    - inventory manifest = the completion's final `after` (quota adds no effect row);
    - inventory ≤252 rows (transport HOW §13);
-   - role ↔ Unit kind;
-   - `compat.check_command` on the planned transport command.
-3. **Not a source of authority.** It cannot be built from rows, IDs, a version string, an exit status, a completion alone or `NativeQuotaAdmitted` alone. It grants nothing until the transport HOW's registration consumes it once.
+   - role ↔ Unit kind.
+3. **Not a source of authority.** It cannot be built from rows, IDs, a version string, an exit status, a completion alone, a command alone or `NativeQuotaAdmitted` alone. It grants nothing until the transport HOW's registration consumes it once.
 4. **Fault rule.** A fault between S7 and the registration known commit leaves Prepared retained and the lease held. Closure (§7.4) is the only release.
 
 ## 9. Reviewer, later Executor and retry (P for Native; prerequisites marked)
@@ -417,6 +484,7 @@ Images below are complete columns, with full body bytes where present. Every wri
   - Capture is version 64 KiB + 6×64 KiB (TaskTop, TaskGitDir, TaskCommon, Head, Config, IndexTree) + 3×1 MiB = 3,604,480 B.
   - Inventory: version baseline ≤242 and Git `before₁` ≤243, so the post-batch inventory is ≤252 (C-1 arithmetic).
 - The Reviewer command keeps `--permission-mode plan` (keyed on `role != Executor`). The snapshot remains the only source tree the Reviewer is launched in.
+- **Reviewer hooks.** The Reviewer uses the SAME §4.2 role rule, not the Executor qualification. Every declared user hook and every project required hook must be `writes = "none"`, or S1 refuses before any helper effect. No derived-output hook profile is offered.
 
 ### 9.2 Retained readonly lease
 
@@ -439,7 +507,8 @@ Until PR-1 to PR-4 exist, a Reviewer or retry Unit refuses before any Git intent
 
 ### 10.1 Transport integration
 
-- Prepared is the only input to transport HOW §7 step 1. Registration's preimage readiness is `(preparing, P, NULL)` and the Unit image is Prepared's.
+- Prepared is the only input to transport HOW §7 step 1. Step 1 takes the SAME Prepared command and never builds another (C-7). It re-runs transport HOW §6's physical program/cwd recheck and `check_command` on that command, outside all locks, and derives `command_digest` from it.
+- Registration's preimage readiness and Unit are Prepared's lineage images, `(preparing, P, NULL)` with P ∈ {2, 4}. Its `validate_preparation_origin_tx` uses the lineage successor. It never calls `validate_version_ready`, and it never re-applies the original successor once a quota write exists (C-8).
 - A parked or claimed waiter is impossible at registration: the parked state refuses, and an admitted lease is held.
 - The registration Immediate additionally compares:
   - the own active lease image;
@@ -468,6 +537,9 @@ It replaces generic `validate_authority` at `native_phase.rs:360,373`, used for 
 | `start_with_launch` launch parameter and protected branches; `plan_phase_registration`, `register_phase_session`, `validate_phase_preparation` (allocated v1) | removed (transport HOW §14.1) |
 | `NativePhaseStart::Waiting`, `RetainedStart::Waiting` | removed; protected start never returns Waiting; the observation is derived (§7.1) |
 | `quotas.rs` decision code | factored into `quota_policy`; legacy fairness gains §6.4 classification; legacy unbounded reads remain legacy-only (the private route never uses them) |
+| `NativePreparationPlan::validate_common` (`preparation.rs:39–49`) | factored to `validate_common_with(tx, current)`; every existing caller passes the original successor, so behavior is unchanged |
+| `CurrentWorkflowSuccessor` | gains crate-private `with_known_unit` (§3.4); `plan_current_phase` unchanged |
+| transport HOW `plan_transport_command(owner, prepared)` | replaced by `plan_native_command` (S4b, C-7) |
 | Workflow Waiting persist/resume (`workflow.rs:1848–1870,1933–1990`) | frozen for protected scopes (already refused by preflight); legacy unchanged |
 | Engine `managed_snapshots` | frozen to legacy; never protected custody |
 | `qualified_profile` Codex comparison | fixed (C-3) |
@@ -484,29 +556,30 @@ It replaces generic `validate_authority` at `native_phase.rs:360,373`, used for 
 | setup | ≤2 | |
 | input | 1 | |
 
-- Quota and compat add **no** `managed_effects` rows, process or network effects. Rows that are not effects: readiness, Unit, waiter, lease and pool.
+- Quota, compat and the S4b command add **no** `managed_effects` rows, process or network effects. Rows that are not effects: readiness, Unit, waiter, lease and pool.
 - Total helpers ≤32. Aggregate capture: Executor 3,866,624 B; Reviewer 3,604,480 B; both ≤8 MiB.
 
 ### 11.2 State table (preparation custody)
 
 | Observation | Next |
 |---|---|
-| S1 undeclared/mismatch | refuse; custody Held per approved §3.2 (no helper ran) |
+| S1 undeclared/mismatch/role-incompatible hook | refuse; custody Held per approved §3.2 (no helper ran) |
 | S4 version/declaration mismatch | refuse; Held; observations retained |
+| S4b command build or `check_command` fails | refuse; Held; observations retained; no quota row |
 | S5 negative check fails | Held; never a retry or new helper |
-| Quota conflict | replan ≤8/wake, then backoff |
+| Quota conflict (including a pool created after a cold snapshot) | replan ≤8/wake, then backoff |
 | Quota Admit known | S7 |
-| Quota Park known | parked loop |
-| Quota commit uncertain | `confirm_phase_quota`; Held otherwise |
+| Quota Park known | parked loop with the new Quota lineage |
+| Quota commit uncertain (any transaction, including Closure) | `confirm_phase_quota`; Held otherwise |
 | Due-claim admit known | S7 |
 | Stop while parked/preparing | §7.4 closure → gate release → RN-1 or Held |
-| Stop after S7 before registration | §7.4 including lease release |
+| Stop after S7 before registration | §7.4 including lease and own-probe release |
 | Epoch/restart | Held; no reconstruction |
 | S7 conjunct fails | Held; lease kept until closure |
 
 ### 11.3 Locks and time
 
-- Snapshot planning, hashing, policy and encoding happen outside SharedStore.
+- Snapshot planning, hashing, policy, command building and encoding happen outside SharedStore.
 - Each Immediate is synchronous with no await, FS or process. Admission is acquired asynchronously before it and dropped right after.
 - The parked loop holds no lock across its sleep.
 - At most 128 parked or preparing operations exist. Per operation, a Capacity wake is ≤1/s and a conflict wake follows the 100 ms–5 s backoff.
@@ -515,47 +588,59 @@ It replaces generic `validate_authority` at `native_phase.rs:360,373`, used for 
 
 | Changed / consumed | Consumers checked (V reading) | Impact / handling |
 |---|---|---|
-| `AgentConfig.compatibility`, `Config.native`, `ProjectOverlay.native` | `config.rs` load/apply/validate/tests; `workflow_source.rs:1051–1079` (merged Frame config); `workflow.rs:3911–3917` legacy loader; `project.rs:567–577` `effective_config`; struct literal at `execution/phase.rs:301` (test) | Additive optional fields with `deny_unknown_fields`. Older binaries refuse configs that use them, which is intended. The legacy loader ignores them. `rules:config` digest changes only for projects that add `[native]` (byte pin, same algorithm). The runtime config is not digested, so no Context digest changes. **No new Context version key**; the declaration connects through the SAME Frame config and the installed adapter pointer |
+| `AgentConfig.compatibility`, `Config.native` (`required_hooks` as `{path, writes}` tables), `ProjectOverlay.native` | `config.rs` load/apply/validate/tests; `workflow_source.rs:1051–1079` (merged Frame config); `workflow.rs:3911–3917` legacy loader; `project.rs:567–577` `effective_config`; struct literal at `execution/phase.rs:301` (test) | Additive optional fields with `deny_unknown_fields` and a two-value `writes` enum. Older binaries refuse configs that use them, which is intended. The legacy loader ignores them. `rules:config` digest changes only for projects that add `[native]` (byte pin, same algorithm). The runtime config is not digested, so no Context digest changes. **No new Context version key**; the declaration connects through the SAME Frame config and the installed adapter pointer |
+| Role-specific hook rule (`qualify_role_hooks`) | S1 only; result captured in `NativeCompatQualification.role` and consumed by S4b, S7 and `check_command` (`--permission-mode plan`); Reviewer source readonly (`results.rs:602–626`) | Executor accepts `worktree`/`none`; Reviewer accepts only `none`. Legacy adapters unaffected |
 | `NativeAdapter` (declaration field), `AgentRegistry::from_managed_config` | `adapter.rs:330–411`, `adapter/native.rs:22–126,263–271` | Selected identity unchanged; capability advertisement derived (§10.3) |
 | `qualified_profile` (C-3) | `native/version.rs:86–153` (sole consumers: version stage, receipt) | Codex newline accepted exactly; no new leniency for Claude |
-| `NativePreparationCustody` slots, `abandon` | `phase_jobs.rs:140,195–228,280–284`; `native/preparation.rs:9–69,104–184` | Added slots; abandon also notifies the parked loop; teardown is not closure |
+| `plan_native_command` (C-7) replacing transport `plan_transport_command` | transport HOW §3.1 signature, §4.3 `command_digest`, §6 vector, §7 steps 1 and 4d, `NativeTransportCustody.command` (now `Arc`, SAME as Prepared's) | One producer, run once before quota. S8 rechecks and digests the SAME command; no second command can exist |
+| `NativePreparationCustody` slots, `abandon` | `phase_jobs.rs:140,195–228,280–284`; `native/preparation.rs:9–69,104–184` | Added `command` and `lineage` slots; abandon also notifies the parked loop; teardown is not closure |
+| `NativePreparationPlan::validate_common` → `validate_common_with`; `NativeReadyLineage` | `begin_native_preparation`, `confirm_native_preparation`, `validate_version_ready` (`preparation.rs:24–27,137–180`); helper txs `state/.../version.rs:371,444,490` | Existing callers keep the original successor and the v2 image, so helper behavior is unchanged. Only quota, due-claim, closure, S7 and registration use the Quota lineage |
+| `CurrentWorkflowSuccessor::with_known_unit` (new) | `validate_current_tx` (`successor.rs:261–281`), `validate_preparation_origin_tx` (`phase_supervisor.rs:186–194`); other `plan_current_phase` callers (`binding.rs:320`, `native_phase.rs:243,1114`, `native.rs:242`) | Other callers neither see nor build it. No row read; identity predicate identical to `current_unit` |
 | `quotas.rs` → `quota_policy` + classification | all quota callers: `execution/quota.rs`, `native.rs:399–423` (legacy start), `workflow.rs` legacy waits, `terminal.rs:736–737`, `state/execution.rs:340–345,589–591,686`, `driver/executor.rs:212` | Legacy decisions identical except a marked head is no longer skipped; adoption gates are unaffected (they run before the marker) |
+| `quota_pools` cold INSERT and Closure own-probe release (private route) | FK dependants (`execution.sql:124–142`); legacy creators `quotas.rs:60,179` (`ON CONFLICT DO NOTHING` tolerates an existing row); probe readers `quotas.rs:302–305,386`; `release_quota_tx` callers (`fence_task_tx`, terminal); `begin_execution_epoch` | The inserted D equals the DDL defaults, so legacy readers see a normal pool. Closure probe semantics equal `release_quota_tx`; foreign probes are untouched |
 | `state/execution/native_phase/quota.rs` (new) | readiness permit route (`preparation.rs:108–161` pattern); `write_unit` CAS; `InventoryBudget` | No new table/permit/trigger; writer-contract10 unchanged |
 | Readiness `parked`/`parking_version`/`closed` | readers: `native_phase.rs:311–330,982–1000`, `terminal.rs:302–324`, transport HOW §§4.2, 8.2; triggers `schema.sql:173–181` | New states are written only by private routes. Old readers expecting v1/v2/v3 refuse them, which is conservative Held |
 | Unit `wait_reason` with `Preparing` | legacy quota (`quotas.rs:401–486`), status/CLI readers, `registration_unit` | Same encoding as legacy Capacity waits (which already keep state); registration sees `None` after admit |
+| Transport registration lineage (C-8) | transport HOW §§7 step 1, 9 (`validate_preparation_origin_tx`, prepared readiness P, prepared full Unit CAS) | Registration uses Prepared's lineage successor and images; no other transport check changes |
 | Root `InvocationObservation::Waiting` derivation | `phase_jobs.rs` observers, Engine waiters | Nongrant level only |
 | Finalization/artifact retention | `artifacts.rs:392–570`, `results.rs:101–135` | Unchanged here; PR-4 is a prerequisite for Reviewer |
 | Admission/cleanup | `fence_task_tx`, `begin_execution_epoch`, cleanup intents | Unchanged writers; the private consumer detects and Holds |
 | C-1 planner constants | `state/.../version.rs:280–311` | Protected-only; earlier honest refusal; legacy unaffected |
 | Master current behavior | `master/agent-execution.md` §5 last paragraph, `master/workflow-engine.md` | **No master edit in this HOW.** The source PR updates master only with implemented, verified current facts |
 
-Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session binder; audit kinds (none added); Grok/Codex legacy adapters; `SCHEMA_VERSION` 10 and layout catalogue.
+Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session binder; audit kinds (none added); Grok/Codex legacy adapters; `SCHEMA_VERSION` 10 and layout catalogue; user settings and hook storage (never read).
 
 ## 13. Controls and qualification gates
 
 1. **Primitive controls (compiled; not lifecycle proof):**
    - declaration parse, bounds and defaults; runtime/project placement refusals; canonical digest stability;
-   - `check_command` deny cases;
+   - `writes` enum: unknown/output-only value refused at load; role rule table (Executor `worktree`/`none` accepted; Reviewer `none` accepted, `worktree` refused) for both user and project required hooks;
+   - `check_command` deny cases, including `--permission-mode plan` absent for a Reviewer;
    - C-3 Codex parser: `"codex-cli 0.160.0\n"` accepted; `"codex-cli 0.160.0 \n"`, `"\n\n"` and other versions refused;
-   - `quota_policy::decide` equivalence with legacy on a table of snapshots;
+   - `quota_policy::decide` equivalence with legacy on a table of snapshots, including an absent pool given D;
    - classification of Legacy, MarkedParked and MarkedStalled including the 30 s boundary;
    - limit+1 sentinels at 4096/4097, 256/257 and 64/65, plus byte boundaries;
-   - image-CAS refusal for each changed column.
+   - image-CAS refusal for each changed column, including pool absence vs presence and each pool column;
+   - `with_known_unit` refuses an identity change or a non-increasing version.
 2. **Genuine actual-producer controls.** These run only after the real Goal/Driver/Source/marker/job/actor chain reaches S4. Otherwise, record SETUP refusal; it is neither a pass nor a mutant kill.
    - S1 refusal with zero helper rows.
    - S4 version/declaration mismatch, with observations retained and no quota row.
+   - S4b command refusal with no quota row; Prepared's command is pointer-equal to the S4b slot, and S8 digests that SAME command.
+   - **Cold first start:** no `quota_pools` row for the provider, no observation and no legacy admission. Admit-first reaches `Admitted` and Prepared once, with pool D+`last_role`, and no FK failure or setup refusal. A cold Park, forced by capacity, inserts D and the waiter.
    - Admit-first, then Prepared once, with Task/W versions unchanged.
-   - Park on a forced exhausted pool, then due-claim admit with identical operation/pair/Session/input and no second version/Git row.
+   - **Park lineage:** Park on a forced exhausted pool → `(parked,3,3)`/U₀+1; a Re-park with a reason change → U+1; then due-claim admit → `(preparing,4,NULL)`. Each step validates against the known postimage, not the original v2 image or successor. The operation, pair, Session, input and helpers are identical, with no second version/Git row and no dispatch.
+   - **Probe closure:** probe admit on an exhausted pool, then cancel before registration. The closure clears the own probe with `next_probe_at = MAX(pre, at+backoff)`. A different genuine Unit obtains the probe after the cooldown. A closure under a foreign probe leaves the pool image unchanged.
    - A marked parked head blocks a later legacy candidate; a stalled one does not.
    - Marked plus legacy lease union at caps.
-   - Foreign lease change between plan and Immediate gives replan without a write.
-   - Commit-uncertain confirm, both postimage and rollback.
+   - Foreign lease change, or a pool created by another writer, between plan and Immediate gives replan without a write.
+   - Commit-uncertain confirm, both postimage and rollback, for Admit (cold and existing pool), Park and Closure.
    - Cancel while parked: closure rows, gate released once, no Session.
    - Cancel after Admit: lease released.
    - `fence_task_tx` race gives absence accepted only when revoked.
    - Epoch change while parked gives Held and no reconstruction.
    - Weak probes show no custody/actor/plan cycle.
    - Another Task proceeds.
+   - Reviewer with a declared `worktree` hook: S1 refusal with zero helper rows (SETUP refusal until PR-1 to PR-4 exist).
 3. **Required compiled mutants** (each must fail its intended assertion):
    - generic `validate_authority` for the own unit;
    - skipping MarkedParked in fairness;
@@ -566,12 +651,18 @@ Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session bin
    - due-claim without readiness CAS;
    - re-running the version helper on resume;
    - returning `NativePhaseStart::Waiting`;
-   - Prepared without compat, without quota, or with a re-planned manifest;
+   - Prepared without compat, without quota, without the S4b command, or with a re-planned manifest;
    - NoCurrentDispatch from rows only;
    - declaration from the Frame instead of the installed Arc;
    - `check_command` dropping `CODEX_HOME`/`HOME`;
    - C-3 using `trim()`;
-   - C-1 constants restored.
+   - C-1 constants restored;
+   - cold start requiring an existing pool, or creating it with `ON CONFLICT DO NOTHING` instead of exact absence;
+   - closure leaving the own probe set, or clearing a foreign probe;
+   - Initial `validate_version_ready` or the original successor re-applied after Park;
+   - a lineage built from current rows;
+   - S8 rebuilding the command, or Prepared issued before `check_command`;
+   - role-blind hook rule (Reviewer `worktree` accepted), or project required hooks excluded from the role rule.
 
    Compile or setup failure is never a kill.
 4. **Both-host official qualification** (user-approved, later; reported separately from fixtures):
@@ -580,7 +671,7 @@ Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session bin
    |---|---|
    | N1 | Claude and Codex, macOS and Linux, one Task: actual start, terminal, commit and review identities |
    | N4 | ≥4 overlapping Tasks (2 Claude + 2 Codex Executors under default caps), then reviewer progression; distinct worktrees, leases and results |
-   | H | A committed project hook and a user-level hook observed firing in a managed run, with no rrx override |
+   | H | A committed project hook and a user-level hook observed firing in a managed Executor run, with no rrx override; a Reviewer with a declared source-writing hook refused before helper effects |
    | Q | Actual exhaustion wait and resume, or recorded unverified |
    | Install | `cargo install` |
 
@@ -600,6 +691,8 @@ Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session bin
 | C-4 | A protected start never returns `NativePhaseStart::Waiting`; parking is in-task | V: `claim_start` one-shot (`preparation.rs:46–57`), no resume consumer (`phase_jobs.rs:259–263`) |
 | C-5 | Readiness `parking_version` = parked row version, NULL otherwise | V: DDL `schema.sql:117`, only NULL writers today |
 | C-6 | Approved "waiter version" is represented as complete seven-column image CAS + Unit version + readiness `parking_version`; no DDL | V: `execution.sql:136–142` has no version column |
+| C-7 | Transport HOW §3.1's `plan_transport_command(owner, &Arc<PreparedNativePhase>)` is replaced by `plan_native_command(owner, actor, completion, compat)` (S4b), run once before S5 from the SAME actor/allocation and closed preparation facts. `PreparedNativePhase` retains the resulting `Arc<NativeTransportCommand>`. Transport §7 step 1 "Build `NativeTransportCommand` (§6)" becomes "take Prepared's SAME command; recheck §6 program/cwd and `check_command`; derive `command_digest`". `NativeTransportCustody.command` holds that SAME Arc. The §6 vector, bounds, UUID-once rule and digest material are otherwise unchanged | §8 needs `check_command` before Prepared, but the approved producer consumes Prepared (transport HOW §3.1:216–217, §7 step 1) |
+| C-8 | Transport registration (§7 step 1 plan, §9 registration column) validates `validate_preparation_origin_tx` with Prepared's lineage successor and compares Prepared's lineage readiness `(preparing,P,NULL)` with P ∈ {2,4} and its Unit image. It never calls `NativePreparationCommit::validate_version_ready` | V: `preparation.rs:24–27,39–49,108–117`; `successor.rs:261–281` compares the full Unit |
 
 No requirement is changed. Agent-execution R5's Task WaitingQuota stays satisfied as derived status, per the already-approved binding design §5.2.
 
@@ -608,6 +701,7 @@ No requirement is changed. Agent-execution R5's Task WaitingQuota stays satisfie
 - **RN-1:** Root typed non-success operation closure (`phase_open 1→0`, `phase_closed` audit). It consumes the no-dispatch value. Absent.
 - **G2:** registered owner predicates and live quota routes. **G3:** Root `request_stop` targeting the SAME custody. **G4:** transport child cell. **G5:** composition.
 - **PR-1 to PR-4:** Reviewer, later Executor and retry Source lane.
+- A qualified derived-output hook profile (needed before any source-writing or output-only hook can run in a Reviewer). Absent; such declarations refuse.
 - Cross-epoch closure and restart fresh-attempt producer.
 - Primary-source verification of pathspec `attr` and `ls-files -s -t` at the qualified Git (readonly HOW §5.4).
 - Source review and tests of the a913203f Git batch.
