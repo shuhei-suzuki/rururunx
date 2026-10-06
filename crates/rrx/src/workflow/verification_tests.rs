@@ -1084,6 +1084,12 @@ async fn actual_collected_known_exit_survives_retention_io_failure_without_accep
         assert!(!run.certifying && run.commands.len() == 1);
         assert!(run.commands[0].work_known);
         assert_eq!(run.commands[0].exit, Some(exit));
+        let learned_work = if exit == 7 {
+            execution::WorkOutcome::Failure
+        } else {
+            execution::WorkOutcome::Unknown
+        };
+        assert_eq!(run.work, learned_work);
         assert_eq!(
             run.commands[0].stdout.bytes,
             b"known-before-retention\n".len() as u64
@@ -1093,6 +1099,7 @@ async fn actual_collected_known_exit_survives_retention_io_failure_without_accep
             format!("{:x}", Sha256::digest(b"known-before-retention\n"))
         );
         let current = store.execution_unit(unit).unwrap();
+        assert_eq!(current.work, Some(learned_work));
         assert!(!current.native_effects_open && !current.result_finalization_open);
         assert_eq!(current.cleanup, execution::CleanupOutcome::Unknown);
         assert!(
@@ -1176,7 +1183,7 @@ async fn actual_workflow_future_abort_fences_command_unit_and_quarantines_unknow
         );
         assert!(
             store
-                .due_execution_cleanup(now_ms().saturating_add(1000), 1024)
+                .due_execution_cleanup(now_ms().saturating_add(1000), 32)
                 .unwrap()
                 .contains(&unit)
         );

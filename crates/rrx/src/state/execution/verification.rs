@@ -422,6 +422,7 @@ fn run_read(connection: &Connection, unit: UnitId) -> Result<VerificationRun> {
         // A diagnostic projection preserves actual observed partial commands;
         // it is never a reusable completion or persisted aggregate success.
         run.commands = commands;
+        run.work = observed_work(&run.commands, plan.proposal.commands.len());
     } else {
         ensure!(
             serde_json::to_value(&run.commands)? == serde_json::to_value(&commands)?
@@ -598,7 +599,19 @@ impl Store {
         current.state = UnitState::Retired;
         current.disposition = Disposition::Lost;
         if current.work.is_none() {
-            current.work = Some(WorkOutcome::Unknown);
+            let plan = profile(
+                &tx,
+                tx.query_row(
+                    "SELECT workflow_id FROM verification_runs WHERE unit_id=?1",
+                    [current.id.to_string()],
+                    |r| r.get::<_, String>(0),
+                )?
+                .parse()?,
+            )?;
+            current.work = Some(observed_work(
+                &read_commands(&tx, current.id, &plan)?,
+                plan.proposal.commands.len(),
+            ));
         }
         write_unit(&tx, &mut current)?;
         tx.execute("UPDATE verification_runs SET state='unknown',version=version+1 WHERE unit_id=?1 AND state='admitted'",[current.id.to_string()])?;
