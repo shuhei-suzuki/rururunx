@@ -933,7 +933,7 @@ mod inventory_tests {
             rows: vec![row.clone(); 243],
         };
         for row in &mut inventory.rows {
-            row.text[7] = "x".repeat(7900);
+            row.text[7].clear();
         }
         let maximum = shape(&[36, 36, 36, 36, 36, 256, 9, BODY_BYTES], i64::MAX as u64).unwrap();
         let desired = INVENTORY_BYTES - GIT_ACTIONS * maximum;
@@ -1163,7 +1163,8 @@ mod inventory_tests {
         );
         let mut baseline = baseline;
         for row in &mut baseline.rows {
-            row.text[7] = "x".repeat(7900);
+            row.text[5] = "x".repeat(256);
+            row.text[7].clear();
         }
         let desired = INVENTORY_BYTES - row.bytes().unwrap() + 1;
         let used = 16
