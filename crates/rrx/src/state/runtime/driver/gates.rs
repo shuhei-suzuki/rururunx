@@ -11,7 +11,7 @@ pub(crate) enum InitialGateEdge {
     },
     Claim,
     Complete {
-        completion: InitialGateCompletion,
+        completion: Box<InitialGateCompletion>,
         at: i64,
     },
 }
@@ -20,6 +20,7 @@ pub(super) struct GateInput {
     pub(super) observed_before: Option<Record>,
     pub(super) observation: Option<GateObservation>,
     receipt: Option<Record>,
+    _completion: Option<Box<InitialGateCompletion>>,
 }
 impl GateInput {
     pub(super) fn validate_before_tx(&self, tx: &Transaction<'_>) -> Result<()> {
@@ -93,6 +94,7 @@ impl DriverReadTicket {
             observed_before: None,
             observation: None,
             receipt: None,
+            _completion: None,
         };
         let at = match edge {
             InitialGateEdge::Reserve { at } => {
@@ -243,6 +245,7 @@ impl DriverReadTicket {
                         bail!("initial Failed lifecycle producer unavailable")
                     }
                 }
+                gate._completion = Some(completion);
                 at
             }
         };

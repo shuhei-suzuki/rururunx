@@ -196,7 +196,7 @@ impl WorkflowEngine {
         let plan = ticket.plan_initial_gate(
             frame,
             InitialGateEdge::Complete {
-                completion,
+                completion: Box::new(completion),
                 at: now_ms(),
             },
             next,
