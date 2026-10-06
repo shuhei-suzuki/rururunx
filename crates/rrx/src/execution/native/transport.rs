@@ -554,28 +554,38 @@ impl NativeSessions {
         let mut command = physical_command(&prepared);
         preparation.retain_transport(custody.clone(), &prepared)?;
         let launch = plan.launch().clone();
-        let admission = launch.admission().enter(launch.clone()).await?;
-        admission.validate_for(&launch)?;
-        prepared.actor.validate_open()?;
-        ensure!(
-            candidate.is_candidate(),
-            "transport actor no longer Candidate"
-        );
-        let known = {
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .register_prepared_transport(&plan, &admission)
-        };
-        let known = match known {
-            Ok(known) => known,
-            Err(error) => {
-                *custody
-                    .registration_uncertain
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("registration custody poisoned"))? = true;
-                return Err(error.context("SAME transport registration uncertain; no spawn"));
+        let mut backoff=100u64;
+        let (admission,known)=loop {
+            let admission=launch.admission().enter(launch.clone()).await?;
+            admission.validate_for(&launch)?;prepared.actor.validate_open()?;
+            ensure!(candidate.is_candidate(),"transport actor no longer Candidate");
+            ensure!(!custody.child.lock().map_err(|_|anyhow::anyhow!("transport child poisoned"))?.stop_requested,"transport stopped before registration");
+            let uncertain=*custody.registration_uncertain.lock().map_err(|_|anyhow::anyhow!("registration custody poisoned"))?;
+            let result={
+                let mut store=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
+                if uncertain {
+                    match store.confirm_prepared_transport(&plan,&admission) {
+                        Ok(RegistrationProbe::Committed(known))=>Ok(Some(known)),
+                        Ok(RegistrationProbe::Absent)=>store.register_prepared_transport(&plan,&admission).map(Some),
+                        Ok(RegistrationProbe::Held)=>Ok(None),
+                        Err(error)=>Err(error),
+                    }
+                } else {store.register_prepared_transport(&plan,&admission).map(Some)}
+            };
+            match result {
+                Ok(Some(known))=>{
+                    *custody.registration_uncertain.lock().map_err(|_|anyhow::anyhow!("registration custody poisoned"))?=false;
+                    break (admission,known);
+                },
+                Ok(None)=>anyhow::bail!("SAME transport registration images diverged; Held"),
+                Err(_)=>{
+                    *custody.registration_uncertain.lock().map_err(|_|anyhow::anyhow!("registration custody poisoned"))?=true;
+                    drop(admission);
+                    let changed=custody.changed.notified();
+                    prepared.actor.validate_open()?;
+                    tokio::select! {_=tokio::time::sleep(Duration::from_millis(backoff))=>{},_=changed=>{prepared.actor.validate_open()?;}}
+                    backoff=backoff.saturating_mul(2).min(5000);
+                },
             }
         };
         let activation = candidate.activate(known);
