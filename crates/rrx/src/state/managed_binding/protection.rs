@@ -85,7 +85,7 @@ impl Store {
                 )
                 && !matches!(
                     t.state,
-                    TaskState::Completed | TaskState::Failed | TaskState::Canceled
+                    TaskState::Completed | TaskState::Failed | TaskState::Cancelled
                 ),
             "legacy native owner inactive"
         );
