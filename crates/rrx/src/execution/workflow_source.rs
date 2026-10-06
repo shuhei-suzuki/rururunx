@@ -235,6 +235,13 @@ impl ManagedWorkflowSources {
         let unit = prepared.unit().clone();
         let (project, goal, task) = self.owners(task)?;
         let io = UnitGit::new(self.owner.clone(), &unit, true)?;
+        let io = match driver {
+            Some(driver) => io.with_driver_ticket(crate::state::read_driver_ticket(
+                self.owner.clone(),
+                driver.association()?,
+            )?)?,
+            None => io,
+        };
         let files =
             read_corpus(CorpusReader::Prepared(&io), &unit.worktree, &unit.base_sha).await?;
         let frame = Frame::build(

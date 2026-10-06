@@ -80,6 +80,17 @@ impl DriverReadTicket {
     pub(crate) fn task(&self) -> &Task {
         self.scope.task()
     }
+    pub(crate) fn preparation_matches(&self, unit: &crate::execution::ExecutionUnit) -> Result<()> {
+        let (original, body) = self
+            .preparation
+            .as_ref()
+            .context("Driver has no preparation Unit")?;
+        ensure!(
+            original.id == unit.id && *body == serde_json::to_string(unit)?,
+            "helper Driver/Unit snapshot differs"
+        );
+        Ok(())
+    }
 
     /// Exact byte/index CAS only. Complete bodies/hashes were decoded outside
     /// SharedStore. No current-row recapture or authority advance occurs here.

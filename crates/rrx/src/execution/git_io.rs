@@ -14,6 +14,7 @@ pub(crate) struct UnitGit {
     profile: resources::ResourceProfile,
     native: bool,
     git_lease: Option<Arc<owner::GitLease>>,
+    driver: Option<crate::state::DriverReadTicket>,
 }
 impl UnitGit {
     pub(crate) fn new(
@@ -28,7 +29,16 @@ impl UnitGit {
             profile,
             native,
             git_lease: None,
+            driver: None,
         })
+    }
+    pub(crate) fn with_driver_ticket(
+        mut self,
+        ticket: crate::state::DriverReadTicket,
+    ) -> Result<Self> {
+        ticket.preparation_matches(&self.unit)?;
+        self.driver = Some(ticket);
+        Ok(self)
     }
     pub(crate) fn with_git_lease(mut self, lease: Arc<owner::GitLease>) -> Self {
         self.git_lease = Some(lease);
@@ -140,12 +150,13 @@ impl UnitGit {
             );
             store.validate_execution(&current.authority(), self.native, !self.native)?;
             // Capture/inspection has Runtime-only finalization authority; never grant native tools.
-            store.reserve_execution_helper(
+            store.reserve_execution_helper_pinned(
                 &current.authority(),
                 operation,
                 self.native,
                 root,
                 kind,
+                self.driver.as_ref(),
             )?;
             match process::OwnedProcess::spawn(&mut command) {
                 Ok(child) => child,
@@ -161,7 +172,14 @@ impl UnitGit {
             }
         };
         let mut helper_guard = owner::HelperGuard::new(self.owner.clone(), operation);
-        let observed = process::capture_scoped(child, &self.owner, &self.unit, self.native).await;
+        let observed = process::capture_scoped_pinned(
+            child,
+            &self.owner,
+            &self.unit,
+            self.native,
+            self.driver.as_ref(),
+        )
+        .await;
         let mut receipt = BTreeMap::new();
         if let Ok(o) = &observed {
             receipt.insert(
@@ -185,7 +203,7 @@ impl UnitGit {
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .reconcile_managed_effect(
+            .reconcile_managed_effect_pinned(
                 operation,
                 1,
                 if observed.is_ok() {
@@ -194,6 +212,11 @@ impl UnitGit {
                     EffectState::Unknown
                 },
                 receipt,
+                if observed.is_ok() {
+                    self.driver.as_ref()
+                } else {
+                    None
+                },
             )?;
         helper_guard.disarm();
         observed

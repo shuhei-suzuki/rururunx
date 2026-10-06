@@ -401,6 +401,13 @@ impl AttemptManager {
             let common = self.owner.git_lease(preparing.id, None).await?;
             let io =
                 UnitGit::new(self.owner.clone(), &preparing, true)?.with_git_lease(common.clone());
+            let io = match driver {
+                Some(driver) => io.with_driver_ticket(crate::state::read_driver_ticket(
+                    self.owner.clone(),
+                    driver.association()?,
+                )?)?,
+                None => io,
+            };
             let base = match base {
                 Some(base) => base,
                 None => {
@@ -439,6 +446,13 @@ impl AttemptManager {
                 }
             };
             let io = UnitGit::new(self.owner.clone(), &preparing, true)?.with_git_lease(common);
+            let io = match driver {
+                Some(driver) => io.with_driver_ticket(crate::state::read_driver_ticket(
+                    self.owner.clone(),
+                    driver.association()?,
+                )?)?,
+                None => io,
+            };
             results::qualified_content_scoped(&project.root, &base, &io).await?;
             std::fs::create_dir_all(&project.worktree_root)?;
             ensure!(

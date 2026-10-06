@@ -193,6 +193,11 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         plan.ticket.validate_current_tx(&tx)?;
+        let outstanding: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE task_id=?1 AND state IN ('pending','unknown'))",[plan.task.id.to_string()],|r|r.get(0))?;
+        ensure!(
+            !outstanding,
+            "Driver advance has outstanding/unknown helper effects"
+        );
         // Reuse all current lifecycle/accepted-definition/activity checks, while
         // the old genuine association and full pins are still current.
         super::validate(&tx, plan.task.id)?;
