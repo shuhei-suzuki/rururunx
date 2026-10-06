@@ -2400,6 +2400,7 @@ async fn native_concurrent_terminal_retry_survives_supervisor_watch_publication(
     assert_eq!(receipt.text.as_deref(), Some("APPROVE actual answer"));
     assert_eq!(updates.borrow().work, Some(WorkOutcome::Success));
     assert_eq!(updates.borrow().receipt, restored.receipt);
+    assert_eq!(updates.borrow().session.state, SessionState::Exited);
     // Consume the status retry's watch update. The next observation must come
     // from the actual supervisor's publication/Drop, without another status read.
     updates.borrow_and_update();
@@ -2410,6 +2411,7 @@ async fn native_concurrent_terminal_retry_survives_supervisor_watch_publication(
         .unwrap();
     assert_eq!(updates.borrow().work, Some(WorkOutcome::Success));
     assert_eq!(updates.borrow().receipt, restored.receipt);
+    assert_eq!(updates.borrow().session.state, SessionState::Exited);
     assert_eq!(
         updates.borrow().result.as_ref().unwrap()["text"],
         "APPROVE actual answer"
