@@ -61,6 +61,13 @@ context predicates with their original Source lineage, current successor,
 marker-bound Driver, selected Native actor and exact stage. The governing hash
 is fixed from the original marker parents before Store entry. Ordinary consumers
 retain their separate ordinary Driver/source checks, including marker refusal.
+Owned version observations also have a nongrant closure port after normal
+currency revocation. It retains the same original actor, Source ticket, helper
+settlement and latest bounded complete Unit preimage, then compares all Unit
+columns/body and the exact original effect inventory in one Immediate. Only the
+original effect is journaled or its exact postimage confirmed; flags and Native
+permissions stay unchanged. Missing lineage or CAS drift remains Held. Genuine
+marked lifecycle qualification and installed composition remain unavailable.
 
 The incremental [production gate integration](../production-workflow-gates-design.md)
 adds a concrete library port for real initial preparation, Implement terminal/result

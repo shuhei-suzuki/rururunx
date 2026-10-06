@@ -1,7 +1,10 @@
 //! One retained version-only helper. Neither a receipt nor exit zero completes
 //! protected Native preparation, registration, input or Session authority.
 use super::*;
-use crate::state::{NativeHelperIntentCommit, NativeHelperSettlementPlan, NativeVersionHelperPlan};
+use crate::state::{
+    NativeHelperIntentCommit, NativeHelperSettlementPlan, NativeVersionClosurePlan,
+    NativeVersionHelperPlan,
+};
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::AsyncReadExt;
@@ -45,6 +48,7 @@ struct HelperState {
     attempted: bool,
     observation: Option<Arc<NativeVersionObservation>>,
     settlement: Option<Arc<NativeHelperSettlementPlan>>,
+    closure: Option<Arc<NativeVersionClosurePlan>>,
     ended: bool,
 }
 /// Only actual capture constructs these fields. Output is never a receipt.
@@ -138,38 +142,40 @@ impl NativeVersionHelperCustody {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
     pub(super) fn reconcile(&self, owner: &Arc<RuntimeOwner>) -> Result<()> {
-        let (intent, observation, settlement) = {
+        let (observation, settlement, closure) = {
             let state = self.state();
             (
-                state.intent.clone(),
                 state.observation.clone(),
                 state.settlement.clone(),
+                state.closure.clone(),
             )
         };
-        if let Some(settlement) = settlement {
-            return owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .record_phase_version_observation(&settlement);
-        }
-        if intent.is_none() {
-            let intent = owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .confirm_phase_version_intent(self.plan.clone())?;
-            self.state().intent.get_or_insert_with(|| Arc::new(intent));
-        }
-        let observation = observation.context("same owned version observation pending; held")?;
-        let planned =
-            crate::state::Store::plan_phase_version_settlement(self.plan.clone(), observation)?;
-        let settlement = self.state().settlement.get_or_insert(planned).clone();
+        let settlement = match settlement {
+            Some(settlement) => settlement,
+            None => {
+                let observation =
+                    observation.context("same owned version observation pending; held")?;
+                let planned = crate::state::Store::plan_phase_version_settlement(
+                    self.plan.clone(),
+                    observation,
+                )?;
+                self.state().settlement.get_or_insert(planned).clone()
+            }
+        };
+        let closure = match closure {
+            Some(closure) => closure,
+            None => {
+                // Receipt encoding and latest full Unit snapshot precede the
+                // writer mutex. Retain once; CAS drift never refreshes history.
+                let planned = crate::state::Store::plan_phase_version_closure(owner, settlement)?;
+                self.state().closure.get_or_insert(planned).clone()
+            }
+        };
         owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .record_phase_version_observation(&settlement)
+            .close_phase_version_observation(&closure)
     }
 }
 /// Constructed before task spawn/first poll. A task dropped without polling
@@ -346,19 +352,9 @@ impl NativeSessions {
             notified.await;
         }
         kick.completed = true;
-        let observation = helper
-            .state()
-            .observation
-            .clone()
-            .context("version helper actual capture unavailable; held")?;
-        // Bounded owned observation was saved before any parser/hash/Store.
-        let settlement = crate::state::Store::plan_phase_version_settlement(plan, observation)?;
-        helper.state().settlement = Some(settlement.clone());
-        self.owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .record_phase_version_observation(&settlement)?;
+        // Both initial completion and later reconciliation use SAME authentic
+        // observation; cancellation cannot force normal permission reopening.
+        helper.reconcile(&self.owner)?;
         Ok(())
     }
 }
