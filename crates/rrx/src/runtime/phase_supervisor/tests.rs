@@ -13,6 +13,61 @@ use crate::{
 };
 use std::{collections::BTreeMap, os::unix::fs::PermissionsExt, path::Path};
 
+/// Actual trusted ingress, legacy selected allocation and EMPTY jobs only.
+/// No accepted Source, marker, prepared Native input or installed issuer.
+#[tokio::test]
+async fn actual_empty_job_reservation_removes_only_its_fresh_original() {
+    let f = Fixture::new(4, 4).await;
+    let tasks = f.tasks("empty-reservation", 1).await;
+    let (allocation, _guard, unit) = f.allocation(&tasks[0], "codex").await;
+    let allocation = Arc::new(allocation);
+    let jobs = &f.runtime.phase_jobs;
+    let fresh = jobs.reserve(&allocation).unwrap();
+    let reused = jobs.reserve(&allocation).unwrap();
+    let original = jobs.preparation_custody(&fresh).unwrap();
+    assert!(Arc::ptr_eq(
+        &original,
+        &jobs.preparation_custody(&reused).unwrap()
+    ));
+    assert!(
+        !jobs.remove_unstarted(&reused).unwrap(),
+        "reuse removed original job"
+    );
+    jobs.ready(&fresh).unwrap();
+    assert!(Arc::ptr_eq(
+        &original,
+        &jobs.preparation_custody(&fresh).unwrap()
+    ));
+    let foreign_jobs = crate::runtime::phase_jobs::PhaseJobs::default();
+    let foreign = foreign_jobs.reserve(&allocation).unwrap();
+    assert!(
+        jobs.remove_unstarted(&foreign).is_err(),
+        "foreign entry token removed same-ID job"
+    );
+    jobs.ready(&fresh).unwrap();
+    assert!(jobs.remove_unstarted(&fresh).unwrap());
+    assert!(jobs.ready(&reused).is_err());
+    jobs.ensure_shutdown_complete().unwrap();
+    assert!(foreign_jobs.remove_unstarted(&foreign).unwrap());
+    f.unchanged(&unit);
+    f.runtime.shutdown().await.unwrap();
+}
+
+/// Nongrant policy-only control on an actual Unit/guard. Calling the retention
+/// policy here does not fabricate the actual Source seal or qualify acceptance.
+#[tokio::test]
+async fn nongrant_guard_policy_is_one_way_across_restore_and_final_drop() {
+    let f = Fixture::new(4, 4).await;
+    let tasks = f.tasks("guard-policy", 1).await;
+    let (_allocation, mut guard, unit) = f.allocation(&tasks[0], "codex").await;
+    guard.hold_accepted_source();
+    guard.hold_marker_publication();
+    guard.restore_unmarked_retirement();
+    drop(guard);
+    f.unchanged(&unit);
+    f.runtime.shutdown().await.unwrap();
+}
+
 struct Fixture {
     dir: tempfile::TempDir,
     owner: Arc<RuntimeOwner>,

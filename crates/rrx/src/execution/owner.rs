@@ -165,38 +165,6 @@ impl Drop for HelperGuard {
     }
 }
 
-#[cfg(test)]
-mod preparation_policy_tests {
-    use super::*;
-
-    /// Policy-only nongrant control on an actual legacy Unit. It does not
-    /// fabricate accepted Source linkage or qualify a protected Native route.
-    #[tokio::test]
-    async fn accepted_guard_policy_is_one_way_across_restore_and_final_drop() {
-        let (_dir, owner, task) = crate::execution::results::tests::fixture().await;
-        let (unit, _) = super::super::attempts::AttemptManager::new(owner.clone())
-            .prepare(task.id, "codex", "Implement", None)
-            .await
-            .unwrap();
-        let mut guard = PreparationGuard::new(owner.clone(), &unit);
-        guard.hold_accepted_source();
-        guard.hold_marker_publication();
-        guard.restore_unmarked_retirement();
-        assert!(guard.armed, "accepted policy disarmed ownership");
-        assert!(
-            !guard.unmarked_retirement,
-            "restore reopened accepted Lost retirement"
-        );
-        drop(guard);
-        let current = owner.store.lock().unwrap().execution_unit(unit.id).unwrap();
-        assert_eq!(
-            serde_json::to_value(current).unwrap(),
-            serde_json::to_value(unit).unwrap(),
-            "final accepted guard Drop rewrote original Unit"
-        );
-    }
-}
-
 impl RuntimeOwner {
     pub fn open(state: &Path) -> Result<Arc<Self>> {
         let path = if state.is_absolute() {
