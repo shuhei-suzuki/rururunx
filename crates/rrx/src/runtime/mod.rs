@@ -2,6 +2,7 @@
 pub mod control;
 pub(crate) mod driver;
 pub mod goal;
+pub(crate) mod phase_supervisor;
 mod service;
 use crate::{cli::transport::ServiceIdentity, config::Config, execution::RuntimeOwner};
 use anyhow::Result;
@@ -14,6 +15,7 @@ pub struct Runtime {
     owner: Arc<RuntimeOwner>,
     config: Config,
     _drivers: Arc<driver::DriverRegistry>,
+    phases: Arc<phase_supervisor::PhaseSupervisor>,
     started: AtomicBool,
     running: Arc<AtomicBool>,
     stopping: AtomicBool,
@@ -29,10 +31,16 @@ impl Runtime {
         config.validate()?;
         let drivers = driver::DriverRegistry::new(owner.epoch());
         owner.attach_runtime_drivers(&drivers)?;
+        let phases = phase_supervisor::PhaseSupervisor::new(
+            owner.clone(),
+            config.scheduler.global_max_sessions,
+            config.scheduler.max_tasks_per_project,
+        );
         Ok(Self {
             owner,
             config,
             _drivers: drivers,
+            phases,
             started: AtomicBool::new(false),
             running: Arc::new(AtomicBool::new(false)),
             stopping: AtomicBool::new(false),

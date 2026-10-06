@@ -19,6 +19,8 @@ use tokio::{
     sync::{mpsc, watch},
 };
 #[cfg(test)]
+mod phase_fence_tests;
+#[cfg(test)]
 pub(crate) mod tests;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -161,6 +163,17 @@ impl NativeSessions {
         effort: Option<String>,
         executable: Option<std::path::PathBuf>,
     ) -> Result<NativeStart> {
+        // Public ManagedInput/Unit identity is not a managed phase owner. This
+        // standalone entry cannot qualify or prepare a protected Workflow.
+        ensure!(
+            !self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .managed_phase_required(&input.authority.scope)?,
+            NativeFailure::AuthorityUnavailable
+        );
         let gate = {
             let mut starts = self
                 .starts
@@ -838,6 +851,10 @@ fn admit_native_frame(
         .store
         .lock()
         .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+    ensure!(
+        !store.managed_phase_required(&pinned.scope)?,
+        NativeFailure::AuthorityUnavailable
+    );
     let current = store.execution_unit(pinned.id)?;
     ensure!(
         current.scope == pinned.scope
@@ -879,6 +896,10 @@ fn native_authority(
         .store
         .lock()
         .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+    ensure!(
+        !store.managed_phase_required(&pinned.scope)?,
+        NativeFailure::AuthorityUnavailable
+    );
     let unit = store.execution_unit(pinned.id)?;
     ensure!(
         unit.scope == pinned.scope

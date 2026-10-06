@@ -59,3 +59,13 @@ no private owner/Unit/proof may be SQL-seeded to bypass missing prerequisites.
 Compile/fmt checks and existing read-plan controls are recorded separately from
 positive marker, binder, full regression, authenticated Native and both-OS gates.
 No README, license, process-custody or security-sandbox claim is changed.
+
+## Closed-review class correction
+
+Independent static reviews of `20478c7` closed with one verified Medium finding:
+the plan did not require the captured Task and Workflow to agree on their workflow
+class. The corrected planner rejects that disagreement before projecting marker
+bytes, preserving the invariant required by the existing Workflow reader. The
+original review candidate and raw reports remain unchanged. A genuine allocation
+control for class drift and independent review of this correction remain gates;
+empty-scope read controls do not qualify that positive path.

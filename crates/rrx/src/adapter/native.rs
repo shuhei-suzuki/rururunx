@@ -250,6 +250,15 @@ impl AgentAdapter for NativeAdapter {
                     .store
                     .lock()
                     .map_err(|_| error(ErrorKind::StateFailure, "state poisoned"))?;
+                if store
+                    .managed_phase_required(&input.authority.scope)
+                    .map_err(mapped)?
+                {
+                    return Err(error(
+                        ErrorKind::OwnershipMismatch,
+                        "protected Workflow requires the private Native phase protocol",
+                    ));
+                }
                 let unit = store
                     .validate_execution(&input.authority, true, false)
                     .map_err(mapped)?;

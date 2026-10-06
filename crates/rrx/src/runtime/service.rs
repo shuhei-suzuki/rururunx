@@ -36,6 +36,7 @@ impl Runtime {
         *slot = Some(tokio::spawn(async move {
             let _running = Running(running);
             let mut sequence = 0;
+            let mut backoff = 0;
             loop {
                 let Some(runtime) = retained.upgrade() else {
                     return Ok(());
@@ -54,6 +55,8 @@ impl Runtime {
                         sequence,
                     )?;
                 sequence = next;
+                let pending = runtime.phases.reconcile_pending()?;
+                let delay = super::phase_supervisor::PhaseSupervisor::delay(pending, &mut backoff);
                 let wake = runtime.wake.clone();
                 drop(runtime);
                 if more {
@@ -64,7 +67,7 @@ impl Runtime {
                 // lost or duplicated hints cannot ratify a launch or claim.
                 tokio::select! {
                     ()=wake.notified()=>{},
-                    ()=tokio::time::sleep(Duration::from_secs(30))=>{},
+                    ()=tokio::time::sleep(delay)=>{},
                 }
                 sequence = 0;
             }
@@ -79,6 +82,7 @@ impl Runtime {
                 .await
                 .context("Runtime control admission shutdown remains pending")?;
         self.stopping.store(true, Ordering::SeqCst);
+        self.phases.close_unmarked();
         self.wake.notify_one();
         let mut slot = self.supervisor.lock().await;
         if let Some(handle) = slot.as_mut() {

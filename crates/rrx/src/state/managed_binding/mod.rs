@@ -1,4 +1,4 @@
-//! Managed phase planning. Read snapshots and digests never grant dispatch.
+//! Managed native Session planning and schema protection.
 //!
 //! The marker/binding producer and Native protocol are not yet composed. These
 //! bounded read primitives must not enable Workflow or replace its private proof.
@@ -18,7 +18,6 @@ pub(super) use schema::{
 };
 
 pub(crate) use marker_plan::plan_marker;
-
 pub(crate) use snapshot::plan_scope;
 
 #[cfg(test)]
