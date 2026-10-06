@@ -49,6 +49,12 @@ impl NativePhasePort {
     pub(crate) fn alias(&self) -> &str {
         &self.adapter.name
     }
+    pub(crate) fn owner(&self) -> &execution::RuntimeOwner {
+        &self.adapter.owner
+    }
+    pub(crate) fn program(&self) -> &Path {
+        &self.adapter.program
+    }
 
     /// Allocate before all version, readonly Git and Native child operations.
     /// Current owner/input/Workflow/locks still require the marker's final CAS;
