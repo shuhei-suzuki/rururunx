@@ -263,7 +263,11 @@ fn negative_history_exact4096_accepts_and4097_refuses_without_cross_scope_charge
             other.data["native_ref"] = serde_json::json!(format!("history-{index}"));
             insert_record(&old, &other, None);
         }
-        let other_scope = history(&old);
+        let other_scope = Scope {
+            project_id: scope.project_id,
+            goal_id: None,
+            task_id: None,
+        };
         // Same native UUID in another scope neither conflicts nor consumes this bound.
         insert_record(&old, &session(&other_scope, SessionState::Lost), None);
         let store = Store::open(&path).unwrap();
