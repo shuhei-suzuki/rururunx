@@ -1,0 +1,1165 @@
+{
+  "status": "QUALIFIED_BOUNDED_LOCAL_COMPONENT_CHECKPOINT; full Phase2/native/MVP remains open",
+  "source_commit": "802764f03893d0ee8e08ee19045ccb333387ad9b",
+  "branch": "feat/agent-execution-integration",
+  "schema_version": 8,
+  "integrated_main": "ad1358e4ff2a1fad24af1c50a3629e0a5f86714a",
+  "code_ancestry": {
+    "native_cli_runtime": "5b6e8a8152926b643c6926b87e853de12b9319fc",
+    "corrected_verifier": "00d43a185bcab7d16a8c3cdf019bbb3b34eb6167",
+    "composed_before_fixture": "ab7bafb8f6c2a0ff21b3fa0f29d48b7e9d5d0199",
+    "fixture_migration": "1e4ea045a13f6d3bc2d64c00c52372ac0b27c1e2"
+  },
+  "current_main_delta": "Only Codex test journal tail reader and one regression test; production Rust bytes unchanged from composed1e4",
+  "current_source_checks": {
+    "head": "802764f03893d0ee8e08ee19045ccb333387ad9b",
+    "main": "ad1358e4ff2a1fad24af1c50a3629e0a5f86714a",
+    "clean_before": true,
+    "runs": [
+      {
+        "name": "fmt",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit": 0,
+        "seconds": 0.4954109191894531,
+        "log": "/private/tmp/rrx-integration-current-main/fmt.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "result_lines": []
+      },
+      {
+        "name": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-verifier-target",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit": 0,
+        "seconds": 10.677894115447998,
+        "log": "/private/tmp/rrx-integration-current-main/clippy.log",
+        "sha256": "ea5a916fa8650c6aa70e079c8fa99bf9d827b6e875c0f98c127c683c50cd1ebf",
+        "result_lines": []
+      },
+      {
+        "name": "build",
+        "command": [
+          "cargo",
+          "build",
+          "--workspace",
+          "--all-targets",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-verifier-target"
+        ],
+        "exit": 0,
+        "seconds": 21.182765007019043,
+        "log": "/private/tmp/rrx-integration-current-main/build.log",
+        "sha256": "7fb7ef3805c606cc4b3b237de76a8e88345f00328f91c6da4e35f6602a608332",
+        "result_lines": []
+      },
+      {
+        "name": "regression",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--all-targets",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-verifier-target",
+          "--",
+          "--test-threads=4"
+        ],
+        "exit": 0,
+        "seconds": 282.95744585990906,
+        "log": "/private/tmp/rrx-integration-current-main/regression.log",
+        "sha256": "5c6cb343bd5cd96047a5488e7eb2376bd1be13a8adb8a760e801e3ad84d16f41",
+        "result_lines": [
+          "test result: ok. 44 passed; 0 failed; 1 ignored; 0 measured; 476 filtered out; finished in 3.03s",
+          "test result: ok. 496 passed; 0 failed; 25 ignored; 0 measured; 0 filtered out; finished in 187.58s",
+          "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+          "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.64s",
+          "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.01s",
+          "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.42s",
+          "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.91s",
+          "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.06s",
+          "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+          "test result: ok. 15 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 29.91s",
+          "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.12s",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.55s",
+          "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.58s",
+          "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s",
+          "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+          "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+          "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+          "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+          "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+        ]
+      }
+    ],
+    "head_after": "802764f03893d0ee8e08ee19045ccb333387ad9b",
+    "clean_after": true
+  },
+  "current_source_counts": {
+    "source": "802764f03893d0ee8e08ee19045ccb333387ad9b",
+    "command": "cargo test --workspace --all-targets --offline --target-dir /private/tmp/rrx-verifier-target -- --test-threads=4",
+    "per_target": [
+      {
+        "target": "unittests src/lib.rs (/private/tmp/rrx-verifier-target/debug/deps/rrx-2a4538ad00dcecac)",
+        "results": [
+          {
+            "passed": 44,
+            "failed": 0,
+            "ignored": 1,
+            "filtered": 476
+          },
+          {
+            "passed": 496,
+            "failed": 0,
+            "ignored": 25,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 496,
+          "failed": 0,
+          "ignored": 25,
+          "filtered": 0
+        },
+        "excluded_nested": [
+          {
+            "passed": 44,
+            "failed": 0,
+            "ignored": 1,
+            "filtered": 476
+          }
+        ]
+      },
+      {
+        "target": "unittests src/main.rs (/private/tmp/rrx-verifier-target/debug/deps/rrx-1f06ff8f27f3a6e5)",
+        "results": [
+          {
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "tests/adapter.rs (/private/tmp/rrx-verifier-target/debug/deps/adapter-bbd155a9006cf63d)",
+        "results": [
+          {
+            "passed": 19,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 19,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "tests/cli.rs (/private/tmp/rrx-verifier-target/debug/deps/cli-c618fc88d3dbb941)",
+        "results": [
+          {
+            "passed": 5,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "tests/codex_unavailable.rs (/private/tmp/rrx-verifier-target/debug/deps/codex_unavailable-7ec6a48e551b708c)",
+        "results": [
+          {
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 1
+          },
+          {
+            "passed": 1,
+            "failed": 0,
+            "ignored": 1,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 1,
+          "filtered": 0
+        },
+        "excluded_nested": [
+          {
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 1
+          }
+        ]
+      },
+      {
+        "target": "tests/context.rs (/private/tmp/rrx-verifier-target/debug/deps/context-6c18ebf2c456b446)",
+        "results": [
+          {
+            "passed": 16,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "tests/git.rs (/private/tmp/rrx-verifier-target/debug/deps/git-7db62ccb1a79d7ae)",
+        "results": [
+          {
+            "passed": 18,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 18,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "tests/goal_graph.rs (/private/tmp/rrx-verifier-target/debug/deps/goal_graph-70d198b01076d677)",
+        "results": [
+          {
+            "passed": 4,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "tests/grok.rs (/private/tmp/rrx-verifier-target/debug/deps/grok-3249564fb744af84)",
+        "results": [
+          {
+            "passed": 15,
+            "failed": 0,
+            "ignored": 2,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 15,
+          "failed": 0,
+          "ignored": 2,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "tests/managed_docker.rs (/private/tmp/rrx-verifier-target/debug/deps/managed_docker-a75bb4e962b3f1ce)",
+        "results": [
+          {
+            "passed": 1,
+            "failed": 0,
+            "ignored": 1,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 1,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "tests/managed_tools.rs (/private/tmp/rrx-verifier-target/debug/deps/managed_tools-8be58b3018271e3b)",
+        "results": [
+          {
+            "passed": 1,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "tests/project.rs (/private/tmp/rrx-verifier-target/debug/deps/project-ad76bcad98a586f4)",
+        "results": [
+          {
+            "passed": 16,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "tests/state.rs (/private/tmp/rrx-verifier-target/debug/deps/state-f89757e8b3b02270)",
+        "results": [
+          {
+            "passed": 17,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 17,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "unittests examples/native_codex_protocol.rs (/private/tmp/rrx-verifier-target/debug/examples/native_codex_protocol-5982441938a7a2bc)",
+        "results": [
+          {
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "unittests examples/native_codex_session.rs (/private/tmp/rrx-verifier-target/debug/examples/native_codex_session-2f2fe41e8fd4333f)",
+        "results": [
+          {
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "unittests examples/repository-context.rs (/private/tmp/rrx-verifier-target/debug/examples/repository_context-a8a69e08d597a9de)",
+        "results": [
+          {
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "unittests src/lib.rs (/private/tmp/rrx-verifier-target/debug/deps/rrx_process_tracker-662e1ba8b83c3899)",
+        "results": [
+          {
+            "passed": 4,
+            "failed": 0,
+            "ignored": 0,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      },
+      {
+        "target": "tests/discovery.rs (/private/tmp/rrx-verifier-target/debug/deps/discovery-9fa2d018b22542e1)",
+        "results": [
+          {
+            "passed": 1,
+            "failed": 0,
+            "ignored": 1,
+            "filtered": 0
+          }
+        ],
+        "primary": {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 1,
+          "filtered": 0
+        },
+        "excluded_nested": []
+      }
+    ],
+    "totals": {
+      "passed": 614,
+      "failed": 0,
+      "ignored": 30
+    },
+    "nested_counts_excluded": true
+  },
+  "retained_component_evidence": {
+    "rrx-verification-composed-component-evidence.json": {
+      "source_commit": "1e4ea045a13f6d3bc2d64c00c52372ac0b27c1e2",
+      "branch": "impl/agent-execution-verification-tests",
+      "worktree": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/agent-execution-verification-tests",
+      "clean": true,
+      "status": "COMPONENT_CHECKS_COMPLETE; overall Phase2/native compatibility not approved",
+      "composition": {
+        "verifier_premerge": "00d43a185bcab7d16a8c3cdf019bbb3b34eb6167",
+        "native_cli_pure_runtime_base": "5b6e8a8152926b643c6926b87e853de12b9319fc",
+        "composition_commit": "ab7bafb8f6c2a0ff21b3fa0f29d48b7e9d5d0199",
+        "fixture_only_commits": [
+          "510e266ed51e75cfc936e0f54df06977831431a7",
+          "1e4ea045a13f6d3bc2d64c00c52372ac0b27c1e2"
+        ],
+        "schema_version": 8,
+        "guard_placement": "actual extracted register_session_tx/reserve_effect_tx/finish_execution_tx; prior helper/update guards retained",
+        "owner_fields": "canonical state_path and single async resource_admission both retained"
+      },
+      "environment": {
+        "os": "local macOS",
+        "rust_toolchain": "1.91.1-aarch64-apple-darwin",
+        "offline": true,
+        "authentication": "none; account-free local protocol/owned command fixtures",
+        "cargo_target_dir": "/private/tmp/rrx-verifier-target"
+      },
+      "checks": [
+        {
+          "kind": "debug",
+          "result": "PASS",
+          "command": "cargo test --workspace --all-targets --offline -- --test-threads=4",
+          "total_primary": {
+            "passed": 613,
+            "failed": 0,
+            "ignored": 30
+          },
+          "nested_child_counts_excluded": true,
+          "evidence": "/private/tmp/rrx-verification-composed-debug-threads4-evidence.json",
+          "log": {
+            "path": "/private/tmp/rrx-verification-composed-debug-threads4.log",
+            "bytes": 76042,
+            "sha256": "c24f9f6030a238cfe92c9335310b68b1a7eee3ed0f0caf47637f90517a1d6ab4",
+            "mtime_utc": "2026-10-06T01:16:32.588380+00:00"
+          }
+        },
+        {
+          "kind": "release",
+          "result": "PASS",
+          "command": "cargo test --workspace --all-targets --release --offline -- --test-threads=4",
+          "total_primary": {
+            "passed": 613,
+            "failed": 0,
+            "ignored": 30
+          },
+          "nested_child_counts_excluded": true,
+          "evidence": "/private/tmp/rrx-verification-composed-release-threads4-evidence.json",
+          "log": {
+            "path": "/private/tmp/rrx-verification-composed-release-threads4.log",
+            "bytes": 79278,
+            "sha256": "dbaad2041ec6a06c8825bc408f9280784aa76ca3861192255f6a15a0aad31c46",
+            "mtime_utc": "2026-10-06T01:24:35.723897+00:00"
+          }
+        },
+        {
+          "kind": "fmt",
+          "result": "PASS",
+          "exit_code": 0,
+          "command": "cargo fmt --all --check",
+          "log": {
+            "path": "/private/tmp/rrx-verification-composed-fmt.log",
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "mtime_utc": "2026-10-06T01:25:35.673839+00:00"
+          }
+        },
+        {
+          "kind": "clippy",
+          "result": "PASS",
+          "exit_code": 0,
+          "command": "cargo clippy --workspace --all-targets --offline -- -D warnings",
+          "log": {
+            "path": "/private/tmp/rrx-verification-composed-clippy.log",
+            "bytes": 2824,
+            "sha256": "c09b1c787f8766b209cb7fccc2d3a87729ce4675781f3ae60324a2c305392de9",
+            "mtime_utc": "2026-10-06T01:25:05.756915+00:00"
+          }
+        },
+        {
+          "kind": "build",
+          "result": "PASS",
+          "exit_code": 0,
+          "command": "cargo build --workspace --all-targets --offline",
+          "log": {
+            "path": "/private/tmp/rrx-verification-composed-build.log",
+            "bytes": 196,
+            "sha256": "deb13f0f2d567b1b34d772b602019fb1176ecf2f17c3b4b822a6897d034c0763",
+            "mtime_utc": "2026-10-06T01:25:35.734742+00:00"
+          }
+        }
+      ],
+      "actual_controls": {
+        "verifier_workflow": 12,
+        "schema8": 2,
+        "same_owner_parallel_tasks": 4,
+        "readonly_review_original_branches": [
+          "publish",
+          "input-changed",
+          "artifact-changed",
+          "cancel"
+        ],
+        "limitations": "real commands and actual library consumers with local protocol fixtures, not official authenticated Agent acceptance"
+      },
+      "original_failures_retained": {
+        "ab7_debug_default": {
+          "rrx_lib_passed": 494,
+          "failed": 1,
+          "ignored": 25,
+          "failure": "managed readonly review fixture relied on caller Passed for Tests; replaced with actual admitted command producer",
+          "log": {
+            "path": "/private/tmp/rrx-verification-composed-debug.log",
+            "bytes": 66189,
+            "sha256": "741e08fa329af74f7f1cce880596fa69b7fe73f5b7b38f555680e4b3453b0e02",
+            "mtime_utc": "2026-10-06T01:03:18.537774+00:00"
+          }
+        },
+        "510e_focused": {
+          "status": "compile failure: wrong NotApplicable struct variant construction; no runtime test credit",
+          "log": {
+            "path": "/private/tmp/rrx-verification-composed-review-fixture.log",
+            "bytes": 2003,
+            "sha256": "8d5e4c28dba5527410cad075e8f853164b163d6f95de7c6bb53d0d1659d9ae77",
+            "mtime_utc": "2026-10-06T01:05:08.521614+00:00"
+          }
+        },
+        "1e4_debug_default": {
+          "source_commit": "1e4ea045a13f6d3bc2d64c00c52372ac0b27c1e2",
+          "branch": "impl/agent-execution-verification-tests",
+          "worktree": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/agent-execution-verification-tests",
+          "clean": true,
+          "run": {
+            "command": "PATH=/private/tmp/rururunx-rustup/toolchains/1.91.1-aarch64-apple-darwin/bin:/opt/homebrew/bin:/usr/bin:/bin CARGO_HOME=/private/tmp/rururunx-cargo RUSTUP_HOME=/private/tmp/rururunx-rustup CARGO_TARGET_DIR=/private/tmp/rrx-verifier-target cargo test --workspace --all-targets --offline",
+            "exit_code": 101,
+            "rrx_library": {
+              "passed": 490,
+              "failed": 5,
+              "ignored": 25,
+              "seconds": 175.54
+            },
+            "full_workspace_completed": false,
+            "nested_child_counts_not_added": true,
+            "actual_verifier_controls": {
+              "passed": 12,
+              "failed": 0
+            },
+            "schema8_controls": {
+              "passed": 2,
+              "failed": 0
+            },
+            "log": "/private/tmp/rrx-verification-composed-debug-source2.log",
+            "bytes": 70474,
+            "sha256": "31ee3aba72956ad8c59d1c1e75d69ee478189b6fec2a7dc3e65fd5c86a33cef6",
+            "mtime_utc": "2026-10-06T01:09:23.019044+00:00"
+          },
+          "failures": [
+            {
+              "test": "adapter::grok::environment_tests::native_references_and_ordinary_callers_keep_exact_scoped_alternatives",
+              "observation": "owned isolated child exited101; Git ownership preflight Timeout before native spawn",
+              "classification": "ObservedPreflightTimeout; root cause Unknown"
+            },
+            {
+              "test": "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint",
+              "observation": "owned isolated child exited101; Git ownership preflight Timeout case0 before native spawn",
+              "classification": "ObservedPreflightTimeout; root cause Unknown"
+            },
+            {
+              "test": "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume",
+              "observation": "owned isolated child watchdog60s SIGKILL after cases0-4 finished, case5 resumed_terminal",
+              "classification": "ObservedWatchdogTimeout; root cause Unknown"
+            },
+            {
+              "test": "execution::docker::tests::docker_filter_and_operation_identity_are_independently_checked",
+              "observation": "remaining lacks expected unregistered own volume",
+              "classification": "ObservedAssertionFailure; root cause Unknown"
+            },
+            {
+              "test": "execution::docker::tests::registered_docker_cleanup_preserves_three_sibling_units_and_known_work",
+              "observation": "docker_reconciliation_incomplete",
+              "classification": "ObservedReconciliationIncomplete; root cause Unknown"
+            }
+          ],
+          "live_handle_at_terminal": null,
+          "qualification": "NOT_FULLY_QUALIFIED",
+          "limits": [
+            "account-free local fixtures only",
+            "no authenticated native CLI compatibility qualification",
+            "no Linux runner qualification",
+            "does not establish recovery guarantee or full MVP"
+          ]
+        },
+        "1e4_focused_five": {
+          "source_commit": "1e4ea045a13f6d3bc2d64c00c52372ac0b27c1e2",
+          "source_unchanged": true,
+          "runs": [
+            {
+              "test": "adapter::grok::environment_tests::native_references_and_ordinary_callers_keep_exact_scoped_alternatives",
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "rrx",
+                "--lib",
+                "adapter::grok::environment_tests::native_references_and_ordinary_callers_keep_exact_scoped_alternatives",
+                "--offline",
+                "--",
+                "--exact",
+                "--test-threads=1"
+              ],
+              "exit_code": 0,
+              "log": "/private/tmp/rrx-verification-composed-focused-failure-0.log",
+              "bytes": 404,
+              "sha256": "d05b22aa44716b74eb91898e0febd49a236196dfcce113666d5274ad98395a14"
+            },
+            {
+              "test": "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint",
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "rrx",
+                "--lib",
+                "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint",
+                "--offline",
+                "--",
+                "--exact",
+                "--test-threads=1"
+              ],
+              "exit_code": 0,
+              "log": "/private/tmp/rrx-verification-composed-focused-failure-1.log",
+              "bytes": 386,
+              "sha256": "050d2bbe92acd2922da63f49477ba2b52607cfffbe853dd37cc6ac6ff7cbb8d1"
+            },
+            {
+              "test": "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume",
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "rrx",
+                "--lib",
+                "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume",
+                "--offline",
+                "--",
+                "--exact",
+                "--test-threads=1"
+              ],
+              "exit_code": 0,
+              "log": "/private/tmp/rrx-verification-composed-focused-failure-2.log",
+              "bytes": 382,
+              "sha256": "48821842d9f65496fb961b5303d96363e8bfc17889e01ab58d0b8b4adc2b5500"
+            },
+            {
+              "test": "execution::docker::tests::docker_filter_and_operation_identity_are_independently_checked",
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "rrx",
+                "--lib",
+                "execution::docker::tests::docker_filter_and_operation_identity_are_independently_checked",
+                "--offline",
+                "--",
+                "--exact",
+                "--test-threads=1"
+              ],
+              "exit_code": 0,
+              "log": "/private/tmp/rrx-verification-composed-focused-failure-3.log",
+              "bytes": 389,
+              "sha256": "db7040ae318454d54b7332e5f1b767b6e639f203023c791d150eb97850112a92"
+            },
+            {
+              "test": "execution::docker::tests::registered_docker_cleanup_preserves_three_sibling_units_and_known_work",
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "rrx",
+                "--lib",
+                "execution::docker::tests::registered_docker_cleanup_preserves_three_sibling_units_and_known_work",
+                "--offline",
+                "--",
+                "--exact",
+                "--test-threads=1"
+              ],
+              "exit_code": 0,
+              "log": "/private/tmp/rrx-verification-composed-focused-failure-4.log",
+              "bytes": 397,
+              "sha256": "0dacf1c2b4fc950180bd5855a854741fcc4874119519d382f9561c22df94527e"
+            }
+          ],
+          "root_cause": "Unknown; passing focused reruns alone do not establish flakiness"
+        }
+      },
+      "independent_reviews": {
+        "00d_full_source": "A/B component APPROVE zero findings; Root verification separate nonindependent credit",
+        "ab7_composition_delta": "Root/A independent zero findings, reports provided by Root",
+        "1e4_test_only_delta": {
+          "verdict": "APPROVE_COMPONENT_SOURCE",
+          "findings": 0,
+          "reviewers": [
+            "Root",
+            "A"
+          ],
+          "reports": [
+            "/private/tmp/rrx-verifier-fixture-source-review-root.json",
+            "/private/tmp/rrx-verifier-fixture-source-review-a.json"
+          ],
+          "reported_by_root": true,
+          "limits": "fixture-only delta; no Issue43/native/fullReview approval"
+        }
+      },
+      "causal_mutation_evidence": [
+        "/private/tmp/rrx-verification-core-mutation-evidence.json",
+        "/private/tmp/rrx-verification-abandonment-mutation-evidence.json"
+      ],
+      "live_handle": null,
+      "limits": [
+        "Debug default harness 490/5/25 failure root cause remains Unknown; passing focused and threads4 runs do not erase it",
+        "no authenticated Claude Code/Codex/Grok compatibility qualification",
+        "no Linux CI/host qualification",
+        "only Tests commands first delivery; Impact/Regression/generated mutation/browser/staging remain unsupported Waiting",
+        "no actual Runtime9 Driver/Review10/full MVP qualification",
+        "best-effort cleanup, no process-death/security-sandbox guarantee",
+        "main/README/license files not changed"
+      ]
+    },
+    "rrx-verification-core-mutation-evidence.json": {
+      "component": "Schema8 actual managed command-only verification",
+      "baseline_commit": "5e0f8a231eea785fb3727e81861b91fc03540422",
+      "mutations": [
+        {
+          "id": "V8-ACTIVATED-NO-UNIT-PROOF",
+          "commit": "6e5c6b6dbf244e7b45b4a59137276f8eba7c25f9",
+          "actual_guard": "Store managed Tests completion requires private VerificationCompletion even without Unit",
+          "omission": "Replace matches!(publication, Some(WorkflowCompletion::Verification(_))) with true in actual Store workflow publication",
+          "control": "activated_tests_contract_refuses_generic_passed_even_with_no_unit",
+          "compiled": true,
+          "killed": true,
+          "runtime_evidence": "Control unwrap_err received actual Ok(Completed { phase: Tests }); execution reached final Store acceptance rather than setup failure",
+          "log": "/private/tmp/rrx-verification-mutation-activation.log"
+        },
+        {
+          "id": "V8-COMMAND-SESSION-INTENT",
+          "commit": "5e3c69f095e829b49acdef5dc1981161d4282811",
+          "actual_guard": "Actual register_execution_session refuses command-only Verifier before Session/native intent",
+          "omission": "Replace command-only Unit rejection with true in actual Session producer",
+          "control": "actual_command_grant_rejects_native_session_helper_delegation_and_terminal_writers",
+          "compiled": true,
+          "killed": true,
+          "runtime_evidence": "Actual prepared Verifier acquired Session and DispatchPending state; unwrap_err received Ok ExecutionUnit with real new Session, proving producer guard reachability",
+          "log": "/private/tmp/rrx-verification-mutation-command-grant.log"
+        }
+      ],
+      "restored": {
+        "commit": "a5fcf3be6def316520c22ba74f9953c727b3184f",
+        "tree_equals_baseline": true,
+        "actual_workflow_controls": 7,
+        "passed": 7,
+        "log": "/private/tmp/rrx-verification-mutations-restored-controls.log"
+      },
+      "limits": "Account-free local macOS component controls only. These mutations qualify the indicated baseline guards; composed Native TX factoring and later candidate changes still need independent fixed-source review and controls. No authenticated CLI, Linux, RuntimeDriver, whole Issue12 or Phase2/MVP approval."
+    },
+    "rrx-verification-abandonment-mutation-evidence.json": {
+      "component": "Actual private verification completion handoff abandonment",
+      "baseline_commit": "00d43a185bcab7d16a8c3cdf019bbb3b34eb6167",
+      "actual_control": "actual_completion_handoff_abort_preserves_known_success_without_tests_acceptance",
+      "mutation_commit": "a224dfe1712c5018355e00fab2586a5023f2302b",
+      "omission": "Actual VerificationAbandonment::drop no longer calls the scoped atomic abandonment producer; fields are only borrowed to preserve compilation.",
+      "compiled": true,
+      "killed": true,
+      "runtime_evidence": "After four real successful owned command observations and private completion creation, aborting the actual Workflow future left result_finalization_open=true. The post-abort actual Unit closed-permission assertion failed; no setup/compile failure was credited.",
+      "mutation_log": "/private/tmp/rrx-verification-mutation-abandonment.log",
+      "restored_commit": "e5bba44968fd759b647d3c161dfd63b68e3be7ac",
+      "restored_tree_equals_baseline": true,
+      "restored_result": "1 actual completion-handoff control passed",
+      "restored_log": "/private/tmp/rrx-verification-mutation-abandonment-restored.log",
+      "baseline_controls": "12 actual Workflow controls and all-target Clippy passed on baseline; retention I/O faults, command-running abort and completion-handoff abort are separate real failure paths.",
+      "scope_limitations": "Static/fixed macOS account-free component qualification only. No authenticated Native CLI, Linux, full Issue12, RuntimeDriver, future gates or whole Phase2/MVP approval. Composed Native factoring source still requires independent review and controls."
+    },
+    "rrx-workflow-verification-source-delta-review-a.json": {
+      "source_commit": "00d43a185bcab7d16a8c3cdf019bbb3b34eb6167",
+      "baseline": "39dbe6d94a6197dd767209210bc26f198c73d027",
+      "verdict": "APPROVE_COMPONENT_SOURCE",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "findings": [],
+      "scope": "Independent static review of the verifier retention/abandonment delta and its actual Store, Workflow and collector consumers. Not final Schema8, Phase2, native, Runtime or MVP acceptance.",
+      "dispositions": [
+        {
+          "issue": "Known command outcome lost when independent retained-file I/O fails",
+          "status": "closed_in_reviewed_source",
+          "evidence": [
+            "execution/verification/mod.rs:599-610 commits the sealed CollectedCommand before retain(stdout/stderr), then disarms only its actual helper guard.",
+            "state/execution/verification.rs:850-921 validates the actual capture and exact command/operation/unit before atomically publishing the immutable command receipt and factual effect state.",
+            "state/execution/verification.rs:361-425 derives learned Failure/complete-plan Success from actual immutable observations without setting incomplete runs certifying.",
+            "state/execution/verification.rs:601-614 preserves existing Unit.work, otherwise derives actual learned command work; unavailable retention does not mint completion."
+          ],
+          "controls_inspected_not_executed": [
+            "workflow/verification_tests.rs:1047 injects real evidence-directory obstruction after preparation for actual exit 0 and exit 7; checks exit, digest/counts, independent learned work, effect confirmation, closed permissions and no accepted Tests."
+          ]
+        },
+        {
+          "issue": "Dropped command/evaluation/completion future leaves logical verifier grants open",
+          "status": "closed_in_reviewed_source",
+          "evidence": [
+            "execution/verification/mod.rs:179-187 implements owner-aware abandonment; creation at 392-395 is immediately after actual reservation with no intervening await.",
+            "execution/verification/mod.rs:170-174 and 475-497 retain that guard inside the private completion through Workflow handoff.",
+            "state/execution/verification.rs:535-626 rechecks same scope/epoch/generation/profile/purpose; closed Units are untouched; open current Units atomically close both permissions, mark pending effects Unknown, quarantine nonreleased leases, retain factual work and admit cleanup.",
+            "workflow.rs:2539-2545 transfers the private completion into Snapshot; persist borrows it at 608-615; accept_tx closes finalization in the same successful acceptance transaction. Snapshot/guard outlive Store's scoped mutex guard, including failed acceptance and asynchronous final source/context preparation.",
+            "state/execution.rs:1154-1209 separately closes readonly generations on genuine Executor retirement; abandonment cannot reopen an old epoch or generation.",
+            "execution/verification/collector.rs retains existing owned-child best-effort cleanup; no dropped-future logical closure is interpreted as process death."
+          ],
+          "controls_inspected_not_executed": [
+            "workflow/verification_tests.rs:1122 aborts an actual owned running command future after its physical rendezvous, then inspects closed permissions, Unknown effect/work, quarantine and cleanup admission.",
+            "workflow/verification_tests.rs:1216 aborts at the private post-inspection completion handoff; genuine known success and raw receipts remain historical while finalization closes and accepted Tests stays absent."
+          ]
+        }
+      ],
+      "additional_checks": [
+        "Read all four changed files' fixed-object delta; examined complete fixed verifier module, collector, plan output-envelope validation, Store claim/reserve/receipt/run/acceptance and SQL provenance guards, actual Workflow evaluate/apply_outcome/persist and readonly retirement consumers.",
+        "All 12 current verifier control definitions were inventoried; relevant normal completion, known failure, output/timeout/source drift, cancellation, four-Task sibling, admission waiter and three new controls inspected. This is source wiring inspection, not their test results.",
+        "Run output-accounting refusal preceding receipt cannot exceed a valid admitted plan's sum of stream maxima: plan admission bounds that sum by RUN_BYTES and collector bounds each stream.",
+        "Retained file inspection and exact readonly/artifact revalidation remain mandatory before a private proof; accept_tx still verifies exact Workflow observation successor, Task/P/G/Context, current epoch/generation, plan coverage, artifact/dependencies and private receipt digest. Historical or DTO-only runs cannot certify.",
+        "The shared resource-admission serialization from baseline39d is preserved; the removed short-lived PreparationGuard is replaced by the longer abandonment lifetime rather than deleting protection."
+      ],
+      "limits": [
+        "No tests, builds, logs, native accounts, network, host probes, signals or mutations were executed or inherited as passing evidence.",
+        "Only immutable git show/diff/grep objects at the specified commits were read; no peer reports, aggregate review/progress documents or dirty/later source were read.",
+        "Own CommittedIndex and SourceRecovery implementations, Runtime documentation/source, unfinished Runtime/CLI, specialized verifier backends and final native qualification are outside approval.",
+        "Drop persistence is best effort; poison/storage/old-epoch failure retains uncertainty and cannot prove physical cleanup or mint acceptance. Existing physical cleanup/read-only limitations remain.",
+        "Static approval does not prove all timing interleavings or substitute for required exact-head controls, meaningful mutations, quality gates and independent production conformance."
+      ],
+      "live_handles": [],
+      "commands_closed": true,
+      "source_modified": false,
+      "peer_findings_consulted": false
+    },
+    "rrx-verification-source2-review-b.json": {
+      "source_commit": "00d43a185bcab7d16a8c3cdf019bbb3b34eb6167",
+      "baseline_commit": "39dbe6d94a6197dd767209210bc26f198c73d027",
+      "original_review_commit": "4728e1ca5ff5aafc5b0f5f5b463956363e8f6f25",
+      "approved_contract_commit": "07023fa0dbed38f9561461f8b495682e53c25f82",
+      "scope": "Independent STRICT static verifier correction review: entire delta since prior approved resource gate, command receipt-before-retention, private whole-run/Completion abandonment, bounded schema8 projection/atomic flags and cleanup, actual Workflow consumption. No parent/peer test claims inherited.",
+      "verdict": "APPROVE_COMPONENT_SOURCE",
+      "severity_counts": {
+        "C": 0,
+        "H": 0,
+        "M": 0,
+        "L": 0
+      },
+      "findings": [],
+      "prior_own_findings_disposition": [
+        {
+          "id": "V-B-M1",
+          "severity": "M",
+          "disposition": "CLOSED_IN_SOURCE; actual fault/reopen qualification remains a separate executed-test obligation.",
+          "locations": [
+            "crates/rrx/src/execution/verification/mod.rs:583-610",
+            "crates/rrx/src/state/execution/verification.rs:417-425,601-625,850-924"
+          ],
+          "reasoning": "The actual sealed collected observation is committed through complete_verification_command before both fallible retained stream writes. The helper guard is disarmed only after that transaction. Retention failure therefore leaves immutable terminal command/known effect facts. The outer abandonment transaction derives missing aggregate work from exact stored commands, closes authority, admits cleanup and marks an admitted run unknown. The bounded reader exposes those actual commands and their aggregate known work while keeping the run non-certifying; it does not substitute missing raw files or produce private completion. Complete planned exit-zero work can remain Success, a known nonzero exit remains Failure, and a partial successful command set remains aggregate Unknown without losing each command fact."
+        },
+        {
+          "id": "V-B-M2",
+          "severity": "M",
+          "disposition": "CLOSED_IN_SOURCE; actual abort/cleanup qualification remains a separate executed-test obligation.",
+          "locations": [
+            "crates/rrx/src/execution/verification/mod.rs:169-188,386-399,475-492,512-525",
+            "crates/rrx/src/state/execution/verification.rs:535-626"
+          ],
+          "reasoning": "A private non-Clone guard is constructed immediately after actual Unit reservation before another await. It remains in evaluate through preparation, commands and aggregate inspection, and moves into the private VerificationCompletion rather than being disarmed after snapshot creation. Dropping the run/evaluation or unconsumed completion calls exact Unit/scope/epoch/generation/profile/purpose abandonment. Its Immediate transaction atomically marks bounded pending effects Unknown, quarantines unreleased leases, closes both flags, preserves existing known work or derives it from immutable commands, records Lost, advances admitted run to unknown and queues cleanup. No process-death assertion or sibling generation change is introduced."
+        }
+      ],
+      "evidence": [
+        {
+          "property": "Successful acceptance and normal non-certifying terminal outcomes are not rewritten by guard Drop.",
+          "locations": [
+            "crates/rrx/src/state/execution/verification.rs:552-555,926-978,993-1053,1102-1104"
+          ],
+          "reasoning": "Already closed Units return without mutation. finish_verification stores exact terminal commands/work and closes native effects; only certifying work retains finalization. Acceptance requires current private full proof and closes finalization in the same Workflow transaction. Subsequent guard Drop sees both flags closed. Dropped unaccepted complete proof closes finalization and marks Unit historical while preserving terminal known Success and immutable evidence."
+        },
+        {
+          "property": "Actual Workflow handoff retains the private abandonment guard.",
+          "locations": [
+            "crates/rrx/src/workflow.rs:592-617,2541-2545,2570-2603,2678-2689,2885-2886"
+          ],
+          "reasoning": "The real Engine adopts the exact authorized successor before placing private completion into its Snapshot. That Snapshot owns the proof throughout audited observation, source recapture and acceptance. Any error/async Drop destroys the same guard. Store receives proof by reference; its Store lock is not retained beyond persist return, avoiding proof destruction while that consuming Store method still owns the lock."
+        },
+        {
+          "property": "Bounded durable transitions and private receipt purpose are preserved.",
+          "locations": [
+            "crates/rrx/src/state/execution/verification.rs:535-626,417-435",
+            "crates/rrx/src/state/execution/verification.sql:39-63"
+          ],
+          "reasoning": "Abandonment caps pending-effects64 and leases16, validates scoped indexed objects, uses checked versions and exact SQL CAS, and leaves confirmed effects/immutable terminal commands untouched. Admitted->unknown version update satisfies unchanged schema8 provenance trigger; terminal/accepted body is not rewritten. Unknown/admitted projections cannot carry certifying authority; current receipt acceptance still rejects historical/closed source and incomplete coverage."
+        },
+        {
+          "property": "Previously approved resource admission gate remains intact.",
+          "locations": [
+            "crates/rrx/src/execution/verification/mod.rs:350,386-399,518-525",
+            "crates/rrx/src/execution/owner.rs",
+            "crates/rrx/src/execution/resources.rs",
+            "crates/rrx/src/execution/attempts.rs"
+          ],
+          "reasoning": "Owner/resources/attempts gate source and verification schema bytes are unchanged from39dbe6d. Verifier still acquires the one Owner gate before draft/reservation and drops it immediately after leases, before materialization/Git await. New lifetime guard is independent of the short resource gate."
+        },
+        {
+          "property": "Actual causal controls were inspected without execution credit.",
+          "locations": [
+            "crates/rrx/src/workflow/verification_tests.rs:1047-1120,1122-1214,1216-1285"
+          ],
+          "reasoning": "Retention-fault control blocks the actual evidence directory after registration then uses actual collected exit0/7, checks exact command bytes/hash/exit and no acceptance. Run-abort control waits for an actual command ready file then aborts real Engine future and inspects closed flags/quarantine/unknown effect/cleanup. Completion-abort control pauses after actual successful collection and private proof creation, aborts, checks known Success survives with no Tests acceptance, historical immutable run/evidence and cleanup admission. These are meaningful source controls; no PASS is inferred."
+        }
+      ],
+      "additional_causal_controls_proposed_not_executed": [
+        "Inject retention failure on the final command of an otherwise fully successful admitted plan and reopen Store; assert aggregate Success retained, missing evidence non-certifying and no accepted Tests.",
+        "Force acceptance CAS loss after private completion handoff and verify exact guard retirement/cleanup preserves known work and current sibling claims.",
+        "Exercise successful normal acceptance with proof Drop afterward to verify accepted Unit/run identity and completed Workflow remain unchanged."
+      ],
+      "limits": [
+        "Static immutable git show/diff/grep only; no tests, builds, mutations, actual native/accounts/credentials, network, process signals or host/config changes were performed. Only private report written.",
+        "No dirty/later source, peer report or parent test/progress/log claims consulted or inherited.",
+        "Original findings are closed by the inspected source mechanism, not certified by execution of fault/abort controls in this review.",
+        "Abandonment persistence can fail when Store/SQLite is unavailable; source explicitly retains held uncertainty rather than proving closure. No durable terminal guarantee across Runtime SIGKILL before receipt commit is claimed.",
+        "Native consumer transaction factoring composition, actual operational Runtime/CLI, capacity-aware scheduling/general restart recovery and later verifier backends require separate integration/review.",
+        "No whole Phase2, authenticated official CLI, Linux/macOS, four-native-Task, process-death, security-sandbox or MVP acceptance granted."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    "rrx-verifier-native-composition-source-review-root.json": {
+      "reviewer": "root",
+      "source_commit": "ab7bafb8f6c2a0ff21b3fa0f29d48b7e9d5d0199",
+      "parents": [
+        "00d43a185bcab7d16a8c3cdf019bbb3b34eb6167",
+        "5b6e8a8152926b643c6926b87e853de12b9319fc"
+      ],
+      "scope": "Verifier8 plus previously reviewed Native/CLI/Runtime own-module composition delta; own authored base components excluded from new independent approval",
+      "verdict": "APPROVE_COMPONENT_SOURCE_DELTA",
+      "findings": [],
+      "verified": [
+        "Command-only Native Session rejection is inside actual register_session_tx used by register_native_invocation, not solely the legacy cfg(test) wrapper. Update-session intent retains the same guard.",
+        "Generic/delegated effect rejection is inside reserve_effect_tx used by real acknowledged input-intent registration; scoped snapshot git_helper is the only retained command Unit generic helper kind.",
+        "Owned-command-only terminal rejection is inside finish_execution_tx used by atomic Native result completion; Native collector/helper semantics remain otherwise unchanged.",
+        "Both canonical state_path and owner-wide resource_admission fields/initialization persist. All three actual Unit producer gate intervals remain unchanged from reviewed39d.",
+        "Schema8 installs after Native6/SourceRecovery7 with complete mutable-table registration/writer fencing; private Tests acceptance and abandonment retain the approved00d correction source."
+      ],
+      "byte_equal_to_root_base": {
+        "crates/rrx/src/execution/native.rs": "881c189f28c1d45fe4c1241fab34a91456f37416",
+        "crates/rrx/src/execution/native_result.rs": "fca26e586a2846564e6c2fa936f0f2f4372419fe",
+        "crates/rrx/src/cli/endpoint.rs": "3408620cbe6c307a73665ab7b7c1fa1d0ac156e7",
+        "crates/rrx/src/cli/transport.rs": "8bf0b741e33a65a7d65648229823f71039ea1447",
+        "crates/rrx/src/runtime/control.rs": "4a21939c18c4e8bbb4cc0a1214f6123e262dd2ab",
+        "crates/rrx/src/runtime/goal.rs": "0894249ccbdd9aaedcebba95bd50ea8b8d47c412"
+      },
+      "limits": [
+        "Static fixed git-object composition review only; author full Debug/Release/build/lint runs are separately pending.",
+        "Original Native/CLI/Runtime/SourceRecovery source approvals are not manufactured or inherited as new broad Phase2 approval.",
+        "Original source and mutation/FAIL history retained. Compiled actual old7 writer binary, authenticated providers/Linux/currentinstall/four-native and full Runtime/MVP acceptance remain separate requirements."
+      ]
+    },
+    "rrx-verifier-native-composition-source-review-a.json": {
+      "source_commit": "ab7bafb8f6c2a0ff21b3fa0f29d48b7e9d5d0199",
+      "baseline": "00d43a185bcab7d16a8c3cdf019bbb3b34eb6167",
+      "incoming_parent": "5b6e8a8",
+      "verdict": "APPROVE_COMPONENT_COMPOSITION",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "findings": [],
+      "evidence": [
+        "Fixed source is a real merge of00d and5b6. Changed incoming Rust paths except owner/state transaction helpers/native migration fixture are byte-identical to5b6; authored Runtime/SourceRecovery/Index source is not reapproved.",
+        "state/execution/sessions.rs::register_session_tx retains the command-only verifier exclusion inside the common transaction helper, so actual register_native_session and its cfg(test) wrapper both pass that same exclusion. acknowledge_execution_session keeps the direct exclusion as well.",
+        "state/execution/effects.rs::reserve_effect_tx retains the command-only verifier and bootstrap exclusions inside the actual helper used by reserve_native_input and reserve_managed_effect. Snapshot Git helper allowance remains confined to reserve_helper_effect; generic/delegated native effects cannot use it.",
+        "state/execution.rs::finish_execution_tx retains the command-only verifier terminal exclusion inside the actual native-result atomic transaction; verifier command collector/finish/acceptance remains its sole terminal path.",
+        "execution/owner.rs retains both canonical state_path and the single resource_admission mutex in the same owner constructor. Resources::admission uses that exact owner-wide Arc. Executor preparation, readonly snapshots and verifier actual producer all retain admission through draft plus durable leases, then release it before materialization/Git/native work.",
+        "native_results_tests.rs adjusts only the old5 fixture's absent-table filter to exclude actual schema8 verification tables; it does not weaken current writer guard checks.",
+        "Fixed-object diff --check passed. No additional conflict resolution outside the narrow union was found."
+      ],
+      "limits": [
+        "Independent static composition review only; tests/builds/current owner quality results were not run, read or inherited.",
+        "No peer findings, dirty/later source, progress or aggregate review reports were read.",
+        "Native/auth/Core implementation arriving byte-identical from5b6 is not requalified here; this review verifies the composition seams and absence of guard loss, not full native correctness.",
+        "Own Runtime, SourceRecovery and CommittedIndex authored code is excluded from independent approval.",
+        "No Schema8 final qualification, Runtime9, Phase2, authenticated native or MVP acceptance follows. Exact-head formal component/full checks remain required."
+      ],
+      "commands_closed": true,
+      "live_handles": [],
+      "source_modified": false
+    },
+    "rrx-verifier-fixture-source-review-root.json": {
+      "reviewer": "root",
+      "kind": "Independent fixture migration source review",
+      "candidate": "1e4ea045a13f6d3bc2d64c00c52372ac0b27c1e2",
+      "baseline": "ab7bafb8f6c2a0ff21b3fa0f29d48b7e9d5d0199",
+      "scope": [
+        "crates/rrx/src/workflow/managed_tests.rs:managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_input"
+      ],
+      "decision": "APPROVE",
+      "findings": [],
+      "evidence": [
+        "Actual diff replaces old source/Gates-only Tests expectation with ManagedWorkflowSources.prepare + ManagedVerifier.admit_tests before initialization + Engine.with_verifier",
+        "Registered actual python command checks fixture-result.txt in retained disposable test input; other categories carry explicit data-only NotApplicable reasons",
+        "Original four scenarios and review artifact/input/cancel/current-finalization assertions remain",
+        "No production file, capability, allocation proof or protected native writer changes in this delta"
+      ],
+      "limits": [
+        "Review scope is fixture-only migration, not old Issue43 admission/binder or whole ReviewEngine/native acceptance",
+        "Compiled test evidence is independent author run; Root fresh full rerun not performed on this candidate",
+        "Other reviewer results withheld until this review closed"
+      ]
+    },
+    "rrx-verifier-fixture-source-review-a.json": {
+      "source_commit": "1e4ea045a13f6d3bc2d64c00c52372ac0b27c1e2",
+      "baseline": "ab7bafb8f6c2a0ff21b3fa0f29d48b7e9d5d0199",
+      "verdict": "APPROVE_COMPONENT_FIXTURE_DELTA",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "findings": [],
+      "scope": [
+        "Only changed managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_input fixture; relevant unchanged production consumers inspected.",
+        "Own authored CommittedIndex correctness excluded."
+      ],
+      "evidence": [
+        {
+          "location": "crates/rrx/src/workflow/managed_tests.rs:546-624",
+          "observation": "Actual registered ManagedWorkflowSources prepares initial Unit before initialize; actual ManagedVerifier is attached to the same owner/sources. The exact finite Python profile is admitted against current Project version before managed Workflow activation. No caller Passed substitutes for managed Tests proof."
+        },
+        {
+          "location": "crates/rrx/src/execution/verification/mod.rs:252-279; crates/rrx/src/workflow.rs:898-911",
+          "observation": "Profile admission uses actual owner epoch and excludes executable paths in managed writable roots; managed initialization uses private verification activation and atomically freezes the admitted profile association."
+        },
+        {
+          "location": "crates/rrx/src/workflow/managed_tests.rs:625-775",
+          "observation": "Original publish/input-changed/artifact-changed/cancel cases and assertions remain. The path reaches actual retained executor result, Commit and real Tests before readonly Reviewer. Later input/publication mutations still assert no review acceptance; accepted Task revision remains exact. Synthetic Gates review result is explicitly fixture-only and not production ReviewEngine authority."
+        }
+      ],
+      "causal_controls_not_executed": [
+        "Existing four branches under actual compiled fixture remain required.",
+        "Omission of actual verifier wiring/profile admission must fail before review, not earn passing evidence through caller Passed."
+      ],
+      "limits": [
+        "Static git-object review only; no tests/build/native/account/network/signals or parent log inspection.",
+        "No approval of full Verifier, real account qualification, #43/#19 allocation/binding proof, Runtime9, final Phase2 or MVP.",
+        "No peer findings read.",
+        "First attempted immutable lookup execution/verification.rs failed because implementation is a directory module; exact verification/mod.rs was then read. No test was run."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    }
+  },
+  "verification_scope": [
+    "Actual managed Verifier commands and Store/Workflow consumer",
+    "Known command work persists before fallible retained stream writes",
+    "Private run/completion lifetime abandonment conservatively closes logical authority",
+    "Actual four-command-Task overlap with cancellation of one and sibling completion",
+    "Native6/SourceRecovery7/CLI/pure Runtime components remain within their previous qualified limits"
+  ],
+  "limits": [
+    "Local macOS Rust1.91.1; account-free actual command/protocol peers only",
+    "Root current-main integration614 Debug PASS; Release613 PASS belongs specifically to1e4 before added main test, not this full SHA",
+    "Original default-harness490PASS/5FAIL/25ignored and focused5PASS are retained; root cause Unknown, not erased or declared flaky",
+    "Old #43 private record-only binder and genuine #19 allocation are unimplemented; ordinary managed Workflow binding still writes Task",
+    "Runtime9/operational Scheduler and complete ReviewRound are pending",
+    "No authenticated native/hooks/quota recovery/both-OS four-Task qualification",
+    "No current integration Actions; no PR/main/GitHub merge or push",
+    "No license/README Status update or recovery guarantee"
+  ]
+}
