@@ -240,7 +240,7 @@ impl Store {
                 current == SCHEMA_VERSION && application == APPLICATION_ID,
                 "current state version/application changed"
             );
-            // Mutation: initial-current validation omitted.
+            managed_binding::validate_current_layout(&tx)?;
             tx.commit()?;
         }
         connection.pragma_update(None, "journal_mode", "WAL")?;
