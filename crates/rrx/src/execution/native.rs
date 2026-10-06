@@ -68,6 +68,24 @@ pub enum NativeStart {
         next_due: i64,
     },
 }
+/// The private selected-vtable result preserves the same original handoff for
+/// a typed wait/reconcile. Returning it is not Runtime-owned future retention.
+pub(crate) enum NativePhaseStart {
+    Launched {
+        handle: ManagedSessionRef,
+        binding: NativePhaseBinding,
+    },
+    Waiting {
+        launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
+        unit: Box<ExecutionUnit>,
+        reason: WaitReason,
+        next_due: i64,
+    },
+}
+pub(crate) struct NativePhaseStartError {
+    pub(crate) launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
+    pub(crate) error: anyhow::Error,
+}
 enum Control {
     Cancel,
     Approval {
@@ -168,14 +186,22 @@ impl NativeSessions {
         effort: Option<String>,
         executable: Option<std::path::PathBuf>,
     ) -> Result<NativeStart> {
-        self.start_with_launch(input, model, effort, executable, None).await
+        self.start_with_launch(input, model, effort, executable, None)
+            .await
     }
     /// The concrete installed vtable is the only caller supplying a genuine
     /// launch. Allocated DTOs and old public adapters never reach this entry.
     pub(crate) async fn start_phase(
         &self,
         launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
-    ) -> Result<NativeStart> {
+    ) -> std::result::Result<NativePhaseStart, NativePhaseStartError> {
+        let result = self.start_phase_inner(launch.clone()).await;
+        result.map_err(|error| NativePhaseStartError { launch, error })
+    }
+    async fn start_phase_inner(
+        &self,
+        launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
+    ) -> Result<NativePhaseStart> {
         let allocation = launch.allocation();
         let selected = allocation.selected_port().selected_adapter()?;
         ensure!(
@@ -189,7 +215,25 @@ impl NativeSessions {
         let model = facts.model.map(str::to_owned);
         let effort = facts.effort.map(str::to_owned);
         let executable = facts.program.to_owned();
-        self.start_with_launch(input, model, effort, Some(executable), Some(launch)).await
+        match self
+            .start_with_launch(input, model, effort, Some(executable), Some(launch.clone()))
+            .await?
+        {
+            NativeStart::Launched(handle) => {
+                let binding = self.phase_binding(&handle)?;
+                Ok(NativePhaseStart::Launched { handle, binding })
+            }
+            NativeStart::Waiting {
+                unit,
+                reason,
+                next_due,
+            } => Ok(NativePhaseStart::Waiting {
+                launch,
+                unit,
+                reason,
+                next_due,
+            }),
+        }
     }
     async fn start_with_launch(
         &self,
@@ -202,11 +246,11 @@ impl NativeSessions {
         // Public ManagedInput/Unit identity is not a managed phase owner. This
         // standalone entry cannot qualify or prepare a protected Workflow.
         let protected = self
-                .owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .managed_phase_required(&input.authority.scope)?;
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .managed_phase_required(&input.authority.scope)?;
         ensure!(
             protected == launch.is_some(),
             NativeFailure::AuthorityUnavailable
@@ -214,8 +258,12 @@ impl NativeSessions {
         // The current frame and exact allocated owner are mandatory before the
         // first helper. This is a private actual launch, not a legacy bypass.
         if let Some(parts) = &launch {
-            let current = crate::state::managed_binding::plan_current_phase(&self.owner, parts.marker())?;
-            self.owner.store.lock().map_err(|_| anyhow::anyhow!("state poisoned"))?
+            let current =
+                crate::state::managed_binding::plan_current_phase(&self.owner, parts.marker())?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
                 .validate_phase_preparation(parts, &current)?;
         }
         let gate = {
@@ -401,7 +449,9 @@ impl NativeSessions {
             .execution_unit(unit.id)?;
         preparation_guard.update(&unit);
         let mut session = Session {
-            id: launch.as_ref().map_or_else(SessionId::new, |parts| parts.allocation().facts().session_id),
+            id: launch.as_ref().map_or_else(SessionId::new, |parts| {
+                parts.allocation().facts().session_id
+            }),
             scope: unit.scope.clone(),
             agent: input.agent.clone(),
             provider: unit.provider.clone(),
@@ -462,14 +512,26 @@ impl NativeSessions {
             .stderr(Stdio::piped());
         let seed = NativeSeed {
             input: input.input.clone(),
-            id: launch.as_ref().map_or_else(NativeInvocationId::new, |parts| parts.allocation().facts().invocation_id),
+            id: launch
+                .as_ref()
+                .map_or_else(NativeInvocationId::new, |parts| {
+                    parts.allocation().facts().invocation_id
+                }),
             profile: format!("text_v1/{}", unit.profile_digest),
             native_version: version.trim().into(),
         };
         let mut registration_guard = None;
-        let registration = launch.as_ref().map(|parts| {
-            crate::state::Store::plan_native_phase_registration(&self.owner, parts.clone(), session.clone(), &seed)
-        }).transpose()?;
+        let registration = launch
+            .as_ref()
+            .map(|parts| {
+                crate::state::Store::plan_native_phase_registration(
+                    &self.owner,
+                    parts.clone(),
+                    session.clone(),
+                    &seed,
+                )
+            })
+            .transpose()?;
         let mut phase = None;
         let mut child = {
             let mut store = self
@@ -479,8 +541,13 @@ impl NativeSessions {
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
             unit = if let Some(plan) = registration {
                 let (registered, projection, version) = store.register_phase_session(plan)?;
-                let parts = launch.as_ref().context("actual Native launch disappeared")?.clone();
-                phase = Some(phase_protocol::PhaseActor::registered(parts, projection, version)?);
+                let parts = launch
+                    .as_ref()
+                    .context("actual Native launch disappeared")?
+                    .clone();
+                phase = Some(phase_protocol::PhaseActor::registered(
+                    parts, projection, version,
+                )?);
                 registered
             } else {
                 store.register_native_session(&unit.authority(), &session, &seed)?

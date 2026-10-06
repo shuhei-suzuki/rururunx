@@ -100,14 +100,27 @@ impl NativePhasePort {
     pub(crate) async fn start_phase(
         &self,
         launch: crate::state::managed_binding::PhaseLaunch,
-    ) -> anyhow::Result<NativeStart> {
-        let adapter = self.selected_adapter()?;
+    ) -> std::result::Result<
+        execution::native::NativePhaseStart,
+        execution::native::NativePhaseStartError,
+    > {
         let parts = launch.into_parts();
-        anyhow::ensure!(
-            std::ptr::eq(parts.allocation().selected_port(), self)
-                && Arc::ptr_eq(parts.marker().allocation(), parts.allocation()),
-            "Native launch uses a different selected vtable/allocation"
-        );
+        let adapter = match self.selected_adapter().and_then(|adapter| {
+            anyhow::ensure!(
+                std::ptr::eq(parts.allocation().selected_port(), self)
+                    && Arc::ptr_eq(parts.marker().allocation(), parts.allocation()),
+                "Native launch uses a different selected vtable/allocation"
+            );
+            Ok(adapter)
+        }) {
+            Ok(adapter) => adapter,
+            Err(error) => {
+                return Err(execution::native::NativePhaseStartError {
+                    launch: parts,
+                    error,
+                });
+            }
+        };
         adapter.sessions.start_phase(parts).await
     }
 
