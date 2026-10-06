@@ -6,8 +6,56 @@ pub(super) struct QuotaSnapshot {
     pub next_probe_at: i64,
     pub foreign_probe: bool,
     pub capacity_due: i64,
-    pub capacity_blocked: bool,
+    pub capacity: CapacitySnapshot,
     pub fair_head_is_self: bool,
+}
+pub(super) struct CapacitySnapshot {
+    pub global_live: usize,
+    pub provider_live: usize,
+    pub executor_live: usize,
+    pub global_executor_live: usize,
+    pub global_max: usize,
+    pub provider_max: usize,
+    pub executor_max: usize,
+    pub high_utilization: bool,
+    pub own_executor: bool,
+    pub project_blocked: bool,
+}
+impl CapacitySnapshot {
+    pub(super) fn executor_blocked(&self) -> bool {
+        let maximum = if self.high_utilization {
+            self.executor_max.min(1)
+        } else {
+            self.executor_max
+        };
+        self.executor_live >= maximum
+            || self.global_executor_live >= self.global_max.saturating_sub(2).max(1)
+    }
+    fn blocked(&self) -> bool {
+        self.project_blocked
+            || self.global_live >= self.global_max
+            || self.provider_live >= self.provider_max
+            || (self.own_executor && self.executor_blocked())
+    }
+}
+pub(super) fn high_utilization(observations: &[QuotaObservation], at: i64) -> bool {
+    observations.iter().any(|o| {
+        o.status == QuotaStatus::Available
+            && at.saturating_sub(o.observed_at) <= 300_000
+            && o.used_percent.is_some_and(|p| p >= 95.0)
+    })
+}
+pub(super) fn fair_position<'a>(
+    role: &str,
+    sequence: i64,
+    id: &'a str,
+    last_role: &str,
+) -> (bool, i64, &'a str) {
+    (
+        (role == "executor") == (last_role == "executor"),
+        sequence,
+        id,
+    )
 }
 pub(super) enum Decision {
     Admit { probe: bool },
@@ -24,7 +72,7 @@ pub(super) fn decide(s: &QuotaSnapshot, at: i64) -> Decision {
             reason: WaitReason::Capacity,
             due: s.capacity_due,
         }
-    } else if s.capacity_blocked || !s.fair_head_is_self {
+    } else if s.capacity.blocked() || !s.fair_head_is_self {
         Decision::Wait {
             reason: WaitReason::Capacity,
             due: at.saturating_add(1000),
@@ -78,6 +126,44 @@ pub(super) fn candidate_class(tx: &Connection, id: UnitId, at: i64) -> Result<Ca
 mod primitive_tests {
     use super::*;
     #[test]
+    fn nongrant_native_capacity_policy_matches_legacy_caps_and_role_reservation() {
+        for high in [false, true] {
+            for own_executor in [false, true] {
+                for project_blocked in [false, true] {
+                    for global_live in [0, 5, 6, 7] {
+                        for provider_live in [0, 2, 3, 4] {
+                            for executor_live in [0, 1, 2, 3] {
+                                for global_executor_live in [0, 3, 4, 5] {
+                                    let snapshot = CapacitySnapshot {
+                                        global_live,
+                                        provider_live,
+                                        executor_live,
+                                        global_executor_live,
+                                        global_max: 6,
+                                        provider_max: 3,
+                                        executor_max: 2,
+                                        high_utilization: high,
+                                        own_executor,
+                                        project_blocked,
+                                    };
+                                    let executor_blocked = executor_live
+                                        >= if high { 1 } else { 2 }
+                                        || global_executor_live >= 4;
+                                    let expected = project_blocked
+                                        || global_live >= 6
+                                        || provider_live >= 3
+                                        || (own_executor && executor_blocked);
+                                    assert_eq!(snapshot.executor_blocked(), executor_blocked);
+                                    assert_eq!(snapshot.blocked(), expected);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #[test]
     fn nongrant_native_quota_policy_preserves_legacy_decision_order() {
         for exhausted in [false, true] {
             for foreign_probe in [false, true] {
@@ -90,7 +176,18 @@ mod primitive_tests {
                                     next_probe_at,
                                     foreign_probe,
                                     capacity_due,
-                                    capacity_blocked,
+                                    capacity: CapacitySnapshot {
+                                        global_live: usize::from(capacity_blocked),
+                                        provider_live: 0,
+                                        executor_live: 0,
+                                        global_executor_live: 0,
+                                        global_max: 1,
+                                        provider_max: 1,
+                                        executor_max: 1,
+                                        high_utilization: false,
+                                        own_executor: false,
+                                        project_blocked: false,
+                                    },
                                     fair_head_is_self,
                                 };
                                 let expected =

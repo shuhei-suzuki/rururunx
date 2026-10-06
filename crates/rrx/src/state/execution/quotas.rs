@@ -215,23 +215,19 @@ impl Store {
             |r| r.get(0),
         )?;
         // A recent high-utilization observation lowers concurrency; it is not a token promise.
-        let high = observations.iter().any(|o| {
-            o.status == QuotaStatus::Available
-                && at.saturating_sub(o.observed_at) <= 300_000
-                && o.used_percent.is_some_and(|p| p >= 95.0)
-        });
-        let effective_executor = if high {
-            executor_max.min(1)
-        } else {
-            executor_max
-        };
         let project_blocked = project_capacity_blocked(&tx, &unit, project_max)?;
-        let capacity = project_blocked
-            || global >= global_max
-            || provider_live >= provider_max
-            || (unit.kind == UnitKind::Executor
-                && (executor_live >= effective_executor
-                    || global_executor >= global_max.saturating_sub(2).max(1)));
+        let capacity = super::quota_policy::CapacitySnapshot {
+            global_live: global,
+            provider_live,
+            executor_live,
+            global_executor_live: global_executor,
+            global_max,
+            provider_max,
+            executor_max,
+            high_utilization: super::quota_policy::high_utilization(&observations, at),
+            own_executor: unit.kind == UnitKind::Executor,
+            project_blocked,
+        };
         // A terminal unclassified native capacity error closes that attempt.
         // Its fresh successor waits for a bounded local recheck; no subscription
         // observation or provider-wide exhaustion is fabricated. Read indexed
@@ -288,10 +284,7 @@ impl Store {
             if project_capacity_blocked(&tx, &candidate, project_max)? {
                 continue;
             }
-            if candidate.kind == UnitKind::Executor
-                && (executor_live >= effective_executor
-                    || global_executor >= global_max.saturating_sub(2).max(1))
-            {
+            if candidate.kind == UnitKind::Executor && capacity.executor_blocked() {
                 continue;
             }
             let eligible = match super::quota_policy::candidate_class(&tx, candidate.id, at)? {
@@ -312,7 +305,7 @@ impl Store {
                 next_probe_at: next,
                 foreign_probe: probe.as_ref().is_some_and(|id| id != &unit.id.to_string()),
                 capacity_due,
-                capacity_blocked: capacity,
+                capacity,
                 fair_head_is_self: first == Some(unit.id),
             },
             at,

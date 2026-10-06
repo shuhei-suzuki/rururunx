@@ -1,5 +1,7 @@
 //! Private pre-Session quota plans. Rows are exact images, never grant issuers.
-use super::super::quota_policy::{self, CandidateClass, Decision, QuotaSnapshot};
+use super::super::quota_policy::{
+    self, CandidateClass, CapacitySnapshot, Decision, QuotaSnapshot, fair_position,
+};
 use super::preparation::NativeReadyLineage;
 use super::version::InventoryBudget;
 use super::*;
@@ -505,18 +507,6 @@ fn ahead_of_own(
     let row_order = fair_position(text(row, 7)?, integer(row, 5)?, text(row, 0)?, last_role);
     Ok(row_order < own_order)
 }
-fn fair_position<'a>(
-    role: &str,
-    sequence: i64,
-    id: &'a str,
-    last_role: &str,
-) -> (bool, i64, &'a str) {
-    (
-        (role == "executor") == (last_role == "executor"),
-        sequence,
-        id,
-    )
-}
 fn policy(
     snapshot: &Snapshot,
     lineage: &NativeReadyLineage,
@@ -549,16 +539,6 @@ fn policy(
     let exhausted = observations
         .iter()
         .any(|o| o.status == QuotaStatus::Exhausted);
-    let high = observations.iter().any(|o| {
-        o.status == QuotaStatus::Available
-            && at.saturating_sub(o.observed_at) <= 300_000
-            && o.used_percent.is_some_and(|p| p >= 95.0)
-    });
-    let executor_max = if high {
-        caps.executor.min(1)
-    } else {
-        caps.executor
-    };
     let provider_live = snapshot
         .leases
         .iter()
@@ -580,18 +560,25 @@ fn policy(
         .iter()
         .filter(|l| text(l, 3).ok() == Some("executor"))
         .count();
-    let executor_blocked =
-        executor_live >= executor_max || global_executor >= caps.global.saturating_sub(2).max(1);
     let project_max = caps.project.min(lineage.commit().project_limit());
     ensure!(project_max > 0, "quota project concurrency invalid");
-    let capacity = project_blocked(
-        &snapshot.leases,
-        &unit.scope.project_id.to_string(),
-        &unit.scope.task_id.context("quota Task absent")?.to_string(),
-        project_max,
-    )? || snapshot.leases.len() >= caps.global
-        || provider_live >= caps.provider
-        || (unit.kind == UnitKind::Executor && executor_blocked);
+    let capacity = CapacitySnapshot {
+        global_live: snapshot.leases.len(),
+        provider_live,
+        executor_live,
+        global_executor_live: global_executor,
+        global_max: caps.global,
+        provider_max: caps.provider,
+        executor_max: caps.executor,
+        high_utilization: quota_policy::high_utilization(&observations, at),
+        own_executor: unit.kind == UnitKind::Executor,
+        project_blocked: project_blocked(
+            &snapshot.leases,
+            &unit.scope.project_id.to_string(),
+            &unit.scope.task_id.context("quota Task absent")?.to_string(),
+            project_max,
+        )?,
+    };
     let mut capacity_due = at;
     for r in &snapshot.history {
         let old: ExecutionUnit = Body::<ExecutionUnit>::decode(text(r, 1)?.into(), 16 * 1024)?
@@ -628,7 +615,7 @@ fn policy(
         let max = caps.project.min(usize::try_from(integer(row, 16)?)?);
         ensure!(max > 0, "candidate project concurrency invalid");
         if project_blocked(&snapshot.leases, text(row, 8)?, text(row, 9)?, max)?
-            || (text(row, 7)? == "executor" && executor_blocked)
+            || (text(row, 7)? == "executor" && capacity.executor_blocked())
         {
             continue;
         }
@@ -663,7 +650,7 @@ fn policy(
             next_probe_at: integer(&pool, 2)?,
             foreign_probe: pool[3] != SqlValue::Null && pool[3] != t(&id),
             capacity_due,
-            capacity_blocked: capacity,
+            capacity,
             fair_head_is_self: self_head,
         },
         at,
