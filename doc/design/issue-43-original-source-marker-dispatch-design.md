@@ -166,8 +166,8 @@ toward those paths, not completion of the MVP or permission to merge.
 `Runtime::new` creates the dispatcher from the same original objects. The
 concrete Source Handoff continuation calls the planner and custody-based publisher
 after transfer returns, and owns the same-custody rollback/reconciliation error
-path. Remove the unused Handoff job receiver and narrow the unused Runtime
-publication wrapper; recovery ports require the originals in section 3.
+path. Remove the unused Handoff job receiver and the uncalled Runtime publication
+wrapper; recovery ports require the originals in section 3.
 Pending reservation retains the existing Runtime wake path.
 
 The correction has these concrete consumers:
@@ -217,7 +217,12 @@ allocation, marker permission, schema, capability or host ownership guarantee.
 one private publication custody containing its actual capacity, SAME plan and
 original origin. A typed stage records no transaction attempted, observed
 precommit refusal, transaction attempted/uncertain, committed/cache pending,
-known marker, handed off, restored Held, or partial rollback/removal error. The
+known marker, handed off, restored Held, or partial rollback/removal error. Record
+whether no transaction was constructed, a constructed transaction was dropped
+before any commit call, or commit returned Ok/Err. These are observations from
+the producer's actual control flow. A missing outcome cell is not evidence of
+precommit refusal; commit Err is uncertain. Only the observed precommit drop
+allows the unpublished-proof attempt, and does not prove rollback by itself. The
 actual producer advances the stage; error text and persisted rows cannot
 construct it. The private Store producer preserves the observed successful
 commit in that independently retained cell before fallible Driver-cache
@@ -246,7 +251,7 @@ Real plan-bearing retention ports follow this order. Isolate the existing no-pla
 retained-publication port under `cfg(test)` as a nongrant legacy guard-retention
 control: it cannot publish a marker or start Native, and supplies no accepted
 Source qualification. Do not fabricate a plan or change legacy assertions.
-Narrow the unused Runtime publication wrapper to its real scope; concrete
+Remove the uncalled `Runtime::publish_phase_marker` wrapper; concrete
 reconciliation still requires the saved originals.
 
 **Actual outcomes and rollback.** Publication distinguishes its observed
@@ -263,14 +268,19 @@ SAME owner/epoch/generation, exact original open Unit and absence of the allocat
 operation/pair/Session/invocation. Goal-row drift alone is not one of those
 predicates. Only that private proof can restore the SAME Unmarked capacity.
 Remove only its genuine unstarted job; preserve partial rollback/removal failures.
-The restored accepted Source and its stale plan remain Held. This does not refresh
+The restored accepted Source and its stale plan remain Held. The independent
+custody keeps its original plan and one-way publication-attempt latch even when
+restoration takes the queue slot's plan. Every real publication entry checks this
+same latch before a transaction; restoration never clears it. The test-only
+no-plan port cannot install a plan or bypass it. This does not refresh
 pins, reoffer Source, replay publication, authorize a new dispatch, settle a Task
 or prove process death. Commit uncertainty, Unit drift, known marker or Native
 history never becomes rollback from a label. They retain originals for exact
 postimage confirmation, with no replacement plan or fresh start.
 
 **Known marker.** Save the first returned genuine marker Arc in independent
-original custody in the same synchronous return path, before fallible origin,
+original custody in the same synchronous return path of both
+`publish_managed_marker` and `confirm_retained_marker`, before fallible origin,
 queue, job or preparation lookup. Poison recovery is allowed only to preserve
 this factual object, never to authorize handoff. All existing original/current/
 Driver/Unit/permission checks and the once-only launch CAS still precede start.
@@ -287,7 +297,11 @@ publication retention inside its own slot would recreate a cycle.
 original slot/armed guard under accepted custody before `finish_accepted`, under
 the first control admission. This cannot rely only on subsequent origin
 installation, which can fail. A one-way accepted-custody property belongs to
-the SAME slot and original armed guard. Restoring Unmarked never re-enables
+the SAME slot and original armed guard: save a one-way accepted witness in the
+slot AND the guard's retirement policy before `finish_accepted`. Merely saving
+`PendingPhaseCapacity` in Handoff assets does not change `release()` behavior.
+Only never-accepted Unmarked slots may take that drain path. Restoring Unmarked
+never re-enables
 Lost retirement for that accepted guard. Apply this distinction to
 `restore_unpublished`, `abandon_unmarked`, `remove_unmarked`, closed rollback,
 `close_unmarked` and final supervisor/guard Drop. Final guard destruction keeps

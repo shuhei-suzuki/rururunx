@@ -575,6 +575,16 @@ exists, the corresponding effect stays refused or Held. A stand-in callback,
 always-live Runtime, plain ticket or fake private constructor is not an interim
 implementation. Overall availability cannot be enabled by this component alone.
 
+The version-helper HOW narrows ONLY the `native_phase_version` effect-table
+exact-permit seam above: existing10 uses a private original-actor/known-readiness
+intent INSERT and SAME independently owned child observation/settlement with
+complete expected-inventory/body/index CAS. Its receipt is nongrant bookkeeping;
+generic marked-scope authority stays refused. This exception adds no DDL or
+permission exemption for input, owner, Session, readiness, Workflow, Driver,
+Source, quota or any other effect. Their existing exact permissions and genuine
+prepared-input/ACK/terminal predicates remain conjunctive. Unknown and drift
+remain Held and cannot authorize replay, closure or successful preparation.
+
 | Required account-free control | Actual producer/consumer and negative |
 | --- | --- |
 | Prepared source | Genuine Driver/Sources→allocation→marker→Native consumes committed config/rules A after live B changes; Context/template/profile/readonly artifact drift refuses before helper/input |

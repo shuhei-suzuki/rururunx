@@ -16,6 +16,9 @@ with genuine owned proof and strict original inventory/CAS. All installed10 guar
 private owner/input/Session/binder rules, complete #19-equivalent preparation,
 permissions, Task-version invariants and static preflight remain mandatory.
 The original HOW and its closed design reviews remain historical evidence.
+Parent preparation HOW §6's effect-table exact-permit seam is narrowed ONLY for
+`native_phase_version` to this private owned-proof/inventory-CAS route. Its quota,
+readiness and other protected-table permissions are not superseded.
 
 The source baseline is `10a4af99ee788dee6cf5e4065be986934559cfd6`:
 actual Root jobs create EMPTY custody before marker/start; actual selected Native
@@ -47,7 +50,7 @@ Source references below are to the pinned baseline, not moving worktree bytes.
 | --- | --- |
 | `execution/native.rs:319–329`, generic profile read and command construction | Private actor-qualified finite profile/command plan, outside Store/admission |
 | `native.rs:332–365`, generic helper reserve and child spawn while Store is held | Exact protected intent commit, release Store, SAME actual admission retained for synchronous raw-child creation/custody |
-| `native.rs:361–390`, local HelperGuard, generic capture/receipt and version parser | Independently retained same helper plan, eager raw-child capture and sealed owned observation before optional persistence |
+| `native.rs:361–400`, local HelperGuard, generic capture/receipt and version parser | Independently retained same helper plan, eager raw-child capture and sealed owned observation before optional persistence |
 | `process.rs:26–34`, raw child exists before fallible PID checks | New retained raw-child adoption API; existing legacy spawn is unchanged |
 | `process.rs:143–174`, generic ExecutionAuthority fence | Private same actor/current/Driver/source/readiness fence; no generic fallback |
 | `owner.rs:124–155`, HelperGuard Drop updates receipt from ID | Protected helper abandonment retains originals and factual unknown; never uses this generic guard |
@@ -149,7 +152,7 @@ Source/Queue lock occurs while SharedStore is held.
 
 One helper ID is allocated once by this actual Native producer and saved in its
 plan before the transaction. Command is exactly the original program, one
-`--version` argument, original worktree and original resource cookie. There is
+`--version` argument, original worktree and original Unit/process cookie. There is
 no caller-provided argv/purpose/target. Effect kind is `native_phase_version`.
 Persist exactly the existing nine top-level ManagedEffect fields: id, unit_id,
 scope, kind, idempotency_key, expected_target, state, receipt, version. Unknown
@@ -206,6 +209,17 @@ new IDs or unresolved baseline effects are Held even if another row says confirm
 This increment admits no delegated action. The baseline cannot supply the new
 version observation or prove that a missing child/dispatch was never created.
 
+Outside ALL locks, the intent plan also constructs and charges the complete
+expected postimage: SAME baseline plus the exact new Pending1 row, with every
+column/body/prefix/tag/header charged by the SAME inclusive representation.
+Both baseline and expected postimage must fit ≤2 MiB; row-count headroom alone
+cannot admit an oversized postimage. Save these original images before admission;
+final intent Immediate rechecks the complete saved baseline and the qualified
+planned postimage before INSERT. Settlement planning likewise charges the whole
+expected set with its exact receipt postimage outside locks, before any write.
+Oversize refuses the write, retains actual observation/original custody and Held;
+it cannot refresh the baseline, truncate the set or qualify from the current row.
+
 The pre-intent baseline is at most254 rows; version postimage is at most255,
 reserving at least one later native-input slot under its unchanged count<256
 guard. Other required helper/transport intents need separate finite headroom
@@ -237,11 +251,22 @@ EVERY success/error/unwind path before connection reuse/rollback. A private
 lexical reset guard forbids nested progress scopes or replacing an installed
 hook. Independent read-only planning connections use the same strategy; final
 SharedStore exclusive connection access lasts this synchronous routine only.
+The callback uses only infallible saturating arithmetic. rusqlite 0.37 absorbs
+a callback panic and returns false (continue), so such a panic is not an
+InventoryWorkLimit or a Rust unwind through the lexical guard. The reset guard
+covers actual success/error/unwind returns from the enclosing Rust routine.
 Interruption is typed InventoryWorkLimit/Held, discards ALL partial rows/proofs,
-rolls back any intent and preserves original custody. It cannot substitute a
+requires rollback handling and preserves original custody. It cannot substitute a
 count/own-row/head check or authorize spawn. Reset before mandatory nongrant
-closure SQL, which retains its parent finite budget instead of an exhausted
-helper counter. No await, path checks, hashing or encoding under SharedStore.
+closure SQL. This means ending/rolling back the current transaction and retaining
+the original observation/Held state under the parent's exact permissions and
+row/byte limits; it is not a second VM budget or authorization for another intent
+or spawn. No await, path checks, hashing or encoding under SharedStore.
+An interrupted write may already have rolled back SQLite's transaction. End live
+statement borrows and reset the hook before rollback/reuse; preserve the actual
+interrupt and SAME plan. Error labels or autocommit state alone never prove the
+original preimage/rollback, no-child attempt or eligibility for an inline retry.
+Unproved transaction outcomes remain Held under the original reconciliation port.
 
 This bounds approximate SQLite VM work, not wall time, OS I/O, SQLite internal
 allocation or all parent-validation/transaction work; those costs are separate.
@@ -263,7 +288,9 @@ that SAME admission. A fallible intent commit is Held and cannot spawn; original
 plan reconciliation must prove its exact sealed pre/post images first. A
 definitive pre-write refusal/proven rollback before ANY child attempt can retry
 inline only with SAME plan/ID, still-current unrevoked actor/admission and parent
-finite retries/backoff. Known post confirms SAME intent, never repeats spawn.
+finite retries/backoff. This requires actual definitive original preimage/rollback
+and the retained producer's no-child-attempt state, not a SQL error label or
+autocommit alone. Known post confirms SAME intent, never repeats spawn.
 Commit/spawn uncertainty stays Held. After returned error/Root abandonment,
 reconciliation records facts only and cannot revive the actor or helper.
 
@@ -280,20 +307,27 @@ field destruction/reaping, only for a qualified original unreaped leader. Before
 PID/identity qualification, retain SAME raw Child and use only valid direct-handle
 best-effort actions. Never adopt a newly discovered numeric PID for signaling.
 Unknown hygiene does not discard known actual work observations.
+The existing five-second shutdown admission timeout returns pending/error; it
+does not release helper/slot/raw-child custody or establish NoChild. VM work
+limits do not promise this shutdown deadline or bound synchronous OS spawn.
 
 Release admission before capture awaits. No SharedStore/admission/queue/source
-mutex spans child I/O. The actual child has its own process group, original Task
-cookie and null stdin; stdout/stderr are piped into bounded readers. Capture
+mutex spans child I/O. The actual child has its own process group, original
+Unit/process cookie and null stdin; stdout/stderr use bounded readers. Capture
 stdout+stderr COMBINED≤64 KiB with checked shared accounting including discarded
 stderr; stricter per-stream limits never replenish that shared quota. Use
 ≤30s command deadline,
 ≤2s drain and ≤10s best-effort direct stop/reap. Overflow and inherited open pipes
 do not create an unbounded suffix drain or indefinite native lease.
 
-A50ms fence uses outside-Store original planning and the same-transaction
+A private 50 ms fence starts AFTER admission is released, uses
+`MissedTickBehavior::Delay` (no Burst/catch-up or overlapping fence tasks),
+outside-Store original planning and the same-transaction
 current/source/Driver/Unit/readiness conjunction; cancellation/revocation initiates
-best-effort stop of this retained child. A fence/storage error retains observation
-and originals rather than reclassifying a known exit. Keep the leader unreaped
+best-effort stop of this retained child. Each tick keeps the complete expected-set
+check and cumulative work budget. InventoryWorkLimit or a fence/storage error
+initiates best-effort stop, retains bounded observation and originals/Held rather
+than reclassifying a known exit, and never admits a replay. Keep the leader unreaped
 until group signaling. Do not infer descendant death from leader exit, ESRCH,
 empty pipes or wait success; hygiene result is separate from helper outcome.
 
@@ -413,6 +447,14 @@ A new binary with a simulated old version is not evidence
 about actual old10 behavior. Actual compiled old10 interference controls qualify
 this narrower boundary, not journal immutability or new migration readiness.
 
+Ignored/skipped controls are not execution evidence. The separate ec5cc historical
+run (`.rrx/development-evidence/source-marker-dispatch-ec5cc/formal/historical.txt`)
+explicitly used `--ignored` and the actual immutable00df Store harness:
+2 PASS/0 ignored. It
+qualifies incompatible historical-layout refusal only, not new helper-image
+decode, startup epoch compatibility or compatible cached-writer interference.
+Those helper controls remain required and unexecuted for this HOW-only proposal.
+
 ## 8. Verification gates and remaining work
 
 Fixed clean source and actual Claude/Codex/Grok Triple reviews precede acceptance,
@@ -437,7 +479,10 @@ same-Unit effects, baseline254→version255 with one reserved input slot, baseli
 refusal before intent/spawn, separate full inventory256/257 and inclusive2 MiB
 all-column/body boundaries, combined64 KiB/64 KiB+1 across both streams and actual
 compatible
-cached/new-open old10 journal interference. Protected owner/input/Session/Workflow/
+cached/new-open old10 journal interference. Exercise baseline-fit but intent-
+postimage-overflow refusal before INSERT/spawn, and settlement-postimage-overflow
+refusal before write with owned observation retained; pair each with an in-bound
+SAME original postimage. Protected owner/input/Session/Workflow/
 Driver/Source and old9/newer-version negative controls remain separate gates.
 Compiled omissions of actual owned-observation dependency, original full set/CAS,
 saved postimage, epoch/current/Driver/source/pair or one-shot spawn checks must
