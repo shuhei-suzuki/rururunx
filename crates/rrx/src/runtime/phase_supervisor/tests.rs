@@ -367,7 +367,7 @@ async fn fair_actual_pending_pages_rotate_projects_and_retain_owner_change_as_ho
 #[tokio::test]
 async fn foreign_preparation_and_stopped_service_refuse_without_consuming_inputs() {
     let f = Fixture::new(4, 4).await;
-    let tasks = f.tasks("project", 2).await;
+    let tasks = f.tasks("project", 3).await;
     let (allocation, right, unit) = f.allocation(&tasks[0], "claude").await;
     let (_, wrong, other) = f.allocation(&tasks[1], "codex").await;
     let refused = f
@@ -385,19 +385,43 @@ async fn foreign_preparation_and_stopped_service_refuse_without_consuming_inputs
         .await
         .unwrap();
     drop(refused.preparation);
+    // Prepare the exact stopped-admission pair while the service can still
+    // dispatch. Shutdown must not require a fresh preparation or allocation.
+    let (allocation, guard, stopped_unit) = f.allocation(&tasks[2], "codex").await;
+    let facts = allocation.facts();
+    let identity = (
+        facts.operation_id,
+        facts.session_id,
+        facts.invocation_id,
+        facts.pair_id,
+    );
+    let input = facts.input_bytes.to_vec();
     f.runtime.shutdown().await.unwrap();
     assert!(!capacity.is_retained());
-    // The stopped service returns the original pair even though its Unit has
-    // been nongrant-retired; it cannot reuse this as a current native grant.
-    let (allocation, guard, _) = f.allocation(&tasks[1], "codex").await;
-    let operation = allocation.facts().operation_id;
     let refused = f
         .runtime
         .reserve_pending_phase(allocation, guard)
         .await
         .err()
         .expect("stopped Runtime accepted pending work");
-    assert_eq!(refused.allocation.facts().operation_id, operation);
+    let facts = refused.allocation.facts();
+    assert_eq!(
+        (
+            facts.operation_id,
+            facts.session_id,
+            facts.invocation_id,
+            facts.pair_id,
+        ),
+        identity
+    );
+    assert_eq!(facts.input_bytes, input);
+    assert!(
+        refused
+            .preparation
+            .matches(&f.owner, &stopped_unit)
+            .unwrap()
+    );
+    f.unchanged(&stopped_unit);
     assert!(f.runtime.phases.fair_page().unwrap().is_empty());
     assert!(!f.counter.exists());
 }
