@@ -43,6 +43,7 @@ pub(crate) struct PreparationGuard {
     unit: super::ExecutionUnit,
     armed: bool,
     unmarked_retirement: bool,
+    driver_preparation: Option<Arc<crate::state::DriverPreparationAdvance>>,
 }
 impl PreparationGuard {
     /// Nongrant identity inspection for transfer to the actual Runtime queue.
@@ -62,6 +63,7 @@ impl PreparationGuard {
             unit: unit.clone(),
             armed: true,
             unmarked_retirement: true,
+            driver_preparation: None,
         }
     }
     /// Retention policy only: this does not authorize a helper, input or close.
@@ -74,6 +76,12 @@ impl PreparationGuard {
     pub(crate) fn restore_unmarked_retirement(&mut self) {
         self.unmarked_retirement = true;
     }
+    pub(crate) fn retain_driver_preparation(
+        &mut self,
+        plan: &Arc<crate::state::DriverPreparationAdvance>,
+    ) {
+        self.driver_preparation = Some(plan.clone());
+    }
     pub(crate) fn update(&mut self, unit: &super::ExecutionUnit) {
         self.unit = unit.clone();
     }
@@ -83,7 +91,13 @@ impl PreparationGuard {
 }
 impl Drop for PreparationGuard {
     fn drop(&mut self) {
-        if !self.armed || !self.unmarked_retirement {
+        if !self.armed
+            || !self.unmarked_retirement
+            || self
+                .driver_preparation
+                .as_ref()
+                .is_some_and(|p| p.is_retained().unwrap_or(true))
+        {
             return;
         }
         if let Ok(mut store) = self.owner.store.lock()

@@ -376,6 +376,9 @@ impl AttemptManager {
             }
         };
         let mut preparation_guard = owner::PreparationGuard::new(self.owner.clone(), &unit);
+        if let Some(plan) = &driver_plan {
+            preparation_guard.retain_driver_preparation(plan);
+        }
         let prepared = async {
             self.resources.reserve(&unit, &profile)?;
             drop(admission);
@@ -386,6 +389,9 @@ impl AttemptManager {
                         .plan_preparing()
                 })
                 .transpose()?;
+            if let Some(plan) = &transition {
+                preparation_guard.retain_driver_preparation(plan);
+            }
             let mut preparing = {
                 let mut store = self
                     .owner
@@ -430,6 +436,9 @@ impl AttemptManager {
                             .plan_preparation_base(&base)
                         })
                         .transpose()?;
+                    if let Some(plan) = &advance {
+                        preparation_guard.retain_driver_preparation(plan);
+                    }
                     preparing = {
                         let mut store = self
                             .owner

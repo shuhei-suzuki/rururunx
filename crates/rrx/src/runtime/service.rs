@@ -19,6 +19,15 @@ impl Drop for Running {
 impl Runtime {
     fn observe_task_drivers(&self) -> Result<usize> {
         let pending = self._drivers.observe_finished()?;
+        for plan in self._drivers.pending_preparations()? {
+            // Held advances do not detach jobs, release capacity or authorize a
+            // retry. Stop/panic/uncertain rows keep the SAME plan in slot custody.
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .reconcile_driver_preparation(&plan)?;
+        }
         for exit in self._drivers.pending_exits()? {
             let publication = self
                 .owner

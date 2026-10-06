@@ -16,6 +16,7 @@ pub(crate) struct DriverPreparationAdvance {
     body: String,
     initial: bool,
     governing: String,
+    reconcile_ready: std::sync::atomic::AtomicBool,
 }
 impl DriverReadTicket {
     /// Only the actual AttemptManager draft reaches this private entry. The
@@ -23,7 +24,7 @@ impl DriverReadTicket {
     pub(crate) fn plan_first_preparation(
         self,
         mut unit: ExecutionUnit,
-    ) -> Result<DriverPreparationAdvance> {
+    ) -> Result<Arc<DriverPreparationAdvance>> {
         let task = self.task();
         ensure!(
             self.preparation.is_none()
@@ -77,7 +78,7 @@ impl DriverReadTicket {
     }
     /// No arbitrary transition DTO is accepted: only the two prescribed source
     /// preparation edges before first Workflow/input publication exist here.
-    pub(crate) fn plan_preparing(self) -> Result<DriverPreparationAdvance> {
+    pub(crate) fn plan_preparing(self) -> Result<Arc<DriverPreparationAdvance>> {
         let (old, _) = self
             .preparation
             .as_ref()
@@ -93,7 +94,7 @@ impl DriverReadTicket {
         let task = self.task().clone();
         self.preparation_plan(unit, task, false)
     }
-    pub(crate) fn plan_preparation_base(self, base: &str) -> Result<DriverPreparationAdvance> {
+    pub(crate) fn plan_preparation_base(self, base: &str) -> Result<Arc<DriverPreparationAdvance>> {
         ensure!(
             crate::execution::valid_oid(base),
             "base must be exact commit OID"
@@ -118,7 +119,7 @@ impl DriverReadTicket {
         unit: ExecutionUnit,
         task: Task,
         initial: bool,
-    ) -> Result<DriverPreparationAdvance> {
+    ) -> Result<Arc<DriverPreparationAdvance>> {
         ensure!(
             self.source.is_none()
                 && !self.scope.has_input_history()
@@ -157,7 +158,7 @@ impl DriverReadTicket {
         ensure!(body.len() <= 128 * 1024, "preparation Driver exceeds bound");
         let (project, goal) = self.scope.governing_owners();
         let governing = crate::state::execution::governing_digest(project, goal)?;
-        Ok(DriverPreparationAdvance {
+        let plan = Arc::new(DriverPreparationAdvance {
             ticket: self,
             unit,
             unit_body,
@@ -167,10 +168,67 @@ impl DriverReadTicket {
             body,
             initial,
             governing,
-        })
+            reconcile_ready: std::sync::atomic::AtomicBool::new(false),
+        });
+        plan.ticket.association.retain_preparation(&plan)?;
+        Ok(plan)
+    }
+}
+// Entered while the actual Store is excluded. Unwind/Err permits observation
+// of this same attempted plan; a not-yet-started producer is never rolled back
+// underneath its live caller merely because original rows still exist.
+struct Applying<'a>(&'a Arc<DriverPreparationAdvance>);
+impl Drop for Applying<'_> {
+    fn drop(&mut self) {
+        self.0.allow_reconciliation();
     }
 }
 impl DriverPreparationAdvance {
+    pub(crate) fn allow_reconciliation(&self) {
+        self.reconcile_ready
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    pub(crate) fn reconciliation_ready(&self) -> bool {
+        self.reconcile_ready
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+    pub(crate) fn belongs_to(
+        &self,
+        association: &crate::runtime::driver::DriverAssociation,
+    ) -> bool {
+        self.ticket.association.same_association(association)
+    }
+    pub(crate) fn original_binding(&self) -> (Uuid, u64, u64, &str) {
+        (
+            self.ticket.row.id,
+            self.ticket.row.epoch,
+            self.ticket.row.version,
+            &self.ticket.body,
+        )
+    }
+    pub(crate) fn is_retained(self: &Arc<Self>) -> Result<bool> {
+        self.ticket.association.preparation_retained(self)
+    }
+    fn validate_rollback(&self, tx: &Transaction<'_>) -> Result<()> {
+        // No liveness is granted: this proves only that THIS atomic write-plan
+        // did not commit. Other effects/leases/history are never released.
+        self.ticket.scope.validate_current(tx)?;
+        self.ticket.validate_selection_tx(tx)?;
+        self.ticket.validate_source_tx(tx)?;
+        let task = self.ticket.task();
+        let exact: bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM task_drivers WHERE task_id=?1 AND project_id=?2 AND goal_id=?3 AND id=?4 AND owner_epoch=?5 AND version=?6 AND state='driving' AND body=?7)",params![task.id.to_string(),task.project_id.to_string(),task.goal_id.to_string(),self.ticket.row.id.to_string(),self.ticket.row.epoch,self.ticket.row.version,self.ticket.body],|r|r.get(0))?;
+        ensure!(exact, "preparation rollback original Driver differs");
+        if self.initial {
+            let exists: bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM execution_units WHERE task_id=?1) OR EXISTS(SELECT 1 FROM execution_context WHERE unit_id=?2)",params![task.id.to_string(),self.unit.id.to_string()],|r|r.get(0))?;
+            ensure!(!exists, "preparation rollback retains new Unit history");
+        }
+        let (_, _, version, body) = self.ticket.association.binding()?;
+        ensure!(
+            version == self.ticket.row.version && body == self.ticket.body,
+            "preparation rollback cache differs"
+        );
+        Ok(())
+    }
     fn validate_result(&self, tx: &Transaction<'_>) -> Result<()> {
         self.ticket
             .scope
@@ -187,8 +245,13 @@ impl DriverPreparationAdvance {
 impl Store {
     pub(crate) fn apply_driver_preparation(
         &mut self,
-        plan: &DriverPreparationAdvance,
+        plan: &Arc<DriverPreparationAdvance>,
     ) -> Result<ExecutionUnit> {
+        ensure!(
+            plan.is_retained()?,
+            "Driver preparation is not retained by its actual slot"
+        );
+        let _applying = Applying(plan);
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -216,7 +279,13 @@ impl Store {
             tx.execute("INSERT INTO task_execution(task_id,project_id,goal_id,generation,active_unit) VALUES(?1,?2,?3,1,?4)",params![plan.task.id.to_string(),plan.task.project_id.to_string(),plan.task.goal_id.to_string(),plan.unit.id.to_string()])?;
             let mut input = plan.task.clone();
             input.version = plan.ticket.task().version;
-            let written = put_task_tx_at(&tx, &input, plan.task.updated_at)?;
+            let namespace = plan
+                .ticket
+                .namespace
+                .as_ref()
+                .context("Driver initial namespace snapshot missing")?;
+            let written =
+                put_task_tx_at_with_namespace(&tx, &input, plan.task.updated_at, Some(namespace))?;
             ensure!(
                 serde_json::to_string(&written)? == plan.task_body,
                 "preparation Task write differs from prescribed plan"
@@ -253,7 +322,7 @@ impl Store {
     /// Same owned plan reconciliation, never current-row authority recapture.
     pub(crate) fn publish_driver_preparation(
         &mut self,
-        plan: &DriverPreparationAdvance,
+        plan: &Arc<DriverPreparationAdvance>,
     ) -> Result<()> {
         ensure!(
             self.connection.is_autocommit(),
@@ -264,6 +333,10 @@ impl Store {
         let exact: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM task_drivers WHERE task_id=?1 AND goal_id=?2 AND project_id=?3 AND id=?4 AND owner_epoch=?5 AND version=?6 AND state='driving' AND body=?7)",params![plan.task.id.to_string(),plan.task.goal_id.to_string(),plan.task.project_id.to_string(),plan.next.id.to_string(),plan.next.epoch,plan.next.version,plan.body],|r|r.get(0))?;
         ensure!(exact, "committed preparation Driver differs");
         tx.commit()?;
+        ensure!(
+            plan.is_retained()?,
+            "preparation publication lost actual custody"
+        );
         plan.ticket.association.publish_exact(&DriverPublication {
             task: plan.task.id,
             id: plan.next.id,
@@ -272,6 +345,34 @@ impl Store {
             before_body: plan.ticket.body.clone(),
             after_version: plan.next.version,
             after_body: plan.body.clone(),
-        })
+        })?;
+        plan.ticket.association.retire_preparation(plan)
+    }
+    /// Actual service consumes the SAME retained pre-SQL plan. Missing/foreign
+    /// images remain held; it never reapplies SQL or reconstructs a plan.
+    pub(crate) fn reconcile_driver_preparation(
+        &mut self,
+        plan: &Arc<DriverPreparationAdvance>,
+    ) -> Result<bool> {
+        ensure!(
+            self.connection.is_autocommit(),
+            "preparation reconcile inside writer"
+        );
+        if !plan.is_retained()? {
+            return Ok(true);
+        }
+        if !plan.reconciliation_ready() {
+            return Ok(false);
+        }
+        if self.publish_driver_preparation(plan).is_ok() {
+            return Ok(true);
+        }
+        let tx = self.connection.transaction()?;
+        if plan.validate_rollback(&tx).is_err() {
+            return Ok(false);
+        }
+        tx.commit()?;
+        plan.ticket.association.retire_preparation(plan)?;
+        Ok(true)
     }
 }

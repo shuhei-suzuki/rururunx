@@ -15,6 +15,7 @@ pub(crate) struct DriverReadTicket {
     pub(super) preparation: Option<(crate::execution::ExecutionUnit, String)>,
     pub(super) source: Option<(Uuid, u64, String)>,
     pub(super) prerequisites: super::claim::PrerequisiteRows,
+    pub(super) namespace: Option<super::NamespaceSnapshot>,
 }
 
 pub(crate) fn read_driver_ticket(
@@ -59,6 +60,11 @@ pub(crate) fn read_driver_ticket(
         let preparation = preparation_anchor(tx, scope.task(), pins.generation)?;
         let source = crate::state::execution::source_recovery::driver_anchor(tx, task)?;
         let prerequisites = super::claim::read_prerequisites(tx, scope.task())?;
+        let namespace = if preparation.is_none() && !scope.has_input_history() {
+            Some(super::NamespaceSnapshot::read(tx, scope.task().project_id)?)
+        } else {
+            None
+        };
         ensure!(
             association.validates(id, epoch, version, &body),
             "Driver revoked during coherent planning"
@@ -72,6 +78,7 @@ pub(crate) fn read_driver_ticket(
             preparation,
             source,
             prerequisites,
+            namespace,
         })
     })
 }
