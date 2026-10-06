@@ -13,6 +13,7 @@ mod schema;
 #[cfg(test)]
 mod schema_tests;
 mod snapshot;
+mod successor;
 mod unpublished;
 pub(super) use permits::{ExactRowMutation, PrivatePermitManager, register_permit_function};
 #[cfg(test)]
@@ -28,6 +29,7 @@ pub(crate) use marker_plan::{ManagedMarkerPlan, plan_marker};
 pub(crate) use publication::{MarkerPublicationPlan, OriginalMarker, plan_marker_publication};
 pub(crate) use snapshot::plan_scope;
 pub(in crate::state) use snapshot::{ScopePlan, read_scope, snapshot};
+pub(crate) use successor::{CurrentWorkflowSuccessor, plan_current_phase, validate_current_tx};
 pub(crate) use unpublished::{UnpublishedMarkerProof, plan_unpublished_marker};
 
 #[cfg(test)]

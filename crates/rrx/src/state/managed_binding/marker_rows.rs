@@ -94,6 +94,18 @@ fn body(value: &serde_json::Value, bound: usize) -> Result<String> {
 }
 
 impl MarkerRows {
+    pub(super) fn validate_open_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        // Native owner/readiness facts may advance separately. The original
+        // open operation and preparation template stay exact and immutable.
+        for table in ["managed_phase_operations", "managed_phase_inputs"] {
+            self.rows
+                .iter()
+                .find(|row| row.table == table)
+                .context("original open marker image absent")?
+                .validate_tx(tx)?;
+        }
+        Ok(())
+    }
     pub(super) fn plan(marker: &ManagedMarkerPlan, allocation: &NativeAllocation) -> Result<Self> {
         let f = allocation.facts();
         // The owner key is the genuine factory's immutable allocated pair key.

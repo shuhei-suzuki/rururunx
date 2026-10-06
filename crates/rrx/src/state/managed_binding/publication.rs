@@ -51,6 +51,12 @@ pub(crate) struct OriginalMarker {
     plan: Arc<MarkerPublicationPlan>,
 }
 impl OriginalMarker {
+    pub(super) fn publication_plan(&self) -> Arc<MarkerPublicationPlan> {
+        self.plan.clone()
+    }
+    pub(super) fn validate_open_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        self.plan.rows.validate_open_tx(tx)
+    }
     pub(crate) fn from_original_plan(&self, plan: &Arc<MarkerPublicationPlan>) -> bool {
         Arc::ptr_eq(&self.plan, plan)
     }
