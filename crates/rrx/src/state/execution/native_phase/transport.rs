@@ -3,7 +3,10 @@ use super::*;
 use crate::runtime::phase_effect_admission::PhaseEffectAdmissionGuard;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RegistrationAckSource { Committed, Confirmed }
+pub(crate) enum RegistrationAckSource {
+    Committed,
+    Confirmed,
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RegistrationAck {
     pub(crate) readiness: u64,
@@ -11,27 +14,51 @@ pub(crate) struct RegistrationAck {
     pub(crate) source: RegistrationAckSource,
 }
 pub(crate) struct KnownTransportRegistration {
-    plan: Arc<NativeTransportStartPlan>, ack:RegistrationAck,
+    plan: Arc<NativeTransportStartPlan>,
+    ack: RegistrationAck,
 }
 impl KnownTransportRegistration {
-    pub(crate) fn activation(self, original:&Arc<NativeTransportStartPlan>) -> Option<RegistrationAck> {
-        Arc::ptr_eq(&self.plan,original).then_some(self.ack)
+    pub(crate) fn activation(
+        self,
+        original: &Arc<NativeTransportStartPlan>,
+    ) -> Option<RegistrationAck> {
+        Arc::ptr_eq(&self.plan, original).then_some(self.ack)
     }
 }
-pub(crate) enum RegistrationProbe { Committed(KnownTransportRegistration), Absent, Held }
+pub(crate) enum RegistrationProbe {
+    Committed(KnownTransportRegistration),
+    Absent,
+    Held,
+}
 
 impl NativeReadyLineage {
     pub(super) fn readiness_version(&self) -> Result<u64> {
-        let SqlValue::Integer(version)=self.readiness().column("version")? else { anyhow::bail!("prepared readiness version absent") };
+        let SqlValue::Integer(version) = self.readiness().column("version")? else {
+            anyhow::bail!("prepared readiness version absent")
+        };
         Ok(u64::try_from(*version)?)
     }
 }
-fn transport_effect(launch:&PhaseLaunchParts, command_digest:&str) -> Result<ManagedEffect> {
-    let f=launch.allocation().facts();
-    let target=crate::execution::native_result::digest(format!("{}:{}:{}:{}:{}:{}",f.operation_id,f.pair_id,f.epoch,f.session_id,f.invocation_id,command_digest).as_bytes());
-    Ok(ManagedEffect { id:OperationId::new(),unit_id:f.unit_id,scope:f.scope.clone(),
-        kind:"native_phase_transport".into(), idempotency_key:format!("native-transport-{}",f.operation_id),
-        expected_target:format!("transport:{target}"),state:EffectState::Pending,receipt:BTreeMap::new(),version:1 })
+fn transport_effect(launch: &PhaseLaunchParts, command_digest: &str) -> Result<ManagedEffect> {
+    let f = launch.allocation().facts();
+    let target = crate::execution::native_result::digest(
+        format!(
+            "{}:{}:{}:{}:{}:{}",
+            f.operation_id, f.pair_id, f.epoch, f.session_id, f.invocation_id, command_digest
+        )
+        .as_bytes(),
+    );
+    Ok(ManagedEffect {
+        id: OperationId::new(),
+        unit_id: f.unit_id,
+        scope: f.scope.clone(),
+        kind: "native_phase_transport".into(),
+        idempotency_key: format!("native-transport-{}", f.operation_id),
+        expected_target: format!("transport:{target}"),
+        state: EffectState::Pending,
+        receipt: BTreeMap::new(),
+        version: 1,
+    })
 }
 
 /// A finite unconsumed registration plan. No public ID/DTO can construct this.
@@ -56,59 +83,119 @@ pub(crate) struct NativeTransportStartPlan {
     invocation_raw: String,
 }
 impl NativeTransportStartPlan {
-    pub(crate) fn launch(&self) -> &Arc<PhaseLaunchParts> { &self.launch }
-    pub(crate) fn session(&self) -> &Session { &self.session }
-    pub(crate) fn unit(&self) -> &ExecutionUnit { &self.unit_after }
-    pub(crate) fn prepared(&self) -> &Arc<crate::execution::native::PreparedNativePhase> { &self.prepared }
-    pub(crate) fn transport_intent(&self) -> &ManagedEffect { &self.effect }
-    pub(crate) fn transport_intent_raw(&self) -> &str { &self.effect_raw }
-    pub(crate) fn registered_readiness(&self) -> Result<u64> { Ok(self.prepared.lineage().readiness_version()?.checked_add(1).context("readiness exhausted")?) }
-    pub(super) fn governing_digest(&self) -> &str { &self.governing_digest }
-    fn validate_origin_tx(&self,tx:&Transaction<'_>) -> Result<()> {
-        self.prepared.validate_original()?;
-        self.launch.validate_preparation_origin_tx(tx,&self.current)?;
-        validate_unit_authority_facts(tx,&self.current.unit().authority(),self.current.unit())?;
-        validate_native_effect_open(self.current.unit())?;
-        let original=self.launch.marker().original_plan();
-        validate_parent_activity_facts(self.current.unit(),original.project().0,original.goal().0,original.task_after().0)?;
-        validate_governing_context_facts(tx,self.current.unit(),&self.governing_digest)
+    pub(crate) fn launch(&self) -> &Arc<PhaseLaunchParts> {
+        &self.launch
     }
-    fn validate_pre_tx(&self,tx:&Transaction<'_>) -> Result<()> {
+    pub(crate) fn session(&self) -> &Session {
+        &self.session
+    }
+    pub(crate) fn unit(&self) -> &ExecutionUnit {
+        &self.unit_after
+    }
+    pub(crate) fn prepared(&self) -> &Arc<crate::execution::native::PreparedNativePhase> {
+        &self.prepared
+    }
+    pub(crate) fn transport_intent(&self) -> &ManagedEffect {
+        &self.effect
+    }
+    pub(crate) fn transport_intent_raw(&self) -> &str {
+        &self.effect_raw
+    }
+    pub(crate) fn registered_readiness(&self) -> Result<u64> {
+        Ok(self
+            .prepared
+            .lineage()
+            .readiness_version()?
+            .checked_add(1)
+            .context("readiness exhausted")?)
+    }
+    pub(super) fn governing_digest(&self) -> &str {
+        &self.governing_digest
+    }
+    fn validate_origin_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        self.prepared.validate_original()?;
+        self.launch
+            .validate_preparation_origin_tx(tx, &self.current)?;
+        validate_unit_authority_facts(tx, &self.current.unit().authority(), self.current.unit())?;
+        validate_native_effect_open(self.current.unit())?;
+        let original = self.launch.marker().original_plan();
+        validate_parent_activity_facts(
+            self.current.unit(),
+            original.project().0,
+            original.goal().0,
+            original.task_after().0,
+        )?;
+        validate_governing_context_facts(tx, self.current.unit(), &self.governing_digest)
+    }
+    fn validate_pre_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         self.prepared.validate_open()?;
         self.validate_origin_tx(tx)?;
         self.prepared.lineage().validate_registration_tx(tx)?;
         self.prepared.quota().validate_registration_tx(tx)?;
         self.prepared.history().validate_inventory(tx)?;
-        registration_unit(self.current.unit(),&self.launch)?;
-        ensure!(!verification::is_command_unit(tx,self.current.unit().id)?,"command-only verifier cannot register Native");
-        no_registration(tx,&self.launch)?;
-        self.owner_before.validate_tx(tx)?;self.readiness_before.validate_tx(tx)?;
-        let absent:bool=tx.query_row("SELECT NOT EXISTS(SELECT 1 FROM managed_effects WHERE id=?1 OR idempotency_key=?2)",params![self.effect.id.to_string(),self.effect.idempotency_key],|r|r.get(0))?;
-        ensure!(absent,"transport intent identity exists");Ok(())
+        registration_unit(self.current.unit(), &self.launch)?;
+        ensure!(
+            !verification::is_command_unit(tx, self.current.unit().id)?,
+            "command-only verifier cannot register Native"
+        );
+        no_registration(tx, &self.launch)?;
+        self.owner_before.validate_tx(tx)?;
+        self.readiness_before.validate_tx(tx)?;
+        let absent: bool = tx.query_row(
+            "SELECT NOT EXISTS(SELECT 1 FROM managed_effects WHERE id=?1 OR idempotency_key=?2)",
+            params![self.effect.id.to_string(), self.effect.idempotency_key],
+            |r| r.get(0),
+        )?;
+        ensure!(absent, "transport intent identity exists");
+        Ok(())
     }
-    fn validate_post_tx(&self,tx:&Transaction<'_>) -> Result<()> {
+    fn validate_post_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         // Confirmation validates the SAME original Source/frame and known own
         // postimages. It does not reuse the pre-registration Unit CAS.
         self.prepared.validate_original()?;
-        let post=self.current.with_known_unit(Arc::new(crate::state::managed_binding::Body::decode(self.unit_raw.clone(),16*1024)?))?;
-        self.launch.validate_preparation_origin_tx(tx,&post)?;
-        validate_unit_authority_facts(tx,&self.unit_after.authority(),&self.unit_after)?;
+        let post =
+            self.current
+                .with_known_unit(Arc::new(crate::state::managed_binding::Body::decode(
+                    self.unit_raw.clone(),
+                    16 * 1024,
+                )?))?;
+        self.launch.validate_preparation_origin_tx(tx, &post)?;
+        validate_unit_authority_facts(tx, &self.unit_after.authority(), &self.unit_after)?;
         validate_native_effect_open(&self.unit_after)?;
-        let original=self.launch.marker().original_plan();
-        validate_parent_activity_facts(&self.unit_after,original.project().0,original.goal().0,original.task_after().0)?;
-        validate_governing_context_facts(tx,&self.unit_after,&self.governing_digest)?;
-        self.owner_after.validate_tx(tx)?;self.readiness_after.validate_tx(tx)?;
+        let original = self.launch.marker().original_plan();
+        validate_parent_activity_facts(
+            &self.unit_after,
+            original.project().0,
+            original.goal().0,
+            original.task_after().0,
+        )?;
+        validate_governing_context_facts(tx, &self.unit_after, &self.governing_digest)?;
+        self.owner_after.validate_tx(tx)?;
+        self.readiness_after.validate_tx(tx)?;
         self.prepared.quota().validate_registration_tx(tx)?;
-        self.prepared.history().validate_registration_inventory(tx,&self.effect)?;
-        let (p,g,t)=scope_keys(&self.session.scope)?;
+        self.prepared
+            .history()
+            .validate_registration_inventory(tx, &self.effect)?;
+        let (p, g, t) = scope_keys(&self.session.scope)?;
         let exact:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM records WHERE id=?1 AND kind='session' AND project_id=?2 AND goal_id=?3 AND task_id=?4 AND version=1 AND body=?5) AND EXISTS(SELECT 1 FROM session_units WHERE session_id=?1 AND unit_id=?6 AND project_id=?2 AND goal_id=?3 AND task_id=?4 AND dispatch_state='pending') AND NOT EXISTS(SELECT 1 FROM session_units WHERE (session_id=?1 OR unit_id=?6) AND NOT(session_id=?1 AND unit_id=?6))",params![self.session.id.to_string(),p,g,t,self.record_raw,self.unit_after.id.to_string()],|r|r.get(0))?;
-        ensure!(exact,"registration Session complete postimage changed");
-        let i=&self.invocation;
+        ensure!(exact, "registration Session complete postimage changed");
+        let i = &self.invocation;
         let exact:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM native_invocations WHERE id=?1 AND unit_id=?2 AND session_id=?3 AND project_id=?4 AND goal_id=?5 AND task_id=?6 AND generation=?7 AND owner_epoch=?8 AND provider=?9 AND state='not_dispatched' AND version=1 AND body=?10) AND NOT EXISTS(SELECT 1 FROM native_invocations WHERE (unit_id=?2 OR session_id=?3) AND id<>?1) AND NOT EXISTS(SELECT 1 FROM managed_phase_admissions WHERE pair_id=?11 OR operation_id=?12)",params![i.id.to_string(),i.unit_id.to_string(),i.session_id.to_string(),p,g,t,i.generation,i.owner_epoch,i.provider,self.invocation_raw,self.launch.allocation().facts().pair_id.to_string(),self.launch.allocation().facts().operation_id.to_string()],|r|r.get(0))?;
-        ensure!(exact,"registration invocation complete postimage changed");Ok(())
+        ensure!(exact, "registration invocation complete postimage changed");
+        Ok(())
     }
-    fn known(self:&Arc<Self>,source:RegistrationAckSource) -> Result<KnownTransportRegistration> {
-        Ok(KnownTransportRegistration { plan:self.clone(),ack:RegistrationAck {readiness:self.registered_readiness()?,unit_version:self.unit_after.version,source} })
+    fn known(
+        self: &Arc<Self>,
+        source: RegistrationAckSource,
+    ) -> Result<KnownTransportRegistration> {
+        Ok(KnownTransportRegistration {
+            plan: self.clone(),
+            ack: RegistrationAck {
+                readiness: self.registered_readiness()?,
+                unit_version: self.unit_after.version,
+                source,
+            },
+        })
     }
 }
 
@@ -183,9 +270,24 @@ fn plan_prepared_transport(
     };
     let mut body = readiness_before.body()?;
     body["state"] = json!("registered");
-    body["version"] = json!(prepared.lineage().readiness_version()?.checked_add(1).context("readiness exhausted")?);
+    body["version"] = json!(
+        prepared
+            .lineage()
+            .readiness_version()?
+            .checked_add(1)
+            .context("readiness exhausted")?
+    );
     readiness_after.replace("state", SqlValue::Text("registered".into()))?;
-    readiness_after.replace("version", SqlValue::Integer(i64::try_from(prepared.lineage().readiness_version()?.checked_add(1).context("readiness exhausted")?)?))?;
+    readiness_after.replace(
+        "version",
+        SqlValue::Integer(i64::try_from(
+            prepared
+                .lineage()
+                .readiness_version()?
+                .checked_add(1)
+                .context("readiness exhausted")?,
+        )?),
+    )?;
     readiness_after.set_body(&body)?;
     let at = now_ms();
     let record = Record {
@@ -226,9 +328,16 @@ fn plan_prepared_transport(
     );
     let effect = transport_effect(&launch, &command_digest)?;
     let effect_raw = serde_json::to_string(&effect)?;
-    ensure!(prepared.history().len() <= 252, "prepared effect reserve exhausted");
+    ensure!(
+        prepared.history().len() <= 252,
+        "prepared effect reserve exhausted"
+    );
     Ok(Arc::new(NativeTransportStartPlan {
-        prepared, governing_digest, effect, effect_raw, launch,
+        prepared,
+        governing_digest,
+        effect,
+        effect_raw,
+        launch,
         current,
         owner_before,
         owner_after,
@@ -245,14 +354,38 @@ fn plan_prepared_transport(
 }
 
 impl Store {
-    pub(crate) fn plan_prepared_transport(runtime:&crate::execution::RuntimeOwner,prepared:Arc<crate::execution::native::PreparedNativePhase>) -> Result<Arc<NativeTransportStartPlan>> {
-        plan_prepared_transport(runtime,prepared)
+    pub(crate) fn plan_prepared_transport(
+        runtime: &crate::execution::RuntimeOwner,
+        prepared: Arc<crate::execution::native::PreparedNativePhase>,
+    ) -> Result<Arc<NativeTransportStartPlan>> {
+        plan_prepared_transport(runtime, prepared)
     }
-    pub(crate) fn register_prepared_transport(&mut self,plan:&Arc<NativeTransportStartPlan>,admission:&PhaseEffectAdmissionGuard) -> Result<KnownTransportRegistration> {
-        selected_database(&self.connection,&plan.launch)?;
-        let (p,g,t)=scope_keys(&plan.session.scope)?;
-        let mutations=vec![plan.owner_before.update_permission(&plan.owner_after)?,plan.readiness_before.update_permission(&plan.readiness_after)?,
-            ExactRowMutation::new("records","INSERT",None,Some(vec![SqlValue::Text(plan.record.id.to_string()),SqlValue::Text("session".into()),SqlValue::Text(p.clone()),SqlValue::Text(g.clone()),SqlValue::Text(t.clone()),SqlValue::Integer(1),SqlValue::Text(plan.record_raw.clone())]))?];
+    pub(crate) fn register_prepared_transport(
+        &mut self,
+        plan: &Arc<NativeTransportStartPlan>,
+        admission: &PhaseEffectAdmissionGuard,
+    ) -> Result<KnownTransportRegistration> {
+        selected_database(&self.connection, &plan.launch)?;
+        let (p, g, t) = scope_keys(&plan.session.scope)?;
+        let mutations = vec![
+            plan.owner_before.update_permission(&plan.owner_after)?,
+            plan.readiness_before
+                .update_permission(&plan.readiness_after)?,
+            ExactRowMutation::new(
+                "records",
+                "INSERT",
+                None,
+                Some(vec![
+                    SqlValue::Text(plan.record.id.to_string()),
+                    SqlValue::Text("session".into()),
+                    SqlValue::Text(p.clone()),
+                    SqlValue::Text(g.clone()),
+                    SqlValue::Text(t.clone()),
+                    SqlValue::Integer(1),
+                    SqlValue::Text(plan.record_raw.clone()),
+                ]),
+            )?,
+        ];
         self.binding_permits.with_exact_permit(mutations,|| {
             let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             {
@@ -279,25 +412,38 @@ impl Store {
         })?;
         plan.known(RegistrationAckSource::Committed)
     }
-    pub(crate) fn confirm_prepared_transport(&mut self,plan:&Arc<NativeTransportStartPlan>,admission:&PhaseEffectAdmissionGuard) -> Result<RegistrationProbe> {
-        selected_database(&self.connection,&plan.launch)?;
-        let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let probe={
-            let budget=super::version::InventoryBudget::new(&tx)?;
+    pub(crate) fn confirm_prepared_transport(
+        &mut self,
+        plan: &Arc<NativeTransportStartPlan>,
+        admission: &PhaseEffectAdmissionGuard,
+    ) -> Result<RegistrationProbe> {
+        selected_database(&self.connection, &plan.launch)?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let probe = {
+            let budget = super::version::InventoryBudget::new(&tx)?;
             budget.finish((|| {
                 admission.validate_for(&plan.launch)?;
-                let readiness=PairRow::read(&tx,"managed_phase_readiness",&plan.launch.allocation().facts().operation_id.to_string())?;
-                if readiness.values==plan.readiness_after.values {
+                let readiness = PairRow::read(
+                    &tx,
+                    "managed_phase_readiness",
+                    &plan.launch.allocation().facts().operation_id.to_string(),
+                )?;
+                if readiness.values == plan.readiness_after.values {
                     plan.validate_post_tx(&tx)?;
-                    return Ok(RegistrationProbe::Committed(plan.known(RegistrationAckSource::Confirmed)?));
+                    return Ok(RegistrationProbe::Committed(
+                        plan.known(RegistrationAckSource::Confirmed)?,
+                    ));
                 }
-                if readiness.values==plan.readiness_before.values {
+                if readiness.values == plan.readiness_before.values {
                     plan.validate_pre_tx(&tx)?;
                     return Ok(RegistrationProbe::Absent);
                 }
                 Ok(RegistrationProbe::Held)
             })())?
         };
-        tx.commit()?;Ok(probe)
+        tx.commit()?;
+        Ok(probe)
     }
 }

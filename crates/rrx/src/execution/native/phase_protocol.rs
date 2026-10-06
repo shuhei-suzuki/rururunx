@@ -2,54 +2,92 @@
 //! path. Persisted DTOs cannot recreate these handles. This module does not make
 //! composition available; the Root marker/pair transaction remains required.
 use super::*;
+use crate::state::{KnownTransportRegistration, NativeTransportStartPlan, RegistrationAck};
 use crate::{
     execution::phase::NativeAllocation,
     state::managed_binding::{OriginalMarker, PhaseLaunchParts},
 };
-use std::sync::{OnceLock, atomic::{AtomicU8, Ordering}};
-use crate::state::{NativeTransportStartPlan,KnownTransportRegistration,RegistrationAck};
-const CANDIDATE:u8=0; const LIVE:u8=1; const REVOKED:u8=2;
-pub(crate) enum Activation { Live, RevokedKnown, Mismatch }
-fn activate_ack(ack_cell:&OnceLock<RegistrationAck>,state:&AtomicU8,ack:RegistrationAck) -> Activation {
-    if ack_cell.set(ack).is_err() { return Activation::Mismatch; }
-    match state.compare_exchange(CANDIDATE,LIVE,Ordering::SeqCst,Ordering::SeqCst) {
-        Ok(_)=>Activation::Live, Err(REVOKED)=>Activation::RevokedKnown,
-        _=>Activation::Mismatch,
+use std::sync::{
+    OnceLock,
+    atomic::{AtomicU8, Ordering},
+};
+const CANDIDATE: u8 = 0;
+const LIVE: u8 = 1;
+const REVOKED: u8 = 2;
+pub(crate) enum Activation {
+    Live,
+    RevokedKnown,
+    Mismatch,
+}
+fn activate_ack(
+    ack_cell: &OnceLock<RegistrationAck>,
+    state: &AtomicU8,
+    ack: RegistrationAck,
+) -> Activation {
+    if ack_cell.set(ack).is_err() {
+        return Activation::Mismatch;
+    }
+    match state.compare_exchange(CANDIDATE, LIVE, Ordering::SeqCst, Ordering::SeqCst) {
+        Ok(_) => Activation::Live,
+        Err(REVOKED) => Activation::RevokedKnown,
+        _ => Activation::Mismatch,
     }
 }
-fn known_ack(state:&AtomicU8,ack:&OnceLock<RegistrationAck>) -> Result<RegistrationAck> {
-    ensure!(matches!(state.load(Ordering::SeqCst),LIVE|REVOKED),"unregistered Candidate cannot close");
-    ack.get().copied().context("SAME activation acknowledgement absent")
+fn known_ack(state: &AtomicU8, ack: &OnceLock<RegistrationAck>) -> Result<RegistrationAck> {
+    ensure!(
+        matches!(state.load(Ordering::SeqCst), LIVE | REVOKED),
+        "unregistered Candidate cannot close"
+    );
+    ack.get()
+        .copied()
+        .context("SAME activation acknowledgement absent")
 }
 
 #[cfg(test)]
 mod registration_primitive_tests {
     use super::*;
-    fn ack() -> RegistrationAck { RegistrationAck { readiness:3,unit_version:7,
-        source:crate::state::RegistrationAckSource::Committed } }
+    fn ack() -> RegistrationAck {
+        RegistrationAck {
+            readiness: 3,
+            unit_version: 7,
+            source: crate::state::RegistrationAckSource::Committed,
+        }
+    }
     #[test]
     fn candidate_and_unacknowledged_revoked_cannot_close() {
-        let cell=OnceLock::new();let state=AtomicU8::new(CANDIDATE);
-        assert!(known_ack(&state,&cell).is_err());
-        state.store(REVOKED,Ordering::SeqCst);
-        assert!(known_ack(&state,&cell).is_err());
+        let cell = OnceLock::new();
+        let state = AtomicU8::new(CANDIDATE);
+        assert!(known_ack(&state, &cell).is_err());
+        state.store(REVOKED, Ordering::SeqCst);
+        assert!(known_ack(&state, &cell).is_err());
     }
     #[test]
     fn known_commit_activates_once_and_retains_ack_after_revocation() {
-        let cell=OnceLock::new();let state=AtomicU8::new(CANDIDATE);
-        assert!(matches!(activate_ack(&cell,&state,ack()),Activation::Live));
-        assert_eq!(known_ack(&state,&cell).unwrap().readiness,3);
-        state.store(REVOKED,Ordering::SeqCst);
-        assert_eq!(known_ack(&state,&cell).unwrap().unit_version,7);
-        assert!(matches!(activate_ack(&cell,&state,ack()),Activation::Mismatch));
-        assert_eq!(state.load(Ordering::SeqCst),REVOKED);
+        let cell = OnceLock::new();
+        let state = AtomicU8::new(CANDIDATE);
+        assert!(matches!(
+            activate_ack(&cell, &state, ack()),
+            Activation::Live
+        ));
+        assert_eq!(known_ack(&state, &cell).unwrap().readiness, 3);
+        state.store(REVOKED, Ordering::SeqCst);
+        assert_eq!(known_ack(&state, &cell).unwrap().unit_version, 7);
+        assert!(matches!(
+            activate_ack(&cell, &state, ack()),
+            Activation::Mismatch
+        ));
+        assert_eq!(state.load(Ordering::SeqCst), REVOKED);
     }
     #[test]
     fn stop_before_ack_is_retained_without_reopening() {
-        let cell=OnceLock::new();let state=AtomicU8::new(REVOKED);
-        assert!(matches!(activate_ack(&cell,&state,ack()),Activation::RevokedKnown));
-        assert_eq!(state.load(Ordering::SeqCst),REVOKED);
-        assert!(known_ack(&state,&cell).is_ok());
+        let cell = OnceLock::new();
+        let state = AtomicU8::new(REVOKED);
+        assert!(matches!(
+            activate_ack(&cell, &state, ack()),
+            Activation::RevokedKnown
+        ));
+        assert_eq!(state.load(Ordering::SeqCst), REVOKED);
+        assert!(known_ack(&state, &cell).is_ok());
     }
 }
 
@@ -99,32 +137,63 @@ pub(crate) struct PhaseActor {
     retained: Mutex<RetainedProofs>,
 }
 struct RetainedProofs {
-    dispatches: BTreeMap<OperationId,Arc<crate::state::NativeDispatchCommit>>,
+    dispatches: BTreeMap<OperationId, Arc<crate::state::NativeDispatchCommit>>,
     consumed: Option<Arc<ConsumedPhaseInput>>,
     settlement: Option<Arc<OwnedPhaseSettlement>>,
     terminal_plan: Option<Arc<crate::state::NativeTerminalPlan>>,
 }
 impl PhaseActor {
     /// Preallocated outside admission, with no registration or effect authority.
-    pub(crate) fn prepared_candidate(plan:&Arc<NativeTransportStartPlan>) -> Result<Arc<Self>> {
-        let owner=NativePhaseSession::candidate(plan.clone())?;
-        Ok(Arc::new(Self { owner, retained:Mutex::new(RetainedProofs { dispatches:BTreeMap::new(),consumed:None,
-            settlement:None, terminal_plan:None }) }))
+    pub(crate) fn prepared_candidate(plan: &Arc<NativeTransportStartPlan>) -> Result<Arc<Self>> {
+        let owner = NativePhaseSession::candidate(plan.clone())?;
+        Ok(Arc::new(Self {
+            owner,
+            retained: Mutex::new(RetainedProofs {
+                dispatches: BTreeMap::new(),
+                consumed: None,
+                settlement: None,
+                terminal_plan: None,
+            }),
+        }))
     }
     /// Admission remains held, SharedStore is released. No allocation or SQL.
-    pub(crate) fn activate(&self, known:KnownTransportRegistration) -> Activation {
-        let Some(ack)=known.activation(&self.owner.origin) else { return Activation::Mismatch };
-        activate_ack(&self.owner.ack,&self.owner.state,ack)
+    pub(crate) fn activate(&self, known: KnownTransportRegistration) -> Activation {
+        let Some(ack) = known.activation(&self.owner.origin) else {
+            return Activation::Mismatch;
+        };
+        activate_ack(&self.owner.ack, &self.owner.state, ack)
     }
-    pub(super) fn retain_dispatch(&self,commit:crate::state::NativeDispatchCommit) -> Result<(OperationId,String,Option<String>,bool)> {
-        ensure!(commit.belongs_to(&self.owner),"dispatch belongs to another actor");
-        let facts=commit.facts();
-        let mut retained=self.retained.lock().map_err(|_|anyhow::anyhow!("Native retention unavailable"))?;
-        ensure!(retained.dispatches.len()<256 && !retained.dispatches.contains_key(&facts.0),"Native retained dispatch profile exhausted");
-        retained.dispatches.insert(facts.0,Arc::new(commit));Ok(facts)
+    pub(super) fn retain_dispatch(
+        &self,
+        commit: crate::state::NativeDispatchCommit,
+    ) -> Result<(OperationId, String, Option<String>, bool)> {
+        ensure!(
+            commit.belongs_to(&self.owner),
+            "dispatch belongs to another actor"
+        );
+        let facts = commit.facts();
+        let mut retained = self
+            .retained
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Native retention unavailable"))?;
+        ensure!(
+            retained.dispatches.len() < 256 && !retained.dispatches.contains_key(&facts.0),
+            "Native retained dispatch profile exhausted"
+        );
+        retained.dispatches.insert(facts.0, Arc::new(commit));
+        Ok(facts)
     }
-    pub(super) fn dispatch(&self,id:OperationId) -> Result<Arc<crate::state::NativeDispatchCommit>> {
-        self.retained.lock().map_err(|_|anyhow::anyhow!("Native retention unavailable"))?.dispatches.get(&id).cloned().context("SAME actual dispatch commit absent")
+    pub(super) fn dispatch(
+        &self,
+        id: OperationId,
+    ) -> Result<Arc<crate::state::NativeDispatchCommit>> {
+        self.retained
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Native retention unavailable"))?
+            .dispatches
+            .get(&id)
+            .cloned()
+            .context("SAME actual dispatch commit absent")
     }
     /// The caller supplies the exact successful before-wire journal, never a
     /// historical effect lookup. The same private input remains retained once.
@@ -299,10 +368,10 @@ impl NativePhaseSession {
     pub(crate) fn allocation(&self) -> &NativeAllocation {
         self.launch.allocation()
     }
-    fn candidate(origin:Arc<NativeTransportStartPlan>) -> Result<Arc<Self>> {
-        let launch=origin.launch().clone();
-        let session=origin.session().clone();
-        let record_version=1;
+    fn candidate(origin: Arc<NativeTransportStartPlan>) -> Result<Arc<Self>> {
+        let launch = origin.launch().clone();
+        let session = origin.session().clone();
+        let record_version = 1;
         ensure!(
             launch.is_retained() && Arc::ptr_eq(launch.marker().allocation(), launch.allocation()),
             "actual phase registration lost original retained launch"
@@ -330,7 +399,9 @@ impl NativePhaseSession {
                 consumed: None,
                 settlement: None,
             }),
-            origin, ack:OnceLock::new(), state:AtomicU8::new(CANDIDATE),
+            origin,
+            ack: OnceLock::new(),
+            state: AtomicU8::new(CANDIDATE),
         }))
     }
     pub(super) fn project(&self, session: &Session, record_version: u64) -> Result<()> {
@@ -369,13 +440,21 @@ impl NativePhaseSession {
     pub(super) fn revoke(&self) {
         self.state.store(REVOKED, Ordering::SeqCst);
     }
-    pub(crate) fn is_live(&self) -> bool { self.state.load(Ordering::SeqCst)==LIVE && self.ack.get().is_some() }
-    pub(crate) fn registration_ack(&self) -> Option<RegistrationAck> { self.ack.get().copied() }
-    pub(crate) fn origin(&self) -> &Arc<NativeTransportStartPlan> { &self.origin }
-    pub(crate) fn validate_known_registration(&self) -> Result<RegistrationAck> {
-        known_ack(&self.state,&self.ack)
+    pub(crate) fn is_live(&self) -> bool {
+        self.state.load(Ordering::SeqCst) == LIVE && self.ack.get().is_some()
     }
-    pub(crate) fn registered_readiness(&self) -> Result<u64> { self.origin.registered_readiness() }
+    pub(crate) fn registration_ack(&self) -> Option<RegistrationAck> {
+        self.ack.get().copied()
+    }
+    pub(crate) fn origin(&self) -> &Arc<NativeTransportStartPlan> {
+        &self.origin
+    }
+    pub(crate) fn validate_known_registration(&self) -> Result<RegistrationAck> {
+        known_ack(&self.state, &self.ack)
+    }
+    pub(crate) fn registered_readiness(&self) -> Result<u64> {
+        self.origin.registered_readiness()
+    }
     pub(crate) fn binding_snapshot(self: &Arc<Self>) -> Result<NativePhaseBinding> {
         let projection = self
             .projection
@@ -392,7 +471,9 @@ impl NativePhaseSession {
     }
 }
 impl NativePhaseBinding {
-    pub(crate) fn owner_arc(&self) -> &Arc<NativePhaseSession> { &self.owner }
+    pub(crate) fn owner_arc(&self) -> &Arc<NativePhaseSession> {
+        &self.owner
+    }
     pub(crate) fn owner(&self) -> &NativePhaseSession {
         &self.owner
     }

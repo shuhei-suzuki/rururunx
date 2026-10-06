@@ -312,7 +312,7 @@ pub(crate) fn plan_phase_terminal(
             ensure!(
                 body == json!({"operation_id":f.operation_id,"origin":f.origin_id,"owner_epoch":f.epoch,
             "state":"registered","start_ended":ended,"known_terminal":false,"parking_version":null,"version":version})
-                    && registered_readiness_matches(phase.registered_readiness()?,version,ended),
+                    && registered_readiness_matches(phase.registered_readiness()?, version, ended),
                 "terminal readiness changed"
             );
             for (name, value) in [

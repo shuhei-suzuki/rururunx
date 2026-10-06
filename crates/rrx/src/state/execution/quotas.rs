@@ -76,25 +76,8 @@ impl Store {
         let prior = windows(&tx, &observation.provider, &observation.account_key)?
             .into_iter()
             .find(|o| o.bucket == observation.bucket);
-        if let Some(old) = prior {
-            if observation.observed_at < old.observed_at {
-                tx.commit()?;
-                return Ok(());
-            }
-            if old.status == QuotaStatus::Exhausted && observation.status != QuotaStatus::Exhausted
-            {
-                // A different connection/window cannot reopen exhaustion before the old reset.
-                let fresh_window = observation.status == QuotaStatus::Available
-                    && old.resets_at.is_some_and(|r| observation.observed_at >= r)
-                    && observation.window_id != old.window_id;
-                let fresh_probe = qualified_probe
-                    && observation.status == QuotaStatus::Available
-                    && observation.observed_at > old.observed_at;
-                if !fresh_window && !fresh_probe {
-                    tx.commit()?;
-                    return Ok(());
-                }
-            }
+        if !super::quota_observation::applies(prior.as_ref(),observation,qualified_probe) {
+            tx.commit()?;return Ok(());
         }
         tx.execute("INSERT INTO quota_windows(provider,account_key,bucket,observed_at,body) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(provider,account_key,bucket) DO UPDATE SET observed_at=excluded.observed_at,body=excluded.body",
             params![observation.provider,observation.account_key,observation.bucket,observation.observed_at,serde_json::to_string(observation)?])?;

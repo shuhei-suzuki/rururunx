@@ -15,17 +15,25 @@ const PAIR_BODY_BYTES: usize = 32 * 1024;
 
 mod preparation;
 mod quota;
-pub(crate) use quota::{NativeQuotaAdmitted, NativeQuotaCaps, NativeQuotaConfirmation, NativeQuotaOutcome, NativeQuotaPlan, NativeParkedPhase, NativeQuotaWrite};
-pub(crate) use quota::{NativeQuotaClosurePlan,NativePreparationClosureCommit,NativeQuotaClosureConfirmation};
 pub(crate) use preparation::{NativePreparationCommit, NativePreparationPlan, NativeReadyLineage};
+pub(crate) use quota::{
+    NativeParkedPhase, NativeQuotaAdmitted, NativeQuotaCaps, NativeQuotaConfirmation,
+    NativeQuotaOutcome, NativeQuotaPlan, NativeQuotaWrite,
+};
+pub(crate) use quota::{
+    NativePreparationClosureCommit, NativeQuotaClosureConfirmation, NativeQuotaClosurePlan,
+};
 mod version;
 pub(crate) use version::{
     NativeHelperHistoryCommit, NativeHelperIntentCommit, NativeHelperSettlementCommit,
     NativeHelperSettlementPlan, NativeVersionClosurePlan, NativeVersionHelperPlan,
 };
-mod transport;
 mod live_quota;
-pub(crate) use transport::{NativeTransportStartPlan, KnownTransportRegistration, RegistrationAck, RegistrationAckSource, RegistrationProbe};
+mod transport;
+pub(crate) use transport::{
+    KnownTransportRegistration, NativeTransportStartPlan, RegistrationAck, RegistrationAckSource,
+    RegistrationProbe,
+};
 mod terminal;
 pub(crate) use terminal::NativeTerminalPlan;
 
@@ -41,24 +49,39 @@ fn selected_database(connection: &rusqlite::Connection, launch: &PhaseLaunchPart
     );
     Ok(())
 }
-fn registered_readiness_matches(registered:u64,version:u64,ended:bool) -> bool {
-    matches!(registered,3|5) && if ended {registered.checked_add(1)==Some(version)} else {registered==version}
+fn registered_readiness_matches(registered: u64, version: u64, ended: bool) -> bool {
+    matches!(registered, 3 | 5)
+        && if ended {
+            registered.checked_add(1) == Some(version)
+        } else {
+            registered == version
+        }
 }
 #[cfg(test)]
 mod registration_readiness_primitive_tests {
     use super::registered_readiness_matches;
     #[test]
     fn known_admit_and_park_lineage_choose_their_own_readiness() {
-        for registered in [3,5] {
-            assert!(registered_readiness_matches(registered,registered,false));
-            assert!(registered_readiness_matches(registered,registered+1,true));
+        for registered in [3, 5] {
+            assert!(registered_readiness_matches(registered, registered, false));
+            assert!(registered_readiness_matches(
+                registered,
+                registered + 1,
+                true
+            ));
             for version in 1..=7 {
-                assert_eq!(registered_readiness_matches(registered,version,false),version==registered);
-                assert_eq!(registered_readiness_matches(registered,version,true),version==registered+1);
+                assert_eq!(
+                    registered_readiness_matches(registered, version, false),
+                    version == registered
+                );
+                assert_eq!(
+                    registered_readiness_matches(registered, version, true),
+                    version == registered + 1
+                );
             }
         }
-        for unprepared in [0,1,2,4,u64::MAX] {
-            assert!(!registered_readiness_matches(unprepared,unprepared,false));
+        for unprepared in [0, 1, 2, 4, u64::MAX] {
+            assert!(!registered_readiness_matches(unprepared, unprepared, false));
         }
     }
 }
@@ -69,16 +92,40 @@ struct PairRow {
     values: Vec<SqlValue>,
 }
 impl PairRow {
-    fn copy_image(&self) -> Self { Self { table:self.table,values:self.values.clone() } }
-    fn transition_readiness(&mut self,state:&str,version:i64,parking:Option<i64>,ended:bool) -> Result<()> {
-        ensure!(self.table=="managed_phase_readiness", "readiness transition table differs");
-        let mut body=self.body()?;
-        body["state"]=json!(state); body["version"]=json!(version); body["parking_version"]=json!(parking); body["start_ended"]=json!(ended);
-        self.replace("state",SqlValue::Text(state.into()))?; self.replace("version",SqlValue::Integer(version))?;
-        self.replace("parking_version",parking.map_or(SqlValue::Null,SqlValue::Integer))?; self.replace("start_ended",SqlValue::Integer(i64::from(ended)))?;
+    fn copy_image(&self) -> Self {
+        Self {
+            table: self.table,
+            values: self.values.clone(),
+        }
+    }
+    fn transition_readiness(
+        &mut self,
+        state: &str,
+        version: i64,
+        parking: Option<i64>,
+        ended: bool,
+    ) -> Result<()> {
+        ensure!(
+            self.table == "managed_phase_readiness",
+            "readiness transition table differs"
+        );
+        let mut body = self.body()?;
+        body["state"] = json!(state);
+        body["version"] = json!(version);
+        body["parking_version"] = json!(parking);
+        body["start_ended"] = json!(ended);
+        self.replace("state", SqlValue::Text(state.into()))?;
+        self.replace("version", SqlValue::Integer(version))?;
+        self.replace(
+            "parking_version",
+            parking.map_or(SqlValue::Null, SqlValue::Integer),
+        )?;
+        self.replace("start_ended", SqlValue::Integer(i64::from(ended)))?;
         self.set_body(&body)?;
-        let SqlValue::Text(raw)=self.column("body")? else { anyhow::bail!("readiness body absent") };
-        ensure!(raw.len()<=4096,"readiness postimage exceeds bound");
+        let SqlValue::Text(raw) = self.column("body")? else {
+            anyhow::bail!("readiness body absent")
+        };
+        ensure!(raw.len() <= 4096, "readiness postimage exceeds bound");
         Ok(())
     }
     fn insert_tx(&self, tx: &Transaction<'_>) -> Result<()> {
@@ -357,7 +404,7 @@ fn plan_owner_currency(
         ensure!(
             r == json!({"operation_id":f.operation_id,"origin":f.origin_id,"owner_epoch":f.epoch,
             "state":"registered","start_ended":ended,"known_terminal":false,"parking_version":null,"version":version})
-                && registered_readiness_matches(phase.registered_readiness()?,version,ended)
+                && registered_readiness_matches(phase.registered_readiness()?, version, ended)
                 && readiness.column("operation_id")? == &SqlValue::Text(f.operation_id.to_string())
                 && readiness.column("origin")? == &SqlValue::Text(f.origin_id.to_string())
                 && readiness.column("owner_epoch")? == &SqlValue::Integer(i64::try_from(f.epoch)?)
@@ -390,15 +437,22 @@ fn plan_owner_currency(
     })
 }
 impl NativeOwnerPlan {
-    fn validate_registered_facts_tx(&self,tx:&Transaction<'_>) -> Result<()> {
-        let phase=self.binding.owner();
+    fn validate_registered_facts_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        let phase = self.binding.owner();
         phase.validate_known_registration()?;
         phase.origin().prepared().validate_original()?;
-        phase.launch_parts().validate_preparation_origin_tx(tx,&self.current)?;
-        validate_unit_authority_facts(tx,&self.current.unit().authority(),self.current.unit())?;
-        let original=phase.marker().original_plan();
-        validate_parent_activity_facts(self.current.unit(),original.project().0,original.goal().0,original.task_after().0)?;
-        validate_governing_context_facts(tx,self.current.unit(),phase.origin().governing_digest())
+        phase
+            .launch_parts()
+            .validate_preparation_origin_tx(tx, &self.current)?;
+        validate_unit_authority_facts(tx, &self.current.unit().authority(), self.current.unit())?;
+        let original = phase.marker().original_plan();
+        validate_parent_activity_facts(
+            self.current.unit(),
+            original.project().0,
+            original.goal().0,
+            original.task_after().0,
+        )?;
+        validate_governing_context_facts(tx, self.current.unit(), phase.origin().governing_digest())
     }
 
     fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
@@ -424,7 +478,10 @@ impl NativeOwnerPlan {
         self.binding.marker().validate_driver_live_tx(tx)?;
         self.binding.owner().validate_known_registration()?;
         self.validate_registered_facts_tx(tx)?;
-        ensure!(self.current.unit().result_finalization_open,"result finalization permission closed");
+        ensure!(
+            self.current.unit().result_finalization_open,
+            "result finalization permission closed"
+        );
         self.session.validate_tx(tx)?;
         self.owner.validate_tx(tx)?;
         self.readiness.validate_tx(tx)?;
@@ -510,49 +567,108 @@ pub(crate) struct NativeDispatchCommit {
 }
 impl NativeDispatchCommit {
     pub(crate) fn facts(&self) -> (OperationId, String, Option<String>, bool) {
-        (self.effect, self.digest.clone(), self.expected_thread.clone(), self.input)
+        (
+            self.effect,
+            self.digest.clone(),
+            self.expected_thread.clone(),
+            self.input,
+        )
     }
-    pub(crate) fn belongs_to(&self,owner:&NativePhaseSession) -> bool { std::ptr::eq(self.owner.as_ref(),owner) }
+    pub(crate) fn belongs_to(&self, owner: &NativePhaseSession) -> bool {
+        std::ptr::eq(self.owner.as_ref(), owner)
+    }
 }
 
-fn reserve_phase_effect_tx(tx:&Transaction<'_>,plan:&NativeDispatchPlan) -> Result<()> {
-    let unit=plan.owner.current.unit();
-    ensure!(matches!(plan.effect.kind.as_str(),"native_input"|"native_permission"|"native_setup")
-        && plan.effect.unit_id==unit.id && plan.effect.scope==unit.scope
-        && plan.effect.version==1 && plan.effect.state==EffectState::Pending && plan.effect.receipt.is_empty()
-        && unit.phase!=WORKFLOW_SOURCE_BOOTSTRAP && !verification::is_command_unit(tx,unit.id)?,
-        "invalid SAME Native phase effect");
-    let (p,g,t)=scope_keys(&unit.scope)?;
+fn reserve_phase_effect_tx(tx: &Transaction<'_>, plan: &NativeDispatchPlan) -> Result<()> {
+    let unit = plan.owner.current.unit();
+    ensure!(
+        matches!(
+            plan.effect.kind.as_str(),
+            "native_input" | "native_permission" | "native_setup"
+        ) && plan.effect.unit_id == unit.id
+            && plan.effect.scope == unit.scope
+            && plan.effect.version == 1
+            && plan.effect.state == EffectState::Pending
+            && plan.effect.receipt.is_empty()
+            && unit.phase != WORKFLOW_SOURCE_BOOTSTRAP
+            && !verification::is_command_unit(tx, unit.id)?,
+        "invalid SAME Native phase effect"
+    );
+    let (p, g, t) = scope_keys(&unit.scope)?;
     tx.execute("INSERT INTO managed_effects(id,unit_id,project_id,goal_id,task_id,idempotency_key,state,version,body) VALUES(?1,?2,?3,?4,?5,?6,'pending',1,?7)",params![plan.effect.id.to_string(),unit.id.to_string(),p,g,t,plan.effect.idempotency_key,plan.effect_raw])?;
-    append_event(tx,&unit.scope,"execution.effect_intent",json!({"unit":unit.id,"operation":plan.effect.id,"kind":plan.effect.kind}))?;
+    append_event(
+        tx,
+        &unit.scope,
+        "execution.effect_intent",
+        json!({"unit":unit.id,"operation":plan.effect.id,"kind":plan.effect.kind}),
+    )?;
     Ok(())
 }
 
 pub(crate) struct NativeDispatchReceiptPlan {
-    owner:NativeOwnerPlan, original:Arc<NativeDispatchCommit>, after:ManagedEffect, raw:String,
+    owner: NativeOwnerPlan,
+    original: Arc<NativeDispatchCommit>,
+    after: ManagedEffect,
+    raw: String,
 }
 impl Store {
-    pub(crate) fn plan_phase_dispatch_receipt(runtime:&crate::execution::RuntimeOwner,phase:&Arc<NativePhaseSession>,original:Arc<NativeDispatchCommit>,state:EffectState,receipt:BTreeMap<String,String>) -> Result<NativeDispatchReceiptPlan> {
-        ensure!(original.belongs_to(phase) && matches!(state,EffectState::Confirmed|EffectState::Unknown)
-            && receipt.len()<=16 && receipt.iter().all(|(k,v)|!k.is_empty() && k.len()<=64 && v.len()<=256 && !k.chars().chain(v.chars()).any(char::is_control)),"invalid actual Native dispatch observation");
-        let owner=plan_native_owner(runtime,phase)?;
-        let mut after=original.original.clone();after.state=state;after.receipt=receipt;after.version=2;
-        let raw=serde_json::to_string(&after)?;
-        Ok(NativeDispatchReceiptPlan {owner,original,after,raw})
+    pub(crate) fn plan_phase_dispatch_receipt(
+        runtime: &crate::execution::RuntimeOwner,
+        phase: &Arc<NativePhaseSession>,
+        original: Arc<NativeDispatchCommit>,
+        state: EffectState,
+        receipt: BTreeMap<String, String>,
+    ) -> Result<NativeDispatchReceiptPlan> {
+        ensure!(
+            original.belongs_to(phase)
+                && matches!(state, EffectState::Confirmed | EffectState::Unknown)
+                && receipt.len() <= 16
+                && receipt.iter().all(|(k, v)| !k.is_empty()
+                    && k.len() <= 64
+                    && v.len() <= 256
+                    && !k.chars().chain(v.chars()).any(char::is_control)),
+            "invalid actual Native dispatch observation"
+        );
+        let owner = plan_native_owner(runtime, phase)?;
+        let mut after = original.original.clone();
+        after.state = state;
+        after.receipt = receipt;
+        after.version = 2;
+        let raw = serde_json::to_string(&after)?;
+        Ok(NativeDispatchReceiptPlan {
+            owner,
+            original,
+            after,
+            raw,
+        })
     }
-    pub(crate) fn record_phase_dispatch_receipt(&mut self,plan:NativeDispatchReceiptPlan) -> Result<()> {
-        selected_database(&self.connection,plan.owner.binding.owner().launch_parts())?;
-        let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    pub(crate) fn record_phase_dispatch_receipt(
+        &mut self,
+        plan: NativeDispatchReceiptPlan,
+    ) -> Result<()> {
+        selected_database(&self.connection, plan.owner.binding.owner().launch_parts())?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         plan.owner.validate_tx(&tx)?;
-        ensure!(plan.original.belongs_to(plan.owner.binding.owner()),"Native receipt original owner differs");
-        let e=&plan.original.original;
-        let (p,g,t)=scope_keys(&e.scope)?;
+        ensure!(
+            plan.original.belongs_to(plan.owner.binding.owner()),
+            "Native receipt original owner differs"
+        );
+        let e = &plan.original.original;
+        let (p, g, t) = scope_keys(&e.scope)?;
         let post:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE id=?1 AND unit_id=?2 AND project_id=?3 AND goal_id=?4 AND task_id=?5 AND idempotency_key=?6 AND state=?7 AND version=2 AND body=?8)",params![e.id.to_string(),e.unit_id.to_string(),p,g,t,e.idempotency_key,key(plan.after.state),plan.raw],|r|r.get(0))?;
         if !post {
             ensure!(tx.execute("UPDATE managed_effects SET state=?1,version=2,body=?2 WHERE id=?3 AND unit_id=?4 AND project_id=?5 AND goal_id=?6 AND task_id=?7 AND idempotency_key=?8 AND state='pending' AND version=1 AND body=?9",params![key(plan.after.state),plan.raw,e.id.to_string(),e.unit_id.to_string(),p,g,t,e.idempotency_key,plan.original.raw])?==1,"SAME Native dispatch receipt CAS changed");
-            append_event(&tx,&e.scope,"execution.effect_reconciled",json!({"unit":e.unit_id,"operation":e.id,"state":plan.after.state}))?;
+            append_event(
+                &tx,
+                &e.scope,
+                "execution.effect_reconciled",
+                json!({"unit":e.unit_id,"operation":e.id,"state":plan.after.state}),
+            )?;
         }
-        tx.commit()?;Ok(())
+        tx.commit()?;
+        Ok(())
     }
 }
 
@@ -732,7 +848,7 @@ fn plan_phase_dispatch(
         owner,
         before,
         after,
-        effect_raw:serde_json::to_string(&effect)?,
+        effect_raw: serde_json::to_string(&effect)?,
         effect,
         admission,
         digest,
@@ -1165,7 +1281,6 @@ fn registration_attempt(
     Ok(())
 }
 
-
 impl Store {
     pub(crate) fn plan_native_phase_input_ack(
         runtime: &crate::execution::RuntimeOwner,
@@ -1258,7 +1373,7 @@ impl Store {
                 let f = plan.owner.binding.allocation().facts();
                 let absent:bool=tx.query_row("SELECT NOT EXISTS(SELECT 1 FROM managed_phase_admissions WHERE pair_id=?1 OR operation_id=?2 OR native_invocation_id=?3)",params![f.pair_id.to_string(),f.operation_id.to_string(),f.invocation_id.to_string()],|r|r.get(0))?;
                 ensure!(absent, "actual Native input pair already consumed");
-                reserve_phase_effect_tx(&tx,&plan)?;
+                reserve_phase_effect_tx(&tx, &plan)?;
                 plan.before.update_tx(
                     &tx,
                     plan.after.as_ref().context("Native input image absent")?,
@@ -1266,7 +1381,7 @@ impl Store {
                 admission.insert_tx(&tx)?;
                 self.binding_permits.ensure_consumed()?;
             } else {
-                reserve_phase_effect_tx(&tx,&plan)?;
+                reserve_phase_effect_tx(&tx, &plan)?;
             }
             Ok(())
         };
@@ -1282,7 +1397,9 @@ impl Store {
             digest: plan.digest,
             expected_thread: plan.expected_thread,
             input: plan.admission.is_some(),
-            owner:plan.owner.binding.owner_arc().clone(), original:plan.effect, raw:plan.effect_raw,
+            owner: plan.owner.binding.owner_arc().clone(),
+            original: plan.effect,
+            raw: plan.effect_raw,
         })
     }
     pub(crate) fn validate_phase_owner(
@@ -1332,5 +1449,4 @@ impl Store {
             Ok((plan.unit,plan.session,version))
         })
     }
-
 }

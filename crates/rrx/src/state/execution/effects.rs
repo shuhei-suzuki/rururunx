@@ -148,7 +148,10 @@ impl Store {
             ticket.validate_current_tx(&tx)?;
         }
         let mut effect = effect_tx(&tx, id)?;
-        ensure!(!effect.kind.starts_with("native_phase_"),"private Native phase kind requires its original producer");
+        ensure!(
+            !effect.kind.starts_with("native_phase_"),
+            "private Native phase kind requires its original producer"
+        );
         ensure!(
             effect.version == expected && effect.state != EffectState::Resolved,
             "effect CAS/terminal conflict"
@@ -250,7 +253,10 @@ pub(super) fn reserve_effect_tx(
     authority: &ExecutionAuthority,
     effect: &ManagedEffect,
 ) -> Result<()> {
-    ensure!(!effect.kind.starts_with("native_phase_"),"private Native phase kind requires its original producer");
+    ensure!(
+        !effect.kind.starts_with("native_phase_"),
+        "private Native phase kind requires its original producer"
+    );
     ensure!(
         effect.unit_id == authority.unit_id
             && effect.scope == authority.scope

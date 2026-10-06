@@ -18,14 +18,14 @@ use tokio::{
     process::{ChildStdin, ChildStdout, Command},
     sync::{mpsc, watch},
 };
+pub(crate) mod compat;
 #[cfg(test)]
 mod phase_fence_tests;
 mod phase_protocol;
 mod preparation;
-pub(crate) mod compat;
 pub(crate) mod prepared;
-mod registration;
 pub(crate) mod readonly;
+mod registration;
 pub(crate) mod version;
 pub(crate) use phase_protocol::{
     ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession, OwnedPhaseSettlement,
@@ -227,10 +227,7 @@ impl NativeSessions {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .managed_phase_required(&input.authority.scope)?;
-        ensure!(
-            !protected,
-            NativeFailure::AuthorityUnavailable
-        );
+        ensure!(!protected, NativeFailure::AuthorityUnavailable);
         let gate = {
             let mut starts = self
                 .starts
@@ -1413,58 +1410,135 @@ impl Core {
             "transport".into(),
             if sent.is_ok() { "written" } else { "unknown" }.into(),
         )]);
-        self.record_dispatch_observation(operation,if sent.is_ok() {EffectState::Confirmed} else {EffectState::Unknown},receipt)?;
+        self.record_dispatch_observation(
+            operation,
+            if sent.is_ok() {
+                EffectState::Confirmed
+            } else {
+                EffectState::Unknown
+            },
+            receipt,
+        )?;
         sent
     }
-    fn quota_read(&self) -> Result<(bool,Vec<QuotaObservation>)> {
-        if let Some(phase)=&self.phase {
-            let plan=crate::state::Store::plan_phase_quota_read(&self.owner,&phase.owner)?;
-            let result=(plan.is_own_probe(),plan.observations().to_vec());
-            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.apply_phase_live_quota(plan)?;
+    fn quota_read(&self) -> Result<(bool, Vec<QuotaObservation>)> {
+        if let Some(phase) = &self.phase {
+            let plan = crate::state::Store::plan_phase_quota_read(&self.owner, &phase.owner)?;
+            let result = (plan.is_own_probe(), plan.observations().to_vec());
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .apply_phase_live_quota(plan)?;
             Ok(result)
         } else {
-            let store=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
-            Ok((store.execution_is_quota_probe(self.unit.id,&self.unit.provider,"unknown")?,store.quota_observations(&self.unit.provider,"unknown")?))
+            let store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            Ok((
+                store.execution_is_quota_probe(self.unit.id, &self.unit.provider, "unknown")?,
+                store.quota_observations(&self.unit.provider, "unknown")?,
+            ))
         }
     }
-    fn quota_probe(&self) -> Result<bool> { Ok(self.quota_read()?.0) }
-    fn quota_windows(&self) -> Result<Vec<QuotaObservation>> { Ok(self.quota_read()?.1) }
-    fn observe_quota(&self,observation:&QuotaObservation,recovery:bool) -> Result<()> {
-        if let Some(phase)=&self.phase {
-            let plan=crate::state::Store::plan_phase_quota_observation(&self.owner,&phase.owner,observation,recovery)?;
-            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.apply_phase_live_quota(plan)?;
+    fn quota_probe(&self) -> Result<bool> {
+        Ok(self.quota_read()?.0)
+    }
+    fn quota_windows(&self) -> Result<Vec<QuotaObservation>> {
+        Ok(self.quota_read()?.1)
+    }
+    fn observe_quota(&self, observation: &QuotaObservation, recovery: bool) -> Result<()> {
+        if let Some(phase) = &self.phase {
+            let plan = crate::state::Store::plan_phase_quota_observation(
+                &self.owner,
+                &phase.owner,
+                observation,
+                recovery,
+            )?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .apply_phase_live_quota(plan)?;
             Ok(())
         } else {
-            let scheduler=quota::QuotaScheduler::new(self.owner.clone());
-            if recovery {scheduler.observe_probe(&self.authority()?,observation)} else {scheduler.observe(observation)}
+            let scheduler = quota::QuotaScheduler::new(self.owner.clone());
+            if recovery {
+                scheduler.observe_probe(&self.authority()?, observation)
+            } else {
+                scheduler.observe(observation)
+            }
         }
     }
-    fn quota_wait(&self,retry:bool) -> Result<ExecutionUnit> {
-        if let Some(phase)=&self.phase {
-            let plan=crate::state::Store::plan_phase_quota_wait(&self.owner,&phase.owner,retry)?;
-            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.apply_phase_live_quota(plan)
+    fn quota_wait(&self, retry: bool) -> Result<ExecutionUnit> {
+        if let Some(phase) = &self.phase {
+            let plan =
+                crate::state::Store::plan_phase_quota_wait(&self.owner, &phase.owner, retry)?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .apply_phase_live_quota(plan)
         } else {
-            let authority=self.authority()?;
-            let mut store=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
-            if retry {store.mark_execution_quota_retry(&authority)} else {store.mark_execution_quota_wait(&authority)}
+            let authority = self.authority()?;
+            let mut store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            if retry {
+                store.mark_execution_quota_retry(&authority)
+            } else {
+                store.mark_execution_quota_wait(&authority)
+            }
         }
     }
-    fn quota_resume(&self,buckets:&std::collections::BTreeSet<String>) -> Result<ExecutionUnit> {
-        if let Some(phase)=&self.phase {
-            let plan=crate::state::Store::plan_phase_quota_resume(&self.owner,&phase.owner,buckets)?;
-            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.apply_phase_live_quota(plan)
+    fn quota_resume(&self, buckets: &std::collections::BTreeSet<String>) -> Result<ExecutionUnit> {
+        if let Some(phase) = &self.phase {
+            let plan =
+                crate::state::Store::plan_phase_quota_resume(&self.owner, &phase.owner, buckets)?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .apply_phase_live_quota(plan)
         } else {
-            let authority=self.authority()?;
-            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.resume_execution_quota_wait(&authority,buckets)
+            let authority = self.authority()?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .resume_execution_quota_wait(&authority, buckets)
         }
     }
-    fn record_dispatch_observation(&self,operation:OperationId,state:EffectState,receipt:BTreeMap<String,String>) -> Result<()> {
-        if let Some(phase)=&self.phase {
-            let original=phase.dispatch(operation)?;
-            let plan=crate::state::Store::plan_phase_dispatch_receipt(&self.owner,&phase.owner,original,state,receipt)?;
-            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.record_phase_dispatch_receipt(plan)
+    fn record_dispatch_observation(
+        &self,
+        operation: OperationId,
+        state: EffectState,
+        receipt: BTreeMap<String, String>,
+    ) -> Result<()> {
+        if let Some(phase) = &self.phase {
+            let original = phase.dispatch(operation)?;
+            let plan = crate::state::Store::plan_phase_dispatch_receipt(
+                &self.owner,
+                &phase.owner,
+                original,
+                state,
+                receipt,
+            )?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .record_phase_dispatch_receipt(plan)
         } else {
-            self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.reconcile_managed_effect(operation,1,state,receipt)
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .reconcile_managed_effect(operation, 1, state, receipt)
         }
     }
     async fn boot_call(
@@ -1523,22 +1597,22 @@ impl Core {
         }
         if let Some(operation) = operation {
             self.record_dispatch_observation(
-                    operation,
+                operation,
+                if result.is_ok() {
+                    EffectState::Confirmed
+                } else {
+                    EffectState::Unknown
+                },
+                BTreeMap::from([(
+                    "native_ack".into(),
                     if result.is_ok() {
-                        EffectState::Confirmed
+                        "received"
                     } else {
-                        EffectState::Unknown
-                    },
-                    BTreeMap::from([(
-                        "native_ack".into(),
-                        if result.is_ok() {
-                            "received"
-                        } else {
-                            "unknown"
-                        }
-                        .into(),
-                    )]),
-                )?;
+                        "unknown"
+                    }
+                    .into(),
+                )]),
+            )?;
         }
         result
     }
@@ -1971,7 +2045,10 @@ impl Core {
             .iter()
             .any(|o| o.status == QuotaStatus::Exhausted);
         for observation in observations {
-            self.observe_quota(&observation,probe && observation.status==QuotaStatus::Available)?;
+            self.observe_quota(
+                &observation,
+                probe && observation.status == QuotaStatus::Available,
+            )?;
         }
         if exhausted && !probe {
             return Ok((WorkOutcome::Unknown, Disposition::QuotaInterrupted, None));
