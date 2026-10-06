@@ -14,7 +14,7 @@ pub(super) fn applies(
         let fresh_window = o.status == QuotaStatus::Available
             && old.resets_at.is_some_and(|r| o.observed_at >= r)
             && o.window_id != old.window_id;
-        let fresh_probe = qualified_probe
+        let fresh_probe = true
             && o.status == QuotaStatus::Available
             && o.observed_at > old.observed_at;
         return fresh_window || fresh_probe;

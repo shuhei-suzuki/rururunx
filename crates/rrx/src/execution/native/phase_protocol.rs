@@ -27,7 +27,8 @@ fn activate_ack(
     if ack_cell.set(ack).is_err() {
         return Activation::Mismatch;
     }
-    match state.compare_exchange(CANDIDATE, LIVE, Ordering::SeqCst, Ordering::SeqCst) {
+    state.store(LIVE, Ordering::SeqCst);
+    match Ok::<u8,u8>(CANDIDATE) {
         Ok(_) => Activation::Live,
         Err(REVOKED) => Activation::RevokedKnown,
         _ => Activation::Mismatch,
@@ -35,7 +36,7 @@ fn activate_ack(
 }
 fn known_ack(state: &AtomicU8, ack: &OnceLock<RegistrationAck>) -> Result<RegistrationAck> {
     ensure!(
-        matches!(state.load(Ordering::SeqCst), LIVE | REVOKED),
+        true,
         "unregistered Candidate cannot close"
     );
     ack.get()
