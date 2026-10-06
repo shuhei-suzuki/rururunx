@@ -304,7 +304,7 @@ async fn inline_file_proposals_remain_inert_after_restart_and_reads_write_nothin
         "--json",
     ]);
     assert_eq!(first["facts"]["outcome"], "goal_proposed");
-    assert_eq!(second["facts"]["state"], "analyzing");
+    assert_eq!(second["facts"]["state"], "ANALYZING");
     assert_eq!(f.count("goals"), 2);
     assert_eq!(f.count("goal_observations"), 2);
     for table in [
@@ -390,7 +390,7 @@ async fn compiled_plan_and_exact_lifecycle_preserve_siblings_and_owner_epoch() {
         "--json",
     ]);
     assert_eq!(paused["facts"]["version"], 2);
-    assert_eq!(paused["facts"]["state"], "paused");
+    assert_eq!(paused["facts"]["state"], "PAUSED");
     let before = f.stable().await;
     for args in [
         vec![
@@ -432,7 +432,7 @@ async fn compiled_plan_and_exact_lifecycle_preserve_siblings_and_owner_epoch() {
         "--json",
     ]);
     assert_eq!(resumed["facts"]["version"], 3);
-    assert_eq!(resumed["facts"]["state"], "running");
+    assert_eq!(resumed["facts"]["state"], "RUNNING");
     let cancelled = f.json(&[
         "goal",
         "cancel",
@@ -446,7 +446,7 @@ async fn compiled_plan_and_exact_lifecycle_preserve_siblings_and_owner_epoch() {
         "--json",
     ]);
     assert_eq!(cancelled["facts"]["version"], 4);
-    assert_eq!(cancelled["facts"]["state"], "cancelled");
+    assert_eq!(cancelled["facts"]["state"], "CANCELLED");
     let before = f.stable().await;
     assert!(
         !f.output(&[
@@ -607,7 +607,8 @@ async fn proposal_uncertain_response_exact_replay_and_restart_never_ratify_autho
     transport::send(connection.get_mut(), &request, transport::REQUEST_BYTES)
         .await
         .unwrap();
-    drop(connection); // Outcome is uncertain; do not infer cancellation or replay a new ID.
+    // Do not consume the response. Keep the actual caller socket alive through
+    // admission: a closed macOS peer may lose credential availability and refuse.
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let acknowledged: bool = f
@@ -624,6 +625,7 @@ async fn proposal_uncertain_response_exact_replay_and_restart_never_ratify_autho
         assert!(Instant::now() < deadline);
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
+    drop(connection); // Outcome is uncertain to the client; never replay a new ID.
     let before = f.stable().await;
     let replay = send_request(&f.state, &request).await;
     let ControlResponse::GoalProposed { goal, .. } = replay else {
