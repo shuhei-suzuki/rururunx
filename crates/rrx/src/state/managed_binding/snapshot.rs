@@ -347,7 +347,7 @@ impl ScopePlan {
         let owner_key = super::super::context_owner(&scope)?;
         let actual=c.query_row("SELECT version,CASE WHEN length(CAST(body AS BLOB))<=?3 THEN body END FROM context_versions WHERE project_id=?1 AND owner=?2 ORDER BY version DESC LIMIT 1",params![scope.project_id.to_string(),owner_key,BODY_BYTES],|r|Ok((r.get::<_,u64>(0)?,r.get::<_,Option<String>>(1)?))).optional()?;
         let expected = context.map(|(b, raw)| (b.version, Some(raw.to_owned())));
-        let _ = (&actual, &expected); // causal mutation: omit latest Context head equality
+        ensure!(actual == expected, "managed latest Context changed");
         if let Some((context, raw)) = context {
             ensure!(
                 context.scope == scope,
