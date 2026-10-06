@@ -26,7 +26,7 @@ pub(crate) struct ScopePlan {
     pub(super) locks: Vec<Body<Record>>,
 }
 
-fn snapshot<R>(
+pub(super) fn snapshot<R>(
     owner: &RuntimeOwner,
     read: impl FnOnce(&Transaction<'_>) -> Result<R>,
 ) -> Result<R> {
@@ -169,57 +169,62 @@ fn scoped_records(
 /// here, before any writer mutex is acquired. Zero Workflow is bootstrap data,
 /// not evidence permitting native launch; the marker producer requires one.
 pub(crate) fn plan_scope(owner: &RuntimeOwner, scope: &Scope) -> Result<ScopePlan> {
-    snapshot(owner, |tx| {
-        let (project, goal, task) = owners(tx, scope)?;
-        let mut workflows = scoped_records(tx, scope, RecordKind::Workflow, 1, BODY_BYTES)?;
-        let workflow = workflows.pop();
-        if let Some(body) = &workflow {
-            // Record.data is a generic Value; validate the ENTIRE inner typed
-            // Workflow as well, so unknown fields cannot disappear in projection.
-            Body::<WorkflowSnapshot>::decode(
-                serde_json::to_string(&body.parsed().data)?,
+    snapshot(owner, |tx| read_scope(tx, owner, scope))
+}
+
+/// Shared only with the marker planner so Unit and scope pins are read in the
+/// same transaction. This remains nongrant content, including zero Workflow.
+pub(super) fn read_scope(
+    tx: &Transaction<'_>,
+    owner: &RuntimeOwner,
+    scope: &Scope,
+) -> Result<ScopePlan> {
+    let (project, goal, task) = owners(tx, scope)?;
+    let mut workflows = scoped_records(tx, scope, RecordKind::Workflow, 1, BODY_BYTES)?;
+    let workflow = workflows.pop();
+    if let Some(body) = &workflow {
+        // Record.data is a generic Value; validate the ENTIRE inner typed
+        // Workflow as well, so unknown fields cannot disappear in projection.
+        Body::<WorkflowSnapshot>::decode(serde_json::to_string(&body.parsed().data)?, BODY_BYTES)?;
+        body.digest(WORKFLOW_DOMAIN);
+    }
+    let owner_key = super::super::context_owner(scope)?;
+    let row=tx.query_row("SELECT project_id,goal_id,task_id,owner,version,CASE WHEN length(CAST(body AS BLOB))<=?3 THEN body END FROM context_versions WHERE project_id=?1 AND owner=?2 ORDER BY version DESC LIMIT 1",params![scope.project_id.to_string(),owner_key,BODY_BYTES],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,Option<String>>(2)?,r.get::<_,String>(3)?,r.get::<_,u64>(4)?,r.get::<_,Option<String>>(5)?))).optional()?;
+    let context = row
+        .map(|(p, g, t, key, version, raw)| -> Result<_> {
+            let body = Body::<ContextVersion>::decode(
+                raw.context("managed Context over bound")?,
                 BODY_BYTES,
             )?;
-            body.digest(WORKFLOW_DOMAIN);
-        }
-        let owner_key = super::super::context_owner(scope)?;
-        let row=tx.query_row("SELECT project_id,goal_id,task_id,owner,version,CASE WHEN length(CAST(body AS BLOB))<=?3 THEN body END FROM context_versions WHERE project_id=?1 AND owner=?2 ORDER BY version DESC LIMIT 1",params![scope.project_id.to_string(),owner_key,BODY_BYTES],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,Option<String>>(2)?,r.get::<_,String>(3)?,r.get::<_,u64>(4)?,r.get::<_,Option<String>>(5)?))).optional()?;
-        let context = row
-            .map(|(p, g, t, key, version, raw)| -> Result<_> {
-                let body = Body::<ContextVersion>::decode(
-                    raw.context("managed Context over bound")?,
-                    BODY_BYTES,
-                )?;
-                let context = body.parsed();
-                ensure!(
-                    context.scope == *scope
-                        && p == scope.project_id.to_string()
-                        && Some(g) == scope.goal_id.map(|v| v.to_string())
-                        && t == scope.task_id.map(|v| v.to_string())
-                        && key == owner_key
-                        && context.version == version,
-                    "managed Context index/body identity differs"
-                );
-                Ok(body)
-            })
-            .transpose()?;
-        let locks = scoped_records(tx, scope, RecordKind::WorktreeLock, LOCK_ROWS, LOCK_BYTES)?;
-        for body in &locks {
-            Body::<crate::git::WorktreeLock>::decode(
-                serde_json::to_string(&body.parsed().data)?,
-                LOCK_BYTES,
-            )?;
-        }
-        Ok(ScopePlan {
-            instance: owner.instance_id().into(),
-            epoch: owner.epoch(),
-            project,
-            goal,
-            task,
-            workflow,
-            context,
-            locks,
+            let context = body.parsed();
+            ensure!(
+                context.scope == *scope
+                    && p == scope.project_id.to_string()
+                    && Some(g) == scope.goal_id.map(|v| v.to_string())
+                    && t == scope.task_id.map(|v| v.to_string())
+                    && key == owner_key
+                    && context.version == version,
+                "managed Context index/body identity differs"
+            );
+            Ok(body)
         })
+        .transpose()?;
+    let locks = scoped_records(tx, scope, RecordKind::WorktreeLock, LOCK_ROWS, LOCK_BYTES)?;
+    for body in &locks {
+        Body::<crate::git::WorktreeLock>::decode(
+            serde_json::to_string(&body.parsed().data)?,
+            LOCK_BYTES,
+        )?;
+    }
+    Ok(ScopePlan {
+        instance: owner.instance_id().into(),
+        epoch: owner.epoch(),
+        project,
+        goal,
+        task,
+        workflow,
+        context,
+        locks,
     })
 }
 

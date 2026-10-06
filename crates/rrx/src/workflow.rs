@@ -83,7 +83,7 @@ impl Phase {
             _ => Actor::EvidencePort,
         }
     }
-    fn task_state(self) -> TaskState {
+    pub(crate) fn task_state(self) -> TaskState {
         match self {
             Self::Requirements | Self::Design | Self::Issue | Self::Worktree => TaskState::Planning,
             Self::Implement => TaskState::Implementing,
