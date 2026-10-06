@@ -15,6 +15,7 @@ pub(crate) struct NativeAdapter {
     pub(crate) provider: String,
     pub(crate) program: PathBuf,
     pub(crate) sessions: Arc<NativeSessions>,
+    pub(crate) compatibility: Option<Arc<execution::native::compat::NativeCompatDeclaration>>,
 }
 
 /// Selected concrete vtable, installed with the same adapter/sessions used by
@@ -573,6 +574,7 @@ mod tests {
                 provider: provider.into(),
                 program: fixture::program(dir.path(), provider),
                 sessions,
+                compatibility: None,
             };
             let (unit, _) = AttemptManager::new(owner.clone())
                 .prepare(task.id, provider, "implement", None)
@@ -683,6 +685,7 @@ mod tests {
             provider: "claude".into(),
             program: fixture::program(dir.path(), "claude"),
             sessions,
+            compatibility: None,
         };
         let (unit, _) = AttemptManager::new(owner.clone())
             .prepare(task.id, "claude", "implement", None)

@@ -146,7 +146,7 @@ impl NativeVersionObservation {
         }
         let text = std::str::from_utf8(&self.stdout).ok()?;
         match self.plan.actor().launch().allocation().facts().provider {
-            "codex" if crate::codex::managed::version(text).is_ok() => Some("codex-cli-0.160.0"),
+            "codex" if qualified_codex_phase_version(text) => Some("codex-cli-0.160.0"),
             "claude" if claude_wire::verify_version(text).is_ok() => Some("claude-2.1.283"),
             _ => None,
         }
@@ -207,6 +207,9 @@ impl NativeVersionObservation {
             ),
         ])
     }
+}
+pub(super) fn qualified_codex_phase_version(text: &str) -> bool {
+    matches!(text, "codex-cli 0.160.0" | "codex-cli 0.160.0\n" | "codex-cli 0.160.0\r\n")
 }
 impl NativeVersionHelperCustody {
     pub(super) fn observation(&self) -> Result<Arc<NativeVersionObservation>> {
@@ -345,6 +348,14 @@ fn physical_command(
     seal: Option<&Arc<readonly::NativeGitSourceSeal>>,
     lease: Option<&Arc<owner::GitLease>>,
 ) -> Result<Command> {
+    let profile = qualified_physical_profile(owner, actor)?;
+    let facts = actor.launch().allocation().facts();
+    let unit = actor.launch().allocation().unit_snapshot();
+    let overlay = profile.environment(&unit.cookie, &owner.socket)?;
+    build_helper_command(owner, actor, action, seal, lease, &profile, overlay, facts)
+}
+
+pub(super) fn qualified_physical_profile(owner: &Arc<RuntimeOwner>, actor: &Arc<NativePreparationActor>) -> Result<resources::ResourceProfile> {
     actor.validate_open()?;
     let allocation = actor.launch().allocation();
     let unit = allocation.unit_snapshot();
@@ -396,7 +407,16 @@ fn physical_command(
             && profile.tool_bin == root.join("tool-bin"),
         "original resource child namespace differs"
     );
-    let overlay = profile.environment(&unit.cookie, &owner.socket)?;
+    Ok(profile)
+}
+
+fn build_helper_command(
+    _owner: &Arc<RuntimeOwner>, actor: &Arc<NativePreparationActor>,
+    action: &readonly::NativePhaseHelperAction,
+    seal: Option<&Arc<readonly::NativeGitSourceSeal>>,
+    lease: Option<&Arc<owner::GitLease>>, profile: &resources::ResourceProfile,
+    overlay: BTreeMap<String, String>, facts: crate::execution::phase::AllocationFacts<'_>,
+) -> Result<Command> {
     let mut command = if matches!(action, readonly::NativePhaseHelperAction::Version) {
         ensure!(lease.is_none(), "version cannot consume Git lease");
         let mut command = Command::new(facts.program);

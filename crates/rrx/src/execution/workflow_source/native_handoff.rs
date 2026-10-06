@@ -80,6 +80,7 @@ fn validate_seal_identity(
     Ok(())
 }
 impl SourceNativePreparationSeal {
+    pub(crate) fn config(&self) -> &crate::config::Config { &self.frame.config }
     pub(crate) fn revision(&self) -> &str {
         &self.frame.revision
     }

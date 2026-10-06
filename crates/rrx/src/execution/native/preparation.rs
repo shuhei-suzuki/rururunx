@@ -19,8 +19,18 @@ struct CustodyState {
     known: Option<Arc<crate::state::NativePreparationCommit>>,
     helpers: Vec<Arc<super::version::NativeVersionHelperCustody>>,
     completion: Option<Arc<super::version::NativeReadonlyHelperCompletion>>,
+    compat: Option<Arc<super::compat::NativeCompatQualification>>,
+    command: Option<Arc<super::prepared::NativeTransportCommand>>,
 }
 impl NativePreparationCustody {
+    fn retain_compatible_command(&self, compat: Arc<super::compat::NativeCompatQualification>, command: Arc<super::prepared::NativeTransportCommand>) -> Result<()> {
+        // All physical, encoding and compatibility work preceded this lock.
+        let mut state = self.state.lock().map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.compat.is_none() && state.command.is_none(), "compatible command already installed or revoked");
+        ensure!(state.actor.as_ref().zip(state.helpers.first()).is_some_and(|(a,v)| compat.matches(a,v)), "compatible command original actor/version differs");
+        state.compat = Some(compat); state.command = Some(command);
+        Ok(())
+    }
     pub(crate) fn new(allocation: Arc<NativeAllocation>) -> Arc<Self> {
         Arc::new(Self {
             allocation,
@@ -405,7 +415,7 @@ impl NativeSessions {
             index.insert(id, Arc::downgrade(&custody));
         }
         actor.validate_open()?;
-        let plan = crate::state::Store::plan_native_preparation(&self.owner, actor)?;
+        let plan = crate::state::Store::plan_native_preparation(&self.owner, actor.clone())?;
         custody.retain_plan(plan.clone())?;
         let admission = launch.admission().enter(launch.clone()).await?;
         let commit = {
@@ -421,8 +431,12 @@ impl NativeSessions {
         };
         custody.retain_commit(commit)?;
         drop(admission);
+        let compat = super::compat::qualify_compat_static(&actor)?;
         let version = self.prepare_phase_version(custody.clone()).await?;
-        self.prepare_phase_git(custody, version).await?;
+        let completion = self.prepare_phase_git(custody.clone(), version.clone()).await?;
+        let compat = compat.observe(version)?;
+        let command = super::prepared::plan_native_command(&self.owner, &actor, &completion, &compat)?;
+        custody.retain_compatible_command(compat, command)?;
         // The readonly fact is deliberately nongrant. Full prepared input,
         // artifact lease, hooks, quota and transport issuers remain absent.
         anyhow::bail!(

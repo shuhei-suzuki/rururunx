@@ -381,7 +381,9 @@ impl AgentRegistry {
                     "native executable unavailable",
                 ));
             }
-            selected.push((name.clone(), provider.to_owned(), program));
+            let compatibility = agent.compatibility.as_ref().map(crate::execution::native::compat::NativeCompatDeclaration::installed).transpose()
+                .map_err(|_| error(ErrorKind::InvalidConfiguration, "invalid native compatibility declaration"))?;
+            selected.push((name.clone(), provider.to_owned(), program, compatibility));
         }
         let sessions = Arc::new(
             crate::execution::native::NativeSessions::with_limits(
@@ -394,13 +396,14 @@ impl AgentRegistry {
             managed_owner: Some(owner.clone()),
             ..Self::default()
         };
-        for (name, provider, program) in selected {
+        for (name, provider, program, compatibility) in selected {
             let adapter = Arc::new(native::NativeAdapter {
                 owner: owner.clone(),
                 name: name.clone(),
                 provider,
                 program,
                 sessions: sessions.clone(),
+                compatibility,
             });
             registry.register(name.clone(), adapter.clone())?;
             registry

@@ -22,6 +22,8 @@ use tokio::{
 mod phase_fence_tests;
 mod phase_protocol;
 mod preparation;
+pub(crate) mod compat;
+mod prepared;
 pub(crate) mod readonly;
 pub(crate) mod version;
 pub(crate) use phase_protocol::{
