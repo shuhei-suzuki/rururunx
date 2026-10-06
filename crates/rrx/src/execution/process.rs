@@ -160,9 +160,10 @@ mod native_child_cell_tests {
     #[tokio::test]
     async fn raw_upgrade_refuses_without_releasing_original_child() {
         let mut cell=spawned().await;
-        assert!(cell.upgrade_in_place().is_err());
-        assert!(matches!(&cell,NativeChildCell::Raw(raw) if raw.has_child() && raw.pid.is_none()));
+        let refused=cell.upgrade_in_place().is_err();
+        let retained=matches!(&cell,NativeChildCell::Raw(raw) if raw.has_child() && raw.pid.is_none());
         closed(&mut cell).await;
+        assert!(refused && retained);
     }
     #[tokio::test]
     async fn missing_pipe_refuses_before_taking_any_other_pipe() {
@@ -170,9 +171,10 @@ mod native_child_cell_tests {
         cell.qualify().unwrap();cell.upgrade_in_place().unwrap();
         let NativeChildCell::Owned(process)=&mut cell else {panic!()};
         let stderr=process.child.stderr.take();
-        assert!(cell.take_native_pipes().is_err());
-        assert!(matches!(&cell,NativeChildCell::Owned(p) if p.child.stdin.is_some() && p.child.stdout.is_some()));
+        let refused=cell.take_native_pipes().is_err();
+        let intact=matches!(&cell,NativeChildCell::Owned(p) if p.child.stdin.is_some() && p.child.stdout.is_some());
         drop(stderr);closed(&mut cell).await;
+        assert!(refused && intact);
     }
     struct Shell(Arc<AtomicUsize>);
     impl Drop for Shell { fn drop(&mut self) {self.0.fetch_add(1,Ordering::SeqCst);} }
@@ -183,7 +185,10 @@ mod native_child_cell_tests {
         let pipes=cell.take_native_pipes().unwrap();
         let drops=Arc::new(AtomicUsize::new(0));
         let shell=Shell(drops.clone());
-        let refused=cell.transfer_with(false,shell,build).err().unwrap();
+        let refused=match cell.transfer_with(false,shell,build) {
+            Err(refused)=>refused,
+            Ok((shell,mut process))=>{process.stop_and_reap().await.unwrap();drop(pipes);drop(shell);panic!("closed handoff transferred child");},
+        };
         assert_eq!(drops.load(Ordering::SeqCst),0);
         assert!(matches!(&cell,NativeChildCell::Owned(p) if p.unreaped));
         drop(refused.shell);assert_eq!(drops.load(Ordering::SeqCst),1);
