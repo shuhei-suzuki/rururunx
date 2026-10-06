@@ -345,7 +345,7 @@ async fn actual_routing_refuses_ambiguity_stale_snapshot_and_body_index_corrupti
 }
 
 // Actual accepted Unix peer ingress; this fixture never constructs Human/Driver authority.
-pub(super) struct ControlFixture {
+pub(crate) struct ControlFixture {
     pub(super) _dir: tempfile::TempDir,
     pub(super) owner: Arc<RuntimeOwner>,
     pub(super) runtime: Arc<Runtime>,
@@ -354,6 +354,12 @@ pub(super) struct ControlFixture {
     _peer: tokio::net::UnixStream,
 }
 impl ControlFixture {
+    pub(crate) fn store(&self) -> crate::adapter::SharedStore {
+        self.owner.store()
+    }
+    pub(crate) fn state_path(&self) -> std::path::PathBuf {
+        self._dir.path().join("state.db")
+    }
     fn new() -> Self {
         Self::configured(|_| config())
     }
@@ -462,6 +468,26 @@ impl ControlFixture {
             _ => panic!("actual accepted Goal required"),
         }
     }
+}
+
+/// Sibling controls reuse actual retained Runtime/Unix ingress, not generic Goal
+/// writes or a Native issuer. The complete initial plan owns the returned Task.
+pub(crate) async fn accepted_goal_fixture() -> (ControlFixture, crate::domain::Task) {
+    let fixture = ControlFixture::new();
+    let goal_id = fixture.create(plan()).await;
+    let task = {
+        let shared = fixture.store();
+        let store = shared.lock().unwrap();
+        let goal = store.goal(goal_id).unwrap().unwrap();
+        assert_eq!(goal.project_id, fixture.project.id);
+        assert_eq!(goal.dag.nodes.len(), 1);
+        let task = store.task(goal.dag.nodes[0]).unwrap().unwrap();
+        assert_eq!(task.project_id, goal.project_id);
+        assert_eq!(task.goal_id, goal.id);
+        assert!(goal.version > 0 && task.version > 0);
+        task
+    };
+    (fixture, task)
 }
 #[tokio::test]
 async fn actual_accepted_goal_transaction_idempotency_and_generic_writers() {

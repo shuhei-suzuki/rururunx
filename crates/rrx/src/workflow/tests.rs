@@ -1408,10 +1408,10 @@ async fn project_minimum_and_rule_refresh_override_defaults_and_force_new_genera
         WorkflowClass::Strict
     );
 }
-#[test]
-fn ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected() {
-    let fixture = Fixture::new(WorkflowClass::Quick);
-    let db = fixture.dir.path().join("legacy-v2.db");
+#[tokio::test]
+async fn ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected() {
+    let (fixture, task) = crate::runtime::accepted_goal_fixture().await;
+    let db = fixture.state_path().with_file_name("legacy-v2.db");
     let connection = rusqlite::Connection::open(&db).unwrap();
     // Build the historical SQL layout, rather than relabelling a schema-v4
     // database whose execution tables and writer guards already exist.
@@ -1421,7 +1421,7 @@ fn ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected() 
     connection
         .execute(
             "ATTACH DATABASE ?1 AS current_fixture",
-            [fixture.dir.path().join("state.db").to_str().unwrap()],
+            [fixture.state_path().to_str().unwrap()],
         )
         .unwrap();
     for table in [
@@ -1439,6 +1439,8 @@ fn ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected() 
             ))
             .unwrap();
     }
+    // Only the historical nongrant tables are copied. Accepted authority,
+    // scheduler/Driver state and Native execution rows are not migration input.
     connection
         .pragma_update(None, "application_id", crate::state::APPLICATION_ID)
         .unwrap();
@@ -1450,11 +1452,27 @@ fn ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected() 
         crate::state::SCHEMA_VERSION
     );
     assert_eq!(
-        restored.task(fixture.task.id).unwrap().unwrap().scope(),
-        fixture.task.scope()
+        restored.task(task.id).unwrap().unwrap().scope(),
+        task.scope()
+    );
+    assert_eq!(
+        serde_json::to_value(restored.task(task.id).unwrap().unwrap()).unwrap(),
+        serde_json::to_value(&task).unwrap(),
+        "historical migration preserves the actual Task body and version"
     );
     drop(restored);
     let connection = rusqlite::Connection::open(&db).unwrap();
+    for table in [
+        "goal_authority",
+        "scheduler_tasks",
+        "task_drivers",
+        "execution_units",
+    ] {
+        let count: u64 = connection
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "legacy copy must not restore {table} authority");
+    }
     connection
         .pragma_update(None, "user_version", crate::state::SCHEMA_VERSION + 1)
         .unwrap();
@@ -3572,10 +3590,13 @@ async fn final_claim_cas_loss_recovers_only_proven_undispatched_reservations() {
 
 #[tokio::test]
 async fn all_public_audit_entrypoints_reject_reserved_gate_journal_kinds() {
-    let fixture = Fixture::new(WorkflowClass::Quick);
-    let mut store = fixture.store.lock().unwrap();
-    let goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
-    let versions = [fixture.project.version, goal.version, fixture.task.version];
+    let (fixture, task) = crate::runtime::accepted_goal_fixture().await;
+    let shared = fixture.store();
+    let mut store = shared.lock().unwrap();
+    let project = store.project(task.project_id).unwrap().unwrap();
+    let goal = store.goal(task.goal_id).unwrap().unwrap();
+    let versions = [project.version, goal.version, task.version];
+    let before = audit_control_rows(&fixture.state_path());
     for kind in [
         "project.saved",
         "workflow.saved",
@@ -3585,32 +3606,78 @@ async fn all_public_audit_entrypoints_reject_reserved_gate_journal_kinds() {
     ] {
         assert!(
             store
-                .audit(&fixture.task.scope(), kind, json!({"forged":true}))
+                .audit(&task.scope(), kind, json!({"forged":true}))
                 .unwrap_err()
                 .to_string()
                 .contains("reserved")
         );
+        assert_eq!(
+            audit_control_rows(&fixture.state_path()),
+            before,
+            "reserved audit refusal must leave all durable rows unchanged"
+        );
         assert!(
             store
-                .audit_if_current(
-                    &fixture.task.scope(),
-                    versions,
-                    kind,
-                    json!({"forged":true})
-                )
+                .audit_if_current(&task.scope(), versions, kind, json!({"forged":true}))
                 .unwrap_err()
                 .to_string()
                 .contains("reserved")
+        );
+        assert_eq!(
+            audit_control_rows(&fixture.state_path()),
+            before,
+            "reserved current audit refusal must leave all durable rows unchanged"
         );
     }
     store
         .audit_if_current(
-            &fixture.task.scope(),
+            &task.scope(),
             versions,
             "fixture.observed",
             json!({"positive":true}),
         )
         .unwrap();
+    let events = store.events(&task.scope(), 0, 10000).unwrap();
+    let positive = events.last().unwrap();
+    assert_eq!(positive.kind, "fixture.observed");
+    assert_eq!(positive.scope, task.scope());
+    assert_eq!(positive.data, json!({"positive":true}));
+    assert_eq!(store.task(task.id).unwrap().unwrap().version, versions[2]);
+}
+
+// This fixture never starts Runtime scheduling. Bracket refused audit calls with
+// exact sorted row images from every durable table, including private authority.
+fn audit_control_rows(path: &std::path::Path) -> Vec<(String, Vec<Vec<String>>)> {
+    let connection =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .unwrap();
+    let names = connection
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        .unwrap()
+        .query_map([], |r| r.get::<_, String>(0))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap();
+    names
+        .into_iter()
+        .map(|name| {
+            let mut query = connection
+                .prepare(&format!("SELECT * FROM \"{}\"", name.replace('"', "\"\"")))
+                .unwrap();
+            let columns = query.column_count();
+            let mut rows = query
+                .query_map([], |r| {
+                    (0..columns)
+                        .map(|i| r.get_ref(i).map(|v| format!("{v:?}")))
+                        .collect::<rusqlite::Result<Vec<_>>>()
+                })
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap();
+            rows.sort();
+            (name, rows)
+        })
+        .collect()
 }
 
 #[tokio::test]

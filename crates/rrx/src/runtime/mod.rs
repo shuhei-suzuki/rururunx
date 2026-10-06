@@ -114,6 +114,8 @@ impl Runtime {
 }
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+pub(crate) use tests::accepted_goal_fixture;
 
 #[cfg(test)]
 struct GoalAdmissionPause {
