@@ -94,6 +94,19 @@ unchanged.
 - **Footprint correction.** The inline `OnceLock<RegistrationAck>` is 4 words +
   tag, not "3 words + tag": `RegistrationAck` holds two `u64` values and one
   enum. The §13 row is otherwise unchanged.
+- **B1 effect budget (later correction; recorded in the Prepared HOW as C-9).**
+  The §13 assumption "transport + up to 2 setup + 1 input ≤256" was wrong. Read
+  at `fd4a6a160fc1d20f1ab3f41f2ac15b76246c5d83`, Codex journals six
+  `native_setup` effects before its `native_input`
+  (`native.rs:1963,1968,1973,1980,1987,2020`; `boot_call` maps an absent kind to
+  `native_setup` for a protected phase, `:1487–1507`), and Claude journals one
+  (`:2123`). The unchanged per-dispatch gate admits only while the inventory is
+  `<256` (`native_phase.rs:1293–1298`), so a 252 baseline refuses Codex at its
+  fourth setup, before input. The pre-registration bound becomes
+  provider-specific, Codex ≤248 and Claude ≤252, enforced before any helper
+  effect by [Prepared HOW](issue-43-native-prepared-producer-design.md) §11.4.
+  Changed: §§9, 13, 14.3 and 15. The source pin `76a58b6e` stays historical for
+  every other line reference.
 
 Previous revision delta (closed; retained for traceability, not reopened):
 
@@ -880,7 +893,7 @@ writing.
 | Generic `validate_authority` | ✗ never | ✗ | ✗ | ✗ |
 | `registration_unit` + prepared full Unit CAS | ✓ | — | — | latest full Unit CAS |
 | `no_registration`, owner v1, prepared readiness P exact | ✓ | — | owner v2, readiness P+1 | latest owner/readiness exact |
-| Complete inventory == prepared expected, ≤252 rows, key absent | ✓ | — | own row exact | own row exact |
+| Complete inventory == prepared expected, ≤ provider bound (Codex 248, Claude 252; §13), key absent | ✓ | — | own row exact | own row exact |
 | Verifier command-only refusal | ✓ | — | — | — |
 
 There is no boolean bypass, public validation mode, optional actor fallback or
@@ -1019,7 +1032,7 @@ teardown is not logical closure.
 
 | Item | Bound |
 | --- | --- |
-| Effect inventory before registration | ≤252 rows (transport + up to 2 setup + 1 input ≤256); complete ≤256 rows, ≤2 MiB all-column framing, body ≤8192 B, VM budget (A, `version.rs:13–73`) |
+| Effect inventory before registration | provider bound of the SAME allocation, checked before the version and Git intents (Prepared HOW §11.4) and again here: Codex ≤248 (+ transport 1 + 6 setup + 1 input = 256), Claude ≤252 (+ transport 1 + 1 setup + 1 input = 255); post-input dispatches are not reserved and stay subject to the unchanged `<256` dispatch gate; complete ≤256 rows, ≤2 MiB all-column framing, body ≤8192 B, VM budget (A, `version.rs:13–73`) |
 | Transport effect | idempotency 53 B, expected_target ≤256 B, body ≤8192 B, receipt ≤16 entries |
 | Session record / Unit / invocation / readiness / owner read | ≤32 KiB / ≤16 KiB / `INVOCATION_BYTES` / ≤4096 B / ≤32 KiB (A) |
 | Command plan | Codex exactly 3 argv; Claude 12–18 argv, inclusive ≤18 elements × ≤128 B (≤2304 B total); model/effort ≤128 B each (A allocation bound); env overlay ≤64 entries; encoded ≤64 KiB; profile file ≤64 KiB+1 read (A) |
@@ -1074,7 +1087,10 @@ writer-contract10; `PhaseEffectAdmission`; `PhaseJobs` `MAX_JOBS=128`;
 forbidden — conservative); `driver/preparation.rs:349,546` (Task-wide pending/
 unknown blocks preparation until settled; Unknown remains an attention hold);
 `effects.rs:3–28` epoch fence; `plan_phase_dispatch` count `<256`
-(`native_phase.rs:1293–1298`) — satisfied by the ≤252 baseline; `verification.rs:567`
+(`native_phase.rs:1293–1298`, unchanged) — the first input fits because the
+prepared inventory is within the provider bound of §13 (Codex 248 + 1 + 6 setup
+reaches the input at 255; Claude 252 + 1 + 1 reaches it at 254); later
+permission dispatches are not reserved; `verification.rs:567`
 (command Units only; transport refuses them); `adapter/native.rs:621` (test filter
 on `native_version`, unaffected). Environment values (cookie, socket) reach only
 the child; no persisted consumer.
@@ -1096,7 +1112,7 @@ adapters (no new port).
 - generic reserve/reconcile refuse `native_phase_*`;
 - compiled old10 (76a58b6e) generic reconcile interference → private CAS
   conflict/Held;
-- the 252/253 baseline, 256/257 and inclusive 2 MiB boundaries;
+- the provider baseline boundaries Codex 248/249 and Claude 252/253 (Prepared HOW §11.4), 256/257 and inclusive 2 MiB boundaries;
 - readiness `(P+1,!ended)`/`(P+2,ended)` accepted for an activated actor
   (`Live` in normal mode; `Live` or `Revoked` with ack in terminal mode), and
   v2/v3, other lineages and an unacked actor refused.
@@ -1204,6 +1220,7 @@ positive; until then, record the SETUP refusal and credit no mutant kill.
 - omitted admission recheck;
 - generic `validate_authority` reintroduced;
 - inventory equality removed;
+- the Codex prepared bound restored to 252 (the fourth Codex setup is refused before input);
 - readiness constant 2/3 restored;
 - settlement full-inventory CAS (breaks after setup dispatch);
 - `version_closed` early return removed;
