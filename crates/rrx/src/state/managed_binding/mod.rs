@@ -10,7 +10,7 @@ mod schema;
 #[cfg(test)]
 mod schema_tests;
 mod snapshot;
-pub(super) use permits::{PrivatePermitManager, register_permit_function};
+pub(super) use permits::{ExactRowMutation, PrivatePermitManager, register_permit_function};
 #[cfg(test)]
 pub(super) use schema::TABLES;
 pub(super) use schema::{
@@ -19,6 +19,7 @@ pub(super) use schema::{
 
 pub(crate) use marker_plan::plan_marker;
 pub(crate) use snapshot::plan_scope;
+pub(in crate::state) use snapshot::{ScopePlan, read_scope, snapshot};
 
 #[cfg(test)]
 mod tests;

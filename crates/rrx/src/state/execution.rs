@@ -512,7 +512,7 @@ impl Store {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
         let epoch = old.checked_add(1).context("owner epoch overflow")?;
-        source_recovery::invalidate_epoch(&tx)?;
+        source_recovery::invalidate_epoch(&tx, &self.binding_permits)?;
         let mut statement=tx.prepare("SELECT id FROM execution_units WHERE native_effects_open=1 OR result_finalization_open=1")?;
         let units = statement
             .query_map([], |r| r.get::<_, String>(0))?
@@ -898,7 +898,7 @@ impl Store {
                 json!({"unit":unit.id,"workflow":record.id,"generation":unit.generation}),
             )?;
         }
-        source_recovery::after_write(&tx, source_advance, false)?;
+        source_recovery::after_write(&tx, &self.binding_permits, source_advance, false)?;
         tx.commit()?;
         Ok(unit)
     }

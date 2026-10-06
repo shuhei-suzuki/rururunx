@@ -274,6 +274,7 @@ fn normalize(s: &str) -> String {
 
 pub(in crate::state) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
     tx.execute_batch(include_str!("schema.sql"))?;
+    install_driver_guards(tx)?;
     install_record_guards(tx)?;
     install_identity_guards(tx)?;
     install_ledger_guards(tx)?;
@@ -297,6 +298,19 @@ fn permit(table: &str, action: &str) -> String {
         }
     }));
     format!("rrx_binding_permit({})", args.join(","))
+}
+fn install_driver_guards(tx: &Transaction<'_>) -> Result<()> {
+    for action in ["INSERT", "UPDATE", "DELETE"] {
+        tx.execute_batch(&format!(
+            "CREATE TRIGGER binding_driver_{action} BEFORE {action} ON task_drivers WHEN NOT {} BEGIN SELECT RAISE(ABORT,'private retained Driver writer required'); END;",
+            permit("task_drivers", action)
+        ))?;
+        tx.execute_batch(&format!(
+            "CREATE TRIGGER binding_source_{action} BEFORE {action} ON source_recoveries WHEN NOT {} BEGIN SELECT RAISE(ABORT,'private Source7 writer required'); END;",
+            permit("source_recoveries", action)
+        ))?;
+    }
+    Ok(())
 }
 fn install_record_guards(tx: &Transaction<'_>) -> Result<()> {
     for action in ["INSERT", "UPDATE", "DELETE"] {

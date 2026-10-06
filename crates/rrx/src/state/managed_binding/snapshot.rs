@@ -26,7 +26,7 @@ pub(crate) struct ScopePlan {
     pub(super) locks: Vec<Body<Record>>,
 }
 
-pub(super) fn snapshot<R>(
+pub(in crate::state) fn snapshot<R>(
     owner: &RuntimeOwner,
     read: impl FnOnce(&Transaction<'_>) -> Result<R>,
 ) -> Result<R> {
@@ -174,7 +174,7 @@ pub(crate) fn plan_scope(owner: &RuntimeOwner, scope: &Scope) -> Result<ScopePla
 
 /// Shared only with the marker planner so Unit and scope pins are read in the
 /// same transaction. This remains nongrant content, including zero Workflow.
-pub(super) fn read_scope(
+pub(in crate::state) fn read_scope(
     tx: &Transaction<'_>,
     owner: &RuntimeOwner,
     scope: &Scope,
@@ -229,28 +229,68 @@ pub(super) fn read_scope(
 }
 
 impl ScopePlan {
+    pub(in crate::state) fn task(&self) -> &Task {
+        self.task.parsed()
+    }
+    pub(in crate::state) fn has_input_history(&self) -> bool {
+        self.workflow.is_some() || self.context.is_some()
+    }
+    pub(in crate::state) fn matches_marker(
+        &self,
+        marker: &super::marker_plan::ManagedMarkerPlan,
+    ) -> Result<()> {
+        ensure!(
+            marker.scope() == self.task.parsed().scope()
+                && marker.project().1 == self.project.raw()
+                && marker.goal().1 == self.goal.raw()
+                && marker.task_before().1 == self.task.raw()
+                && self
+                    .workflow
+                    .as_ref()
+                    .is_some_and(|w| w.raw() == marker.workflow_before().1)
+                && self
+                    .context
+                    .as_ref()
+                    .is_some_and(|c| c.raw() == marker.context().1),
+            "Driver/marker original scope frame differs"
+        );
+        Ok(())
+    }
+
     /// Current CAS is exact encoded bytes plus metadata and COMPLETE inventories;
     /// it does not hash bodies, advance pins, mutate state or grant native work.
-    pub(super) fn validate_current(&self, c: &Connection) -> Result<()> {
-        let scope = self.task.parsed().scope();
-        let (p, g, t) = (
-            self.project.parsed(),
-            self.goal.parsed(),
+    pub(in crate::state) fn validate_current(&self, c: &Connection) -> Result<()> {
+        self.validate_projection(
+            c,
             self.task.parsed(),
+            self.task.raw(),
+            self.workflow.as_ref().map(|w| (w.parsed(), w.raw())),
+        )
+    }
+    /// Nongrant exact resulting-row check. The caller's actual sealed producer
+    /// validates the permitted old/new projection outside the write mutex.
+    pub(in crate::state) fn validate_projection(
+        &self,
+        c: &Connection,
+        task: &Task,
+        task_raw: &str,
+        workflow: Option<(&Record, &str)>,
+    ) -> Result<()> {
+        let scope = self.task.parsed().scope();
+        ensure!(
+            task.scope() == scope
+                && workflow
+                    .as_ref()
+                    .is_none_or(|(w, _)| w.scope == scope && w.kind == RecordKind::Workflow),
+            "Driver planned row scope differs"
         );
-        let current:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM runtime_epoch e JOIN projects p ON p.id=?1 JOIN goals g ON g.id=?2 AND g.project_id=p.id JOIN tasks t ON t.id=?3 AND t.project_id=p.id AND t.goal_id=g.id WHERE e.singleton=1 AND e.instance_id=?4 AND e.epoch=?5 AND p.root=?6 AND p.version=?7 AND g.version=?8 AND t.version=?9 AND t.issue IS ?10 AND p.body=?11 AND g.body=?12 AND t.body=?13)",params![p.id.to_string(),g.id.to_string(),t.id.to_string(),self.instance,self.epoch,p.root.to_str().context("Project path not UTF-8")?,p.version,g.version,t.version,t.issue,self.project.raw(),self.goal.raw(),self.task.raw()],|r|r.get(0))?;
+        let (p, g, t) = (self.project.parsed(), self.goal.parsed(), task);
+        let current:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM runtime_epoch e JOIN projects p ON p.id=?1 JOIN goals g ON g.id=?2 AND g.project_id=p.id JOIN tasks t ON t.id=?3 AND t.project_id=p.id AND t.goal_id=g.id WHERE e.singleton=1 AND e.instance_id=?4 AND e.epoch=?5 AND p.root=?6 AND p.version=?7 AND g.version=?8 AND t.version=?9 AND t.issue IS ?10 AND p.body=?11 AND g.body=?12 AND t.body=?13)",params![p.id.to_string(),g.id.to_string(),t.id.to_string(),self.instance,self.epoch,p.root.to_str().context("Project path not UTF-8")?,p.version,g.version,t.version,t.issue,self.project.raw(),self.goal.raw(),task_raw],|r|r.get(0))?;
         ensure!(current, "managed original owners changed");
         let workflows = exact_records(c, &scope, RecordKind::Workflow, 1, BODY_BYTES)?;
-        let expected = self
-            .workflow
+        let expected = workflow
             .iter()
-            .map(|v| {
-                (
-                    v.parsed().id.to_string(),
-                    v.parsed().version,
-                    v.raw().to_owned(),
-                )
-            })
+            .map(|(v, raw)| (v.id.to_string(), v.version, (*raw).to_owned()))
             .collect::<Vec<_>>();
         ensure!(workflows == expected, "managed Workflow changed");
         let locks = exact_records(c, &scope, RecordKind::WorktreeLock, LOCK_ROWS, LOCK_BYTES)?;

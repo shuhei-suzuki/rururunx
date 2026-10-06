@@ -17,6 +17,18 @@ impl Drop for Running {
 }
 
 impl Runtime {
+    fn observe_task_drivers(&self) -> Result<usize> {
+        let pending = self._drivers.observe_finished()?;
+        for exit in self._drivers.pending_exits()? {
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .record_driver_exit(&exit)?;
+            self._drivers.acknowledge_exit(&exit)?;
+        }
+        Ok(pending)
+    }
     /// Start exactly once on the existing owner. Missing native binding stays a
     /// named durable hold; the service does not instantiate another owner epoch.
     pub async fn start(self: &Arc<Self>) -> Result<()> {
@@ -56,7 +68,11 @@ impl Runtime {
                     )?;
                 sequence = next;
                 let pending = runtime.phases.reconcile_pending()?;
-                let delay = super::phase_supervisor::PhaseSupervisor::delay(pending, &mut backoff);
+                let driver_pending = runtime.observe_task_drivers()?;
+                let delay = super::phase_supervisor::PhaseSupervisor::delay(
+                    pending || driver_pending > 0,
+                    &mut backoff,
+                );
                 let wake = runtime.wake.clone();
                 drop(runtime);
                 if more {
@@ -82,6 +98,7 @@ impl Runtime {
                 .await
                 .context("Runtime control admission shutdown remains pending")?;
         self.stopping.store(true, Ordering::SeqCst);
+        self._drivers.stop_all();
         self.phases.close_unmarked();
         self.wake.notify_one();
         let mut slot = self.supervisor.lock().await;
@@ -94,6 +111,14 @@ impl Runtime {
             // Timeout/caller Drop still leaves the pending handle in its owner.
             slot.take();
             completed??;
+        }
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while self.observe_task_drivers()? > 0 {
+            ensure!(
+                tokio::time::Instant::now() < deadline,
+                "Task Driver shutdown remains pending with owned handles"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
         }
         Ok(())
     }

@@ -125,6 +125,26 @@ pub(super) fn columns(table: &str) -> Option<&'static [&'static str]> {
             "version",
             "body",
         ],
+        "task_drivers" => &[
+            "task_id",
+            "goal_id",
+            "project_id",
+            "id",
+            "owner_epoch",
+            "version",
+            "state",
+            "body",
+        ],
+        "source_recoveries" => &[
+            "task_id",
+            "project_id",
+            "goal_id",
+            "id",
+            "owner_epoch",
+            "version",
+            "state",
+            "body",
+        ],
         "records" => &[
             "id",
             "kind",
@@ -150,7 +170,7 @@ pub(super) fn columns(table: &str) -> Option<&'static [&'static str]> {
 /// Not serializable; only managed-binding Store code can build a full row plan.
 /// Value::Real is rejected, rather than conflating SQLite numeric encodings.
 #[allow(dead_code)] // Actual marker/binder producer is composed separately.
-pub(super) struct ExactRowMutation {
+pub(in crate::state) struct ExactRowMutation {
     table: &'static str,
     action: &'static str,
     old: Vec<Value>,
@@ -158,7 +178,7 @@ pub(super) struct ExactRowMutation {
 }
 #[allow(dead_code)]
 impl ExactRowMutation {
-    pub(super) fn new(
+    pub(in crate::state) fn new(
         table: &'static str,
         action: &'static str,
         old: Option<Vec<Value>>,
@@ -222,7 +242,7 @@ impl Drop for Revoke<'_> {
 impl PrivatePermitManager {
     /// No async boundary. The closure must commit or roll back its own transaction;
     /// no manager lock is held while SQLite invokes the permission callback.
-    pub(super) fn with_exact_permit<T>(
+    pub(in crate::state) fn with_exact_permit<T>(
         &self,
         rows: Vec<ExactRowMutation>,
         f: impl FnOnce() -> Result<T>,
@@ -255,7 +275,7 @@ impl PrivatePermitManager {
         f()
     }
     /// Call before transaction commit when the port requires every planned write.
-    pub(super) fn ensure_consumed(&self) -> Result<()> {
+    pub(in crate::state) fn ensure_consumed(&self) -> Result<()> {
         let state = self
             .state
             .lock()

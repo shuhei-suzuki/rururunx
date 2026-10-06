@@ -5,6 +5,10 @@ pub(crate) mod managed_binding;
 mod native_dispatch_tests;
 mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
+pub(crate) use runtime::driver::{
+    DriverMarkerAdvance, DriverPublication, DriverReadTicket, InitialDriverPlan,
+    PendingDriverClaim, plan_initial_driver, read_driver_ticket,
+};
 use std::{path::Path, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
@@ -974,7 +978,12 @@ impl Store {
         if let Some(WorkflowCompletion::Activation(activation)) = &publication {
             execution::verification::install_contract(&tx, activation, workflow, &next_task)?;
         }
-        execution::source_recovery::after_write(&tx, source_advance, conservative)?;
+        execution::source_recovery::after_write(
+            &tx,
+            &self.binding_permits,
+            source_advance,
+            conservative,
+        )?;
         tx.commit()?;
         *task = next_task;
         *workflow = next_workflow;
@@ -1043,7 +1052,7 @@ impl Store {
         attempt.observations.push(observation.clone());
         latest.data = serde_json::to_value(workflow)?;
         let next = put_record_tx(&tx, &latest)?;
-        execution::source_recovery::after_write(&tx, source_advance, false)?;
+        execution::source_recovery::after_write(&tx, &self.binding_permits, source_advance, false)?;
         append_event(
             &tx,
             &next.scope,
