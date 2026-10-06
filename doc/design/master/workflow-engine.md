@@ -55,26 +55,26 @@ owner, a combined 64-KiB output budget and bounded execution/drain/stop attempts
 The actual first Executor Source retains its validated immutable Context/template,
 encoded input, committed corpus bytes, complete physical tree inventory and mandatory
 config/rule pins. Its nongrant seal reaches Native through the same accepted
-Source/ticket/allocation origin. Native follows the supported version capture with
-fixed readonly namespace, exact HEAD/status, pinned full-tree and mandatory-blob
-helpers. Git uses the original real tool/profile, sanitized routing environment,
-disabled lazy fetch/replacements and genuine owned Git lease. Each next intent
-requires its predecessor's authentic qualified observation and known exact
-settlement inventory. Limits are 32 original helpers, 1-MiB combined Git output,
-8-MiB aggregate capture and existing bounded deadlines. Complete same-current
-preparing-v2 readiness, Unit/parent/input/owner/Driver and observed history checks
-can acknowledge one private retained Executor preparation object; it supplies no
-registration, Session, transport or input permission. Reviewer artifact lease
-production, registration/transport consumption, installed composition and
-genuine actor-chain/both-OS/four-Task qualification remain unavailable.
+Source/ticket/allocation origin. Finite readonly namespace, exact HEAD/status,
+pinned full-tree and mandatory-blob helper code and private completion consumers
+are retained, with the original real tool/profile, sanitized routing environment,
+disabled lazy fetch/replacements and genuine owned Git lease. Their plan requires
+each predecessor's authentic qualified observation and known exact settlement
+inventory, 32 original helpers, 1-MiB combined Git output and 8-MiB aggregate
+capture. The selected continuation refuses before Git intent/spawn because the
+owned-proof effect contract currently admits only the version effect. Private
+Prepared issuance and registration/quota/transport composition remain unreachable.
+Reviewer artifact lease production, installed composition and genuine
+actor-chain/both-OS/four-Task qualification also remain unavailable.
 Preparation and version transactions also conjoin the ordinary nongrant Unit
 identity/epoch/generation, parent activity, executor projection and governing
 context predicates with their original Source lineage, current successor,
 marker-bound Driver, selected Native actor and exact stage. The governing hash
 is fixed from the original marker parents before Store entry. Ordinary consumers
 retain their separate ordinary Driver/source checks, including marker refusal.
-Owned version observations also have a nongrant closure port after normal
-currency revocation. It retains the same original actor, Source ticket, helper
+Both normal observation completion and later reconciliation use the same
+nongrant closure writer, including after normal currency revocation. It retains
+the same original actor, Source ticket, helper
 settlement and latest bounded complete Unit preimage, then compares all Unit
 columns/body and the exact original effect inventory in one Immediate. Only the
 original effect is journaled or its exact postimage confirmed; flags and Native

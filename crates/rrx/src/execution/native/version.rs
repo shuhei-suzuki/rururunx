@@ -202,6 +202,12 @@ impl NativeVersionHelperCustody {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
     pub(super) fn reconcile(&self, owner: &Arc<RuntimeOwner>) -> Result<()> {
+        if self.state().closed.is_some() {
+            // SAME actual committed acknowledgement is durable history, not
+            // current permission. Later Unit/inventory evolution cannot erase
+            // it or require replaying an already-known nongrant settlement.
+            return Ok(());
+        }
         let (observation, settlement, closure) = {
             let state = self.state();
             (
@@ -418,6 +424,15 @@ impl NativeSessions {
                 .await?;
         }
         previous.closed()?;
+        // Final physical profile/program/namespace hash checks occur after all
+        // real capture, outside Store and custody/admission locks. Constructing
+        // this fixed command performs no process effect or permission grant.
+        let _final_profile = physical_command(
+            &self.owner,
+            &actor,
+            &readonly::NativePhaseHelperAction::Version,
+            None,
+        )?;
         // All hash/namespace/profile qualifications have completed before
         // Store entry. A full SAME current transaction acknowledges actual
         // observed history while retaining original preparing-v2 readiness.

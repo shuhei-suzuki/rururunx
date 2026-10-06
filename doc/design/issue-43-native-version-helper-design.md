@@ -2,11 +2,12 @@
 
 ## 1. Status, scope and dependencies
 
-This is a proposed, STRICT implementation supplement to
+This is a STRICT implementation supplement to
 `issue-43-native-preparation-integration-design.md`, including its original
 custody and transport amendments. It does not replace the complete Binding
-contract or enable Native availability. Production implementation of this
-increment waits for independent design review and actual producer source review.
+contract or enable Native availability. Its independently reviewed component
+source is integrated at `76a58b6e3dfa9cedb7e528296fb59d2fa4725666`; that
+component review does not qualify an installed producer or the complete Native chain.
 There is no authenticated CLI, four-Task, OS or process-death qualification.
 
 This revision explicitly supersedes only frozen `b130e1ec735925dc1da0c1871229894cfdd6dfa2`
@@ -238,9 +239,11 @@ budget. The chosen planned implementation enables rusqlite's `hooks` feature and
 uses safe Connection::progress_handler. Local pinned rusqlite0.37.0 has hooks=[]
 and that public safe API in hooks/mod.rs; hooks adds no optional dependency.
 Cargo.lock/local cache contain this version and its ordinary dependencies.
-Baseline enables bundled/functions ONLY: hooks and the bounded actual consumer
-are NOT currently provided. Enabling/qualifying them is mandatory later source
-work, with no schema/index/DDL change; this HOW has not compiled or tested it.
+The historical source baseline enabled bundled/functions only. The component
+source integrated at `76a58b6e3dfa9cedb7e528296fb59d2fa4725666` enables hooks
+and supplies the bounded actual consumer without schema/index/DDL changes.
+Its fixed fmt/check/build and nongrant compiled mutation controls passed;
+genuine actor-chain, four-Task and OS qualification remain unproven.
 
 One inventory routine shares a checked counter across all statements/passes:
 callback interval1000 VM operations; interrupt by the1000th callback. Callback

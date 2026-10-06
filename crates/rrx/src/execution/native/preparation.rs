@@ -421,7 +421,10 @@ impl NativeSessions {
         };
         custody.retain_commit(commit)?;
         drop(admission);
-        let version = self.prepare_phase_version(custody.clone()).await?;
-        self.prepare_phase_readonly(custody, version).await
+        self.prepare_phase_version(custody).await?;
+        // The existing owned-proof exception explicitly admits only the
+        // version effect. Marked Git intent/spawn and private Prepared issuance
+        // remain unreachable until their exact contract amendment is approved.
+        anyhow::bail!("original Native version observation retained; marked readonly Git effect contract amendment unavailable")
     }
 }
