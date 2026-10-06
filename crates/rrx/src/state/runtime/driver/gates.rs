@@ -32,7 +32,7 @@ impl GateInput {
         Ok(())
     }
 }
-fn initial_only(w: &WorkflowSnapshot) -> Result<()> {
+pub(super) fn initial_only(w: &WorkflowSnapshot) -> Result<()> {
     ensure!(
         w.generation == 1
             && !w.finished
@@ -299,6 +299,7 @@ impl DriverReadTicket {
             governing,
             input: Some(InitialInput {
                 gate: Some(gate),
+                executor: None,
                 fresh_context,
                 frame,
                 record_before: before,

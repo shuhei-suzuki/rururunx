@@ -50,6 +50,14 @@ impl UnitGit {
         }
         Ok(())
     }
+    /// Return the very same original read ticket after this helper chain. This
+    /// cannot mint/refresh a ticket or certify unresolved helper effects.
+    pub(crate) fn finish_namespace_ticket(
+        mut self,
+    ) -> Result<Option<crate::state::DriverReadTicket>> {
+        self.validate_driver_current()?;
+        Ok(self.driver.take())
+    }
     pub(crate) fn with_git_lease(mut self, lease: Arc<owner::GitLease>) -> Self {
         self.git_lease = Some(lease);
         self

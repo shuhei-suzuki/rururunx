@@ -32,6 +32,28 @@ impl WorkflowEngine {
             .or_else(|| next_phase(&snapshot.workflow))
             .context("driven phase missing")?;
         if !matches!(phase, Phase::Issue | Phase::Worktree) {
+            if phase.actor() == Actor::Executor {
+                if snapshot.workflow.active.is_some() {
+                    // Reservation is not a launch/binding/terminal observation.
+                    // Root's retained marker/job handoff remains a separate port.
+                    return Ok(StepResult::Waiting {
+                        phase,
+                        reason: "first Executor requires the retained Runtime marker/job handoff"
+                            .into(),
+                    });
+                }
+                // Keep this unchanged genuine-composition refusal before every
+                // namespace helper and every preparatory write.
+                let selected = self.preflight_native_adapter(&snapshot.task, phase)?;
+                let port = self.registry.native_phase_port(&snapshot.task.executor)?;
+                ensure!(
+                    selected.agent == port.alias() && selected.provider == port.provider(),
+                    "first Executor registry selection differs"
+                );
+                return self
+                    .reserve_driven_first_executor(snapshot, sources, lifetime, port)
+                    .await;
+            }
             // In particular, never reach public capabilities/probe/start or the
             // old Task-writing binder while the private composition is absent.
             if phase.actor() != Actor::EvidencePort {
@@ -110,6 +132,58 @@ impl WorkflowEngine {
                 session: None,
             })
         }
+    }
+    async fn reserve_driven_first_executor(
+        &self,
+        snapshot: Snapshot,
+        sources: &Arc<ManagedWorkflowSources>,
+        lifetime: &WorkerLifetime,
+        selected: Arc<crate::adapter::native::NativePhasePort>,
+    ) -> Result<StepResult> {
+        let owner = self
+            .registry
+            .managed_owner()
+            .context("Driver Runtime owner missing")?;
+        let context = self.context(&snapshot)?;
+        let ticket = crate::state::read_driver_ticket(owner, lifetime.association()?)?
+            .with_gate_namespace()?;
+        ticket.matches_input_view(&snapshot.task, &snapshot.record, &context)?;
+        let phase = next_phase(&snapshot.workflow).context("first Executor phase missing")?;
+        let (_, source, _) = self
+            .inputs(
+                &snapshot.project,
+                &snapshot.task,
+                phase,
+                snapshot.workflow.workflow,
+            )
+            .await?;
+        ensure!(
+            same_sources(&source, &snapshot.workflow.sources),
+            "first Executor source changed"
+        );
+        let next = self
+            .prepare_pack(
+                &snapshot.project,
+                &snapshot.task,
+                &source,
+                phase,
+                snapshot.workflow.workflow,
+                snapshot.workflow.generation,
+            )
+            .await?;
+        let (completion, ticket) = sources
+            .first_executor_frame(&snapshot.task, &snapshot.record, &context, ticket)
+            .await?;
+        let plan =
+            ticket.plan_first_executor(completion, selected, next, self.attempt_started_at())?;
+        self.store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .reserve_driven_first_executor(&plan)?;
+        Ok(StepResult::Started {
+            phase,
+            session: None,
+        })
     }
     async fn finish_driven_initial(
         &self,

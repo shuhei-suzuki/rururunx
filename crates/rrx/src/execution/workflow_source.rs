@@ -58,6 +58,16 @@ pub(crate) struct InitialInputFrame {
     frame: Arc<Frame>,
     unit: ExecutionUnit,
 }
+/// Produced only by the actual Sources-owned preparation after its registered
+/// Git checks complete. Neither a namespace DTO nor a native launch permission.
+pub(crate) struct InitialExecutorFrame {
+    frame: InitialInputFrame,
+}
+impl InitialExecutorFrame {
+    pub(crate) fn into_frame(self) -> InitialInputFrame {
+        self.frame
+    }
+}
 impl InitialInputFrame {
     pub(crate) fn unit(&self) -> &ExecutionUnit {
         &self.unit
@@ -97,6 +107,22 @@ impl InitialInputFrame {
     }
 
     pub(crate) fn validate(&self, owner: &Arc<RuntimeOwner>) -> Result<()> {
+        self.validate_preparation(owner, None)
+    }
+    /// Only a saved adoption plan supplies its prescribed post Unit. This does
+    /// not recapture a row or replace the original frame/preparation owner.
+    pub(crate) fn validate_adoption(
+        &self,
+        owner: &Arc<RuntimeOwner>,
+        adopted: &ExecutionUnit,
+    ) -> Result<()> {
+        self.validate_preparation(owner, Some(adopted))
+    }
+    fn validate_preparation(
+        &self,
+        owner: &Arc<RuntimeOwner>,
+        adopted: Option<&ExecutionUnit>,
+    ) -> Result<()> {
         ensure!(
             Arc::ptr_eq(owner, &self.producer.owner),
             "initial frame foreign Runtime"
@@ -123,10 +149,28 @@ impl InitialInputFrame {
                 && state
                     .prepared
                     .as_ref()
-                    .is_some_and(|p| p.retains(owner, &self.unit).unwrap_or(false)),
+                    .is_some_and(|p| p.retains(owner, &self.unit).unwrap_or(false)
+                        || adopted.is_some_and(|u| p.retains(owner, u).unwrap_or(false))),
             "initial frame preparation no longer owned"
         );
         Ok(())
+    }
+    pub(crate) fn publish_adoption(
+        &self,
+        adopted: &ExecutionUnit,
+        plan: &Arc<crate::state::DriverPreparationAdvance>,
+    ) -> Result<()> {
+        self.validate_adoption(&self.producer.owner, adopted)?;
+        let mut slot = self
+            .slot
+            .try_lock()
+            .map_err(|_| anyhow::anyhow!("adoption Sources busy"))?;
+        slot.as_mut()
+            .context("adoption Sources removed")?
+            .prepared
+            .as_mut()
+            .context("adoption preparation removed")?
+            .publish_driven_adoption(&self.unit, adopted, plan)
     }
 }
 /// Only the complete corpus/rule/config producer below creates this proof.
@@ -406,6 +450,37 @@ impl ManagedWorkflowSources {
             },
             unit,
         ))
+    }
+    pub(crate) async fn first_executor_frame(
+        self: &Arc<Self>,
+        task: &Task,
+        record: &Record,
+        context: &ContextVersion,
+        ticket: crate::state::DriverReadTicket,
+    ) -> Result<(InitialExecutorFrame, crate::state::DriverReadTicket)> {
+        let (frame, _) = self.initial_gate_frame(task, record, context).await?;
+        frame.validate(&self.owner)?;
+        let ticket = {
+            // Keep the original object in its slot across helper waits/Drop.
+            // No take_initial_executor or newly constructed guard is used.
+            let state = frame.slot.lock().await;
+            let state = state.as_ref().context("first Executor Sources removed")?;
+            ensure!(
+                Arc::ptr_eq(&state.frame, &frame.frame) && state.recovery.is_none(),
+                "first Executor source frame replaced"
+            );
+            let prepared = state
+                .prepared
+                .as_ref()
+                .context("first Executor preparation removed")?;
+            ensure!(
+                prepared.retains(&self.owner, &frame.unit)?,
+                "first Executor guard changed"
+            );
+            prepared.verify_namespace_driven(ticket).await?
+        };
+        frame.validate(&self.owner)?;
+        Ok((InitialExecutorFrame { frame }, ticket))
     }
     async fn prepare_inner(
         &self,

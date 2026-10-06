@@ -42,7 +42,40 @@ impl PreparedExecutor {
     pub(crate) fn retains(&self, owner: &Arc<RuntimeOwner>, unit: &ExecutionUnit) -> Result<bool> {
         self.guard.matches(owner, unit)
     }
+    /// Cache update belonging to the same saved Driver plan, after its exact
+    /// durable post image has been checked. No new preparation is constructed.
+    pub(crate) fn publish_driven_adoption(
+        &mut self,
+        original: &ExecutionUnit,
+        adopted: &ExecutionUnit,
+        plan: &Arc<crate::state::DriverPreparationAdvance>,
+    ) -> Result<()> {
+        plan.validate_adoption_images(&self.owner, original, adopted)?;
+        ensure!(
+            plan.is_retained()?
+                && (self.retains(&self.owner, original)? || self.retains(&self.owner, adopted)?),
+            "adoption lost its actual saved preparation"
+        );
+        self.guard.update(adopted);
+        self.unit = adopted.clone();
+        Ok(())
+    }
     pub(crate) async fn verify_namespace(&self) -> Result<()> {
+        self.verify_namespace_inner(None).await?;
+        Ok(())
+    }
+    pub(crate) async fn verify_namespace_driven(
+        &self,
+        ticket: crate::state::DriverReadTicket,
+    ) -> Result<crate::state::DriverReadTicket> {
+        self.verify_namespace_inner(Some(ticket))
+            .await?
+            .context("original Driver namespace ticket missing")
+    }
+    async fn verify_namespace_inner(
+        &self,
+        ticket: Option<crate::state::DriverReadTicket>,
+    ) -> Result<Option<crate::state::DriverReadTicket>> {
         let (task, project) = {
             let store = self
                 .owner
@@ -67,6 +100,11 @@ impl PreparedExecutor {
         };
         let lease = self.owner.git_lease(self.unit.id, None).await?;
         let io = UnitGit::new(self.owner.clone(), &self.unit, true)?.with_git_lease(lease);
+        let io = if let Some(ticket) = ticket {
+            io.with_driver_ticket(ticket)?
+        } else {
+            io
+        };
         io.ownership(&project, &task).await?;
         ensure!(
             io.text(&self.unit.worktree, ["rev-parse", "HEAD"]).await? == self.unit.base_sha,
@@ -86,7 +124,7 @@ impl PreparedExecutor {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .validate_execution(&self.unit.authority(), true, true)?;
-        Ok(())
+        io.finish_namespace_ticket()
     }
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn adopt(

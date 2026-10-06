@@ -8,6 +8,8 @@ use crate::state::managed_binding::ExactRowMutation;
 #[path = "gates.rs"]
 mod gates;
 pub(crate) use gates::InitialGateEdge;
+#[path = "executor.rs"]
+mod executor;
 
 pub(crate) struct DriverPreparationAdvance {
     ticket: DriverReadTicket,
@@ -24,6 +26,7 @@ pub(crate) struct DriverPreparationAdvance {
 }
 struct InitialInput {
     gate: Option<gates::GateInput>,
+    executor: Option<executor::ExecutorInput>,
     fresh_context: bool,
     frame: crate::execution::workflow_source::InitialInputFrame,
     record_before: Record,
@@ -133,6 +136,7 @@ impl DriverReadTicket {
             governing,
             input: Some(InitialInput {
                 gate: None,
+                executor: None,
                 fresh_context: true,
                 frame,
                 record_before: record.clone(),
@@ -346,6 +350,12 @@ impl DriverPreparationAdvance {
         ensure!(!outstanding, "initial input has unresolved helper effects");
         Ok(())
     }
+    pub(in crate::state) fn write_input_unit_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        if let Some(executor) = self.input.as_ref().and_then(|i| i.executor.as_ref()) {
+            executor.write_tx(self, tx)?;
+        }
+        Ok(())
+    }
     pub(in crate::state) fn input_observed_before(&self) -> Option<&Record> {
         self.input
             .as_ref()
@@ -455,6 +465,11 @@ impl DriverPreparationAdvance {
         self.ticket.scope.validate_current(tx)?;
         self.ticket.validate_selection_tx(tx)?;
         self.ticket.validate_source_tx(tx)?;
+        if let Some(input) = &self.input {
+            // A saved adoption whose cache already advanced cannot be relabeled
+            // as an original rollback, even if unrelated SQL has changed again.
+            input.frame.validate(&self.ticket.owner)?;
+        }
         let task = self.ticket.task();
         let exact: bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM task_drivers WHERE task_id=?1 AND project_id=?2 AND goal_id=?3 AND id=?4 AND owner_epoch=?5 AND version=?6 AND state='driving' AND body=?7)",params![task.id.to_string(),task.project_id.to_string(),task.goal_id.to_string(),self.ticket.row.id.to_string(),self.ticket.row.epoch,self.ticket.row.version,self.ticket.body],|r|r.get(0))?;
         ensure!(exact, "preparation rollback original Driver differs");
@@ -471,8 +486,14 @@ impl DriverPreparationAdvance {
     }
     fn validate_result(&self, tx: &Transaction<'_>) -> Result<()> {
         if let Some(input) = &self.input {
-            input.frame.validate(&self.ticket.owner)?;
-            if input.gate.is_some() {
+            if input.executor.is_some() {
+                input
+                    .frame
+                    .validate_adoption(&self.ticket.owner, &self.unit)?;
+            } else {
+                input.frame.validate(&self.ticket.owner)?;
+            }
+            if input.gate.is_some() || input.executor.is_some() {
                 self.ticket.scope.validate_gate_projection(
                     tx,
                     &self.task,
@@ -603,6 +624,11 @@ impl Store {
             after_version: plan.next.version,
             after_body: plan.body.clone(),
         })?;
+        if let Some(input) = &plan.input
+            && input.executor.is_some()
+        {
+            input.frame.publish_adoption(&plan.unit, plan)?;
+        }
         plan.ticket.association.retire_preparation(plan)
     }
     /// Actual service consumes the SAME retained pre-SQL plan. Missing/foreign

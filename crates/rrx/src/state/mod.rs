@@ -110,6 +110,7 @@ enum WorkflowCompletion<'a> {
     Readonly(&'a crate::execution::ReadonlyCompletion),
     Verification(&'a crate::execution::verification::VerificationCompletion),
     DriverGate(&'a std::sync::Arc<DriverPreparationAdvance>),
+    DriverFirstExecutor(&'a std::sync::Arc<DriverPreparationAdvance>),
     Activation(
         &'a crate::execution::verification::ManagedVerificationActivation,
         Option<&'a std::sync::Arc<DriverPreparationAdvance>>,
@@ -632,6 +633,21 @@ impl Store {
             Some(WorkflowCompletion::DriverGate(plan)),
         )
     }
+    pub(crate) fn reserve_driven_first_executor(
+        &mut self,
+        plan: &std::sync::Arc<DriverPreparationAdvance>,
+    ) -> Result<()> {
+        let (mut task, mut record, context, pv, gv) = plan.executor_write()?;
+        self.put_workflow_transition_inner(
+            &mut task,
+            &mut record,
+            Some(context),
+            pv,
+            gv,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::DriverFirstExecutor(plan)),
+        )
+    }
     // Exact owner CAS and optional completion proof are independent inputs.
     #[allow(clippy::too_many_arguments)]
     fn put_workflow_transition_inner(
@@ -650,7 +666,8 @@ impl Store {
         );
         let driver_input = match &publication {
             Some(WorkflowCompletion::Activation(_, Some(plan)))
-            | Some(WorkflowCompletion::DriverGate(plan)) => Some(*plan),
+            | Some(WorkflowCompletion::DriverGate(plan))
+            | Some(WorkflowCompletion::DriverFirstExecutor(plan)) => Some(*plan),
             _ => None,
         };
         let _applying = driver_input.map(|p| p.begin_input()).transpose()?;
@@ -859,6 +876,11 @@ impl Store {
                 }
             }
         }
+        if let Some(plan) = driver_input {
+            // Old ticket/lifecycle checks ran before this prescribed Unit write.
+            // The new Workflow's identity is validated against the SAME post Unit.
+            plan.write_input_unit_tx(&tx)?;
+        }
         for attempt in &typed_workflow.history {
             if let Some(identity) = &attempt.unit {
                 let unit = execution::unit_tx(&tx, identity.unit)?;
@@ -1006,7 +1028,10 @@ impl Store {
                 "managed verification contract requires exact initial activation"
             );
         } else if let Some(completion) = &publication
-            && !matches!(completion, WorkflowCompletion::DriverGate(_))
+            && !matches!(
+                completion,
+                WorkflowCompletion::DriverGate(_) | WorkflowCompletion::DriverFirstExecutor(_)
+            )
         {
             let previous = previous_workflow
                 .as_ref()
@@ -1021,7 +1046,9 @@ impl Store {
                     previous,
                     context,
                 )?,
-                WorkflowCompletion::Activation(_, _) | WorkflowCompletion::DriverGate(_) => {
+                WorkflowCompletion::Activation(_, _)
+                | WorkflowCompletion::DriverGate(_)
+                | WorkflowCompletion::DriverFirstExecutor(_) => {
                     unreachable!("activation/Driver gate handled above")
                 }
                 WorkflowCompletion::Verification(completion) => {
