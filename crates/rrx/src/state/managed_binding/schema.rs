@@ -214,6 +214,58 @@ fn validate_actual9(c: &Connection) -> Result<()> {
     );
     Ok(())
 }
+const CATALOG_OBJECTS: usize = 1024;
+const CATALOG_BYTES: usize = 2 * 1024 * 1024;
+const OBJECT_SQL_BYTES: usize = 64 * 1024;
+type SqlObject = (String, String, String, String);
+
+/// Charge the COMPLETE original SQL and metadata inventory before materializing.
+/// The caller supplies one coherent transaction; omitted/truncated rows never
+/// count as a current layout. SQL values are compared byte-for-byte, not normalized.
+fn catalog(c: &Connection) -> Result<Vec<SqlObject>> {
+    let (count, bytes, largest): (u64, u64, u64) = c.query_row(
+        "SELECT count(*),COALESCE(sum(length(CAST(sql AS BLOB))+length(CAST(name AS BLOB))+length(CAST(type AS BLOB))+length(CAST(tbl_name AS BLOB))),0),COALESCE(max(length(CAST(sql AS BLOB))),0) FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT GLOB 'sqlite_*'",
+        [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
+    ensure!(
+        count <= CATALOG_OBJECTS as u64
+            && bytes <= CATALOG_BYTES as u64
+            && largest <= OBJECT_SQL_BYTES as u64,
+        "current state protection catalog exceeds complete bound"
+    );
+    let mut q = c.prepare("SELECT name,type,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT GLOB 'sqlite_*' ORDER BY name")?;
+    let objects = q
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+        .collect::<rusqlite::Result<Vec<SqlObject>>>()?;
+    ensure!(
+        objects.len() as u64 == count,
+        "current catalog inventory changed"
+    );
+    Ok(objects)
+}
+
+/// Compiled layout reference only: no selected DB repair/history, Owner or grant.
+/// No recursive Store initialization, and no SQL-literal-destroying normalize.
+pub(in crate::state) fn validate_current_layout(c: &Connection) -> Result<()> {
+    // Bound/read the selected snapshot FIRST, before creating the reference.
+    let actual = catalog(c)?;
+    let mut reference = Connection::open_in_memory()?;
+    let _permits = crate::state::register_writer_contract(&reference)?;
+    let tx = reference.transaction()?;
+    tx.execute_batch(include_str!("../schema.sql"))?;
+    crate::state::runtime::install_schema(&tx)?;
+    install_schema(&tx)?;
+    crate::state::execution::install_schema(&tx)?;
+    let expected = catalog(&tx)?;
+    ensure!(
+        actual == expected,
+        "incompatible current state protection layout"
+    );
+    // Reference data is discarded: its random instance is neither compared nor
+    // returned and cannot initialize or adopt any selected Runtime authority.
+    Ok(())
+}
+
 fn normalize(s: &str) -> String {
     s.chars()
         .filter(|c| !c.is_whitespace() && *c != ';')

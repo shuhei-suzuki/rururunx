@@ -700,3 +700,208 @@ fn store_initial_none_to_some_and_same_uuid_lifecycle_pid_update_remain_valid() 
     );
     assert_eq!(session_facts(&store, record.id), before);
 }
+
+// Requires a separately compiled ACTUAL immutable00df Store test exporter. It
+// initializes this owned path itself; no current trigger deletion substitutes.
+fn actual_old10(path: &Path) {
+    let executable = std::env::var_os("RRX_BINDING10_OLD_STORE_HARNESS")
+        .expect("actual compiled00df historical Store harness required");
+    let output = std::process::Command::new(executable)
+        .args([
+            "state::managed_binding::schema_tests::historical_store_harness_initializes_actual00df",
+            "--exact",
+            "--ignored",
+        ])
+        .env("RRX_BINDING10_OLD_STORE_PATH", path)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "actual old Store producer failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("1 passed; 0 failed"),
+        "old Store producer did not execute its exact control"
+    );
+}
+fn unchanged_old10(path: &Path) -> Vec<u8> {
+    let c = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+    assert_eq!(
+        c.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+            .unwrap(),
+        10
+    );
+    assert_eq!(
+        c.query_row(
+            "SELECT count(*) FROM sqlite_schema WHERE name='binding_record_native_ref'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        c.query_row("SELECT count(*) FROM managed_phase_operations", [], |r| r
+            .get::<_, i64>(
+            0
+        ))
+        .unwrap(),
+        0
+    );
+    drop(c);
+    std::fs::read(path).unwrap()
+}
+#[test]
+#[ignore = "requires recorded actual immutable00df Store harness; run in historical qualification"]
+fn current_layout_refuses_actual_old10_store_before_wal_and_leaves_original_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("actual-old10.db");
+    actual_old10(&path);
+    let before = unchanged_old10(&path);
+    let error = Store::open(&path)
+        .err()
+        .expect("old10 protection layout accepted");
+    assert!(
+        error
+            .to_string()
+            .contains("incompatible current state protection layout"),
+        "{error:#}"
+    );
+    assert_eq!(
+        unchanged_old10(&path),
+        before,
+        "refusal changed actual old10 database bytes"
+    );
+}
+#[test]
+#[ignore = "requires recorded actual immutable00df Store harness; run in historical qualification"]
+fn locked_current_layout_refuses_actual_old10_winner_after_initial0_and9() {
+    for initial in [0, 9] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("actual-old10-winner.db");
+        if initial == 9 {
+            let old = old9(&path);
+            let _scope = history(&old);
+            drop(old);
+        }
+        let (observed_send, observed_receive) = std::sync::mpsc::sync_channel(0);
+        let (release_send, release_receive) = std::sync::mpsc::sync_channel(0);
+        let worker_path = path.clone();
+        let worker = std::thread::spawn(move || {
+            Store::initialize_observed(Connection::open(worker_path).unwrap(), |version| {
+                observed_send.send(version).unwrap();
+                release_receive
+                    .recv_timeout(std::time::Duration::from_secs(10))
+                    .unwrap();
+            })
+        });
+        let observed = observed_receive
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap();
+        // Finish the old production initializer on THIS same selected path.
+        actual_old10(&path);
+        let before = unchanged_old10(&path);
+        release_send.send(()).unwrap();
+        let result = worker.join().unwrap();
+        assert_eq!(observed, initial);
+        let error = result.err().expect("locked-current accepted old10 winner");
+        assert!(
+            error
+                .to_string()
+                .contains("incompatible current state protection layout"),
+            "{error:#}"
+        );
+        assert_eq!(
+            unchanged_old10(&path),
+            before,
+            "locked-current refusal changed winner bytes"
+        );
+    }
+}
+#[test]
+fn current_layout_rejects_missing_changed_literal_and_extra_sql_objects() {
+    for alteration in ["missing", "literal", "extra"] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("current.db");
+        let store = Store::open(&path).unwrap();
+        if alteration == "extra" {
+            store
+                .connection
+                .execute_batch("CREATE VIEW unexpected_layout AS SELECT 1")
+                .unwrap();
+        } else {
+            let sql: String = store
+                .connection
+                .query_row(
+                    "SELECT sql FROM sqlite_schema WHERE name='binding_record_native_ref'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            store
+                .connection
+                .execute_batch("DROP TRIGGER binding_record_native_ref")
+                .unwrap();
+            if alteration == "literal" {
+                // Whitespace inside the SQL literal is meaningful; normalization
+                // must not erase this change when comparing the complete contract.
+                let changed = sql.replace("native Session", "native  Session");
+                assert_ne!(sql, changed);
+                store.connection.execute_batch(&changed).unwrap();
+            }
+        }
+        drop(store);
+        let before = std::fs::read(&path).unwrap();
+        assert!(
+            Store::open(&path)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("incompatible current state protection layout")
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+}
+#[test]
+fn complete_current_catalog_bounds_before_materializing_sql_objects() {
+    for cause in ["object", "total", "count"] {
+        let store = Store::memory().unwrap();
+        match cause {
+            "object" => {
+                store
+                    .connection
+                    .execute_batch(&format!(
+                        "CREATE VIEW oversized_sql AS SELECT '{}'",
+                        "x".repeat(64 * 1024)
+                    ))
+                    .unwrap();
+            }
+            "total" => {
+                for i in 0..40 {
+                    store
+                        .connection
+                        .execute_batch(&format!(
+                            "CREATE VIEW extra_{i} AS SELECT '{}'",
+                            "x".repeat(60 * 1024)
+                        ))
+                        .unwrap();
+                }
+            }
+            "count" => {
+                for i in 0..1025 {
+                    store
+                        .connection
+                        .execute_batch(&format!("CREATE VIEW extra_{i} AS SELECT 1"))
+                        .unwrap();
+                }
+            }
+            _ => unreachable!(),
+        }
+        let error = validate_current_layout(&store.connection).unwrap_err();
+        assert!(
+            error.to_string().contains("complete bound"),
+            "{cause}: {error:#}"
+        );
+    }
+}

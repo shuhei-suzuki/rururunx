@@ -12,7 +12,9 @@ mod snapshot;
 pub(super) use permits::{PrivatePermitManager, register_permit_function};
 #[cfg(test)]
 pub(super) use schema::TABLES;
-pub(super) use schema::{hold_existing_workflows, install_schema, validate_legacy_namespace};
+pub(super) use schema::{
+    hold_existing_workflows, install_schema, validate_current_layout, validate_legacy_namespace,
+};
 
 pub(crate) use snapshot::plan_scope;
 

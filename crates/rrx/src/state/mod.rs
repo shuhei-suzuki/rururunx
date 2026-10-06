@@ -226,6 +226,21 @@ impl Store {
             if locked_version > 0 && locked_version < 10 {
                 managed_binding::hold_existing_workflows(&tx, &binding_permits)?;
             }
+            // Assert the complete installed/current protection contract before
+            // publishing a fresh/migrated schema. No selected-DB reinstallation.
+            managed_binding::validate_current_layout(&tx)?;
+            tx.commit()?;
+        } else {
+            // The initial version read is not a coherent current-schema proof.
+            // Recheck the exact version/application/layout before WAL or return.
+            let tx = connection.transaction()?;
+            let current: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            let application: i64 = tx.pragma_query_value(None, "application_id", |r| r.get(0))?;
+            ensure!(
+                current == SCHEMA_VERSION && application == APPLICATION_ID,
+                "current state version/application changed"
+            );
+            managed_binding::validate_current_layout(&tx)?;
             tx.commit()?;
         }
         connection.pragma_update(None, "journal_mode", "WAL")?;
