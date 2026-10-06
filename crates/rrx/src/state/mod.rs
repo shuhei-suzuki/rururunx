@@ -595,6 +595,7 @@ impl Store {
         )
     }
     /// Same first-input plan retained by the real worker before this write.
+    #[allow(clippy::too_many_arguments)] // Exact owner CAS and private plan are independent inputs.
     pub(crate) fn activate_driven_workflow(
         &mut self,
         task: &mut Task,
