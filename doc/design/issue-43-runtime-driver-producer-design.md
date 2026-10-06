@@ -173,8 +173,10 @@ pre-marker handoff, that exact original allocation, the plan and the SAME genuin
 pending-capacity handoff in ONE Immediate transaction. It validates the live
 supervisor and exact retained slot/operation identity and preserves its retention
 across the transaction; an ID, observation or named capacity DTO cannot substitute.
-Its separate durable Project/distinct-Task union, Native quota and mandatory ledger
-allowance checks remain required. It writes the already planned post-marker
+Its separate durable Project/distinct-Task union and mandatory ledger allowance
+checks remain required. Native quota remains separately enforced by its actual
+admission producer, including genuine waiting; a pending slot does not bypass it.
+The marker writes the already planned post-marker
 Task/W/operation/owner/input/audit facts. The Driver's
 original marker anchor and Source7 current anchor are installed/checked in that
 same transaction from their validated pre-state. No extra binder write is introduced.
