@@ -1,5 +1,6 @@
 //! Transactional SQLite snapshots + append-only logical events, scoped by Project.
 mod environment;
+pub(crate) mod managed_binding;
 #[cfg(test)]
 mod native_dispatch_tests;
 mod runtime;
