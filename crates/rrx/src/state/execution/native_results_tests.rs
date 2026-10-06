@@ -23,6 +23,7 @@ fn legacy5(path: &Path) -> Connection {
     .unwrap();
     for table in MUTABLE_TABLES.iter().filter(|table| {
         !crate::state::runtime::TABLES.contains(table)
+            && !crate::state::managed_binding::TABLES.contains(table)
             && !matches!(
                 **table,
                 "native_invocations"
