@@ -18,6 +18,7 @@ Claude Code, Codex, Grok, Gemini, and open-source agents are represented through
 - interactive and non-interactive launch modes are distinct
 - permission interception is optional capability
 - reviewer execution is separate from executor execution
+- external execution requires an exact Execution Domain permit; adapters consume ownership and never mint it from PID/PGID/SID/native session hints
 
 ## 3. Capability model
 
@@ -108,6 +109,21 @@ Fields:
 - start timestamp
 - status
 - restart/reconnect metadata
+
+## 6.1 Execution Domain integration
+
+The provider-neutral workload-lifetime contract is defined by [Execution Domain](execution-domain.md) and Issue #75.
+
+Before any execution-capable adapter path starts an external executable, helper, hook, native server or persistent delegated job, the caller must supply an exact private Domain permit bound to the current scope/attempt/owner epoch.
+
+Adapters remain responsible for provider protocol/session semantics and may impose stricter profile restrictions. They must not:
+
+- construct ownership from PID/PGID/SID/native session IDs;
+- silently downgrade Strong to Native/Compatibility;
+- mark cleanup verified from native completion alone;
+- treat local process death as settlement of a #78 delegated operation.
+
+Linux Strong is qualified by #76 and macOS Strong by #77. Existing ProcessGroup/inspection code remains bounded evidence for explicitly qualified Native/Compatibility paths until consumers migrate.
 
 ## 7. Review contract
 
