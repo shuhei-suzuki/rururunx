@@ -779,7 +779,16 @@ impl NativeSessions {
             }
         })
         .await;
-        custody.reconcile(&self.owner).await?;
+        let handoff = custody
+            .child
+            .lock()
+            .map_err(|_| anyhow::anyhow!("transport child poisoned"))?
+            .handoff;
+        // Offered has no factual settlement yet. The SAME retained custody
+        // records it on a later wake; timeout is not a lost-ownership inference.
+        if handoff != Handoff::Offered {
+            custody.reconcile(&self.owner).await?;
+        }
         ensure!(
             custody
                 .child
