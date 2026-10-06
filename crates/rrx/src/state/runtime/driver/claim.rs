@@ -362,7 +362,7 @@ mod budget_tests {
 
     // Only historical read data in a minimal database. These rows construct no
     // accepted Goal, Driver, Unit, input, composition or completion authority.
-    fn history() -> (Connection, Task, usize, TaskId) {
+    fn history(count: usize) -> (Connection, Task, usize, TaskId) {
         let c = Connection::open_in_memory().unwrap();
         c.execute_batch("CREATE TABLE goals(id TEXT PRIMARY KEY,body TEXT); CREATE TABLE tasks(id TEXT PRIMARY KEY,project_id TEXT,goal_id TEXT,version INTEGER,body TEXT); CREATE TABLE records(id TEXT PRIMARY KEY,project_id TEXT,goal_id TEXT,task_id TEXT,kind TEXT,version INTEGER,body TEXT);").unwrap();
         let p = ProjectId::new();
@@ -371,7 +371,7 @@ mod budget_tests {
         let mut bytes = 0;
         let mut first = None;
         goal.dag.nodes.push(task.id);
-        for i in 0..2 {
+        for i in 0..count {
             let predecessor = Task::new(
                 p,
                 goal.id,
@@ -425,8 +425,102 @@ mod budget_tests {
         (c, task, bytes, first.unwrap())
     }
     #[test]
+    fn production_prerequisite_row_profile_refuses_complete_surplus() {
+        let (mut c, task, _, _) = history(PREREQUISITE_ROWS / 2);
+        assert_eq!(
+            read_prerequisites(&c, &task).unwrap().len(),
+            PREREQUISITE_ROWS / 2
+        );
+        let tx = c.transaction().unwrap();
+        assert_eq!(
+            read_prerequisites_bounded(&tx, &task, PREREQUISITE_ROWS, PREREQUISITE_BYTES)
+                .unwrap()
+                .len(),
+            PREREQUISITE_ROWS / 2
+        );
+        drop(tx);
+        let (c, task, bytes, _) = history(PREREQUISITE_ROWS / 2 + 1);
+        assert!(
+            read_prerequisites(&c, &task)
+                .unwrap_err()
+                .to_string()
+                .contains("row budget")
+        );
+        assert_eq!(
+            read_prerequisites_bounded(&c, &task, PREREQUISITE_ROWS + 2, bytes)
+                .unwrap()
+                .len(),
+            PREREQUISITE_ROWS / 2 + 1
+        );
+    }
+    #[test]
+    fn production_prerequisite_byte_profile_is_exact_and_complete() {
+        let (mut c, task, _, _) = history(2);
+        let task_bytes: usize = c
+            .query_row(
+                "SELECT sum(length(CAST(body AS BLOB))) FROM tasks",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let mut q = c.prepare("SELECT body FROM records ORDER BY id").unwrap();
+        let records: Vec<String> = q
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        drop(q);
+        let mut wanted = PREREQUISITE_BYTES - task_bytes;
+        let mut final_id = None;
+        for (i, body) in records.into_iter().enumerate() {
+            let mut record: Record = decode(body).unwrap();
+            record.data["padding"] = json!("");
+            let empty = serde_json::to_string(&record).unwrap();
+            let size = if i == 0 { wanted / 2 } else { wanted };
+            wanted -= size;
+            record.data["padding"] = json!("x".repeat(size - empty.len()));
+            let full = serde_json::to_string(&record).unwrap();
+            assert_eq!(full.len(), size);
+            assert!(full.len() < 8 * 1024 * 1024);
+            c.execute(
+                "UPDATE records SET body=?1 WHERE id=?2",
+                params![full, record.id.to_string()],
+            )
+            .unwrap();
+            final_id = Some(record.id);
+        }
+        let tx = c.transaction().unwrap();
+        let bodies = read_prerequisites(&tx, &task).unwrap();
+        assert_eq!(
+            bodies.iter().map(|r| r.2.len() + r.5.len()).sum::<usize>(),
+            PREREQUISITE_BYTES
+        );
+        drop(bodies);
+        drop(tx);
+        // JSON whitespace is encoded material too; each row remains valid and
+        // below its individual bound, while the complete corpus is one byte over.
+        c.execute(
+            "UPDATE records SET body=body||' ' WHERE id=?1",
+            [final_id.unwrap().to_string()],
+        )
+        .unwrap();
+        let tx = c.transaction().unwrap();
+        assert!(
+            read_prerequisites(&tx, &task)
+                .unwrap_err()
+                .to_string()
+                .contains("byte budget")
+        );
+        assert_eq!(
+            read_prerequisites_bounded(&tx, &task, PREREQUISITE_ROWS, PREREQUISITE_BYTES + 1)
+                .unwrap()
+                .len(),
+            2
+        );
+    }
+    #[test]
     fn prerequisite_reader_encoded_byte_and_row_limits_are_inclusive() {
-        let (mut c, task, bytes, _) = history();
+        let (mut c, task, bytes, _) = history(2);
         let tx = c.transaction().unwrap();
         assert_eq!(
             read_prerequisites_bounded(&tx, &task, 4, bytes)
@@ -450,7 +544,7 @@ mod budget_tests {
     }
     #[test]
     fn prerequisite_corpus_refuses_before_decoding_any_body() {
-        let (mut c, task, bytes, first) = history();
+        let (mut c, task, bytes, first) = history(2);
         // A first-body parse canary must remain unread when complete inventory
         // exceeds budget at a later prerequisite. Preserve its original length.
         c.execute(
