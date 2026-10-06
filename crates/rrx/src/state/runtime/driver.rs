@@ -3,11 +3,16 @@ use super::super::*;
 use crate::{runtime::driver::DriverRegistry, workflow::WorkflowSnapshot};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{
-    collections::BTreeSet,
-    sync::{Arc, Weak},
-};
+use std::sync::{Arc, Weak};
 use uuid::Uuid;
+mod claim;
+pub(crate) use claim::{InitialDriverPlan, PendingDriverClaim, plan_initial_driver};
+mod ticket;
+pub(crate) use ticket::{DriverReadTicket, read_driver_ticket};
+mod marker;
+mod observation;
+pub(crate) use marker::{DriverMarkerAdvance, DriverPublication};
+pub(crate) use observation::DriverExitPublication;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -26,6 +31,24 @@ struct Pins {
     context: Option<Pin>,
     generation: u64,
     prerequisites: String,
+    #[serde(default)]
+    preparation: Option<PreparationPin>,
+    #[serde(default)]
+    source: Option<SourcePin>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreparationPin {
+    unit: crate::execution::UnitId,
+    version: u64,
+    digest: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourcePin {
+    id: Uuid,
+    version: u64,
+    digest: String,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -35,6 +58,14 @@ struct Row {
     version: u64,
     state: String,
     pins: Pins,
+    #[serde(default)]
+    marker: Option<MarkerAnchor>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MarkerAnchor {
+    operation: crate::execution::OperationId,
+    digest: String,
 }
 fn hash<T: Serialize>(body: &T) -> Result<String> {
     Ok(format!("{:x}", Sha256::digest(serde_json::to_vec(body)?)))
@@ -171,29 +202,12 @@ fn snapshot(c: &Connection, task_id: TaskId) -> Result<Pins> {
         .optional()?
         .unwrap_or(0);
     let mut prerequisites = Vec::new();
-    let mut seen = BTreeSet::new();
-    for edge in goal
-        .dag
-        .edges
-        .iter()
-        .filter(|e| e.hard && e.dependent == task.id)
-    {
-        ensure!(
-            seen.insert(edge.prerequisite),
-            "duplicate hard prerequisite"
-        );
-        let predecessor: Task = bounded(c, "tasks", &edge.prerequisite.to_string(), 1024 * 1024)?;
-        ensure!(
-            predecessor.project_id == project.id && predecessor.goal_id == goal.id,
-            "foreign prerequisite"
-        );
-        let count:u64=c.query_row("SELECT count(*) FROM records WHERE task_id=?1 AND goal_id=?2 AND project_id=?3 AND kind='workflow'",params![predecessor.id.to_string(),goal.id.to_string(),project.id.to_string()],|r|r.get(0))?;
-        ensure!(count == 1, "prerequisite lacks actual Workflow");
-        let record:Record=decode(c.query_row("SELECT body FROM records WHERE task_id=?1 AND goal_id=?2 AND project_id=?3 AND kind='workflow' AND length(CAST(body AS BLOB))<=8388608",params![predecessor.id.to_string(),goal.id.to_string(),project.id.to_string()],|r|r.get(0))?)?;
+    for (_, _, body, _, _, wbody) in claim::read_prerequisites(c, &task)? {
+        let predecessor: Task = decode(body)?;
+        let record: Record = decode(wbody)?;
         let w: WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
         ensure!(
-            record.scope == predecessor.scope()
-                && w.finished
+            w.finished
                 && w.active.is_none()
                 && w.configured_phases
                     .iter()
@@ -215,7 +229,58 @@ fn snapshot(c: &Connection, task_id: TaskId) -> Result<Pins> {
         context,
         generation,
         prerequisites: hash(&prerequisites)?,
+        preparation: preparation_anchor(c, &task, generation)?
+            .map(|(unit, _)| -> Result<_> {
+                Ok(PreparationPin {
+                    unit: unit.id,
+                    version: unit.version,
+                    digest: hash(&unit)?,
+                })
+            })
+            .transpose()?,
+        source: crate::state::execution::source_recovery::driver_anchor(c, task.id)?.map(
+            |(id, version, body)| SourcePin {
+                id,
+                version,
+                digest: format!("{:x}", Sha256::digest(body.as_bytes())),
+            },
+        ),
     })
+}
+
+fn preparation_anchor(
+    c: &Connection,
+    task: &Task,
+    generation: u64,
+) -> Result<Option<(crate::execution::ExecutionUnit, String)>> {
+    let indexed: Option<(u64, String)> = c.query_row(
+        "SELECT generation,active_unit FROM task_execution WHERE task_id=?1 AND project_id=?2 AND goal_id=?3",
+        params![task.id.to_string(), task.project_id.to_string(), task.goal_id.to_string()],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    ).optional()?;
+    let Some((actual_generation, id)) = indexed else {
+        ensure!(
+            generation == 0,
+            "Driver preparation generation index changed"
+        );
+        return Ok(None);
+    };
+    ensure!(
+        actual_generation == generation && generation > 0,
+        "Driver preparation generation differs"
+    );
+    let body: String = c.query_row(
+        "SELECT CASE WHEN length(CAST(body AS BLOB))<=16384 THEN body END FROM execution_units WHERE id=?1",
+        [&id], |r| r.get::<_, Option<String>>(0),
+    )?.context("Driver preparation Unit exceeds bound")?;
+    let unit = crate::state::execution::unit_tx(c, id.parse()?)?;
+    ensure!(
+        unit.scope == task.scope()
+            && unit.kind == crate::execution::UnitKind::Executor
+            && unit.generation == generation,
+        "Driver preparation scope/generation/identity differs"
+    );
+    Ok(Some((unit, body)))
 }
 pub(in crate::state) fn register_liveness(
     connection: &Connection,
@@ -265,6 +330,10 @@ pub(in crate::state) fn validate(c: &Connection, task_id: TaskId) -> Result<()> 
     )?;
     ensure!(live, "actual retained Task Driver unavailable");
     let row: Row = decode(body)?;
+    ensure!(
+        row.marker.is_none(),
+        "marker-bound Driver requires the genuine managed successor/lifecycle reader"
+    );
     let current = snapshot(c, task_id)?;
     ensure!(
         row.id.to_string() == id
@@ -285,6 +354,7 @@ impl Store {
 }
 
 pub(super) fn invalidate_tx(
+    permits: &crate::state::managed_binding::PrivatePermitManager,
     tx: &Transaction<'_>,
     task: TaskId,
     id: &str,
@@ -307,9 +377,44 @@ pub(super) fn invalidate_tx(
         .checked_add(1)
         .filter(|v| *v <= i64::MAX as u64)
         .context("Driver version exhausted")?;
-    let body = serde_json::to_string(&row)?;
-    ensure!(body.len() <= 128 * 1024, "Driver metadata exceeds bound");
-    ensure!(tx.execute("UPDATE task_drivers SET state='invalid',version=?1,body=?2 WHERE task_id=?3 AND id=?4 AND owner_epoch=?5 AND version=?6 AND state='driving'",params![row.version,body,task.to_string(),id,epoch,version])?==1,"Driver invalidation CAS differs");
+    let next_body = serde_json::to_string(&row)?;
+    ensure!(
+        next_body.len() <= 128 * 1024,
+        "Driver metadata exceeds bound"
+    );
+    let indexed: (String, String) = tx.query_row(
+        "SELECT goal_id,project_id FROM task_drivers WHERE task_id=?1 AND id=?2 AND owner_epoch=?3 AND version=?4 AND state='driving' AND body=?5",
+        params![task.to_string(), id, epoch, version, body],
+        |r| Ok((r.get(0)?,r.get(1)?)),
+    )?;
+    ensure!(
+        row.pins.scope.goal_id.map(|v| v.to_string()).as_deref() == Some(indexed.0.as_str())
+            && row.pins.scope.project_id.to_string() == indexed.1,
+        "Driver invalidation indexed scope differs"
+    );
+    use rusqlite::types::Value as SqlValue;
+    let columns = |version: u64, state: &str, body: &str| -> Result<Vec<SqlValue>> {
+        Ok(vec![
+            task.to_string().into(),
+            indexed.0.clone().into(),
+            indexed.1.clone().into(),
+            id.to_owned().into(),
+            i64::try_from(epoch)?.into(),
+            i64::try_from(version)?.into(),
+            state.to_owned().into(),
+            body.to_owned().into(),
+        ])
+    };
+    let mutation = crate::state::managed_binding::ExactRowMutation::new(
+        "task_drivers",
+        "UPDATE",
+        Some(columns(version, "driving", body)?),
+        Some(columns(row.version, "invalid", &next_body)?),
+    )?;
+    permits.with_exact_permit(vec![mutation], || {
+    ensure!(tx.execute("UPDATE task_drivers SET state='invalid',version=?1,body=?2 WHERE task_id=?3 AND id=?4 AND owner_epoch=?5 AND version=?6 AND state='driving'",params![row.version,next_body,task.to_string(),id,epoch,version])?==1,"Driver invalidation CAS differs");
+    permits.ensure_consumed()
+    })?;
     append_event(
         tx,
         &row.pins.scope,

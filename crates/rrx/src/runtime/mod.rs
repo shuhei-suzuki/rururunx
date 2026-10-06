@@ -4,6 +4,7 @@ pub(crate) mod driver;
 pub mod goal;
 pub(crate) mod phase_supervisor;
 mod service;
+mod task_driver;
 use crate::{cli::transport::ServiceIdentity, config::Config, execution::RuntimeOwner};
 use anyhow::Result;
 use std::sync::{
@@ -29,7 +30,7 @@ impl Runtime {
     /// Retains the existing owner, never opens another epoch or starts an Agent.
     pub fn new(owner: Arc<RuntimeOwner>, config: Config) -> Result<Self> {
         config.validate()?;
-        let drivers = driver::DriverRegistry::new(owner.epoch());
+        let drivers = driver::DriverRegistry::new(&owner);
         owner.attach_runtime_drivers(&drivers)?;
         let phases = phase_supervisor::PhaseSupervisor::new(
             owner.clone(),
@@ -78,4 +79,12 @@ mod tests;
 struct GoalAdmissionPause {
     reached: tokio::sync::oneshot::Sender<()>,
     release: tokio::sync::oneshot::Receiver<()>,
+}
+
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        self.stopping.store(true, Ordering::SeqCst);
+        self._drivers.stop_all();
+        self.wake.notify_waiters();
+    }
 }

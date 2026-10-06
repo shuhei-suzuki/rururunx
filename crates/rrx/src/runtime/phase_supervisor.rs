@@ -1,5 +1,6 @@
-//! Real Runtime-owned, bounded pre-marker allocation retention. This is nongrant:
-//! no Driver, OriginalMarker, native owner/input/terminal or readiness is minted.
+//! Real Runtime-owned allocation retention and private marker publication.
+//! Installation remains unavailable until the actual Native/binder composition
+//! is complete; retention alone creates no Native or input-consumption proof.
 use crate::{
     domain::ProjectId,
     execution::{OperationId, RuntimeOwner, owner::PreparationGuard, phase::NativeAllocation},
@@ -29,6 +30,8 @@ struct Slot {
     preparation: Mutex<Option<PreparationGuard>>,
     observation: Mutex<PendingObservation>,
     publication: Mutex<PublicationState>,
+    publication_plan: Mutex<Option<Arc<crate::state::managed_binding::MarkerPublicationPlan>>>,
+    marker: Mutex<Option<Arc<crate::state::managed_binding::OriginalMarker>>>,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PublicationState {
@@ -54,6 +57,32 @@ pub(crate) struct PendingPhaseCapacity {
 pub(crate) struct MarkerPublicationRetention {
     supervisor: Arc<PhaseSupervisor>,
     capacity: PendingPhaseCapacity,
+}
+/// One non-Clone handoff from the actual known-commit Runtime producer.
+pub(crate) struct PhaseLaunch {
+    parts: Arc<PhaseLaunchParts>,
+}
+/// The Core may share this SAME object internally, but cannot remint a launch
+/// from a ManagedInput, IDs, SQL rows or another adapter's returned Session.
+pub(crate) struct PhaseLaunchParts {
+    marker: Arc<crate::state::managed_binding::OriginalMarker>,
+    retention: MarkerPublicationRetention,
+}
+impl PhaseLaunch {
+    pub(crate) fn into_parts(self) -> Arc<PhaseLaunchParts> {
+        self.parts
+    }
+}
+impl PhaseLaunchParts {
+    pub(crate) fn marker(&self) -> &Arc<crate::state::managed_binding::OriginalMarker> {
+        &self.marker
+    }
+    pub(crate) fn allocation(&self) -> &Arc<NativeAllocation> {
+        self.marker.allocation()
+    }
+    pub(crate) fn is_retained(&self) -> bool {
+        self.retention.is_retained()
+    }
 }
 impl MarkerPublicationRetention {
     pub(crate) fn allocation(&self) -> &NativeAllocation {
@@ -196,6 +225,8 @@ impl PhaseSupervisor {
             preparation: Mutex::new(Some(preparation)),
             observation: Mutex::new(PendingObservation::PendingMarker),
             publication: Mutex::new(PublicationState::Unmarked),
+            publication_plan: Mutex::new(None),
+            marker: Mutex::new(None),
         });
         if !queue.projects.contains_key(&project) {
             queue.rotation.push_back(project);
@@ -296,11 +327,32 @@ impl PhaseSupervisor {
             .preparation
             .lock()
             .map_err(|_| anyhow::anyhow!("pending preparation poisoned"))?;
+        // The genuine absence proof above excludes a committed marker. Never
+        // clear a saved OriginalMarker merely because an error/drop occurred.
+        let saved_marker = slot
+            .marker
+            .lock()
+            .map_err(|_| anyhow::anyhow!("saved marker poisoned"))?;
+        ensure!(
+            saved_marker.is_none(),
+            "known marker cannot be restored as unpublished"
+        );
+        let mut saved_plan = slot
+            .publication_plan
+            .lock()
+            .map_err(|_| anyhow::anyhow!("publication plan poisoned"))?;
         preparation
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("pending preparation absent"))?
             .restore_unmarked_retirement();
+        let removed_plan = saved_plan.take();
         *state = PublicationState::Unmarked;
+        drop(saved_plan);
+        drop(saved_marker);
+        drop(preparation);
+        drop(state);
+        drop(q);
+        drop(removed_plan);
         Ok(())
     }
     fn remove_unmarked(&self, slot: &Arc<Slot>) -> Result<()> {
@@ -474,6 +526,69 @@ impl Drop for PhaseSupervisor {
 }
 
 impl super::Runtime {
+    /// Concrete production producer, still unreachable while the installation
+    /// issuer is unavailable. Planning finishes before control/Store admission.
+    pub(crate) async fn publish_phase_marker(
+        &self,
+        capacity: PendingPhaseCapacity,
+        ticket: crate::state::DriverReadTicket,
+        workflow: crate::domain::RecordId,
+    ) -> Result<PhaseLaunch> {
+        let plan = crate::state::managed_binding::plan_marker_publication(
+            self.owner.clone(),
+            capacity.slot.allocation.clone(),
+            ticket,
+            workflow,
+        )?;
+        let _admission = self.control_admission.lock().await;
+        ensure!(
+            self.service_running(),
+            "Runtime stopped before marker admission"
+        );
+        let retention = self.phases.begin_publication(capacity)?;
+        {
+            let q = self
+                .phases
+                .queue
+                .lock()
+                .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
+            let slot = &retention.capacity.slot;
+            ensure!(
+                q.entries
+                    .get(&slot.allocation.facts().operation_id)
+                    .is_some_and(|current| Arc::ptr_eq(current, slot))
+                    && Arc::ptr_eq(plan.allocation(), &slot.allocation),
+                "marker plan has foreign capacity"
+            );
+            let mut saved = slot
+                .publication_plan
+                .lock()
+                .map_err(|_| anyhow::anyhow!("publication plan poisoned"))?;
+            ensure!(saved.is_none(), "publication already has an original plan");
+            *saved = Some(plan.clone());
+        }
+        // Caller Drop, transaction failure and uncertainty leave both this
+        // charged slot and the SAME original plan independently retained.
+        let marker = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .publish_managed_marker(&plan)?;
+        {
+            let mut saved = retention
+                .capacity
+                .slot
+                .marker
+                .lock()
+                .map_err(|_| anyhow::anyhow!("saved marker poisoned"))?;
+            ensure!(saved.is_none(), "known marker already retained");
+            *saved = Some(marker.clone());
+        }
+        Ok(PhaseLaunch {
+            parts: Arc::new(PhaseLaunchParts { marker, retention }),
+        })
+    }
     /// Protect the genuine same-supervisor slot BEFORE beginning the marker TX.
     /// This retention alone never authorizes an adapter or private Store writer.
     pub(crate) async fn retain_marker_publication(

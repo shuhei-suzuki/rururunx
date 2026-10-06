@@ -36,6 +36,16 @@ struct Row {
     state: String,
     pins: Pins,
     frame: Option<String>,
+    #[serde(default)]
+    marker: Option<MarkerSourceAnchor>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MarkerSourceAnchor {
+    operation: crate::execution::OperationId,
+    marker_digest: String,
+    prior_source_version: u64,
+    prior_source_body_sha256: String,
 }
 struct Snapshot {
     project: Project,
@@ -286,21 +296,191 @@ fn row(c: &Connection, task: TaskId) -> Result<Option<Row>> {
 fn validate_row(c: &Connection, row: &Row) -> Result<()> {
     epoch(c, row.epoch)?;
     ensure!(
+        row.marker.is_none(),
+        "marker-bound Source7 requires the genuine managed successor reader, not generic source recapture"
+    );
+    ensure!(
         serde_json::to_vec(&snapshot(c, row.pins.scope.task_id.context("Task missing")?)?.pins)?
             == serde_json::to_vec(&row.pins)?,
         "source recovery full authority snapshot changed"
     );
     Ok(())
 }
-fn write(c: &Connection, row: &mut Row) -> Result<()> {
+/// Sealed projection from Root's genuine allocation-derived marker plan. This
+/// contains no source/native grant; its SQL write must be part of the SAME
+/// original marker transaction/exact permit batch, never ordinary after_write.
+pub(in crate::state) struct SourceMarkerAdvance {
+    old: Row,
+    old_body: String,
+    next: Row,
+    next_body: String,
+    next_digest: String,
+}
+pub(in crate::state) fn plan_source_marker_advance(
+    original: &(Uuid, u64, String),
+    marker: &crate::state::managed_binding::ManagedMarkerPlan,
+) -> Result<SourceMarkerAdvance> {
+    ensure!(
+        original.2.len() <= META_BYTES,
+        "original Source7 exceeds bound"
+    );
+    let old: Row = decode(original.2.clone())?;
+    let (project, _) = marker.project();
+    let (goal, _) = marker.goal();
+    let (task, _) = marker.task_before();
+    let (workflow, _) = marker.workflow_before();
+    let (context, _) = marker.context();
+    ensure!(
+        old.id == original.0
+            && old.version == original.1
+            && old.state == "installed"
+            && old.marker.is_none()
+            && old.frame.is_some()
+            && old.epoch == marker.unit().0.owner_epoch
+            && old.pins.scope == marker.scope()
+            && old.pins.project == pin(project.version, project)?
+            && old.pins.goal == pin(goal.version, goal)?
+            && old.pins.task == pin(task.version, task)?
+            && old.pins.workflow == pin(workflow.version, workflow)?
+            && old.pins.workflow_id == workflow.id
+            && old.pins.context == pin(context.version, context)?
+            && old.pins.instruction == task_digest(task)?
+            && old.pins.governing == governing_digest(project, goal)?,
+        "Source7 original marker frame differs"
+    );
+    let (task_after, _) = marker.task_after();
+    let (workflow_after, _) = marker.workflow_after();
+    let mut next = old.clone();
+    bump(&mut next.version)?;
+    next.pins.task = pin(task_after.version, task_after)?;
+    next.pins.workflow = pin(workflow_after.version, workflow_after)?;
+    next.marker = Some(MarkerSourceAnchor {
+        operation: marker.operation(),
+        marker_digest: marker.marker_digest().into(),
+        prior_source_version: old.version,
+        prior_source_body_sha256: digest(original.2.as_bytes()),
+    });
+    let next_body = serde_json::to_string(&next)?;
+    ensure!(
+        next_body.len() <= META_BYTES,
+        "marker Source7 metadata exceeds bound"
+    );
+    let next_digest = digest(next_body.as_bytes());
+    Ok(SourceMarkerAdvance {
+        old,
+        old_body: original.2.clone(),
+        next,
+        next_body,
+        next_digest,
+    })
+}
+impl SourceMarkerAdvance {
+    pub(in crate::state) fn mutation(
+        &self,
+    ) -> Result<crate::state::managed_binding::ExactRowMutation> {
+        crate::state::managed_binding::ExactRowMutation::new(
+            "source_recoveries",
+            "UPDATE",
+            Some(image(&self.old, &self.old_body)?),
+            Some(image(&self.next, &self.next_body)?),
+        )
+    }
+    pub(in crate::state) fn resulting_pin(&self) -> (Uuid, u64, &str) {
+        (self.next.id, self.next.version, &self.next_digest)
+    }
+    pub(in crate::state) fn validate_original_tx(&self, c: &Connection) -> Result<()> {
+        let (p, g, t) = scope_keys(&self.old.pins.scope)?;
+        let exact: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM source_recoveries WHERE task_id=?1 AND project_id=?2 AND goal_id=?3 AND id=?4 AND owner_epoch=?5 AND version=?6 AND state='installed' AND body=?7)", params![t,p,g,self.old.id.to_string(),self.old.epoch,self.old.version,self.old_body], |r| r.get(0))?;
+        ensure!(exact, "original Source7 marker row changed");
+        Ok(())
+    }
+    /// Root's marker consumer validates the Driver/original frame BEFORE any
+    /// writes. This asserts only the preplanned Source row mutation; it neither
+    /// opens a helper nor manufactures post-marker successor authority.
+    pub(in crate::state) fn write_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        self.validate_original_tx(tx)?;
+        ensure!(tx.execute("UPDATE source_recoveries SET version=?1,body=?2 WHERE task_id=?3 AND id=?4 AND owner_epoch=?5 AND version=?6 AND state='installed' AND body=?7", params![self.next.version,self.next_body,self.old.pins.scope.task_id.context("source Task missing")?.to_string(),self.old.id.to_string(),self.old.epoch,self.old.version,self.old_body])? == 1, "Source7 marker CAS changed");
+        Ok(())
+    }
+    pub(in crate::state) fn validate_result_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        let (p, g, t) = scope_keys(&self.next.pins.scope)?;
+        let exact:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM source_recoveries WHERE task_id=?1 AND project_id=?2 AND goal_id=?3 AND id=?4 AND owner_epoch=?5 AND version=?6 AND state='installed' AND body=?7)",params![t,p,g,self.next.id.to_string(),self.next.epoch,self.next.version,self.next_body],|r|r.get(0))?;
+        ensure!(exact, "planned marker Source7 result changed");
+        Ok(())
+    }
+}
+/// Exact nongrant Source7 content for the genuine retained Driver's coherent
+/// read ticket. Public metadata cannot reconstruct a source-read capability.
+pub(in crate::state) fn driver_anchor(
+    c: &Connection,
+    task: TaskId,
+) -> Result<Option<(Uuid, u64, String)>> {
+    let Some(row) = row(c, task)? else {
+        return Ok(None);
+    };
+    ensure!(
+        row.state == "installed",
+        "Driver source recovery is not installed"
+    );
+    validate_row(c, &row)?;
+    let body: String = c.query_row(
+        "SELECT body FROM source_recoveries WHERE task_id=?1 AND id=?2 AND owner_epoch=?3 AND version=?4 AND state='installed' AND length(CAST(body AS BLOB))<=131072",
+        params![task.to_string(), row.id.to_string(), row.epoch, row.version],
+        |r| r.get(0),
+    )?;
+    Ok(Some((row.id, row.version, body)))
+}
+fn image(row: &Row, body: &str) -> Result<Vec<rusqlite::types::Value>> {
+    let (p, g, t) = scope_keys(&row.pins.scope)?;
+    Ok(vec![
+        t.into(),
+        p.into(),
+        g.into(),
+        row.id.to_string().into(),
+        i64::try_from(row.epoch)?.into(),
+        i64::try_from(row.version)?.into(),
+        row.state.clone().into(),
+        body.to_owned().into(),
+    ])
+}
+fn original_image(c: &Connection, task: TaskId) -> Result<(Row, Vec<rusqlite::types::Value>)> {
+    let original = row(c, task)?.context("source recovery mutation original missing")?;
+    let body: String = c.query_row("SELECT body FROM source_recoveries WHERE task_id=?1 AND length(CAST(body AS BLOB))<=131072", [task.to_string()], |r| r.get(0))?;
+    let columns = image(&original, &body)?;
+    Ok((original, columns))
+}
+fn write(
+    c: &Connection,
+    permits: &crate::state::managed_binding::PrivatePermitManager,
+    row: &mut Row,
+) -> Result<()> {
     let old = row.version;
+    let task = row
+        .pins
+        .scope
+        .task_id
+        .context("source recovery Task missing")?;
+    let (original, old_image) = original_image(c, task)?;
+    ensure!(
+        original.version == old && original.pins.scope == row.pins.scope,
+        "source recovery mutation original changed"
+    );
     bump(&mut row.version)?;
     let body = serde_json::to_string(row)?;
     ensure!(
         body.len() <= META_BYTES,
         "source recovery metadata exceeds bound"
     );
-    ensure!(c.execute("UPDATE source_recoveries SET id=?1,owner_epoch=?2,version=?3,state=?4,body=?5 WHERE task_id=?6 AND version=?7",params![row.id.to_string(),row.epoch,row.version,row.state,body,row.pins.scope.task_id.unwrap().to_string(),old])?==1,"source recovery CAS changed");
+    let mutation = crate::state::managed_binding::ExactRowMutation::new(
+        "source_recoveries",
+        "UPDATE",
+        Some(old_image),
+        Some(image(row, &body)?),
+    )?;
+    permits.with_exact_permit(vec![mutation], || {
+        ensure!(c.execute("UPDATE source_recoveries SET id=?1,owner_epoch=?2,version=?3,state=?4,body=?5 WHERE task_id=?6 AND version=?7",params![row.id.to_string(),row.epoch,row.version,row.state,body,task.to_string(),old])?==1,"source recovery CAS changed");
+        permits.ensure_consumed()
+    })?;
     Ok(())
 }
 pub(crate) fn validate_binding(c: &Connection, binding: &SourceReadBinding) -> Result<()> {
@@ -341,6 +521,7 @@ pub(in crate::state) fn before_write(
 }
 pub(in crate::state) fn after_write(
     c: &Connection,
+    permits: &crate::state::managed_binding::PrivatePermitManager,
     old: SourceAdvance,
     conservative: bool,
 ) -> Result<()> {
@@ -363,10 +544,13 @@ pub(in crate::state) fn after_write(
     } else {
         row.state = "invalid".into();
     }
-    write(c, &mut row)?;
+    write(c, permits, &mut row)?;
     Ok(())
 }
-pub(in crate::state) fn invalidate_epoch(c: &Connection) -> Result<()> {
+pub(in crate::state) fn invalidate_epoch(
+    c: &Connection,
+    permits: &crate::state::managed_binding::PrivatePermitManager,
+) -> Result<()> {
     // Bodies remain auditable; old rows never constitute a new current capability.
     let mut stmt = c.prepare("SELECT task_id FROM source_recoveries WHERE state<>'invalid'")?;
     let ids = stmt
@@ -376,7 +560,7 @@ pub(in crate::state) fn invalidate_epoch(c: &Connection) -> Result<()> {
     for id in ids {
         let mut r = row(c, id.parse()?)?.unwrap();
         r.state = "invalid".into();
-        write(c, &mut r)?;
+        write(c, permits, &mut r)?;
     }
     Ok(())
 }
@@ -411,8 +595,9 @@ impl Store {
         let snapshot = snapshot(&tx, task)?;
         let old = row(&tx, task)?;
         ensure!(
-            old.as_ref().is_none_or(|r| r.state != "preparing"),
-            "source recovery already Preparing; epoch fencing required"
+            old.as_ref()
+                .is_none_or(|r| r.state != "preparing" && r.marker.is_none()),
+            "source recovery already Preparing or marker-bound; genuine closure/epoch recovery required"
         );
         let mut row = Row {
             id: Uuid::new_v4(),
@@ -421,9 +606,10 @@ impl Store {
             state: "preparing".into(),
             pins: snapshot.pins,
             frame: None,
+            marker: None,
         };
         if old.is_some() {
-            write(&tx, &mut row)?;
+            write(&tx, &self.binding_permits, &mut row)?;
         } else {
             let (p, g, t) = scope_keys(&row.pins.scope)?;
             let body = serde_json::to_string(&row)?;
@@ -431,7 +617,16 @@ impl Store {
                 body.len() <= META_BYTES,
                 "source recovery metadata exceeds bound"
             );
-            tx.execute("INSERT INTO source_recoveries(task_id,project_id,goal_id,id,owner_epoch,version,state,body) VALUES(?1,?2,?3,?4,?5,1,'preparing',?6)",params![t,p,g,row.id.to_string(),row.epoch,body])?;
+            let mutation = crate::state::managed_binding::ExactRowMutation::new(
+                "source_recoveries",
+                "INSERT",
+                None,
+                Some(image(&row, &body)?),
+            )?;
+            self.binding_permits.with_exact_permit(vec![mutation], || {
+                tx.execute("INSERT INTO source_recoveries(task_id,project_id,goal_id,id,owner_epoch,version,state,body) VALUES(?1,?2,?3,?4,?5,1,'preparing',?6)",params![t,p,g,row.id.to_string(),row.epoch,body])?;
+                self.binding_permits.ensure_consumed()
+            })?;
         }
         append_event(
             &tx,
@@ -479,7 +674,7 @@ impl Store {
         );
         row.state = "installed".into();
         row.frame = Some(frame.digest().into());
-        write(&tx, &mut row)?;
+        write(&tx, &self.binding_permits, &mut row)?;
         append_event(
             &tx,
             &row.pins.scope,
@@ -510,7 +705,7 @@ impl Store {
             && Some(row.version) == binding.preparing_version
         {
             row.state = "invalid".into();
-            write(&tx, &mut row)?;
+            write(&tx, &self.binding_permits, &mut row)?;
             append_event(
                 &tx,
                 &row.pins.scope,

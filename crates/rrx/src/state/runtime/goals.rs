@@ -434,7 +434,15 @@ impl Store {
             super::super::execution::fence_task_tx(&tx, &task.scope())?;
             let current:Option<(String,u64,u64,String)>=tx.query_row("SELECT id,owner_epoch,version,body FROM task_drivers WHERE task_id=?1 AND state='driving'",[task.id.to_string()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
             if let Some((id, owner_epoch, version, body)) = current {
-                super::driver::invalidate_tx(&tx, task.id, &id, owner_epoch, version, &body)?;
+                super::driver::invalidate_tx(
+                    &self.binding_permits,
+                    &tx,
+                    task.id,
+                    &id,
+                    owner_epoch,
+                    version,
+                    &body,
+                )?;
             }
         }
         let previous = goal.version;

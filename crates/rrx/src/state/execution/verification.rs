@@ -802,7 +802,7 @@ impl Store {
             "verification.admitted",
             json!({"unit":unit.id,"workflow":record.id,"profile":pd}),
         )?;
-        source_recovery::after_write(&tx, source_advance, false)?;
+        source_recovery::after_write(&tx, &self.binding_permits, source_advance, false)?;
         tx.commit()?;
         Ok((VerificationGrant::admitted(claim, unit, pd), record))
     }

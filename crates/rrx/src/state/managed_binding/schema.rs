@@ -256,6 +256,7 @@ pub(in crate::state) fn validate_current_layout(c: &Connection) -> Result<()> {
     crate::state::runtime::install_schema(&tx)?;
     install_schema(&tx)?;
     crate::state::execution::install_schema(&tx)?;
+    install_retained_guards(&tx)?;
     let expected = catalog(&tx)?;
     ensure!(
         actual == expected,
@@ -297,6 +298,21 @@ fn permit(table: &str, action: &str) -> String {
         }
     }));
     format!("rrx_binding_permit({})", args.join(","))
+}
+/// Install only after the ordered Runtime/Source schemas exist. The current
+/// layout paths validate these guards; they never install or repair them.
+pub(in crate::state) fn install_retained_guards(tx: &Transaction<'_>) -> Result<()> {
+    for action in ["INSERT", "UPDATE", "DELETE"] {
+        tx.execute_batch(&format!(
+            "CREATE TRIGGER binding_driver_{action} BEFORE {action} ON task_drivers WHEN NOT {} BEGIN SELECT RAISE(ABORT,'private retained Driver writer required'); END;",
+            permit("task_drivers", action)
+        ))?;
+        tx.execute_batch(&format!(
+            "CREATE TRIGGER binding_source_{action} BEFORE {action} ON source_recoveries WHEN NOT {} BEGIN SELECT RAISE(ABORT,'private Source7 writer required'); END;",
+            permit("source_recoveries", action)
+        ))?;
+    }
+    Ok(())
 }
 fn install_record_guards(tx: &Transaction<'_>) -> Result<()> {
     for action in ["INSERT", "UPDATE", "DELETE"] {
