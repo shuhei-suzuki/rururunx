@@ -6,6 +6,9 @@ use crate::execution::{
     native::{ManagedInput, ManagedSessionRef, NativeSessions, NativeStart, NativeStatus},
 };
 
+#[cfg(test)]
+mod ownership_tests;
+
 pub(crate) struct NativeAdapter {
     pub(crate) owner: Arc<execution::RuntimeOwner>,
     pub(crate) name: String,
@@ -17,7 +20,15 @@ pub(crate) struct NativeAdapter {
 /// Selected concrete vtable, installed with the same adapter/sessions used by
 /// the Registry. Generic registration, names and capability DTOs cannot mint it.
 pub(crate) struct NativePhasePort {
-    adapter: Arc<NativeAdapter>,
+    // Allocation/proofs can outlive the public registry. A strong adapter edge
+    // here would return through NativeSessions -> Entry -> allocation and leak
+    // the actual owner/settlement. Upgrade the original object before effects.
+    adapter: std::sync::Weak<NativeAdapter>,
+    sessions: std::sync::Weak<NativeSessions>,
+    owner: Arc<execution::RuntimeOwner>,
+    alias: String,
+    provider: String,
+    program: PathBuf,
     origin_id: uuid::Uuid,
 }
 
@@ -36,7 +47,12 @@ pub(crate) struct NativeAllocationSeed {
 impl NativePhasePort {
     pub(super) fn installed(adapter: Arc<NativeAdapter>) -> Self {
         Self {
-            adapter,
+            sessions: Arc::downgrade(&adapter.sessions),
+            owner: adapter.owner.clone(),
+            alias: adapter.name.clone(),
+            provider: adapter.provider.clone(),
+            program: adapter.program.clone(),
+            adapter: Arc::downgrade(&adapter),
             origin_id: uuid::Uuid::new_v4(),
         }
     }
@@ -44,16 +60,39 @@ impl NativePhasePort {
         self.origin_id
     }
     pub(crate) fn provider(&self) -> &str {
-        &self.adapter.provider
+        &self.provider
     }
     pub(crate) fn alias(&self) -> &str {
-        &self.adapter.name
+        &self.alias
     }
     pub(crate) fn owner(&self) -> &execution::RuntimeOwner {
-        &self.adapter.owner
+        &self.owner
     }
     pub(crate) fn program(&self) -> &Path {
-        &self.adapter.program
+        &self.program
+    }
+
+    /// Upgrade the SAME installed object; copied names, SQL or a replacement
+    /// registry entry cannot restore its origin. This observation alone is not
+    /// permission to dispatch a protected phase.
+    pub(crate) fn selected_adapter(&self) -> anyhow::Result<Arc<NativeAdapter>> {
+        let adapter = self
+            .adapter
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("actual selected Native adapter ended"))?;
+        let sessions = self
+            .sessions
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("actual selected Native sessions ended"))?;
+        anyhow::ensure!(
+            Arc::ptr_eq(&adapter.owner, &self.owner)
+                && Arc::ptr_eq(&adapter.sessions, &sessions)
+                && adapter.name == self.alias
+                && adapter.provider == self.provider
+                && adapter.program == self.program,
+            "actual selected Native adapter identity changed"
+        );
+        Ok(adapter)
     }
 
     /// Allocate before all version, readonly Git and Native child operations.
@@ -65,6 +104,7 @@ impl NativePhasePort {
         model: Option<String>,
         effort: Option<String>,
     ) -> anyhow::Result<execution::phase::NativeAllocation> {
+        let adapter = self.selected_adapter()?;
         anyhow::ensure!(
             input.agent == self.alias()
                 && matches!(self.provider(), "claude" | "codex")
@@ -75,7 +115,7 @@ impl NativePhasePort {
             "native allocation selection mismatch"
         );
         let input_bytes = execution::phase::encode_input(&input.input)?;
-        let unit = execution::phase::allocation_snapshot(&self.adapter.owner, &input.authority)?;
+        let unit = execution::phase::allocation_snapshot(&adapter.owner, &input.authority)?;
         let role = match unit.kind {
             execution::UnitKind::Executor => SessionRole::Executor,
             execution::UnitKind::Reviewer => SessionRole::Reviewer,
