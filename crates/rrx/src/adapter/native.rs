@@ -23,7 +23,7 @@ pub(crate) struct NativePhasePort {
     // Allocation/proofs can outlive the public registry. A strong adapter edge
     // here would return through NativeSessions -> Entry -> allocation and leak
     // the actual owner/settlement. Upgrade the original object before effects.
-    adapter: Arc<NativeAdapter>,
+    adapter: std::sync::Weak<NativeAdapter>,
     sessions: std::sync::Weak<NativeSessions>,
     owner: Arc<execution::RuntimeOwner>,
     alias: String,
@@ -52,7 +52,7 @@ impl NativePhasePort {
             alias: adapter.name.clone(),
             provider: adapter.provider.clone(),
             program: adapter.program.clone(),
-            adapter,
+            adapter: Arc::downgrade(&adapter),
             origin_id: uuid::Uuid::new_v4(),
         }
     }
@@ -76,7 +76,10 @@ impl NativePhasePort {
     /// registry entry cannot restore its origin. This observation alone is not
     /// permission to dispatch a protected phase.
     pub(crate) fn selected_adapter(&self) -> anyhow::Result<Arc<NativeAdapter>> {
-        let adapter = self.adapter.clone();
+        let adapter = self
+            .adapter
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("actual selected Native adapter ended"))?;
         let sessions = self
             .sessions
             .upgrade()
