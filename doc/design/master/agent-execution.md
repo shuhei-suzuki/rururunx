@@ -205,3 +205,11 @@ advertisement remain unavailable. The Runtime-only first Executor connection is
 unmerged and unqualified; continuation and Root stop integration remain absent. Component source
 and primitive real-Git controls do not qualify the actual installed actor chain,
 Git version, authenticated Agent, both-host operation or four-Task acceptance.
+
+The configured account-free Runtime control reaches a genuine Driver, real Git
+Source preparation, initial Worktree gate and original first Executor reservation.
+It then remains Held at marker planning: the exact composed
+`workflow_native_contracts` predicate has no production activation producer.
+Prepared issuance, registration, spawn and record-only binding are therefore
+SETUP/UNVERIFIED on this installed lane. No SQL activation or predicate bypass is
+provided by the source increment.

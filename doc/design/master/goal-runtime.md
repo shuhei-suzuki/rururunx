@@ -376,3 +376,9 @@ epoch change. Goal facts name native_continuation_unavailable for a current driv
 Task with cleared attention, while dispatch_available remains false. These display
 facts grant nothing. The original first Executor lane remains unmerged and
 unqualified; continuation, Root stop integration and full Native acceptance are open.
+
+Scoped installed-graph, paired undeclared CLI, bounded Task read/reread, shutdown
+admission and finite-pass controls pass, along with the six existing compiled Goal
+CLI controls. These are account-free wiring/admission controls. The genuine Source
+lane remains Held before its Native marker because a composed Workflow activation
+producer is absent; no Native execution or full Goal completion is established.

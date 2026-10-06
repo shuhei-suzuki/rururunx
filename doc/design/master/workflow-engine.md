@@ -156,6 +156,13 @@ permissions stay unchanged. Missing lineage or CAS drift remains Held. Genuine
 marked lifecycle qualification remains unavailable; the Runtime-only installed
 composition is an unmerged source increment.
 
+The installed account-free control reaches the actual original first Executor
+reservation, then remains Held at `plan_marker_publication`'s exact composed
+Workflow contract read. Production code currently writes only legacy-held
+contracts, so the installed lane has not reached marker publication, Prepared,
+registration, transport or binding. Its composed activation producer requires a
+separate approved contract increment; public refusal predicates remain intact.
+
 The incremental [production gate integration](../production-workflow-gates-design.md)
 adds a concrete library port for real initial preparation, Implement terminal/result
 and retained commit observations. Its receipts are diagnostic; existing Workflow
