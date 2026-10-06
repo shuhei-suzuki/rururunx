@@ -7,6 +7,18 @@ use rusqlite::{
 };
 use std::sync::{Arc, Mutex};
 
+/// Closed schema metadata for actual Native pair/Session plans. These names
+/// grant no writes and cannot construct a Native owner, input or settlement.
+pub(in crate::state) fn phase_pair_columns(table: &str) -> Option<&'static [&'static str]> {
+    match table {
+        "managed_phase_owners"
+        | "managed_phase_readiness"
+        | "managed_phase_admissions"
+        | "records" => columns(table),
+        _ => None,
+    }
+}
+
 /// Fixed complete columns, including encoded bodies; callers cannot omit metadata.
 pub(super) fn columns(table: &str) -> Option<&'static [&'static str]> {
     Some(match table {

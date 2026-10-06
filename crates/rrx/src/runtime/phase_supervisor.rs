@@ -566,7 +566,7 @@ impl super::Runtime {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("original handoff plan absent"))?;
         ensure!(
-            marker.from_original_plan(original_plan),
+            marker.matches_original_plan(original_plan),
             "marker handoff is not the same retained original plan"
         );
         let mut saved = slot
@@ -575,7 +575,7 @@ impl super::Runtime {
             .map_err(|_| anyhow::anyhow!("saved marker poisoned"))?;
         if let Some(original) = saved.as_ref() {
             ensure!(
-                original.from_original_plan(original_plan),
+                original.matches_original_plan(original_plan),
                 "different known marker retained"
             );
         }
