@@ -171,12 +171,47 @@ cannot create an unbounded retry loop; persisted due times remain checked.
 
 ## 6. CLI, authority changes and visibility (RS-R4)
 
-Expose Goal inline/file creation/status/pause/resume/cancel/attach and Runtime
-run/status --all/stop/resume/logs, with UUID or unambiguous registered selectors.
-Help/version/config-check retain no state side effects. CLI/TUI attach to the same
-owner control service; they do not call `RuntimeOwner::open` for each command.
-Native credential/config roots and hooks remain untouched. Production attach may
-return explicit Unsupported until its actual adapter capability exists.
+Expose Goal inline/file creation/status/tasks/pause/resume/cancel/attach, Task
+stop/fresh retry, and Runtime start/status --all/stop/restart/logs. Each scoped
+operation selects exactly one registered Project by UUID, unambiguous registered
+name or registered CWD identity, then resolves Goal/Task only inside that scope;
+unknown, ambiguous or foreign selections refuse. Help/version/config-check retain
+no state side effects. CLI/TUI controls attach to the same owner control service;
+they do not call `RuntimeOwner::open` for each command. Native credential/config
+roots and hooks remain untouched. Production native Goal/Task attach may return
+explicit Unsupported while its actual adapter capability is absent; this is an
+honest interim limitation, not attach acceptance for Issue #24 or MVP.
+
+Allow local controls only from an actual accepted connection whose peer UID
+matches the Runtime owner's UID, with the selected canonical state and exact
+protocol/Hello instance and epoch bound to the current owner. Clients verify this
+service identity before sending an action; the service checks current owner
+authority before admitting its scoped operation. Endpoint discovery is separate
+from native TaskTool/Broker ingress, which cannot construct local control authority.
+
+Request fields, environment or `--state` selection, discovery descriptors, public
+DTOs, Agent/native text and administrator/Human labels are content, not grants.
+The genuine local connection and current service checks must remain necessary;
+none of those supplied values can substitute for them or increase authority.
+
+Refuse foreign peer UID, a different selected canonical state, stale instance or
+epoch, and missing/mismatched protocol handshake before control effects. Do not
+fall back to a foreign service or silently refresh stale consent. As in RS-R1 and
+the [Goal authority requirements](issue-23-requirements.md), a same-UID host process,
+including a native Agent allowed to invoke the CLI, is not distinguishable as a
+biological Human; this application boundary is not a host security sandbox.
+
+Explicit Runtime service start/restart alone acquires the sole owner lock and a
+new epoch exactly once per successful startup; a second service must lose the
+lock without changing the live epoch. Runtime restart after stop is this explicit
+new-owner operation. Product `rrx run` means single-Task execution, not service
+startup. Goal/Task resume or retry is a typed current-service command under current
+authority, never Runtime restart or resurrection of an old grant/Unit/Session.
+Read-only clients never auto-start a service, create state or open an owner/epoch;
+when unavailable they give an explicit instruction to start `rrx serve`.
+Mutating/interactive commands may optionally start the service only when that
+explicit user operation authorizes service startup; startup remains a distinct
+owner operation, never a hidden consequence of a read query.
 
 Creation accepts a validated explicit graph and supported criteria, or retains
 analyzing/proposed work pending trusted acceptance. It does not silently invent
@@ -193,6 +228,17 @@ cleanup as separate axes, historical unknown attempts, unresolved external effec
 and Human attention. No terminal巡回 is required to discover those waits. Logs are
 bounded scoped references and redact secrets; unavailable token/price fields stay
 null. Acceptance requires real control-plane queries, not a fabricated TUI model.
+
+Runtime read controls for Goal status/tasks, Project routing, Runtime status --all
+and logs perform no durable writes: they do not change owner/epoch, Project/Goal/
+Task versions or bodies, control acknowledgements, audit or attention rows.
+Background scheduling decisions remain separate producers, never effects of a
+query. This condition applies to the new Runtime read controls; it does not change
+the existing legacy Project-registry CLI's explicit reconciliation semantics.
+Responses use bounded projections with explicit scope/version and pagination or
+a stated limit/incompleteness reason. Silent truncation, unbounded hidden collection
+and interpreting a partial inventory as complete readiness/no-owner proof are
+prohibited; a changed version between pages cannot be presented as one snapshot.
 
 ## 7. Acceptance and independent gates
 
@@ -212,7 +258,24 @@ authorization / concurrency review, causal mutations and Linux/macOS CI.
 | RS-AC7.a | Restart after genuine Published Implement: new Sources supplies exact retained config/rules/corpus to a supported next phase while the executor workspace is changed or absent; frame-install/current-authority drift refuses. |
 | RS-AC7.b | Restart after initialize before native input: new preparation Unit/namespace and actual initial gates, preserved old history, no old adoption/Session; competing recovery, cancel and source-install CAS have one winner. Ready-unpublished stays draft/unknown without qualified reconciliation. |
 | RS-AC8 | RequiredTasksVerified automatic criterion with genuine published Workflow/artifact evidence; all Tasks complete but missing criterion remains incomplete; stale evidence/Human/native JSON cannot complete Goal. |
-| RS-AC9 | Real CLI control service, Goal file/inline and status/stop/resume/logs; no epoch rollover from read command; scoped selectors and no credential/hook changes. |
+| RS-AC9 | All operational CLI observations RS-AC9.a–h below, through the compiled CLI and real control service. |
+
+| ID | Required actual CLI/control observation |
+| --- | --- |
+| RS-AC9.a | Explicit service start/stop/restart, second-owner refusal and one new epoch per successful startup; `rrx run` performs single-Task execution. Read clients on absent service/state create nothing and instruct explicit `rrx serve`; Goal/Task resume never rolls the epoch or revives old grants. |
+| RS-AC9.b | Goal inline/file creation retains an inert Analyzing/proposed objective until trusted acceptance; an explicit validated graph and supported criteria enter the actual typed acceptance path. Invalid/cyclic/foreign graph and unsupported evaluator refuse before publication/effects; prose invents no executable Tasks. |
+| RS-AC9.c | Compiled Goal status/tasks and Runtime status --all query actual Project → Goal → Task → phase/unit/provider facts, requested/effective caps, work/cleanup/evidence and Human attention/wait/next-due reasons. Large inventories expose scoped version/cursor or explicit incompleteness; foreign cursor and mixed-version completeness refuse. |
+| RS-AC9.d | Goal pause/resume/cancel and Task stop/fresh retry commit the exact current scoped lifecycle/authority decision, preserve siblings/history and refuse stale CAS/late grants. Unsupported producer paths remain named holds and do not count as successful lifecycle/execution acceptance. |
+| RS-AC9.e | Logs provide bounded scoped audit/result references, redact secrets and leave unavailable metrics null. They expose no raw rejected frames, credential/config bodies or fabricated evidence. |
+| RS-AC9.f | Actual supported Goal/Task native-session attach reaches the genuine adapter/session in exact scope. Explicit Unsupported correctly describes an intermediate unavailable capability but does not satisfy this row, Issue #24 or MVP attach acceptance. |
+| RS-AC9.g | Registered Project UUID/name/CWD selects exactly one Project, with Goal/Task scoped inside it. Actual foreign UID/state, stale instance/epoch and missing/mismatched handshake refuse before effects; supplied request/env/descriptor/DTO/Agent text or Human/administrator labels cannot increase authority. |
+| RS-AC9.h | Help/version/config-check and new Runtime read controls have no state effects; successful and refused Goal status/tasks/routing/status --all/logs leave the relevant complete before/after row images and counts, owner/epoch, Project/Goal/Task versions, ack/audit/attention unchanged under an idle controlled service. Background writes are separately attributed, and no native credential/config/hook file changes occur. |
+
+Partial sub-ID/component acceptance never establishes complete RS-AC9, Issue #24
+or full MVP acceptance. Account-free control-plane observations do not substitute
+for actual supported native execution/attach, four-Task/two-Project operation,
+both-OS compatibility or the other required acceptance gates. Missing producers
+remain visible delivery work; successful status wiring cannot complete a Goal.
 
 Removing readiness/claim CAS, any admission dimension, provider alias sharing,
 inner fairness composition, deadline wake, epoch fence, evidence qualification,
