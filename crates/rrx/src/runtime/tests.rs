@@ -914,6 +914,14 @@ async fn actual_goal_acceptance_and_stop_share_publication_linearization() {
 #[tokio::test]
 async fn actual_accepted_worktree_routes_refuse_before_valid_native_git_helpers() {
     let mut f = ControlFixture::new();
+    let real_root = f._dir.path().join("real-git-source");
+    std::fs::create_dir(&real_root).unwrap();
+    f.project = crate::domain::Project::new(
+        "real-source".into(),
+        real_root.canonicalize().unwrap(),
+        "not-yet-registered".into(),
+        "main".into(),
+    );
     for args in [
         vec!["init", "-b", "main"],
         vec![
@@ -1010,4 +1018,43 @@ async fn actual_accepted_worktree_routes_refuse_before_valid_native_git_helpers(
         assert!(store.execution_units(Some(&t.scope())).unwrap().is_empty());
     }
     assert!(!f.project.worktree_root.exists());
+}
+
+#[tokio::test]
+async fn actual_control_loop_error_retires_join_result_before_repeated_shutdown() {
+    let f = ControlFixture::new();
+    f.runtime.start().await.unwrap();
+    // Actual epoch revocation; neither this row nor the loop constructs a Driver.
+    f.owner
+        .store()
+        .lock()
+        .unwrap()
+        .begin_execution_epoch()
+        .unwrap();
+    f.runtime.wake.notify_one();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let finished = f
+                .runtime
+                .supervisor
+                .lock()
+                .await
+                .as_ref()
+                .is_some_and(|h| h.is_finished());
+            if finished {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let error = f.runtime.shutdown().await.unwrap_err();
+    assert!(format!("{error:#}").contains("owner retired"));
+    assert!(
+        f.runtime.supervisor.lock().await.is_none(),
+        "completed Err must not leave an already-polled handle"
+    );
+    assert!(!f.runtime.service_running());
+    f.runtime.shutdown().await.unwrap();
 }

@@ -82,10 +82,14 @@ impl Runtime {
         self.wake.notify_one();
         let mut slot = self.supervisor.lock().await;
         if let Some(handle) = slot.as_mut() {
-            tokio::time::timeout(Duration::from_secs(5), handle)
+            let completed = tokio::time::timeout(Duration::from_secs(5), handle)
                 .await
-                .context("Runtime control loop shutdown remains pending")???;
+                .context("Runtime control loop shutdown remains pending")?;
+            // Completion (including Err/panic) consumes the JoinHandle result.
+            // Take it before propagating that error; polling it again is invalid.
+            // Timeout/caller Drop still leaves the pending handle in its owner.
             slot.take();
+            completed??;
         }
         Ok(())
     }

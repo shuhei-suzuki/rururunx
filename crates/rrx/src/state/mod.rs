@@ -187,7 +187,7 @@ impl Store {
                         execution::native_results::install_schema(&tx)?;
                         execution::install_writer_guards(&tx)?;
                     }
-                    if matches!(next, 7 | 8 | 9) {
+                    if matches!(next, 7..=9) {
                         execution::install_writer_guards(&tx)?;
                     }
                     tx.pragma_update(None, "user_version", next)?;

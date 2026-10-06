@@ -1193,7 +1193,7 @@ mod tests {
                         |r| r.get(0),
                     )
                     .unwrap();
-                assert!(sql.contains("<>8"));
+                assert!(sql.contains(&format!("<>{SCHEMA_VERSION}")));
             }
         }
         let count: u64 = current
