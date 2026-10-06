@@ -1,7 +1,11 @@
 # Owned native answer acquisition and durable receipts
 
-Status: proposed STRICT implementation supplement; documentation only. Actual
-source baseline `37c5cc434d8f9c46d4a0f5f86a0285421a773899`. The approved
+Status: reviewed component implementation integrated at fixed source
+`5d16952cfed3bfd74dd859a47647e2630a48ffff`; schema7 includes the actual Native6
+consumer. See the [qualified checkpoint](../verification/agent-execution-phase2-native-consumer-checkpoint.json).
+The sections below retain original design/protocol provenance and do not certify
+authenticated providers, Review authority or complete Phase2. Original design
+baseline `37c5cc434d8f9c46d4a0f5f86a0285421a773899`. The approved
 [ReviewEngine requirements](../requirements/review-engine-integration-requirements.md)
 and [design](review-engine-integration-design.md) already require this component.
 This supplement makes their acquisition/persistence interfaces concrete; it does

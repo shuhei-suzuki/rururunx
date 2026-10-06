@@ -10,9 +10,14 @@ remain baseline descriptions, not acceptance of that proposal.
 
 The independently reviewed [native result supplement](../native-result-receipts-design.md)
 specifies acknowledged-input/Session-bound final answer acquisition and atomic
-receipt-before-watch publication. It requires new collectors and persistence ports;
-current ephemeral native results and generated schema shapes alone do not certify
-Review verdicts or authenticated provider compatibility.
+receipt-before-watch publication. Its actual managed Core collectors and receipt
+transaction are integrated at `5d16952cfed3bfd74dd859a47647e2630a48ffff`
+under schema7; see the [qualified component checkpoint](../../verification/agent-execution-phase2-native-consumer-checkpoint.json).
+Bounded account-free controls and regression passed; receipt content does not
+certify Review verdicts, authenticated providers, current installation, both-OS
+four-Task operation or complete Phase2. Runtime/CLI and Review consumers remain
+separate implementation work; historical baseline sections below retain their
+original scope.
 
 ## 1. Goal
 

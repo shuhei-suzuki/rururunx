@@ -1027,3 +1027,39 @@ Published source recovery7 are integrated; Verifier8 and operational Runtime/Goa
 remain separate source work. Subsequent coordinated design must assign the genuine
 Runtime/Goal migration9 and future ReviewRound10 without an empty migration.
 The existing bounded full PASS does not erase earlier unrestricted failures.
+
+## Owned native receipt consumer checkpoint
+
+Fixed clean integrated source `5d16952cfed3bfd74dd859a47647e2630a48ffff`
+now connects actual managed Core/stdin/stdout acquisition to Native schema6
+invocation/receipt tables under current schema7. Exact acknowledged native
+identity, frozen current input binding and bounded original-byte parsing govern
+the collector. Known work, Session terminal, quota and native receipt commit
+atomically before watch publication. A receipt supplies content/projection, never
+a Review vote or permission. Work and best-effort cleanup remain independent.
+
+Root/A independently approved final author source `b298fe0a` without findings.
+The [checkpoint](agent-execution-phase2-native-consumer-checkpoint.json) preserves
+earlier four Medium findings, the later concurrent retry/watch Medium and Session
+projection Low, their corrections/re-reviews, and original failed or withheld
+checks. Five early compiled dirty-patch mutants are qualified only as causal
+evidence. Two final committed watch mutants fail the actual receipt/Session
+assertions; exact restored trees and the restored control pass. Root inspected
+patches, assertion logs and hashes. Compiled actual old-schema5 writers refuse
+the schema6 contract on synthetic state; this is schema-fencing evidence only.
+
+At the parent fixed source with four test threads: **590 primary passed, 0 failed,
+30 ignored**; fmt, workspace all-target Clippy `-D warnings` and build pass.
+The library contributes472 passes/25 ignored. Raw635 passes exclude45 duplicate
+child passes. The additional Ready-source selection control covers refusal before
+Published source reconstruction; it does not qualify a forged Workflow pointer.
+Three finite CLI transport/Hello controls also pass, but main still lacks an
+operational Runtime service/accepted Goal/Driver consumer.
+
+Verifier8 and operational Runtime9 are separate implementation candidates; their
+shared transaction composition and coordinated checks remain pending. Future
+ReviewRound uses10 after a genuine Runtime/Goal9 migration. No authenticated
+provider, current install, both-OS/native four-Task or complete Phase2 acceptance
+is inferred. Historical unrestricted failures remain open; terminal proof retained
+in memory cannot survive Runtime SIGKILL before a durable receipt. Phase3 still
+requires approval after all Phase2 work, and cleanup remains best effort.
