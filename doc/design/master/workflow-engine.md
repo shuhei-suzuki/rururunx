@@ -122,8 +122,8 @@ actor-chain/both-OS/four-Task qualification also remain unavailable.
 The private physical transport entry point consumes the retained SAME Prepared
 command and registration acknowledgement. Preparation custody retains its child
 cell before spawn; that cell adopts the returned child before identity and pipe
-qualification, upgrades in place and transfers it to Core only while admission
-remains open. Core acknowledges the original offered handoff before protocol
+qualification, upgrades in place and transfers it to Core only while the original
+actor is live and custody has not been stopped. Core acknowledges the original offered handoff before protocol
 work. An unresolved handoff remains retained rather than becoming a terminal
 observation. Factual settlement compares the exact own transport effect and
 records its outcome without granting input authority. Preparation abandonment
