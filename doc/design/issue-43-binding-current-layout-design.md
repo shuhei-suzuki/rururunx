@@ -72,3 +72,24 @@ it does not replace direct actual-old-Store controls.
 Source/quality/default regression and independent corrected-source gates remain.
 Previous failures and whole Runtime/native/binder/MVP gaps stay open. This fixed
 commit changes only this design file; frozen471 and Driver7db are untouched.
+
+## Allocation trigger provider-column correction
+
+Actual SQLite statement preparation exposed `binding_operation_allocation`
+referencing `execution_units.provider`. ExecutionUnit's provider is stored in its
+validated complete JSON body, not a relational column. SQLite accepts creating
+the trigger but cannot compile a subsequent operation INSERT, independently of
+whether a genuine publisher or its permission exists. Compare the same selected
+provider with `json_extract(u.body,'$.provider')`; all original composed-contract,
+scope, epoch, generation and exact mutation-permission guards remain mandatory.
+No new provider column, authority row or permissive fallback is introduced.
+
+On the real empty current Store, prepare EXPLAIN INSERT/UPDATE/DELETE for every
+private table without stepping any statement. This compiles the actual protected
+trigger programs and checks no table contents or change count advanced. Restoring
+the bad column reference in a separately compiled mutation must fail this control
+at SQL preparation, not at Rust compilation or a fabricated grant prerequisite.
+This is SQL mechanical qualification only, never a managed positive publisher.
+Current-layout validation continues to require exact protection objects; a Store
+containing the previous defective trigger is refused under the changed current
+layout, not silently rewritten or treated as a migration of current authority.

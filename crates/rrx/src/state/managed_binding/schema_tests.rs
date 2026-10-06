@@ -618,6 +618,35 @@ fn future_schema_refuses_open_before_wal_and_cached_current_guards_refuse_future
     assert!(Store::open(&path).is_err());
 }
 #[test]
+fn fresh_private_mutation_statements_compile_without_effects_or_authority() {
+    let s = Store::memory().unwrap();
+    let before = s.connection.total_changes();
+    for table in TABLES {
+        let first: String = s
+            .connection
+            .query_row(&format!("PRAGMA table_info({table})"), [], |r| r.get(1))
+            .unwrap();
+        // Prepare the real SQLite trigger programs, including cross-table
+        // allocation guards. Do not step these statements or seed any grant.
+        for sql in [
+            format!("EXPLAIN INSERT INTO {table} DEFAULT VALUES"),
+            format!("EXPLAIN UPDATE {table} SET {first}={first}"),
+            format!("EXPLAIN DELETE FROM {table}"),
+        ] {
+            s.connection.prepare(&sql).unwrap_or_else(|error| {
+                panic!("protected mutation did not compile: {sql}: {error}")
+            });
+        }
+        let count: i64 = s
+            .connection
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "compile-only control changed {table}");
+    }
+    assert_eq!(s.connection.total_changes(), before);
+}
+
+#[test]
 fn fresh_private_tables_have_complete_column_images_and_domain_guards() {
     let mut s = Store::memory().unwrap();
     for table in TABLES.iter().filter(|t| **t != "scoped_session_identities") {
