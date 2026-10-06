@@ -674,7 +674,7 @@ impl super::Runtime {
     pub(crate) async fn publish_phase_marker(
         &self,
         capacity: PendingPhaseCapacity,
-        ticket: crate::state::DriverReadTicket,
+        ticket: Arc<crate::state::DriverReadTicket>,
         workflow: crate::domain::RecordId,
     ) -> Result<super::phase_jobs::PhaseInvocation> {
         let plan = crate::state::managed_binding::plan_marker_publication(

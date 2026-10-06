@@ -192,3 +192,21 @@ Genuine Sources-to-Runtime preparation handoff, private preparatory/helper/quota
 authority and installed full composition remain unavailable; source integration
 does not enable native preflight, certify authenticated CLI execution or qualify
 four Task/both-OS behavior.
+
+## 8. Original Driver ticket retention through marker planning
+
+The independently reviewed Source handoff design (`0f13284`) requires Root's
+separate envelope to retain an Arc of the SAME non-Clone DriverReadTicket before
+admission or planning. Marker publication accepts that Arc, and the Driver marker
+advance borrows it while planning, then retains an Arc clone in its completed
+plan. A failed Driver/marker plan therefore does not consume the original ticket
+held by its producer. No ticket is recaptured from current rows, and no association,
+scope, source, selection, preparation or exact mutation predicate changes.
+
+This increment changes only those concrete ticket consumers. It does not install
+the Source envelope registry or a successful composition issuer. The existing
+async publication method alone is not the complete caller-independent handoff:
+Root must retain the actual capacity, original ticket, attempted plan and invocation
+before returning an observation, as required by the Source handoff design. No
+positive Native path, cancellation control or authenticated execution is qualified
+by this representation change or a successful compile.

@@ -97,7 +97,7 @@ impl OriginalMarker {
 pub(crate) fn plan_marker_publication(
     owner: Arc<RuntimeOwner>,
     allocation: Arc<NativeAllocation>,
-    ticket: DriverReadTicket,
+    ticket: Arc<DriverReadTicket>,
     workflow: RecordId,
 ) -> Result<Arc<MarkerPublicationPlan>> {
     let marker = plan_marker(&owner, workflow, &allocation)?;

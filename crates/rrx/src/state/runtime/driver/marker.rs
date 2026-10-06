@@ -8,7 +8,7 @@ use crate::state::{
 use rusqlite::types::Value as SqlValue;
 
 pub(crate) struct DriverMarkerAdvance {
-    ticket: DriverReadTicket,
+    ticket: Arc<DriverReadTicket>,
     next: Row,
     body: String,
     task: Task,
@@ -65,7 +65,7 @@ pub(super) fn image(row: &Row, body: &str) -> Result<Vec<SqlValue>> {
 }
 impl DriverReadTicket {
     pub(crate) fn plan_marker_advance(
-        self,
+        self: &Arc<Self>,
         marker: &ManagedMarkerPlan,
     ) -> Result<DriverMarkerAdvance> {
         self.scope.matches_marker(marker)?;
@@ -111,7 +111,7 @@ impl DriverReadTicket {
             "marker Driver exceeds metadata bound"
         );
         Ok(DriverMarkerAdvance {
-            ticket: self,
+            ticket: self.clone(),
             next,
             body,
             task: task.clone(),
