@@ -194,8 +194,8 @@ async fn actual_service_resolves_names_uuid_and_cwd_without_source_grant() {
     let mut project = Project::new(
         "route".into(),
         root.clone(),
-        "main".into(),
         "routing-metadata-fixture".into(),
+        "main".into(),
     );
     owner
         .store()
@@ -269,8 +269,8 @@ async fn actual_routing_refuses_ambiguity_stale_snapshot_and_body_index_corrupti
         let mut project = Project::new(
             "duplicate".into(),
             root.canonicalize().unwrap(),
-            "main".into(),
             format!("routing-metadata-fixture-{index}"),
+            "main".into(),
         );
         owner
             .store()

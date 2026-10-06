@@ -93,6 +93,21 @@ pub enum UnavailableReason {
     RuntimeSchemaPending,
 }
 
+// Bounds the response wait; a timed-out filesystem worker is not claimed stopped.
+// It performs no native executable or Store writes and cannot publish routing later.
+async fn canonical_directory(path: PathBuf) -> Result<PathBuf> {
+    let result = tokio::time::timeout(
+        Duration::from_secs(10),
+        tokio::task::spawn_blocking(move || {
+            let path = path.canonicalize()?;
+            ensure!(path.is_dir(), "routing CWD must be a directory");
+            Ok::<_, anyhow::Error>(path)
+        }),
+    )
+    .await???;
+    Ok(result)
+}
+
 /// Constructed solely from the actual accepted socket, never Deserialize/Clone/public constructor.
 struct HumanIngress {
     uid: u32,
@@ -135,9 +150,7 @@ impl Runtime {
         ingress.check(&request)?;
         if let ControlAction::ResolveProject { selector, cwd } = &request.action {
             ensure!(cwd.as_os_str().len() <= 4096, "routing CWD exceeds bound");
-            let cwd = tokio::time::timeout(Duration::from_secs(10), tokio::fs::canonicalize(cwd))
-                .await??;
-            ensure!(cwd.is_dir(), "routing CWD must be a directory");
+            let cwd = canonical_directory(cwd.clone()).await?;
             let snapshot = self
                 .owner
                 .store
@@ -163,11 +176,7 @@ impl Runtime {
                     && !cwd.starts_with(&project.worktree_root)
                     && !cwd.starts_with(project.root.join(".git"))
                 {
-                    let root = tokio::time::timeout(
-                        Duration::from_secs(10),
-                        tokio::fs::canonicalize(&project.root),
-                    )
-                    .await??;
+                    let root = canonical_directory(project.root.clone()).await?;
                     ensure!(root == project.root, "registered Project root moved");
                     matches.insert(project.id);
                 }
@@ -177,11 +186,7 @@ impl Runtime {
                         .as_ref()
                         .ok_or_else(|| anyhow::anyhow!("registered Task worktree missing"))?;
                     if cwd.starts_with(path) {
-                        let actual = tokio::time::timeout(
-                            Duration::from_secs(10),
-                            tokio::fs::canonicalize(path),
-                        )
-                        .await??;
+                        let actual = canonical_directory(path.clone()).await?;
                         ensure!(actual == *path, "registered Task worktree moved");
                         matches.insert(project.id);
                     }
