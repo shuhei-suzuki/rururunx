@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
 pub(crate) use execution::source_recovery::SourceReadBinding;
 mod execution;
 pub(crate) use execution::QuotaAdmission;
@@ -70,9 +70,15 @@ pub(crate) enum WorkflowAccess {
 
 pub struct Store {
     connection: Connection,
+    #[allow(dead_code)] // Actual managed marker/binder is composed separately.
+    binding_permits: std::sync::Arc<managed_binding::PrivatePermitManager>,
 }
 
-fn register_writer_contract(connection: &Connection) -> Result<()> {
+fn register_writer_contract(
+    connection: &Connection,
+) -> Result<std::sync::Arc<managed_binding::PrivatePermitManager>> {
+    let permits = std::sync::Arc::new(managed_binding::PrivatePermitManager::default());
+    managed_binding::register_permit_function(connection, permits.clone())?;
     runtime::driver::register_liveness(connection, std::sync::Weak::new())?;
     connection.create_scalar_function(
         "rrx_writer_contract_version",
@@ -82,7 +88,7 @@ fn register_writer_contract(connection: &Connection) -> Result<()> {
             | rusqlite::functions::FunctionFlags::SQLITE_INNOCUOUS,
         |_| Ok(SCHEMA_VERSION),
     )?;
-    Ok(())
+    Ok(permits)
 }
 
 /// Corruption fixtures model a current writer, rather than an incompatible
@@ -111,14 +117,24 @@ impl Store {
         Self::initialize(Connection::open_in_memory()?)
     }
 
-    fn initialize(mut connection: Connection) -> Result<Self> {
-        register_writer_contract(&connection)?;
+    fn initialize(connection: Connection) -> Result<Self> {
+        Self::initialize_observed(connection, |_| {})
+    }
+
+    // Private deterministic initialization observation seam. Production passes
+    // only a no-op; it cannot create an authority or change the observed version.
+    fn initialize_observed(
+        mut connection: Connection,
+        after_read: impl FnOnce(i64),
+    ) -> Result<Self> {
+        let binding_permits = register_writer_contract(&connection)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
         ensure!(
             (0..=SCHEMA_VERSION).contains(&version),
             "unsupported state schema {version}, supported {SCHEMA_VERSION}"
         );
+        after_read(version);
         let application: i64 =
             connection.pragma_query_value(None, "application_id", |row| row.get(0))?;
         ensure!(
@@ -131,7 +147,14 @@ impl Store {
             // Recheck under the write lock: another runtime may have initialized it.
             let locked_version: i64 =
                 tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
-            if locked_version == 0 {
+            if locked_version == SCHEMA_VERSION {
+                // A concurrent initializer completed while this connection waited
+                // for Immediate. Recheck its application, then do not reinstall
+                // or classify the already-complete current namespace as legacy.
+                let application: i64 =
+                    tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
+                ensure!(application == APPLICATION_ID, "not an rrx state database");
+            } else if locked_version == 0 {
                 let application: i64 =
                     tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
                 let objects: i64 = tx.query_row(
@@ -145,6 +168,7 @@ impl Store {
                 );
                 tx.execute_batch(include_str!("schema.sql"))?;
                 runtime::install_schema(&tx)?;
+                managed_binding::install_schema(&tx)?;
                 execution::install_schema(&tx)?;
                 tx.pragma_update(None, "application_id", APPLICATION_ID)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -156,6 +180,8 @@ impl Store {
                 let application: i64 =
                     tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
                 ensure!(application == APPLICATION_ID, "not an rrx state database");
+                managed_binding::validate_legacy_namespace(&tx)?;
+                managed_binding::install_schema(&tx)?;
                 // Ordered JSON-format migrations; SQL layout and ownership/audit stay intact.
                 // v2 adds Project blocked_reason; v3 adds authoritative Workflow records.
                 if locked_version < 6 {
@@ -188,7 +214,7 @@ impl Store {
                         execution::native_results::install_schema(&tx)?;
                         execution::install_writer_guards(&tx)?;
                     }
-                    if matches!(next, 7..=9) {
+                    if matches!(next, 7..=10) {
                         execution::install_writer_guards(&tx)?;
                     }
                     tx.pragma_update(None, "user_version", next)?;
@@ -197,10 +223,31 @@ impl Store {
             if locked_version > 0 && locked_version < 8 {
                 execution::verification::hold_existing_managed(&tx)?;
             }
+            if locked_version > 0 && locked_version < 10 {
+                managed_binding::hold_existing_workflows(&tx, &binding_permits)?;
+            }
+            // Assert the complete installed/current protection contract before
+            // publishing a fresh/migrated schema. No selected-DB reinstallation.
+            managed_binding::validate_current_layout(&tx)?;
+            tx.commit()?;
+        } else {
+            // The initial version read is not a coherent current-schema proof.
+            // Recheck the exact version/application/layout before WAL or return.
+            let tx = connection.transaction()?;
+            let current: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            let application: i64 = tx.pragma_query_value(None, "application_id", |r| r.get(0))?;
+            ensure!(
+                current == SCHEMA_VERSION && application == APPLICATION_ID,
+                "current state version/application changed"
+            );
+            managed_binding::validate_current_layout(&tx)?;
             tx.commit()?;
         }
         connection.pragma_update(None, "journal_mode", "WAL")?;
-        Ok(Self { connection })
+        Ok(Self {
+            connection,
+            binding_permits,
+        })
     }
 
     pub fn schema_version(&self) -> Result<i64> {

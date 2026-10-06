@@ -26,10 +26,9 @@ fn old8(path: &std::path::Path) -> Connection {
         [Uuid::new_v4().to_string()],
     )
     .unwrap();
-    for table in execution::MUTABLE_TABLES
-        .iter()
-        .filter(|t| !super::TABLES.contains(t))
-    {
+    for table in execution::MUTABLE_TABLES.iter().filter(|t| {
+        !super::TABLES.contains(t) && !crate::state::managed_binding::TABLES.contains(t)
+    }) {
         for action in ["INSERT", "UPDATE", "DELETE"] {
             old.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>8 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
         }
@@ -49,7 +48,7 @@ fn schema9_orders_actual8_and_fences_preopened_cached_writer_all_tables() {
         .unwrap();
     cached.execute([]).unwrap();
     let current = Store::open(&path).unwrap();
-    assert_eq!(current.schema_version().unwrap(), 9);
+    assert_eq!(current.schema_version().unwrap(), SCHEMA_VERSION);
     assert!(
         cached
             .execute([])
@@ -73,7 +72,10 @@ fn schema9_orders_actual8_and_fences_preopened_cached_writer_all_tables() {
                     |r| r.get(0),
                 )
                 .unwrap();
-            assert!(sql.contains("<>9"), "{table}:{action}");
+            assert!(
+                sql.contains(&format!("<>{SCHEMA_VERSION}")),
+                "{table}:{action}"
+            );
         }
     }
     assert_eq!(
@@ -95,7 +97,10 @@ fn schema9_orders_actual8_and_fences_preopened_cached_writer_all_tables() {
     drop(cached);
     drop(old);
     drop(current);
-    assert_eq!(Store::open(&path).unwrap().schema_version().unwrap(), 9);
+    assert_eq!(
+        Store::open(&path).unwrap().schema_version().unwrap(),
+        SCHEMA_VERSION
+    );
 }
 #[test]
 fn schema9_collision_refuses_without_changing_actual8_bytes() {
