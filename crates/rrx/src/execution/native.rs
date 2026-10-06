@@ -1758,8 +1758,14 @@ impl Core {
         effort: Option<String>,
         profile: resources::ResourceProfile,
     ) {
-        if self.handoff.as_ref().is_some_and(|handoff| handoff.accept().is_err()) {
-            if let Some(phase) = &self.phase { phase.owner.revoke(); }
+        if self
+            .handoff
+            .as_ref()
+            .is_some_and(|handoff| handoff.accept().is_err())
+        {
+            if let Some(phase) = &self.phase {
+                phase.owner.revoke();
+            }
             return;
         }
         let result = if self.unit.provider == "codex" {

@@ -1,8 +1,8 @@
 //! SAME Prepared registration, exact intent and known-commit activation.
 use super::*;
 mod observation;
-pub(crate) use observation::NativeTransportSettlementPlan;
 use crate::runtime::phase_effect_admission::PhaseEffectAdmissionGuard;
+pub(crate) use observation::NativeTransportSettlementPlan;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RegistrationAckSource {

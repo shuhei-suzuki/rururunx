@@ -35,31 +35,67 @@ pub(crate) struct Refused<S> {
 impl NativeChildCell {
     pub(crate) fn adopt(&mut self, child: Child) {
         // The one-shot spawn checks Empty before creating a Child.
-        *self = Self::Raw(RetainedRawProcess { child: Some(child), pid: None, reaped: false });
+        *self = Self::Raw(RetainedRawProcess {
+            child: Some(child),
+            pid: None,
+            reaped: false,
+        });
     }
     pub(crate) fn qualify(&mut self) -> Result<()> {
-        let Self::Raw(raw) = self else { anyhow::bail!("transport raw custody absent") };
+        let Self::Raw(raw) = self else {
+            anyhow::bail!("transport raw custody absent")
+        };
         raw.qualify()
     }
     pub(crate) fn upgrade_in_place(&mut self) -> Result<()> {
-        let Self::Raw(raw) = self else { anyhow::bail!("transport raw custody absent") };
-        ensure!(!raw.reaped && raw.child.is_some(), "transport child no longer unreaped");
+        let Self::Raw(raw) = self else {
+            anyhow::bail!("transport raw custody absent")
+        };
+        ensure!(
+            !raw.reaped && raw.child.is_some(),
+            "transport child no longer unreaped"
+        );
         let pid = raw.pid.context("transport child unqualified")?;
         // All checks precede the only move; the emptied raw Drop has no child.
         let child = raw.child.take().unwrap();
-        *self = Self::Owned(OwnedProcess { child, pid, unreaped: true });
+        *self = Self::Owned(OwnedProcess {
+            child,
+            pid,
+            unreaped: true,
+        });
         Ok(())
     }
     pub(crate) fn take_native_pipes(&mut self) -> Result<NativePipes> {
-        let Self::Owned(process) = self else { anyhow::bail!("transport owned custody absent") };
+        let Self::Owned(process) = self else {
+            anyhow::bail!("transport owned custody absent")
+        };
         let child = &mut process.child;
-        ensure!(child.stdin.is_some() && child.stdout.is_some() && child.stderr.is_some(), "transport pipes incomplete");
-        Ok(NativePipes { stdin: child.stdin.take().unwrap(), stdout: child.stdout.take().unwrap(), stderr: child.stderr.take().unwrap() })
+        ensure!(
+            child.stdin.is_some() && child.stdout.is_some() && child.stderr.is_some(),
+            "transport pipes incomplete"
+        );
+        Ok(NativePipes {
+            stdin: child.stdin.take().unwrap(),
+            stdout: child.stdout.take().unwrap(),
+            stderr: child.stderr.take().unwrap(),
+        })
     }
-    pub(crate) fn transfer_with<S, T>(&mut self, open: bool, shell: S, build: fn(S, OwnedProcess) -> T) -> std::result::Result<T, Refused<S>> {
+    pub(crate) fn transfer_with<S, T>(
+        &mut self,
+        open: bool,
+        shell: S,
+        build: fn(S, OwnedProcess) -> T,
+    ) -> std::result::Result<T, Refused<S>> {
         let ready = matches!(self, Self::Owned(p) if p.unreaped && p.child.stdin.is_none() && p.child.stdout.is_none() && p.child.stderr.is_none());
-        if !open || !ready { return Err(Refused { shell, reason: "transport transfer refused" }); }
-        let Self::Owned(process) = std::mem::replace(self, Self::Transferred) else { unreachable!() };
+        if !open || !ready {
+            return Err(Refused {
+                shell,
+                reason: "transport transfer refused",
+            });
+        }
+        let Self::Owned(process) = std::mem::replace(self, Self::Transferred) else {
+            unreachable!()
+        };
         Ok(build(shell, process))
     }
     pub(crate) fn qualified(&self) -> bool {
@@ -67,15 +103,36 @@ impl NativeChildCell {
     }
     pub(crate) fn hygiene(&mut self) -> &'static str {
         match self {
-            Self::Raw(raw) => { let qualified = raw.pid.is_some(); raw.hygiene(); if qualified { "group_signal_attempted" } else { "direct_kill_attempted" } },
-            Self::Owned(p) => { if p.unreaped { if p.signal_group().is_err() { let _ = p.child.start_kill(); } } "group_signal_attempted" },
+            Self::Raw(raw) => {
+                let qualified = raw.pid.is_some();
+                raw.hygiene();
+                if qualified {
+                    "group_signal_attempted"
+                } else {
+                    "direct_kill_attempted"
+                }
+            }
+            Self::Owned(p) => {
+                if p.unreaped {
+                    if p.signal_group().is_err() {
+                        let _ = p.child.start_kill();
+                    }
+                }
+                "group_signal_attempted"
+            }
             _ => "n/a",
         }
     }
     pub(crate) fn try_reap(&mut self) -> Result<Option<ExitStatus>> {
         match self {
             Self::Raw(raw) => raw.reap(),
-            Self::Owned(p) => { let status = p.child.try_wait()?; if status.is_some() { p.unreaped = false; } Ok(status) },
+            Self::Owned(p) => {
+                let status = p.child.try_wait()?;
+                if status.is_some() {
+                    p.unreaped = false;
+                }
+                Ok(status)
+            }
             _ => Ok(None),
         }
     }

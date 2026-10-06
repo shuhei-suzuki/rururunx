@@ -15,28 +15,40 @@ pub(crate) struct NativeTransportSettlementPlan {
 impl NativeTransportSettlementPlan {
     fn validate_original(&self) -> Result<()> {
         self.observation.validate_original()?;
-        self.observation.actor().owner.validate_known_registration()?;
+        self.observation.phase().validate_known_registration()?;
         Ok(())
     }
     fn exact_effect(&self, tx: &Transaction<'_>, after: bool) -> Result<bool> {
         let intent = self.observation.plan().transport_intent();
         let effect = if after { &self.after } else { intent };
-        let raw = if after { self.after_raw.as_str() } else { self.observation.plan().transport_intent_raw() };
-        let (p,g,t) = scope_keys(&effect.scope)?;
+        let raw = if after {
+            self.after_raw.as_str()
+        } else {
+            self.observation.plan().transport_intent_raw()
+        };
+        let (p, g, t) = scope_keys(&effect.scope)?;
         Ok(tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE id IS ?1 AND unit_id IS ?2 AND project_id IS ?3 AND goal_id IS ?4 AND task_id IS ?5 AND idempotency_key IS ?6 AND state IS ?7 AND body IS ?8 AND version IS ?9)",params![effect.id.to_string(),effect.unit_id.to_string(),p,g,t,effect.idempotency_key,key(effect.state),raw,effect.version],|r|r.get(0))?)
     }
 }
 
 impl Store {
-    pub(crate) fn plan_transport_settlement(runtime: &crate::execution::RuntimeOwner, observation: Arc<NativeTransportObservation>, closure: bool) -> Result<Arc<NativeTransportSettlementPlan>> {
+    pub(crate) fn plan_transport_settlement(
+        runtime: &crate::execution::RuntimeOwner,
+        observation: Arc<NativeTransportObservation>,
+        closure: bool,
+    ) -> Result<Arc<NativeTransportSettlementPlan>> {
         observation.validate_original()?;
-        let phase = &observation.actor().owner;
+        let phase = observation.phase();
         phase.validate_known_registration()?;
-        let normal = if closure { None } else { Some(plan_native_owner(runtime, phase)?) };
+        let normal = if closure {
+            None
+        } else {
+            Some(plan_native_owner(runtime, phase)?)
+        };
         let origin = observation.plan();
         let f = origin.launch.allocation().facts();
-        let (unit,session,owner_row,readiness) = snapshot(runtime, |tx| {
-            let budget=version::InventoryBudget::new(tx)?;
+        let (unit, session, owner_row, readiness) = snapshot(runtime, |tx| {
+            let budget = version::InventoryBudget::new(tx)?;
             budget.finish((|| {
                 let unit=version::LatestUnitImage::read(tx,origin.unit())?;
                 let session=PairRow::read(tx,"records",&f.session_id.to_string())?;
@@ -60,18 +72,37 @@ impl Store {
                 Ok((unit,session,owner_row,readiness))
             })())
         })?;
-        let mut after=origin.transport_intent().clone();
-        after.state=observation.state(); after.receipt=observation.receipt().clone(); after.version=2;
-        let after_raw=serde_json::to_string(&after)?;
-        ensure!(after_raw.len()<=8192,"transport observation exceeds bound");
-        Ok(Arc::new(NativeTransportSettlementPlan { observation,owner:normal,unit,session,owner_row,readiness,after,after_raw }))
+        let mut after = origin.transport_intent().clone();
+        after.state = observation.state();
+        after.receipt = observation.receipt().clone();
+        after.version = 2;
+        let after_raw = serde_json::to_string(&after)?;
+        ensure!(
+            after_raw.len() <= 8192,
+            "transport observation exceeds bound"
+        );
+        Ok(Arc::new(NativeTransportSettlementPlan {
+            observation,
+            owner: normal,
+            unit,
+            session,
+            owner_row,
+            readiness,
+            after,
+            after_raw,
+        }))
     }
-    pub(crate) fn record_transport_settlement(&mut self, plan: &Arc<NativeTransportSettlementPlan>) -> Result<()> {
+    pub(crate) fn record_transport_settlement(
+        &mut self,
+        plan: &Arc<NativeTransportSettlementPlan>,
+    ) -> Result<()> {
         plan.validate_original()?;
-        selected_database(&self.connection,plan.observation.plan().launch())?;
-        let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        selected_database(&self.connection, plan.observation.plan().launch())?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         {
-            let budget=version::InventoryBudget::new(&tx)?;
+            let budget = version::InventoryBudget::new(&tx)?;
             budget.finish((|| {
                 plan.validate_original()?;
                 if plan.exact_effect(&tx,true)? { return Ok(()); }
@@ -83,6 +114,7 @@ impl Store {
                 Ok(())
             })())?;
         }
-        tx.commit()?; Ok(())
+        tx.commit()?;
+        Ok(())
     }
 }
