@@ -139,6 +139,7 @@ impl ControlEndpoint {
         }
         let socket_directory = tempfile::Builder::new()
             .prefix("rrx-control-")
+            .permissions(std::fs::Permissions::from_mode(0o700))
             .tempdir_in("/tmp")?;
         let socket = socket_directory.path().canonicalize()?.join("control.sock");
         owned_directory(socket.parent().context("socket parent missing")?, true)?;
@@ -249,7 +250,11 @@ mod tests {
         let before = owner.store().lock().unwrap().connection_epoch_for_test();
         let endpoint = ControlEndpoint::bind(owner.clone()).unwrap();
         assert!(ControlEndpoint::bind(owner.clone()).is_err());
-        let (accepted, connected) = tokio::join!(endpoint.accept(), connect(owner.state_path()));
+        let (accepted, connected) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(endpoint.accept(), connect(owner.state_path()))
+        })
+        .await
+        .unwrap();
         let _server = accepted.unwrap();
         let (identity, _reader) = connected.unwrap();
         assert_eq!(identity.state, owner.state_path());
@@ -283,7 +288,11 @@ mod tests {
             serde_json::to_vec(&changed).unwrap(),
         )
         .unwrap();
-        let (accepted, connected) = tokio::join!(endpoint.accept(), connect(owner.state_path()));
+        let (accepted, connected) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(endpoint.accept(), connect(owner.state_path()))
+        })
+        .await
+        .unwrap();
         assert!(accepted.is_ok());
         assert!(
             connected.is_err(),
