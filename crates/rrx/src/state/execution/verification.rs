@@ -528,6 +528,90 @@ fn checked(
     Ok(current)
 }
 impl Store {
+    /// Actual collector/completion-handoff Drop, never a DTO success authority.
+    /// Preserve known work and immutable observations; logical closure, uncertain
+    /// pending effects, quarantined namespaces and janitor admission are atomic.
+    pub(crate) fn abandon_command_verifier(&mut self, birth: &ExecutionUnit) -> Result<()> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut current = unit_tx(&tx, birth.id)?;
+        ensure!(
+            current.scope == birth.scope
+                && current.owner_epoch == birth.owner_epoch
+                && current.generation == birth.generation
+                && current.profile_digest == birth.profile_digest
+                && current.kind == UnitKind::Verifier
+                && current.phase == Phase::Tests.key()
+                && current.provider == "verifier"
+                && current.session_id.is_none()
+                && is_command_unit(&tx, current.id)?,
+            "verification abandonment owner/purpose differs"
+        );
+        if !current.native_effects_open && !current.result_finalization_open {
+            tx.commit()?;
+            return Ok(());
+        }
+        validate_authority(&tx, &current.authority(), false, false)?;
+        let mut query=tx.prepare("SELECT id FROM managed_effects WHERE unit_id=?1 AND state='pending' ORDER BY rowid LIMIT 65")?;
+        let effects = query
+            .query_map([current.id.to_string()], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        drop(query);
+        ensure!(
+            effects.len() <= 64,
+            "verification pending effect bound exceeded"
+        );
+        for id in effects {
+            let mut effect = effect_tx(&tx, id.parse()?)?;
+            ensure!(
+                effect.scope == current.scope && effect.unit_id == current.id,
+                "verification pending effect foreign"
+            );
+            let expected = effect.version;
+            effect.version = expected.checked_add(1).context("effect version overflow")?;
+            effect.state = EffectState::Unknown;
+            ensure!(tx.execute("UPDATE managed_effects SET state='unknown',version=?1,body=?2 WHERE id=?3 AND unit_id=?4 AND state='pending' AND version=?5",params![effect.version,serde_json::to_string(&effect)?,id,current.id.to_string(),expected])?==1,"verification abandonment effect CAS differs");
+        }
+        let mut query=tx.prepare("SELECT id FROM resource_leases WHERE unit_id=?1 AND state!='released' ORDER BY rowid LIMIT 17")?;
+        let leases = query
+            .query_map([current.id.to_string()], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        drop(query);
+        ensure!(leases.len() <= 16, "verification resource bound exceeded");
+        for id in leases {
+            let mut lease = lease_tx(&tx, id.parse()?)?;
+            ensure!(
+                lease.unit_id == current.id && lease.scope == current.scope,
+                "verification abandonment lease foreign"
+            );
+            if lease.state == LeaseState::Quarantined {
+                continue;
+            }
+            let expected = lease.version;
+            lease.version = expected.checked_add(1).context("lease version overflow")?;
+            lease.state = LeaseState::Quarantined;
+            ensure!(tx.execute("UPDATE resource_leases SET state='quarantined',version=?1,body=?2 WHERE id=?3 AND unit_id=?4 AND version=?5",params![lease.version,serde_json::to_string(&lease)?,id,current.id.to_string(),expected])?==1,"verification abandonment lease CAS differs");
+        }
+        current.native_effects_open = false;
+        current.result_finalization_open = false;
+        current.state = UnitState::Retired;
+        current.disposition = Disposition::Lost;
+        if current.work.is_none() {
+            current.work = Some(WorkOutcome::Unknown);
+        }
+        write_unit(&tx, &mut current)?;
+        tx.execute("UPDATE verification_runs SET state='unknown',version=version+1 WHERE unit_id=?1 AND state='admitted'",[current.id.to_string()])?;
+        tx.execute("INSERT INTO cleanup_jobs(unit_id,next_due,attempts,version) VALUES(?1,?2,0,1) ON CONFLICT(unit_id) DO NOTHING",params![current.id.to_string(),now_ms()])?;
+        append_event(
+            &tx,
+            &current.scope,
+            "verification.abandoned",
+            json!({"unit":current.id,"work":current.work,"cleanup":current.cleanup}),
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
     pub(crate) fn admit_verification_profile(
         &mut self,
         project_id: ProjectId,
@@ -825,20 +909,6 @@ impl Store {
         );
         tx.commit()?;
         Ok(())
-    }
-    pub(crate) fn retire_verification(
-        &mut self,
-        grant: &VerificationGrant,
-    ) -> Result<ExecutionUnit> {
-        let current = unit_tx(&self.connection, grant.unit().id)?;
-        ensure!(
-            current.scope == grant.unit().scope
-                && current.generation == grant.unit().generation
-                && current.owner_epoch == grant.unit().owner_epoch
-                && is_command_unit(&self.connection, current.id)?,
-            "verification retirement owner mismatch"
-        );
-        self.retire_execution(&current.authority(), false)
     }
     pub(crate) fn finish_verification(
         &mut self,

@@ -1042,3 +1042,165 @@ async fn actual_resource_admission_waiter_drop_and_task_cancel_create_no_unit_or
             .unwrap(),
     );
 }
+
+#[tokio::test]
+async fn actual_collected_known_exit_survives_retention_io_failure_without_acceptance() {
+    for exit in [0, 7] {
+        let (f, engine, verifier, _) = ready(
+            "codex",
+            Some(profile(&format!(
+                "import sys; print('known-before-retention',flush=True); sys.exit({exit})"
+            ))),
+        )
+        .await;
+        let owner = f.owner.clone();
+        verifier.before_commands(Box::new(move |id| {
+            let root = owner.root.join("verification-evidence");
+            std::fs::create_dir_all(&root).unwrap();
+            // Real filesystem failure at the actual retention producer, after
+            // actual owned exit observation; no fake collected result is used.
+            std::fs::write(root.join(id.to_string()), "block evidence directory").unwrap();
+        }));
+        assert!(matches!(
+            engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+            StepResult::Waiting {
+                phase: Phase::Tests,
+                ..
+            }
+        ));
+        let workflow = engine.snapshot(f.task.id).unwrap();
+        assert!(!workflow.completed.contains_key(&Phase::Tests));
+        let unit = workflow
+            .history
+            .iter()
+            .find(|a| a.phase == Phase::Tests)
+            .unwrap()
+            .unit
+            .as_ref()
+            .unwrap()
+            .unit;
+        let store = f.owner.store.lock().unwrap();
+        let run = store.verification_run(unit).unwrap();
+        assert!(!run.certifying && run.commands.len() == 1);
+        assert!(run.commands[0].work_known);
+        assert_eq!(run.commands[0].exit, Some(exit));
+        assert_eq!(
+            run.commands[0].stdout.bytes,
+            b"known-before-retention\n".len() as u64
+        );
+        assert_eq!(
+            run.commands[0].stdout.sha256,
+            format!("{:x}", Sha256::digest(b"known-before-retention\n"))
+        );
+        let current = store.execution_unit(unit).unwrap();
+        assert!(!current.native_effects_open && !current.result_finalization_open);
+        assert_eq!(current.cleanup, execution::CleanupOutcome::Unknown);
+        assert!(
+            store
+                .managed_effects(unit)
+                .unwrap()
+                .iter()
+                .any(|e| e.kind == "verification_command"
+                    && e.state == execution::EffectState::Confirmed)
+        );
+        drop(store);
+        assert!(verifier.inspect_stream(unit, 0, false, 4096).is_err());
+        engine
+            .cancel(f.task.id, "retention fault complete".into())
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn actual_workflow_future_abort_fences_command_unit_and_quarantines_unknown_work() {
+    let (f,engine,_,artifact)=ready("codex",Some(profile("import os,pathlib,time; pathlib.Path(os.environ['TMPDIR']).joinpath('abort-ready').write_text('ready'); print('not completion',flush=True); time.sleep(30)"))).await;
+    let engine = Arc::new(engine);
+    let running_engine = engine.clone();
+    let task = f.task.id;
+    let running = tokio::spawn(async move { running_engine.step(task, BTreeMap::new()).await });
+    let unit = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let workflow = engine.snapshot(task).unwrap();
+            if let Some(reference) = workflow
+                .history
+                .iter()
+                .find(|a| a.phase == Phase::Tests)
+                .and_then(|a| a.unit.as_ref())
+            {
+                let unit = f
+                    .owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .execution_unit(reference.unit)
+                    .unwrap();
+                if unit
+                    .worktree
+                    .parent()
+                    .unwrap()
+                    .join("profile.json")
+                    .is_file()
+                {
+                    let profile = execution::resources::ResourceManager::new(f.owner.clone())
+                        .profile(&unit)
+                        .unwrap();
+                    if profile.temp.join("abort-ready").is_file() {
+                        break unit.id;
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    running.abort();
+    assert!(running.await.unwrap_err().is_cancelled());
+    {
+        let store = f.owner.store.lock().unwrap();
+        let current = store.execution_unit(unit).unwrap();
+        assert!(!current.native_effects_open && !current.result_finalization_open);
+        assert_eq!(current.state, execution::UnitState::Retired);
+        assert_eq!(current.disposition, execution::Disposition::Lost);
+        assert_eq!(current.work, Some(execution::WorkOutcome::Unknown));
+        assert_eq!(current.cleanup, execution::CleanupOutcome::Unknown);
+        assert!(store.managed_effects(unit).unwrap().iter().any(|e| e.kind
+            == "verification_command"
+            && e.state == execution::EffectState::Unknown));
+        assert!(
+            store
+                .execution_leases(unit)
+                .unwrap()
+                .iter()
+                .all(|l| l.state == execution::LeaseState::Quarantined)
+        );
+        assert!(
+            store
+                .due_execution_cleanup(now_ms().saturating_add(1000), 1024)
+                .unwrap()
+                .contains(&unit)
+        );
+        assert!(!store.verification_run(unit).unwrap().certifying);
+    }
+    assert!(
+        !engine
+            .snapshot(task)
+            .unwrap()
+            .completed
+            .contains_key(&Phase::Tests)
+    );
+    let original = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .result_artifact(artifact)
+        .unwrap();
+    execution::results::ResultStore::new(f.owner.clone())
+        .verify(&original)
+        .await
+        .unwrap();
+    engine
+        .cancel(task, "aborted future accounted".into())
+        .unwrap();
+}

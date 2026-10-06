@@ -531,3 +531,39 @@ serialization does not replace the four Task control. Runtime accounting/fair
 native admission and physical resource pressure/recovery remain their independent
 contracts. The source baseline has no new process census, kill guarantee, license
 change or fabricated approval.
+
+### 11.2. Factual command receipt and abandonment lifetime
+
+The independently reviewed first source exposed two incomplete failure paths.
+File retention previously preceded the command receipt, losing an actually known
+exit when filesystem I/O failed. Preparation abandonment protection also ended
+after snapshot creation, leaving a dropped command/evaluation future without
+logical closure. These are source findings, not passing acceptance evidence.
+
+The actual sealed owned command observation is now committed before independent
+file retention. Retention errors preserve exit/signal, pipe byte counts/digests and
+known command effect disposition; missing bytes remain unavailable to inspection.
+They leave the aggregate run non-certifying, and cannot produce completion. EOF
+metadata records pipe collection, not a claim that retained files exist. A missing
+file or retention error is not proof that the command failed, and does not replace
+the observed command result. All accepted completion still inspects actual retained
+files and current readonly input/artifact.
+
+An owner-aware private abandonment guard is created immediately after real Unit
+registration, retained through preparation, commands, aggregate inspection and the
+private completion handoff, and dropped only after actual Store consumption or
+abandonment. It rereads the exact same Unit/Scope/epoch/generation/profile and
+command purpose. For open grants it atomically closes native/result permissions,
+marks pending effects Unknown, quarantines held namespaces, records conservative
+Lost disposition and admits bounded cleanup. Known work/terminal observations are
+preserved; absent work becomes Unknown. Accepted or otherwise already closed Units
+are untouched. Failure to persist closure leaves attention/held resources, never
+proof of death or a new completion. The inner owned process still performs its
+existing best-effort Drop stop independently.
+
+Actual controls inject retention failure at the real filesystem producer after an
+owned exit and abort the real Workflow future while an owned command is running.
+They inspect durable factual receipts, closed permissions, uncertain effects,
+quarantine/cleanup admission and absence of accepted Tests. These controls and
+independent fixed-source re-review must close the original findings before the
+whole first-delivery component is qualified.

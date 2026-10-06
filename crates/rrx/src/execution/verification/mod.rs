@@ -171,6 +171,21 @@ pub(crate) struct VerificationCompletion {
     grant: VerificationGrant,
     run: VerificationRun,
     run_digest: String,
+    _abandonment: VerificationAbandonment,
+}
+/// Retained from actual Unit registration through Store completion handoff.
+/// Future Drop does not run evaluate's error branch; this independent guard
+/// conservatively closes grants while retaining known receipts and held resources.
+struct VerificationAbandonment {
+    owner: Arc<RuntimeOwner>,
+    unit: ExecutionUnit,
+}
+impl Drop for VerificationAbandonment {
+    fn drop(&mut self) {
+        if let Ok(mut store) = self.owner.store.lock() {
+            let _ = store.abandon_command_verifier(&self.unit);
+        }
+    }
 }
 impl VerificationCompletion {
     pub(crate) fn grant(&self) -> &VerificationGrant {
@@ -361,6 +376,10 @@ impl ManagedVerifier {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .reserve_verification(&invocation, &claim, draft, &admitted)?;
+        let abandonment = VerificationAbandonment {
+            owner: self.owner.clone(),
+            unit: grant.unit.clone(),
+        };
         // From this point every return carries the authorized successor version.
         let result = self
             .run(&grant, &admitted, &manager, &profile, admission)
@@ -418,7 +437,7 @@ impl ManagedVerifier {
                         .store
                         .lock()
                         .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                        .retire_verification(&grant);
+                        .abandon_command_verifier(grant.unit());
                     return Ok(ManagedVerificationResult {
                         successor,
                         outcome: GateOutcome::Waiting(
@@ -447,6 +466,7 @@ impl ManagedVerifier {
                         grant,
                         run,
                         run_digest,
+                        _abandonment: abandonment,
                     }),
                 })
             }
@@ -462,7 +482,7 @@ impl ManagedVerifier {
                     .store
                     .lock()
                     .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .retire_verification(&grant);
+                    .abandon_command_verifier(grant.unit());
                 Ok(ManagedVerificationResult{successor,outcome:GateOutcome::Waiting("verification operation incomplete; inspect durable intent and retry in a fresh namespace".into()),completion:None})
             }
         }
@@ -475,14 +495,12 @@ impl ManagedVerifier {
         profile: &resources::ResourceProfile,
         admission: tokio::sync::OwnedMutexGuard<()>,
     ) -> Result<(VerificationRun, results::ResultSnapshot)> {
-        let mut preparation = owner::PreparationGuard::new(self.owner.clone(), grant.unit());
         manager.reserve(grant.unit(), profile)?;
         drop(admission);
         manager.materialize(profile)?;
         let snapshot = results::ResultStore::new(self.owner.clone())
             .snapshot(grant.unit())
             .await?;
-        preparation.disarm();
         #[cfg(test)]
         if let Some(hook) = self.before_commands.lock().unwrap().take() {
             hook(grant.unit.id);
@@ -556,15 +574,18 @@ impl ManagedVerifier {
                 bytes <= plan::RUN_BYTES as u64,
                 "verification run output exceeded bound"
             );
-            let root = collector::evidence_root(&self.owner.root, grant.unit.id, index);
-            collector::retain(&root, "stdout", &capture.stdout)?;
-            collector::retain(&root, "stderr", &capture.stderr)?;
+            // Durable factual work precedes independently fallible retention.
+            // Missing files can never mint completion, but must not erase a
+            // real known exit/signal and bounded owned observation.
             self.owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?
                 .complete_verification_command(grant, index, &capture)?;
             guard.disarm();
+            let root = collector::evidence_root(&self.owner.root, grant.unit.id, index);
+            collector::retain(&root, "stdout", &capture.stdout)?;
+            collector::retain(&root, "stderr", &capture.stderr)?;
             let pass = capture.observation().certifying();
             commands.push(capture.observation().clone());
             if !pass {
