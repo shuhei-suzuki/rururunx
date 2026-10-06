@@ -279,6 +279,7 @@ pub trait AgentAdapter: Send + Sync {
 #[derive(Default)]
 pub struct AgentRegistry {
     adapters: BTreeMap<String, Arc<dyn AgentAdapter>>,
+    native_ports: BTreeMap<String, Arc<native::NativePhasePort>>,
     managed_owner: Option<Arc<crate::execution::RuntimeOwner>>,
 }
 impl AgentRegistry {
@@ -392,21 +393,35 @@ impl AgentRegistry {
             ..Self::default()
         };
         for (name, provider, program) in selected {
-            registry.register(
-                name.clone(),
-                Arc::new(native::NativeAdapter {
-                    owner: owner.clone(),
-                    name,
-                    provider,
-                    program,
-                    sessions: sessions.clone(),
-                }),
-            )?;
+            let adapter = Arc::new(native::NativeAdapter {
+                owner: owner.clone(),
+                name: name.clone(),
+                provider,
+                program,
+                sessions: sessions.clone(),
+            });
+            registry.register(name.clone(), adapter.clone())?;
+            registry
+                .native_ports
+                .insert(name, Arc::new(native::NativePhasePort::installed(adapter)));
         }
         Ok(registry)
     }
     pub(crate) fn managed_owner(&self) -> Option<Arc<crate::execution::RuntimeOwner>> {
         self.managed_owner.clone()
+    }
+    /// A concrete installed Native vtable; public adapter registration cannot
+    /// create this selection. This is not composition/readiness admission.
+    pub(crate) fn native_phase_port(
+        &self,
+        name: &str,
+    ) -> AdapterResult<Arc<native::NativePhasePort>> {
+        self.native_ports.get(name).cloned().ok_or_else(|| {
+            error(
+                ErrorKind::UnsupportedCapability,
+                "selected native phase port unavailable",
+            )
+        })
     }
     pub fn get(&self, name: &str) -> AdapterResult<Arc<dyn AgentAdapter>> {
         self.adapters.get(name).cloned().ok_or_else(|| {
