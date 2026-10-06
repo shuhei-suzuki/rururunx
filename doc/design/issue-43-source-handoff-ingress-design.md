@@ -40,8 +40,12 @@ space. Read/encoding finishes before the registry mutex. Refusal precedes Source
 offer and cannot move its original allocation/guard. The reserved EMPTY slot owns
 no envelope, ticket, preparation, plan or permission; its metadata is bookkeeping.
 Only the actual private Source producer returns the typed non-Clone envelope.
-Reservation retains a Weak of the original registry, the original slot Arc and
-concrete original consumer objects. It does not retain Runtime or Driver strongly.
+The pre-offer reservation retains a Weak of the original registry, the original
+empty slot Arc, and only Weak references to the SAME PhaseSupervisor and PhaseJobs.
+It may retain the original owner, control mutex and running/stopping atoms strongly:
+these have no queue/launch/Driver return edge. It must not retain the concrete
+Consumer, a strong Runtime, or any other component that leads back to the Driver
+registry while the actual worker awaits Source offer.
 
 Install consumes that non-Clone reservation exactly once. Before fallible origin
 checks, readiness decisions, effect admission or future construction, it retains
@@ -50,6 +54,14 @@ only to save real ownership. There is no ordinary envelope-returning failure aft
 this move: stopped service or a wrong original Task/port/envelope is retained Held,
 never treated as accepted preparation or automatically disposed. No observer,
 generic future or caller-supplied validator can replace the real producer.
+
+Only AFTER this independent envelope retention, install synchronously upgrades
+the SAME original Weak supervisor/jobs and constructs the invocation's concrete
+Consumer. This upgrade has no await or Source/Store access. Ended original parts,
+poison, or mismatched original owner/component identity leave the real envelope
+Held in its slot. No replacement registry, supervisor or jobs are constructed,
+and row/ID equality cannot substitute for these original objects. The transient
+install call does not return a strong Consumer to the Driver worker.
 
 Only a matching actual envelope is given to the existing concrete transfer.
 Its eager abandonment guard exists BEFORE Tokio spawn, and its actual handle
@@ -107,6 +119,30 @@ no external effects from earlier preparation helpers.
 | Marker planning/commit uncertainty | Retain SAME ticket/capacity/origin/plan in independent consumer; original marker protocol only |
 | All real Runtime/executor owners end | No universal memory/child-death/cleanup guarantee; durable uncertainty does not reconstruct private proofs |
 
+The ownership graphs are deliberately different before and after install:
+
+* Before offer: Driver registry -> actual worker future -> original reservation
+  -> empty slot and nongrant owner/admission atoms; references from that reservation
+  to the original handoff registry, supervisor and jobs are Weak. Neither the
+  empty slot nor its watch retains the Consumer or a ticket. The worker's genuine
+  ticket remains its pre-existing worker proof; the reservation adds no strong
+  queue/job return edge.
+* After install: Runtime -> handoff registry -> filled outer slot -> actual handle;
+  the independent invocation owns the filled inner Handoff and concrete Consumer.
+  The Consumer may now strongly own the SAME supervisor/jobs. It is never retained
+  in the Driver worker, outer slot or envelope. The future does not own its outer
+  slot, handoff registry, handle or Runtime. Dropping or refusing the observer
+  does not drop the actual envelope or recreate a producer.
+
+This distinction matters across Tasks. A supervisor's saved publication plan or
+marker retains a ticket whose Driver association owns the ENTIRE shared Driver
+registry, including other workers. PhaseJobs can similarly lead through a retained
+launch to that supervisor and ticket. Therefore retaining either of those parts
+strongly in a pending pre-offer Driver future would close a return cycle even when
+the retained marker belongs to a different Task. The earlier concrete-consumer
+proposal did not establish this boundary. This is a verified source ownership
+graph, not an executed Native retention failure or a universal cancellation claim.
+
 The outer registry owns its handle; the inner invocation and Source capsule never
 own that registry/handle. Native preparation custody is a separate real PhaseJob
 sibling and is not constructed or granted by this ingress. Its launch reference
@@ -121,6 +157,13 @@ Controls must cover full/stopped reserve without offer, observer Drop/unpolled
 invocation, inline offer cancellation, successful offer immediately retained,
 stop between reserve and install, duplicate admission, actual queue refusal,
 source retirement, original marker planning/uncertainty and four-Task independence.
+Add a nongrant ownership/drop control for the empty reservation: ending the real
+external supervisor/jobs owners must not leave them alive through that reservation.
+It must not fabricate Driver/Native objects. Once the genuine composition exists,
+also retain one Task's genuine marker while another Task's actual inline Source
+offer is pending, then end that second worker and verify the absence of a strong
+queue return edge without disturbing the first Task's original custody. These
+genuine controls remain unexecuted while the installed issuer is absent.
 Compiled removal of pre-offer reservation or SAME-poll retention must fail the
 intended original-asset survival/no-effects control; missing issuer is setup,
 not a successful control or mutation kill.
