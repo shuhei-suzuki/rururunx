@@ -402,7 +402,7 @@ pub(super) fn migrate_inventory(
                 .checked_add(length)
                 .context("Binding10 inventory bytes overflow")?;
             ensure!(
-                inventory.rows <= max_rows && max_bytes > 0,
+                inventory.rows <= max_rows && inventory.source_bytes <= max_bytes,
                 "Binding10 complete legacy inventory bound exceeded"
             );
             cursor = Some(rowid);
