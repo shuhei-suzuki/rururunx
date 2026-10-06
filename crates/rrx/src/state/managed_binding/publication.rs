@@ -51,6 +51,9 @@ pub(crate) struct OriginalMarker {
     plan: Arc<MarkerPublicationPlan>,
 }
 impl OriginalMarker {
+    pub(crate) fn from_original_plan(&self, plan: &Arc<MarkerPublicationPlan>) -> bool {
+        Arc::ptr_eq(&self.plan, plan)
+    }
     pub(crate) fn allocation(&self) -> &Arc<NativeAllocation> {
         &self.plan.allocation
     }
@@ -227,6 +230,57 @@ fn reserve_budget(tx: &Transaction<'_>, plan: &MarkerPublicationPlan) -> Result<
 }
 
 impl Store {
+    /// Only the Runtime's SAME retained pre-transaction plan may reconcile an
+    /// uncertain marker. No current-row capture, new marker or Native replay.
+    /// This initial reconciliation is deliberately unavailable after handoff.
+    pub(crate) fn confirm_retained_marker(
+        &mut self,
+        plan: &Arc<MarkerPublicationPlan>,
+    ) -> Result<Arc<OriginalMarker>> {
+        ensure!(
+            plan.owner
+                .state_path()
+                .to_str()
+                .is_some_and(|path| self.connection.path() == Some(path)),
+            "marker reconciliation uses another database"
+        );
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        plan.marker.before.validate_projection(
+            &tx,
+            plan.marker.task_after.parsed(),
+            plan.marker.task_after.raw(),
+            Some((
+                plan.marker.workflow_after.parsed(),
+                plan.marker.workflow_after.raw(),
+            )),
+        )?;
+        plan.validate_contract(&tx)?;
+        plan.rows.validate_tx(&tx)?;
+        let facts = plan.allocation.facts();
+        let original_unit: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM execution_units WHERE id=?1 AND project_id=?2 AND goal_id=?3 AND task_id=?4 AND generation=?5 AND owner_epoch=?6 AND version=?7 AND body=?8)",
+            params![facts.unit_id.to_string(),facts.scope.project_id.to_string(),facts.scope.goal_id.context("marker Goal missing")?.to_string(),facts.scope.task_id.context("marker Task missing")?.to_string(),facts.generation,facts.epoch,facts.unit_version,plan.marker.unit.raw()],
+            |r| r.get(0),
+        )?;
+        ensure!(original_unit, "original pre-handoff Unit changed");
+        let dispatched: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM records WHERE id=?1) OR EXISTS(SELECT 1 FROM session_units WHERE session_id=?1 OR unit_id=?2) OR EXISTS(SELECT 1 FROM native_invocations WHERE id=?3 OR unit_id=?2) OR EXISTS(SELECT 1 FROM managed_phase_admissions WHERE operation_id=?4 OR pair_id=?5)",
+            params![facts.session_id.to_string(),facts.unit_id.to_string(),facts.invocation_id.to_string(),facts.operation_id.to_string(),facts.pair_id.to_string()],
+            |r| r.get(0),
+        )?;
+        ensure!(
+            !dispatched,
+            "retained marker already has Native admission/history"
+        );
+        tx.commit()?;
+        // Still under SAME SharedStore exclusion: this private advance checks
+        // actual selection/Unit/Source and exact committed Driver bytes before
+        // accepting its original cache or its own identical planned post-cache.
+        self.publish_driver_marker(&plan.driver)?;
+        Ok(Arc::new(OriginalMarker { plan: plan.clone() }))
+    }
     /// Caller is the real Runtime under control admission and retains this exact
     /// plan in its charged slot BEFORE entry. No async/IO/public callbacks here.
     pub(crate) fn publish_managed_marker(
