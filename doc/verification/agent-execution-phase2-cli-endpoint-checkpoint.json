@@ -1,0 +1,299 @@
+{
+  "component": "Private local Runtime endpoint discovery/Hello/publication/drop",
+  "status": "Bounded local component qualification; actual service/Goal/Driver CLI composition still open",
+  "source_commit": "9740f9535fa232b5a4d2165e585160a611aad542",
+  "integrated_source": "802764f03893d0ee8e08ee19045ccb333387ad9b",
+  "same_endpoint_source_sha256": "78726041c2be20b843be04fe46a599f53d5fb2bd467d12fc29ff318a3a8cc0cd",
+  "risk": "STRICT",
+  "independent_fixed_source_reviews_closed": true,
+  "raw_evidence": {
+    "rrx-runtime-cli-endpoint-source2-review-b.json": {
+      "source_commit": "9740f9535fa232b5a4d2165e585160a611aad542",
+      "baseline_commit": "ee0ac6b515837c9632b51f45195620800b8d941a",
+      "approved_design_commit": "e4d9b8a69753dcaf1c0b82270b49f7f036f8afa4",
+      "scope": "Independent STRICT static correction delta of cli/endpoint.rs since original endpoint review; new source is read only as immutable Git objects.",
+      "verdict": "APPROVE_COMPONENT_SOURCE",
+      "severity_counts": {
+        "C": 0,
+        "H": 0,
+        "M": 0,
+        "L": 0
+      },
+      "findings": [],
+      "prior_own_findings_disposition": [
+        {
+          "id": "CLI-E-B-M1",
+          "severity": "M",
+          "disposition": "CLOSED_IN_SOURCE; actual OS test qualification is separate.",
+          "locations": [
+            "crates/rrx/src/cli/endpoint.rs:69-88,91-111,137-140,195-201,207-213"
+          ],
+          "reasoning": "The shared private_file path now opens NOFOLLOW|NONBLOCK before inspecting opened-file metadata. A no-writer FIFO read open no longer waits for a writer and is rejected by the unchanged regular-file/uid/mode/nlink checks before any descriptor read. The same helper is reached by read-only discovery, stale descriptor bind and Drop, so all original causal routes are covered without relying on an async timeout to interrupt a blocking open. Existing symlink/hardlink/permissions rejection remains intact."
+        }
+      ],
+      "evidence": [
+        {
+          "property": "Socket directory is private at creation.",
+          "locations": [
+            "crates/rrx/src/cli/endpoint.rs:142-147"
+          ],
+          "reasoning": "Tempfile Builder explicitly requests0700 at creation; the existing actual directory UID/private-mode validation still runs before bind. This avoids relying solely on a later chmod or post-creation validation and does not alter the retained Owner or endpoint publication lock."
+        },
+        {
+          "property": "FIFO control reaches all three real paths with an independent caller watchdog.",
+          "locations": [
+            "crates/rrx/src/cli/endpoint.rs:342-378"
+          ],
+          "reasoning": "The control binds a real endpoint under a real retained Owner, replaces its descriptor with a test-owned0600 FIFO via /usr/bin/mkfifo without shell evaluation, then runs actual connect, endpoint Drop and stale bind on a separate thread/current-thread Tokio Runtime. The caller requires all three refusal/preservation results through a2-second channel deadline, so a synchronous open stall does not stop the caller assertion. The control observes failure/return, not interruption or death of a blocked thread. No fake descriptor parser or canned refusal result supplies the tuple."
+        },
+        {
+          "property": "Prior valid endpoint behavior remains unchanged.",
+          "locations": [
+            "crates/rrx/src/cli/endpoint.rs:177-241,245-339"
+          ],
+          "reasoning": "Exact actual peer UID/Hello/selected state checks, bounded strict descriptor decoding, read-only discovery, separate publication lock and exact Descriptor-match Drop are unchanged. Existing actual positive and changed-Hello controls only gained finite enclosing test rendezvous waits. The fixed delta has no main/service consumer, Store or epoch creation."
+        }
+      ],
+      "proposed_controls_not_executed": [
+        "Execute the fixed actual FIFO three-route control on each declared OS; preserving malformed FIFO on Drop and refusing stale rebind are separate from successfully cleaning a valid publication.",
+        "Compile a causal NO_NONBLOCK mutant and require the independent channel-watchdog assertion to fail; do not count compile/setup failure or claim its detached blocked thread was killed.",
+        "Execute actual normal endpoint/handshake/second-publisher/missing/symlink controls after exact restoration and check selected Owner epoch unchanged."
+      ],
+      "limits": [
+        "Static immutable reads only; no builds/tests/mutations, actual FIFO/socket/OS probes, accounts/credentials, network, signals or host/config changes performed. Only private report written.",
+        "No peer reports or parent compile/test/log/progress claims consulted or inherited. Earlier compile failure and later PASS are not certified by this review.",
+        "NONBLOCK closes the concrete FIFO-open wait; this is not a general bounded-latency guarantee for every filesystem syscall or a thread/kernel-death guarantee.",
+        "The negative test intentionally detaches its worker; receipt of its final channel tuple establishes the inspected paths returned, not an independently joined thread-death proof.",
+        "Main/Runtime service request consumer, schema9/Driver/Goal authority, bounded admission queues and control acknowledgement remain separate future integration work.",
+        "No actual native, Linux/macOS execution, four-native-Task, sandbox/process-death, whole Phase2 or MVP acceptance granted."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    "rrx-runtime-cli-endpoint-source3-review-a.json": {
+      "source_commit": "9740f9535fa232b5a4d2165e585160a611aad542",
+      "baseline": "84a944621635125c6945b8d80a8dbd49c507be3e",
+      "verdict": "APPROVE_COMPONENT_TEST_DELTA",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "findings": [],
+      "evidence": [
+        "The entire fixed-object delta is confined to the endpoint test module: rustix::mkfifoat fixture setup is replaced by the absolute /usr/bin/mkfifo executable with literal -m 600 arguments and one test-owned path.",
+        "There is no shell interpolation, environment/credential inventory or broadened cleanup action. Child completion/status is observed synchronously before the actual FIFO connect/drop/stale-bind controls begin.",
+        "Production private_file NONBLOCK|NOFOLLOW correction, bounded descriptor reads and exact endpoint ownership/Hello behavior are byte-unchanged from the previously reviewed84 source."
+      ],
+      "limits": [
+        "Static test-delta review only. No tests, build, native provider, network or OS fixture was executed by this reviewer.",
+        "The original84 compile failure reached no runtime controls; this review does not turn it into a pass. Portability/runtime qualification of /usr/bin/mkfifo depends on actual configured host controls.",
+        "The thread watchdog remains bounded observation, not guaranteed thread/kernel termination. No complete Runtime, native or MVP acceptance."
+      ],
+      "live_handles": [],
+      "commands_closed": true,
+      "source_modified": false,
+      "peer_findings_consulted_for_current_delta": false
+    },
+    "rrx-cli-endpoint-974-checks.json": {
+      "source_commit": "9740f9535fa232b5a4d2165e585160a611aad542",
+      "clean_before": true,
+      "results": [
+        {
+          "name": "endpoint",
+          "argv": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "--offline",
+            "--target-dir",
+            "/private/tmp/rrx-phase2-target",
+            "cli::endpoint::tests",
+            "--",
+            "--test-threads=4"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-cli-endpoint-974-endpoint.log",
+          "sha256": "d6673a3c46a472bf14e81a6bc0154a91b73a30e1f469603fa3b0b8381a0ffc47",
+          "elapsed_seconds": 6.91
+        },
+        {
+          "name": "fmt",
+          "argv": [
+            "cargo",
+            "fmt",
+            "--all",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-cli-endpoint-974-fmt.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "elapsed_seconds": 0.487
+        },
+        {
+          "name": "clippy",
+          "argv": [
+            "cargo",
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--offline",
+            "--target-dir",
+            "/private/tmp/rrx-phase2-target",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-cli-endpoint-974-clippy.log",
+          "sha256": "6e7db3edded086ddb9e91afa040ccbf23f47cc39de84616c8d05031c1e4e0e41",
+          "elapsed_seconds": 4.829
+        },
+        {
+          "name": "build",
+          "argv": [
+            "cargo",
+            "build",
+            "--workspace",
+            "--all-targets",
+            "--offline",
+            "--target-dir",
+            "/private/tmp/rrx-phase2-target"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-cli-endpoint-974-build.log",
+          "sha256": "7dc8440375a2ecd7fb9e2f10ee7f1b0931ee7328980d9f91fb6b665071394c30",
+          "elapsed_seconds": 5.583
+        }
+      ],
+      "clean_after": true,
+      "head_after": "9740f9535fa232b5a4d2165e585160a611aad542"
+    },
+    "metadata.json": {
+      "source_commit": "9740f9535fa232b5a4d2165e585160a611aad542",
+      "results": [
+        {
+          "name": "nonblocking_discovery",
+          "mutation_commit": "d7d6e1e10c12ae91c0924918a6e856d7138f6957",
+          "clean_before": true,
+          "argv": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "--offline",
+            "--target-dir",
+            "/private/tmp/rrx-phase2-retained-mutation-target",
+            "cli::endpoint::tests::actual_fifo_descriptor_refuses_connect_drop_and_stale_bind_without_blocking",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "compiled": true,
+          "assertion_kill": true,
+          "log": "/private/tmp/rrx-cli-endpoint-mutation-evidence/nonblocking_discovery.log",
+          "log_sha256": "6981a8f47c560ef210e78a8b3640bcc4d322b52d691950835f1188c2c8766b83",
+          "patch_sha256": "371ad62a331f9b7c1ffd3632ce6d8ef94dcf68e7c386387987a9d51167c5a286",
+          "elapsed_seconds": 19.544,
+          "restore_commit": "965ada536a8fafe817902ebf1d7c751f9c7d74c2",
+          "exact_tree_restored": true
+        },
+        {
+          "name": "exact_hello_identity",
+          "mutation_commit": "489ea0970ec4ae940345db2d32bf8e1071ab59af",
+          "clean_before": true,
+          "argv": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "--offline",
+            "--target-dir",
+            "/private/tmp/rrx-phase2-retained-mutation-target",
+            "cli::endpoint::tests::discovery_refuses_changed_descriptor_and_actual_hello_without_deleting_it",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "compiled": true,
+          "assertion_kill": true,
+          "log": "/private/tmp/rrx-cli-endpoint-mutation-evidence/exact_hello_identity.log",
+          "log_sha256": "f61a989eadd75e0185bda05e851880f9a16d4beb8d371248710835b462665120",
+          "patch_sha256": "acded1a5554f7e1ea507cbcfebf58987403d7448267e3ca27222b69e63270fd6",
+          "elapsed_seconds": 4.427,
+          "restore_commit": "9aa9678e0d3a519598b11ef9bf7a7450eebf3c16",
+          "exact_tree_restored": true
+        }
+      ],
+      "scope": "Clean committed causal mutants and actual Endpoint consumer assertions, no native/OS conformance",
+      "restored": {
+        "argv": [
+          "cargo",
+          "test",
+          "-p",
+          "rrx",
+          "--lib",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-retained-mutation-target",
+          "cli::endpoint::tests",
+          "--",
+          "--test-threads=4"
+        ],
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-cli-endpoint-mutation-evidence/restored.log",
+        "sha256": "f1782c0d11371048b2db54653dfca5bea62c627e9528da0e5f918ff4265122d4",
+        "head": "9aa9678e0d3a519598b11ef9bf7a7450eebf3c16",
+        "clean": true,
+        "exact_tree_restored": true
+      }
+    },
+    "cli-endpoint-host-tests.json": {
+      "head": "5b6e8a8152926b643c6926b87e853de12b9319fc",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "--offline",
+        "--target-dir",
+        "/private/tmp/rrx-phase2-target",
+        "cli::endpoint::tests",
+        "--",
+        "--test-threads=4"
+      ],
+      "environment": "host outside workspace sandbox; temporary local Unix endpoint fixtures, no native accounts",
+      "exit": 0,
+      "log": "/private/tmp/rrx-user-status-phase2-head/cli-endpoint-host-tests.log",
+      "sha256": "16e69b4bba403e73f045ad68d24922694bd7a27f216777495bd729ad8db40ce8",
+      "head_after": "5b6e8a8152926b643c6926b87e853de12b9319fc",
+      "status_after": "",
+      "summary": [
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 502 filtered out; finished in 0.10s"
+      ]
+    }
+  },
+  "verified_controls": [
+    "Actual private socket and retained Owner, readonly exact state/instance/epoch/peer UID/Hello discovery, second publisher refusal, missing/symlink/malformed descriptor refusal.",
+    "Actual0600 FIFO reaches common connect, endpoint Drop and stale bind; NONBLOCK required before regular-file check. Independent channel watchdog observes refusal/return, not kernel/thread death.",
+    "Two clean committed compiled mutants (omitted NONBLOCK; omitted exact Hello identity) fail actual endpoint consumer assertions; source and full tree restoration match exact baseline, restored four controls pass.",
+    "Fixed local host source quality checks fmt/all-target Clippy-Dwarnings/build and endpoint4/0 pass; current-main802 full workspace includes same unchanged endpoint source."
+  ],
+  "limitations": [
+    "Host macOS temporary endpoint/account-free controls only; no Ubuntu/macOS CI or platform-wide syscall latency/death guarantee.",
+    "No main/serve/control dispatcher, accepted Goal/retained Driver/native readiness, event-loop queue/shutdown, or whole CLI/MVP acceptance supplied by endpoint component.",
+    "No authenticated Agent, hooks/settings, security sandbox, four-native-Task or full collection guarantee.",
+    "Original84 fixture compile failure and original FIFO blocking defect remain historical failures; corrected974 qualification does not relabel them successful.",
+    "Default C1e4 five regression failures with Unknown cause remain separately recorded in verifier integration checkpoint; endpoint controls do not diagnose them.",
+    "No PR/main merge, push, release, credential/config, README Status or license changes."
+  ]
+}
