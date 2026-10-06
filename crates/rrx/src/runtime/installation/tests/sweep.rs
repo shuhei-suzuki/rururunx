@@ -195,14 +195,28 @@ async fn c9_busy_admission_sweep_is_synchronous_and_shutdown_stops_claims() {
     accept(&f, 1).await;
     f.runtime.start().await.unwrap();
     let guard = f.runtime.control_admission.lock().await;
-    assert_eq!(f.runtime.admit_ready_tasks().unwrap(), 0);
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), async {
+            f.runtime.admit_ready_tasks().unwrap()
+        })
+        .await
+        .expect("busy sweep awaited admission"),
+        0
+    );
     let runtime = f.runtime.clone();
     let shutdown = tokio::spawn(async move { runtime.shutdown().await });
     // Shutdown waits for the actual already-held control operation to finish.
     // Stopping is set under that admission, not by a speculative observer.
     tokio::time::sleep(Duration::from_millis(20)).await;
     assert!(!shutdown.is_finished());
-    assert_eq!(f.runtime.admit_ready_tasks().unwrap(), 0);
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), async {
+            f.runtime.admit_ready_tasks().unwrap()
+        })
+        .await
+        .expect("busy sweep awaited admission"),
+        0
+    );
     assert_eq!(count(&f, "task_drivers"), 0);
     drop(guard);
     tokio::time::timeout(Duration::from_secs(5), shutdown)
