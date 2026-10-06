@@ -117,8 +117,12 @@ impl Fixture {
                 },
             );
         }
-        let runtime = Arc::new(Runtime::new(owner.clone(), config.clone()).unwrap());
         let registry = AgentRegistry::from_managed_config(&config, owner.clone()).unwrap();
+        let runtime = Arc::new(Runtime::new(owner.clone(), config.clone()).unwrap());
+        assert!(
+            runtime.installed.is_err(),
+            "separate registry must refuse installation"
+        );
         runtime.start().await.unwrap();
         Self {
             dir,

@@ -156,3 +156,6 @@ impl Runtime {
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

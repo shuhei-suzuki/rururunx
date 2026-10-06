@@ -53,7 +53,12 @@ async fn genuine_accepted_goal_cannot_enter_legacy_native_before_private_phase_e
                     ..Default::default()
                 },
             );
-            let runtime = Runtime::new(owner.clone(), config.clone()).unwrap();
+            // These remain standalone legacy-refusal consumers. Their own
+            // server deliberately occupies IPC before production installation.
+            let sessions = (entry == "direct").then(|| NativeSessions::new(owner.clone()).unwrap());
+            let registry = (entry == "adapter")
+                .then(|| AgentRegistry::from_managed_config(&config, owner.clone()).unwrap());
+            let runtime = Arc::new(Runtime::new(owner.clone(), config.clone()).unwrap());
             let (socket, _peer) = tokio::net::UnixStream::pair().unwrap();
             let response = runtime
                 .handle_control(
@@ -102,6 +107,14 @@ async fn genuine_accepted_goal_cannot_enter_legacy_native_before_private_phase_e
                 let task_id = store.goal(goal).unwrap().unwrap().dag.nodes[0];
                 store.task(task_id).unwrap().unwrap()
             };
+            assert!(
+                runtime
+                    .installed_driver_composition(&task)
+                    .err()
+                    .unwrap()
+                    .to_string()
+                    .contains("managed Registry installation refused")
+            );
             let scope: Scope = task.scope();
             let input = ManagedInput {
                 agent: "selected".into(),
@@ -132,7 +145,7 @@ async fn genuine_accepted_goal_cannot_enter_legacy_native_before_private_phase_e
                 .unwrap()
                 .len();
             if entry == "direct" {
-                let sessions = NativeSessions::new(owner.clone()).unwrap();
+                let sessions = sessions.as_ref().unwrap();
                 let error = sessions
                     .start_inner(input.clone(), None, None, Some(program.clone()))
                     .await
@@ -143,7 +156,7 @@ async fn genuine_accepted_goal_cannot_enter_legacy_native_before_private_phase_e
                     Some(&NativeFailure::AuthorityUnavailable)
                 );
             } else {
-                let registry = AgentRegistry::from_managed_config(&config, owner.clone()).unwrap();
+                let registry = registry.as_ref().unwrap();
                 let request = LaunchRequest {
                     project: project.clone(),
                     scope: scope.clone(),

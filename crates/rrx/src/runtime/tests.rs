@@ -31,7 +31,7 @@ fn definition() -> GoalDefinition {
         source_refs: vec![],
     }
 }
-fn plan() -> GoalPlan {
+pub(super) fn plan() -> GoalPlan {
     GoalPlan {
         definition: definition(),
         tasks: vec![TaskDefinition {
@@ -345,16 +345,19 @@ async fn actual_routing_refuses_ambiguity_stale_snapshot_and_body_index_corrupti
 }
 
 // Actual accepted Unix peer ingress; this fixture never constructs Human/Driver authority.
-struct ControlFixture {
-    _dir: tempfile::TempDir,
-    owner: Arc<RuntimeOwner>,
-    runtime: Arc<Runtime>,
-    project: crate::domain::Project,
-    socket: tokio::net::UnixStream,
+pub(super) struct ControlFixture {
+    pub(super) _dir: tempfile::TempDir,
+    pub(super) owner: Arc<RuntimeOwner>,
+    pub(super) runtime: Arc<Runtime>,
+    pub(super) project: crate::domain::Project,
+    pub(super) socket: tokio::net::UnixStream,
     _peer: tokio::net::UnixStream,
 }
 impl ControlFixture {
     fn new() -> Self {
+        Self::configured(|_| config())
+    }
+    pub(super) fn configured(configure: impl FnOnce(&std::path::Path) -> Config) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
         let root = dir.path().join("source");
@@ -371,7 +374,7 @@ impl ControlFixture {
             .unwrap()
             .put_project(&mut project)
             .unwrap();
-        let runtime = Arc::new(Runtime::new(owner.clone(), config()).unwrap());
+        let runtime = Arc::new(Runtime::new(owner.clone(), configure(dir.path())).unwrap());
         let (socket, peer) = tokio::net::UnixStream::pair().unwrap();
         Self {
             _dir: dir,
@@ -382,7 +385,7 @@ impl ControlFixture {
             _peer: peer,
         }
     }
-    fn register_real_git_project(&mut self) {
+    pub(super) fn register_real_git_project(&mut self) {
         let real_root = self._dir.path().join("real-git-source");
         std::fs::create_dir(&real_root).unwrap();
         self.project = crate::domain::Project::new(
@@ -433,7 +436,7 @@ impl ControlFixture {
             .put_project(&mut self.project)
             .unwrap();
     }
-    fn request(&self, action: ControlAction) -> ControlRequest {
+    pub(super) fn request(&self, action: ControlAction) -> ControlRequest {
         ControlRequest {
             request_id: Uuid::new_v4(),
             instance: self.owner.instance_id().into(),
@@ -441,7 +444,7 @@ impl ControlFixture {
             action,
         }
     }
-    async fn create(&self, plan: GoalPlan) -> crate::domain::GoalId {
+    pub(super) async fn create(&self, plan: GoalPlan) -> crate::domain::GoalId {
         match self
             .runtime
             .handle_control(

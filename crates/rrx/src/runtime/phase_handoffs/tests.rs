@@ -23,6 +23,10 @@ async fn original_empty_reservation_does_not_retain_queue_or_jobs() {
     let agents = AgentRegistry::from_managed_config(&config, owner.clone()).unwrap();
     let selected = agents.native_phase_port("selected").unwrap();
     let runtime = Arc::new(Runtime::new(owner, config).unwrap());
+    assert!(
+        runtime.installed.is_err(),
+        "separate registry must refuse installation"
+    );
     runtime.start().await.unwrap();
     let phases = Arc::downgrade(&runtime.phases);
     let jobs = Arc::downgrade(&runtime.phase_jobs);
