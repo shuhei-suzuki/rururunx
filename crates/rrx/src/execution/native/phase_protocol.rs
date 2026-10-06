@@ -60,6 +60,10 @@ mod registration_primitive_tests {
         assert!(known_ack(&state, &cell).is_err());
         state.store(REVOKED, Ordering::SeqCst);
         assert!(known_ack(&state, &cell).is_err());
+        let acknowledged=OnceLock::new();
+        assert!(acknowledged.set(ack()).is_ok());
+        state.store(CANDIDATE,Ordering::SeqCst);
+        assert!(known_ack(&state,&acknowledged).is_err());
     }
     #[test]
     fn known_commit_activates_once_and_retains_ack_after_revocation() {
