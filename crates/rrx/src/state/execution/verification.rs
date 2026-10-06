@@ -202,7 +202,12 @@ fn record_claim(
         &task.project_id.to_string(),
         1024 * 1024,
     )?;
-    let goal: Goal = bounded(connection, "goals", &task.goal_id.to_string(), 1024 * 1024)?;
+    let goal: Goal = bounded(
+        connection,
+        "goals",
+        &task.goal_id.to_string(),
+        4 * 1024 * 1024,
+    )?;
     ensure!(
         serde_json::to_value(&task)? == serde_json::to_value(&invocation.task)?
             && serde_json::to_value(&project)? == serde_json::to_value(&invocation.project)?
@@ -492,7 +497,12 @@ fn checked(
         &task.project_id.to_string(),
         1024 * 1024,
     )?;
-    let goal: Goal = bounded(connection, "goals", &task.goal_id.to_string(), 1024 * 1024)?;
+    let goal: Goal = bounded(
+        connection,
+        "goals",
+        &task.goal_id.to_string(),
+        4 * 1024 * 1024,
+    )?;
     validate_owners(connection, &project, &goal, &task, &row)?;
     let context = context_read(connection, &task.scope(), claim.context_version)?;
     let (stored, stored_digest): (String, String) = connection.query_row(
@@ -1072,7 +1082,7 @@ pub(in crate::state) fn accept_tx(
     origin_record.version = claim.version;
     origin_record.updated_at = claim.workflow_updated_at;
     let project: Project = bounded(tx, "projects", &task.project_id.to_string(), 1024 * 1024)?;
-    let goal: Goal = bounded(tx, "goals", &task.goal_id.to_string(), 1024 * 1024)?;
+    let goal: Goal = bounded(tx, "goals", &task.goal_id.to_string(), 4 * 1024 * 1024)?;
     ensure!(
         json_hash(&origin_record)? == claim.workflow_digest
             && json_hash(&old_task)? == claim.task_digest
@@ -1137,13 +1147,14 @@ mod tests {
         )
         .unwrap();
         for table in MUTABLE_TABLES.iter().filter(|t| {
-            !matches!(
-                **t,
-                "verification_profiles"
-                    | "workflow_verification_contracts"
-                    | "verification_runs"
-                    | "verification_commands"
-            )
+            !crate::state::runtime::TABLES.contains(t)
+                && !matches!(
+                    **t,
+                    "verification_profiles"
+                        | "workflow_verification_contracts"
+                        | "verification_runs"
+                        | "verification_commands"
+                )
         }) {
             for action in ["INSERT", "UPDATE", "DELETE"] {
                 old.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>7 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
@@ -1164,7 +1175,7 @@ mod tests {
             .unwrap();
         cached.execute([]).unwrap();
         let current = Store::open(&path).unwrap();
-        assert_eq!(current.schema_version().unwrap(), 8);
+        assert_eq!(current.schema_version().unwrap(), SCHEMA_VERSION);
         assert!(
             cached
                 .execute([])
@@ -1197,7 +1208,10 @@ mod tests {
         drop(cached);
         drop(old);
         drop(current);
-        assert_eq!(Store::open(&path).unwrap().schema_version().unwrap(), 8);
+        assert_eq!(
+            Store::open(&path).unwrap().schema_version().unwrap(),
+            SCHEMA_VERSION
+        );
     }
     #[test]
     fn schema8_namespace_collision_refuses_without_changing7_history() {

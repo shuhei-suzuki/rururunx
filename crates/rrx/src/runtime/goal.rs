@@ -15,13 +15,7 @@ pub const MAX_CRITERIA: usize = 128;
 pub const MAX_SOURCE_REFS: usize = 128;
 const MAX_LIST: usize = 4096;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum CriterionEvaluator {
-    RequiredTasksVerified,
-    Human { goal_pack_input: bool },
-    Unverified,
-}
+pub use crate::domain::CriterionEvaluator;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CriterionDefinition {

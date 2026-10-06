@@ -87,6 +87,7 @@ async fn installed_entry_preserves_native_candidate_index_and_owner_resources() 
             project.id,
             "fixture".into(),
             vec![CompletionCriterion {
+                evaluator: Default::default(),
                 id: "answer".into(),
                 description: "exact candidate".into(),
                 evidence: None,

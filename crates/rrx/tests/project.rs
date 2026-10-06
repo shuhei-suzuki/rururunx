@@ -91,6 +91,7 @@ fn goal(store: &mut Store, p: &Project) -> Goal {
         p.id,
         "fixture".into(),
         vec![CompletionCriterion {
+            evaluator: Default::default(),
             id: "done".into(),
             description: "pass".into(),
             evidence: None,
@@ -820,6 +821,7 @@ fn active_creation_and_removal_race_has_one_valid_winner() {
             project.id,
             "race".into(),
             vec![CompletionCriterion {
+                evaluator: Default::default(),
                 id: "done".into(),
                 description: "race".into(),
                 evidence: None,

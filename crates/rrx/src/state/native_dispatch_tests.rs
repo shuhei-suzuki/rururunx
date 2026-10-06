@@ -14,6 +14,7 @@ fn fixture() -> (tempfile::TempDir, Store, Project, Goal, Task, Session) {
         project.id,
         "native".into(),
         vec![CompletionCriterion {
+            evaluator: Default::default(),
             id: "done".into(),
             description: "fixture".into(),
             satisfied: false,

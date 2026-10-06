@@ -146,7 +146,7 @@ fn actual_plan_validator_reuses_hard_dag_and_preserves_risk_floor() {
     assert!(p.validate(&configured).is_err());
 }
 #[tokio::test]
-async fn actual_local_ingress_checks_epoch_and_never_mints_goal_before_schema9() {
+async fn actual_local_ingress_checks_epoch_and_refuses_unknown_project() {
     let dir = tempfile::tempdir().unwrap();
     let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
     let runtime = Runtime::new(owner.clone(), config()).unwrap();
@@ -173,13 +173,7 @@ async fn actual_local_ingress_checks_epoch_and_never_mints_goal_before_schema9()
     let mut stale = request.clone();
     stale.epoch += 1;
     assert!(runtime.handle_control(&server, stale).await.is_err());
-    assert!(matches!(
-        runtime.handle_control(&server, request).await.unwrap(),
-        ControlResponse::Unavailable {
-            reason: UnavailableReason::RuntimeSchemaPending,
-            ..
-        }
-    ));
+    assert!(runtime.handle_control(&server, request).await.is_err());
     assert!(owner.store().lock().unwrap().projects().unwrap().is_empty());
 }
 
@@ -347,5 +341,418 @@ async fn actual_routing_refuses_ambiguity_stale_snapshot_and_body_index_corrupti
     assert!(
         runtime.handle_control(&server, request).await.is_err(),
         "routing body/index mismatch cannot be returned as current metadata"
+    );
+}
+
+// Actual accepted Unix peer ingress; this fixture never constructs Human/Driver authority.
+struct ControlFixture {
+    _dir: tempfile::TempDir,
+    owner: Arc<RuntimeOwner>,
+    runtime: Arc<Runtime>,
+    project: crate::domain::Project,
+    socket: tokio::net::UnixStream,
+    _peer: tokio::net::UnixStream,
+}
+impl ControlFixture {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+        let root = dir.path().join("source");
+        std::fs::create_dir(&root).unwrap();
+        let mut project = crate::domain::Project::new(
+            "control-fixture".into(),
+            root.canonicalize().unwrap(),
+            "account-free-no-Git".into(),
+            "main".into(),
+        );
+        owner
+            .store()
+            .lock()
+            .unwrap()
+            .put_project(&mut project)
+            .unwrap();
+        let runtime = Arc::new(Runtime::new(owner.clone(), config()).unwrap());
+        let (socket, peer) = tokio::net::UnixStream::pair().unwrap();
+        Self {
+            _dir: dir,
+            owner,
+            runtime,
+            project,
+            socket,
+            _peer: peer,
+        }
+    }
+    fn request(&self, action: ControlAction) -> ControlRequest {
+        ControlRequest {
+            request_id: Uuid::new_v4(),
+            instance: self.owner.instance_id().into(),
+            epoch: self.owner.epoch(),
+            action,
+        }
+    }
+    async fn create(&self, plan: GoalPlan) -> crate::domain::GoalId {
+        match self
+            .runtime
+            .handle_control(
+                &self.socket,
+                self.request(ControlAction::CreateGoal {
+                    project: self.project.id,
+                    expected_project: self.project.version,
+                    plan,
+                }),
+            )
+            .await
+            .unwrap()
+        {
+            ControlResponse::GoalAccepted { goal, .. } => goal,
+            _ => panic!("actual accepted Goal required"),
+        }
+    }
+}
+#[tokio::test]
+async fn actual_accepted_goal_transaction_idempotency_and_generic_writers() {
+    let f = ControlFixture::new();
+    let request = f.request(ControlAction::CreateGoal {
+        project: f.project.id,
+        expected_project: f.project.version,
+        plan: plan(),
+    });
+    let response = f
+        .runtime
+        .handle_control(&f.socket, request.clone())
+        .await
+        .unwrap();
+    let ControlResponse::GoalAccepted {
+        goal,
+        version,
+        task_count,
+    } = response
+    else {
+        panic!("accepted result")
+    };
+    assert_eq!((version, task_count), (1, 1));
+    let mut original = f.owner.store().lock().unwrap().goal(goal).unwrap().unwrap();
+    let mut task = f
+        .owner
+        .store()
+        .lock()
+        .unwrap()
+        .task(original.dag.nodes[0])
+        .unwrap()
+        .unwrap();
+    let events = f
+        .owner
+        .store()
+        .lock()
+        .unwrap()
+        .events(&original.scope(), 0, 100)
+        .unwrap()
+        .len();
+    assert!(
+        matches!(f.runtime.handle_control(&f.socket,request.clone()).await.unwrap(),ControlResponse::GoalAccepted{goal:id,..} if id==goal)
+    );
+    let mut reused = request.clone();
+    if let ControlAction::CreateGoal { plan, .. } = &mut reused.action {
+        plan.definition.title = "changed".into();
+    }
+    assert!(f.runtime.handle_control(&f.socket, reused).await.is_err());
+    {
+        let shared = f.owner.store();
+        let mut store = shared.lock().unwrap();
+        assert_eq!(store.goals(f.project.id).unwrap().len(), 1);
+        store.put_goal(&mut original).unwrap();
+        store.put_task(&mut task).unwrap();
+        assert_eq!(
+            store.events(&original.scope(), 0, 100).unwrap().len(),
+            events
+        );
+        original.objective = "arbitrary JSON authority".into();
+        assert!(store.put_goal(&mut original).is_err());
+        task.title = "arbitrary managed Task write".into();
+        assert!(store.put_task(&mut task).is_err());
+        let mut new = crate::domain::Goal::new(f.project.id, "untrusted proposal".into(), vec![]);
+        assert!(store.put_goal(&mut new).is_err());
+        assert_eq!(store.goals(f.project.id).unwrap().len(), 1);
+    }
+}
+#[tokio::test]
+async fn actual_accepted_goal_pages_scope_complete_inventory_and_native_hold() {
+    let f = ControlFixture::new();
+    let mut many = plan();
+    for i in 1..129 {
+        let mut t = many.tasks[0].clone();
+        t.key = format!("task-{i}");
+        many.tasks.push(t);
+    }
+    let goal = f.create(many).await;
+    let response = f
+        .runtime
+        .handle_control(
+            &f.socket,
+            f.request(ControlAction::GoalTasks {
+                project: f.project.id,
+                goal,
+                after: None,
+                maximum: 128,
+            }),
+        )
+        .await
+        .unwrap();
+    assert!(serde_json::to_vec(&response).unwrap().len() <= 65536);
+    let ControlResponse::GoalTaskPage {
+        tasks,
+        next: Some(next),
+        ..
+    } = response
+    else {
+        panic!("first bounded page")
+    };
+    assert_eq!(tasks.len(), 128);
+    assert!(
+        tasks
+            .windows(2)
+            .all(|p| p[0].scope.task_id < p[1].scope.task_id)
+    );
+    let last = f
+        .runtime
+        .handle_control(
+            &f.socket,
+            f.request(ControlAction::GoalTasks {
+                project: f.project.id,
+                goal,
+                after: Some(next),
+                maximum: 128,
+            }),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(last,ControlResponse::GoalTaskPage{tasks,next:None,..} if tasks.len()==1));
+    for (after, maximum) in [
+        (Some(crate::domain::TaskId::new()), 1),
+        (None, 0),
+        (None, 129),
+    ] {
+        assert!(
+            f.runtime
+                .handle_control(
+                    &f.socket,
+                    f.request(ControlAction::GoalTasks {
+                        project: f.project.id,
+                        goal,
+                        after,
+                        maximum
+                    })
+                )
+                .await
+                .is_err()
+        );
+    }
+    let task = tasks[0].scope.task_id.unwrap();
+    let sources =
+        crate::execution::workflow_source::ManagedWorkflowSources::new(f.owner.clone(), config())
+            .unwrap();
+    let error = sources.prepare(task, "claude").await.unwrap_err();
+    // The accepted controller graph must not escape to registered Git without a real Driver.
+    assert!(
+        format!("{error:#}").contains("Query returned no rows")
+            || format!("{error:#}").contains("Driver"),
+        "{error:#}"
+    );
+    let connection = crate::state::current_test_writer(f.owner.state_path()).unwrap();
+    for table in [
+        "execution_units",
+        "managed_effects",
+        "task_drivers",
+        "native_invocations",
+    ] {
+        let count: u64 = connection
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "no actual {table} producer may be invented");
+    }
+    assert!(matches!(
+        f.runtime
+            .handle_control(
+                &f.socket,
+                f.request(ControlAction::GoalStatus {
+                    project: f.project.id,
+                    goal
+                })
+            )
+            .await
+            .unwrap(),
+        ControlResponse::GoalFacts {
+            dispatch_available: false,
+            attention: UnavailableReason::NativeBindingUnavailable,
+            ..
+        }
+    ));
+}
+#[tokio::test]
+async fn actual_goal_lifecycle_cas_policy_fence_and_never_prepared_resume() {
+    let f = ControlFixture::new();
+    let goal = f.create(plan()).await;
+    let paused = f.request(ControlAction::SetGoalLifecycle {
+        project: f.project.id,
+        goal,
+        expected_goal: 1,
+        target: GoalControl::Pause,
+        reason: "explicit lifecycle hold".into(),
+    });
+    assert!(matches!(
+        f.runtime
+            .handle_control(&f.socket, paused.clone())
+            .await
+            .unwrap(),
+        ControlResponse::GoalLifecycleChanged {
+            version: 2,
+            state: crate::domain::GoalState::Paused,
+            ..
+        }
+    ));
+    assert!(matches!(
+        f.runtime.handle_control(&f.socket, paused).await.unwrap(),
+        ControlResponse::GoalLifecycleChanged { version: 2, .. }
+    ));
+    let stale = f.request(ControlAction::SetGoalLifecycle {
+        project: f.project.id,
+        goal,
+        expected_goal: 1,
+        target: GoalControl::Resume,
+        reason: "stale".into(),
+    });
+    assert!(f.runtime.handle_control(&f.socket, stale).await.is_err());
+    let resumed = f.request(ControlAction::SetGoalLifecycle {
+        project: f.project.id,
+        goal,
+        expected_goal: 2,
+        target: GoalControl::Resume,
+        reason: "no Unit has ever been prepared".into(),
+    });
+    assert!(matches!(
+        f.runtime.handle_control(&f.socket, resumed).await.unwrap(),
+        ControlResponse::GoalLifecycleChanged {
+            version: 3,
+            state: crate::domain::GoalState::Running,
+            ..
+        }
+    ));
+    let cancel = f.request(ControlAction::SetGoalLifecycle {
+        project: f.project.id,
+        goal,
+        expected_goal: 3,
+        target: GoalControl::Cancel,
+        reason: "trusted cancel".into(),
+    });
+    assert!(matches!(
+        f.runtime.handle_control(&f.socket, cancel).await.unwrap(),
+        ControlResponse::GoalLifecycleChanged {
+            version: 4,
+            state: crate::domain::GoalState::Cancelled,
+            ..
+        }
+    ));
+    assert!(
+        f.runtime
+            .handle_control(
+                &f.socket,
+                f.request(ControlAction::SetGoalLifecycle {
+                    project: f.project.id,
+                    goal,
+                    expected_goal: 4,
+                    target: GoalControl::Resume,
+                    reason: "terminal cannot reactivate".into()
+                })
+            )
+            .await
+            .is_err()
+    );
+}
+#[tokio::test]
+async fn actual_control_loop_persists_named_hold_without_authority_bumps() {
+    let f = ControlFixture::new();
+    let goal = f.create(plan()).await;
+    let before = f.owner.store().lock().unwrap().goal(goal).unwrap().unwrap();
+    let task = f
+        .owner
+        .store()
+        .lock()
+        .unwrap()
+        .task(before.dag.nodes[0])
+        .unwrap()
+        .unwrap();
+    f.runtime.start().await.unwrap();
+    assert!(f.runtime.start().await.is_err());
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let connection = crate::state::current_test_writer(f.owner.state_path()).unwrap();
+            let attention: Option<String> = connection
+                .query_row(
+                    "SELECT attention FROM scheduler_tasks WHERE task_id=?1",
+                    [task.id.to_string()],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            if attention.is_some() {
+                assert!(attention.unwrap().contains("native_binding_unavailable"));
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&before).unwrap(),
+        serde_json::to_value(f.owner.store().lock().unwrap().goal(goal).unwrap().unwrap()).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(&task).unwrap(),
+        serde_json::to_value(
+            f.owner
+                .store()
+                .lock()
+                .unwrap()
+                .task(task.id)
+                .unwrap()
+                .unwrap()
+        )
+        .unwrap()
+    );
+    assert!(matches!(
+        f.runtime
+            .handle_control(&f.socket, f.request(ControlAction::RuntimeStatus))
+            .await
+            .unwrap(),
+        ControlResponse::RuntimeMetadata {
+            operational: false,
+            service_running: true,
+            ..
+        }
+    ));
+    f.runtime.shutdown().await.unwrap();
+    assert!(matches!(
+        f.runtime
+            .handle_control(&f.socket, f.request(ControlAction::RuntimeStatus))
+            .await
+            .unwrap(),
+        ControlResponse::RuntimeMetadata {
+            operational: false,
+            service_running: false,
+            ..
+        }
+    ));
+    assert!(
+        f.runtime
+            .handle_control(
+                &f.socket,
+                f.request(ControlAction::CreateGoal {
+                    project: f.project.id,
+                    expected_project: f.project.version,
+                    plan: plan()
+                })
+            )
+            .await
+            .is_err()
     );
 }

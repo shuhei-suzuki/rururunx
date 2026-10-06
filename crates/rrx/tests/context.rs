@@ -76,6 +76,7 @@ impl Fixture {
             project.id,
             "Retain exact scope".into(),
             vec![CompletionCriterion {
+                evaluator: Default::default(),
                 id: "done".into(),
                 description: "verified independently".into(),
                 evidence: None,

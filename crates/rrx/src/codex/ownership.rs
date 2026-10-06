@@ -687,6 +687,7 @@ pub(super) mod tests {
                     project.id,
                     "fixture".into(),
                     vec![CompletionCriterion {
+                        evaluator: Default::default(),
                         id: "fixture".into(),
                         description: "native scope proof".into(),
                         evidence: None,

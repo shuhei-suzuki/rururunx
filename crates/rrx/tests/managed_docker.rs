@@ -96,6 +96,7 @@ async fn installed_docker_routing_worker() {
             project.id,
             "fixture".into(),
             vec![CompletionCriterion {
+                evaluator: Default::default(),
                 id: "answer".into(),
                 description: "configuration binding".into(),
                 evidence: None,

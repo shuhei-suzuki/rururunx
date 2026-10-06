@@ -23,6 +23,7 @@ pub struct RuntimeOwner {
     /// never held while materializing files, awaiting Git or running native work.
     pub(crate) resource_admission: Arc<tokio::sync::Mutex<()>>,
     git_leases: Mutex<BTreeMap<OperationId, Weak<GitLease>>>,
+    runtime_drivers: Mutex<Weak<crate::runtime::driver::DriverRegistry>>,
     _ipc: tempfile::TempDir,
     pub(crate) socket: PathBuf,
 }
@@ -195,12 +196,34 @@ impl RuntimeOwner {
             git_gate: Arc::new(tokio::sync::Mutex::new(())),
             resource_admission: Arc::new(tokio::sync::Mutex::new(())),
             git_leases: Mutex::new(BTreeMap::new()),
+            runtime_drivers: Mutex::new(Weak::new()),
             _ipc: ipc,
             socket,
         }))
     }
     pub fn store(&self) -> SharedStore {
         self.store.clone()
+    }
+    pub(crate) fn attach_runtime_drivers(
+        &self,
+        registry: &Arc<crate::runtime::driver::DriverRegistry>,
+    ) -> Result<()> {
+        {
+            let mut retained = self
+                .runtime_drivers
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Runtime association poisoned"))?;
+            ensure!(
+                retained.upgrade().is_none(),
+                "one Runtime already owns this service"
+            );
+            *retained = Arc::downgrade(registry);
+        }
+        // Association and registry locks are released before SharedStore.
+        self.store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .attach_runtime_drivers(registry)
     }
     /// Canonical database selected by the retained owner, for control identity.
     pub fn state_path(&self) -> &Path {

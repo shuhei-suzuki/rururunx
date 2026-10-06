@@ -343,3 +343,50 @@ Sequence: compose real8 → schema9+Goal trust/Driver/store seams → actual Run
 Sources/Engine event consumer → Root CLI composition → complete component controls,
 causal mutations and independent source reviews. Each coherent source milestone
 is committed before tests. Pending producers remain named unavailable throughout.
+
+## 10. Source9 first callable controller milestone
+
+This initial Source9 component implements the actual Unix-peer CreateGoal,
+GoalStatus, GoalTasks, Goal lifecycle and control-service start/shutdown consumers.
+It accepts an explicit bounded definition and graph in one transaction, records
+request acknowledgements and installs ordered actual8→9 writer fences. Public
+Goal DTO insertion or changed-field replay is refused; exact persisted Goal and
+accepted Task replay is a no-op. Legacy criterion JSON defaults to Unverified,
+without becoming an accepted definition. The Source7/C8 Goal readers use the
+existing approved4MiB Goal bound, separate from definition1MiB.
+
+GoalTasks is routing/status only: exact accepted Goal and complete bounded scoped
+Task inventory, deterministic TaskId cursor,1..128 entries per page and complete
+response≤64KiB. A foreign cursor, malformed identity or changed scope yields no
+partial authority. The compact GoalAccepted acknowledgement contains no4096-Task
+payload. Actual graph facts and current Task states do not certify readiness.
+
+The service reloads durable queue rows on wake/timer with bounded keyset sweeps,
+publishing NativeBindingUnavailable attention without rewriting P/G/T/Workflow
+versions. No fair admission or native dispatch is implemented by this sweep. The
+retained live Driver registry has no registration constructor and remains empty;
+accepted Goal preparation, Context/Workflow publication and native/finalization
+grants requiring a Driver therefore refuse. Metadata always reports
+operational=false, independently of whether the control-service loop is running.
+The actual same-operation binder and retained Driver issuer/readiness producer
+must compose with Binding10 before these ports can admit actual work; ReviewRound
+is allocated11. No Binding10 DDL or legacy allocation proof is part of9.
+
+Lifecycle controls are explicit logical fences, not proof of actual cleanup or
+successful Workflow termination. Cancel/Fail/Pause close applicable Unit grants
+using the existing scoped producer and retain native cleanup uncertainty. Task
+and Workflow terminal projections, actual owned stop callbacks and recovery remain
+pending. Resume is restricted to accepted, Registered, truly never-prepared
+graphs with unchanged accepted Runtime policy; any Unit/Workflow/Session/lock,
+Context or SourceRecovery history requires the still-unavailable recovery/Driver
+port. A remembered row never reconstructs authority. Already-completed legacy
+or managed history is not silently imported through generic writers.
+
+This milestone does not complete§4–9 or whole930. Prior positive fixture setup
+must migrate through real trusted control ingress; actual native positive paths
+then additionally require the missing binder/Driver. Setup incompatibility and
+producer unavailability are recorded separately, never disabled or converted to
+passing refusal tests to obtain a green regression. Account-free controller
+controls qualify only the above component. CLI service wiring and whole Runtime,
+4-Task/2-Project scheduling, accepted evidence evaluation and native/profile
+qualification remain open.

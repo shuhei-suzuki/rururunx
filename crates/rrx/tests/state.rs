@@ -20,6 +20,7 @@ fn goal(store: &mut Store, project: &Project) -> Goal {
         project.id,
         "Complete MVP".into(),
         vec![CompletionCriterion {
+            evaluator: Default::default(),
             id: "tests".into(),
             description: "tests pass".into(),
             evidence: None,

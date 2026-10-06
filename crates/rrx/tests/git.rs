@@ -52,6 +52,7 @@ impl Fixture {
             project.id,
             "fixture".into(),
             vec![CompletionCriterion {
+                evaluator: Default::default(),
                 id: "done".into(),
                 description: "fixture".into(),
                 evidence: None,

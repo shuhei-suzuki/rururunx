@@ -120,7 +120,7 @@ fn snapshot(c: &Connection, task_id: TaskId) -> Result<Snapshot> {
         "source recovery Task inactive/foreign"
     );
     let project: Project = bounded(c, "projects", &task.project_id.to_string(), OWNER_BYTES)?;
-    let goal: Goal = bounded(c, "goals", &task.goal_id.to_string(), OWNER_BYTES)?;
+    let goal: Goal = bounded(c, "goals", &task.goal_id.to_string(), 4 * 1024 * 1024)?;
     ensure!(
         project.id == task.project_id
             && goal.id == task.goal_id
@@ -547,14 +547,15 @@ mod tests {
         )
         .unwrap();
         for table in MUTABLE_TABLES.iter().filter(|t| {
-            !matches!(
-                **t,
-                "source_recoveries"
-                    | "verification_profiles"
-                    | "workflow_verification_contracts"
-                    | "verification_runs"
-                    | "verification_commands"
-            )
+            !crate::state::runtime::TABLES.contains(t)
+                && !matches!(
+                    **t,
+                    "source_recoveries"
+                        | "verification_profiles"
+                        | "workflow_verification_contracts"
+                        | "verification_runs"
+                        | "verification_commands"
+                )
         }) {
             for action in ["INSERT", "UPDATE", "DELETE"] {
                 old.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>6 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
