@@ -221,8 +221,9 @@ known marker, handed off, restored Held, or partial rollback/removal error. Reco
 whether no transaction was constructed, a constructed transaction was dropped
 before any commit call, or commit returned Ok/Err. These are observations from
 the producer's actual control flow. A missing outcome cell is not evidence of
-precommit refusal; commit Err is uncertain. Only the observed precommit drop
-allows the unpublished-proof attempt, and does not prove rollback by itself. The
+precommit refusal; commit Err is uncertain. Observed no-transaction refusal or
+precommit drop may attempt the existing genuine unpublished proof. Neither
+observation proves rollback or permits restoration by itself. The
 actual producer advances the stage; error text and persisted rows cannot
 construct it. The private Store producer preserves the observed successful
 commit in that independently retained cell before fallible Driver-cache
