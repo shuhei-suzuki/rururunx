@@ -30,10 +30,13 @@ const PAYLOAD_BOUND: usize = 1024 * 1024;
 /// Detach access under the map lock, then destroy the last slot/owned assets
 /// outside it. An armed preparation destructor can acquire SharedStore.
 fn retire_source_access<T>(tasks: &Mutex<BTreeMap<TaskId, T>>, task: TaskId) -> Result<()> {
-    tasks
-        .lock()
-        .map_err(|_| anyhow::anyhow!("Workflow sources poisoned"))?
-        .remove(&task);
+    let removed = {
+        let mut tasks = tasks
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Workflow sources poisoned"))?;
+        tasks.remove(&task)
+    };
+    drop(removed);
     Ok(())
 }
 mod native_handoff;
