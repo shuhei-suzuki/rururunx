@@ -14,6 +14,89 @@ pub(crate) struct OwnedProcess {
     pid: Pid,
     unreaped: bool,
 }
+/// Empty nongrant custody allocated before spawn. Adoption is infallible and
+/// precedes every identity/pipe check; unknown identity permits direct hygiene.
+#[derive(Default)]
+pub(crate) struct RetainedRawProcess {
+    child: Option<Child>,
+    pid: Option<Pid>,
+    reaped: bool,
+}
+impl RetainedRawProcess {
+    pub(crate) fn has_child(&self) -> bool {
+        self.child.is_some()
+    }
+    pub(crate) fn adopt(&mut self, child: Child) {
+        // The private one-shot producer ensures this cell is empty.
+        self.child = Some(child);
+    }
+    pub(crate) fn qualify(&mut self) -> Result<()> {
+        let raw = self
+            .child
+            .as_ref()
+            .context("retained raw child absent")?
+            .id()
+            .context("retained raw identity absent")?;
+        self.pid =
+            Some(Pid::from_raw(i32::try_from(raw)?).context("invalid retained raw identity")?);
+        Ok(())
+    }
+    pub(crate) fn pipes(
+        &mut self,
+    ) -> Result<(tokio::process::ChildStdout, tokio::process::ChildStderr)> {
+        let child = self.child.as_mut().context("retained child absent")?;
+        let out = child.stdout.take().context("retained stdout absent")?;
+        let err = child.stderr.take().context("retained stderr absent")?;
+        Ok((out, err))
+    }
+    pub(crate) fn exited_unreaped(&self) -> Result<bool> {
+        let pid = self
+            .pid
+            .context("unqualified child cannot use numeric identity")?;
+        ensure!(!self.reaped, "retained child already reaped");
+        match waitid(
+            WaitId::Pid(pid),
+            WaitIdOptions::EXITED | WaitIdOptions::NOWAIT | WaitIdOptions::NOHANG,
+        ) {
+            Ok(Some(_)) => Ok(true),
+            Ok(None) | Err(rustix::io::Errno::INTR) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
+    }
+    pub(crate) fn hygiene(&mut self) -> bool {
+        if self.reaped {
+            return true;
+        }
+        let Some(child) = self.child.as_mut() else {
+            return false;
+        };
+        if let Some(pid) = self.pid {
+            match kill_process_group(pid, Signal::KILL) {
+                Ok(()) | Err(rustix::io::Errno::SRCH) => return true,
+                Err(_) => {}
+            }
+        }
+        // Unqualified identity or failed group signal never adopts another PID.
+        let _ = child.start_kill();
+        false
+    }
+    pub(crate) fn reap(&mut self) -> Result<Option<ExitStatus>> {
+        let Some(child) = self.child.as_mut() else {
+            return Ok(None);
+        };
+        let status = child.try_wait()?;
+        if status.is_some() {
+            self.reaped = true;
+        }
+        Ok(status)
+    }
+}
+impl Drop for RetainedRawProcess {
+    fn drop(&mut self) {
+        // Run before Child destruction/reaping; this never proves group death.
+        let _ = self.hygiene();
+    }
+}
 pub(crate) struct ProcessReceipt {
     pub(crate) status: ExitStatus,
     pub(crate) group_error: Option<String>,
@@ -169,5 +252,51 @@ pub(crate) async fn capture_scoped_pinned(
                 store.validate_execution(&current.authority(), native, !native)?;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod retained_raw_tests {
+    use super::*;
+
+    async fn reaped(raw: &mut RetainedRawProcess) -> ExitStatus {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if let Some(status) = raw.reap().unwrap() {
+                    return status;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap()
+    }
+    #[tokio::test]
+    async fn nongrant_raw_adoption_precedes_qualification_and_direct_hygiene() {
+        let mut command = Command::new("/bin/sleep");
+        command.arg("30").process_group(0).kill_on_drop(true);
+        let mut custody = RetainedRawProcess::default();
+        let child = command.spawn().unwrap();
+        custody.adopt(child);
+        assert!(custody.has_child());
+        assert!(custody.pid.is_none());
+        assert!(custody.exited_unreaped().is_err());
+        assert!(!custody.hygiene());
+        assert!(!reaped(&mut custody).await.success());
+        assert!(custody.reaped);
+    }
+    #[tokio::test]
+    async fn nongrant_qualified_raw_leader_is_signalled_before_reaping() {
+        let mut command = Command::new("/bin/sleep");
+        command.arg("30").process_group(0).kill_on_drop(true);
+        let mut custody = RetainedRawProcess::default();
+        let child = command.spawn().unwrap();
+        custody.adopt(child);
+        custody.qualify().unwrap();
+        assert!(custody.pid.is_some());
+        assert!(!custody.reaped);
+        assert!(custody.hygiene());
+        assert!(!reaped(&mut custody).await.success());
+        assert!(custody.exited_unreaped().is_err());
     }
 }

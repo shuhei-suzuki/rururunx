@@ -15,6 +15,10 @@ const PAIR_BODY_BYTES: usize = 32 * 1024;
 
 mod preparation;
 pub(crate) use preparation::{NativePreparationCommit, NativePreparationPlan};
+mod version;
+pub(crate) use version::{
+    NativeHelperIntentCommit, NativeHelperSettlementPlan, NativeVersionHelperPlan,
+};
 mod terminal;
 pub(crate) use terminal::NativeTerminalPlan;
 

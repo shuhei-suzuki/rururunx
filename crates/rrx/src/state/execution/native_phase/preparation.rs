@@ -17,6 +17,13 @@ pub(crate) struct NativePreparationCommit {
     original: Arc<NativePreparationPlan>,
 }
 impl NativePreparationCommit {
+    pub(super) fn actor(&self) -> &Arc<NativePreparationActor> {
+        self.original.actor()
+    }
+    pub(super) fn validate_version_ready(&self, tx: &Transaction<'_>) -> Result<()> {
+        self.original.validate_common(tx)?;
+        self.original.readiness_after.validate_tx(tx)
+    }
     pub(crate) fn matches_plan(&self, plan: &Arc<NativePreparationPlan>) -> bool {
         Arc::ptr_eq(&self.original, plan)
     }
