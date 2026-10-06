@@ -48,6 +48,7 @@ state transitions keep their existing separately authorized Task writes.
 MB2. Before the native start interval, the actual dispatch-marker transaction
 captures an immutable private frame containing exact P/G/T identities/versions,
 Workflow identity/version/complete body hash, scope, active index/generation,
+Runtime state-root instance/epoch, Unit identity/execution generation,
 phase/actor/provider/role, exact input/context/source/revision pins and the complete
 scoped WorktreeLock identity/version set. It captures the resulting post-marker
 Task/Workflow versions in that same transaction. Later current reads, a Driver
@@ -64,7 +65,12 @@ intent identities correlate exactly; later permission/transport/terminal journal
 cannot overwrite or manufacture the consumed input. No public IDs/JSON, optional
 caller flag, SQL fixture seed, synthesized hash, Unit DTO, terminal receipt or
 capability advertisement can supply this credential. A genuine private producer
-is mandatory on both normal return and closed-success late binding. Standalone
+is mandatory on both normal return and closed-success late binding. Normal factual
+binding permits the genuine allocated/validated/prepared pair in its defined
+pre-input/pre-ACK state: it does not require or manufacture delivery, consumption
+or acknowledgment. That same NotDispatched preparation cannot authorize late
+successful binding, which additionally requires the actual correlated consumed
+input and current owned successful terminal. Standalone
 non-Workflow native fixtures do not establish this acceptance criterion.
 
 MB4. The normal returned identity is checked against the selected registered
@@ -108,6 +114,21 @@ and known failure use their separately proved non-success closure, not invented
 binding. The successful late path uses the same binder and only a sealed genuine
 current allocated/input/success-settlement proof, never a caller receipt ID.
 
+For this managed profile, success-settlement means the actual private allocated
+phase owner and prepared/admitted/actually consumed input, the exact correlated
+current owned Native terminal with known successful work under the original
+marker/instance, and recorded logical native-terminal/input-settlement evidence.
+It is neither a physical-death/full-cleanup proof nor an accepted Workflow success.
+Runtime-only result finalization may remain open for genuine later capture; it
+grants no further native input/effects. This explicitly supersedes the legacy
+late-binding physical full-settlement and unknown-cleanup refusal for this profile
+only. Cleanup Unknown/Leftovers alone neither creates authority nor blocks an
+otherwise eligible factual late binding or independent progress. Unknown work,
+HistoricalDraft or ambiguous/missing input/current proof, stale/restored authority
+and irreversible external-operation uncertainty keep their holds. Genuine result
+capture/publication and success closure remain separately required; the terminal
+receipt does not certify them.
+
 MB8. Correctness does not depend on a notification edge: reconciliation readiness
 is durable before/with settlement, rechecked on Driver registration/wake/return
 and after owned start ends (normal, error, timeout, abort/drop or cancel). Finite
@@ -127,6 +148,15 @@ the Store mutex; publication has no await/filesystem/native operation and enforc
 explicit finite owner/body/lock/identity/ledger cost bounds. Bounds are admission
 conditions, not truncation or a weakened empty-set proof.
 
+SourceRecovery7's exact Workflow pins and Runtime9's future Driver pins must
+recognize only a genuine private permitted successor anchored at their existing
+immutable authority. Binding cannot update those authority rows, call the generic
+after_write refresh, or silently recapture current pins to avoid a conflict.
+The design must inventory every native live wait/status arm, including quota
+Task projections and pre-Session NativeStart::Waiting: they are not automatically
+the legacy detail-only diagnostic delta. Any legitimate state-changing port needs
+its own exact typed authority/write contract; factual binding grants none.
+
 ## Acceptance and evidence
 
 | ID | Required actual consumer evidence |
@@ -135,6 +165,7 @@ conditions, not truncation or a weakened empty-set proof.
 | MB-AC2 | Separate SQLite writer changes each P/G/T/Workflow/context/lock predicate during held start, including same-version raw body/REPLACE and added/deleted locks. Binding refuses with no binding/audit writes or new native input. |
 | MB-AC3 | Foreign/missing/Lost/ambiguous Session, wrong actor/provider/role/worktree/native UUID/private owner/input pair, extra projection and generic writer attempts all refuse at the actual consumer. Passing producer prerequisites precede each negative. |
 | MB-AC4 | Actual owned successful settlement before lost start delivery; normal/late race, deferred commit, dropped Engine future, lost/full notifications and actual Driver wake converge once. Authentic restart preserves required fencing; rows alone never grant admission. |
+| MB-AC4.a | Normal returned Starting before input/ACK binds its genuine prepared owner without delivery/success claims. The same NotDispatched owner cannot late-bind. Actual current consumed successful terminal with cleanup Unknown/Leftovers can late-bind once; Unknown work, HistoricalDraft, wrong input/marker/instance and ambiguous external outcome cannot. |
 | MB-AC5 | Genuine bind through diagnostic/gate/success and failure closure; exhausted optional allowance still permits mandatory closure; malformed/disconnected/replayed ledger rejects without effects. |
 | MB-AC6 | Migrate positive Workflow fixtures through actual producer ports. Capability-only advertisers remain negative. No disabled tests, fake owner/pair, copied authority, fixture exemption or weakened native mechanism. |
 | MB-AC7 | Compile clean committed mutations restoring Task bump, refreshing captured frame, dropping each CAS/identity/private-proof/sole-writer/delta/ledger check or inferring success. Each fails at its intended actual consumer assertion; exact source restoration passes. |
