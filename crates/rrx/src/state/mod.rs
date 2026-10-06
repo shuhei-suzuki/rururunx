@@ -31,7 +31,7 @@ pub(crate) use execution::native_phase::{
     NativeParkedPhase, NativePreparationClosureCommit, NativePreparationCommit,
     NativePreparationPlan, NativeQuotaAdmitted, NativeQuotaCaps, NativeQuotaClosureConfirmation,
     NativeQuotaClosurePlan, NativeQuotaConfirmation, NativeQuotaOutcome, NativeQuotaPlan,
-    NativeQuotaWrite, NativeReadyLineage, NativeTerminalPlan, NativeTransportStartPlan,
+    NativeQuotaWrite, NativeReadyLineage, NativeTerminalPlan, NativeTransportStartPlan, NativeTransportSettlementPlan,
     NativeVersionClosurePlan, NativeVersionHelperPlan, RegistrationAck, RegistrationAckSource,
     RegistrationProbe,
 };

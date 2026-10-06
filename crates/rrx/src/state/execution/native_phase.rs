@@ -31,7 +31,7 @@ pub(crate) use version::{
 mod live_quota;
 mod transport;
 pub(crate) use transport::{
-    KnownTransportRegistration, NativeTransportStartPlan, RegistrationAck, RegistrationAckSource,
+    KnownTransportRegistration, NativeTransportStartPlan, NativeTransportSettlementPlan, RegistrationAck, RegistrationAckSource,
     RegistrationProbe,
 };
 mod terminal;

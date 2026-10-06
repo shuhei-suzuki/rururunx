@@ -29,11 +29,17 @@ struct CustodyState {
     parked: Option<Arc<crate::state::NativeParkedPhase>>,
     admitted: Option<Arc<crate::state::NativeQuotaAdmitted>>,
     prepared: Option<Arc<super::prepared::PreparedNativePhase>>,
+    transport: Option<Arc<super::transport::NativeTransportCustody>>,
     first_parked_at: Option<i64>,
     closure: Option<Arc<crate::state::NativeQuotaClosurePlan>>,
     closed: Option<Arc<crate::state::NativePreparationClosureCommit>>,
 }
 impl NativePreparationCustody {
+    pub(super) fn retain_transport(&self,transport:Arc<super::transport::NativeTransportCustody>,prepared:&Arc<super::prepared::PreparedNativePhase>)->Result<()> {
+        let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(!state.abandoned && state.transport.is_none() && state.prepared.as_ref().is_some_and(|p|Arc::ptr_eq(p,prepared)) && transport.matches_prepared(prepared),"transport does not consume SAME issued Prepared");
+        state.transport=Some(transport);Ok(())
+    }
     pub(super) fn clear_definitive_closure_conflict(&self,plan:&Arc<crate::state::NativeQuotaClosurePlan>) -> Result<()> {
         let mut state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
         ensure!(state.closed.is_none() && state.closure.as_ref().is_some_and(|p|Arc::ptr_eq(p,plan)),"closure pre-write conflict plan differs");
@@ -151,7 +157,7 @@ impl NativePreparationCustody {
     pub(crate) fn abandon(&self) {
         // No Store/Unit destruction, guard release or no-child inference. The
         // original sibling plan survives a returned error or canceled future.
-        if let Ok(mut state) = self.state.lock() {
+        let transport=if let Ok(mut state) = self.state.lock() {
             state.abandoned = true;
             if let Some(actor) = &state.actor {
                 actor.revoked.store(true, Ordering::Release);
@@ -159,7 +165,9 @@ impl NativePreparationCustody {
             for helper in &state.helpers {
                 helper.abandon();
             }
-        }
+            state.transport.clone()
+        } else { None };
+        if let Some(transport)=transport {transport.request_stop();}
         self.revoked.notify_waiters();
     }
     fn claim_start(&self) -> Result<()> {
@@ -324,6 +332,11 @@ impl NativePreparationCustody {
     /// Nongrant confirmation of the same saved postimage. A wake cannot
     /// replace the actor/plan, replay preparation, or reopen a revoked actor.
     pub(crate) async fn reconcile_known_commit(self: &Arc<Self>) -> Result<()> {
+        let transport={let state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;state.transport.clone().zip(state.actor.clone())};
+        if let Some((transport,actor))=transport {
+            let sessions=actor.sessions.upgrade().context("actual transport issuer ended")?;
+            return transport.reconcile(&sessions.owner).await;
+        }
         let closure_actor={
             let state=self.state.lock().map_err(|_|anyhow::anyhow!("preparation custody poisoned"))?;
             if state.closed.is_some() { return Ok(()); }
