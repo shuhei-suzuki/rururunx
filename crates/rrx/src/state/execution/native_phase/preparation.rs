@@ -12,6 +12,7 @@ pub(crate) struct NativePreparationPlan {
     owner_before: PairRow,
     readiness_before: PairRow,
     readiness_after: PairRow,
+    governing_digest: String,
 }
 pub(crate) struct NativePreparationCommit {
     original: Arc<NativePreparationPlan>,
@@ -40,10 +41,27 @@ impl NativePreparationPlan {
         let launch = self.actor.launch();
         selected_database(tx, launch)?;
         launch.validate_preparation_origin_tx(tx, &self.current)?;
+        self.validate_facts(tx)?;
         registration_unit(self.current.unit(), launch)?;
         no_registration(tx, launch)?;
         self.owner_before.validate_tx(tx)?;
         Ok(())
+    }
+    fn validate_facts(&self, tx: &Transaction<'_>) -> Result<()> {
+        let unit = self.current.unit();
+        let marker = self.actor.launch().marker().original_plan();
+        // Root's SAME current/origin check above has already matched these
+        // original full parent and Unit images. No row decoding or hashing is
+        // needed here, and these factual checks cannot grant a Native stage.
+        validate_unit_authority_facts(tx, &unit.authority(), unit)?;
+        validate_native_effect_open(unit)?;
+        validate_parent_activity_facts(
+            unit,
+            marker.project().0,
+            marker.goal().0,
+            marker.task_after().0,
+        )?;
+        validate_governing_context_facts(tx, unit, &self.governing_digest)
     }
 }
 
@@ -59,8 +77,22 @@ impl Store {
         ensure!(launch.is_retained(), "Native preparation retention ended");
         let current = plan_current_phase(runtime, launch.marker())?;
         registration_attempt(&current, launch)?;
+        let marker = launch.marker().original_plan();
+        // Original marker parent bodies are immutable and checked in the
+        // snapshot and every later transaction. Hash only before Store entry.
+        let governing_digest = governing_digest(marker.project().0, marker.goal().0)?;
         let (owner_before, readiness_before) = snapshot(runtime, |tx| {
             launch.validate_preparation_origin_tx(tx, &current)?;
+            let unit = current.unit();
+            validate_unit_authority_facts(tx, &unit.authority(), unit)?;
+            validate_native_effect_open(unit)?;
+            validate_parent_activity_facts(
+                unit,
+                marker.project().0,
+                marker.goal().0,
+                marker.task_after().0,
+            )?;
+            validate_governing_context_facts(tx, unit, &governing_digest)?;
             registration_unit(current.unit(), launch)?;
             no_registration(tx, launch)?;
             let readiness = initial_readiness(tx, launch)?;
@@ -96,6 +128,7 @@ impl Store {
             owner_before,
             readiness_before,
             readiness_after,
+            governing_digest,
         }))
     }
 

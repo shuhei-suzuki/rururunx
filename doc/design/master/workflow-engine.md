@@ -55,6 +55,12 @@ owner, a combined 64-KiB output budget and bounded execution/drain/stop attempts
 This version-only observation supplies no full prepared-input, Session or
 transport proof. Installed composition, current official CLI compatibility,
 full Native preparation and both-OS/four-Task qualification remain unavailable.
+Preparation and version transactions also conjoin the ordinary nongrant Unit
+identity/epoch/generation, parent activity, executor projection and governing
+context predicates with their original Source lineage, current successor,
+marker-bound Driver, selected Native actor and exact stage. The governing hash
+is fixed from the original marker parents before Store entry. Ordinary consumers
+retain their separate ordinary Driver/source checks, including marker refusal.
 
 The incremental [production gate integration](../production-workflow-gates-design.md)
 adds a concrete library port for real initial preparation, Implement terminal/result
