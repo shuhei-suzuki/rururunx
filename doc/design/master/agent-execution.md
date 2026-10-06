@@ -166,3 +166,16 @@ instruction drift even after preparation ownership is consumed. Finite retained
 inspection can read its exact commit tree and the bounded ordinary blobs observed
 in that tree. Automatic changed-input recovery and full Runtime gate/CLI wiring
 remain separate work; component controls do not qualify native compatibility.
+
+
+The selected first Executor preparation has a private 13-action readonly Git
+continuation after its genuine version observation. It preserves inherited native
+settings and credentials, queries only seven fixed noncredential config keys, and
+qualifies all effective check-in conversion attributes before Status can run.
+Clean/process filters, text/eol/crlf, ident and working-tree-encoding refuse when
+the fixed pathspec set differs from the retained Source inventory. Index flags,
+mode/type, sparse/bare/object format and raw-content conversion mismatches refuse.
+Successful correspondence remains a retained nongrant fact and the start still
+refuses before full Prepared, quota, Session, transport or input. Component source
+and primitive real-Git controls do not qualify the actual installed actor chain,
+Git version, authenticated Agent, both-host operation or four-Task acceptance.

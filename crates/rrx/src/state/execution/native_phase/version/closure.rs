@@ -372,7 +372,7 @@ impl Store {
                 let unit = LatestUnitImage::read(tx, launch.allocation().unit_snapshot())?;
                 let current = Inventory::read(tx, launch.allocation().facts().unit_id)?;
                 ensure!(
-                    current == settlement.original.pending || current == settlement.after,
+                    current == *settlement.original.pending || current == *settlement.after,
                     "closure original complete inventory changed"
                 );
                 Ok(unit)
@@ -399,8 +399,8 @@ impl Store {
                 closure.validate_original()?;
                 closure.unit.validate_tx(&tx)?;
                 let current = Inventory::read(&tx, plan.actor().launch().allocation().facts().unit_id)?;
-                if current == settlement.after { return Ok(()); }
-                ensure!(current == plan.pending, "closure original full inventory CAS changed");
+                if current == *settlement.after { return Ok(()); }
+                ensure!(current == *plan.pending, "closure original full inventory CAS changed");
                 let mut values = settlement.effect.values();
                 values.extend(plan.effect.values());
                 ensure!(tx.execute("UPDATE managed_effects SET id=?1,unit_id=?2,project_id=?3,goal_id=?4,task_id=?5,idempotency_key=?6,state=?7,body=?8,version=?9 WHERE id IS ?10 AND unit_id IS ?11 AND project_id IS ?12 AND goal_id IS ?13 AND task_id IS ?14 AND idempotency_key IS ?15 AND state IS ?16 AND body IS ?17 AND version IS ?18",

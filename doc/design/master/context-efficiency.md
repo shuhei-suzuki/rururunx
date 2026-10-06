@@ -356,3 +356,14 @@ finite27-run/23-operator/25-kill ledger are recorded in
 [verification](../../verification/issue-60-readers.md), with two zero-credit masked
 survivors and no native/per-guard completeness. No historical EOF/inspection cause
 or full native availability is proved.
+
+
+The initial selected Native Git qualification borrows the SAME original Source
+seal and immutable Frame. Its complete index OID/path/mode predicate, index-tree
+comparison and identity-conversion/empty-Status observations qualify physical
+correspondence to that retained content. It does not refresh Context or reread
+committed corpus bytes. Nonordinary entries, missing mandatory rule/config
+hashes and original input/revision mismatches refuse before any Git intent.
+Files omitted from content indexing retain OID-only correspondence. Stat-cache,
+content-addressing collision assumptions and cooperative filesystem/attribute
+races remain limits; no tamper resistance or full prepared-input grant is implied.

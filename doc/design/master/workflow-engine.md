@@ -55,17 +55,33 @@ owner, a combined 64-KiB output budget and bounded execution/drain/stop attempts
 The actual first Executor Source retains its validated immutable Context/template,
 encoded input, committed corpus bytes, complete physical tree inventory and mandatory
 config/rule pins. Its nongrant seal reaches Native through the same accepted
-Source/ticket/allocation origin. Finite readonly namespace, exact HEAD/status,
-pinned full-tree and mandatory-blob helper code and private completion consumers
-are retained, with the original real tool/profile, sanitized routing environment,
-disabled lazy fetch/replacements and genuine owned Git lease. Their plan requires
-each predecessor's authentic qualified observation and known exact settlement
-inventory, 32 original helpers, 1-MiB combined Git output and 8-MiB aggregate
-capture. The selected continuation refuses before Git intent/spawn because the
-owned-proof effect contract currently admits only the version effect. Private
-helper-history acknowledgement grants no full preparation or static admission;
-hooks, allocation proof, quota and registration/transport composition remain
-unavailable. Full Prepared issuance remains unreachable.
+Source/ticket/allocation origin. The selected continuation runs a fixed ordered
+13-action private readonly Git batch after the SAME qualified version settlement,
+then refuses at the full preparation/transport boundary. The batch captures source
+and Task namespace, original-revision roots, branch/HEAD, seven effective config
+keys, full index entries, index-tree equality, effective conversion attributes and
+empty Status. It uses the unchanged Git command prefix and original real tool,
+profile/environment and genuine Git lease. Config alone accepts exit 1 for absent
+keys. Status is not planned without an owned conversion-identity value from the
+SAME batch/Source seal, and complete observed correspondence retains that identity
+and every original observation. The value grants no prepared input or permission.
+
+Each Git intent has distinct native_phase_git kind, native-git key and a hashed
+original operation/pair/epoch/profile/revision/inventory/input/action target.
+Planning compares rows only to the retained SAME predecessor postimage; the
+14 version/Git acknowledgements form an immutable pointer-linked inventory chain.
+A settled prefix is memoized and never reconciled against later rows. Only the
+current tail is reconciled. New intents and capture fences conjoin an explicit
+runtime-epoch SQL check with the original current/Driver/Source/actor/Unit/owner/
+preparing-v2 and stop-admission checks in the same Immediate transaction.
+The first Git intent reserves all 13 maximal row images: at most 242 prior rows,
+255 final rows, and inclusive 2 MiB complete all-column framing. Actions 1–9/11
+capture at most 64 KiB combined output; 10/12/13 capture at most 1 MiB. All 14
+helpers total at most 3,866,624 bytes, within the 8-MiB preparation budget, with a
+180-second batch deadline from the first known Git intent. Overflow and incomplete
+capture remain nongrant. Hooks, allocation proof, quota and full prepared-input/
+registration/transport composition remain unavailable. Full Prepared issuance
+remains unreachable.
 Reviewer artifact lease production, installed composition and genuine
 actor-chain/both-OS/four-Task qualification also remain unavailable.
 Preparation and version transactions also conjoin the ordinary nongrant Unit

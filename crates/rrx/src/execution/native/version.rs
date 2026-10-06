@@ -18,7 +18,7 @@ const PROFILE_BYTES: usize = 64 * 1024;
 /// It grants neither registration nor transport/input or static admission.
 pub(crate) struct NativeReadonlyHelperCompletion {
     actor: Arc<NativePreparationActor>,
-    _seal: Arc<crate::execution::workflow_source::SourceNativePreparationSeal>,
+    _correspondence: readonly::NativeGitCorrespondence,
     commit: crate::state::NativeHelperHistoryCommit,
 }
 impl NativeReadonlyHelperCompletion {
@@ -80,21 +80,54 @@ pub(crate) struct NativeVersionObservation {
     group_hygiene: bool,
     attempted: bool,
     returned_child: bool,
+    qualification: std::sync::OnceLock<bool>,
 }
 impl NativeVersionObservation {
     pub(crate) fn qualified(&self) -> bool {
-        if !self.complete || !self.exit.is_some_and(|exit| exit.success()) {
+        *self.qualification.get_or_init(|| self.qualify_once())
+    }
+    fn qualify_once(&self) -> bool {
+        if !self.complete {
             return false;
         }
         match self.plan.action() {
             readonly::NativePhaseHelperAction::Version => self.qualified_profile().is_some(),
-            action => action
-                .qualify(
-                    &self.stdout,
-                    self.plan.actor().launch().allocation().unit_snapshot(),
-                )
-                .is_ok(),
+            readonly::NativePhaseHelperAction::Git(action) => {
+                self.plan.git_seal().is_some_and(|seal| {
+                    seal.qualify(*action, &self.stdout, self.exit.and_then(|e| e.code()))
+                        .is_ok()
+                        && readonly::require_conversion(*action, seal, self.plan.conversion())
+                            .is_ok()
+                })
+            }
         }
+    }
+    pub(crate) fn settle_confirmed(&self) -> bool {
+        self.complete
+            && match self.plan.action() {
+                readonly::NativePhaseHelperAction::Version => {
+                    self.exit.is_some_and(|e| e.success())
+                }
+                readonly::NativePhaseHelperAction::Git(a) => {
+                    a.accepts_exit(self.exit.and_then(|e| e.code()))
+                }
+            }
+    }
+    pub(super) fn stdout(&self) -> &[u8] {
+        &self.stdout
+    }
+    pub(super) fn qualify_git_for(
+        &self,
+        seal: &Arc<readonly::NativeGitSourceSeal>,
+        action: readonly::PhaseGitAction,
+    ) -> Result<()> {
+        ensure!(
+            matches!(self.plan.action(), readonly::NativePhaseHelperAction::Git(a) if *a == action)
+                && self.plan.git_seal().is_some_and(|s| Arc::ptr_eq(s, seal))
+                && self.qualified(),
+            "actual Git observation action/seal differs"
+        );
+        Ok(())
     }
     pub(crate) fn matches_plan(&self, plan: &Arc<NativeVersionHelperPlan>) -> bool {
         Arc::ptr_eq(&self.plan, plan)
@@ -102,7 +135,7 @@ impl NativeVersionObservation {
     pub(crate) fn complete(&self) -> bool {
         self.complete
     }
-    fn qualified_profile(&self) -> Option<&'static str> {
+    pub(crate) fn qualified_profile(&self) -> Option<&'static str> {
         if !matches!(
             self.plan.action(),
             readonly::NativePhaseHelperAction::Version
@@ -120,6 +153,19 @@ impl NativeVersionObservation {
     }
     pub(crate) fn safe_receipt(&self) -> BTreeMap<String, String> {
         BTreeMap::from([
+            ("action".into(), self.plan.action().label().into()),
+            ("stdout_sha256".into(), native_result::digest(&self.stdout)),
+            (
+                "expectation".into(),
+                if self.qualified() {
+                    "match"
+                } else if self.complete {
+                    "mismatch"
+                } else {
+                    "unparsed"
+                }
+                .into(),
+            ),
             (
                 "creation".into(),
                 if self.returned_child {
@@ -163,6 +209,13 @@ impl NativeVersionObservation {
     }
 }
 impl NativeVersionHelperCustody {
+    pub(super) fn observation(&self) -> Result<Arc<NativeVersionObservation>> {
+        self.state()
+            .observation
+            .clone()
+            .context("actual helper observation absent")
+    }
+
     pub(super) fn captured_bytes(&self) -> Result<usize> {
         self.state()
             .observation
@@ -289,6 +342,7 @@ fn physical_command(
     owner: &Arc<RuntimeOwner>,
     actor: &Arc<NativePreparationActor>,
     action: &readonly::NativePhaseHelperAction,
+    seal: Option<&Arc<readonly::NativeGitSourceSeal>>,
     lease: Option<&Arc<owner::GitLease>>,
 ) -> Result<Command> {
     actor.validate_open()?;
@@ -358,11 +412,20 @@ fn physical_command(
             program.is_absolute() && program.canonicalize()? == *program && program.is_file(),
             "original real Git physical profile differs"
         );
-        let mut command = Command::new(program);
+        let readonly::NativePhaseHelperAction::Git(git) = action else {
+            unreachable!("version handled")
+        };
+        let seal = seal.context("original Git seal absent")?;
+        ensure!(
+            seal.matches_actor(actor),
+            "Git command original seal differs"
+        );
+        let mut command = super::super::results::git_command_for(git.cwd(actor), program)?;
         command
-            .args(action.git_argv()?)
+            .args(git.argv(seal.revision())?)
             .env_clear()
             .envs(crate::git::native_environment())
+            .env("GIT_OPTIONAL_LOCKS", "0")
             .env("GIT_NO_LAZY_FETCH", "1")
             .env("GIT_NO_REPLACE_OBJECTS", "1")
             .env("RRX_GIT_GATE_TOKEN", lease.id.to_string());
@@ -389,32 +452,45 @@ impl NativeSessions {
         // Store, custody, source, queue and effect-admission locks.
         let actor = original.state_actor()?;
         let action = readonly::NativePhaseHelperAction::Version;
-        let command = physical_command(&self.owner, &actor, &action, None)?;
+        let command = physical_command(&self.owner, &actor, &action, None, None)?;
         let plan = crate::state::Store::plan_phase_version_intent(&self.owner, ready)?;
         self.run_phase_helper(original, actor, plan, command, None)
             .await
     }
-    pub(super) async fn prepare_phase_readonly(
+    pub(super) async fn prepare_phase_git(
         &self,
         original: Arc<NativePreparationCustody>,
         mut previous: Arc<NativeVersionHelperCustody>,
     ) -> Result<Arc<NativeReadonlyHelperCompletion>> {
+        use readonly::{NativePhaseHelperAction, PhaseGitAction};
         let actor = original.state_actor()?;
-        let seal = actor.launch().preparation_seal()?;
-        let mut actions = readonly::namespace_actions(&actor)?;
-        actions.extend(seal.readonly_actions()?);
-        ensure!(
-            actions.len() < readonly::HELPER_LIMIT,
-            "complete original qualification exceeds finite helper bound"
-        );
+        // A qualified actual version closure is mandatory before even seal or
+        // lease setup, never inferred from SQL or a supplied version string.
+        previous.closed()?;
+        let seal = readonly::NativeGitSourceSeal::new(&actor)?;
         let lease = self
             .owner
             .git_lease(actor.launch().allocation().facts().unit_id, None)
             .await?;
-        for action in actions {
+        let mut observations = Vec::with_capacity(readonly::GIT_ACTIONS);
+        let mut conversion = None;
+        for action in PhaseGitAction::ORDERED {
+            seal.validate_deadline()?;
             let known = previous.closed()?;
-            let command = physical_command(&self.owner, &actor, &action, Some(&lease))?;
-            let plan = crate::state::Store::plan_phase_readonly_intent(&self.owner, known, action)?;
+            let command = physical_command(
+                &self.owner,
+                &actor,
+                &NativePhaseHelperAction::Git(action),
+                Some(&seal),
+                Some(&lease),
+            )?;
+            let plan = crate::state::Store::plan_phase_git_intent(
+                &self.owner,
+                known,
+                action,
+                seal.clone(),
+                conversion.clone(),
+            )?;
             previous = self
                 .run_phase_helper(
                     original.clone(),
@@ -424,20 +500,24 @@ impl NativeSessions {
                     Some(lease.clone()),
                 )
                 .await?;
+            previous.closed()?;
+            observations.push(previous.observation()?);
+            if action == PhaseGitAction::Head {
+                readonly::qualify_ownership(&seal, &observations)?;
+            }
+            if action == PhaseGitAction::ConversionAttrs {
+                conversion = Some(readonly::ConversionIdentity::qualify(
+                    &seal,
+                    observations[8].clone(),
+                    observations[11].clone(),
+                )?);
+            }
         }
-        previous.closed()?;
-        // Final physical profile/program/namespace hash checks occur after all
-        // real capture, outside Store and custody/admission locks. Constructing
-        // this fixed command performs no process effect or permission grant.
-        let _final_profile = physical_command(
-            &self.owner,
-            &actor,
-            &readonly::NativePhaseHelperAction::Version,
-            None,
+        let correspondence = readonly::qualify_correspondence(
+            seal,
+            conversion.context("same batch conversion absent")?,
+            observations,
         )?;
-        // All hash/namespace/profile qualifications have completed before
-        // Store entry. A full SAME current transaction acknowledges actual
-        // observed history while retaining original preparing-v2 readiness.
         let history = original.qualified_history()?;
         let launch = actor.launch().clone();
         let admission = launch.admission().enter(launch.clone()).await?;
@@ -449,7 +529,7 @@ impl NativeSessions {
             .confirm_phase_helper_history(history, &admission)?;
         let completion = Arc::new(NativeReadonlyHelperCompletion {
             actor,
-            _seal: seal,
+            _correspondence: correspondence,
             commit,
         });
         original.retain_completion(completion.clone())?;
@@ -500,9 +580,20 @@ impl NativeSessions {
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            store.reserve_phase_version_intent(plan.clone(), &admission)?
+            match plan.action() {
+                readonly::NativePhaseHelperAction::Version => {
+                    store.reserve_phase_version_intent(plan.clone(), &admission)?
+                }
+                readonly::NativePhaseHelperAction::Git(_) => {
+                    store.reserve_phase_git_intent(plan.clone(), &admission)?
+                }
+            }
         };
         helper.state().intent = Some(Arc::new(intent));
+        if let Some(seal) = plan.git_seal() {
+            seal.start_batch();
+            seal.validate_deadline()?;
+        }
         actor.validate_open()?;
         admission.validate_for(&launch)?;
         // One-shot state records attempted creation even when spawn gives no
@@ -552,7 +643,12 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
         let mut err_open = true;
         let mut out_buffer = [0u8; 4096];
         let mut err_buffer = [0u8; 4096];
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        let action_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        let deadline = helper
+            .plan
+            .git_seal()
+            .and_then(|s| s.deadline())
+            .map_or(action_deadline, |d| d.min(action_deadline));
         let mut drain_deadline = None;
         let mut exited = false;
         // Admission has been released before this task is kicked.
@@ -631,6 +727,7 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
         group_hygiene,
         attempted,
         returned_child,
+        qualification: std::sync::OnceLock::new(),
     });
     // This original observation precedes optional parsing, hashing and SQL.
     helper.state().observation = Some(observation);

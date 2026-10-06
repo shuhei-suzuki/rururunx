@@ -74,11 +74,12 @@ struct Frame {
 }
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct CommittedTreeEntry {
-    mode: String,
-    kind: String,
+    pub(crate) mode: String,
+    pub(crate) kind: String,
     pub(crate) oid: String,
-    size: Option<usize>,
+    pub(crate) size: Option<usize>,
 }
+pub(crate) const UNSUPPORTED_ENTRY: &str = "unsupported Git entry type";
 struct CommittedCorpus {
     files: Vec<CommittedFile>,
     tree: BTreeMap<String, CommittedTreeEntry>,
@@ -1232,7 +1233,7 @@ async fn read_corpus(io: CorpusReader<'_>, path: &Path, revision: &str) -> Resul
         let ordinary = matches!(entry.mode.as_str(), "100644" | "100755") && entry.kind == "blob";
         let size = entry.size.unwrap_or(0);
         let (bytes, skipped) = if !ordinary {
-            (None, Some("unsupported Git entry type".into()))
+            (None, Some(UNSUPPORTED_ENTRY.into()))
         } else if size > 256 * 1024 {
             (None, Some("file exceeds 256 KiB".into()))
         } else {

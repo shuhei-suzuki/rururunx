@@ -1,7 +1,10 @@
 //! Private original-actor version intent and owned-observation inventory CAS.
 //! Compatible effect writers remain journal writers, never observation issuers.
 use super::*;
-use crate::execution::native::readonly::NativePhaseHelperAction;
+use crate::execution::native::readonly::{
+    ConversionIdentity, GIT_ACTIONS, NativeGitSourceSeal, NativePhaseHelperAction, PhaseGitAction,
+    require_conversion,
+};
 use crate::execution::native::version::NativeVersionObservation;
 use crate::runtime::phase_effect_admission::PhaseEffectAdmissionGuard;
 use rusqlite::{Connection, types::ValueRef};
@@ -274,6 +277,31 @@ impl Inventory {
         next.validate_bound()?;
         Ok(next)
     }
+    fn reserve_git_batch(&self) -> Result<()> {
+        ensure!(
+            self.rows.len() <= 242,
+            "Git batch reserves 13 rows and future native input"
+        );
+        let maximum = shape(&[36, 36, 36, 36, 36, 256, 9, BODY_BYTES], i64::MAX as u64)?;
+        let bytes = self.rows.iter().try_fold(16usize, |sum, row| {
+            sum.checked_add(row.bytes()?)
+                .context("Git inventory overflow")
+        })?;
+        ensure!(
+            bytes
+                .checked_add(GIT_ACTIONS * maximum)
+                .is_some_and(|n| n <= INVENTORY_BYTES),
+            "Git batch maximal row byte headroom absent"
+        );
+        Ok(())
+    }
+    fn with_git_intent(&self, image: EffectImage) -> Result<Self> {
+        ensure!(
+            self.rows.len() < 255,
+            "Git helper reserves future native input"
+        );
+        self.with(image)
+    }
     fn with_version_intent(&self, image: EffectImage) -> Result<Self> {
         ensure!(
             self.rows.len() <= 254,
@@ -285,10 +313,12 @@ impl Inventory {
 
 pub(crate) struct NativeVersionHelperPlan {
     ready: Arc<NativePreparationCommit>,
-    before: Inventory,
-    pending: Inventory,
+    before: Arc<Inventory>,
+    pending: Arc<Inventory>,
     effect: EffectImage,
     action: NativePhaseHelperAction,
+    seal: Option<Arc<NativeGitSourceSeal>>,
+    conversion: Option<Arc<ConversionIdentity>>,
 }
 /// Known factual settlement of SAME owned observation. Issued only after the
 /// exact closure transaction commits; subsequent helpers still need authority.
@@ -330,15 +360,33 @@ impl NativeVersionHelperPlan {
     pub(crate) fn actor(&self) -> &Arc<crate::execution::native::NativePreparationActor> {
         self.ready.actor()
     }
+    pub(crate) fn git_seal(&self) -> Option<&Arc<NativeGitSourceSeal>> {
+        self.seal.as_ref()
+    }
+    pub(crate) fn conversion(&self) -> Option<&Arc<ConversionIdentity>> {
+        self.conversion.as_ref()
+    }
     fn validate_ready(&self, tx: &Transaction<'_>) -> Result<()> {
         self.actor().validate_original()?;
-        self.ready.validate_version_ready(tx)
+        self.ready.validate_version_ready(tx)?;
+        if let Some(seal) = &self.seal {
+            seal.validate_deadline()?;
+        }
+        ensure!(
+            tx.query_row(
+                "SELECT epoch FROM runtime_epoch WHERE singleton=1",
+                [],
+                |r| r.get::<_, u64>(0)
+            )? == self.actor().launch().allocation().facts().epoch,
+            "Native runtime epoch differs"
+        );
+        Ok(())
     }
 }
 pub(crate) struct NativeHelperSettlementPlan {
     original: Arc<NativeVersionHelperPlan>,
     observation: Arc<NativeVersionObservation>,
-    after: Inventory,
+    after: Arc<Inventory>,
     effect: EffectImage,
 }
 impl Store {
@@ -356,11 +404,33 @@ impl Store {
         let ready = last.original.original.ready.clone();
         // Qualifiers/hash/fs checks run before this method outside SharedStore.
         // Here only SAME original objects and already-owned physical images.
-        for known in &history {
+        ensure!(
+            history.len() == GIT_ACTIONS + 1,
+            "complete version plus Git history absent"
+        );
+        for (index, known) in history.iter().enumerate() {
             ensure!(
                 Arc::ptr_eq(&known.original.original.ready, &ready),
                 "helper history replaced original readiness actor"
             );
+            if index == 0 {
+                ensure!(
+                    matches!(
+                        known.original.original.action,
+                        NativePhaseHelperAction::Version
+                    ),
+                    "history lacks version prefix"
+                );
+            } else {
+                ensure!(
+                    matches!(known.original.original.action, NativePhaseHelperAction::Git(a) if a == PhaseGitAction::ORDERED[index-1])
+                        && Arc::ptr_eq(
+                            &known.original.original.before,
+                            &history[index - 1].original.after
+                        ),
+                    "helper history SAME ordered inventory link differs"
+                );
+            }
         }
         selected_database(&self.connection, ready.actor().launch())?;
         let tx = self
@@ -372,10 +442,18 @@ impl Store {
                 admission.validate_for(ready.actor().launch())?;
                 ready.actor().validate_open()?;
                 ready.validate_version_ready(&tx)?;
+                ensure!(
+                    tx.query_row(
+                        "SELECT epoch FROM runtime_epoch WHERE singleton=1",
+                        [],
+                        |r| r.get::<_, u64>(0)
+                    )? == ready.actor().launch().allocation().facts().epoch,
+                    "helper history epoch differs"
+                );
                 let current =
                     Inventory::read(&tx, ready.actor().launch().allocation().facts().unit_id)?;
                 ensure!(
-                    current == last.original.after,
+                    current == *last.original.after,
                     "helper history latest exact inventory differs"
                 );
                 for known in &history {
@@ -446,70 +524,125 @@ impl Store {
             receipt: BTreeMap::new(),
             version: 1,
         })?;
-        let pending = before.with_version_intent(effect.clone())?;
+        let pending = Arc::new(before.with_version_intent(effect.clone())?);
         Ok(Arc::new(NativeVersionHelperPlan {
             ready,
-            before,
+            before: Arc::new(before),
             pending,
             effect,
             action: NativePhaseHelperAction::Version,
+            seal: None,
+            conversion: None,
         }))
     }
-    pub(crate) fn plan_phase_readonly_intent(
+    pub(crate) fn plan_phase_git_intent(
         runtime: &crate::execution::RuntimeOwner,
         previous: Arc<NativeHelperSettlementCommit>,
-        action: NativePhaseHelperAction,
+        action: PhaseGitAction,
+        seal: Arc<NativeGitSourceSeal>,
+        conversion: Option<Arc<ConversionIdentity>>,
     ) -> Result<Arc<NativeVersionHelperPlan>> {
-        ensure!(
-            !matches!(action, NativePhaseHelperAction::Version),
-            "readonly action cannot issue another version helper"
-        );
         let original = &previous.original.original;
         original.actor().validate_open()?;
         ensure!(
-            previous.original.observation.qualified(),
-            "previous original helper was not qualified"
+            seal.matches_actor(original.actor()),
+            "Git seal original actor differs"
         );
-        let before = snapshot(runtime, |tx| {
+        require_conversion(action, &seal, conversion.as_ref())?;
+        seal.validate_deadline()?;
+        ensure!(
+            previous.original.observation.qualified()
+                && previous.original.effect.text[6] == "confirmed",
+            "previous original helper was not qualified/confirmed"
+        );
+        match original.action {
+            NativePhaseHelperAction::Version => {
+                ensure!(
+                    action == PhaseGitAction::SourceTop
+                        && previous.original.observation.qualified_profile().is_some(),
+                    "Git requires SAME actual qualified version predecessor"
+                );
+                previous.original.after.reserve_git_batch()?;
+            }
+            NativePhaseHelperAction::Git(last) => ensure!(
+                action.ordinal() == last.ordinal() + 1
+                    && original
+                        .seal
+                        .as_ref()
+                        .is_some_and(|s| Arc::ptr_eq(s, &seal)),
+                "Git history order/seal differs"
+            ),
+        }
+        // Snapshot is only a drift check. The authoritative predecessor object
+        // remains the SAME already-acknowledged after, never reconstructed rows.
+        snapshot(runtime, |tx| {
             let budget = InventoryBudget::new(tx)?;
             budget.finish((|| {
                 original.validate_ready(tx)?;
-                let actual =
-                    Inventory::read(tx, original.actor().launch().allocation().facts().unit_id)?;
                 ensure!(
-                    actual == previous.original.after,
-                    "readonly predecessor exact settlement inventory changed"
+                    Inventory::read(tx, original.actor().launch().allocation().facts().unit_id)?
+                        == *previous.original.after,
+                    "Git predecessor exact inventory changed"
                 );
-                Ok(actual)
+                Ok(())
             })())
         })?;
+        let before = previous.original.after.clone();
         let id = OperationId::new();
         let allocation = original.actor().launch().allocation();
         let effect = EffectImage::generated(&ManagedEffect {
             id,
             unit_id: allocation.facts().unit_id,
             scope: allocation.unit_snapshot().scope.clone(),
-            kind: action.kind().into(),
-            idempotency_key: format!("native-readonly-{id}"),
-            expected_target: format!(
-                "readonly:{}:{}",
-                allocation.facts().operation_id,
-                action.label()
-            ),
+            kind: "native_phase_git".into(),
+            idempotency_key: format!("native-git-{id}"),
+            expected_target: seal.target(action),
             state: EffectState::Pending,
             receipt: BTreeMap::new(),
             version: 1,
         })?;
-        let pending = before.with_version_intent(effect.clone())?;
+        let pending = Arc::new(before.with_git_intent(effect.clone())?);
         Ok(Arc::new(NativeVersionHelperPlan {
             ready: original.ready.clone(),
             before,
             pending,
             effect,
-            action,
+            action: NativePhaseHelperAction::Git(action),
+            seal: Some(seal),
+            conversion,
         }))
     }
     pub(crate) fn reserve_phase_version_intent(
+        &mut self,
+        plan: Arc<NativeVersionHelperPlan>,
+        admission: &PhaseEffectAdmissionGuard,
+    ) -> Result<NativeHelperIntentCommit> {
+        ensure!(
+            matches!(plan.action, NativePhaseHelperAction::Version) && plan.seal.is_none(),
+            "version intent cannot admit Git"
+        );
+        self.reserve_phase_helper_intent(plan, admission)
+    }
+    pub(crate) fn reserve_phase_git_intent(
+        &mut self,
+        plan: Arc<NativeVersionHelperPlan>,
+        admission: &PhaseEffectAdmissionGuard,
+    ) -> Result<NativeHelperIntentCommit> {
+        let NativePhaseHelperAction::Git(action) = plan.action else {
+            anyhow::bail!("Git intent cannot admit version")
+        };
+        let seal = plan
+            .seal
+            .as_ref()
+            .context("Git intent lacks original Source seal")?;
+        ensure!(
+            seal.matches_actor(plan.actor()),
+            "Git intent actor/seal differs"
+        );
+        require_conversion(action, seal, plan.conversion.as_ref())?;
+        self.reserve_phase_helper_intent(plan, admission)
+    }
+    fn reserve_phase_helper_intent(
         &mut self,
         plan: Arc<NativeVersionHelperPlan>,
         admission: &PhaseEffectAdmissionGuard,
@@ -525,7 +658,7 @@ impl Store {
                 plan.actor().validate_open()?;
                 plan.validate_ready(&tx)?;
                 plan.pending.validate_bound()?;
-                ensure!(Inventory::read(&tx,plan.actor().launch().allocation().facts().unit_id)? == plan.before,
+                ensure!(Inventory::read(&tx,plan.actor().launch().allocation().facts().unit_id)? == *plan.before,
                     "Native original intent complete baseline changed");
                 ensure!(!tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE id=?1 OR (unit_id=?2 AND idempotency_key=?3))",
                     params![plan.effect.text[0],plan.effect.text[1],plan.effect.text[5]],|r|r.get::<_,bool>(0))?, "Native original helper identity already exists");
@@ -557,7 +690,7 @@ impl Store {
                 plan.validate_ready(&tx)?;
                 ensure!(
                     Inventory::read(&tx, plan.actor().launch().allocation().facts().unit_id)?
-                        == plan.pending,
+                        == *plan.pending,
                     "Native helper pending expected inventory changed"
                 );
                 Ok(())
@@ -582,7 +715,7 @@ impl Store {
                 plan.validate_ready(&tx)?;
                 ensure!(
                     Inventory::read(&tx, plan.actor().launch().allocation().facts().unit_id)?
-                        == plan.pending,
+                        == *plan.pending,
                     "Native original intent confirmation postimage changed"
                 );
                 Ok(())
@@ -606,14 +739,14 @@ impl Store {
             .version
             .checked_add(1)
             .context("Native effect version overflow")?;
-        effect.state = if observation.complete() {
+        effect.state = if observation.settle_confirmed() {
             EffectState::Confirmed
         } else {
             EffectState::Unknown
         };
         effect.receipt = observation.safe_receipt();
         let effect = EffectImage::generated(&effect)?;
-        let after = plan.before.with(effect.clone())?;
+        let after = Arc::new(plan.before.with(effect.clone())?);
         Ok(Arc::new(NativeHelperSettlementPlan {
             original: plan,
             observation,
@@ -639,8 +772,8 @@ impl Store {
             budget.finish((|| {
                 plan.validate_ready(&tx)?;
                 let current = Inventory::read(&tx,plan.actor().launch().allocation().facts().unit_id)?;
-                if current == settlement.after { return Ok(()); }
-                ensure!(current == plan.pending, "Native settlement original full inventory CAS changed");
+                if current == *settlement.after { return Ok(()); }
+                ensure!(current == *plan.pending, "Native settlement original full inventory CAS changed");
                 let mut values = settlement.effect.values();
                 values.extend(plan.effect.values());
                 ensure!(tx.execute("UPDATE managed_effects SET id=?1,unit_id=?2,project_id=?3,goal_id=?4,task_id=?5,idempotency_key=?6,state=?7,body=?8,version=?9 WHERE id IS ?10 AND unit_id IS ?11 AND project_id IS ?12 AND goal_id IS ?13 AND task_id IS ?14 AND idempotency_key IS ?15 AND state IS ?16 AND body IS ?17 AND version IS ?18",
@@ -656,6 +789,55 @@ impl Store {
 #[cfg(test)]
 mod inventory_tests {
     use super::*;
+
+    #[test]
+    fn nongrant_git_inventory_reserves_13_rows_and_maximal_bytes() {
+        let row = image(UnitId::new());
+        let mut inventory = Inventory {
+            rows: vec![row.clone(); 242],
+        };
+        inventory.reserve_git_batch().unwrap();
+        inventory.rows.push(row.clone());
+        assert!(inventory.reserve_git_batch().is_err());
+        let mut inventory = Inventory {
+            rows: vec![row.clone(); 242],
+        };
+        for row in &mut inventory.rows {
+            row.text[7] = "x".repeat(7900);
+        }
+        let maximum = shape(&[36, 36, 36, 36, 36, 256, 9, BODY_BYTES], i64::MAX as u64).unwrap();
+        let desired = INVENTORY_BYTES - GIT_ACTIONS * maximum;
+        let used = 16
+            + inventory
+                .rows
+                .iter()
+                .map(|r| r.bytes().unwrap())
+                .sum::<usize>();
+        let mut remaining = desired - used;
+        for row in &mut inventory.rows {
+            let extra = remaining.min(BODY_BYTES - row.text[7].len());
+            row.text[7].push_str(&"x".repeat(extra));
+            remaining -= extra;
+        }
+        assert_eq!(remaining, 0);
+        inventory.reserve_git_batch().unwrap();
+        inventory
+            .rows
+            .iter_mut()
+            .find(|r| r.text[7].len() < BODY_BYTES)
+            .unwrap()
+            .text[7]
+            .push('x');
+        assert!(inventory.reserve_git_batch().is_err());
+        let full = Inventory {
+            rows: vec![row.clone(); 255],
+        };
+        assert!(full.with_git_intent(row.clone()).is_err());
+        let before = Inventory {
+            rows: vec![row.clone(); 254],
+        };
+        assert_eq!(before.with_git_intent(row).unwrap().rows.len(), 255);
+    }
 
     fn database() -> Connection {
         let c = Connection::open_in_memory().unwrap();

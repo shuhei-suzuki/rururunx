@@ -80,24 +80,110 @@ fn validate_seal_identity(
     Ok(())
 }
 impl SourceNativePreparationSeal {
-    pub(crate) fn readonly_actions(
+    pub(crate) fn revision(&self) -> &str {
+        &self.frame.revision
+    }
+    pub(crate) fn inventory_digest(&self) -> &str {
+        &self.frame.versions["context:committed_inventory"]
+    }
+    pub(crate) fn inventory(&self) -> &BTreeMap<String, crate::context::committed::InventoryEntry> {
+        self.frame.index.inventory()
+    }
+    pub(crate) fn tree(&self) -> &BTreeMap<String, CommittedTreeEntry> {
+        &self.frame.native_tree
+    }
+    pub(crate) fn qualify_git(
         &self,
-    ) -> Result<Vec<crate::execution::native::readonly::NativePhaseHelperAction>> {
-        use crate::execution::native::readonly::NativePhaseHelperAction as Action;
+        allocation: &NativeAllocation,
+        project: &Project,
+    ) -> Result<()> {
+        let facts = allocation.facts();
+        validate_seal_identity(
+            (facts.operation_id, facts.pair_id, facts.input_bytes),
+            (self.operation, self.pair, &self.input_bytes),
+        )?;
         ensure!(
-            self.frame.artifact.is_none(),
+            self.frame.artifact.is_none()
+                && facts.input.revision == self.frame.revision
+                && self.frame.revision == allocation.unit_snapshot().base_sha,
             "actual readonly artifact lease unavailable"
         );
         let inventory = self.frame.index.inventory();
-        let mut actions = vec![
-            Action::Head,
-            Action::Status,
-            Action::Tree {
-                revision: self.frame.revision.clone(),
-                inventory: self.frame.native_tree.clone(),
-            },
-        ];
-        let mut seen = std::collections::BTreeSet::new();
+        ensure!(
+            valid_oid(&self.frame.revision)
+                && inventory.len() <= 4096
+                && self.frame.native_tree.len() == inventory.len()
+                && self.frame.versions.get("code") == Some(&self.frame.revision)
+                && self.frame.versions.get("context:committed_inventory")
+                    == self
+                        .frame
+                        .index
+                        .source_versions()
+                        .get("context:committed_inventory"),
+            "original committed Frame inventory differs"
+        );
+        for (key, value) in &self.frame.versions {
+            if key == "code" || key == "context:committed_inventory" || key.starts_with("rules:") {
+                ensure!(
+                    facts.input.source_versions.get(key) == Some(value),
+                    "original encoded input dependency differs"
+                );
+            }
+            if let Some(path) = key.strip_prefix("rules:")
+                && path != "config"
+            {
+                ensure!(
+                    inventory
+                        .get(path)
+                        .is_some_and(|e| e.skipped.is_none() && e.sha256.as_ref() == Some(value)),
+                    "original rule digest differs"
+                );
+            }
+        }
+        if let Some(reference) = &project.config_ref {
+            let path = reference
+                .strip_prefix(&project.root)?
+                .to_str()
+                .context("original config path not UTF8")?;
+            ensure!(
+                inventory.get(path).is_some_and(|e| e.skipped.is_none()
+                    && e.sha256.as_ref() == self.frame.versions.get("rules:config")),
+                "original config digest differs"
+            );
+        } else {
+            ensure!(
+                !self.frame.versions.contains_key("rules:config"),
+                "original config unexpectedly present"
+            );
+        }
+        for (path, entry) in inventory {
+            let tree = self
+                .frame
+                .native_tree
+                .get(path)
+                .context("original tree entry absent")?;
+            ensure!(
+                entry.skipped.as_deref() != Some(UNSUPPORTED_ENTRY)
+                    && matches!(tree.mode.as_str(), "100644" | "100755")
+                    && tree.kind == "blob"
+                    && tree.oid == entry.oid
+                    && entry.oid.len() == self.frame.revision.len()
+                    && valid_oid(&entry.oid)
+                    && (entry.bytes.is_none() || entry.bytes == tree.size),
+                "original physical tree/inventory differs"
+            );
+            if let Some(size) = entry.bytes {
+                let bytes = self
+                    .frame
+                    .native_bytes
+                    .get(path)
+                    .context("original Source bytes absent")?;
+                ensure!(
+                    bytes.len() == size && entry.sha256.as_deref() == Some(digest(bytes).as_str()),
+                    "original Source bytes/hash/size differs"
+                );
+            }
+        }
         for path in &self.frame.native_mandatory {
             let entry = inventory
                 .get(path)
@@ -116,24 +202,8 @@ impl SourceNativePreparationSeal {
                         .is_some_and(|p| p.oid == entry.oid),
                 "original mandatory bytes/OID correspondence differs"
             );
-            if let Some(hash) = &entry.sha256
-                && seen.insert(entry.oid.clone())
-            {
-                ensure!(
-                    entry.bytes.is_some_and(|n| n <= 1024 * 1024),
-                    "committed blob qualification exceeds bound"
-                );
-                actions.push(Action::Blob {
-                    oid: entry.oid.clone(),
-                    sha256: hash.clone(),
-                });
-            }
         }
-        ensure!(
-            actions.len() < 32,
-            "committed source qualification exceeds finite helper bound"
-        );
-        Ok(actions)
+        Ok(())
     }
 }
 /// A transient borrow origin, never embedded in a Source slot/custody/plan.
@@ -170,6 +240,10 @@ impl SourceNativeCustody {
             (facts.operation_id, facts.pair_id, facts.input_bytes),
             (self.seal.operation, self.seal.pair, &self.seal.input_bytes),
         )?;
+        ensure!(
+            Arc::ptr_eq(&self.frame, &self.seal.frame),
+            "original Source frame replaced"
+        );
         Ok(self.seal.clone())
     }
     /// Original selected object only; no allocation or dispatch permission.
