@@ -122,6 +122,84 @@ registered actor rather than accepting a generic ExecutionAuthority as proof.
 Concrete signatures can be narrowed during source implementation; ownership,
 producer privacy and mandatory checks cannot be weakened.
 
+### 3.1 Smallest first source stage and real Root interfaces
+
+The first production increment is limited to the actual selected preparation
+actor, sealed zero-process plan and allocated→preparing readiness transaction.
+Helper, quota, registration/spawn and Core permission consumer replacement remain
+later increments; this first stage does not enable them or native availability.
+The actor is issued only within actual `NativeSessions::start_phase`, from the
+same selected installed port and retained launch, never a public DTO. Its private
+fields retain `Arc<PhaseLaunchParts>`, the actual same-Unit
+`OwnedMutexGuard<()>` start gate and original complete bounded input bytes. It is
+non-Clone/non-Deserialize; Arcs share this same real actor, not a replacement.
+The input-byte copy is nongrant immutable captured content, not regenerated pins.
+
+```rust
+// Native constructors stay private to actual selected start.
+impl NativePhasePort {
+    // Upgrades SAME installed adapter/session, checks actual pointer/origin.
+    fn matches_sessions(&self, actual: &NativeSessions) -> Result<()>;
+}
+fn plan_phase_preparation(owner: &RuntimeOwner,
+    actor: &Arc<NativePreparationActor>) -> Result<Arc<NativePreparationPlan>>;
+// Store owns exact readiness plan/known-commit acknowledgement issuance.
+fn begin_phase_preparation(&mut self, plan: &Arc<NativePreparationPlan>,
+    admission: &PhaseEffectAdmissionGuard) -> Result<NativePreparationCommit>;
+
+// Proposed Root interfaces; only Root's actual producer may implement them.
+impl PhaseLaunchParts {
+    fn admission(&self) -> &Arc<PhaseEffectAdmission>;
+    fn validate_preparation_origin_tx(&self, tx: &Transaction<'_>,
+        current: &CurrentWorkflowSuccessor) -> Result<()>;
+}
+impl PhaseEffectAdmission {
+    async fn enter(self: &Arc<Self>, launch: Arc<PhaseLaunchParts>)
+        -> Result<PhaseEffectAdmissionGuard>;
+}
+impl PhaseEffectAdmissionGuard {
+    fn validate_for(&self, launch: &PhaseLaunchParts) -> Result<()>;
+}
+```
+
+Root admission shares the actual Runtime stop `control_admission` Arc mutex and
+actual running/stopping Arcs. It owns no strong Runtime, queue or job reference.
+The queue retains the SAME admission object; validation uses the actual passed
+launch's retained supervisor/owner identity, not a new queue/Runtime lookup.
+The guard holds the actual OwnedMutexGuard and SAME launch Arc only for the local
+synchronous effect/readiness section. It is not stored in the preparation actor,
+parked job, helper capture or Core I/O. Enter may await before acquiring it; there
+is no await between its successful last validation and that section's completion.
+
+The original preparation seal is Root-owned, created only by the real bridge
+from the actual SourceHandoff and concrete PendingPhaseCapacity after actual
+Source take/reserve. It retains the original capsule/immutable allocation and a
+Weak of the original DriverReadTicket; OriginalMarker retains the SAME ticket
+strongly. SourceAccepted, allocation facts or a current-row ticket do not create
+the seal. Native borrows that SAME sealed linkage through the actual launch.
+Its immutable origin checks happen without taking Source locks under SharedStore
+and conjoin Root current-successor and actual original Driver-live in Immediate.
+The Root interface remains unavailable until that real producer is implemented
+and independently reviewed; a callback/empty validator is not an implementation.
+
+The first plan is made on the selected owner's separate bounded read-only
+coherent snapshot, before admission/Store. It retains the SAME actual actor,
+Root current successor, original owner/input images and readiness before/after.
+Complete captured input is≤2 MiB, owner image≤32 KiB and readiness image≤4096
+bytes; the stricter existing Native pair bounds and full Root snapshot budgets
+apply. These maxima include keys/escaping/envelopes. No new global scan is needed
+for this own-operation readiness transaction.
+Immediate checks actual selected DB/port, guard/launch equality, genuine retained
+source origin, current/Driver-live and every original factual owner/Unit/input/
+epoch/generation/lifecycle/pin/lock predicate. Only readiness changes from exact
+allocated to preparing. Task/W/Context/Driver/Source/input/owner/effect rows stay
+unchanged. Its known commit is no helper dispatch permission or prepared-input
+completion proof. The actual actor retains the original plan on uncertainty and
+accepts only its exact original known-commit reconciliation, never a row-to-actor
+constructor. Actual registered/prepared and helper observations remain mandatory
+for the later consumers. Generic authority and public protected-scope refusals
+are unchanged; no shared public access mode is added by this stage.
+
 Every effect/registration/input/normal projection Immediate transaction checks:
 selected actual database, SAME retained launch/allocation/operation, actual
 selected vtable identity, `validate_current_tx`,
@@ -253,9 +331,12 @@ The concrete protected `start_with_launch` replacement is:
    registered actor before any later fallible projection. Registration uncertainty
    is Held; do not spawn based on an unconfirmed return/error or reallocate IDs.
 4. Release SharedStore while still holding that SAME admission guard. Synchronously
-   invoke OwnedProcess::spawn, then immediately move the returned real owned child
-   into the preallocated retained custody, before fallible pipe extraction,
-   Session PID projection, channel/registry work or Core construction. The move
+   invoke the retained spawn path and immediately move the raw Child returned by
+   `Command::spawn` into preallocated retained custody BEFORE fallible child-ID/PID
+   qualification, pipe extraction, Session PID projection, channel/registry work
+   or Core construction. Only then qualify that SAME retained raw Child into
+   OwnedProcess in place. A generic `OwnedProcess::spawn` error cannot prove no
+   child: baseline `execution/process.rs:28–30` creates it before ID checks. The move
    has no allocation, fallible locking or await; a dedicated short mutex may
    recover its poison for ownership retention, but poison cannot grant effects.
    Actual abort/unwind cannot leave the child solely in an unretained temporary.
@@ -279,7 +360,8 @@ that SAME operation; this is linearization, not a process-death guarantee.
 | Registration confirmed rollback | No spawn; retain original prepared actor/plan. Only proved unchanged predicates allow an original operation retry; never new allocation/pins |
 | Registration commit uncertain | No spawn. Retain original plan and resolve exact original postimages/preimages under the private known-commit protocol; row equality alone does not construct a registered actor |
 | Known registration but stop/revocation before spawn | No input/ACK/success; actual custody/registration acknowledgement enters nongrant same-original closure. No generic retirement Task rewrite |
-| OwnedProcess::spawn returns error | Retain real invocation/intent and bounded actual error classification; no invented process/Owned success and no blind process replay. Only authentic settled no-child state can contribute to non-success/no-dispatch closure |
+| Command::spawn returns an error without a Child handle | Retain actual API observation, original invocation/intent and bounded classification; this alone is NOT NoChild evidence. An uncertain creation outcome stays Held, never generic error-to-NoCurrentDispatch or blind process replay; only a separately authentic proved precreation failure can qualify no-child non-success closure |
+| Raw Child returned but PID/identity qualification fails | Retain that SAME raw Child before returning the error. No group signal using unqualified PID; actual Child direct-stop/reap is nongrant best effort. This is created-child uncertainty, never NoChild/NoCurrentDispatch or successful work |
 | Child created, pipe/registry/projection failure | Retained pre-Core custody owns child, same original actor and observed outcome BEFORE failure. Actual nongrant stop/drain/terminal reconciliation uses it; missing pipes or poisoned registry cannot discard it or mint NoCurrentDispatch |
 | Caller/start future or Runtime Drop before Core handoff | Actual independently retained custody and its eager abandonment guard remain responsible for exact child/outcome. Original marked operation is Held until genuine nongrant settlement; no new start/input or DTO restoration |
 | Exact Core accepts ownership | One actual move into retained Core; pre-Core responsibility ends only after acknowledged transfer. Later known terminal storage errors retain actual terminal as in the baseline corrections |
@@ -293,6 +375,19 @@ never qualify pre-Session NoCurrentDispatch. Physical hygiene remains best effor
 If the real admission/pre-Core retention/closure interfaces are not yet composed,
 this actual Native transport effect stays refused; the old under-Store spawn
 branch is not a temporary protected fallback.
+
+The preallocated custody state distinguishes Empty, RawChild and
+QualifiedOwnedProcess. The actual synchronous spawn producer records the API
+observation and owns every returned Child before any subsequent fallible step.
+Identity qualification borrows the retained raw Child and upgrades it in place;
+if it must move the value, every error returns that SAME Child to custody.
+There is no arbitrary retain callback or authority constructor from this state.
+The RawChild variant permits only factual retention/direct-child hygiene; it
+cannot issue a prepared/registered/input/owned-success grant. Even an early
+process exit does not convert a created child into a no-dispatch certificate.
+The Empty cell after a returned spawn error records absence of a returned handle,
+not absence of a created process. No SQL negative query turns that uncertainty
+into an authentic actual-API precreation observation.
 
 ## 5. Quota and exact original-operation resume
 
@@ -379,7 +474,8 @@ implementation. Overall availability cannot be enabled by this component alone.
 | Before helpers | Exact selected vtable and original marker; parent/body/lock/Unit/epoch/generation change between plan and Immediate refuses; no helper executes |
 | Helper retention | Real version/Git owned child; intent precedes spawn; cancellation/start-future Drop before first poll/while capture, storage fault before receipt preserves child/outcome and siblings |
 | Native transport admission | Real private registration/intent and SAME stop gate; pause after commit before spawn, race actual stop, verify its winning order and exact retained child/no-child custody; other Tasks proceed after the short section |
-| Pre-Core child handoff | Real child created before injected pipe/registry/projection fault or future Drop; retained actual custody stops/reconciles same child without input/replay/Task write; eager guard survives unpolled Core job; registration uncertainty prevents spawn |
+| Pre-Core child handoff | Real raw Child created before injected ID/pipe/registry/projection fault or future Drop; retained actual custody stops/reconciles same child without input/replay/Task write; identity fault never counts as NoChild; eager guard survives unpolled Core job; registration uncertainty prevents spawn |
+| First preparation stage | Actual selected start, genuine launch/source seal/admission, exact allocated→preparing readiness CAS; changed original source/Unit/owner/lock refuses, stopped admission refuses; no helper/Session/input grant from the commit |
 | Preparation state | Same actor/readiness preparing, registration once; replay or another alias/pair/Session refused; rollback and uncertain commit preserve original plan, no new UUID |
 | Pre-Session wait | Settled helpers and genuine NoCurrentDispatch; exact parked due record resumes SAME operation/Unit/pair once, Task/W versions unchanged; unknown helper/duplicate/stale waiter refuses |
 | Quota independence | Marked plus legacy active lease union, caps/fairness/boundary overflow, foreign/stale bucket; same-lease live recovery, no probe mint or Task/W write, no input resend |
