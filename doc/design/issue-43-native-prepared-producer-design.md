@@ -45,6 +45,22 @@ That quota transaction counts every active lease, marked or legacy. Its fairness
 
 Prepared is consumed once by the approved transport registration, which never uses allocated-v1 or generic marked validators. Composition stays refused until G1–G5 are real. Every other path is no-effect refusal, Held, or nongrant closure.
 
+### 1.2 Correction delta (P)
+
+This revision corrects only two verified defects, B1 and B2. The closed G1 findings R1–R5 and R4a stay closed and are not reopened. The source facts for both corrections were read at `fd4a6a160fc1d20f1ab3f41f2ac15b76246c5d83` (clean). Every file cited for B1 and B2 is identical at `a913203f` and `fd4a6a16`, except `state/execution/native_phase/version.rs`, whose only change (`:441–449`) lies outside the cited planner lines `:280–311`. So every line reference in this document keeps its meaning. Nothing below is implemented, built or tested.
+
+- **B1 effect arithmetic.** Replaced assumption: a ≤252 pre-registration baseline plus transport 1, setup ≤2 and input 1 (transport HOW §13; here §§8, 9.1, 11.1 and C-1). The actual pre-input setup is provider-specific:
+  - Codex journals six `native_setup` effects before its `turn/start` `native_input` (`execution/native.rs:2035`): `initialize`, `initialized`, `account/read`, `environment/status`, `account/rateLimits/read` and `thread/start` (`:1963,1968,1973,1980,1987,2020`). `boot_call` maps an absent kind to `native_setup` for a protected phase (`:1487–1507`).
+  - Claude journals one, `initialize` (`:2123`), before its input (`:2149`).
+
+  The unchanged `plan_phase_dispatch` gate admits a dispatch only while the complete inventory is `<256` (`state/execution/native_phase.rs:1293–1298`). At the allowed 252 baseline, Codex is therefore refused at its fourth setup, before input. The correction is a provider+role admission budget, checked before every helper effect (§11.4). Changed: §§8 item 2, 9.1, 11.1, 11.2, 11.4 (new), 12, 13, 14 (C-1, C-9) and 15.
+- **B2 Legacy candidate validation under the private lock.** Replaced assumption: §6.4 let the existing generic validator decide a Legacy candidate "inside the Immediate as today", while §11.3 forbade hashing and encoding under SharedStore. Actual `validate_authority(…, native=true, …)` (`state/execution.rs:458–497`) runs all of the following inside that transaction:
+  - `governing_digest(Project, Goal)`: JSON construction, serialization, SHA-256 and hex formatting (`:498–511`);
+  - `runtime::driver::validate` (`state/runtime/driver.rs:318–353`): Driver body decode, a pins snapshot with digests, a serialized comparison and the `rrx_live_task_driver` liveness callback;
+  - `source_recovery::validate_task` (`state/execution/source_recovery.rs:500–509`): a pins snapshot that includes `governing_digest`, and a serialized comparison.
+
+  The correction is one precisely limited lock-contract exception, E-1 (§6.4 item 5). A two-branch plan keeps policy, image building and private encoding out of the lock. Changed: §§6.2, 6.3, 6.4, 11.2, 11.3, 12, 13, 14 (C-10) and 15.
+
 ## 2. Revalidated source map at a913203f (V)
 
 Paths are relative to `crates/rrx/src/`.
@@ -310,7 +326,7 @@ writes = "none"                            # "worktree" | "none"
 | Active leases (global) | `quota_leases WHERE active=1` scalar columns joined `execution_units(project_id, task_id, kind)` | 4096 | scalar index ≤4 MiB total for all scalar inventories |
 | Due waiters in pool | `quota_waiters` scalar columns joined Unit `kind, project_id, task_id, native_effects_open, version`, plus marked-class columns (§6.4) | 4096 | (shared 4 MiB) |
 | Same-Task capacity history | `execution_units WHERE task_id=? AND id<>?` | 256 | bodies each ≤16 KiB |
-| Legacy candidates ahead of self | full bodies only for those ahead in fair order | ≤4096 | all candidate+history bodies ≤72 MiB |
+| Legacy candidates ahead of self | full bodies only for those strictly before the own actual or virtual fair position (§6.4 item 3); used for the capacity predicates and branch planning, never for a validity or structure verdict (§6.4 item 5) | ≤4096 | all candidate+history bodies ≤72 MiB |
 | Windows | selected pool | 64 | body ≤8192 each |
 | Pool / own waiter / own lease | exact row, or exact absence | 1 each | ≤8192 each |
 | Own Unit / readiness | exact, equal to the SAME pre-lineage images | 1 | ≤16 KiB / ≤4096 |
@@ -328,11 +344,12 @@ Every private quota Immediate runs under a NEW guard from the SAME launch admiss
 - the SAME pre-lineage validator (§3.4): Initial for Admit-first and Park; the parked Quota lineage for Re-park and Due-claim admit. This includes `validate_preparation_origin_tx` (current successor + Driver-live) with that lineage's successor, and the Unit authority facts, effect-open, parent activity and governing digest, exactly as in transport HOW §9 (never generic `validate_authority` for the own unit);
 - `no_registration`, owner v1, and the complete inventory == completion `after`;
 - the SAME no-dispatch value and its negative conjuncts;
-- planned `at` within 5 s of now; otherwise replan.
+- planned `at` within 5 s of now; otherwise replan;
+- for Admit-first, Park, Re-park and Due-claim admit whose decision depends on the head, the E-1 head walk (§6.4 item 5).
 
 The Closure row uses the §7.4 nongrant conjunct instead of the list above.
 
-Images below are complete columns, with full body bytes where present. Every write is `WHERE` all columns `IS` the preimage, and the rowcount must be exactly 1. An INSERT requires exact absence.
+Images below are complete columns, with full body bytes where present. Every write is `WHERE` all columns `IS` the preimage, and the rowcount must be exactly 1. An INSERT requires exact absence. Every compare and the E-1 head walk complete before the first write of the Immediate; a mismatch or an E-1 abort rolls back with no write.
 
 The pool default image is D = `(provider, 'unknown', next_probe_at 0, probe_unit NULL, backoff 60000, last_role 'reviewer')`, which equals the DDL defaults (`execution.sql:117–123`).
 
@@ -365,7 +382,7 @@ The pool default image is D = `(provider, 'unknown', next_probe_at 0, probe_unit
 
 1. **Lease accounting is a union and stays unfiltered.** Every active lease (legacy or marked) counts in global, provider, executor and project counts. No validator outcome removes a lease from a count.
 2. **Classifying a due waiter `w`.** Classification uses one bounded join on `managed_phase_operations(unit_id, phase_open=1)` and `managed_phase_readiness`. There are three classes:
-   - **Legacy.** No open operation exists for the unit. The existing generic validator decides it, inside the Immediate as today. A refused Legacy is skipped, which is the unchanged legacy semantics for its own class.
+   - **Legacy.** No open operation exists for the unit. The legacy route decides it with the unchanged generic validator inside its own Immediate, as today (`quotas.rs:286–301`). The private route decides it only through E-1 (item 5), and only after that candidate's structural owner-data check (item 5, step 4a) has passed. A Legacy that the unchanged validator refuses is skipped by the legacy route and passed over by the private route, which is the unchanged legacy semantics for its own class. In the private route a structurally malformed Legacy is never passed over; it aborts the Immediate.
    - **MarkedParked.** An open operation exists and all of these hold:
      - readiness `parked` with `parking_version = version`;
      - Unit `Preparing` with `wait_reason` equal to `w.reason`;
@@ -375,10 +392,40 @@ The pool default image is D = `(provider, 'unknown', next_probe_at 0, probe_unit
 
      It **holds its fair position**. Generic validation is never applied to it.
    - **MarkedStalled.** Marked, but any MarkedParked predicate fails. It holds no position (it cannot be resumed), is reported as attention, and is never deleted by a generic writer. Its lease, if any, still counts.
-3. **Head selection.** The head is the first candidate in the existing fair order that passes the capacity predicates and is either a validated Legacy or MarkedParked.
+3. **Head selection and own fair position.** The head is the first candidate in the existing fair order that passes the capacity predicates and is either a validated Legacy or MarkedParked.
+   - **Fair-order key.** As `quotas.rs:278`: ascending (`rank`, `fairness_sequence`, `unit_id`). `rank` is 1 if `(kind = 'executor') = (last_role = 'executor')` and 0 otherwise, using the compared pool image's `last_role` (D's `'reviewer'` for a cold pool). `unit_id` is the stored text, compared bytewise as SQLite's default `BINARY` collation does for that `ORDER BY`. `unit_id` is the waiter primary key, so the order is strict.
+   - **Own actual position.** With an own waiter (Re-park, Due-claim admit), the own key is (`rank` of the own Unit `kind`, that compared own waiter image's own exact stored `fairness_sequence`, own `unit_id`). It is never replaced by `at`. An own waiter that is not due (`next_due > at`) is not in the legacy candidate list, so legacy never makes it the head; `decide` then gives the legacy wait (`quotas.rs:302–309`) as a head-independent decision, and no walk runs.
+   - **Virtual own position.** With no own waiter (Admit-first, Park), the own key is a virtual sentinel: (`rank` of the SAME own Unit `kind` against the SAME compared `last_role`, the SAME planned `at`, the SAME own `unit_id`). This is exactly where legacy places the own unit: it INSERTs the own capacity waiter with `fairness_sequence = at` (`ON CONFLICT DO NOTHING`, `quotas.rs:271`) before it reads `last_role` and sorts (`:273–278`). The `at` is the one used for the due predicate and for Park's waiter image. The sentinel is an in-memory comparison key only: no own waiter is inserted, updated or deleted to construct it, and the only own-waiter write is still the planned branch image after the walk.
+   - **Precedes.** A due candidate (the compared inventory under the `quotas.rs:278` predicate `next_due ≤ at` with joined `native_effects_open = 1`) precedes the own unit iff its key is strictly less than the own actual or virtual key. So on equal `rank` and `fairness_sequence` the lower `unit_id` precedes; a candidate with `rank` 0 precedes an own unit with `rank` 1 whatever their `fairness_sequence`; and a `rank` 1 candidate never precedes an own unit with `rank` 0.
    - The legacy route admits only if the head is itself. Otherwise it waits `Capacity at+1000`, now including the case where the head is a marked sibling.
-   - The private route admits only if the head is its own unit, or if the own unit has no waiter and no due candidate precedes it.
+   - The private route admits only if no candidate that precedes the own actual or virtual position is a head (item 5). A candidate after the own position never affects the private decision. This equals legacy: on a head-dependent decision the own unit passes the capacity predicates, so legacy's loop stops at the own unit unless a head precedes it.
 4. **Why stalls drop out.** A live MarkedParked owner re-checks within 1 s (Capacity) or at its due time (Quota). An unclaimed waiter more than 30 s overdue implies a held or absent owner. Excluding it bounds starvation. This is fairness, not safety; capacity safety comes from the lease union.
+5. **E-1: Legacy validation inside the private Immediate (the only lock-contract exception, §11.3).**
+   - **Why an exception and not a preplan.** The exact verdict of `validate_authority(tx, &candidate.authority(), true, false)` includes the Driver liveness conjunct `rrx_live_task_driver` (`driver.rs:330–335`). That SQL function reaches the Runtime `DriverRegistry` only on the Store writer connection: the writer-contract registration installs it with an empty `Weak` (`state/mod.rs:92`, `driver.rs:289–317`), and only `attach_runtime_drivers` attaches the registry (`driver.rs:355–357`, `execution/owner.rs:255–274`). The query-only planning connection (`managed_binding/snapshot.rs:29–58`) registers neither, so a preplanned verdict cannot be the exact verdict. Preplanning the other conjuncts would also mean retaining, and re-comparing under the lock, each candidate's Project (≤1 MiB), Goal (≤4 MiB), Task (≤1 MiB), Workflow record (≤8 MiB), Context, Driver and Source images (the Driver snapshot bounds, `driver.rs:97–99`, and its Workflow read). That does not fit the unchanged ≤8 MiB plan bound (§6.2), and it would be a second implementation of the Driver and Source pin predicates.
+   - **Scope.** Only the private Admit-first, Park, Re-park and Due-claim admit Immediates, and only when the plan's decision depends on the head. Never the Closure, S5, helper, registration or any other private Immediate. Never for the own unit, which keeps the §6.3 lineage conjuncts. Never for a MarkedParked or MarkedStalled candidate.
+   - **Two precomputed branches.** `decide` runs only in the planner. Its result depends on the head only when the own unit has no exhaustion or probe wait, no same-Task capacity due and no capacity cap (`quotas.rs:302–312`). In that case the plan carries both complete image sets, built outside SharedStore: `own_head` (Admit-first, or Due-claim admit) and `other_head` (Park, or Re-park, with reason `Capacity` and due `at+1000`, as `quotas.rs:308–309`). Otherwise the plan carries one image set and no walk runs. The walk only selects a branch. It never runs `decide`, never builds or encodes an image and never computes a private digest.
+   - **Head walk (inside the Immediate, after every compare, before any write).** Walk, in the existing fair order (`quotas.rs:278`), only the due candidates that precede the own position (item 3). The walk stops at the own actual waiter (Re-park, Due-claim admit) or at the virtual own position (Admit-first, Park). A candidate after the own position is never read or evaluated: no shape query, `unit_tx`, capacity check, structural check, class decision or validator call. The own unit and marked candidates are never generically validated. For each preceding candidate:
+     1. One shape query requires the candidate's `execution_units.body` ≤16 KiB, `projects.body` ≤1 MiB, `goals.body` ≤4 MiB and `tasks.body` ≤1 MiB, each present with `typeof` text. These are the §6.2 Unit bound and the Driver snapshot bounds. A failure aborts the Immediate.
+     2. `unit_tx(&tx, id)`; the decoded scope must carry a Goal id and a Task id, otherwise abort (never reach the `unwrap` at `quotas.rs:535`); then `project_capacity_blocked(&tx, &candidate, project_max)`, exactly as `quotas.rs:287–288`. An error, including a missing or undecodable Project there (`quotas.rs:529–530`), aborts the Immediate, just as its `?` aborts the legacy transaction. A capacity-blocked or executor-throttled candidate is passed over, as `quotas.rs:288–296`; it cannot be the head whatever its data.
+     3. MarkedParked: it is the head; stop. MarkedStalled: pass over.
+     4. Legacy, in this order:
+        - **4a. Structural owner-data check.** Read the candidate's `projects`, `goals` and `tasks` rows for its scope through the same `read_tx`/`decode` the validator uses (`state/mod.rs:2014–2016,2166–2175`), each within its step 1 bound, and decode them as typed `Project`, `Goal` and `Task` (`domain.rs:153,251,301`, `deny_unknown_fields`). Require: each row present and decodable; decoded `Project.id` equal to the scope's Project; decoded `Goal.id` and `Goal.project_id` equal to the scope and to the `goals` row's `id` and `project_id` columns; decoded `Task.id`, `Task.goal_id` and `Task.project_id` equal to the scope and to the `tasks` row's `id`, `goal_id` and `project_id` columns; each decoded `version` equal to its row's `version` column. A missing row, a decode error, an oversize body or any mismatch is malformation: abort the Immediate; never pass over. The SQL `CHECK(json_valid(body))` (`state/schema.sql:5,11,20`) is not enough: `{}` satisfies it and fails typed decoding. Lifecycle, status and activity fields are not structure; they stay in the validator verdict. The decoded values are dropped before step 4b; they are never hashed, encoded, retained in the plan or carried to another Immediate. Malformed rows arise only outside the genuine writers (raw same-user SQL, corruption or an incompatible binary), so this is a cooperative contract and fairness check, not a sandbox (§6.5); no own-unit authority depends on it.
+        - **4b.** Call the unchanged `validate_authority(&tx, &candidate.authority(), true, false)`, the SAME call the legacy route makes at `quotas.rs:297`. `Ok`: it is the head; stop. `Err`: an ordinary authority refusal; pass over, which is the unchanged legacy semantics for its class. Because 4a decoded the SAME Project, Goal and Task bytes in the SAME Immediate, this `Err` is never a missing or undecodable Project, Goal or Task, nor an identity or version mismatch among them.
+
+     Reaching the own actual or virtual position with no head selects `own_head`. A head before it selects `other_head`.
+   - **Limit.** At most 8 validator calls per Immediate (`LEGACY_HEAD_CALLS = 8`), counted only for Legacy candidates that precede the own position and pass the capacity predicates. If such a candidate would need a 9th call, the Immediate aborts before its step 4a and its call. Candidates after the own position are never counted. A candidate that was not evaluated is never treated as refused, absent or passed over.
+   - **Abort.** Every abort in the walk is a definitive pre-write refusal: no waiter, lease, pool, Unit or readiness write, no helper and no registration. It replans within §6.3 item 5 and reports the attention `legacy head unresolved` with its cause (shape, scope, structure, `unit_tx` or capacity error, or call limit). The start stays cancellable through §7.4. This costs liveness, never safety: a malformed (step 1, 2 or 4a) or over-bound candidate before the own position is never passed over, so it can never let the own unit move ahead in the fair order.
+   - **Never trusted.** The plan holds no Legacy verdict, structure result, validity boolean, governing digest or Driver/Source result, and the Immediate reads none from it. A verdict or structure result from one Immediate is never carried to another. An `Ok` only makes another unit the head, so the own unit waits. An `Err` after a passed step 4a only passes over that candidate. Neither grants the own unit anything; the own unit's authority is only its §6.3 lineage conjuncts.
+   - **Compared identity/CAS evidence.** These complete plan images are compared before the walk; any difference is a definitive pre-write conflict and replans:
+     - the own unit: every §6.3 common conjunct;
+     - the selected pool image or its absence, including `last_role` (the fair-order key), `next_probe_at`, `probe_unit` and `backoff`, and the complete window inventory (≤64);
+     - the complete global active-lease inventory joined to Unit `project_id, task_id, kind`, which feeds every count;
+     - the complete due-waiter inventory of the pool: all seven waiter columns, the joined Unit `kind, project_id, task_id, native_effects_open, version`, and the class columns (an open `managed_phase_operations` row for the unit; readiness `state, version, parking_version`);
+     - the own waiter and own lease images, or their absence;
+     - the same-Task capacity history (≤256).
+   - **Evaluated live under the lock, never compared to a plan value.** The shape query, `unit_tx` and its scope check, `project_capacity_blocked` (current `Project.max_tasks`, as in legacy), the step 4a structural owner-data check and the validator call. As today, the validator reads the runtime epoch, `task_execution.generation`, the Unit, Project, Goal and Task, `execution_context.governing_digest`, `goal_authority`, `task_drivers` with the Driver liveness callback, the Driver snapshot's Workflow and Context records, and `source_recoveries`.
+   - **Race.** If a Legacy verdict changes between the plan and the Immediate, the walk selects the other precomputed branch, which is still an exact-preimage CAS. A change to the fair order, a class or a count is a compared-inventory conflict before any write.
+   - **Legacy route.** Unchanged. It keeps calling the validator inside its own Immediate over its whole candidate list, with no E-1 limit, shape query or structural check (`quotas.rs:278–301`). It therefore still skips a Legacy whose Goal or Task does not decode; the private route aborts instead, and that difference grants nothing.
 
 ### 6.5 Writer/consumer matrix (who may change these rows)
 
@@ -458,7 +505,7 @@ The pool default image is D = `(provider, 'unknown', next_probe_at 0, probe_unit
    - quota `Admitted` whose plan holds the SAME no-dispatch value;
    - readiness and Unit images taken from the `Admitted` lineage: `(preparing,2,NULL)` with U₀ (Initial), or `(preparing,4,NULL)` with the due-claim Unit postimage (Quota); never recomputed;
    - inventory manifest = the completion's final `after` (quota adds no effect row);
-   - inventory ≤252 rows (transport HOW §13);
+   - inventory ≤ the §11.4 prepared bound of the SAME allocation provider, Codex ≤248 and Claude ≤252 (transport HOW §13 as corrected by C-9);
    - role ↔ Unit kind.
 3. **Not a source of authority.** It cannot be built from rows, IDs, a version string, an exit status, a completion alone, a command alone or `NativeQuotaAdmitted` alone. It grants nothing until the transport HOW's registration consumes it once.
 4. **Fault rule.** A fault between S7 and the registration known commit leaves Prepared retained and the lease held. Closure (§7.4) is the only release.
@@ -486,7 +533,7 @@ The pool default image is D = `(provider, 'unknown', next_probe_at 0, probe_unit
 - **Bounds.**
   - Total helpers are 10 (version + 9), which is ≤32.
   - Capture is version 64 KiB + 6×64 KiB (TaskTop, TaskGitDir, TaskCommon, Head, Config, IndexTree) + 3×1 MiB = 3,604,480 B.
-  - Inventory: version baseline ≤242 and Git `before₁` ≤243, so the post-batch inventory is ≤252 (C-1 arithmetic).
+  - Inventory (§11.4, C-1 arithmetic): for Claude, version baseline ≤242 and Git `before₁` ≤243, so the post-batch inventory is ≤252; for Codex, ≤238 and ≤239, so it is ≤248.
 - The Reviewer command keeps `--permission-mode plan` (keyed on `role != Executor`). The snapshot remains the only source tree the Reviewer is launched in.
 - **Reviewer hooks.** The Reviewer uses the SAME §4.2 role rule, not the Executor qualification. Every declared user hook and every project required hook must be `writes = "none"`, or S1 refuses before any helper effect. No derived-output hook profile is offered.
 
@@ -557,21 +604,24 @@ It replaces generic `validate_authority` at `native_phase.rs:360,373`, used for 
 | `native_phase_version` | 1 | |
 | `native_phase_git` | 13 (Executor) or 9 (Reviewer) | |
 | `native_phase_transport` | 1 (transport HOW) | |
-| setup | ≤2 | |
-| input | 1 | |
+| setup (pre-input) | Codex 6, Claude 1 | Codex: `initialize`, `initialized`, `account/read`, `environment/status`, `account/rateLimits/read`, `thread/start` (`execution/native.rs:1963–2020`). Claude: `initialize` (`:2123`) |
+| input | 1 | Codex `turn/start` (`:2035`); Claude user message (`:2149`) |
 
 - Quota, compat and the S4b command add **no** `managed_effects` rows, process or network effects. Rows that are not effects: readiness, Unit, waiter, lease and pool.
 - Total helpers ≤32. Aggregate capture: Executor 3,866,624 B; Reviewer 3,604,480 B; both ≤8 MiB.
+- The pre-input setup sequence is fixed. Each call admits its journaled effect exactly once, and any error ends Core through `?`; there is no setup retry. A pre-input approval request is answered with an error, never with a dispatch (`native.rs:1521,2142`). So no further pre-input reservation is needed. Post-input `native_permission` dispatches (`:2108,2242`) are not reserved (§11.4).
 
 ### 11.2 State table (preparation custody)
 
 | Observation | Next |
 |---|---|
 | S1 undeclared/mismatch/role-incompatible hook | refuse; custody Held per approved §3.2 (no helper ran) |
+| §11.4 budget exceeded before the version intent, the Git batch, S7 or registration | refuse with no new effect, quota or registration row; Held per approved §3.2 |
 | S4 version/declaration mismatch | refuse; Held; observations retained |
 | S4b command build or `check_command` fails | refuse; Held; observations retained; no quota row |
 | S5 negative check fails | Held; never a retry or new helper |
 | Quota conflict (including a pool created after a cold snapshot) | replan ≤8/wake, then backoff |
+| E-1 abort, before the own fair position: shape-query failure, a candidate `unit_tx`, scope or capacity error, a structural owner-data failure (missing, undecodable, oversize, or identity/version-mismatched Project, Goal or Task), or a 9th validator call needed | no write; replan ≤8/wake, then backoff; attention `legacy head unresolved` with its cause; cancellable (§7.4) |
 | Quota Admit known | S7 |
 | Quota Park known | parked loop with the new Quota lineage |
 | Quota commit uncertain (any transaction, including Closure) | `confirm_phase_quota`; Held otherwise |
@@ -583,10 +633,29 @@ It replaces generic `validate_authority` at `native_phase.rs:360,373`, used for 
 
 ### 11.3 Locks and time
 
-- Snapshot planning, hashing, policy, command building and encoding happen outside SharedStore.
+- Snapshot planning, hashing, policy, command building and encoding happen outside SharedStore. The only exception is E-1 (§6.4 item 5): inside the private Admit-first, Park, Re-park and Due-claim admit Immediates, at most 8 calls of the unchanged `validate_authority(…, true, false)` for Legacy candidates that precede the own fair position, each after its bounded shape query and its step 4a typed structural decode of that candidate's Project (≤1 MiB), Goal (≤4 MiB) and Task (≤1 MiB), so at most 8 of each. Those calls hash and encode exactly as the legacy route does today. The structural decode only deserializes and compares identities and versions. Nothing else of the private route hashes, encodes, builds images or runs `decide` under SharedStore.
 - Each Immediate is synchronous with no await, FS or process. Admission is acquired asynchronously before it and dropped right after.
 - The parked loop holds no lock across its sleep.
 - At most 128 parked or preparing operations exist. Per operation, a Capacity wake is ≤1/s and a conflict wake follows the 100 ms–5 s backoff.
+
+### 11.4 Provider+role effect admission budget (P)
+
+The existing per-dispatch gate is unchanged and is not widened: `admit_phase_dispatch` admits a setup, input or permission dispatch only while the complete inventory is `<256`, so no dispatch leaves more than 256 rows (`state/execution/native_phase.rs:1293–1298`).
+
+With S the pre-input setup count of §11.1, the first input is admitted iff `prepared + 1 (transport) + S ≤ 255`, i.e. `prepared ≤ 254 − S`. That is 248 for Codex. For Claude it is 253, and the existing conservative 252 is kept. Subtracting the helpers (version 1 plus Git: Executor 13, Reviewer 9) gives the bounds that each protected planner checks before its own intent:
+
+| Provider | Role | Version baseline (before the version intent) | Git `before₁` (before the batch) | Prepared and registration | Inventory before the input dispatch | After input |
+|---|---|---|---|---|---|---|
+| Codex | Executor | ≤234 | ≤235 | ≤248 | 248+1+6 = 255 | 256 |
+| Codex | Reviewer | ≤238 | ≤239 | ≤248 | 248+1+6 = 255 | 256 |
+| Claude | Executor | ≤238 | ≤239 | ≤252 | 252+1+1 = 254 | 255 |
+| Claude | Reviewer | ≤242 | ≤243 | ≤252 | 252+1+1 = 254 | 255 |
+
+- **Keying.** One crate-private pure table, `native_effect_budget(provider, role)`, keyed on the SAME allocation `f.provider` and `f.role` (the role cross-checked with the Unit kind, §4.2). Any other provider or role refuses before the version intent. The table is not configuration and has no override.
+- **Consumers.** The protected version intent (replacing `with_version_intent`'s `≤254`, `state/execution/native_phase/version.rs:305–311`), the protected Git batch (replacing `reserve_git_batch`'s `≤242`, `:280–297`), `issue_prepared` (§8 item 2), and transport HOW §7 step 1 and §9 (registration plan and Immediate) through transport HOW §13. Legacy helper planners are unaffected.
+- **Before helper effects.** A start whose baseline already exceeds its bound refuses before the version intent. No helper, quota, registration or transport row is written for a start that could not reach its input.
+- **First input only.** The budget guarantees only that the fixed pre-input setup and the first input fit. Later dispatches are not reserved. Post-input permission replies (Codex `native.rs:2108`, Claude `:2242`) use what remains: at the maxima, none for Codex and one for Claude. Beyond that, the unchanged gate refuses with "Native effect admission profile exhausted", which is the existing, legitimate later exhaustion. No later dispatch is claimed as guaranteed.
+- **Not changed.** Every authenticated and setup RPC keeps its own journaled `native_setup` effect; none is omitted, merged or unjournalled. No history row is pruned. The 256-row, 2 MiB, 8192 B body and VM bounds are not widened. Native authority, permission routing and the helper allocation proofs are unchanged.
 
 ## 12. Impact analysis
 
@@ -610,7 +679,8 @@ It replaces generic `validate_authority` at `native_phase.rs:360,373`, used for 
 | Finalization/artifact retention | `artifacts.rs:392–570`, `results.rs:101–135` | Unchanged here; PR-4 is a prerequisite for Reviewer |
 | Admission/cleanup | `fence_task_tx`, `begin_execution_epoch`, cleanup intents | Unchanged writers; the private consumer detects and Holds, except that a revoked nongrant closure compares the fenced Unit's latest factual image (§7.4) |
 | `LatestUnitImage` (`version/closure.rs:11–153`), reused by the §7.4 closure | version-observation closure (`version/closure.rs:349–415`); transport HOW §8 `close_transport_observation` (same port) | Read-only reuse with unchanged predicates. Used only by nongrant closure; never by a grant, lineage, Prepared or registration path |
-| C-1 planner constants | `state/.../version.rs:280–311` | Protected-only; earlier honest refusal; legacy unaffected |
+| C-1 planner constants, now the §11.4 provider+role table | `state/.../version.rs:280–311` (`reserve_git_batch`, `with_git_intent`, `with_version_intent`); `issue_prepared` (§8); transport HOW §§7 step 1, 9, 13 and 14.3; the unchanged dispatch gate (`native_phase.rs:1293–1298`) | Protected-only; honest refusal before the version or Git intent; a Codex start refuses at a lower baseline than a Claude start; legacy unaffected; no bound widened |
+| E-1 (§6.4 item 5): the unchanged `validate_authority` called for Legacy candidates in the private Immediate | `validate_authority` (`state/execution.rs:458–497`) and its legacy callers (`quotas.rs:64,172,297,409,455`); `governing_digest` (`:498–511`; also `:891` and the Source pins snapshot); `runtime::driver::validate` (`driver.rs:318–353`; also `state/execution.rs:783`); `source_recovery::validate_task` (`source_recovery.rs:500–509`; also `state/execution.rs:152`); `rrx_live_task_driver` (`state/mod.rs:92`, `driver.rs:289–317,355–357`); step 4a reuses `read_tx`/`decode` (`state/mod.rs:2014–2016,2166–2175`) and the typed `Project`/`Goal`/`Task` (`domain.rs:153,251,301`); the `json_valid` CHECKs (`state/schema.sql:5,11,20`) | None of these functions or their other callers change. Only the private route gains bounded calls and bounded structural decodes under E-1, only for candidates before the own fair position. The legacy routes keep their existing unbounded behavior |
 | Master current behavior | `master/agent-execution.md` §5 last paragraph, `master/workflow-engine.md` | **No master edit in this HOW.** The source PR updates master only with implemented, verified current facts |
 
 Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session binder; audit kinds (none added); Grok/Codex legacy adapters; `SCHEMA_VERSION` 10 and layout catalogue; user settings and hook storage (never read).
@@ -626,7 +696,11 @@ Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session bin
    - classification of Legacy, MarkedParked and MarkedStalled including the 30 s boundary;
    - limit+1 sentinels at 4096/4097, 256/257 and 64/65, plus byte boundaries;
    - image-CAS refusal for each changed column, including pool absence vs presence and each pool column;
-   - `with_known_unit` refuses an identity change or a non-increasing version.
+   - `with_known_unit` refuses an identity change or a non-increasing version;
+   - §11.4 budget table, per provider and role: the version baseline at its bound is accepted and bound+1 is refused with zero new rows (Codex Executor 234/235, Codex Reviewer 238/239, Claude Executor 238/239, Claude Reviewer 242/243); Git `before₁` at its bound is accepted and +1 refused with no Git row (235/236, 239/240, 239/240, 243/244); `issue_prepared` and the registration plan accept the prepared bound and refuse +1 (Codex 248/249, Claude 252/253); any other provider refuses before the version intent;
+   - E-1 head walk on Store fixtures, checked for equivalence with the legacy loop on identical rows (except that a structurally malformed Legacy before the own position aborts where legacy skips it): a Legacy refused by the unchanged validator is passed over and `own_head` is selected; a validated Legacy ahead selects `other_head`; a MarkedParked ahead selects `other_head` with no validator call; a needed 9th call, an over-bound or absent Unit/Project/Goal/Task body and a `unit_tx` error each abort with no write and are never passed over; the validator is never called for the own unit, for a marked candidate or in the Closure Immediate; a head-independent decision runs no walk; the plan type holds no Legacy verdict, structure result, digest or Driver/Source result.
+   - **E-1 structure vs refusal (paired).** One preceding Legacy candidate whose shape query, `unit_tx`, scope and `project_capacity_blocked` all succeed (asserted first, so each case reaches its walk assertion and is not a SETUP failure), in three otherwise identical fixtures: (a) `goals.body` replaced by `{}` (JSON-valid, typed `Goal` decode fails) → abort with no write, cause structure, no validator call, never `own_head`; (b) `tasks.body` replaced by `{}` with a well-formed Goal → the same abort; (c) well-formed Project/Goal/Task, and the unchanged validator refuses for an ordinary authority reason (a non-live Driver, or a changed governing digest) → passed over and `own_head` selected. Also a decodable Goal whose `project_id`, or a Task whose `goal_id`, differs from the scope and row columns, and a body `version` different from its row column, each abort. A MarkedParked predecessor with a `{}` Goal is still the head (`other_head`) with no structural decode and no validator call.
+   - **E-1 own fair position.** With no own waiter: a validated Legacy, and separately a MarkedParked, that precedes the virtual own key (a smaller `fairness_sequence` at equal `rank`) selects `other_head`; the same candidate after it (a larger `fairness_sequence` at equal `rank`) selects `own_head` with zero `unit_tx`, structural or validator calls for it (each such later candidate is first asserted to be a genuine head by itself: the unchanged validator `Ok` on identical rows, or the MarkedParked predicates). Ties: a validated Legacy with `fairness_sequence = at` and equal `rank` blocks when its `unit_id` sorts below the own `unit_id` and does not when above. Role: a validated Legacy with `rank` 0 and a larger `fairness_sequence` precedes an own `rank` 1 key; one with `rank` 1 and a smaller `fairness_sequence` follows an own `rank` 0 key. With an own waiter: its stored `fairness_sequence` (older than `at`) is used, so a validated Legacy whose sequence lies between it and `at` follows. Limit: 8 well-formed refused Legacy predecessors → 8 calls and `own_head`; 7 refused then a validated eighth → 8 calls and `other_head`; 9 → abort before the 9th structural check and call; 8 refused predecessors plus any number of later Legacy candidates → 8 calls and `own_head`. No construction writes: the `quota_waiters` table is byte-identical after an `own_head` Admit-first, and a Park inserts exactly one own waiter with `fairness_sequence = at`.
 2. **Genuine actual-producer controls.** These run only after the real Goal/Driver/Source/marker/job/actor chain reaches S4. Otherwise, record SETUP refusal; it is neither a pass nor a mutant kill.
    - S1 refusal with zero helper rows.
    - S4 version/declaration mismatch, with observations retained and no quota row.
@@ -638,6 +712,7 @@ Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session bin
    - A marked parked head blocks a later legacy candidate; a stalled one does not.
    - Marked plus legacy lease union at caps.
    - Foreign lease change, or a pool created by another writer, between plan and Immediate gives replan without a write.
+   - **Legacy verdict race (E-1):** after the private plan, a real Driver invalidation or Goal change makes the validated Legacy head refuse before the Immediate. The walk then selects the precomputed `own_head` with no replan, and the reverse order selects `other_head`. A waiter, lease or pool change instead replans without a write.
    - Commit-uncertain confirm, both postimage and rollback, for Admit (cold and existing pool), Park and Closure.
    - Cancel while parked: closure rows, gate released once, no Session.
    - Cancel after Admit: lease released.
@@ -647,6 +722,7 @@ Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session bin
    - Weak probes show no custody/actor/plan cycle.
    - Another Task proceeds.
    - Reviewer with a declared `worktree` hook: S1 refusal with zero helper rows (SETUP refusal until PR-1 to PR-4 exist).
+   - **Effect budget (requires G2 dispatch):** a genuine Codex Executor start with version baseline 234 dispatches its six setups and its input through the unchanged gate, which leaves 256 rows; at baseline 235 it refuses before the version intent with zero new rows. A Claude Executor start at 238 leaves 255 rows after its input. Until G2 allows dispatch, record SETUP refusal.
 3. **Required compiled mutants** (each must fail its intended assertion):
    - generic `validate_authority` for the own unit;
    - skipping MarkedParked in fairness;
@@ -663,6 +739,12 @@ Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session bin
    - `check_command` dropping `CODEX_HOME`/`HOME`;
    - C-3 using `trim()`;
    - C-1 constants restored;
+   - the Codex bound equal to Claude's (prepared 252; killed by the Codex 235/236 and 248/249 controls), the budget keyed on the role only, or the provider read from a row instead of the SAME allocation;
+   - the budget checked only at registration instead of before the version and Git intents;
+   - a pre-input `native_setup` dispatch removed, merged or unjournalled, or the dispatch gate widened beyond `<256`;
+   - E-1: a Legacy verdict or governing digest computed in the planner and trusted in the Immediate; the validator applied to the own unit or a marked candidate; an over-bound or malformed candidate passed over instead of aborting; the walk continuing past 8 calls; `decide` or image encoding run under SharedStore; a validator `Err` aborting instead of passing over (breaks legacy equivalence);
+   - E-1 structure: the typed Goal decode omitted (killed by fixture (a)); the typed Task decode omitted (killed by (b)); the identity or version comparison omitted (killed by the mismatch controls); a step 4a failure passed over instead of aborting (killed by (a) and (b)); step 4a applied to a MarkedParked candidate or the own unit (killed by the marked `{}` Goal control);
+   - E-1 own position: the walk restored to the end of the due list when the own unit has no waiter (killed by the later-candidate control, which first proves the later candidate is a genuine head and then asserts `own_head`); the virtual key using `fairness_sequence` 0 or `i64::MAX` instead of `at` (killed by the preceding and later-candidate controls); ties ordered other than by `unit_id`; `rank` computed without the compared `last_role`; the stored own `fairness_sequence` replaced by `at`; later candidates counted toward the 8-call limit; an own waiter written to construct the sentinel;
    - cold start requiring an existing pool, or creating it with `ON CONFLICT DO NOTHING` instead of exact absence;
    - closure leaving the own probe set, or clearing a foreign probe;
    - closure Unit CAS against the lineage Unit image instead of the latest factual image (killed by the fenced revoked closure control); `validate_original` skipped for the closure Unit; the closure's factual Unit image feeding a lineage, `NativeQuotaAdmitted` or Prepared;
@@ -692,7 +774,7 @@ Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session bin
 
 | ID | Correction | Evidence |
 |---|---|---|
-| C-1 | Protected planners guarantee transport HOW §13's ≤252 pre-registration inventory before any doomed effect. Executor: version baseline `≤ 238` (was 254) and Git batch `before₁ ≤ 239` (was 242). Reviewer: version baseline `≤ 242` and Git `before₁ ≤ 243` | readonly HOW §8.6 allows a postimage of 255; transport HOW §§9 and 13 require ≤252 |
+| C-1 | Protected planners guarantee the §11.4 provider+role pre-registration bound before any doomed effect. Executor: version baseline Claude `≤ 238` / Codex `≤ 234` (was 254) and Git batch `before₁` Claude `≤ 239` / Codex `≤ 235` (was 242). Reviewer: version baseline Claude `≤ 242` / Codex `≤ 238`, and Git `before₁` Claude `≤ 243` / Codex `≤ 239` | readonly HOW §8.6 allows a postimage of 255; transport HOW §§9 and 13 as corrected by C-9 |
 | C-2 | Transport HOW §4.3 `command_digest` material additionally includes the canonical compat declaration digest. §6 additionally runs `check_command` | Requirement to connect profile identity to consumers |
 | C-3 | Codex phase version accepts exactly the pin with at most one trailing `\n` (optionally preceded by `\r`) | V: `native/version.rs:147–149`, `codex/protocol.rs:27`, `results.rs:702–704` |
 | C-4 | A protected start never returns `NativePhaseStart::Waiting`; parking is in-task | V: `claim_start` one-shot (`preparation.rs:46–57`), no resume consumer (`phase_jobs.rs:259–263`) |
@@ -700,6 +782,8 @@ Not affected: Task/Workflow/Context/Driver/Source rows and versions; Session bin
 | C-6 | Approved "waiter version" is represented as complete seven-column image CAS + Unit version + readiness `parking_version`; no DDL | V: `execution.sql:136–142` has no version column |
 | C-7 | Transport HOW §3.1's `plan_transport_command(owner, &Arc<PreparedNativePhase>)` is replaced by `plan_native_command(owner, actor, completion, compat)` (S4b), run once before S5 from the SAME actor/allocation and closed preparation facts. `PreparedNativePhase` retains the resulting `Arc<NativeTransportCommand>`. Transport §7 step 1 "Build `NativeTransportCommand` (§6)" becomes "take Prepared's SAME command; recheck §6 program/cwd and `check_command`; derive `command_digest`". `NativeTransportCustody.command` holds that SAME Arc. The §6 vector, bounds, UUID-once rule and digest material are otherwise unchanged | §8 needs `check_command` before Prepared, but the approved producer consumes Prepared (transport HOW §3.1:216–217, §7 step 1) |
 | C-8 | Transport registration (§7 step 1 plan, §9 registration column) validates `validate_preparation_origin_tx` with Prepared's lineage successor and compares Prepared's lineage readiness `(preparing,P,NULL)` with P ∈ {2,4} and its Unit image. It never calls `NativePreparationCommit::validate_version_ready` | V: `preparation.rs:24–27,39–49,108–117`; `successor.rs:261–281` compares the full Unit |
+| C-9 | Transport HOW §13's pre-registration bound "≤252 rows (transport + up to 2 setup + 1 input ≤256)" becomes the §11.4 provider bound: Codex ≤248 (transport 1 + setup 6 + input 1 → 256), Claude ≤252 (transport 1 + setup 1 + input 1 → 255). Transport HOW §9's "≤252 rows" and §14.3's "satisfied by the ≤252 baseline" change the same way. The `<256` dispatch gate and the complete ≤256 rows, 2 MiB, body and VM bounds are unchanged | V at fd4a6a16: `execution/native.rs:1487–1507,1963–2035,2123,2149`; `state/execution/native_phase.rs:1293–1298` |
+| C-10 | §11.3's lock contract gains exactly one exception, E-1 (§6.4 item 5): at most 8 unchanged `validate_authority(…, true, false)` calls for Legacy candidates that precede the own actual or virtual fair position (§6.4 item 3) in the private Admit-first, Park, Re-park and Due-claim admit Immediates, each after a bounded shape query and a typed structural owner-data check whose failure aborts, selecting one of two precomputed branches. The legacy routes are unchanged | V at fd4a6a16: `state/execution.rs:458–511`; `state/runtime/driver.rs:289–357`; `state/execution/source_recovery.rs:500–509`; `state/mod.rs:92,2014–2016,2166–2175`; `state/schema.sql:5,11,20`; `state/execution/quotas.rs:271–278,524–538`; `managed_binding/snapshot.rs:29–58` |
 
 No requirement is changed. Agent-execution R5's Task WaitingQuota stays satisfied as derived status, per the already-approved binding design §5.2.
 
@@ -715,5 +799,8 @@ No requirement is changed. Agent-execution R5's Task WaitingQuota stays satisfie
 - Full regression and Clippy RED.
 - Installed CLI versions outside the pins.
 - N1/N4/H/Q/Install qualification on both hosts.
+- E-1 liveness limit: more than 8 refused Legacy candidates before the own fair position, or one structurally malformed Legacy candidate there, keep a private start unresolved (attention, no write) until they are fenced, repaired or become valid.
+- E-1 structure scope: step 4a covers only the candidate's Project, Goal and Task. A malformed Driver, Source recovery, Context or Workflow row of a Legacy candidate stays inside the unchanged validator's verdict and is passed over, as legacy skips it; it grants the own unit nothing.
+- Post-input dispatch headroom is not reserved by §11.4; a Codex start at its maximum baseline has none.
 
 None of these is satisfied by this HOW. Each corresponding effect stays refused or Held until its real producer exists.
