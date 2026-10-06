@@ -8,6 +8,13 @@ remain baseline descriptions, not acceptance of that proposal.
 **Status:** Rust phase runner implemented (Issue #8); dependent integrations pending
 **Scope:** MVP workflow orchestration
 
+The [managed Session binding requirements](../../requirements/issue-43-managed-binding-requirements.md)
+are a STRICT proposal connecting Issue43 to the current managed profile. The
+source baseline still binds through the ordinary Task-writing transaction; no
+record-only binder or genuine #19 allocation composition is claimed. Native
+Driver readiness remains an open gate until the actual private producers and
+sole binding consumer compose and pass their integration controls.
+
 The incremental [production gate integration](../production-workflow-gates-design.md)
 adds a concrete library port for real initial preparation, Implement terminal/result
 and retained commit observations. Its receipts are diagnostic; existing Workflow
