@@ -78,6 +78,9 @@ impl PhaseLaunch {
     }
 }
 impl PhaseLaunchParts {
+    pub(crate) fn admission(&self) -> &Arc<super::phase_effect_admission::PhaseEffectAdmission> {
+        &self.retention.supervisor.admission
+    }
     pub(crate) fn marker(&self) -> &Arc<crate::state::managed_binding::OriginalMarker> {
         &self.marker
     }
@@ -138,6 +141,7 @@ impl PendingPhaseCapacity {
 
 pub(crate) struct PhaseSupervisor {
     owner: Arc<RuntimeOwner>,
+    admission: Arc<super::phase_effect_admission::PhaseEffectAdmission>,
     global: usize,
     per_project: usize,
     closed: AtomicBool,
@@ -147,9 +151,15 @@ impl PhaseSupervisor {
     pub(crate) fn belongs_to(&self, owner: &Arc<RuntimeOwner>) -> bool {
         Arc::ptr_eq(&self.owner, owner)
     }
-    pub(super) fn new(owner: Arc<RuntimeOwner>, global: usize, per_project: usize) -> Arc<Self> {
+    pub(super) fn new(
+        owner: Arc<RuntimeOwner>,
+        global: usize,
+        per_project: usize,
+        admission: Arc<super::phase_effect_admission::PhaseEffectAdmission>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             owner,
+            admission,
             global: global.min(MAX_PENDING),
             per_project: per_project.min(MAX_PENDING),
             closed: AtomicBool::new(false),

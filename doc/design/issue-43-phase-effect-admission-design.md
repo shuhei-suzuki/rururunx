@@ -139,3 +139,20 @@ nongrant and cannot qualify these positives. Compiler/setup failures are not
 successful controls. Whole composition/preflight stays refused until genuine
 producers and consumers are installed and positively qualified; existing full
 regression/lint and authenticated compatibility gates remain open.
+
+## 7. First implementation increment
+
+Runtime now shares its actual control mutex and actual running/stopping Arcs with
+the original queue's private PhaseEffectAdmission. Genuine launch exposes that
+same object. Enter checks service, original owner/admission pointer and retained
+launch before returning the local owned lock guard. Its transaction-side validator
+checks original object/state only and acquires no queue/Source mutex. PhaseJobs is
+an Arc of the same existing registry for the forthcoming concrete consumer.
+
+This increment installs neither PhaseHandoffs nor PhasePreparationOrigin nor a
+Native caller. No Native effect is authorized by admission alone; the composition
+issuer remains Err. Cooperative stop is serialized by the shared mutex. Runtime
+Drop or service-loop failure can still race an already admitted synchronous
+section; state/Driver checks fence subsequent permission and retain uncertainty,
+but no universal no-effect, child-death or cleanup guarantee follows. Genuine
+enter/drop/stop/effect ordering remains unqualified until real producers work.
