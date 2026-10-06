@@ -541,6 +541,16 @@ impl NativeSessions {
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
             unit = if let Some(plan) = registration {
                 let (registered, projection, version) = store.register_phase_session(plan)?;
+                // Registration is already a known commit. Retain its exact Unit
+                // before a later private-actor construction can fail, rather
+                // than leaving the older preparation version as the only guard.
+                registration_guard = Some(RegistrationGuard {
+                    owner: self.owner.clone(),
+                    unit_id: registered.id,
+                    invocation: seed.id,
+                    armed: true,
+                });
+                preparation_guard.update(&registered);
                 let parts = launch
                     .as_ref()
                     .context("actual Native launch disappeared")?
@@ -552,12 +562,14 @@ impl NativeSessions {
             } else {
                 store.register_native_session(&unit.authority(), &session, &seed)?
             };
-            registration_guard.replace(RegistrationGuard {
-                owner: self.owner.clone(),
-                unit_id: unit.id,
-                invocation: seed.id,
-                armed: true,
-            });
+            if registration_guard.is_none() {
+                registration_guard = Some(RegistrationGuard {
+                    owner: self.owner.clone(),
+                    unit_id: unit.id,
+                    invocation: seed.id,
+                    armed: true,
+                });
+            }
             preparation_guard.update(&unit);
             match process::OwnedProcess::spawn(&mut command) {
                 Ok(child) => child,
@@ -752,6 +764,10 @@ impl NativeSessions {
         ensure!(
             entry.handle == *handle,
             "foreign native Session/unit/generation"
+        );
+        ensure!(
+            entry.phase.is_none(),
+            "actual managed phase proofs require a private confirmed handoff before release"
         );
         // Logical terminal state is durable before hygiene/watch publication. A
         // caller may observe that committed result and release the registry entry;
@@ -1335,15 +1351,35 @@ impl Core {
         result
     }
     fn ack(&mut self, native: String) -> Result<()> {
-        self.session.native_ref = Some(native);
-        self.session.state = SessionState::Running;
-        let authority = self.authority()?;
-        let (unit, version) = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .update_execution_session(&authority, &self.session, self.record_version)?;
+        let mut session = self.session.clone();
+        session.native_ref = Some(native);
+        session.state = SessionState::Running;
+        let (unit, version) = if let Some(phase) = &self.phase {
+            let plan = crate::state::Store::plan_native_phase_projection(
+                &self.owner,
+                &phase.owner,
+                session,
+            )?;
+            let (unit, committed, version) = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .project_phase_session(plan)?;
+            phase.owner.project(&committed, version)?;
+            self.session = committed;
+            (unit, version)
+        } else {
+            let authority = self.authority()?;
+            let result = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .update_execution_session(&authority, &session, self.record_version)?;
+            self.session = session;
+            result
+        };
         self.unit = unit;
         self.record_version = version;
         if self.unit.provider == "claude" {

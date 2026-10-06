@@ -2,7 +2,7 @@
 //! needs the genuine retained launch and the actual Native issuer after commit.
 use super::*;
 use crate::{
-    execution::native::NativeSeed,
+    execution::native::{NativePhaseBinding, NativePhaseSession, NativeSeed},
     state::managed_binding::{
         CurrentWorkflowSuccessor, ExactRowMutation, PhaseLaunchParts, phase_pair_columns,
         plan_current_phase, snapshot, validate_current_tx,
@@ -22,7 +22,13 @@ impl PairRow {
     fn read(tx: &Transaction<'_>, table: &'static str, key: &str) -> Result<Self> {
         let columns = phase_pair_columns(table).context("unsupported Native pair table")?;
         ensure!(
-            matches!(table, "managed_phase_owners" | "managed_phase_readiness"),
+            matches!(
+                table,
+                "managed_phase_owners"
+                    | "managed_phase_readiness"
+                    | "records"
+                    | "managed_phase_admissions"
+            ),
             "invalid Native pair read"
         );
         let select = columns
@@ -156,6 +162,220 @@ impl PairRow {
     }
 }
 
+/// A current observation is tied to a real Core-issued owner, not a Session
+/// lookup. All decoding/comparison/planned encodings happen outside SharedStore.
+struct NativeOwnerPlan {
+    binding: NativePhaseBinding,
+    current: CurrentWorkflowSuccessor,
+    session: PairRow,
+    owner: PairRow,
+    readiness: PairRow,
+}
+fn plan_native_owner(
+    runtime: &crate::execution::RuntimeOwner,
+    phase: &Arc<NativePhaseSession>,
+) -> Result<NativeOwnerPlan> {
+    let binding = phase.binding_snapshot()?;
+    ensure!(
+        binding.is_live() && phase.launch_parts().is_retained(),
+        "actual Native owner ended"
+    );
+    let current = plan_current_phase(runtime, phase.marker())?;
+    let f = phase.allocation().facts();
+    let unit = current.unit();
+    ensure!(
+        unit.session_id == Some(f.session_id)
+            && unit.native_effects_open
+            && unit.result_finalization_open
+            && unit.work.is_none()
+            && unit.disposition == Disposition::Active
+            && matches!(
+                unit.state,
+                UnitState::DispatchPending | UnitState::Running | UnitState::WaitingQuota
+            ),
+        "actual Native owner Unit is not open"
+    );
+    let (session, owner, readiness) = snapshot(runtime, |tx| {
+        validate_current_tx(tx, phase.marker(), &current)?;
+        let session = PairRow::read(tx, "records", &f.session_id.to_string())?;
+        let body = session.body()?;
+        let record: Record = serde_json::from_value(body)?;
+        let stored: Session = serde_json::from_value(record.data.clone())?;
+        ensure!(
+            record.id == RecordId(f.session_id.0)
+                && record.kind == RecordKind::Session
+                && record.scope == *f.scope
+                && record.version == binding.record_version()
+                && serde_json::to_value(&stored)? == record.data
+                && serde_json::to_value(&stored)? == serde_json::to_value(binding.session())?
+                && matches!(stored.state, SessionState::Starting | SessionState::Running),
+            "actual Native Session projection changed"
+        );
+        let checks = [
+            ("id", SqlValue::Text(record.id.to_string())),
+            ("kind", SqlValue::Text("session".into())),
+            ("project_id", SqlValue::Text(f.scope.project_id.to_string())),
+            (
+                "goal_id",
+                SqlValue::Text(f.scope.goal_id.context("Native Goal absent")?.to_string()),
+            ),
+            (
+                "task_id",
+                SqlValue::Text(f.scope.task_id.context("Native Task absent")?.to_string()),
+            ),
+            ("version", SqlValue::Integer(i64::try_from(record.version)?)),
+        ];
+        for (name, value) in checks {
+            ensure!(
+                session.column(name)? == &value,
+                "Native Session indexed image changed"
+            );
+        }
+        let owner = PairRow::read(tx, "managed_phase_owners", &f.pair_id.to_string())?;
+        let expected = json!({"owner_id":f.pair_id,"operation_id":f.operation_id,"scope":f.scope,
+            "unit_id":f.unit_id,"owner_epoch":f.epoch,"execution_generation":f.generation,
+            "allocated_session_id":f.session_id,"provider":f.provider,"alias":f.alias,"role":f.role,
+            "worktree":f.path,"origin":f.origin_id,"native_invocation_id":f.invocation_id,"validated":true,"version":2});
+        ensure!(
+            owner.body()? == expected
+                && owner.column("native_invocation_id")?
+                    == &SqlValue::Text(f.invocation_id.to_string())
+                && owner.column("validated")? == &SqlValue::Integer(1)
+                && owner.column("version")? == &SqlValue::Integer(2),
+            "actual registered Native owner image changed"
+        );
+        check_owner_indices(&owner, phase.launch_parts(), true)?;
+        let readiness = PairRow::read(tx, "managed_phase_readiness", &f.operation_id.to_string())?;
+        let r = readiness.body()?;
+        let version = r["version"]
+            .as_u64()
+            .context("Native readiness version absent")?;
+        let ended = r["start_ended"]
+            .as_bool()
+            .context("Native readiness end flag absent")?;
+        ensure!(
+            r == json!({"operation_id":f.operation_id,"origin":f.origin_id,"owner_epoch":f.epoch,
+            "state":"registered","start_ended":ended,"known_terminal":false,"parking_version":null,"version":version})
+                && ((version == 2 && !ended) || (version == 3 && ended))
+                && readiness.column("operation_id")? == &SqlValue::Text(f.operation_id.to_string())
+                && readiness.column("origin")? == &SqlValue::Text(f.origin_id.to_string())
+                && readiness.column("owner_epoch")? == &SqlValue::Integer(i64::try_from(f.epoch)?)
+                && readiness.column("state")? == &SqlValue::Text("registered".into())
+                && readiness.column("start_ended")? == &SqlValue::Integer(i64::from(ended))
+                && readiness.column("known_terminal")? == &SqlValue::Integer(0)
+                && readiness.column("parking_version")? == &SqlValue::Null
+                && readiness.column("version")? == &SqlValue::Integer(i64::try_from(version)?),
+            "actual Native readiness image changed"
+        );
+        let invocation = native_results::invocation_tx(tx, f.invocation_id)?;
+        ensure!(
+            invocation.id == f.invocation_id
+                && invocation.session_id == f.session_id
+                && invocation.unit_id == f.unit_id
+                && invocation.scope == *f.scope
+                && invocation.generation == f.generation
+                && invocation.owner_epoch == f.epoch
+                && invocation.provider == f.provider,
+            "actual Native invocation changed"
+        );
+        Ok((session, owner, readiness))
+    })?;
+    Ok(NativeOwnerPlan {
+        binding,
+        current,
+        session,
+        owner,
+        readiness,
+    })
+}
+impl NativeOwnerPlan {
+    fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        ensure!(
+            self.binding.is_live() && self.binding.owner().launch_parts().is_retained(),
+            "actual Native owner revoked"
+        );
+        validate_current_tx(tx, self.binding.marker(), &self.current)?;
+        validate_authority(tx, &self.current.unit().authority(), true, false)?;
+        self.session.validate_tx(tx)?;
+        self.owner.validate_tx(tx)?;
+        self.readiness.validate_tx(tx)?;
+        Ok(())
+    }
+}
+
+pub(crate) struct NativeProjectionPlan {
+    before: NativeOwnerPlan,
+    after: PairRow,
+    session: Session,
+    unit: ExecutionUnit,
+    unit_raw: String,
+}
+fn plan_phase_projection(
+    runtime: &crate::execution::RuntimeOwner,
+    phase: &Arc<NativePhaseSession>,
+    session: Session,
+) -> Result<NativeProjectionPlan> {
+    let before = plan_native_owner(runtime, phase)?;
+    let old = before.binding.session();
+    ensure!(
+        session.id == old.id
+            && session.scope == old.scope
+            && session.agent == old.agent
+            && session.provider == old.provider
+            && session.role == old.role
+            && session.worktree == old.worktree
+            && session.model == old.model
+            && session.effort == old.effort
+            && session.started_at == old.started_at
+            && session.recovery == old.recovery
+            && session.state == SessionState::Running
+            && session.native_ref.as_ref().is_some_and(|s| !s.is_empty()
+                && s.len() <= 512
+                && !s.chars().any(char::is_control))
+            && old
+                .native_ref
+                .as_ref()
+                .is_none_or(|s| session.native_ref.as_ref() == Some(s)),
+        "Native factual acknowledgement changes immutable Session"
+    );
+    let mut record: Record = serde_json::from_value(before.session.body()?)?;
+    record.version = record
+        .version
+        .checked_add(1)
+        .context("Native Session version exhausted")?;
+    record.updated_at = now_ms();
+    record.data = serde_json::to_value(&session)?;
+    let mut after = PairRow {
+        table: before.session.table,
+        values: before.session.values.clone(),
+    };
+    after.replace("version", SqlValue::Integer(i64::try_from(record.version)?))?;
+    after.set_body(&serde_json::to_value(&record)?)?;
+    let mut unit = before.current.unit().clone();
+    unit.version = unit
+        .version
+        .checked_add(1)
+        .context("Native Unit version exhausted")?;
+    unit.updated_at = record.updated_at;
+    // A telemetry wait is derived from quota facts. Session ACK cannot silently
+    // clear an active native quota wait or erase its reason.
+    if unit.state != UnitState::WaitingQuota {
+        unit.state = UnitState::Running;
+    }
+    let unit_raw = serde_json::to_string(&unit)?;
+    ensure!(
+        unit_raw.len() <= 16 * 1024,
+        "Native Unit projection exceeds finite profile"
+    );
+    Ok(NativeProjectionPlan {
+        before,
+        after,
+        session,
+        unit,
+        unit_raw,
+    })
+}
+
 /// A finite unconsumed registration plan. No public ID/DTO can construct this.
 /// The retained launch is rechecked at commit; this value is not a Native owner.
 pub(crate) struct NativeRegistrationPlan {
@@ -186,6 +406,11 @@ fn original_owner(tx: &Transaction<'_>, launch: &PhaseLaunchParts) -> Result<Pai
         owner.body()? == expected,
         "original unregistered Native owner body changed"
     );
+    check_owner_indices(&owner, launch, false)?;
+    Ok(owner)
+}
+fn check_owner_indices(owner: &PairRow, launch: &PhaseLaunchParts, registered: bool) -> Result<()> {
+    let f = launch.allocation().facts();
     let checks = [
         ("owner_id", SqlValue::Text(f.pair_id.to_string())),
         ("operation_id", SqlValue::Text(f.operation_id.to_string())),
@@ -224,9 +449,19 @@ fn original_owner(tx: &Transaction<'_>, launch: &PhaseLaunchParts) -> Result<Pai
             SqlValue::Text(f.path.to_str().context("Native path not UTF-8")?.to_owned()),
         ),
         ("origin", SqlValue::Text(f.origin_id.to_string())),
-        ("native_invocation_id", SqlValue::Null),
-        ("validated", SqlValue::Integer(0)),
-        ("version", SqlValue::Integer(1)),
+        (
+            "native_invocation_id",
+            if registered {
+                SqlValue::Text(f.invocation_id.to_string())
+            } else {
+                SqlValue::Null
+            },
+        ),
+        (
+            "validated",
+            SqlValue::Integer(if registered { 1 } else { 0 }),
+        ),
+        ("version", SqlValue::Integer(if registered { 2 } else { 1 })),
     ];
     for (column, value) in checks {
         ensure!(
@@ -234,7 +469,7 @@ fn original_owner(tx: &Transaction<'_>, launch: &PhaseLaunchParts) -> Result<Pai
             "original Native owner index changed"
         );
     }
-    Ok(owner)
+    Ok(())
 }
 fn initial_readiness(tx: &Transaction<'_>, launch: &PhaseLaunchParts) -> Result<PairRow> {
     let f = launch.allocation().facts();
@@ -465,6 +700,34 @@ pub(crate) fn plan_phase_registration(
 }
 
 impl Store {
+    pub(crate) fn plan_native_phase_projection(
+        runtime: &crate::execution::RuntimeOwner,
+        phase: &Arc<NativePhaseSession>,
+        session: Session,
+    ) -> Result<NativeProjectionPlan> {
+        plan_phase_projection(runtime, phase, session)
+    }
+    /// Actual factual Session ACK is separate from input/turn acknowledgement.
+    /// A Running Session does not itself prove that native_input was consumed.
+    pub(crate) fn project_phase_session(
+        &mut self,
+        plan: NativeProjectionPlan,
+    ) -> Result<(ExecutionUnit, Session, u64)> {
+        let permission = plan.before.session.update_permission(&plan.after)?;
+        self.binding_permits.with_exact_permit(vec![permission], || {
+            let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            plan.before.validate_tx(&tx)?;
+            plan.before.session.update_tx(&tx,&plan.after)?;
+            ensure!(tx.execute("UPDATE session_units SET dispatch_state='acknowledged' WHERE session_id=?1 AND unit_id=?2",params![plan.session.id.to_string(),plan.unit.id.to_string()])?==1,"Native Session dispatch binding changed");
+            ensure!(tx.execute("UPDATE execution_units SET version=?1,body=?2 WHERE id=?3 AND version=?4 AND body=?5",params![plan.unit.version,plan.unit_raw,plan.unit.id.to_string(),plan.before.current.unit().version,plan.before.current.unit_raw()])?==1,"Native Session ACK Unit CAS changed");
+            let SqlValue::Integer(version)=plan.after.column("version")? else { anyhow::bail!("Native Session ACK version absent") };
+            let version=u64::try_from(*version)?;
+            append_event(&tx,&plan.session.scope,"session.saved",json!({"id":plan.session.id,"version":version,"evidence":{"state":plan.session.state,"agent":plan.session.agent,"provider":plan.session.provider,"role":plan.session.role,"native_ref":plan.session.native_ref}}))?;
+            self.binding_permits.ensure_consumed()?;
+            tx.commit()?;
+            Ok((plan.unit,plan.session,version))
+        })
+    }
     pub(crate) fn plan_native_phase_registration(
         owner: &crate::execution::RuntimeOwner,
         launch: Arc<PhaseLaunchParts>,
