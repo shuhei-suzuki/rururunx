@@ -742,9 +742,17 @@ async fn four_actual_command_tasks_cancel_one_preserving_sibling_artifacts_and_r
         .unwrap()
         .unwrap()
         .version;
-    verifier.admit_tests(f.task.project_id, version, profile(
-        "import os,pathlib,time\np=pathlib.Path(os.environ['TMPDIR'])\nif COMMAND_INDEX == 0:\n p.joinpath('verification-ready').write_text('ready')\n while not p.joinpath('verification-release').exists(): time.sleep(0.01)\nprint(os.environ['RRX_UNIT_ID']+'-COMMAND_INDEX')"
-    )).unwrap();
+    let mut parallel_profile = profile(
+        "import os,pathlib,time\np=pathlib.Path(os.environ['TMPDIR'])\nif COMMAND_INDEX == 0:\n p.joinpath('verification-ready').write_text('ready')\n while not p.joinpath('verification-release').exists(): time.sleep(0.01)\nprint(os.environ['RRX_UNIT_ID']+'-COMMAND_INDEX')",
+    );
+    // This is a correctness rendezvous, not a ten-second throughput claim when
+    // other fixture controls and compiler jobs compete for the same host.
+    for command in &mut parallel_profile.commands {
+        command.timeout_seconds = 60;
+    }
+    verifier
+        .admit_tests(f.task.project_id, version, parallel_profile)
+        .unwrap();
     let engine = Arc::new(
         f.production_engine("pass")
             .with_verifier(verifier.clone())
@@ -762,7 +770,7 @@ async fn four_actual_command_tasks_cancel_one_preserving_sibling_artifacts_and_r
             engine.step(task, BTreeMap::new()).await
         }));
     }
-    let profiles = tokio::time::timeout(Duration::from_secs(15), async {
+    let profiles = tokio::time::timeout(Duration::from_secs(45), async {
         loop {
             for (i, handle) in running.iter_mut().enumerate() {
                 if handle.is_finished() {
