@@ -22,7 +22,7 @@ pub(super) fn validate_negative_identities(
         "own native Session identity exceeds projection profile"
     );
     let mut q = c.prepare(
-        "WITH record_ids AS (SELECT id FROM records WHERE project_id=?1 AND goal_id IS ?2 AND task_id IS ?3 AND kind='session' LIMIT 4097),projection_ids AS (SELECT session_id FROM scoped_session_identities WHERE project_id=?1 AND goal_id IS ?2 AND task_id IS ?3 LIMIT 4097),ids AS (SELECT id FROM record_ids UNION SELECT session_id FROM projection_ids LIMIT 4097) SELECT CASE WHEN length(CAST(ids.id AS BLOB))<=4096 THEN ids.id END,r.kind,r.project_id,r.goal_id,r.task_id,r.version,i.session_id,i.project_id,i.goal_id,i.task_id,i.record_version,CASE WHEN length(CAST(i.provider AS BLOB))<=512 THEN i.provider END,CASE WHEN i.native_ref IS NULL OR length(CAST(i.native_ref AS BLOB))<=512 THEN i.native_ref END,i.malformed,length(CAST(i.native_ref AS BLOB)) FROM ids LEFT JOIN records r ON r.id=ids.id LEFT JOIN scoped_session_identities i ON i.session_id=ids.id ORDER BY ids.id"
+        "WITH record_ids AS (SELECT CASE WHEN length(CAST(id AS BLOB))<=36 THEN id END id FROM records WHERE project_id=?1 AND goal_id IS ?2 AND task_id IS ?3 AND kind='session' LIMIT 4097),projection_ids AS (SELECT CASE WHEN length(CAST(session_id AS BLOB))<=36 THEN session_id END session_id FROM scoped_session_identities WHERE project_id=?1 AND goal_id IS ?2 AND task_id IS ?3 LIMIT 4097),ids AS (SELECT id FROM record_ids UNION SELECT session_id FROM projection_ids LIMIT 4097) SELECT ids.id,CASE WHEN length(CAST(r.kind AS BLOB))<=32 THEN r.kind END,CASE WHEN length(CAST(r.project_id AS BLOB))<=36 THEN r.project_id END,CASE WHEN length(CAST(r.goal_id AS BLOB))<=36 THEN r.goal_id END,CASE WHEN length(CAST(r.task_id AS BLOB))<=36 THEN r.task_id END,r.version,CASE WHEN length(CAST(i.session_id AS BLOB))<=36 THEN i.session_id END,CASE WHEN length(CAST(i.project_id AS BLOB))<=36 THEN i.project_id END,CASE WHEN length(CAST(i.goal_id AS BLOB))<=36 THEN i.goal_id END,CASE WHEN length(CAST(i.task_id AS BLOB))<=36 THEN i.task_id END,i.record_version,CASE WHEN length(CAST(i.provider AS BLOB))<=512 THEN i.provider END,CASE WHEN i.native_ref IS NULL OR length(CAST(i.native_ref AS BLOB))<=512 THEN i.native_ref END,i.malformed,length(CAST(i.native_ref AS BLOB)) FROM ids LEFT JOIN records r ON r.id=ids.id LEFT JOIN scoped_session_identities i ON i.session_id=ids.id ORDER BY ids.id"
     )?;
     let project = scope.project_id.to_string();
     let goal = scope.goal_id.map(|id| id.to_string());
@@ -44,8 +44,8 @@ pub(super) fn validate_negative_identities(
         let selected_ref: Option<String> = row.get(12)?;
         let native_bytes: Option<usize> = row.get(14)?;
         ensure!(
-            id.len() <= 4096
-                && id.parse::<SessionId>().is_ok()
+            id.parse::<SessionId>()
+                .is_ok_and(|parsed| parsed.to_string() == id)
                 && indexed_id.as_deref() == Some(id.as_str())
                 && row.get::<_, Option<String>>(1)?.as_deref() == Some("session")
                 && row.get::<_, Option<String>>(2)?.as_ref() == Some(&project)

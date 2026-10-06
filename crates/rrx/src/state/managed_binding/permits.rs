@@ -193,7 +193,12 @@ impl ExactRowMutation {
     /// Copy only this exact already validated SQL image for retained-plan retry.
     /// This never issues a Native proof and is private to managed-binding code.
     pub(super) fn copy_for_transaction(&self) -> Result<Self> {
-        Self::new(self.table, self.action, self.old.clone(), self.new.clone())
+        Self::new(
+            self.table,
+            self.action,
+            (self.action != "INSERT").then(|| self.old.clone()),
+            (self.action != "DELETE").then(|| self.new.clone()),
+        )
     }
     pub(in crate::state) fn new(
         table: &'static str,

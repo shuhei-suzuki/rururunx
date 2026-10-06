@@ -15,6 +15,7 @@ use crate::{
     execution::{
         Disposition, RuntimeOwner, UnitState,
         native::{ManagedSessionRef, NativePhaseBinding},
+        native_result::{self, InvocationState, NativeInvocation},
     },
     state::Store,
     workflow::{Actor, AttemptState, WorkflowSnapshot},
@@ -34,6 +35,7 @@ pub(crate) struct ManagedBindingPlan {
     current: CurrentWorkflowSuccessor,
     session: Body<Record>,
     owner_raw: String,
+    invocation: Body<NativeInvocation>,
     after: Body<Record>,
     audit_data: String,
     at: i64,
@@ -177,6 +179,64 @@ fn normal_eligibility(
     Ok(())
 }
 
+fn binding_invocation(
+    c: &Connection,
+    proof: &NativePhaseBinding,
+    current: &CurrentWorkflowSuccessor,
+) -> Result<Body<NativeInvocation>> {
+    let f = proof.allocation().facts();
+    let raw: Option<String> = c.query_row(
+        "SELECT CASE WHEN length(CAST(body AS BLOB))<=?2 THEN body END FROM native_invocations WHERE id=?1",
+        params![f.invocation_id.to_string(),native_result::INVOCATION_BYTES],|r|r.get(0),
+    )?;
+    let body = Body::<NativeInvocation>::decode(
+        raw.context("registered invocation body over bound")?,
+        native_result::INVOCATION_BYTES,
+    )?;
+    let invocation = body.parsed();
+    invocation.validate()?;
+    ensure!(
+        invocation.id == f.invocation_id
+            && invocation.unit_id == f.unit_id
+            && invocation.session_id == f.session_id
+            && invocation.scope == *f.scope
+            && invocation.generation == f.generation
+            && invocation.owner_epoch == f.epoch
+            && invocation.provider == f.provider
+            && invocation.state != InvocationState::Closed
+            && invocation.unit_version >= f.unit_version
+            && invocation.unit_version <= current.unit().version
+            && invocation.context_version == Some(f.input.version)
+            && invocation.context_sha256.as_deref()
+                == Some(
+                    native_result::digest(&serde_json::to_vec(
+                        proof.marker().original_plan().context().0
+                    )?)
+                    .as_str()
+                )
+            && invocation.source_versions == f.input.source_versions
+            && invocation.source_sha256
+                == native_result::digest(&serde_json::to_vec(&f.input.source_versions)?)
+            && invocation.revision == f.input.revision
+            && invocation.artifact_id == f.artifact
+            && invocation.payload_sha256 == native_result::digest(f.input.payload.as_bytes()),
+        "registered invocation differs from original actual input allocation"
+    );
+    validate_invocation_tx(c, &body)?;
+    Ok(body)
+}
+
+fn validate_invocation_tx(c: &Connection, body: &Body<NativeInvocation>) -> Result<()> {
+    let n = body.parsed();
+    let state = serde_json::to_value(n.state)?;
+    let exact: bool = c.query_row(
+        "SELECT EXISTS(SELECT 1 FROM native_invocations WHERE id=?1 AND unit_id=?2 AND session_id=?3 AND project_id=?4 AND goal_id=?5 AND task_id=?6 AND generation=?7 AND owner_epoch=?8 AND provider=?9 AND state=?10 AND version=?11 AND input_operation IS ?12 AND native_thread IS ?13 AND native_turn IS ?14 AND body=?15)",
+        params![n.id.to_string(),n.unit_id.to_string(),n.session_id.to_string(),n.scope.project_id.to_string(),n.scope.goal_id.context("invocation Goal absent")?.to_string(),n.scope.task_id.context("invocation Task absent")?.to_string(),n.generation,n.owner_epoch,n.provider,state.as_str().context("invocation state invalid")?,n.version,n.input_operation.map(|v|v.to_string()),n.native_thread,n.native_turn,body.raw()],|r|r.get(0),
+    )?;
+    ensure!(exact, "complete current invocation body/index changed");
+    Ok(())
+}
+
 fn projection(proof: &NativePhaseBinding, at: i64) -> Result<Body<Record>> {
     let marker = proof.marker().original_plan();
     let original = marker.workflow_after().0;
@@ -258,9 +318,13 @@ pub(crate) fn plan_managed_binding(
 ) -> Result<ManagedBindingPlan> {
     let current = plan_current_phase(owner, proof.marker())?;
     normal_eligibility(&proof, &current)?;
-    let (session, owner_raw) = snapshot(owner, |tx| {
+    let (session, owner_raw, invocation) = snapshot(owner, |tx| {
         validate_current_tx(tx, proof.marker(), &current)?;
-        Ok((latest_session(tx, &proof)?, registered_owner(tx, &proof)?))
+        Ok((
+            latest_session(tx, &proof)?,
+            registered_owner(tx, &proof)?,
+            binding_invocation(tx, &proof, &current)?,
+        ))
     })?;
     let already_bound = current.has_links();
     let at = if already_bound {
@@ -302,6 +366,7 @@ pub(crate) fn plan_managed_binding(
         current,
         session,
         owner_raw,
+        invocation,
         after,
         audit_data,
         at,
@@ -323,6 +388,7 @@ impl Store {
         validate_current_tx(&tx, plan.proof.marker(), &plan.current)?;
         normal_eligibility(&plan.proof, &plan.current)?;
         validate_registered_owner_tx(&tx, &plan.proof, &plan.owner_raw)?;
+        validate_invocation_tx(&tx, &plan.invocation)?;
         let record = plan.session.parsed();
         let exact: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM records WHERE id=?1 AND kind='session' AND project_id=?2 AND goal_id IS ?3 AND task_id IS ?4 AND version=?5 AND body=?6)",params![record.id.to_string(),record.scope.project_id.to_string(),record.scope.goal_id.map(|v|v.to_string()),record.scope.task_id.map(|v|v.to_string()),record.version,plan.session.raw()],|r|r.get(0))?;
         ensure!(
