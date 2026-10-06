@@ -23,10 +23,10 @@ impl AgentAdapter for Descriptor {
     fn probe(&self) -> AdapterResult<AgentInfo> {
         self.probes.fetch_add(1, Ordering::SeqCst);
         if self.probe_fails {
-            return Err(crate::adapter::error(
-                ErrorKind::UnsupportedCapability,
-                "controlled metadata probe failure",
-            ));
+            return Err(AdapterError {
+                kind: ErrorKind::UnsupportedCapability,
+                message: "controlled metadata probe failure".into(),
+            });
         }
         Ok(self.info.clone())
     }
