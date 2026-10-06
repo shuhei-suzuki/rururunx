@@ -531,7 +531,6 @@ impl AttemptManager {
         provider: &str,
         phase: &str,
         reservation: Option<&WorkflowReservation>,
-        driver: Option<&crate::runtime::driver::WorkerLifetime>,
     ) -> Result<(ExecutionUnit, ResourceProfile)> {
         ensure!(
             matches!(kind, UnitKind::Reviewer | UnitKind::Verifier),
