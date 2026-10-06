@@ -150,6 +150,15 @@ async fn actual_local_ingress_checks_epoch_and_never_mints_goal_before_schema9()
     let dir = tempfile::tempdir().unwrap();
     let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
     let runtime = Runtime::new(owner.clone(), config()).unwrap();
+    let identity = runtime.control_identity();
+    assert_eq!(
+        identity.state,
+        dir.path().join("state.db").canonicalize().unwrap()
+    );
+    assert_eq!(identity.instance, owner.instance_id());
+    assert_eq!(identity.epoch, owner.epoch());
+    identity.validate().unwrap();
+    assert_eq!(runtime.control_identity(), identity);
     let (server, _client) = tokio::net::UnixStream::pair().unwrap();
     let request = ControlRequest {
         request_id: Uuid::new_v4(),
