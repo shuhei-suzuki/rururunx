@@ -2089,7 +2089,7 @@ impl Core {
                         },
                         Some("turn/completed") if p["threadId"]==thread_id && p["turn"]["id"]==turn_id=>{
                             let status=p["turn"]["status"].as_str().context("native turn status missing")?;
-                            if self.phase.is_some() && matches!(status,"completed"|"failed") {
+                            if matches!(status,"completed"|"failed") {
                                 self.collector.codex_terminal(&p["turn"]);
                                 self.observed_terminal=Some(if status=="completed" {(WorkOutcome::Success,Disposition::Completed,None)}
                                     else if quota_ended || quota::codex_subscription_error(&p["turn"]["error"]) {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
@@ -2111,7 +2111,6 @@ impl Core {
                                     quota::QuotaScheduler::new(self.owner.clone()).observe_probe(&self.authority()?,&QuotaObservation {status:QuotaStatus::Available,observed_at:now_ms(),source_version:"codex-cli 0.160.0/correlated recovery turn completed".into(),..old})?;
                                 }
                             }
-                            if self.phase.is_none() && (status=="completed" || status=="failed") {self.collector.codex_terminal(&p["turn"]);}
                             return Ok(if status=="completed" {(WorkOutcome::Success,Disposition::Completed,Some(p["turn"].clone()))}
                                 else if quota_ended {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
                                 else if status=="failed" && p["turn"]["error"]["codexErrorInfo"]=="unauthorized" {anyhow::bail!(NativeFailure::AuthenticationUnavailable)}
@@ -2218,14 +2217,29 @@ impl Core {
                     if self.collector.overflowed() {return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));}
 
                     if seen.as_ref().is_err_and(|e|e.kind==ErrorKind::ProcessFailure) {
+                        // Capture this accepted owned terminal BEFORE optional Store
+                        // bookkeeping. A quota-sensitive execution error remains
+                        // Unknown if accepted bucket state cannot be read; an outage
+                        // cannot invent work failure or subscription exhaustion.
+                        self.collector.claude_terminal(&frame);
+                        let quota_sensitive=matches!(frame["subtype"].as_str(),Some("success"|"error_during_execution"));
+                        let provisional=if quota_sensitive && !quota_buckets.is_empty() {
+                            (WorkOutcome::Unknown,Disposition::Lost,None)
+                        } else if state.terminal_capacity || (unclassified_limit && quota_sensitive) {
+                            (WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)
+                        } else {
+                            (WorkOutcome::Failure,Disposition::Completed,None)
+                        };
+                        self.observed_terminal=Some(provisional);
                         // Consult accepted bucket state, not the last telemetry frame.
                         // Budget/turn/output caps remain work failures even during quota exhaustion.
-                        let quota_exhausted=matches!(frame["subtype"].as_str(),Some("success"|"error_during_execution")) && self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?
+                        let quota_exhausted=quota_sensitive && !quota_buckets.is_empty() && self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?
                             .quota_observations("claude","unknown")?.iter().any(|o|o.status==QuotaStatus::Exhausted && quota_buckets.contains(&o.bucket));
-                        self.collector.claude_terminal(&frame);
-                        return Ok(if quota_exhausted{(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
-                            else if state.terminal_capacity || (unclassified_limit && matches!(frame["subtype"].as_str(),Some("success"|"error_during_execution"))){(WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)}
-                            else{(WorkOutcome::Failure,Disposition::Completed,Some(frame))});
+                        let observed=if quota_exhausted {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
+                            else if state.terminal_capacity || (unclassified_limit && quota_sensitive) {(WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)}
+                            else {(WorkOutcome::Failure,Disposition::Completed,None)};
+                        self.observed_terminal=Some(observed);
+                        return Ok((observed.0,observed.1,if observed.0==WorkOutcome::Failure {Some(frame)} else {None}));
                     }
                     seen?;
                     if state.initialized && self.session.native_ref.is_none(){self.ack(self.native.clone())?;}
