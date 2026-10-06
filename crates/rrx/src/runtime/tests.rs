@@ -1231,3 +1231,52 @@ fn raw_control_fixture_rows(connection: &rusqlite::Connection) -> Vec<(String, V
         })
         .collect()
 }
+
+#[tokio::test]
+async fn public_source_preparation_refuses_accepted_goal_before_unit_or_helper_effects() {
+    let mut f = ControlFixture::new();
+    f.register_real_git_project();
+    let goal = f.create(plan()).await;
+    let task = {
+        let shared = f.owner.store();
+        let store = shared.lock().unwrap();
+        let goal = store.goal(goal).unwrap().unwrap();
+        store.task(goal.dag.nodes[0]).unwrap().unwrap()
+    };
+    let before = {
+        let shared = f.owner.store();
+        let store = shared.lock().unwrap();
+        store.events(&task.scope(), 0, 100).unwrap().len()
+    };
+    let outputs = crate::git::observed_git_outputs();
+    let manager = crate::execution::attempts::AttemptManager::new(f.owner.clone());
+    let error = manager
+        .prepare(task.id, "codex", "implement", None)
+        .await
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("managed Driver/binding"));
+    let sources =
+        crate::execution::workflow_source::ManagedWorkflowSources::new(f.owner.clone(), config())
+            .unwrap();
+    let error = sources.prepare(task.id, "codex").await.unwrap_err();
+    assert!(format!("{error:#}").contains("managed Driver/binding"));
+    let shared = f.owner.store();
+    let store = shared.lock().unwrap();
+    assert_eq!(
+        serde_json::to_value(&task).unwrap(),
+        serde_json::to_value(store.task(task.id).unwrap().unwrap()).unwrap()
+    );
+    assert_eq!(store.events(&task.scope(), 0, 100).unwrap().len(), before);
+    assert!(
+        store
+            .execution_units(Some(&task.scope()))
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        crate::git::observed_git_outputs(),
+        outputs,
+        "public preparation reached actual Git helper"
+    );
+    assert!(!f.project.worktree_root.exists());
+}

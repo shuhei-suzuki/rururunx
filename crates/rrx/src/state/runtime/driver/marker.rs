@@ -20,13 +20,13 @@ pub(crate) struct DriverMarkerAdvance {
 /// Created only by checking a completed planned mutation on the same Store
 /// after commit. Not Clone/Deserialize and never an input/Native credential.
 pub(crate) struct DriverPublication {
-    task: TaskId,
-    id: Uuid,
-    epoch: u64,
-    before_version: u64,
-    before_body: String,
-    after_version: u64,
-    after_body: String,
+    pub(super) task: TaskId,
+    pub(super) id: Uuid,
+    pub(super) epoch: u64,
+    pub(super) before_version: u64,
+    pub(super) before_body: String,
+    pub(super) after_version: u64,
+    pub(super) after_body: String,
 }
 impl DriverPublication {
     pub(crate) fn before(&self) -> (TaskId, Uuid, u64, u64, &str) {
@@ -42,7 +42,7 @@ impl DriverPublication {
         (self.after_version, &self.after_body)
     }
 }
-fn image(row: &Row, body: &str) -> Result<Vec<SqlValue>> {
+pub(super) fn image(row: &Row, body: &str) -> Result<Vec<SqlValue>> {
     let scope = &row.pins.scope;
     Ok(vec![
         scope
@@ -123,6 +123,30 @@ impl DriverReadTicket {
     }
 }
 impl DriverMarkerAdvance {
+    /// Borrow only this OriginalMarker-owned advance. This checks actual Driver
+    /// liveness and immutable post Driver/Source rows; Root separately validates
+    /// the original-derived Workflow successor, current Unit/pair and lifecycle
+    /// in the SAME transaction. Factual Workflow links never refresh these pins.
+    pub(crate) fn validate_live_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        ensure!(
+            self.ticket.association.owner_matches(&self.ticket.owner)
+                && self.ticket.association.validates(
+                    self.next.id,
+                    self.next.epoch,
+                    self.next.version,
+                    &self.body
+                ),
+            "original marker Driver no longer owns a live worker"
+        );
+        let current: bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM task_drivers d JOIN runtime_epoch e ON e.singleton=1 AND e.epoch=d.owner_epoch WHERE d.task_id=?1 AND d.project_id=?2 AND d.goal_id=?3 AND d.id=?4 AND d.owner_epoch=?5 AND d.version=?6 AND d.state='driving' AND d.body=?7 AND e.instance_id=?8)", params![self.task.id.to_string(),self.task.project_id.to_string(),self.task.goal_id.to_string(),self.next.id.to_string(),self.next.epoch,self.next.version,self.body,self.ticket.owner.instance_id()],|r|r.get(0))?;
+        ensure!(current, "original marker Driver post binding changed");
+        if let Some(source) = &self.source {
+            source.validate_result_tx(tx)?;
+        } else {
+            self.ticket.validate_source_tx(tx)?;
+        }
+        Ok(())
+    }
     pub(in crate::state) fn exact_mutations(&self) -> Result<Vec<ExactRowMutation>> {
         let mut mutations = vec![ExactRowMutation::new(
             "task_drivers",

@@ -86,7 +86,7 @@ async fn drive(claim: PendingDriverClaim, lifetime: WorkerLifetime) -> Result<()
     tokio::select! {
         biased;
         ()=lifetime.cancelled()=>return Err(anyhow::anyhow!("Task Driver cancelled before Source preparation")),
-        result=sources.prepare(task,&provider)=>{result?;}
+        result=sources.prepare_driven(task,&provider,&lifetime)=>{result?;}
     }
     tokio::select! {
         biased;

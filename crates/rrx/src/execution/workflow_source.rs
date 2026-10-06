@@ -190,6 +190,22 @@ impl ManagedWorkflowSources {
     /// Register before Git, capture the exact prepared commit, and retain the
     /// abandonment guard through initial non-native Workflow phases.
     pub async fn prepare(&self, task: TaskId, provider: &str) -> Result<ExecutionUnit> {
+        self.prepare_inner(task, provider, None).await
+    }
+    pub(crate) async fn prepare_driven(
+        &self,
+        task: TaskId,
+        provider: &str,
+        driver: &crate::runtime::driver::WorkerLifetime,
+    ) -> Result<ExecutionUnit> {
+        self.prepare_inner(task, provider, Some(driver)).await
+    }
+    async fn prepare_inner(
+        &self,
+        task: TaskId,
+        provider: &str,
+        driver: Option<&crate::runtime::driver::WorkerLifetime>,
+    ) -> Result<ExecutionUnit> {
         let slot = self.slot(task)?;
         let mut state = slot.lock().await;
         ensure!(state.is_none(), "Workflow source already prepared");
@@ -207,12 +223,25 @@ impl ManagedWorkflowSources {
                 "existing Workflow requires explicit retained-input recovery"
             );
         }
-        let prepared = attempts::AttemptManager::new(self.owner.clone())
-            .prepare_workflow_source(task, provider)
-            .await?;
+        let manager = attempts::AttemptManager::new(self.owner.clone());
+        let prepared = match driver {
+            Some(driver) => {
+                manager
+                    .prepare_driver_source(task, provider, driver)
+                    .await?
+            }
+            None => manager.prepare_workflow_source(task, provider).await?,
+        };
         let unit = prepared.unit().clone();
         let (project, goal, task) = self.owners(task)?;
         let io = UnitGit::new(self.owner.clone(), &unit, true)?;
+        let io = match driver {
+            Some(driver) => io.with_driver_ticket(crate::state::read_driver_ticket(
+                self.owner.clone(),
+                driver.association()?,
+            )?)?,
+            None => io,
+        };
         let files =
             read_corpus(CorpusReader::Prepared(&io), &unit.worktree, &unit.base_sha).await?;
         let frame = Frame::build(
@@ -233,6 +262,9 @@ impl ManagedWorkflowSources {
             configured.provider.as_deref() == Some(provider),
             "prepared provider differs from committed configuration"
         );
+        // Bind the installed in-memory frame to the SAME ticket which read all
+        // committed source bytes; CPU parsing cannot ratify later authority.
+        io.validate_driver_current()?;
         self.owner
             .store
             .lock()
