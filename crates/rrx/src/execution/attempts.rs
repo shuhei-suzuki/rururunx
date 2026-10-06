@@ -28,9 +28,9 @@ impl PreparedExecutorRemainder {
     pub(crate) fn rejoin(
         self,
         guard: owner::PreparationGuard,
-    ) -> std::result::Result<PreparedExecutor, (Self, owner::PreparationGuard)> {
+    ) -> std::result::Result<PreparedExecutor, Box<(Self, owner::PreparationGuard)>> {
         if !guard.matches(&self.owner, &self.unit).unwrap_or(false) {
-            return Err((self, guard));
+            return Err(Box::new((self, guard)));
         }
         Ok(PreparedExecutor {
             owner: self.owner,

@@ -86,3 +86,14 @@ Required causal controls for the actual composed route include the original sour
 The implementation factors the original transient borrow as `custody.original_origin() -> Result<SourceNativeOrigin>` followed by `origin.lock_transfer(&custody, &owner, &ticket) -> Result<SourceNativeTransfer<'_>>`. The non-Clone origin upgrades only the SAME Weak producer/slot and lives on the Root caller's stack; the returned guards borrow it, without a self-referential container or a stored Source/Driver backlink. Root holds actual admission before this synchronous map→tried-slot→custody borrow. `take_original()` moves only the original allocation/guard and keeps the private remainder in custody. `restore_refused` returns either factual Restored/Held or the SAME boxed ownership-returning error on a protocol mismatch; Root must retain that error outside Source locks. `finish_accepted` is infallible after Root stores actual capacity. An unfinished transfer's Drop marks Held without creating a new preparation or rollback proof.
 
 The real successful `AttemptManager::prepare_driver_source` returns a new armed guard after its internal plan-bearing preparation guard has been disarmed. That returned guard has no Driver-plan backlink; `publish_driven_adoption` updates only its exact Unit. The existing `PreparationGuard` implementation is unchanged. The Source capsule's weak ticket identity and the independent Root envelope therefore implement the stated cycle boundary without changing pending Driver-plan ownership.
+
+
+The retirement consumer detaches the original Source slot in a lexical map-lock
+block and destroys it only after that lock ends; its actual preparation and
+returned guards remain armed. Recovery refuses an already installed slot before
+helper admission, and initial legacy adoption validates before taking its guard,
+so neither path replaces or destroys owned preparation under a Source slot lock.
+The destructor-order control uses the actual generic removal consumer with an
+owned mechanical destructor; it does not qualify genuine Source/Driver/Native
+handoff. The mismatch rejoin error boxes the same original remainder and guard;
+that representation change creates no new ownership or authority.

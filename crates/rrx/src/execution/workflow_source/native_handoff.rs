@@ -222,7 +222,8 @@ impl SourceNativeTransfer<'_> {
                     CustodyState::Held
                 };
             }
-            Err((remainder, guard)) => {
+            Err(parts) => {
+                let (remainder, guard) = *parts;
                 self.assets.remainder = Some(remainder);
                 self.assets.rejected_guard = Some(guard);
                 self.assets.state = CustodyState::Held;
