@@ -100,6 +100,7 @@ impl NativePhasePort {
     pub(crate) async fn start_phase(
         &self,
         launch: crate::state::managed_binding::PhaseLaunch,
+        custody: Arc<execution::native::NativePreparationCustody>,
     ) -> std::result::Result<
         execution::native::NativePhaseStart,
         execution::native::NativePhaseStartError,
@@ -121,7 +122,7 @@ impl NativePhasePort {
                 });
             }
         };
-        adapter.sessions.start_phase(parts).await
+        adapter.sessions.start_phase(parts, custody).await
     }
 
     /// Allocate before all version, readonly Git and Native child operations.

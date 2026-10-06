@@ -25,7 +25,9 @@ mod execution;
 pub(crate) use execution::QuotaAdmission;
 pub(crate) use execution::cleanup::CleanupClaim;
 pub(crate) use execution::governing_digest as execution_governing_digest;
-pub(crate) use execution::native_phase::NativeTerminalPlan;
+pub(crate) use execution::native_phase::{
+    NativePreparationCommit, NativePreparationPlan, NativeTerminalPlan,
+};
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
 /// Typed transactional guards let callers distinguish contention from storage failure.

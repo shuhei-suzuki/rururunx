@@ -70,6 +70,7 @@ pub(crate) struct PhaseLaunchParts {
     marker: Arc<crate::state::managed_binding::OriginalMarker>,
     retention: MarkerPublicationRetention,
     origin: Arc<super::phase_handoffs::PhasePreparationOrigin>,
+    preparation: Weak<crate::execution::native::NativePreparationCustody>,
 }
 impl PhaseLaunch {
     pub(super) fn parts(&self) -> &Arc<PhaseLaunchParts> {
@@ -80,6 +81,13 @@ impl PhaseLaunch {
     }
 }
 impl PhaseLaunchParts {
+    /// SAME independently retained actual Root job cell, never strong here:
+    /// custody owns actor, actor owns launch. A strong return edge would leak it.
+    pub(crate) fn preparation_custody(
+        &self,
+    ) -> &Weak<crate::execution::native::NativePreparationCustody> {
+        &self.preparation
+    }
     /// Original Source lineage plus actual current/Driver currency. Still no
     /// Native permission: its writer must validate admission and exact stage,
     /// Unit/input/pair/lifecycle and compiled mutations in this SAME transaction.
@@ -628,6 +636,7 @@ impl super::Runtime {
         origin.validate_marker(&marker)?;
         let slot = &retention.capacity.slot;
         self.phase_jobs.ready(&slot.allocation)?;
+        let preparation = self.phase_jobs.preparation_custody(&slot.allocation)?;
         let q = self
             .phases
             .queue
@@ -688,6 +697,7 @@ impl super::Runtime {
                 marker,
                 retention,
                 origin,
+                preparation: Arc::downgrade(&preparation),
             }),
         }))
     }

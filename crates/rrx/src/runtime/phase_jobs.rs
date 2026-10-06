@@ -2,7 +2,10 @@
 use super::phase_supervisor::{PhaseLaunch, PhaseLaunchParts};
 use crate::execution::{
     OperationId,
-    native::{ManagedSessionRef, NativePhaseBinding, NativePhaseStart, NativePhaseStartError},
+    native::{
+        ManagedSessionRef, NativePhaseBinding, NativePhaseStart, NativePhaseStartError,
+        NativePreparationCustody,
+    },
     phase::NativeAllocation,
 };
 use crate::state::managed_binding::{ManagedBindingPlan, plan_managed_binding};
@@ -28,6 +31,9 @@ pub(crate) enum InvocationObservation {
 }
 
 struct JobState {
+    // EMPTY/nongrant until the SAME actual selected Native start installs its
+    // own actor and original plan. Retained BEFORE marker/start/future effects.
+    preparation: Arc<NativePreparationCustody>,
     observation: InvocationObservation,
     launch: Option<Arc<PhaseLaunchParts>>,
     outcome: Option<std::result::Result<RetainedStart, NativePhaseStartError>>,
@@ -118,6 +124,7 @@ impl PhaseJobs {
                 job: Arc::new(Job {
                     allocation: allocation.clone(),
                     state: Mutex::new(JobState {
+                        preparation: NativePreparationCustody::new(allocation.clone()),
                         observation: InvocationObservation::Reserved,
                         launch: None,
                         outcome: None,
@@ -155,6 +162,37 @@ impl PhaseJobs {
         Ok(())
     }
 
+    /// Root's SAME original reserved job, never a new cell from readable rows.
+    /// Clone the actual retained object before queue/Store admission. Launch
+    /// stores only its Weak identity, avoiding custody -> actor -> launch cycles.
+    pub(super) fn preparation_custody(
+        &self,
+        allocation: &Arc<NativeAllocation>,
+    ) -> Result<Arc<NativePreparationCustody>> {
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase jobs poisoned"))?;
+        let entry = entries
+            .get(&allocation.facts().operation_id)
+            .ok_or_else(|| anyhow::anyhow!("actual preparation job not reserved"))?;
+        ensure!(
+            Arc::ptr_eq(&entry.job.allocation, allocation) && entry.handle.is_none(),
+            "original preparation job changed"
+        );
+        let state = entry
+            .job
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+        ensure!(
+            state.observation == InvocationObservation::Reserved
+                && state.preparation.matches_allocation(allocation),
+            "original preparation custody differs"
+        );
+        Ok(state.preparation.clone())
+    }
+
     /// Runtime admission serializes this with ready/rollback. After a known
     /// handoff, preserve custody even if a mutex was poisoned: recovery here
     /// only stores actual objects and never authorizes a protected Store write.
@@ -165,11 +203,12 @@ impl PhaseJobs {
             .get_mut(&parts.allocation().facts().operation_id)
             .expect("actual phase job reserved before marker handoff");
         let job = entry.job.clone();
-        {
+        let preparation = {
             let mut state = job.state.lock().unwrap_or_else(|e| e.into_inner());
             state.launch = Some(parts);
             state.observation = InvocationObservation::Starting;
-        }
+            state.preparation.clone()
+        };
         job.changed.send_replace(InvocationObservation::Starting);
         let changed = job.changed.subscribe();
         // Capture an already-constructed guard: an unpolled future can be
@@ -180,7 +219,7 @@ impl PhaseJobs {
             let outcome = job
                 .allocation
                 .selected_port()
-                .start_phase(launch)
+                .start_phase(launch, preparation.clone())
                 .await
                 .map(|start| match start {
                     NativePhaseStart::Launched { handle, binding } => RetainedStart::Launched {
@@ -191,6 +230,7 @@ impl PhaseJobs {
                         RetainedStart::Waiting(Box::new(waiting))
                     }
                 });
+            let refused = outcome.is_err();
             let (observation, binding) = match &outcome {
                 Ok(RetainedStart::Launched { binding, .. }) => {
                     (InvocationObservation::Binding, Some(binding.clone()))
@@ -202,6 +242,11 @@ impl PhaseJobs {
                 let mut state = job.state.lock().unwrap_or_else(|e| e.into_inner());
                 state.outcome = Some(outcome);
                 state.observation = observation;
+            }
+            if refused {
+                // Actual outcome is already retained. Nongrant abandonment must
+                // not hold the Root job mutex or retire Unit/Task from an error.
+                preparation.abandon();
             }
             job.changed.send_replace(observation);
             if let Some(binding) = binding {
@@ -288,12 +333,20 @@ impl Job {
 struct RunningJob(Arc<Job>);
 impl Drop for RunningJob {
     fn drop(&mut self) {
-        let mut state = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.outcome.is_none() || state.observation == InvocationObservation::Binding {
-            state.observation = InvocationObservation::Uncertain;
-            self.0
-                .changed
-                .send_replace(InvocationObservation::Uncertain);
+        let preparation = {
+            let mut state = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
+            if state.outcome.is_none() || state.observation == InvocationObservation::Binding {
+                state.observation = InvocationObservation::Uncertain;
+                self.0
+                    .changed
+                    .send_replace(InvocationObservation::Uncertain);
+                Some(state.preparation.clone())
+            } else {
+                None
+            }
+        };
+        if let Some(preparation) = preparation {
+            preparation.abandon();
         }
     }
 }

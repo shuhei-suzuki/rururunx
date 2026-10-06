@@ -21,9 +21,11 @@ use tokio::{
 #[cfg(test)]
 mod phase_fence_tests;
 mod phase_protocol;
+mod preparation;
 pub(crate) use phase_protocol::{
     ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession, OwnedPhaseSettlement,
 };
+pub(crate) use preparation::{NativePreparationActor, NativePreparationCustody};
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -154,6 +156,7 @@ pub struct NativeSessions {
     _cleanup: cleanup::CleanupWorker,
     entries: Mutex<BTreeMap<SessionId, Entry>>,
     starts: Mutex<BTreeMap<UnitId, Weak<tokio::sync::Mutex<()>>>>,
+    preparations: Mutex<BTreeMap<UnitId, Weak<NativePreparationCustody>>>,
 }
 impl NativeSessions {
     pub fn new(owner: Arc<RuntimeOwner>) -> Result<Self> {
@@ -169,6 +172,7 @@ impl NativeSessions {
             _cleanup: cleanup,
             entries: Mutex::new(BTreeMap::new()),
             starts: Mutex::new(BTreeMap::new()),
+            preparations: Mutex::new(BTreeMap::new()),
         })
     }
     pub async fn start(
@@ -194,49 +198,18 @@ impl NativeSessions {
     pub(crate) async fn start_phase(
         &self,
         launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
+        custody: Arc<NativePreparationCustody>,
     ) -> std::result::Result<NativePhaseStart, NativePhaseStartError> {
-        let result = self.start_phase_inner(launch.clone()).await;
+        let result = self.start_phase_inner(launch.clone(), custody).await;
         result.map_err(|error| NativePhaseStartError { launch, error })
     }
     async fn start_phase_inner(
         &self,
         launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
+        custody: Arc<NativePreparationCustody>,
     ) -> Result<NativePhaseStart> {
-        let allocation = launch.allocation();
-        let selected = allocation.selected_port().selected_adapter()?;
-        ensure!(
-            std::ptr::eq(selected.sessions.as_ref(), self)
-                && Arc::ptr_eq(&selected.owner, &self.owner)
-                && launch.is_retained(),
-            "Native launch lost actual selected sessions/retention"
-        );
-        let input = allocation.prepared_input().clone();
-        let facts = allocation.facts();
-        let model = facts.model.map(str::to_owned);
-        let effort = facts.effort.map(str::to_owned);
-        let executable = facts.program.to_owned();
-        match self
-            .start_with_launch(input, model, effort, Some(executable), Some(launch.clone()))
-            .await?
-        {
-            NativeStart::Launched(handle) => {
-                let binding = self.phase_binding(&handle)?;
-                Ok(NativePhaseStart::Launched {
-                    handle,
-                    binding: Box::new(binding),
-                })
-            }
-            NativeStart::Waiting {
-                unit,
-                reason,
-                next_due,
-            } => Ok(NativePhaseStart::Waiting {
-                launch,
-                unit,
-                reason,
-                next_due,
-            }),
-        }
+        self.begin_phase_preparation(launch, custody).await?;
+        anyhow::bail!("private Native transport composition unavailable")
     }
     async fn start_with_launch(
         &self,

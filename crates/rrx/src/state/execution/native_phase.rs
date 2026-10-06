@@ -13,6 +13,8 @@ use std::sync::Arc;
 
 const PAIR_BODY_BYTES: usize = 32 * 1024;
 
+mod preparation;
+pub(crate) use preparation::{NativePreparationCommit, NativePreparationPlan};
 mod terminal;
 pub(crate) use terminal::NativeTerminalPlan;
 
@@ -69,11 +71,16 @@ impl PairRow {
             ),
             "invalid Native pair read"
         );
+        let body_bound = if table == "managed_phase_readiness" {
+            4096
+        } else {
+            PAIR_BODY_BYTES
+        };
         let select = columns
             .iter()
             .map(|name| {
                 if *name == "body" {
-                    "CASE WHEN length(CAST(body AS BLOB))<=32768 THEN body END".to_owned()
+                    format!("CASE WHEN length(CAST(body AS BLOB))<={body_bound} THEN body END")
                 } else {
                     (*name).to_owned()
                 }
