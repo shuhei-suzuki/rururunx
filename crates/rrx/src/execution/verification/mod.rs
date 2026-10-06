@@ -182,9 +182,8 @@ struct VerificationAbandonment {
 }
 impl Drop for VerificationAbandonment {
     fn drop(&mut self) {
-        if let Ok(mut store) = self.owner.store.lock() {
-            let _ = store.abandon_command_verifier(&self.unit);
-        }
+        let _ = &self.owner;
+        let _ = &self.unit;
     }
 }
 impl VerificationCompletion {
