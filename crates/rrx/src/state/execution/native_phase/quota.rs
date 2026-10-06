@@ -363,7 +363,8 @@ fn read_snapshot(
     );
     if pool.is_none() {
         ensure!(
-            windows.is_empty()
+            cold_dependents_absent(tx, provider)?
+                && windows.is_empty()
                 && waiters.is_empty()
                 && leases
                     .iter()
@@ -384,6 +385,13 @@ fn read_snapshot(
         history,
         legacy: candidates,
     })
+}
+
+fn cold_dependents_absent(tx: &Transaction<'_>, provider: &str) -> Result<bool> {
+    tx.query_row(
+        "SELECT NOT EXISTS(SELECT 1 FROM quota_windows WHERE provider=?1 AND account_key='unknown') AND NOT EXISTS(SELECT 1 FROM quota_leases WHERE provider=?1 AND account_key='unknown') AND NOT EXISTS(SELECT 1 FROM quota_waiters WHERE provider=?1 AND account_key='unknown')",
+        [provider], |row| row.get(0),
+    ).map_err(Into::into)
 }
 
 fn project_blocked(leases: &[Row], project: &str, task: &str, max: usize) -> Result<bool> {
@@ -1025,6 +1033,28 @@ mod primitive_tests {
             assert!(fair_position(last, 10, "a", last) < fair_position(last, 10, "b", last));
             assert!(fair_position(last, 11, "a", last) > fair_position(last, 10, "b", last));
         }
+    }
+    #[test]
+    fn nongrant_native_cold_dependents_include_future_waiters_and_inactive_leases() {
+        let mut c = db();
+        c.execute_batch("CREATE TABLE quota_leases(unit_id TEXT PRIMARY KEY,provider TEXT,account_key TEXT,active INTEGER,FOREIGN KEY(provider,account_key) REFERENCES quota_pools(provider,account_key));CREATE TABLE quota_windows(provider TEXT,account_key TEXT,FOREIGN KEY(provider,account_key) REFERENCES quota_pools(provider,account_key));").unwrap();
+        let tx = c.transaction().unwrap();
+        assert!(cold_dependents_absent(&tx, "claude").unwrap());
+        insert_cold_pool(&tx, "claude").unwrap();
+        tx.execute("INSERT INTO quota_waiters VALUES('future','claude','unknown','capacity',999999,1,'preparing')", []).unwrap();
+        assert!(!cold_dependents_absent(&tx, "claude").unwrap());
+        tx.execute("DELETE FROM quota_waiters", []).unwrap();
+        tx.execute(
+            "INSERT INTO quota_leases VALUES('inactive','claude','unknown',0)",
+            [],
+        )
+        .unwrap();
+        assert!(!cold_dependents_absent(&tx, "claude").unwrap());
+        tx.execute("DELETE FROM quota_leases", []).unwrap();
+        tx.execute("INSERT INTO quota_windows VALUES('claude','unknown')", [])
+            .unwrap();
+        assert!(!cold_dependents_absent(&tx, "claude").unwrap());
+        assert!(cold_dependents_absent(&tx, "codex").unwrap());
     }
     fn db() -> Connection {
         let c = Connection::open_in_memory().unwrap();
