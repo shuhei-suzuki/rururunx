@@ -55,6 +55,11 @@ pub(crate) struct AllocationFacts<'a> {
 }
 
 impl NativeAllocation {
+    /// Original selected-port capture only; this read cannot authorize effects.
+    pub(crate) fn unit_snapshot(&self) -> &ExecutionUnit {
+        self.seed.unit()
+    }
+
     pub(crate) fn from_selected(seed: NativeAllocationSeed) -> Self {
         Self {
             seed,
