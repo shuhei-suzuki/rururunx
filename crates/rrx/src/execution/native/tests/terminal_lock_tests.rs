@@ -344,7 +344,7 @@ async fn legacy_codex_received_terminal_survives_optional_quota_read_failure() {
     let c = Connection::open(dir.path().join("state.db")).unwrap();
     // A real missing-table storage fault affects only optional quota probe read
     // and later receipt persistence. It cannot mint an owner or alter wire input.
-    c.execute_batch("ALTER TABLE quota_leases RENAME TO fixture_missing_quota_leases")
+    c.execute_batch("PRAGMA legacy_alter_table=ON; ALTER TABLE quota_leases RENAME TO fixture_missing_quota_leases")
         .unwrap();
     std::fs::write(output.join("fixture-delay-publication"), "delay").unwrap();
     std::fs::write(output.join("fixture-release"), "release").unwrap();
@@ -430,7 +430,7 @@ async fn legacy_claude_received_error_retains_terminal_when_quota_classification
         .join(unit.id.to_string())
         .join("output");
     let c = Connection::open(dir.path().join("state.db")).unwrap();
-    c.execute_batch("ALTER TABLE quota_windows RENAME TO fixture_missing_quota_windows")
+    c.execute_batch("PRAGMA legacy_alter_table=ON; ALTER TABLE quota_windows RENAME TO fixture_missing_quota_windows")
         .unwrap();
     std::fs::write(output.join("fixture-delay-publication"), "delay").unwrap();
     std::fs::write(output.join("fixture-quota-release"), "release").unwrap();
