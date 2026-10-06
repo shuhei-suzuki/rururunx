@@ -46,11 +46,56 @@ closure.
 
 ### 1.2 Revision delta (P)
 
-This revision corrects the three defects confirmed by the independent Sol high
-design review and clarifies one composability point. Changed: §§1.1, 1.2, 3,
-3.1, 4.3 (handoff vocabulary only), 5.1 (expected-inventory paragraph), 5.2, 6,
-7, 8.1, 8.2 (owner argument), 10, 11, 12, 13, 14.1, 15 and the G4 row of §16.
-Unchanged: §§2, 4.1, 4.2, 4.4, 5.3, 9, 14.2–14.4 and the rest of §16.
+This revision corrects only the two defects confirmed by the independent Sol high
+delta review of the previous revision. Changed: §§1.2, 3 (the `Core.handoff` and
+`CoreShell` graph lines), 3.1 (transfer signature and text, ack accessor), 5.2
+(the `Live` lane split and the readiness bullet), 7 (steps 5b and 5e), 8.2
+(closure actor predicate), 9 (actor-state row and note), 10 (affected rows), 10.1,
+11 (lock-order and drop bullets), 13 (per-custody slot row), 14.1 (affected rows),
+15 (affected controls and mutants) and the G4 row of §16. Everything else is
+unchanged.
+
+- **R1 refused transfer can neither drop nor relock under the child mutex.**
+  Previously `transfer_with` took a `FnOnce` that captured the `CoreShell`, and
+  the shell carried a `TransportHandoff` whose `Drop` acquires the child mutex
+  (§11). On a refused precondition (e.g. `stop_requested`) the unused closure,
+  and with it the shell and its handoff, was dropped inside that SAME mutex. That
+  deadlocked before Entry removal, shell drop and bounded reap. Now:
+  - the shell carries only an unarmed plain `Weak<NativeTransportCustody>`, with
+    no `Drop` effect;
+  - the `Drop`-bearing `TransportHandoff` is constructed only by
+    `CoreShell::into_core`, i.e. only after a successful transfer;
+  - `transfer_with` takes the shell by value plus a capture-free `fn` pointer. A
+    refusal returns the SAME shell by value in `Refused<S>`, with the cell
+    untouched;
+  - the caller ends the child-mutex scope before using either result. A refused
+    shell is therefore destroyed, after Entry removal, with no child mutex held,
+    and a built Core leaves the section by value.
+
+  The child never leaves the cell on refusal and stays independently
+  Root-retained. On success it moves cell → Core with no local-only process
+  window. A refusal records no `Offered` and no acceptance.
+- **R2 terminal planning is not gated on `Live`.** The previous text made
+  `Live` a precondition of terminal planning. But both of these revoke BEFORE the
+  genuine Lost/nongrant terminal is planned:
+  - `RevokedKnown`;
+  - an unpolled `Core::drop`. Actual `Core::drop` (`native.rs:2248–2256`) calls
+    `revoke()` and then `drop_phase` → `persist_saved_terminal` →
+    `terminal_plan` (`native.rs:1876–1910,1276–1292`).
+
+  Actual `plan_phase_terminal` (`terminal.rs:173–181`) deliberately takes a
+  non-live `binding_snapshot`, and its normal mode uses
+  `plan_owner_currency(…, true)`, which skips `is_live`
+  (`native_phase.rs:230–243`). Now `Live` gates only new effects, input and
+  normal currency. Terminal planning and nongrant transport closure require the
+  SAME activation's retained ack (state `Live` or `Revoked`). They refuse an
+  unacked actor (`Candidate`, or `Revoked` without an ack). They never reopen the
+  actor, store `Live`, admit input or grant permission.
+- **Footprint correction.** The inline `OnceLock<RegistrationAck>` is 4 words +
+  tag, not "3 words + tag": `RegistrationAck` holds two `u64` values and one
+  enum. The §13 row is otherwise unchanged.
+
+Previous revision delta (closed; retained for traceability, not reopened):
 
 - **D1 pre-Core child custody.** The earlier `into_owned()`/`native_pipes()` on
   `RetainedRawProcess` returned an `OwnedProcess`/pipes to the caller, so Entry,
@@ -136,8 +181,14 @@ NativePreparationActor -Weak-> custody, -Weak-> NativeSessions (A)
 NativeSessions.preparations -Weak-> NativePreparationCustody (A)
 Core (A) -> child: OwnedProcess, phase: Arc<PhaseActor>
 Core.handoff: Option<TransportHandoff> (P) -Weak-> NativeTransportCustody
+                                             [armed; constructed only by
+                                              CoreShell::into_core after a
+                                              successful transfer]
 CoreShell (P)                                [start-future local; every Core field
-                                              except child; never holds a child]
+                                              except child and handoff; holds the
+                                              unarmed handoff target as a plain
+                                              Weak<NativeTransportCustody> with no
+                                              Drop effect; never holds a child]
 ```
 
 No strong edge returns to Runtime, PhaseJobs, JobState, NativeSessions or the
@@ -204,6 +255,12 @@ impl PhaseActor {
     fn activate(&self, known: KnownTransportRegistration) -> Activation;
 }
 enum Activation { Live, RevokedKnown, Mismatch }
+impl NativePhaseSession {
+    // Copy of the ack set by this actor's own activation; None while unacked.
+    // Read-only: the terminal and nongrant-closure lane (§5.2) uses this, never
+    // `Live`. It cannot set, replace or clear the ack, or change `state`.
+    fn registration_ack(&self) -> Option<RegistrationAck>;
+}
 
 // Process (execution/process.rs), additions only. Legacy OwnedProcess::spawn and
 // every existing RetainedRawProcess method are unchanged.
@@ -213,13 +270,19 @@ pub(crate) enum NativeChildCell {
     Owned(OwnedProcess),
     Transferred,
 }
+// A refused transfer hands the caller's value back unchanged; nothing is dropped
+// inside the method.
+pub(crate) struct Refused<S> { pub(crate) shell: S, pub(crate) reason: &'static str }
 impl NativeChildCell {
     fn adopt(&mut self, child: Child);                        // Empty -> Raw; infallible, no allocation
     fn qualify(&mut self) -> Result<()>;                      // Raw in place; Err leaves the SAME Raw
     fn upgrade_in_place(&mut self) -> Result<()>;             // Raw(qualified) -> Owned; returns no process
     fn take_native_pipes(&mut self) -> Result<NativePipes>;   // Owned; all-three presence check before any take
-    fn transfer_with<T>(&mut self, build: impl FnOnce(OwnedProcess) -> T) -> Result<T>;
-                                                              // checks first; then moves into `build`; cell = Transferred
+    fn transfer_with<S, T>(&mut self, open: bool, shell: S,
+        build: fn(S, OwnedProcess) -> T) -> Result<T, Refused<S>>;
+                                                              // checks first; refusal returns the SAME
+                                                              // shell, cell untouched; success moves
+                                                              // Owned into `build`; cell = Transferred
     fn hygiene(&mut self) -> Hygiene;                         // group signal if qualified, else direct start_kill
     fn try_reap(&mut self) -> Result<Option<ExitStatus>>;     // sync try_wait; marks reaped/unreaped=false
 }
@@ -228,11 +291,17 @@ impl OwnedProcess {
 }
 
 // Native (execution/native.rs).
-struct CoreShell { /* every Core field except `child` */ }
-impl CoreShell { fn into_core(self, child: OwnedProcess) -> Core; } // pure field moves
-struct TransportHandoff { custody: Weak<NativeTransportCustody> }
+struct CoreShell {
+    /* every Core field except `child` and `handoff` */
+    handoff_target: Weak<NativeTransportCustody>,             // unarmed; plain Weak, no Drop effect
+}
+impl CoreShell { fn into_core(self, child: OwnedProcess) -> Core; } // pure field moves; the only
+                                                                    // constructor of TransportHandoff:
+                                                                    // handoff = Some(TransportHandoff
+                                                                    // { custody: handoff_target })
+struct TransportHandoff { custody: Weak<NativeTransportCustody> }  // exists only inside a Core
 impl TransportHandoff { fn accept(&self) -> Result<()>; }           // first statement of Core::run
-impl Drop for TransportHandoff { /* Offered -> DroppedUnpolled, notify */ }
+impl Drop for TransportHandoff { /* Offered -> DroppedUnpolled, notify; takes the child mutex */ }
 ```
 
 `RegistrationProbe` is `{ Committed(KnownTransportRegistration), Absent, Held }`.
@@ -245,9 +314,23 @@ raw value drops with `child = None`, so its `Drop` hygiene sends no signal
 (`process.rs:66–72`). No method of `NativeChildCell` returns an `OwnedProcess`
 or `Child` to its caller.
 
-`transfer_with` checks five things before calling `build`: `Owned`, all three
-pipes already taken, not reaped, handoff `None`, and `!stop_requested`. If any
-check fails, `build` is never called and the process stays in the cell.
+`transfer_with` checks these five things before calling `build`:
+- the cell is `Owned`;
+- all three pipes are already taken;
+- the process is not reaped;
+- the handoff is `None`;
+- `!stop_requested`.
+
+The last two arrive as `open`, which the caller computes from the SAME
+`ChildCustody` under the SAME child-mutex guard. If any check fails, `build` is
+never called. The process stays in the cell, and the SAME `shell` is returned by
+value in `Refused`. Nothing is dropped inside the method.
+
+`build` is a capture-free `fn` pointer (`CoreShell::into_core`), so the method
+holds no other value that a refusal could drop. `CoreShell` has no `Drop` impl.
+None of its fields acquires the child, custody-state, `entries` or Store mutex
+when dropped: its handoff target is a plain `Weak`, and the custody keeps its own
+strong reference to the candidate. A field that would violate this is refused.
 
 ## 4. Durable representation (P)
 
@@ -429,11 +512,52 @@ make version reconciliation conflict forever.
     commit.
   - Only the transport custody holds it: it is not in `NativeSessions.entries`,
     not returned and not in any binding.
-- **Candidate and Revoked are nongrant.** Only `Live` passes these checks:
+- **Candidate and Revoked are nongrant; `Live` gates only new effects, input
+  and normal currency.** Only `Live` passes these checks:
   - `NativePhaseBinding::is_live`, `binding_snapshot`'s `live` field and
     `ConsumedPhaseInput::admitted` (`phase_protocol.rs:321–383`);
-  - currency planning and terminal planning.
+  - normal currency planning: `plan_owner_currency(…, false)` and
+    `NativeOwnerPlan::validate_tx` (`native_phase.rs:224–243,353–364`). These
+    are used for dispatch, ACK, projection and the normal transport settlement
+    (§8.2).
+
   `revoke()` stores `Revoked` unconditionally. No transition leaves `Revoked`.
+- **Known-registration lane (terminal planning and nongrant closure).** The
+  following are NOT gated on `Live`:
+  - terminal planning:
+    - actual `plan_phase_terminal` (`terminal.rs:173–181`), which deliberately
+      takes a non-live `binding_snapshot`;
+    - its terminal currency `plan_owner_currency(…, true)`;
+    - the terminal readiness reader;
+  - the §8.2 nongrant transport closure.
+
+  As an added conjunct to their existing checks (never a replacement), each of
+  them requires both of these:
+  - `registration_ack()` is `Some`: the ack set by this actor's own activation
+    (Activation step 2 below) for its immutable `origin`;
+  - the state is `Live` or `Revoked`.
+
+  An unacked `Candidate` is refused (Held), and so is a `Revoked` actor whose
+  ack was never set (stop before any known commit). The latter stays Held until
+  the SAME plan's probe returns `Committed` and activation records the ack
+  (`RevokedKnown`, §8.1).
+
+  This lane is what lets the genuine terminal be planned in these cases:
+  - `RevokedKnown`;
+  - a stop after activation;
+  - an unpolled `Core::drop`, which revokes before `drop_phase`
+    (`native.rs:2248–2256,1876–1910,1276–1292`).
+
+  Each then reaches the genuine Lost terminal of §10.1 or Core's existing
+  terminal.
+
+  The lane only reads the ack. It never does any of these:
+  - store `Live`, or set, replace or clear the ack;
+  - issue `ConsumedPhaseInput`, a permission or a new effect.
+
+  With no consumed input, `owned_success` stays impossible (`PhaseActor::settled`
+  requires `consumed()`, `phase_protocol.rs:181–206`). Normal terminal currency
+  for a known `Completed` outcome keeps its existing current/Driver checks.
 - **Known-commit token.** Only two outcomes produce a
   `KnownTransportRegistration`: `register_prepared_transport` returning `Ok`, and
   `confirm_prepared_transport` returning `Committed`.
@@ -462,7 +586,9 @@ make version reconciliation conflict forever.
   `origin` Arc.
   - `plan_owner_currency` (`native_phase.rs:311–330`) and the terminal reader
     (`terminal.rs:305–316`) accept only `(P+1, !ended)` or `(P+2, ended)`, and
-    only for an actor whose ack is set. They no longer use the constants 2/3.
+    only for an actor whose ack is set. Normal mode additionally requires
+    `Live`; terminal mode accepts `Live` or `Revoked`. They no longer use the
+    constants 2/3.
   - Rows of any other lineage refuse (Held).
   - The allocated-v1→registered-v2 producer is deleted.
 - **Input continuity.**
@@ -606,26 +732,46 @@ Continuation of `begin_phase_preparation` after `issue_prepared` succeeds:
       - the registered Unit/Session images taken from the plan's new images;
       - `record_version = 1` and `invocation = f.invocation_id`;
       - the SAME candidate Arc (now `Live`);
-      - `TransportHandoff { custody: Weak }`.
+      - the unarmed handoff target `Weak<NativeTransportCustody>`. This is a
+        plain `Weak`: no `TransportHandoff` exists yet, and dropping the shell
+        never touches the custody;
+      - a clone of the prebuilt control sender, kept for the 5e `control` set.
 
       All fallible or allocation-heavy work happens here, and the shell holds
       no child.
    c. Insert the prebuilt `Entry` (key = original SessionId) into
       `NativeSessions.entries`. On poison or collision, drop the shell (closing
-      the pipes); the child stays in the cell → §10.2.
+      the pipes; no lock is held and its `Weak` has no `Drop` effect). The child
+      stays in the cell → §10.2.
    d. Spawn the stderr drain task and store its JoinHandle in the shell.
-   e. **Final transfer.** Acquire the child mutex, then call
-      `cell.transfer_with(|child| shell.into_core(child))`:
+   e. **Final transfer.** In one block scope, acquire the child mutex, compute
+      `open = (handoff == None && !stop_requested)` from that SAME guard, and
+      call `cell.transfer_with(open, shell, CoreShell::into_core)`:
       - All preconditions (§3.1) are checked before any move.
-      - The `OwnedProcess` then moves from the cell straight into the Core
-        struct literal; every other field is a plain move of the already-built
-        shell. There is no local binding, `?`, allocation, lock acquisition or
-        await between.
-      - In the SAME section, set `cell = Transferred`, `handoff = Offered` and
-        `control` (a clone of the prebuilt sender) once; then release.
-      - If a precondition fails (stop requested, or an impossible state), remove
-        the Entry just inserted (synchronously), drop the shell, and keep the
-        child in the cell → §10.2.
+      - **On success:**
+        - the `OwnedProcess` moves from the cell straight into the Core struct
+          literal;
+        - `into_core` wraps the shell's `Weak` into the armed
+          `TransportHandoff`. This is the only place one is constructed;
+        - every other field is a plain move of the already-built shell;
+        - there is no `?`, allocation, lock acquisition or await between.
+      - **Same-section writes after success.** Set `cell = Transferred`,
+        `handoff = Offered` and `control` once, from the sender clone prepared
+        in 5b. These are a plain enum store and a one-time `OnceLock` set that
+        only this section performs. They cannot fail or panic.
+      - **Leaving the section.** The block evaluates to
+        `Result<Core, Refused<CoreShell>>` by value. The guard is released at
+        the end of the block, before either value is used or dropped. No Core,
+        `TransportHandoff` or shell is ever dropped while the child mutex is
+        held.
+      - **On `Refused { shell, .. }`** (stop requested, or an impossible state),
+        `cell`, `creation` and `handoff` are unchanged: no `Offered` and no
+        acceptance is recorded. After the guard is released, in this order:
+        1. remove the Entry just inserted (synchronously, holding the `entries`
+           mutex alone);
+        2. drop the shell, which closes its pipes (its `Weak` has no `Drop`
+           effect);
+        3. keep the SAME child in the cell → §10.2.
 6. **Spawn Core.** Call `tokio::spawn(core.run(f.input.clone(), f.model,
    f.effort, profile))` right after releasing the child mutex.
    - Between that release and the spawn, the only owner is the Core value: the
@@ -633,9 +779,11 @@ Continuation of `begin_phase_preparation` after `issue_prepared` succeeds:
      `drop_phase`). Nothing fallible runs there.
    - If tokio drops the future unpolled (runtime shutdown, task cancelled before
      first poll), `Core::drop` revokes the actor and captures Lost through
-     `drop_phase` (A). The `OwnedProcess` drop group-signals (A). The
+     `drop_phase` (A). That terminal is planned through the known-registration
+     lane (§5.2). The `OwnedProcess` drop group-signals (A). The
      `TransportHandoff` drop then turns `Offered` into `DroppedUnpolled` and
-     notifies.
+     notifies. It takes the child mutex only after `Core::drop`'s body has
+     released the Store, and never while the child mutex is held.
 7. **First poll.** The first statement of `Core::run`, before any wire I/O or
    Store access, is `handoff.accept()`:
    - In a short child-mutex section it moves `Offered → Accepted` and notifies,
@@ -701,6 +849,9 @@ The pre-spawn baseline was already full-inventory exact in §9.
 
 `close_transport_observation` is the nongrant writer, used after revocation or
 currency loss, including `RevokedKnown` and `DroppedUnpolled`. It validates only:
+- the SAME candidate in the known-registration lane (§5.2): `origin` pointer
+  equals the custody plan, `registration_ack()` is `Some`, and the state is
+  `Live` or `Revoked`. An unacked actor is refused;
 - `validate_preparation_original` (immutable Source/marker lineage);
 - the latest complete Unit image CAS (reusing `LatestUnitImage` from
   `version/closure.rs:11–153`, factored to a shared module);
@@ -720,6 +871,7 @@ writing.
 | Check | Registration Immediate | Spawn (4d) | Normal settlement | Nongrant closure |
 | --- | --- | --- | --- | --- |
 | Selected DB / selected vtable / SAME launch, custody, actor pointers | ✓ | ✓ (pointers) | ✓ | ✓ |
+| Actor state (§5.2) | `Candidate` (4a) | `Live` | `Live` | ack set, `Live` or `Revoked`; unacked refused |
 | `PhaseEffectAdmissionGuard::validate_for` | ✓ | ✓ | — | — |
 | `actor.validate_open` (not revoked) | ✓ | ✓ | ✓ | ✗ (revocation allowed) |
 | `validate_preparation_origin_tx` (current successor + Driver-live) | ✓ | — (no Store) | ✓ | ✗ |
@@ -733,6 +885,8 @@ writing.
 
 There is no boolean bypass, public validation mode, optional actor fallback or
 `.ok()` demotion. Root current/Driver checks are conjuncts, never replacements.
+Terminal planning (§10.1) uses the nongrant-closure actor predicate plus its
+existing terminal checks; it never uses the `Live`-only predicate.
 
 ## 10. Stop, abort and fault state table (P)
 
@@ -740,21 +894,21 @@ There is no boolean bypass, public validation mode, optional actor fallback or
 | --- | --- | --- |
 | Stop wins admission before 4a | Planned | No registration, no spawn; preparation Held per approved §3.2 |
 | Registration rollback proved (`Absent`) | Planned | No spawn; SAME plan retry only if all §9 checks pass; never new IDs/pins |
-| Registration commit uncertain | RegistrationUncertain | No spawn; §8.1 probe; Held otherwise |
-| Known registration, candidate already `Revoked` at activation (`RevokedKnown`), or stop/revocation before 4d | Registered, `NotAttempted`, cell Empty | No spawn; settlement `resolved/not_attempted` by nongrant closure (authentic local precreation proof); terminal Lost via §10.1; no input/ACK |
+| Registration commit uncertain | RegistrationUncertain | No spawn; §8.1 probe; Held otherwise. A stop meanwhile revokes the unacked candidate; terminal planning and closure stay refused until a `Committed` probe activates it (`RevokedKnown`) |
+| Known registration, candidate already `Revoked` at activation (`RevokedKnown`), or stop/revocation before 4d | Registered, `NotAttempted`, cell Empty | No spawn; settlement `resolved/not_attempted` by nongrant closure (authentic local precreation proof); terminal Lost via §10.1, admitted by the retained ack on the `Revoked` actor (§5.2); no input/ACK; never reopened |
 | Activation `Mismatch` | Held | No spawn; impossible via the private producer; Held for attention |
 | `Command::spawn` `Err` | Attempted, Empty | Settlement `unknown`; never NoChild/NoCurrentDispatch; no replay; Held for attention |
 | Child returned, PID qualification fails | Raw (unqualified) | Child retained in the cell; no group signal; direct `start_kill` + bounded reap (§10.2); settlement `confirmed/unqualified/precore_retained`; never NoChild |
 | In-place upgrade precondition fails (defensive) | Raw (qualified) | SAME child in the cell; group signal + bounded reap; `precore_retained` |
 | Pipe presence check fails (any of stdin/stdout/stderr absent) | Owned, no pipe taken | SAME child in the cell; group signal + bounded reap; `pipes=incomplete`, `precore_retained` |
-| Shell build or Entry insert fails (poison/collision) | Owned, pipes taken | Shell dropped (pipes closed); SAME child in the cell; group signal + bounded reap; `pipes=complete`, `precore_retained`; terminal via §10.1 |
-| Transfer precondition fails (stop requested under the child mutex, or impossible state) | Owned | Entry removed synchronously; shell dropped; SAME child in the cell; §10.2; `precore_retained` |
-| Panic anywhere in step 5 | Raw/Owned (mutex possibly poisoned) | Only child-free locals unwind; the cell keeps the child; poison is recovered only for retention/hygiene; reconcile wake runs §10.2 |
+| Shell build or Entry insert fails (poison/collision) | Owned, pipes taken | Shell dropped with no lock held (pipes closed; unarmed `Weak`); SAME child in the cell; group signal + bounded reap; `pipes=complete`, `precore_retained`; terminal via §10.1 |
+| Transfer refused (stop requested under the child mutex, or impossible state) | Owned | `transfer_with` returns the SAME unarmed shell by value; `cell`/`handoff` unchanged (no `Offered`/`DroppedUnpolled`); the child-mutex scope ends; then the Entry is removed synchronously and the shell is dropped with no lock held; SAME child in the cell; §10.2; `precore_retained` |
+| Panic anywhere in step 5 | Raw/Owned (mutex possibly poisoned) | Only child-free locals unwind; a shell holds no armed handoff, so unwinding never re-enters the child mutex; the cell keeps the child; poison is recovered only for retention/hygiene; reconcile wake runs §10.2 |
 | Start future dropped at the step-3 await | Planned | No registration, no child |
 | Start future dropped during the step-8 wait | Offered/Accepted/DroppedUnpolled | Core (or its Drop) owns the child; the SAME custody records settlement on a reconcile wake |
 | Engine timeout / Runtime Drop / `abandon()` with a child still in the cell (after a step-5 failure) | Raw/Owned | Root-retained custody keeps the child; `abandon()` extended to transport sets `stop_requested` under the child mutex and revokes the candidate; reconcile wake runs §10.2 and nongrant closure; custody memory Drop (teardown) runs the existing `RetainedRawProcess`/`OwnedProcess` Drop hygiene only and is not logical closure |
-| Stop after transfer (Offered/Accepted) | Offered/Accepted | Under the child mutex observe the handoff; revoke the session actor (Core's fence observes it) and best-effort `try_send(Control::Cancel)` on the retained sender; Core's existing cancel/terminal path |
-| Core future dropped before first poll | DroppedUnpolled | `Core::drop` → `revoke` + `drop_phase` Lost terminal (A); `OwnedProcess` Drop group signal (A); `TransportHandoff` Drop marks `DroppedUnpolled`; settlement by nongrant closure `confirmed/core_dropped_unpolled`, `hygiene=group_signal_attempted`, `reap=unknown`; gate stays Held; start returns `Err` |
+| Stop after transfer (Offered/Accepted) | Offered/Accepted | Under the child mutex observe the handoff; revoke the session actor (Core's fence observes it) and best-effort `try_send(Control::Cancel)` on the retained sender; Core's existing cancel/terminal path, whose terminal planning uses the known-registration lane |
+| Core future dropped before first poll | DroppedUnpolled | `Core::drop` → `revoke` + `drop_phase` Lost terminal (A), admitted by the retained ack on the now-`Revoked` actor (§5.2); `OwnedProcess` Drop group signal (A); `TransportHandoff` Drop marks `DroppedUnpolled` (outside the child mutex, after the Store is released); settlement by nongrant closure `confirmed/core_dropped_unpolled`, `hygiene=group_signal_attempted`, `reap=unknown`; gate stays Held; start returns `Err` |
 | First poll cannot record acceptance | Offered | Core revokes its own owner before any wire I/O; existing Lost path; no dispatch; gate not released by Core; Held |
 | Core accepted | Accepted | Pre-Core responsibility ends; gate released once; settlement `confirmed/core_accepted` |
 | Core aborted or dropped after acceptance | Accepted | Core's existing Drop/terminal path; `TransportHandoff` Drop is a no-op |
@@ -768,6 +922,11 @@ acquisition Missing, `HistoricalDraft`, `observed_work=Unknown`,
 `disposition=Lost`. It is persisted ONLY through the SAME
 `PhaseActor::terminal_plan` → `finish_phase_terminal` (`phase_protocol.rs:110–148`,
 `native.rs:1286–1329`). With no consumed input, `owned_success` is impossible.
+
+Here the actor is `Revoked`, or `Live` until the stop revokes it, and its ack
+is set. Terminal planning admits it only through the known-registration lane of
+§5.2 (`registration_ack()` is `Some`), never through `Live`. The lane neither
+reopens the actor nor admits input. An unacked actor keeps this terminal Held.
 
 This path depends on gate G2. Until G2 exists, the terminal stays Held while the
 §8.2 closure still records the factual creation outcome. Generic
@@ -795,13 +954,21 @@ This is best-effort hygiene, not a process-death or isolation guarantee.
   spawn) → child mutex (short).
 - Never nested: the child mutex with SharedStore, with the `entries` mutex, or
   with the actor start-gate cell. Step 5c locks `entries` with the child mutex
-  released; step 5e locks the child mutex with `entries` released.
+  released. Step 5e locks the child mutex with `entries` released, and a refused
+  5e removes the Entry only after its child-mutex scope has ended.
 - Custody-state, Root job, `entries` and preparation-index mutexes are never
   held with SharedStore, or across an await, SQL, spawn or hashing.
 - The child mutex is held across `Command::spawn()` in 4d. That is a
   synchronous syscall under admission, not under Store.
-- The `TransportHandoff` Drop takes only the child mutex. It runs after
-  `Core::drop`'s body has released the Store.
+- **`TransportHandoff` Drop and the child mutex.**
+  - The `TransportHandoff` Drop takes only the child mutex. It runs after
+    `Core::drop`'s body has released the Store.
+  - A `TransportHandoff` exists only inside a Core built by a successful
+    `transfer_with`; a `CoreShell` carries only a plain `Weak`.
+  - Nothing whose `Drop` acquires the child mutex (Core, `TransportHandoff`) is
+    dropped while the child mutex is held. A built Core leaves the 5e section by
+    value, and a refused shell is returned by value and dropped after the guard
+    is released.
 - Poison on the child mutex is recovered only to retain the child or run its
   hygiene; poison never grants an effect or an acceptance.
 
@@ -858,8 +1025,8 @@ teardown is not logical closure.
 | Command plan | Codex exactly 3 argv; Claude 12–18 argv, inclusive ≤18 elements × ≤128 B (≤2304 B total); model/effort ≤128 B each (A allocation bound); env overlay ≤64 entries; encoded ≤64 KiB; profile file ≤64 KiB+1 read (A) |
 | Version text reused | ≤64 KiB combined capture (A) |
 | Custodies | one transport custody per operation; ≤128 operations (A, `MAX_JOBS`, preparation index) |
-| Per-custody slots | plan, command, candidate, child cell, retained control sender, observation, settlement, closure: one each; no history lists. `CoreShell` is a start-future local and holds no child |
-| Candidate activation | one inline `OnceLock<RegistrationAck>` (3 words + tag) per candidate; one CAS; no heap allocation |
+| Per-custody slots | plan, command, candidate, child cell, retained control sender, observation, settlement, closure: one each; no history lists. `CoreShell` is a start-future local, holds no child and no armed `TransportHandoff` (only one plain `Weak`); a refused shell is one returned value, dropped outside the child mutex |
+| Candidate activation | one inline `OnceLock<RegistrationAck>` (4 words + tag) per candidate; one CAS; no heap allocation |
 | Plan memory | images ≤~2.2 MiB per plan without copying the borrowed expected manifest |
 | Reconciliation | ≤1 exact probe per wake, 100 ms–5 s capped backoff |
 | Start-future handoff wait | ≤5 s, no lock held; unresolved → later reconcile wake |
@@ -880,14 +1047,14 @@ refuses before the write, with the observation retained.
 | `NativePreparationCustody` (`native/preparation.rs:9–231`) | add `prepared`, `transport`, `version_closed`; extend `abandon`/`Drop` (set `stop_requested` under the child mutex, revoke candidate) and `reconcile_known_commit` | `phase_jobs.rs:140,195–228,283,393`; `begin_phase_preparation` |
 | `NativeVersionHelperCustody::reconcile` (`version.rs:144`) | early return when closed; `physical_command` profile part factored | `preparation.rs:173`, `version.rs:357` |
 | `PhaseActor::registered`, `NativePhaseSession::registered` (`phase_protocol.rs:62,250`) | replaced by `prepared_candidate` + `activate` (§5.2); identity checks retained | only `native.rs:535` (deleted) |
-| `NativePhaseSession.live: AtomicBool` (`phase_protocol.rs:16`) | replaced by `state: AtomicU8` `Candidate\|Live\|Revoked` plus `origin`, `registered_readiness`, `ack` | `revoke` (`:318`), `binding_snapshot` (`:321–334`), `NativePhaseBinding::is_live` (`:358`), `ConsumedPhaseInput::admitted` (`:375–383`): each reads `Live` only |
-| `plan_owner_currency` (`native_phase.rs:233`), terminal reader (`terminal.rs:302`) | readiness version from the activated actor | dispatch, ACK, projection, terminal, `actual_native_authority` |
+| `NativePhaseSession.live: AtomicBool` (`phase_protocol.rs:16`) | replaced by `state: AtomicU8` `Candidate\|Live\|Revoked` plus `origin`, `registered_readiness`, `ack` and the read-only `registration_ack()` accessor | `revoke` (`:318`), `binding_snapshot` (`:321–334`), `NativePhaseBinding::is_live` (`:358`), `ConsumedPhaseInput::admitted` (`:375–383`): each reads `Live` only; terminal and nongrant-closure consumers read `registration_ack()` instead (next row, §8.2) |
+| `plan_owner_currency` (`native_phase.rs:233`), `plan_phase_terminal` and terminal reader (`terminal.rs:173–181,302`) | readiness version from the activated actor; normal mode (`terminal_ending = false`) requires `Live`; terminal mode replaces `terminal_ending \|\| is_live()` with `terminal_ending ∧ registration_ack().is_some()` (state `Live` or `Revoked`), refusing unacked actors; `plan_phase_terminal` keeps its non-live `binding_snapshot` and adds the same ack conjunct | dispatch, ACK, projection (normal); terminal via `PhaseActor::terminal_plan` ← `persist_saved_terminal` ← `drop_phase`/Core terminal and §10.1; `actual_native_authority` |
 | `plan_phase_registration`, `register_phase_session`, `validate_phase_preparation`, `NativeRegistrationPlan` (`native_phase.rs:887–1209,1384–1479`) | deleted; replaced by `transport.rs` | only `native.rs:244,504,520` |
 | `original_owner`, `check_owner_indices`, `no_registration`, `registration_unit`, `registration_attempt` | reused unchanged | preparation and transport plans |
 | `Inventory`, `EffectImage`, `InventoryBudget` (`version.rs`), `LatestUnitImage` (`version/closure.rs`) | visibility to `pub(super)` / shared module | version + transport |
 | `RetainedRawProcess` (`process.rs:17–99`) | unchanged (no `into_owned`/`native_pipes`); wrapped by the new `NativeChildCell` | version helper use unchanged |
-| `NativeChildCell`, `OwnedProcess::from_qualified` (`process.rs`, new) | in-place upgrade, pipe take, checked transfer, sync hygiene/reap | transport custody only; `OwnedProcess::spawn` and its callers unchanged |
-| `Core` (`native.rs:1341`) | add `handoff: Option<TransportHandoff>`; protected construction only via `CoreShell::into_core` inside `transfer_with` | legacy construction (`native.rs:608`) passes `None`; legacy behavior unchanged |
+| `NativeChildCell`, `Refused<S>`, `OwnedProcess::from_qualified` (`process.rs`, new) | in-place upgrade, pipe take, checked transfer taking the shell by value with a capture-free `fn` builder and returning it on refusal, sync hygiene/reap | transport custody only; `OwnedProcess::spawn` and its callers unchanged |
+| `Core` (`native.rs:1341`) | add `handoff: Option<TransportHandoff>`; protected construction only via `CoreShell::into_core` inside a successful `transfer_with`, which is the only constructor of `TransportHandoff` | legacy construction (`native.rs:608`) passes `None`; legacy behavior unchanged |
 | `Core::run` (`native.rs:1696`) | first statement `handoff.accept()` when present | phase Core only |
 | generic effect writers (`effects.rs:41,129,247`) | refuse `native_phase_*` | all generic callers; legitimate kinds unaffected |
 | `state/mod.rs:28–31` | re-export new types | crate-private |
@@ -930,8 +1097,9 @@ adapters (no new port).
 - compiled old10 (76a58b6e) generic reconcile interference → private CAS
   conflict/Held;
 - the 252/253 baseline, 256/257 and inclusive 2 MiB boundaries;
-- readiness `(P+1,!ended)`/`(P+2,ended)` accepted for an activated actor, and
-  v2/v3, other lineages and a non-activated candidate refused.
+- readiness `(P+1,!ended)`/`(P+2,ended)` accepted for an activated actor
+  (`Live` in normal mode; `Live` or `Revoked` with ack in terminal mode), and
+  v2/v3, other lineages and an unacked actor refused.
 
 **Pure protocol controls (compiled; not lifecycle proof).**
 - **Candidate.** A built candidate:
@@ -945,6 +1113,18 @@ adapters (no new port).
   - `revoke` before activation → `RevokedKnown`, ack set, still not live,
     nothing reopens it;
   - a second activation is refused.
+- **Known-registration lane.** These cases are required:
+  - **`RevokedKnown` actor.**
+    - Admitted: terminal-mode `plan_owner_currency` and `plan_phase_terminal`
+      (Lost);
+    - `owned_success` is false;
+    - still not live, and `registration_ack()` is unchanged;
+    - refused: `ConsumedPhaseInput::admitted`, normal-mode currency and normal
+      settlement.
+  - **Unacked actors.** An unacked `Candidate`, and a `Revoked` actor with no
+    ack, are refused by terminal planning and by nongrant closure.
+  - **Unpolled Core drop.** A `Live` actor revoked by `Core::drop` before its
+    first poll has its Lost terminal admitted and is not reopened.
 - **Argv.**
   - Claude Executor with no model/effort → exactly 12 elements in the existing
     order; Reviewer with both → exactly 18, ending in `--permission-mode plan`;
@@ -961,6 +1141,16 @@ adapters (no new port).
   must leave the SAME child in the cell, with the PID unchanged and the variant
   as specified in §10.
 - No `NativeChildCell` API returns an `OwnedProcess`/`Child`.
+- A transfer refused by `stop_requested`, and by each other precondition, must
+  satisfy all of the following:
+  - it returns the SAME shell (pointer-identified);
+  - it completes within a bounded test timeout, with no deadlock;
+  - it leaves `handoff = None` (no `Offered`/`DroppedUnpolled`);
+  - the Entry is removed, then the shell is dropped with the child mutex
+    observably free;
+  - §10.2 then runs on the SAME child.
+- A `CoreShell` dropped while the child mutex is held by the test does not
+  block (no custody lock on drop).
 - §10.2 group-signals or direct-kills, reaps within the bound, and leaves no
   later Drop signal after the reap.
 - A successful transfer leaves the cell `Transferred` and the handoff `Offered`
@@ -981,7 +1171,15 @@ positive; until then, record the SETUP refusal and credit no mutant kill.
 - The real Goal/Driver/Source/marker/job/actor chain reaches
   `PreparedNativePhase`.
 - Pause after the registration commit, before spawn, and race a real
-  `control_admission` stop (both orders).
+  `control_admission` stop (both orders). In the stop-first order, the genuine
+  Lost terminal is planned through the ack lane on the `Revoked` actor.
+- Pause after the Entry insert, before 5e, and set `stop_requested` through the
+  real stop path. Required outcome:
+  - the transfer is refused, with no deadlock;
+  - the Entry is removed and the shell dropped outside the child mutex;
+  - the SAME child is reaped;
+  - settlement is `precore_retained`;
+  - no `Offered` is recorded and no input/Task write happens.
 - An injected commit error with an actual committed postimage → no spawn until
   exact confirmation activates the SAME candidate.
 - A true rollback → same-plan retry with identical IDs.
@@ -990,7 +1188,8 @@ positive; until then, record the SETUP refusal and credit no mutant kill.
   and never NoChild.
 - Spawn `Err` → `unknown`, no replay.
 - Start-future Drop during the step-8 wait, and an unpolled Core task (runtime
-  shutdown) → `DroppedUnpolled`/Held.
+  shutdown) → `DroppedUnpolled`/Held, with the Lost terminal admitted through
+  the ack lane.
 - Core accepted → gate released exactly once, and Weak probes show no
   custody/actor/plan cycle.
 - Another Task proceeds after the short section.
@@ -1017,9 +1216,19 @@ positive; until then, record the SETUP refusal and credit no mutant kill.
   (fault leaves no child in the cell);
 - pipes taken before the all-three presence check;
 - transfer without the `stop_requested` check;
+- refused transfer drops the shell inside the child-mutex section, e.g. via a
+  closure-captured shell (the stop-refusal control times out);
+- `TransportHandoff` constructed in `CoreShell` before transfer (a refused-shell
+  drop relocks the child mutex or fakes `DroppedUnpolled`);
+- Entry removed or shell dropped before the child-mutex scope ends on refusal;
 - handoff set to `Offered` outside the transfer section;
 - gate released on `Offered`;
 - the `TransportHandoff` Drop not marking `DroppedUnpolled`;
+- terminal planning gated on `Live` (the `RevokedKnown` and unpolled-drop Lost
+  terminals are refused);
+- terminal planning or nongrant closure without the ack conjunct (an unacked
+  `Candidate` is admitted);
+- the terminal lane storing `Live` or admitting input on a `Revoked` actor;
 - Claude argv bound 16 restored (refuses the 18-element Reviewer vector);
 - plan mode keyed on `Verifier` instead of `!= Executor`;
 - the leading-`-` model/effort refusal removed.
@@ -1031,7 +1240,7 @@ positive; until then, record the SETUP refusal and credit no mutant kill.
 | G1 `PreparedNativePhase` issuer: full #19 prepared input, readonly Git source/seal (being implemented separately), Reviewer genuine artifact/readonly lease, hooks/settings qualification, quota admission vs parking | Native (B) with A/Root | Absent; transport stays refused |
 | G2 Registered-owner factual predicates replacing `validate_authority` in `NativeOwnerPlan::validate_tx/validate_terminal_tx` (dispatch, ACK, projection, terminal) | input/ACK increment | Without it every spawned child fails its first dispatch; composition stays refused |
 | G3 Root stop caller targeting the SAME custody (`request_stop`) | Root | Cooperative shutdown keeps Held only |
-| G4 `NativeChildCell` in-place upgrade and checked transfer, `TransportHandoff` first-poll acceptance / unpolled-drop marking, and gate release | Native | Part of this increment |
+| G4 `NativeChildCell` in-place upgrade and checked transfer (refusal returns the unarmed shell by value; `TransportHandoff` constructed only by a successful transfer), `TransportHandoff` first-poll acceptance / unpolled-drop marking, and gate release | Native | Part of this increment |
 | G5 Installed composition / static admission | Root | Remain closed |
 | G6 Inherited Stop repeated-failure and request-identity findings | existing owners | Open; not addressed |
 
