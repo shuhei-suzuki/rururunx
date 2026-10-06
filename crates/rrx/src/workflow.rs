@@ -899,6 +899,32 @@ impl WorkflowEngine {
         task_id: TaskId,
         stricter: Option<WorkflowClass>,
     ) -> Result<WorkflowSnapshot> {
+        self.initialize_inner(task_id, stricter, None).await
+    }
+    /// Actual Driver lane, separate from public fixture/legacy initialization.
+    pub(crate) async fn initialize_driven(
+        &self,
+        task_id: TaskId,
+        sources: &Arc<crate::execution::workflow_source::ManagedWorkflowSources>,
+        lifetime: &crate::runtime::driver::WorkerLifetime,
+    ) -> Result<WorkflowSnapshot> {
+        let installed: Arc<dyn WorkflowSources> = sources.clone();
+        ensure!(
+            Arc::ptr_eq(&self.sources, &installed),
+            "Driver Engine has another Sources producer"
+        );
+        self.initialize_inner(task_id, None, Some((sources, lifetime)))
+            .await
+    }
+    async fn initialize_inner(
+        &self,
+        task_id: TaskId,
+        stricter: Option<WorkflowClass>,
+        driven: Option<(
+            &Arc<crate::execution::workflow_source::ManagedWorkflowSources>,
+            &crate::runtime::driver::WorkerLifetime,
+        )>,
+    ) -> Result<WorkflowSnapshot> {
         let (project, goal, mut task) = {
             let store = self
                 .store
@@ -907,6 +933,23 @@ impl WorkflowEngine {
             owners(&store, task_id)?
         };
         active(&project, &goal, &task)?;
+        let driver_ticket = driven
+            .map(|(_, lifetime)| {
+                let owner = self
+                    .registry
+                    .managed_owner()
+                    .context("Driver initialization needs managed owner")?;
+                crate::state::read_driver_ticket(owner, lifetime.association()?)?
+                    .with_initial_namespace()
+            })
+            .transpose()?;
+        if let Some(ticket) = &driver_ticket {
+            ensure!(
+                serde_json::to_value(ticket.task())? == serde_json::to_value(&task)?,
+                "Driver initialize original Task differs"
+            );
+        }
+        let original_task = task.clone();
         let (config, source, _) = self
             .inputs(&project, &task, Phase::Worktree, task.workflow)
             .await?;
@@ -972,7 +1015,32 @@ impl WorkflowEngine {
                 )?,
             );
         }
-        self.persist(&mut snapshot, Some(&context))?;
+        if let Some((sources, _)) = driven {
+            let (frame, unit) = sources
+                .initial_input_frame(&original_task, &snapshot.record, &context)
+                .await?;
+            let plan = driver_ticket
+                .context("Driver ticket missing")?
+                .plan_initial_input(frame, unit, &snapshot.task, &snapshot.record, &context)?;
+            let mut store = self
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            store.activate_driven_workflow(
+                &mut snapshot.task,
+                &mut snapshot.record,
+                &context,
+                snapshot.project.version,
+                snapshot.goal.version,
+                snapshot
+                    .verification_activation
+                    .as_ref()
+                    .context("managed activation missing")?,
+                &plan,
+            )?;
+        } else {
+            self.persist(&mut snapshot, Some(&context))?;
+        }
         Ok(snapshot.workflow)
     }
     fn next_context(&self, scope: &Scope) -> Result<u64> {
@@ -3207,7 +3275,7 @@ fn validate_status(status: &SessionStatus, task: &Task, attempt: &PhaseAttempt) 
     );
     Ok(())
 }
-fn validate_evidence(
+pub(crate) fn validate_evidence(
     evidence: &Evidence,
     scope: &Scope,
     source: &SourceSnapshot,
@@ -3778,7 +3846,7 @@ fn native_wait_state(reason: crate::execution::WaitReason) -> TaskState {
         _ => TaskState::WaitingHuman,
     }
 }
-fn next_phase(workflow: &WorkflowSnapshot) -> Option<Phase> {
+pub(crate) fn next_phase(workflow: &WorkflowSnapshot) -> Option<Phase> {
     workflow
         .configured_phases
         .iter()
@@ -3866,6 +3934,9 @@ fn load_rules(
     config.validate()?;
     Ok((config, rules, versions))
 }
+
+#[path = "workflow/driven_initial.rs"]
+mod driven_initial;
 
 #[cfg(test)]
 #[path = "workflow/committed_source_tests.rs"]

@@ -279,6 +279,81 @@ impl ScopePlan {
         task_raw: &str,
         workflow: Option<(&Record, &str)>,
     ) -> Result<()> {
+        self.validate_projection_context(
+            c,
+            task,
+            task_raw,
+            workflow,
+            self.context.as_ref().map(|b| (b.parsed(), b.raw())),
+        )
+    }
+    /// Only a sealed initial-input producer may prescribe absence -> first
+    /// Context. Original owner/lock bytes and ordinary projection remain exact.
+    pub(in crate::state) fn validate_input_projection(
+        &self,
+        c: &Connection,
+        task: &Task,
+        task_raw: &str,
+        workflow: (&Record, &str),
+        context: (&ContextVersion, &str),
+    ) -> Result<()> {
+        ensure!(
+            self.workflow.is_none()
+                && self.context.is_none()
+                && context.0.version == 1
+                && task.context_version == 1,
+            "initial input projection requires original absence"
+        );
+        self.validate_projection_context(c, task, task_raw, Some(workflow), Some(context))
+    }
+    /// Nongrant prescribed pre-marker Context successor. Old current head is
+    /// validated separately by the retained Driver ticket before any writes.
+    pub(in crate::state) fn validate_gate_projection(
+        &self,
+        c: &Connection,
+        task: &Task,
+        task_raw: &str,
+        workflow: (&Record, &str),
+        context: (&ContextVersion, &str),
+        fresh: bool,
+    ) -> Result<()> {
+        let old = self
+            .context
+            .as_ref()
+            .context("gate original Context missing")?;
+        ensure!(
+            self.workflow
+                .as_ref()
+                .is_some_and(|w| w.parsed().id == workflow.0.id)
+                && context.0.version
+                    == if fresh {
+                        old.parsed()
+                            .version
+                            .checked_add(1)
+                            .context("Context version overflow")?
+                    } else {
+                        old.parsed().version
+                    }
+                && task.context_version == context.0.version
+                && (fresh || context.1 == old.raw()),
+            "gate Context successor differs"
+        );
+        self.validate_projection_context(c, task, task_raw, Some(workflow), Some(context))
+    }
+    pub(in crate::state) fn workflow_input(&self) -> Result<(&Record, &ContextVersion)> {
+        Ok((
+            self.workflow.as_ref().context("Workflow missing")?.parsed(),
+            self.context.as_ref().context("Context missing")?.parsed(),
+        ))
+    }
+    fn validate_projection_context(
+        &self,
+        c: &Connection,
+        task: &Task,
+        task_raw: &str,
+        workflow: Option<(&Record, &str)>,
+        context: Option<(&ContextVersion, &str)>,
+    ) -> Result<()> {
         let scope = self.task.parsed().scope();
         ensure!(
             task.scope() == scope
@@ -311,14 +386,14 @@ impl ScopePlan {
         ensure!(locks == expected, "managed complete lock set changed");
         let owner_key = super::super::context_owner(&scope)?;
         let actual=c.query_row("SELECT version,CASE WHEN length(CAST(body AS BLOB))<=?3 THEN body END FROM context_versions WHERE project_id=?1 AND owner=?2 ORDER BY version DESC LIMIT 1",params![scope.project_id.to_string(),owner_key,BODY_BYTES],|r|Ok((r.get::<_,u64>(0)?,r.get::<_,Option<String>>(1)?))).optional()?;
-        let expected = self
-            .context
-            .as_ref()
-            .map(|b| (b.parsed().version, Some(b.raw().to_owned())));
+        let expected = context.map(|(b, raw)| (b.version, Some(raw.to_owned())));
         ensure!(actual == expected, "managed latest Context changed");
-        if let Some(body) = &self.context {
-            let context = body.parsed();
-            let indexed:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM context_versions WHERE project_id=?1 AND goal_id=?2 AND task_id IS ?3 AND owner=?4 AND version=?5 AND body=?6)",params![scope.project_id.to_string(),scope.goal_id.map(|v|v.to_string()),scope.task_id.map(|v|v.to_string()),owner_key,context.version,body.raw()],|r|r.get(0))?;
+        if let Some((context, raw)) = context {
+            ensure!(
+                context.scope == scope,
+                "managed Context planned scope differs"
+            );
+            let indexed:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM context_versions WHERE project_id=?1 AND goal_id=?2 AND task_id IS ?3 AND owner=?4 AND version=?5 AND body=?6)",params![scope.project_id.to_string(),scope.goal_id.map(|v|v.to_string()),scope.task_id.map(|v|v.to_string()),owner_key,context.version,raw],|r|r.get(0))?;
             ensure!(indexed, "managed Context index changed");
         }
         Ok(())

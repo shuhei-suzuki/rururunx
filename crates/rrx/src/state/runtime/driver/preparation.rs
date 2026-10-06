@@ -5,6 +5,11 @@ use crate::execution::{
     CleanupOutcome, Disposition, ExecutionUnit, UnitKind, UnitState, WORKFLOW_SOURCE_BOOTSTRAP,
 };
 use crate::state::managed_binding::ExactRowMutation;
+#[path = "gates.rs"]
+mod gates;
+pub(crate) use gates::InitialGateEdge;
+#[path = "executor.rs"]
+mod executor;
 
 pub(crate) struct DriverPreparationAdvance {
     ticket: DriverReadTicket,
@@ -16,9 +21,135 @@ pub(crate) struct DriverPreparationAdvance {
     body: String,
     initial: bool,
     governing: String,
+    input: Option<InitialInput>,
     reconcile_ready: std::sync::atomic::AtomicBool,
 }
+struct InitialInput {
+    gate: Option<gates::GateInput>,
+    executor: Option<executor::ExecutorInput>,
+    fresh_context: bool,
+    frame: crate::execution::workflow_source::InitialInputFrame,
+    record_before: Record,
+    record: Record,
+    record_body: String,
+    context: ContextVersion,
+    context_body: String,
+}
 impl DriverReadTicket {
+    /// Prescribed FIRST Workflow/Context publication from the real prepared
+    /// Sources slot. Retained before any SQL just like other preparation edges.
+    pub(crate) fn plan_initial_input(
+        self,
+        frame: crate::execution::workflow_source::InitialInputFrame,
+        unit: ExecutionUnit,
+        input: &Task,
+        record: &Record,
+        context: &ContextVersion,
+    ) -> Result<Arc<DriverPreparationAdvance>> {
+        ensure!(
+            !self.scope.has_input_history()
+                && self.source.is_none()
+                && self.row.marker.is_none()
+                && self.namespace.is_some()
+                && self.row.pins.generation == unit.generation
+                && unit.generation == 1
+                && input.context_version == 1
+                && context.version == 1
+                && record.version == 0
+                && record.kind == RecordKind::Workflow
+                && record.scope == input.scope()
+                && context.scope == input.scope(),
+            "Driver initial input is not pristine"
+        );
+        self.preparation_matches(&unit)?;
+        ensure!(
+            serde_json::to_value(frame.unit())? == serde_json::to_value(&unit)?,
+            "initial frame/Driver selected Unit differs"
+        );
+        frame.validate(&self.owner)?;
+        let (project, goal) = self.scope.governing_owners();
+        let governing = crate::state::execution::governing_digest(project, goal)?;
+        ensure!(
+            frame.governing() == governing,
+            "initial governing frame changed"
+        );
+        let mut expected = self.task().clone();
+        expected.workflow = input.workflow;
+        expected.context_version = 1;
+        expected.revision = Some(unit.base_sha.clone());
+        ensure!(
+            serde_json::to_value(&expected)? == serde_json::to_value(input)?,
+            "initial Task projection changes unrelated authority"
+        );
+        let w: crate::workflow::WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
+        ensure!(
+            w.generation == 1
+                && w.context_version == 1
+                && w.context_fresh
+                && w.active.is_none()
+                && w.history.is_empty()
+                && w.completed.is_empty()
+                && w.escalations.is_empty()
+                && w.retries.is_empty()
+                && w.invalidations.is_empty()
+                && w.finalizations.is_empty()
+                && w.terminal_decision.is_none()
+                && !w.finished
+                && w.held_reason.is_none()
+                && w.risk == input.risk
+                && input.workflow >= self.task().workflow,
+            "initial Workflow is not an empty first generation"
+        );
+        crate::workflow::validate_context(input, record, context)?;
+        let mut task = input.clone();
+        bump(&mut task.version)?;
+        task.updated_at = record.created_at;
+        let mut next_record = record.clone();
+        bump(&mut next_record.version)?;
+        next_record.updated_at = record.created_at;
+        let task_body = serde_json::to_string(&task)?;
+        let record_body = serde_json::to_string(&next_record)?;
+        let context_body = serde_json::to_string(context)?;
+        ensure!(
+            task_body.len() <= 1024 * 1024
+                && record_body.len() <= 8 * 1024 * 1024
+                && context_body.len() <= 8 * 1024 * 1024,
+            "initial input body exceeds bounds"
+        );
+        let unit_body = serde_json::to_string(&unit)?;
+        let mut next = self.row.clone();
+        bump(&mut next.version)?;
+        next.pins.task = pin(task.version, &task)?;
+        next.pins.workflow = Some((next_record.id, pin(next_record.version, &next_record)?));
+        next.pins.context = Some(pin(context.version, context)?);
+        let body = serde_json::to_string(&next)?;
+        ensure!(body.len() <= 128 * 1024, "initial Driver exceeds bound");
+        let plan = Arc::new(DriverPreparationAdvance {
+            ticket: self,
+            unit,
+            unit_body,
+            task,
+            task_body,
+            next,
+            body,
+            initial: false,
+            governing,
+            input: Some(InitialInput {
+                gate: None,
+                executor: None,
+                fresh_context: true,
+                frame,
+                record_before: record.clone(),
+                record: next_record,
+                record_body,
+                context: context.clone(),
+                context_body,
+            }),
+            reconcile_ready: std::sync::atomic::AtomicBool::new(false),
+        });
+        plan.ticket.association.retain_preparation(&plan)?;
+        Ok(plan)
+    }
     /// Only the actual AttemptManager draft reaches this private entry. The
     /// initial lane is deliberately narrower than replacement/resume admission.
     pub(crate) fn plan_first_preparation(
@@ -168,6 +299,7 @@ impl DriverReadTicket {
             body,
             initial,
             governing,
+            input: None,
             reconcile_ready: std::sync::atomic::AtomicBool::new(false),
         });
         plan.ticket.association.retain_preparation(&plan)?;
@@ -177,13 +309,131 @@ impl DriverReadTicket {
 // Entered while the actual Store is excluded. Unwind/Err permits observation
 // of this same attempted plan; a not-yet-started producer is never rolled back
 // underneath its live caller merely because original rows still exist.
-struct Applying<'a>(&'a Arc<DriverPreparationAdvance>);
+pub(in crate::state) struct Applying<'a>(&'a Arc<DriverPreparationAdvance>);
 impl Drop for Applying<'_> {
     fn drop(&mut self) {
         self.0.allow_reconciliation();
     }
 }
 impl DriverPreparationAdvance {
+    pub(in crate::state) fn begin_input(self: &Arc<Self>) -> Result<Applying<'_>> {
+        ensure!(
+            self.input.is_some() && self.is_retained()?,
+            "initial input plan lost custody"
+        );
+        Ok(Applying(self))
+    }
+    pub(in crate::state) fn validate_input_before_tx(
+        &self,
+        tx: &Transaction<'_>,
+        task: &Task,
+        record: &Record,
+        context: Option<&ContextVersion>,
+    ) -> Result<()> {
+        let input = self.input.as_ref().context("not an initial input plan")?;
+        input.frame.validate(&self.ticket.owner)?;
+        self.ticket.validate_current_tx(tx)?;
+        let mut projected = self.task.clone();
+        projected.version = self.ticket.task().version;
+        projected.updated_at = self.ticket.task().updated_at;
+        ensure!(
+            serde_json::to_value(task)? == serde_json::to_value(&projected)?
+                && serde_json::to_value(record)? == serde_json::to_value(&input.record_before)?
+                && context.map(serde_json::to_string).transpose()?
+                    == input.fresh_context.then(|| input.context_body.clone()),
+            "initial input write differs from retained plan"
+        );
+        if let Some(gate) = &input.gate {
+            gate.validate_before_tx(tx)?;
+        }
+        let outstanding:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE task_id=?1 AND state IN ('pending','unknown'))",[task.id.to_string()],|r|r.get(0))?;
+        ensure!(!outstanding, "initial input has unresolved helper effects");
+        Ok(())
+    }
+    pub(in crate::state) fn write_input_unit_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        if let Some(executor) = self.input.as_ref().and_then(|i| i.executor.as_ref()) {
+            executor.write_tx(self, tx)?;
+        }
+        Ok(())
+    }
+    pub(in crate::state) fn input_observed_before(&self) -> Option<&Record> {
+        self.input
+            .as_ref()
+            .and_then(|i| i.gate.as_ref())
+            .and_then(|g| g.observed_before.as_ref())
+    }
+    pub(in crate::state) fn input_observation(&self) -> Option<&crate::workflow::GateObservation> {
+        self.input
+            .as_ref()
+            .and_then(|i| i.gate.as_ref())
+            .and_then(|g| g.observation.as_ref())
+    }
+    pub(in crate::state) fn input_timestamp(&self) -> i64 {
+        self.task.updated_at
+    }
+    pub(in crate::state) fn input_namespace(&self) -> Result<&NamespaceSnapshot> {
+        self.ticket
+            .namespace
+            .as_ref()
+            .context("initial namespace missing")
+    }
+    pub(in crate::state) fn finish_input_tx(
+        &self,
+        tx: &Transaction<'_>,
+        permits: &crate::state::managed_binding::PrivatePermitManager,
+        task: &Task,
+        record: &Record,
+    ) -> Result<()> {
+        let input = self.input.as_ref().context("not initial input")?;
+        ensure!(
+            serde_json::to_string(task)? == self.task_body
+                && serde_json::to_string(record)? == input.record_body,
+            "actual initial write differs from prescribed image"
+        );
+        self.validate_result(tx)?;
+        ensure!(
+            self.ticket.association.validates(
+                self.ticket.row.id,
+                self.ticket.row.epoch,
+                self.ticket.row.version,
+                &self.ticket.body
+            ),
+            "initial Driver revoked before publication"
+        );
+        self.write_driver_tx(tx, permits)?;
+        if let Some(observation) = self.input_observation() {
+            append_event(
+                tx,
+                &task.scope(),
+                "workflow.gate_observed",
+                json!({"workflow":record.id,"attempt":self.input.as_ref().and_then(|i|i.gate.as_ref()).map(|g|g.index),"observation":observation}),
+            )?;
+        }
+        append_event(
+            tx,
+            &task.scope(),
+            "rrx.private.runtime.driver_initial_input_advanced",
+            json!({"driver":self.next.id,"version":self.next.version,
+                "workflow":record.id,"context_version":input.context.version,"unit":self.unit.id}),
+        )?;
+        Ok(())
+    }
+    fn write_driver_tx(
+        &self,
+        tx: &Transaction<'_>,
+        permits: &crate::state::managed_binding::PrivatePermitManager,
+    ) -> Result<()> {
+        let mutation = ExactRowMutation::new(
+            "task_drivers",
+            "UPDATE",
+            Some(super::marker::image(&self.ticket.row, &self.ticket.body)?),
+            Some(super::marker::image(&self.next, &self.body)?),
+        )?;
+        permits.with_exact_permit(vec![mutation], || {
+            ensure!(tx.execute("UPDATE task_drivers SET version=?1,body=?2 WHERE task_id=?3 AND id=?4 AND owner_epoch=?5 AND version=?6 AND state='driving' AND body=?7",params![self.next.version,self.body,self.task.id.to_string(),self.next.id.to_string(),self.next.epoch,self.ticket.row.version,self.ticket.body])?==1,"preparation Driver CAS changed");
+            permits.ensure_consumed()
+        })
+    }
     pub(crate) fn allow_reconciliation(&self) {
         self.reconcile_ready
             .store(true, std::sync::atomic::Ordering::SeqCst);
@@ -215,6 +465,11 @@ impl DriverPreparationAdvance {
         self.ticket.scope.validate_current(tx)?;
         self.ticket.validate_selection_tx(tx)?;
         self.ticket.validate_source_tx(tx)?;
+        if let Some(input) = &self.input {
+            // A saved adoption whose cache already advanced cannot be relabeled
+            // as an original rollback, even if unrelated SQL has changed again.
+            input.frame.validate(&self.ticket.owner)?;
+        }
         let task = self.ticket.task();
         let exact: bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM task_drivers WHERE task_id=?1 AND project_id=?2 AND goal_id=?3 AND id=?4 AND owner_epoch=?5 AND version=?6 AND state='driving' AND body=?7)",params![task.id.to_string(),task.project_id.to_string(),task.goal_id.to_string(),self.ticket.row.id.to_string(),self.ticket.row.epoch,self.ticket.row.version,self.ticket.body],|r|r.get(0))?;
         ensure!(exact, "preparation rollback original Driver differs");
@@ -230,9 +485,37 @@ impl DriverPreparationAdvance {
         Ok(())
     }
     fn validate_result(&self, tx: &Transaction<'_>) -> Result<()> {
-        self.ticket
-            .scope
-            .validate_projection(tx, &self.task, &self.task_body, None)?;
+        if let Some(input) = &self.input {
+            if input.executor.is_some() {
+                input
+                    .frame
+                    .validate_adoption(&self.ticket.owner, &self.unit)?;
+            } else {
+                input.frame.validate(&self.ticket.owner)?;
+            }
+            if input.gate.is_some() || input.executor.is_some() {
+                self.ticket.scope.validate_gate_projection(
+                    tx,
+                    &self.task,
+                    &self.task_body,
+                    (&input.record, &input.record_body),
+                    (&input.context, &input.context_body),
+                    input.fresh_context,
+                )?;
+            } else {
+                self.ticket.scope.validate_input_projection(
+                    tx,
+                    &self.task,
+                    &self.task_body,
+                    (&input.record, &input.record_body),
+                    (&input.context, &input.context_body),
+                )?;
+            }
+        } else {
+            self.ticket
+                .scope
+                .validate_projection(tx, &self.task, &self.task_body, None)?;
+        }
         super::claim::validate_prerequisite_rows(tx, &self.task, &self.ticket.prerequisites)?;
         self.ticket.validate_source_tx(tx)?;
         let exact: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM execution_units u JOIN task_execution t ON t.active_unit=u.id AND t.task_id=u.task_id AND t.project_id=u.project_id AND t.goal_id=u.goal_id AND t.generation=u.generation WHERE u.id=?1 AND u.project_id=?2 AND u.goal_id=?3 AND u.task_id=?4 AND u.kind='executor' AND u.generation=?5 AND u.owner_epoch=?6 AND u.version=?7 AND u.native_effects_open=1 AND u.result_finalization_open=1 AND u.worktree=?8 AND u.branch IS ?9 AND u.body=?10)",params![self.unit.id.to_string(),self.task.project_id.to_string(),self.task.goal_id.to_string(),self.task.id.to_string(),self.unit.generation,self.unit.owner_epoch,self.unit.version,self.unit.worktree.to_str().context("Unit path not UTF-8")?,self.unit.branch,self.unit_body],|r|r.get(0))?;
@@ -247,6 +530,10 @@ impl Store {
         &mut self,
         plan: &Arc<DriverPreparationAdvance>,
     ) -> Result<ExecutionUnit> {
+        ensure!(
+            plan.input.is_none(),
+            "initial input requires atomic Workflow publication"
+        );
         ensure!(
             plan.is_retained()?,
             "Driver preparation is not retained by its actual slot"
@@ -299,16 +586,7 @@ impl Store {
             ensure!(tx.execute("UPDATE execution_units SET version=?1,body=?2 WHERE id=?3 AND version=?4 AND body=?5",params![plan.unit.version,plan.unit_body,old.id.to_string(),old.version,body])? == 1,"preparation Unit CAS changed");
         }
         plan.validate_result(&tx)?;
-        let mutation = ExactRowMutation::new(
-            "task_drivers",
-            "UPDATE",
-            Some(super::marker::image(&plan.ticket.row, &plan.ticket.body)?),
-            Some(super::marker::image(&plan.next, &plan.body)?),
-        )?;
-        self.binding_permits.with_exact_permit(vec![mutation],||{
-            ensure!(tx.execute("UPDATE task_drivers SET version=?1,body=?2 WHERE task_id=?3 AND id=?4 AND owner_epoch=?5 AND version=?6 AND state='driving' AND body=?7",params![plan.next.version,plan.body,plan.task.id.to_string(),plan.next.id.to_string(),plan.next.epoch,plan.ticket.row.version,plan.ticket.body])?==1,"preparation Driver CAS changed");
-            self.binding_permits.ensure_consumed()
-        })?;
+        plan.write_driver_tx(&tx, &self.binding_permits)?;
         append_event(
             &tx,
             &plan.unit.scope,
@@ -346,6 +624,11 @@ impl Store {
             after_version: plan.next.version,
             after_body: plan.body.clone(),
         })?;
+        if let Some(input) = &plan.input
+            && input.executor.is_some()
+        {
+            input.frame.publish_adoption(&plan.unit, plan)?;
+        }
         plan.ticket.association.retire_preparation(plan)
     }
     /// Actual service consumes the SAME retained pre-SQL plan. Missing/foreign

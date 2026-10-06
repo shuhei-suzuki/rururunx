@@ -7,7 +7,7 @@ mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
 pub(crate) use runtime::driver::{
     DriverExitPublication, DriverMarkerAdvance, DriverPreparationAdvance, DriverPublication,
-    DriverReadTicket, InitialDriverPlan, PendingDriverClaim, plan_initial_driver,
+    DriverReadTicket, InitialDriverPlan, InitialGateEdge, PendingDriverClaim, plan_initial_driver,
     read_driver_ticket,
 };
 use std::{path::Path, time::Duration};
@@ -109,7 +109,12 @@ enum WorkflowCompletion<'a> {
     Executor(&'a crate::execution::WorkflowPublication),
     Readonly(&'a crate::execution::ReadonlyCompletion),
     Verification(&'a crate::execution::verification::VerificationCompletion),
-    Activation(&'a crate::execution::verification::ManagedVerificationActivation),
+    DriverGate(&'a std::sync::Arc<DriverPreparationAdvance>),
+    DriverFirstExecutor(&'a std::sync::Arc<DriverPreparationAdvance>),
+    Activation(
+        &'a crate::execution::verification::ManagedVerificationActivation,
+        Option<&'a std::sync::Arc<DriverPreparationAdvance>>,
+    ),
 }
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -588,7 +593,59 @@ impl Store {
             project_version,
             goal_version,
             WorkflowAccess::StateOnly,
-            Some(WorkflowCompletion::Activation(activation)),
+            Some(WorkflowCompletion::Activation(activation, None)),
+        )
+    }
+    /// Same first-input plan retained by the real worker before this write.
+    #[allow(clippy::too_many_arguments)] // Exact owner CAS and private plan are independent inputs.
+    pub(crate) fn activate_driven_workflow(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: &ContextVersion,
+        project_version: u64,
+        goal_version: u64,
+        activation: &crate::execution::verification::ManagedVerificationActivation,
+        plan: &std::sync::Arc<DriverPreparationAdvance>,
+    ) -> Result<()> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            Some(context),
+            project_version,
+            goal_version,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::Activation(activation, Some(plan))),
+        )
+    }
+    pub(crate) fn apply_driven_initial_gate(
+        &mut self,
+        plan: &std::sync::Arc<DriverPreparationAdvance>,
+    ) -> Result<()> {
+        let (mut task, mut record, context, pv, gv) = plan.gate_write()?;
+        self.put_workflow_transition_inner(
+            &mut task,
+            &mut record,
+            context,
+            pv,
+            gv,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::DriverGate(plan)),
+        )
+    }
+    pub(crate) fn reserve_driven_first_executor(
+        &mut self,
+        plan: &std::sync::Arc<DriverPreparationAdvance>,
+    ) -> Result<()> {
+        let (mut task, mut record, context, pv, gv) = plan.executor_write()?;
+        self.put_workflow_transition_inner(
+            &mut task,
+            &mut record,
+            Some(context),
+            pv,
+            gv,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::DriverFirstExecutor(plan)),
         )
     }
     // Exact owner CAS and optional completion proof are independent inputs.
@@ -607,9 +664,19 @@ impl Store {
             workflow.kind == RecordKind::Workflow && workflow.scope == task.scope(),
             "workflow requires exact owning Task scope"
         );
+        let driver_input = match &publication {
+            Some(WorkflowCompletion::Activation(_, Some(plan)))
+            | Some(WorkflowCompletion::DriverGate(plan))
+            | Some(WorkflowCompletion::DriverFirstExecutor(plan)) => Some(*plan),
+            _ => None,
+        };
+        let _applying = driver_input.map(|p| p.begin_input()).transpose()?;
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(plan) = driver_input {
+            plan.validate_input_before_tx(&tx, task, workflow, context)?;
+        }
         let conservative = matches!(
             access,
             WorkflowAccess::TerminalDecision | WorkflowAccess::TerminalRecovery
@@ -759,7 +826,12 @@ impl Store {
                 "terminal operation may only change Task decision"
             );
         }
-        crate::workflow::validate_transition(task, workflow, previous_workflow.as_ref())?;
+        let observed_before = driver_input.and_then(|p| p.input_observed_before());
+        crate::workflow::validate_transition(
+            task,
+            workflow,
+            observed_before.or(previous_workflow.as_ref()),
+        )?;
         let typed_workflow: crate::workflow::WorkflowSnapshot =
             serde_json::from_value(workflow.data.clone())?;
         if execution::verification::requires_verification(&tx, workflow.id)? {
@@ -803,6 +875,11 @@ impl Store {
                     );
                 }
             }
+        }
+        if let Some(plan) = driver_input {
+            // Old ticket/lifecycle checks ran before this prescribed Unit write.
+            // The new Workflow's identity is validated against the SAME post Unit.
+            plan.write_input_unit_tx(&tx)?;
         }
         for attempt in &typed_workflow.history {
             if let Some(identity) = &attempt.unit {
@@ -942,7 +1019,7 @@ impl Store {
             )?;
             crate::workflow::validate_context(task, workflow, &decode(body)?)?;
         }
-        if let Some(WorkflowCompletion::Activation(activation)) = &publication {
+        if let Some(WorkflowCompletion::Activation(activation, _)) = &publication {
             ensure!(
                 previous_workflow.is_none()
                     && workflow.version == 0
@@ -950,7 +1027,12 @@ impl Store {
                     && activation.scope() == &workflow.scope,
                 "managed verification contract requires exact initial activation"
             );
-        } else if let Some(completion) = &publication {
+        } else if let Some(completion) = &publication
+            && !matches!(
+                completion,
+                WorkflowCompletion::DriverGate(_) | WorkflowCompletion::DriverFirstExecutor(_)
+            )
+        {
             let previous = previous_workflow
                 .as_ref()
                 .context("completion requires a reserved Workflow")?;
@@ -964,7 +1046,11 @@ impl Store {
                     previous,
                     context,
                 )?,
-                WorkflowCompletion::Activation(_) => unreachable!("activation handled above"),
+                WorkflowCompletion::Activation(_, _)
+                | WorkflowCompletion::DriverGate(_)
+                | WorkflowCompletion::DriverFirstExecutor(_) => {
+                    unreachable!("activation/Driver gate handled above")
+                }
                 WorkflowCompletion::Verification(completion) => {
                     execution::verification::accept_tx(
                         &tx, completion, task, workflow, previous, context,
@@ -977,9 +1063,20 @@ impl Store {
                 }
             }
         }
-        let next_task = put_task_tx(&tx, task)?;
-        let next_workflow = put_record_tx(&tx, workflow)?;
-        if let Some(WorkflowCompletion::Activation(activation)) = &publication {
+        let (next_task, next_workflow) = if let Some(plan) = driver_input {
+            let next_task = put_task_tx_at_with_namespace(
+                &tx,
+                task,
+                plan.input_timestamp(),
+                Some(plan.input_namespace()?),
+            )?;
+            guard_record_tx(&tx, workflow)?;
+            let next_workflow = write_record_tx_at(&tx, workflow, plan.input_timestamp())?;
+            (next_task, next_workflow)
+        } else {
+            (put_task_tx(&tx, task)?, put_record_tx(&tx, workflow)?)
+        };
+        if let Some(WorkflowCompletion::Activation(activation, _)) = &publication {
             execution::verification::install_contract(&tx, activation, workflow, &next_task)?;
         }
         execution::source_recovery::after_write(
@@ -988,7 +1085,13 @@ impl Store {
             source_advance,
             conservative,
         )?;
+        if let Some(plan) = driver_input {
+            plan.finish_input_tx(&tx, &self.binding_permits, &next_task, &next_workflow)?;
+        }
         tx.commit()?;
+        if let Some(plan) = driver_input {
+            self.publish_driver_preparation(plan)?;
+        }
         *task = next_task;
         *workflow = next_workflow;
         Ok(())
@@ -1738,9 +1841,12 @@ fn put_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
 }
 /// Private caller must have checked the original Record guards in this transaction.
 fn write_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
+    write_record_tx_at(tx, record, now_ms())
+}
+fn write_record_tx_at(tx: &Transaction<'_>, record: &Record, at: i64) -> Result<Record> {
     let mut next = record.clone();
     bump(&mut next.version)?;
-    next.updated_at = now_ms();
+    next.updated_at = at;
     let body = serde_json::to_string(&next)?;
     write_snapshot(
         tx,

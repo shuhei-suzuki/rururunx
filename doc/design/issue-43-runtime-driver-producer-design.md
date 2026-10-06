@@ -296,3 +296,113 @@ This validator is nongrant and cannot be reconstructed from SQL/DTO/PhaseSlot.
 The genuine installed composition issuer, initialized Context/adoption lane and
 positive Driver cancellation/uncertain-commit controls remain qualification gates;
 historical namespace controls do not manufacture their authority.
+
+
+## Initial input implementation milestone (availability remains closed)
+
+The actual retained dispatcher now calls `Engine::initialize_driven`, which
+requires the Engine's installed Sources Arc to be the same producer as its
+composition. Existing committed configuration/rules, risk escalation, phases,
+mandatory input selection and Context budget construction remain the consumers.
+A private `InitialInputFrame` retains the actual Sources slot/frame and armed
+`PreparedExecutor`; it compares the complete rendered payload/dependencies and
+Context metadata before SharedStore. The corresponding plan is an InitialInput
+variant of the existing retained `DriverPreparationAdvance`, rather than a
+second registry or worker. It is placed in the same actual slot before SQL or
+another await, and retains its genuine preparation through uncertain commit,
+cache publication failure and dispatcher Drop.
+
+The same existing Workflow activation transaction validates original owner,
+Task, Workflow/Context absence, Unit/generation, prerequisites, Source7 absence,
+complete scoped locks and actual association. It preserves the ordinary
+verification activation/lifecycle/transition guards and collision checks, using
+an off-Store bounded complete namespace image. Exact precomputed Task/Workflow
+versions/timestamps/body bytes and the first Context are written together with
+the exact private Driver mutation. Only known commit plus those same post-images
+can publish the cached Driver binding. Reconciliation reuses the same retained
+plan and may prove exact original rollback; neither outcome recreates authority
+from rows. Original P/G/rules/config/governing/artifact pins are not refreshed.
+Existing original/marker projection readers retain their old Context semantics;
+a separate sealed initial projection checks only original-none to first Context.
+
+This first publication lane explicitly refuses prior Workflow/Context or an
+installed Source7 recovery. Subsequent non-native phase transitions, reservation,
+same-Unit adoption and complete marker/native composition remain prerequisites.
+`InstalledDriverComposition` still has no successful issuer. Temporary historical
+projection test images qualify nongrant exact-read checks only, never a Driver,
+prepared input, native lifecycle or end-to-end positive dispatcher. No current
+code milestone alone qualifies Runtime/Binding43/Phase2/native/MVP readiness.
+
+### Initial Evidence continuation source increment
+
+The real worker next calls `WorkflowEngine::step_driven_initial`, without falling
+back to ordinary `step`/`persist`. The unchanged actual worker association mints
+one coherent ticket per authorized edge. It carries the same original full
+P/G/T/Workflow/Context/locks, same bootstrap Unit and actual Sources slot/frame.
+Only Issue/Worktree before any native history are supported: Running reservation
+with its next Context, Evaluating claim with unchanged Context, then an atomic
+actual result observation plus Passed closure/next Context or Waiting. Each edge
+is retained as the SAME `DriverPreparationAdvance` in the actual Driver slot
+before SQL; it uses existing exact-post publication or proven original rollback
+on error, cancellation, uncertain commit or cache failure. No generic authority
+write is accepted as a new input or current Driver binding.
+
+The private `InitialGateCompletion` is constructed only by the concrete
+ManagedWorkflowGates after its existing claim, registered namespace/source and
+receipt checks. A public GateOutcome, receipt identifier or JSON cannot create
+it. Its receipt's complete scoped/versioned bytes remain part of the closure CAS.
+Passed observation and closure are fused in one Immediate transaction; the exact
+sealed virtual observer image is supplied only to the existing transition
+validator, and ordinary observer/writer semantics are unchanged. Driver/Task/W
+post images are precomputed outside Store and preserve original governing and
+Unit pins. No native work/result or review certificate is inferred from an
+initial preparation gate. Interrupted Evaluating and Waiting do not replay a
+helper or reinterpret a receipt as the lost private completion.
+
+Native first-Executor reservation/adoption and later evidence/result/lifecycle
+continuations remain unavailable, as do genuine initial Driver issuer/startup
+and full producer-backed positive qualification. The existing composition issuer
+and native preflight remain closed. Nongrant complete Context projection controls
+use rollback-only factual images; they do not seed Driver/Unit/input authority.
+
+### First Executor reservation/adoption implementation increment
+
+The existing prescribed reserve/adopt edge is one transaction, avoiding a
+generic reservation that would invalidate the Driver before adoption helpers.
+The real worker captures its original ticket and complete namespace before any
+await. After the unchanged closed native preflight, it selects the Registry's
+actual private NativePhasePort for the Task executor. The original Sources slot
+keeps its armed PreparedExecutor; registered Git verifies that same preparation's
+ownership, exact base HEAD and clean namespace. A private completion owns the
+same InitialInputFrame, not a caller-supplied namespace-success flag.
+
+DriverReadTicket::plan_first_executor consumes that completion, the actual
+selected port and the complete next Context generated by existing inputs and
+prepare_pack. It supports only the first configured Executor after genuinely
+closed initial Evidence history. Its prescribed post images append one Running
+attempt, bind the SAME Unit, change only the bootstrap Unit's phase/version/time,
+and advance the Task/Workflow/Context and exact Driver pins together. No Session,
+native input consumption, dispatch marker, quota lease or work result is created.
+Original P/G/governing/rule/config/source pins and Unit namespace remain exact;
+all helpers must be settled and native/quota history absent before adoption.
+
+The SAME DriverPreparationAdvance is retained by the actual association before
+SQL, including the original Sources slot/frame and private selected port. Before
+retiring it after known commit, publication updates the same PreparedExecutor and
+its existing armed guard to only the saved exact post Unit. Reconciliation may
+recognize that plan's exact old or post cache image, never freshly read authority;
+rollback requires the original guard/image and complete original SQL image.
+Commit uncertainty, cache failure, cancellation or Drop keep the saved plan and
+preparation held. Source retirement/replacement or unrelated current rows cannot
+certify a post image. Under SharedStore the slot is tried without blocking;
+registered Git and full Context construction remain outside SharedStore.
+
+The Engine returns a preparation reservation observation only. Root's genuine
+capacity/marker publisher and Runtime-owned Native start/binding delivery are
+separate mandatory consumers; Engine never owns an adapter start future here.
+Already reserved/native-history continuations explicitly wait or refuse rather
+than fall back to ordinary persist/start. The composition issuer and native
+preflight remain unavailable; this increment does not qualify genuine Driver
+startup, native execution, Binding43 or Phase2 readiness. Mechanical projection
+controls and unchanged preflight negatives cannot substitute for a producer-
+backed positive reservation/adoption/Drop/reconciliation matrix.
