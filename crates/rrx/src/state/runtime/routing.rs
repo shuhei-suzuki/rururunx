@@ -1,6 +1,6 @@
 use super::super::*;
 use anyhow::{Context, Result, ensure};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const BODY_BYTES: usize = 1024 * 1024;
 const ROUTES: usize = 4096;
@@ -92,7 +92,7 @@ impl Store {
             let project: Project = read_tx(&tx, "projects", &id)?.context("Project disappeared")?;
             ensure!(
                 project.id.to_string() == id
-                    && project.root == PathBuf::from(root)
+                    && project.root == Path::new(&root)
                     && project.version == version,
                 "Project routing body/index mismatch"
             );
@@ -160,7 +160,7 @@ impl Store {
                     )?;
                     ensure!(
                         project.id == task.project_id
-                            && project.root == PathBuf::from(root)
+                            && project.root == Path::new(&root)
                             && project.version == version,
                         "Task Project routing body/index mismatch"
                     );
