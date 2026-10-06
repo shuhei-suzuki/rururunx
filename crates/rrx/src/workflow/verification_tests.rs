@@ -764,6 +764,14 @@ async fn four_actual_command_tasks_cancel_one_preserving_sibling_artifacts_and_r
     }
     let profiles = tokio::time::timeout(Duration::from_secs(15), async {
         loop {
+            for (i, handle) in running.iter_mut().enumerate() {
+                if handle.is_finished() {
+                    panic!(
+                        "command Task {i} ended before four-task barrier: {:?}",
+                        handle.await.unwrap()
+                    );
+                }
+            }
             let mut profiles = Vec::new();
             for task in &ids {
                 let w = engine.snapshot(*task).unwrap();
