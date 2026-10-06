@@ -32,7 +32,6 @@ fn adopted_unit(
             && old.artifact_id.is_none()
             && old.wait_reason.is_none()
             && old.capacity_retry_at.is_none()
-            && old.provider == provider
             && crate::execution::valid_oid(&old.base_sha),
         "first Executor requires pristine same-provider preparation"
     );
