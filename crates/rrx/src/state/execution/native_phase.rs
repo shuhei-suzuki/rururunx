@@ -17,7 +17,8 @@ mod preparation;
 pub(crate) use preparation::{NativePreparationCommit, NativePreparationPlan};
 mod version;
 pub(crate) use version::{
-    NativeHelperIntentCommit, NativeHelperSettlementPlan, NativeVersionHelperPlan,
+    NativeHelperIntentCommit, NativeHelperSettlementPlan, NativeVersionClosurePlan,
+    NativeVersionHelperPlan,
 };
 mod terminal;
 pub(crate) use terminal::NativeTerminalPlan;

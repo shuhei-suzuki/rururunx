@@ -7,6 +7,9 @@ use rusqlite::{Connection, types::ValueRef};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+mod closure;
+pub(crate) use closure::NativeVersionClosurePlan;
+
 const ROWS: usize = 256;
 const BODY_BYTES: usize = 8192;
 const INVENTORY_BYTES: usize = 2 * 1024 * 1024;

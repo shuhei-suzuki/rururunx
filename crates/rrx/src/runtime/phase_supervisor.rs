@@ -188,9 +188,15 @@ impl PhaseLaunchParts {
         tx: &rusqlite::Transaction<'_>,
         current: &crate::state::managed_binding::CurrentWorkflowSuccessor,
     ) -> Result<()> {
-        self.origin.validate_marker(&self.marker)?;
+        self.validate_preparation_original()?;
         crate::state::managed_binding::validate_current_tx(tx, &self.marker, current)?;
         self.marker.validate_driver_live_tx(tx)
+    }
+    /// Immutable SAME Source/ticket/allocation linkage only. Nongrant closure
+    /// uses this after normal currency revocation; it issues no effect/input
+    /// permission and cannot replace the retained Source ticket from rows.
+    pub(crate) fn validate_preparation_original(&self) -> Result<()> {
+        self.origin.validate_marker(&self.marker)
     }
     pub(crate) fn admission(&self) -> &Arc<super::phase_effect_admission::PhaseEffectAdmission> {
         &self.retention.supervisor.admission
