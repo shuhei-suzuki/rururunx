@@ -345,8 +345,7 @@ pub(crate) fn plan_managed_binding(
             link.scope == *proof.allocation().facts().scope
                 && link.at == at
                 && encode(&link.data, 4096)? == audit_data.as_bytes()
-                && encode(&serde_json::to_value(current.workflow())?, BODY_BYTES)?
-                    == encode(&serde_json::to_value(after.parsed())?, BODY_BYTES)?,
+                && current.workflow_raw() == after.raw(),
             "current tuple is not the exact same committed first binding"
         );
     } else {
