@@ -10,7 +10,7 @@ use crate::runtime::phase_effect_admission::PhaseEffectAdmissionGuard;
 use crate::state::managed_binding::Body;
 
 const LEASES: &str = "SELECT l.unit_id,l.provider,l.account_key,l.role,l.epoch,l.active,u.project_id,u.task_id,u.kind FROM quota_leases l JOIN execution_units u ON u.id=l.unit_id WHERE l.active=1 ORDER BY l.unit_id LIMIT 4097";
-const WAITERS: &str = "SELECT w.unit_id,w.provider,w.account_key,w.reason,w.next_due,w.fairness_sequence,w.resume_state,u.kind,u.project_id,u.task_id,u.native_effects_open,u.version,COALESCE(json_extract(u.body,'$.state'),''),COALESCE(json_extract(u.body,'$.wait_reason'),''),EXISTS(SELECT 1 FROM managed_phase_operations o WHERE o.unit_id=u.id AND o.phase_open=1),EXISTS(SELECT 1 FROM managed_phase_operations o JOIN managed_phase_readiness r ON r.operation_id=o.operation_id WHERE o.unit_id=u.id AND o.phase_open=1 AND r.state='parked' AND r.parking_version=r.version),json_extract(p.body,'$.max_tasks'),COALESCE(json_extract(u.body,'$.provider'),'') FROM quota_waiters w JOIN execution_units u ON u.id=w.unit_id JOIN projects p ON p.id=u.project_id WHERE w.provider=?1 AND w.account_key='unknown' AND w.next_due<=?2 AND u.native_effects_open=1 ORDER BY CASE WHEN (u.kind='executor')=(?3='executor') THEN 1 ELSE 0 END,w.fairness_sequence,w.unit_id LIMIT 4097";
+const WAITERS: &str = "SELECT w.unit_id,w.provider,w.account_key,w.reason,w.next_due,w.fairness_sequence,w.resume_state,u.kind,u.project_id,u.task_id,u.native_effects_open,u.version,COALESCE(json_extract(u.body,'$.state'),''),COALESCE(json_extract(u.body,'$.wait_reason'),''),EXISTS(SELECT 1 FROM managed_phase_operations o WHERE o.unit_id=u.id AND o.phase_open=1),EXISTS(SELECT 1 FROM managed_phase_operations o JOIN managed_phase_readiness r ON r.operation_id=o.operation_id WHERE o.unit_id=u.id AND o.phase_open=1 AND r.state='parked' AND r.parking_version=r.version),NULL,COALESCE(json_extract(u.body,'$.provider'),'') FROM quota_waiters w JOIN execution_units u ON u.id=w.unit_id WHERE w.provider=?1 AND w.account_key='unknown' AND w.next_due<=?2 AND u.native_effects_open=1 ORDER BY CASE WHEN (u.kind='executor')=(?3='executor') THEN 1 ELSE 0 END,w.fairness_sequence,w.unit_id LIMIT 4097";
 const POOL: &str = "SELECT provider,account_key,next_probe_at,probe_unit,backoff,last_role FROM quota_pools WHERE provider=?1 AND account_key='unknown'";
 const OWN_WAITER: &str = "SELECT unit_id,provider,account_key,reason,next_due,fairness_sequence,resume_state FROM quota_waiters WHERE unit_id=?1";
 const OWN_LEASE: &str =
@@ -77,10 +77,7 @@ struct Snapshot {
     waiters: Vec<Row>,
     windows: Vec<Row>,
     history: Vec<Row>,
-    legacy: Vec<LegacyCandidate>,
-}
-struct LegacyCandidate {
-    unit: ExecutionUnit,
+    owned_bytes: usize,
 }
 
 /// All shapes are qualified in one pass before copying any selected values.
@@ -192,13 +189,21 @@ pub(crate) struct NativeQuotaPlan {
     pre: Arc<NativeReadyLineage>,
     at: i64,
     before: Snapshot,
+    own: Arc<QuotaBranch>,
+    other: Option<Arc<QuotaBranch>>,
+    project_max: usize,
+    executor_throttled: bool,
+}
+struct QuotaBranch {
     after: Images,
     readiness: PairRow,
     unit: Option<Arc<Body<ExecutionUnit>>>,
     decision: Decision,
+    mutation: Option<ExactRowMutation>,
 }
 pub(crate) struct NativeQuotaAdmitted {
     plan: Arc<NativeQuotaPlan>,
+    branch: Arc<QuotaBranch>,
     lineage: Arc<NativeReadyLineage>,
 }
 pub(crate) struct NativeParkedPhase {
@@ -218,6 +223,7 @@ pub(crate) enum NativeQuotaConfirmation {
 pub(crate) enum NativeQuotaWrite {
     Known(NativeQuotaOutcome),
     Conflict,
+    Unresolved(anyhow::Error),
 }
 impl NativeQuotaPlan {
     pub(crate) fn matches_pre(
@@ -235,17 +241,18 @@ impl NativeQuotaPlan {
         no_registration(tx, self.actor.launch())?;
         self.no_dispatch.completion.commit.validate_inventory(tx)
     }
-    fn outcome(self: &Arc<Self>) -> Result<NativeQuotaOutcome> {
+    fn outcome(self: &Arc<Self>, branch: Arc<QuotaBranch>) -> Result<NativeQuotaOutcome> {
         // Called only after this plan's known commit or exact postimage confirm.
-        let lineage = if let Some(unit) = &self.unit {
+        let lineage = if let Some(unit) = &branch.unit {
             self.pre
-                .known_successor(unit.clone(), self.readiness.copy_image())?
+                .known_successor(unit.clone(), branch.readiness.copy_image())?
         } else {
             self.pre.clone()
         };
-        Ok(match self.decision {
+        Ok(match branch.decision {
             Decision::Admit { .. } => NativeQuotaOutcome::Admitted(Arc::new(NativeQuotaAdmitted {
                 plan: self.clone(),
+                branch: branch.clone(),
                 lineage,
             })),
             Decision::Wait { reason, due } => {
@@ -262,13 +269,13 @@ impl NativeQuotaPlan {
 impl NativeQuotaAdmitted {
     pub(super) fn validate_registration_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         ensure!(
-            matches!(self.plan.decision, Decision::Admit { .. }),
+            matches!(self.branch.decision, Decision::Admit { .. }),
             "quota original not admitted"
         );
         self.lineage.validate_prepared_shape()?;
         let actual = read_images(tx, &self.plan.actor)?;
         ensure!(
-            actual.lease == self.plan.after.lease && actual.waiter == self.plan.after.waiter,
+            actual.lease == self.branch.after.lease && actual.waiter == self.branch.after.waiter,
             "SAME admitted own lease/waiter changed before registration"
         );
         Ok(())
@@ -302,12 +309,7 @@ impl NativeParkedPhase {
     }
 }
 
-fn read_snapshot(
-    tx: &Transaction<'_>,
-    lineage: &NativeReadyLineage,
-    at: i64,
-    legacy: bool,
-) -> Result<Snapshot> {
+fn read_snapshot(tx: &Transaction<'_>, lineage: &NativeReadyLineage, at: i64) -> Result<Snapshot> {
     let unit = lineage.unit();
     let provider = &unit.provider;
     let id = unit.id.to_string();
@@ -337,37 +339,6 @@ fn read_snapshot(
     )?;
     let waiter = read(OWN_WAITER, vec![t(&id)], 1, None)?.pop();
     let lease = read(OWN_LEASE, vec![t(&id)], 1, None)?.pop();
-    let mut candidates = Vec::new();
-    if legacy {
-        for row in &waiters {
-            if !ahead_of_own(row, unit, waiter.as_ref(), text(&effective, 5)?, at)? {
-                break;
-            }
-            if integer(row, 14)? != 0 {
-                continue;
-            }
-            let candidate_id = text(row, 0)?;
-            let raw_rows = read(
-                "SELECT body FROM execution_units WHERE id=?1",
-                vec![t(candidate_id)],
-                1,
-                Some((0, 16 * 1024)),
-            )?;
-            let raw = text(raw_rows.first().context("legacy candidate absent")?, 0)?.to_owned();
-            let candidate: ExecutionUnit = Body::<ExecutionUnit>::decode(raw.clone(), 16 * 1024)?
-                .parsed()
-                .clone();
-            ensure!(
-                candidate.id.to_string() == candidate_id
-                    && crate::state::managed_binding::unit_image_matches(tx, &candidate, &raw)?,
-                "candidate complete Unit index/body differs"
-            );
-            // A query-only connection cannot evaluate Runtime Driver liveness.
-            // Retain every factual Legacy identity; until the reviewed writer
-            // head walk exists, the commit guard refuses rather than skips it.
-            candidates.push(LegacyCandidate { unit: candidate });
-        }
-    }
     ensure!(
         scalar_bytes
             .checked_add(body_bytes)
@@ -396,7 +367,7 @@ fn read_snapshot(
         waiters,
         windows,
         history,
-        legacy: candidates,
+        owned_bytes: scalar_bytes + body_bytes,
     })
 }
 
@@ -439,7 +410,8 @@ fn policy(
     lineage: &NativeReadyLineage,
     caps: &NativeQuotaCaps,
     at: i64,
-) -> Result<Decision> {
+    self_head: bool,
+) -> Result<(Decision, bool)> {
     let unit = lineage.unit();
     let id = unit.id.to_string();
     let provider = &unit.provider;
@@ -527,62 +499,20 @@ fn policy(
             capacity_due = capacity_due.max(due);
         }
     }
-    let mut first = None;
-    for row in &snapshot.waiters {
-        let candidate = text(row, 0)?;
-        if !ahead_of_own(
-            row,
-            unit,
-            snapshot.images.waiter.as_ref(),
-            text(&pool, 5)?,
-            at,
-        )? {
-            break;
-        }
-        let max = caps.project.min(usize::try_from(integer(row, 16)?)?);
-        ensure!(max > 0, "candidate project concurrency invalid");
-        if project_blocked(&snapshot.leases, text(row, 8)?, text(row, 9)?, max)?
-            || (text(row, 7)? == "executor" && capacity.executor_blocked())
-        {
-            continue;
-        }
-        let class = quota_policy::classify(
-            quota_policy::CandidateFacts {
-                marked: integer(row, 14)? != 0,
-                parked: integer(row, 15)? != 0,
-                unit_preparing: text(row, 12)? == "preparing",
-                reason_equal: text(row, 13)? == text(row, 3)?,
-                resume_preparing: text(row, 6)? == "preparing",
-                pool_equal: text(row, 1)? == provider
-                    && text(row, 17)? == text(row, 1)?
-                    && text(row, 2)? == "unknown",
-                next_due: integer(row, 4)?,
+    let executor_throttled = capacity.executor_blocked();
+    Ok((
+        quota_policy::decide(
+            &QuotaSnapshot {
+                exhausted,
+                next_probe_at: integer(&pool, 2)?,
+                foreign_probe: pool[3] != SqlValue::Null && pool[3] != t(&id),
+                capacity_due,
+                capacity,
+                fair_head_is_self: self_head,
             },
             at,
-        );
-        if candidate == id
-            || class == CandidateClass::MarkedParked
-            || (class == CandidateClass::Legacy
-                && snapshot
-                    .legacy
-                    .iter()
-                    .any(|c| c.unit.id.to_string() == candidate))
-        {
-            first = Some(candidate);
-            break;
-        }
-    }
-    let self_head = first.is_none();
-    Ok(quota_policy::decide(
-        &QuotaSnapshot {
-            exhausted,
-            next_probe_at: integer(&pool, 2)?,
-            foreign_probe: pool[3] != SqlValue::Null && pool[3] != t(&id),
-            capacity_due,
-            capacity,
-            fair_head_is_self: self_head,
-        },
-        at,
+        ),
+        executor_throttled,
     ))
 }
 pub(crate) struct NativeQuotaCaps {
@@ -618,10 +548,21 @@ impl Store {
                 pre.validate_tx(tx)?;
                 no_registration(tx, actor.launch())?;
                 no_dispatch.completion.commit.validate_inventory(tx)?;
-                read_snapshot(tx, &pre, at, true)
+                read_snapshot(tx, &pre, at)
             })())
         })?;
-        let decision = policy(&before, &pre, &caps, at)?;
+        let own_due = before
+            .images
+            .waiter
+            .as_ref()
+            .map(|w| integer(w, 4))
+            .transpose()?
+            .is_none_or(|due| due <= at);
+        let (decision, executor_throttled) = policy(&before, &pre, &caps, at, own_due)?;
+        let other_decision = matches!(decision, Decision::Admit { .. })
+            .then(|| policy(&before, &pre, &caps, at, false))
+            .transpose()?;
+        let project_max = caps.project;
         let unit = pre.unit();
         let id = unit.id.to_string();
         let provider = &unit.provider;
@@ -651,87 +592,323 @@ impl Store {
                 "SAME parked waiter image differs"
             );
         }
-        let mut after = before.images.clone();
-        let mut pool = after.pool.clone().unwrap_or_else(|| default_pool(provider));
-        let mut readiness = pre.readiness().copy_image();
-        let mut next = unit.clone();
-        match decision {
-            Decision::Admit { probe } => {
-                after.waiter = None;
-                after.lease = Some(vec![
-                    t(&id),
-                    t(provider),
-                    t("unknown"),
-                    t(key(unit.kind)),
-                    i(i64::try_from(unit.owner_epoch)?),
-                    i(1),
-                ]);
-                pool[5] = t(if unit.kind == UnitKind::Executor {
-                    "executor"
-                } else {
-                    "reviewer"
-                });
-                if probe {
-                    pool[3] = t(&id);
-                    pool[2] = i(at.saturating_add(integer(&pool, 4)?));
-                    pool[4] = i(integer(&pool, 4)?.saturating_mul(2).min(1_800_000));
-                }
-                if parked {
-                    next.wait_reason = None;
-                    readiness.transition_readiness("preparing", 4, None, false)?;
-                }
-            }
-            Decision::Wait { reason, due } => {
-                let fairness = before
-                    .images
-                    .waiter
-                    .as_ref()
-                    .map(|w| integer(w, 5))
-                    .transpose()?
-                    .unwrap_or(at);
-                after.waiter = Some(vec![
-                    t(&id),
-                    t(provider),
-                    t("unknown"),
-                    t(key(reason)),
-                    i(due),
-                    i(fairness),
-                    t("preparing"),
-                ]);
-                next.wait_reason = Some(reason);
-                if !parked {
-                    readiness.transition_readiness("parked", 3, Some(3), false)?;
-                }
-            }
+        let own = build_branch(&before, &pre, decision, at)?;
+        let other = other_decision
+            .map(|(decision, _)| build_branch(&before, &pre, decision, at))
+            .transpose()?;
+        let mut owned_bytes = before.owned_bytes;
+        for branch in std::iter::once(&own).chain(other.iter()) {
+            charge_plan_bytes(&mut owned_bytes, branch_bytes(branch, pre.readiness())?)?;
         }
-        after.pool = Some(pool);
-        let changed = next.wait_reason != unit.wait_reason;
-        let unit = if changed {
-            next.version = next
-                .version
-                .checked_add(1)
-                .filter(|v| *v <= i64::MAX as u64)
-                .context("Unit version exhausted")?;
-            next.updated_at = at;
-            Some(Arc::new(Body::<ExecutionUnit>::decode(
-                serde_json::to_string(&next)?,
-                16 * 1024,
-            )?))
-        } else {
-            None
-        };
         Ok(Arc::new(NativeQuotaPlan {
             actor,
             no_dispatch,
             pre,
             at,
             before,
-            after,
-            readiness,
-            unit,
-            decision,
+            own,
+            other,
+            project_max,
+            executor_throttled,
         }))
     }
+}
+
+const LEGACY_HEAD_CALLS: usize = 8;
+
+fn candidate_shape(tx: &Transaction<'_>, id: UnitId) -> Result<()> {
+    let valid: bool = tx
+        .query_row(
+            "SELECT typeof(u.body)='text' AND length(CAST(u.body AS BLOB))<=16384
+         AND typeof(p.body)='text' AND length(CAST(p.body AS BLOB))<=1048576
+         AND typeof(g.body)='text' AND length(CAST(g.body AS BLOB))<=4194304
+         AND typeof(t.body)='text' AND length(CAST(t.body AS BLOB))<=1048576
+         FROM execution_units u JOIN projects p ON p.id=u.project_id
+         JOIN goals g ON g.id=u.goal_id JOIN tasks t ON t.id=u.task_id WHERE u.id=?1",
+            [id.to_string()],
+            |r| r.get(0),
+        )
+        .context("legacy head shape: missing candidate or parent")?;
+    ensure!(valid, "legacy head shape: bounded text body required");
+    Ok(())
+}
+
+fn structural_legacy_owners(tx: &Transaction<'_>, unit: &ExecutionUnit) -> Result<()> {
+    let project_id = unit.scope.project_id;
+    let goal_id = unit
+        .scope
+        .goal_id
+        .context("legacy head scope: Goal absent")?;
+    let task_id = unit
+        .scope
+        .task_id
+        .context("legacy head scope: Task absent")?;
+    let project: Project = read_tx(tx, "projects", &project_id.to_string())?
+        .context("legacy head structure: Project absent")?;
+    let goal: Goal = read_tx(tx, "goals", &goal_id.to_string())?
+        .context("legacy head structure: Goal absent")?;
+    let task: Task = read_tx(tx, "tasks", &task_id.to_string())?
+        .context("legacy head structure: Task absent")?;
+    let project_version: u64 = tx.query_row(
+        "SELECT version FROM projects WHERE id=?1",
+        [project_id.to_string()],
+        |r| r.get(0),
+    )?;
+    let goal_row: (String, String, u64) = tx.query_row(
+        "SELECT id,project_id,version FROM goals WHERE id=?1",
+        [goal_id.to_string()],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
+    let task_row: (String, String, String, u64) = tx.query_row(
+        "SELECT id,goal_id,project_id,version FROM tasks WHERE id=?1",
+        [task_id.to_string()],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+    )?;
+    ensure!(
+        project.id == project_id
+            && project.version == project_version
+            && goal.id == goal_id
+            && goal.project_id == project_id
+            && goal.id.to_string() == goal_row.0
+            && goal.project_id.to_string() == goal_row.1
+            && goal.version == goal_row.2
+            && task.id == task_id
+            && task.goal_id == goal_id
+            && task.project_id == project_id
+            && task.id.to_string() == task_row.0
+            && task.goal_id.to_string() == task_row.1
+            && task.project_id.to_string() == task_row.2
+            && task.version == task_row.3,
+        "legacy head structure: owner identity or version differs"
+    );
+    Ok(())
+}
+
+/// E-1 alone uses the unchanged generic validator, on the writer connection.
+/// Returns a branch choice, never a grant or a retained Legacy verdict.
+fn preceding_head(tx: &Transaction<'_>, plan: &NativeQuotaPlan) -> Result<bool> {
+    let own = plan.pre.unit();
+    let pool = plan
+        .before
+        .images
+        .pool
+        .clone()
+        .unwrap_or_else(|| default_pool(&own.provider));
+    preceding_head_inventory(
+        tx,
+        HeadInventory {
+            own,
+            own_waiter: plan.before.images.waiter.as_ref(),
+            last_role: text(&pool, 5)?,
+            waiters: &plan.before.waiters,
+            at: plan.at,
+            project_max: plan.project_max,
+            executor_throttled: plan.executor_throttled,
+        },
+    )
+}
+
+// Borrowed facts for the nongrant head calculation. Only the authentic plan
+// wrapper above can turn the returned choice into a quota transaction branch.
+struct HeadInventory<'a> {
+    own: &'a ExecutionUnit,
+    own_waiter: Option<&'a Row>,
+    last_role: &'a str,
+    waiters: &'a [Row],
+    at: i64,
+    project_max: usize,
+    executor_throttled: bool,
+}
+fn preceding_head_inventory(tx: &Transaction<'_>, inventory: HeadInventory<'_>) -> Result<bool> {
+    let mut calls = 0;
+    for row in inventory.waiters {
+        if !ahead_of_own(
+            row,
+            inventory.own,
+            inventory.own_waiter,
+            inventory.last_role,
+            inventory.at,
+        )? {
+            break;
+        }
+        let id: UnitId = text(row, 0)?
+            .parse()
+            .context("legacy head scope: candidate id")?;
+        candidate_shape(tx, id)?;
+        let candidate = unit_tx(tx, id).context("legacy head unit_tx")?;
+        ensure!(
+            candidate.scope.goal_id.is_some() && candidate.scope.task_id.is_some(),
+            "legacy head scope: missing Goal or Task"
+        );
+        if super::super::quotas::project_capacity_blocked(tx, &candidate, inventory.project_max)
+            .context("legacy head capacity")?
+            || (candidate.kind == UnitKind::Executor && inventory.executor_throttled)
+        {
+            continue;
+        }
+        match quota_policy::candidate_class(tx, id, inventory.at)? {
+            CandidateClass::MarkedParked => return Ok(true),
+            CandidateClass::MarkedStalled => continue,
+            CandidateClass::Legacy => {
+                ensure!(
+                    calls < LEGACY_HEAD_CALLS,
+                    "legacy head call limit: ninth call required"
+                );
+                structural_legacy_owners(tx, &candidate).context("legacy head structure")?;
+                calls += 1;
+                if validate_authority(tx, &candidate.authority(), true, false).is_ok() {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
+const PLAN_BYTES: usize = 8 * 1024 * 1024;
+fn charge_plan_bytes(total: &mut usize, bytes: usize) -> Result<()> {
+    *total = total
+        .checked_add(bytes)
+        .context("private quota plan byte overflow")?;
+    ensure!(
+        *total <= PLAN_BYTES,
+        "private quota owned plan exceeds 8-MiB profile"
+    );
+    Ok(())
+}
+fn row_bytes(row: &[SqlValue]) -> Result<usize> {
+    row.iter().try_fold(0usize, |total, value| {
+        let bytes = match value {
+            SqlValue::Text(value) => value.len(),
+            SqlValue::Blob(value) => value.len(),
+            _ => 8,
+        };
+        total
+            .checked_add(bytes)
+            .context("private quota image byte overflow")
+    })
+}
+fn branch_bytes(branch: &QuotaBranch, before: &PairRow) -> Result<usize> {
+    let mut bytes = 0;
+    for row in [
+        &branch.after.pool,
+        &branch.after.waiter,
+        &branch.after.lease,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        charge_plan_bytes(&mut bytes, row_bytes(row)?)?;
+    }
+    charge_plan_bytes(&mut bytes, row_bytes(&branch.readiness.values)?)?;
+    if branch.mutation.is_some() {
+        // The exact permission owns another copy of both readiness images.
+        charge_plan_bytes(&mut bytes, row_bytes(&before.values)?)?;
+        charge_plan_bytes(&mut bytes, row_bytes(&branch.readiness.values)?)?;
+    }
+    if let Some(unit) = &branch.unit {
+        // Body owns raw, canonical and parsed representations. The latter two
+        // each fit the complete Unit profile; none is a borrowed manifest.
+        charge_plan_bytes(
+            &mut bytes,
+            unit.raw()
+                .len()
+                .checked_add(2 * 16 * 1024)
+                .context("private quota Unit byte overflow")?,
+        )?;
+    }
+    Ok(bytes)
+}
+
+fn build_branch(
+    before: &Snapshot,
+    pre: &NativeReadyLineage,
+    decision: Decision,
+    at: i64,
+) -> Result<Arc<QuotaBranch>> {
+    let unit = pre.unit();
+    let id = unit.id.to_string();
+    let provider = &unit.provider;
+    let parked = pre.readiness().column("state")? == &t("parked");
+    let mut after = before.images.clone();
+    let mut pool = after.pool.clone().unwrap_or_else(|| default_pool(provider));
+    let mut readiness = pre.readiness().copy_image();
+    let mut next = unit.clone();
+    match decision {
+        Decision::Admit { probe } => {
+            after.waiter = None;
+            after.lease = Some(vec![
+                t(&id),
+                t(provider),
+                t("unknown"),
+                t(key(unit.kind)),
+                i(i64::try_from(unit.owner_epoch)?),
+                i(1),
+            ]);
+            pool[5] = t(if unit.kind == UnitKind::Executor {
+                "executor"
+            } else {
+                "reviewer"
+            });
+            if probe {
+                pool[3] = t(&id);
+                pool[2] = i(at.saturating_add(integer(&pool, 4)?));
+                pool[4] = i(integer(&pool, 4)?.saturating_mul(2).min(1_800_000));
+            }
+            if parked {
+                next.wait_reason = None;
+                readiness.transition_readiness("preparing", 4, None, false)?;
+            }
+        }
+        Decision::Wait { reason, due } => {
+            let fairness = before
+                .images
+                .waiter
+                .as_ref()
+                .map(|w| integer(w, 5))
+                .transpose()?
+                .unwrap_or(at);
+            after.waiter = Some(vec![
+                t(&id),
+                t(provider),
+                t("unknown"),
+                t(key(reason)),
+                i(due),
+                i(fairness),
+                t("preparing"),
+            ]);
+            next.wait_reason = Some(reason);
+            if !parked {
+                readiness.transition_readiness("parked", 3, Some(3), false)?;
+            }
+        }
+    }
+    after.pool = Some(pool);
+    let changed = next.wait_reason != unit.wait_reason;
+    let unit = if changed {
+        next.version = next
+            .version
+            .checked_add(1)
+            .filter(|v| *v <= i64::MAX as u64)
+            .context("Unit version exhausted")?;
+        next.updated_at = at;
+        Some(Arc::new(Body::<ExecutionUnit>::decode(
+            serde_json::to_string(&next)?,
+            16 * 1024,
+        )?))
+    } else {
+        None
+    };
+    let mutation = (readiness.values != pre.readiness().values)
+        .then(|| pre.readiness().update_permission(&readiness))
+        .transpose()?;
+    Ok(Arc::new(QuotaBranch {
+        after,
+        readiness,
+        unit,
+        decision,
+        mutation,
+    }))
 }
 
 fn image_matches(
@@ -905,14 +1082,17 @@ fn sort_waiters(waiters: &mut [Row], last: &str) {
         (ar, integer(a, 5).ok(), text(a, 0).ok()).cmp(&(br, integer(b, 5).ok(), text(b, 0).ok()))
     });
 }
-fn expected_inventories(plan: &NativeQuotaPlan, post: bool) -> Result<(Vec<Row>, Vec<Row>)> {
+fn expected_inventories(
+    plan: &NativeQuotaPlan,
+    post: Option<&QuotaBranch>,
+) -> Result<(Vec<Row>, Vec<Row>)> {
     let mut leases = plan.before.leases.clone();
     let mut waiters = plan.before.waiters.clone();
-    if post {
+    if let Some(branch) = post {
         let unit = plan.pre.unit();
         let id = unit.id.to_string();
         leases.retain(|l| text(l, 0).ok() != Some(id.as_str()));
-        if let Some(l) = &plan.after.lease
+        if let Some(l) = &branch.after.lease
             && integer(l, 5)? == 1
         {
             let mut row = l.clone();
@@ -925,7 +1105,7 @@ fn expected_inventories(plan: &NativeQuotaPlan, post: bool) -> Result<(Vec<Row>,
         }
         leases.sort_by(|a, b| text(a, 0).ok().cmp(&text(b, 0).ok()));
         waiters.retain(|w| text(w, 0).ok() != Some(id.as_str()));
-        if let Some(w) = &plan.after.waiter
+        if let Some(w) = &branch.after.waiter
             && integer(w, 4)? <= plan.at
         {
             anyhow::bail!("quota post-waiter unexpectedly due in same claim");
@@ -933,23 +1113,35 @@ fn expected_inventories(plan: &NativeQuotaPlan, post: bool) -> Result<(Vec<Row>,
         sort_waiters(
             &mut waiters,
             text(
-                plan.after.pool.as_ref().context("quota post-pool absent")?,
+                branch
+                    .after
+                    .pool
+                    .as_ref()
+                    .context("quota post-pool absent")?,
                 5,
             )?,
         );
     }
     Ok((leases, waiters))
 }
-fn inventories_match(tx: &Transaction<'_>, plan: &NativeQuotaPlan, post: bool) -> Result<bool> {
-    let actual = read_snapshot(tx, &plan.pre, plan.at, false)?;
+fn inventories_match(
+    tx: &Transaction<'_>,
+    plan: &NativeQuotaPlan,
+    post: Option<&QuotaBranch>,
+) -> Result<bool> {
+    let actual = read_snapshot(tx, &plan.pre, plan.at)?;
     let (leases, waiters) = expected_inventories(plan, post)?;
     Ok(actual.leases == leases
         && actual.waiters == waiters
         && actual.windows == plan.before.windows
         && actual.history == plan.before.history)
 }
-fn validate_post_unit(tx: &Transaction<'_>, plan: &NativeQuotaPlan) -> Result<()> {
-    let (unit, raw) = plan
+fn validate_post_unit(
+    tx: &Transaction<'_>,
+    plan: &NativeQuotaPlan,
+    branch: &QuotaBranch,
+) -> Result<()> {
+    let (unit, raw) = branch
         .unit
         .as_ref()
         .map_or((plan.pre.unit(), plan.pre.current().unit_raw()), |b| {
@@ -961,7 +1153,7 @@ fn validate_post_unit(tx: &Transaction<'_>, plan: &NativeQuotaPlan) -> Result<()
     );
     Ok(())
 }
-fn apply_images(tx: &Transaction<'_>, plan: &NativeQuotaPlan) -> Result<()> {
+fn apply_images(tx: &Transaction<'_>, plan: &NativeQuotaPlan, branch: &QuotaBranch) -> Result<()> {
     let f = plan.actor.launch().allocation().facts();
     if plan.before.images.pool.is_none() {
         // Exact absence, no ON CONFLICT fallback. Required before every FK row.
@@ -971,7 +1163,7 @@ fn apply_images(tx: &Transaction<'_>, plan: &NativeQuotaPlan) -> Result<()> {
             "quota_pools",
             POOL_COLUMNS,
             &Some(default),
-            &plan.after.pool,
+            &branch.after.pool,
         )?;
     } else {
         write_image(
@@ -979,7 +1171,7 @@ fn apply_images(tx: &Transaction<'_>, plan: &NativeQuotaPlan) -> Result<()> {
             "quota_pools",
             POOL_COLUMNS,
             &plan.before.images.pool,
-            &plan.after.pool,
+            &branch.after.pool,
         )?;
     }
     write_image(
@@ -987,19 +1179,19 @@ fn apply_images(tx: &Transaction<'_>, plan: &NativeQuotaPlan) -> Result<()> {
         "quota_waiters",
         WAITER_COLUMNS,
         &plan.before.images.waiter,
-        &plan.after.waiter,
+        &branch.after.waiter,
     )?;
     write_image(
         tx,
         "quota_leases",
         LEASE_COLUMNS,
         &plan.before.images.lease,
-        &plan.after.lease,
+        &branch.after.lease,
     )?;
-    if plan.readiness.values != plan.pre.readiness().values {
-        plan.pre.readiness().update_tx(tx, &plan.readiness)?;
+    if branch.readiness.values != plan.pre.readiness().values {
+        plan.pre.readiness().update_tx(tx, &branch.readiness)?;
     }
-    if let Some(body) = &plan.unit {
+    if let Some(body) = &branch.unit {
         let before = plan.pre.unit();
         let n = tx.execute(
             "UPDATE execution_units SET version=?1,body=?2 WHERE id=?3 AND project_id=?4 AND goal_id=?5 AND task_id=?6 AND kind=?7 AND generation=?8 AND owner_epoch=?9 AND version=?10 AND native_effects_open=?11 AND result_finalization_open=?12 AND worktree=?13 AND branch IS ?14 AND body=?15",
@@ -1207,59 +1399,59 @@ impl Store {
         admission: &PhaseEffectAdmissionGuard,
     ) -> Result<NativeQuotaWrite> {
         selected_database(&self.connection, plan.actor.launch())?;
-        let mutation = (plan.readiness.values != plan.pre.readiness().values)
-            .then(|| plan.pre.readiness().update_permission(&plan.readiness))
-            .transpose()?;
-        let permitted = mutation.is_some();
-        let mut write = || -> Result<bool> {
-            let tx = self
-                .connection
-                .transaction_with_behavior(TransactionBehavior::Immediate)?;
-            {
-                let budget = InventoryBudget::new(&tx)?;
-                let same = budget.finish((|| {
-                    admission.validate_for(plan.actor.launch())?;
-                    plan.actor.validate_open()?;
-                    plan.pre.validate_tx(&tx)?;
-                    plan.validate_negative(&tx)?;
-                    ensure!(
-                        now_ms().abs_diff(plan.at) <= 5000,
-                        "private quota plan clock stale"
-                    );
-                    if !images_match(&tx, &plan, &plan.before.images)?
-                        || !inventories_match(&tx, &plan, false)?
-                    {
-                        return Ok(false);
-                    }
-                    // Until the reviewed hashing/Legacy contract delta exists,
-                    // no alternative validator silently substitutes for it.
-                    ensure!(
-                        plan.before.legacy.is_empty(),
-                        "private quota Legacy-head contract unresolved"
-                    );
-                    apply_images(&tx, &plan)?;
-                    if permitted {
-                        self.binding_permits.ensure_consumed()?;
-                    }
-                    Ok(true)
-                })())?;
-                if !same {
-                    return Ok(false);
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let manager = self.binding_permits.clone();
+        let selected = {
+            let budget = InventoryBudget::new(&tx)?;
+            budget.finish((|| {
+                admission.validate_for(plan.actor.launch())?;
+                plan.actor.validate_open()?;
+                plan.pre.validate_tx(&tx)?;
+                plan.validate_negative(&tx)?;
+                ensure!(
+                    now_ms().abs_diff(plan.at) <= 5000,
+                    "private quota plan clock stale"
+                );
+                if !images_match(&tx, &plan, &plan.before.images)?
+                    || !inventories_match(&tx, &plan, None)?
+                {
+                    return Ok(None);
                 }
+                let branch = if let Some(other) = &plan.other {
+                    match preceding_head(&tx, &plan) {
+                        Ok(true) => other.clone(),
+                        Ok(false) => plan.own.clone(),
+                        Err(cause) => {
+                            return Ok(Some(Err(cause.context("legacy head unresolved"))));
+                        }
+                    }
+                } else {
+                    plan.own.clone()
+                };
+                let write = || -> Result<()> {
+                    apply_images(&tx, &plan, &branch)?;
+                    if branch.mutation.is_some() {
+                        manager.ensure_consumed()?;
+                    }
+                    Ok(())
+                };
+                if let Some(mutation) = &branch.mutation {
+                    manager.with_exact_permit(vec![mutation.copy_for_transaction()?], write)?;
+                } else {
+                    write()?;
+                }
+                Ok(Some(Ok(branch)))
+            })())?
+        };
+        match selected {
+            None => Ok(NativeQuotaWrite::Conflict),
+            Some(Err(cause)) => Ok(NativeQuotaWrite::Unresolved(cause)),
+            Some(Ok(branch)) => {
+                tx.commit()?;
+                Ok(NativeQuotaWrite::Known(plan.outcome(branch)?))
             }
-            tx.commit()?;
-            Ok(true)
-        };
-        let known = if let Some(mutation) = mutation {
-            self.binding_permits
-                .with_exact_permit(vec![mutation], write)?
-        } else {
-            write()?
-        };
-        if known {
-            Ok(NativeQuotaWrite::Known(plan.outcome()?))
-        } else {
-            Ok(NativeQuotaWrite::Conflict)
         }
     }
     pub(crate) fn confirm_phase_quota(
@@ -1277,32 +1469,46 @@ impl Store {
                 admission.validate_for(plan.actor.launch())?;
                 plan.actor.validate_open()?;
                 plan.validate_negative(&tx)?;
-                let post = images_match(&tx, &plan, &plan.after)?
-                    && inventories_match(&tx, &plan, true)?
-                    && plan.readiness.validate_tx(&tx).is_ok()
-                    && validate_post_unit(&tx, &plan).is_ok();
-                if post {
-                    plan.pre
-                        .validate_planned_post_tx(&tx, plan.unit.as_deref())?;
-                    return Ok(true);
+                let mut selected = None;
+                for branch in std::iter::once(&plan.own).chain(plan.other.iter()) {
+                    if images_match(&tx, &plan, &branch.after)?
+                        && inventories_match(&tx, &plan, Some(branch))?
+                        && branch.readiness.validate_tx(&tx).is_ok()
+                        && validate_post_unit(&tx, &plan, branch).is_ok()
+                    {
+                        plan.pre
+                            .validate_planned_post_tx(&tx, branch.unit.as_deref())?;
+                        ensure!(
+                            selected.is_none(),
+                            "quota uncertain commit matches multiple branches; Held"
+                        );
+                        selected = Some(branch.clone());
+                    }
+                }
+                if selected.is_some() {
+                    return Ok(selected);
                 }
                 ensure!(
                     images_match(&tx, &plan, &plan.before.images)?
-                        && inventories_match(&tx, &plan, false)?
+                        && inventories_match(&tx, &plan, None)?
                         && plan.pre.validate_tx(&tx).is_ok(),
                     "quota uncertain commit has mixed images; Held"
                 );
-                Ok(false)
+                Ok(None)
             })())?
         };
         tx.commit()?;
-        if post {
-            Ok(NativeQuotaConfirmation::Known(plan.outcome()?))
+        Ok(if let Some(branch) = post {
+            NativeQuotaConfirmation::Known(plan.outcome(branch)?)
         } else {
-            Ok(NativeQuotaConfirmation::RolledBack)
-        }
+            NativeQuotaConfirmation::RolledBack
+        })
     }
 }
+
+#[cfg(test)]
+#[path = "quota/head_tests.rs"]
+mod head_tests;
 
 #[cfg(test)]
 mod primitive_tests {

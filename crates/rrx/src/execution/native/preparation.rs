@@ -18,6 +18,8 @@ pub(crate) struct NativePreparationCustody {
     state: Mutex<CustodyState>,
     revoked: tokio::sync::Notify,
     parked_level: watch::Sender<bool>,
+    // Display-only attention; never consulted by any admission or issuer.
+    quota_unresolved: AtomicBool,
 }
 #[derive(Default)]
 struct CustodyState {
@@ -245,6 +247,14 @@ impl NativePreparationCustody {
     pub(crate) fn parked_updates(&self) -> watch::Receiver<bool> {
         self.parked_level.subscribe()
     }
+    pub(crate) fn quota_attention(&self) -> bool {
+        self.quota_unresolved.load(Ordering::SeqCst)
+    }
+    pub(super) fn report_unresolved_head(&self, cause: &anyhow::Error) {
+        self.quota_unresolved.store(true, Ordering::SeqCst);
+        eprintln!("rrx native preparation: legacy head unresolved: {cause:#}");
+        self.parked_level.send_replace(false);
+    }
     pub(super) async fn revocation(&self) {
         loop {
             let notified = self.revoked.notified();
@@ -332,6 +342,7 @@ impl NativePreparationCustody {
             }
         };
         drop(state);
+        self.quota_unresolved.store(false, Ordering::SeqCst);
         self.parked_level.send_replace(parked);
         Ok(())
     }
@@ -435,6 +446,7 @@ impl NativePreparationCustody {
             state: Mutex::new(CustodyState::default()),
             revoked: tokio::sync::Notify::new(),
             parked_level: watch::channel(false).0,
+            quota_unresolved: AtomicBool::new(false),
         })
     }
     pub(crate) fn matches_allocation(&self, allocation: &Arc<NativeAllocation>) -> bool {
