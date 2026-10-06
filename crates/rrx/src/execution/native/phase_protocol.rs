@@ -2,7 +2,10 @@
 //! path. Persisted DTOs cannot recreate these handles. This module does not make
 //! composition available; the Root marker/pair transaction remains required.
 use super::*;
-use crate::{execution::phase::NativeAllocation, state::managed_binding::{OriginalMarker, PhaseLaunchParts}};
+use crate::{
+    execution::phase::NativeAllocation,
+    state::managed_binding::{OriginalMarker, PhaseLaunchParts},
+};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Genuine registered owner. Only the actual Native module can issue it, after
@@ -159,8 +162,7 @@ impl NativePhaseSession {
         record_version: u64,
     ) -> Result<Arc<Self>> {
         ensure!(
-            launch.is_retained()
-                && Arc::ptr_eq(launch.marker().allocation(), launch.allocation()),
+            launch.is_retained() && Arc::ptr_eq(launch.marker().allocation(), launch.allocation()),
             "actual phase registration lost original retained launch"
         );
         let facts = launch.allocation().facts();
