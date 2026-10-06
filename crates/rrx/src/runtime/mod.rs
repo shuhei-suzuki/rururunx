@@ -21,6 +21,7 @@ pub struct Runtime {
     _drivers: Arc<driver::DriverRegistry>,
     phases: Arc<phase_supervisor::PhaseSupervisor>,
     phase_jobs: Arc<phase_jobs::PhaseJobs>,
+    phase_dispatcher: Arc<phase_supervisor::PhaseDispatcher>,
     phase_handoffs: Arc<phase_handoffs::PhaseHandoffs>,
     started: AtomicBool,
     running: Arc<AtomicBool>,
@@ -52,12 +53,22 @@ impl Runtime {
             config.scheduler.max_tasks_per_project,
             admission,
         );
+        let phase_jobs = Arc::new(phase_jobs::PhaseJobs::default());
+        let phase_dispatcher = phase_supervisor::PhaseDispatcher::new(
+            owner.clone(),
+            phases.clone(),
+            phase_jobs.clone(),
+            control_admission.clone(),
+            running.clone(),
+            stopping.clone(),
+        );
         Ok(Self {
             owner,
             config,
             _drivers: drivers,
             phases,
-            phase_jobs: Arc::new(phase_jobs::PhaseJobs::default()),
+            phase_jobs,
+            phase_dispatcher,
             phase_handoffs: Arc::new(phase_handoffs::PhaseHandoffs::default()),
             started: AtomicBool::new(false),
             running,

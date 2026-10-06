@@ -10,8 +10,9 @@ remain baseline descriptions, not acceptance of that proposal.
 
 The [managed Session binding requirements](../../requirements/issue-43-managed-binding-requirements.md)
 are a STRICT proposal connecting Issue43 to the current managed profile. The
-source baseline still binds through the ordinary Task-writing transaction; no
-record-only binder or genuine #19 allocation composition is claimed. Native
+private managed binder updates the Workflow record without changing Task
+version; its genuine Native allocation/input composition is unavailable. Ordinary
+legacy binding remains a separate path. Native
 Driver readiness remains an open gate until the actual private producers and
 sole binding consumer compose and pass their integration controls.
 
@@ -21,6 +22,16 @@ binder and retained supervision. Its STRICT component design is independently
 approved; production availability remains unimplemented. Its migration order is
 Verifier8 → actual Runtime9 → Binding10 → ReviewRound11; genuine Driver and
 source-successor consumers remain delivery gates.
+
+The Runtime retains an independent Source handoff before transferring its original
+allocation and preparation guard to the phase queue. One private dispatcher shares
+the Runtime's original queue, Native jobs and stop admission. The pre-offer Driver
+reservation holds only its Weak reference. After transfer releases Source locks
+and admission, the handoff saves the original marker plan before publication
+awaits admission. Exact marker publication retains the original Native job and
+known marker before the once-only selected launch. Observations remain nongrant:
+installed composition and full Native preparation are unavailable, so this internal
+connection does not yet expose an executable managed Agent or completed Task.
 
 The incremental [production gate integration](../production-workflow-gates-design.md)
 adds a concrete library port for real initial preparation, Implement terminal/result

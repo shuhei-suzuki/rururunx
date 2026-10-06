@@ -1,5 +1,7 @@
 //! Custody of the actual Source envelope; observations grant no Native authority.
-use super::phase_supervisor::{PendingPhaseCapacity, PendingReservationError, PhaseSupervisor};
+use super::phase_supervisor::{
+    PendingPhaseCapacity, PendingReservationError, PhaseDispatcher, PhaseSupervisor,
+};
 use crate::{
     adapter::native::NativePhasePort,
     domain::{ContextVersion, Record, Task, TaskId},
@@ -40,6 +42,8 @@ struct Assets {
     origin: Option<Arc<PhasePreparationOrigin>>,
     malformed_return: Option<Box<PendingReservationError>>,
     error: Option<anyhow::Error>,
+    marker_plan: Option<Arc<crate::state::managed_binding::MarkerPublicationPlan>>,
+    invocation: Option<super::phase_jobs::PhaseInvocation>,
 }
 
 /// Created only below, AFTER the concrete original Source take/reserve/accept.
@@ -126,7 +130,7 @@ struct IngressSlot {
 /// reference is Weak: another Task's marker can retain the whole Driver registry.
 struct PreOfferConsumer {
     owner: Arc<RuntimeOwner>,
-    phases: Weak<PhaseSupervisor>,
+    dispatcher: Weak<PhaseDispatcher>,
     selected: Weak<NativePhasePort>,
     control: Arc<tokio::sync::Mutex<()>>,
     running: Arc<AtomicBool>,
@@ -171,6 +175,7 @@ impl SourceHandoffObservation {
 struct Consumer {
     owner: Arc<RuntimeOwner>,
     phases: Arc<PhaseSupervisor>,
+    dispatcher: Arc<PhaseDispatcher>,
     control: Arc<tokio::sync::Mutex<()>>,
     running: Arc<AtomicBool>,
     stopping: Arc<AtomicBool>,
@@ -178,6 +183,62 @@ struct Consumer {
 impl Consumer {
     fn accepting(&self) -> bool {
         self.running.load(Ordering::SeqCst) && !self.stopping.load(Ordering::SeqCst)
+    }
+    async fn invoke(&self, handoff: &Handoff) -> Result<SourceHandoffState> {
+        // transfer returns only after its Source borrows and first admission end.
+        let state = self.transfer(handoff).await?;
+        if state != SourceHandoffState::Reserved {
+            return Ok(state);
+        }
+        let (allocation, origin) = {
+            let assets = handoff
+                .assets
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Source custody poisoned"))?;
+            let capacity = assets
+                .capacity
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("original Source capacity absent"))?;
+            let origin = assets
+                .origin
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("accepted Source origin absent"))?;
+            (capacity.allocation_arc().clone(), origin.clone())
+        };
+        // No Source/custody/queue/control guard spans readonly planning.
+        let plan = self.dispatcher.plan_original_marker(
+            allocation,
+            origin,
+            handoff.source.ticket().clone(),
+            handoff.source.workflow(),
+        )?;
+        let capacity = {
+            let mut assets = handoff
+                .assets
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Source custody poisoned"))?;
+            ensure!(
+                assets.marker_plan.is_none(),
+                "original Source marker plan already saved"
+            );
+            // Save before moving capacity and BEFORE publication admission await.
+            assets.marker_plan = Some(plan.clone());
+            assets
+                .capacity
+                .take()
+                .ok_or_else(|| anyhow::anyhow!("original Source capacity absent"))?
+        };
+        let invocation = self
+            .dispatcher
+            .publish_planned_marker(capacity, plan)
+            .await?;
+        // Preserve actual returned observation before any further fallible action.
+        handoff
+            .assets
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .invocation = Some(invocation);
+        Ok(state)
     }
     async fn transfer(&self, handoff: &Handoff) -> Result<SourceHandoffState> {
         let _admission = self.control.clone().lock_owned().await;
@@ -264,16 +325,18 @@ impl PreOfferConsumer {
             self.accepting(),
             "Runtime stopped before Source installation"
         );
-        let phases = self
-            .phases
+        let dispatcher = self
+            .dispatcher
             .upgrade()
-            .ok_or_else(|| anyhow::anyhow!("original phase supervisor ended"))?;
+            .ok_or_else(|| anyhow::anyhow!("original phase dispatcher ended"))?;
+        let phases = dispatcher.supervisor().clone();
         let selected = self
             .selected
             .upgrade()
             .ok_or_else(|| anyhow::anyhow!("original selected port ended"))?;
         ensure!(
-            phases.belongs_to(&self.owner)
+            dispatcher.belongs_to(&self.owner)
+                && phases.belongs_to(&self.owner)
                 && source.ticket().belongs_to_owner(&self.owner)
                 && Arc::ptr_eq(source.custody().selected_port(), &selected),
             "Source installation has different original components"
@@ -281,6 +344,7 @@ impl PreOfferConsumer {
         Ok(Consumer {
             owner: self.owner.clone(),
             phases,
+            dispatcher,
             control: self.control.clone(),
             running: self.running.clone(),
             stopping: self.stopping.clone(),
@@ -383,6 +447,8 @@ impl SourceHandoffReservation {
                 origin: None,
                 malformed_return: None,
                 error: None,
+                marker_plan: None,
+                invocation: None,
             }),
             changed: self.slot.changed.clone(),
         });
@@ -449,7 +515,7 @@ impl SourceHandoffReservation {
             handoff
                 .changed
                 .send_replace(SourceHandoffState::Transferring);
-            match consumer.transfer(&handoff).await {
+            match consumer.invoke(&handoff).await {
                 Ok(state) => {
                     handoff.changed.send_replace(state);
                 }
@@ -566,7 +632,7 @@ impl super::Runtime {
     fn source_consumer(&self, selected: &Arc<NativePhasePort>) -> PreOfferConsumer {
         PreOfferConsumer {
             owner: self.owner.clone(),
-            phases: Arc::downgrade(&self.phases),
+            dispatcher: Arc::downgrade(&self.phase_dispatcher),
             selected: Arc::downgrade(selected),
             control: self.control_admission.clone(),
             running: self.running.clone(),

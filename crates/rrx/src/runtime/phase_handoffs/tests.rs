@@ -26,6 +26,7 @@ async fn original_empty_reservation_does_not_retain_queue_or_jobs() {
     runtime.start().await.unwrap();
     let phases = Arc::downgrade(&runtime.phases);
     let jobs = Arc::downgrade(&runtime.phase_jobs);
+    let dispatcher = Arc::downgrade(&runtime.phase_dispatcher);
     let ingress = runtime.phase_handoffs.clone();
     // This actual constructor creates EMPTY bookkeeping; the test does not
     // claim the ticket-checked ingress/Source positive route was reached.
@@ -45,6 +46,10 @@ async fn original_empty_reservation_does_not_retain_queue_or_jobs() {
             .contains("Source handoff shutdown remains pending")
     );
     drop(runtime);
+    assert!(
+        dispatcher.upgrade().is_none(),
+        "EMPTY reservation retained actual dispatcher"
+    );
     assert!(
         phases.upgrade().is_none(),
         "EMPTY reservation retained actual supervisor"

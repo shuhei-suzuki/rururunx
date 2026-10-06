@@ -139,3 +139,34 @@ Native version/helper/profile/quota/transport, complete prepared input, sole
 normal/late binder, owned terminal/retirement, recovery and real Agent/four-Task/
 both-OS acceptance remain open. Connecting this actual callsite is progress
 toward those paths, not completion of the MVP or permission to merge.
+
+## 6. Impact analysis and implementation boundary
+
+`Runtime::new` creates the dispatcher from the same original objects. Existing
+`publish_phase_marker`, `reconcile_phase_marker`, `retain_marker_publication`
+and `rollback_marker_publication` delegate to it; pending reservation retains
+the existing Runtime wake path. The concrete Source invocation now calls the
+planner and saved-plan publisher after its transfer function returns. Handoff
+assets independently retain the original plan and returned job observation.
+
+Consumers are `runtime/phase_handoffs.rs`, `runtime/phase_supervisor.rs`, the
+Runtime constructor and the existing supervisor/ingress controls. The existing
+EMPTY graph control also checks the actual dispatcher lifetime. The master
+Workflow description records this internal connection and its unavailable
+installation boundary. No public API, SQL schema/guard, admission capability,
+threshold, environment variable, helper command, authentication or license
+changes are included. Capacity and backoff constants and selected Native ports
+remain the existing consumers. The new private dispatcher adds one shared Arc
+and does not add a polling loop or another database connection.
+
+Security self-check: Source input reaches the existing readonly marker planner,
+then the unchanged private exact marker transaction and actual selected job.
+The original managed actor/ticket may proceed only with original accepted Source,
+current Unit/Driver and stop admission. Another Task/owner/ticket, an ID-only
+caller, an unauthenticated external caller or an administrator label cannot
+produce these private originals or bypass the checks. The local CLI has no Web
+user/admin roles; those labels do not imply extra authority. Receipt/status/watch
+data never grant Native or Session/input permission. Current positive composition
+is unavailable, so this source-level analysis is not empirical security approval.
+UI/browser/STG verification is inapplicable to this internal backend-only change;
+authenticated CLI/both-OS qualification and regression remain open gates.

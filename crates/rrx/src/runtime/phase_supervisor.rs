@@ -624,7 +624,42 @@ impl Drop for PhaseSupervisor {
     }
 }
 
-impl super::Runtime {
+/// Actual marker dispatcher: original objects only, no Runtime or Driver backlink.
+pub(super) struct PhaseDispatcher {
+    owner: Arc<RuntimeOwner>,
+    phases: Arc<PhaseSupervisor>,
+    phase_jobs: Arc<super::phase_jobs::PhaseJobs>,
+    control_admission: Arc<tokio::sync::Mutex<()>>,
+    running: Arc<AtomicBool>,
+    stopping: Arc<AtomicBool>,
+}
+impl PhaseDispatcher {
+    pub(super) fn new(
+        owner: Arc<RuntimeOwner>,
+        phases: Arc<PhaseSupervisor>,
+        phase_jobs: Arc<super::phase_jobs::PhaseJobs>,
+        control_admission: Arc<tokio::sync::Mutex<()>>,
+        running: Arc<AtomicBool>,
+        stopping: Arc<AtomicBool>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            owner,
+            phases,
+            phase_jobs,
+            control_admission,
+            running,
+            stopping,
+        })
+    }
+    pub(super) fn supervisor(&self) -> &Arc<PhaseSupervisor> {
+        &self.phases
+    }
+    pub(super) fn belongs_to(&self, owner: &Arc<RuntimeOwner>) -> bool {
+        Arc::ptr_eq(&self.owner, owner) && self.phases.belongs_to(owner)
+    }
+    fn service_running(&self) -> bool {
+        self.running.load(Ordering::SeqCst) && !self.stopping.load(Ordering::SeqCst)
+    }
     /// One actual handoff from a retained known marker. This method does not
     /// resolve a new allocation, restart an old launch, or remove its custody.
     fn handoff_phase_marker(
@@ -773,24 +808,39 @@ impl super::Runtime {
             .confirm_retained_marker(&plan)?;
         self.handoff_phase_marker(retention, marker)
     }
-    /// Concrete production producer, still unreachable while the installation
-    /// issuer is unavailable. Planning finishes before control/Store admission.
-    pub(crate) async fn publish_phase_marker(
+    /// Plan from SAME accepted Source originals, without any queue/Store borrow.
+    pub(super) fn plan_original_marker(
         &self,
-        capacity: PendingPhaseCapacity,
+        allocation: Arc<NativeAllocation>,
+        origin: Arc<super::phase_handoffs::PhasePreparationOrigin>,
         ticket: Arc<crate::state::DriverReadTicket>,
         workflow: crate::domain::RecordId,
-    ) -> Result<super::phase_jobs::PhaseInvocation> {
-        // Actual accepted Source provenance must exist before marker planning
-        // or SQL effects. Bare queue capacity is not this private origin.
-        let origin = capacity.preparation_origin()?;
+    ) -> Result<Arc<crate::state::managed_binding::MarkerPublicationPlan>> {
+        ensure!(
+            origin.matches_allocation(&allocation),
+            "foreign Source allocation"
+        );
         origin.validate_ticket(&ticket)?;
         let plan = crate::state::managed_binding::plan_marker_publication(
             self.owner.clone(),
-            capacity.slot.allocation.clone(),
+            allocation,
             ticket,
             workflow,
         )?;
+        origin.validate_publication(&plan)?;
+        Ok(plan)
+    }
+    /// The actual Handoff independently saves this SAME plan BEFORE this await.
+    pub(super) async fn publish_planned_marker(
+        &self,
+        capacity: PendingPhaseCapacity,
+        plan: Arc<crate::state::managed_binding::MarkerPublicationPlan>,
+    ) -> Result<super::phase_jobs::PhaseInvocation> {
+        let origin = capacity.preparation_origin()?;
+        ensure!(
+            Arc::ptr_eq(capacity.allocation_arc(), plan.allocation()),
+            "marker plan has foreign capacity"
+        );
         origin.validate_publication(&plan)?;
         let _admission = self.control_admission.lock().await;
         ensure!(
@@ -877,6 +927,49 @@ impl super::Runtime {
             self.phases.remove_unmarked(&publication.capacity.slot)?;
         }
         Ok(publication.capacity)
+    }
+}
+
+impl super::Runtime {
+    pub(crate) async fn publish_phase_marker(
+        &self,
+        capacity: PendingPhaseCapacity,
+        ticket: Arc<crate::state::DriverReadTicket>,
+        workflow: crate::domain::RecordId,
+    ) -> Result<super::phase_jobs::PhaseInvocation> {
+        let plan = self.phase_dispatcher.plan_original_marker(
+            capacity.allocation_arc().clone(),
+            capacity.preparation_origin()?,
+            ticket,
+            workflow,
+        )?;
+        self.phase_dispatcher
+            .publish_planned_marker(capacity, plan)
+            .await
+    }
+    pub(crate) async fn reconcile_phase_marker(
+        &self,
+        operation: OperationId,
+    ) -> Result<super::phase_jobs::PhaseInvocation> {
+        self.phase_dispatcher
+            .reconcile_phase_marker(operation)
+            .await
+    }
+    pub(crate) async fn retain_marker_publication(
+        &self,
+        capacity: PendingPhaseCapacity,
+    ) -> Result<MarkerPublicationRetention> {
+        self.phase_dispatcher
+            .retain_marker_publication(capacity)
+            .await
+    }
+    pub(crate) async fn rollback_marker_publication(
+        &self,
+        publication: MarkerPublicationRetention,
+    ) -> Result<PendingPhaseCapacity> {
+        self.phase_dispatcher
+            .rollback_marker_publication(publication)
+            .await
     }
     /// Genuine retained queue admission only. Native-ready Driver/marker is absent.
     pub(crate) async fn reserve_pending_phase(
