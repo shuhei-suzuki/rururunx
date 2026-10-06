@@ -11,10 +11,9 @@ const UNIT_CAS: &str = "SELECT EXISTS(SELECT 1 FROM execution_units WHERE id IS 
 struct LatestUnitImage {
     values: Vec<SqlValue>,
 }
-impl LatestUnitImage {
-    fn read(tx: &Transaction<'_>, original: &ExecutionUnit) -> Result<Self> {
-        // First qualify types and all copied byte lengths before text copying.
-        let columns = UNIT_COLUMNS.split(',').enumerate().map(|(index, column)| {
+// Fixed physical column vocabulary only; no caller SQL or grant is accepted.
+fn unit_projection() -> Vec<String> {
+    UNIT_COLUMNS.split(',').enumerate().map(|(index, column)| {
             if (5..=9).contains(&index) {
                 format!("CASE WHEN typeof({column})='integer' THEN {column} END")
             } else {
@@ -24,7 +23,12 @@ impl LatestUnitImage {
                 let invalid = if index == 11 { " WHEN branch IS NULL THEN NULL ELSE X'00'" } else { "" };
                 format!("CASE WHEN typeof({column})='text' AND length(CAST({column} AS BLOB))<={limit} THEN {column}{invalid} END")
             }
-        }).collect::<Vec<_>>().join(",");
+    }).collect()
+}
+impl LatestUnitImage {
+    fn read(tx: &Transaction<'_>, original: &ExecutionUnit) -> Result<Self> {
+        // First qualify types and all copied byte lengths before text copying.
+        let columns = unit_projection().join(",");
         let mut statement = tx.prepare(&format!(
             "SELECT {columns} FROM execution_units WHERE id=?1"
         ))?;
@@ -281,6 +285,40 @@ mod tests {
         };
         copied.values[12] = SqlValue::Text(format!("{{\"id\":\"{}\",{}", original.id, &body[1..]));
         assert!(copied.validate_original(&original).is_err());
+    }
+    #[test]
+    fn nongrant_closure_sql_nullable_projection_distinguishes_invalid_values() {
+        // Readonly scalar SQL only. This executes the production expression,
+        // without an execution_units table, Unit CAS or actor-chain fixture.
+        let connection = Connection::open_in_memory().unwrap();
+        let projection = unit_projection();
+        assert_eq!(projection.len(), 13);
+        let sql = format!(
+            "WITH scalar_branch(branch) AS (SELECT ?1) SELECT {} FROM scalar_branch",
+            projection[11]
+        );
+        for (input, expected) in [
+            (SqlValue::Null, SqlValue::Null),
+            (
+                SqlValue::Text("branch".into()),
+                SqlValue::Text("branch".into()),
+            ),
+            (
+                SqlValue::Text("x".repeat(4096)),
+                SqlValue::Text("x".repeat(4096)),
+            ),
+            (SqlValue::Text("x".repeat(4097)), SqlValue::Blob(vec![0])),
+            (SqlValue::Integer(1), SqlValue::Blob(vec![0])),
+            (SqlValue::Blob(vec![1]), SqlValue::Blob(vec![0])),
+        ] {
+            let actual: SqlValue = connection
+                .query_row(&sql, params![input], |row| row.get(0))
+                .unwrap();
+            assert_eq!(
+                actual, expected,
+                "invalid non-NULL projection must remain distinguishable from NULL"
+            );
+        }
     }
 }
 
