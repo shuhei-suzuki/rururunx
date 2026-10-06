@@ -219,6 +219,77 @@ fn qualify_tree(
     Ok(())
 }
 
+pub(super) fn namespace_actions(
+    actor: &Arc<NativePreparationActor>,
+) -> Result<Vec<NativePhaseHelperAction>> {
+    use NativePhaseHelperAction as A;
+    let marker = actor.launch().marker().original_plan();
+    let project = marker.project().0;
+    let task = marker.task_after().0;
+    let unit = actor.launch().allocation().unit_snapshot();
+    let (common, mut roots): (PathBuf, Vec<String>) =
+        serde_json::from_str(&project.repository_identity)?;
+    roots.sort();
+    ensure!(
+        project.root.canonicalize()? == project.root
+            && common.is_absolute()
+            && common.canonicalize()? == common
+            && !roots.is_empty()
+            && roots.iter().all(|r| super::super::valid_oid(r))
+            && roots.len() <= 128,
+        "original Project repository namespace unavailable"
+    );
+    // Reuse the original ownership policy with expected immutable facts before
+    // any effects; each fact is then checked against an authentic Git capture.
+    crate::git::validate_worktree_ownership(
+        project,
+        task,
+        crate::git::WorktreeOwnershipFacts {
+            source_top: project.root.clone(),
+            source_git_dir: common.clone(),
+            source_common: common.clone(),
+            source_roots: roots.clone(),
+            task_top: unit.worktree.clone(),
+            task_common: common.clone(),
+            branch: unit.branch.clone().context("original Task branch absent")?,
+            revision: unit.base_sha.clone(),
+        },
+    )?;
+    Ok(vec![
+        A::SourceTop {
+            expected: project.root.clone(),
+        },
+        A::SourceGitDir {
+            expected: common.clone(),
+        },
+        A::SourceCommon {
+            expected: common.clone(),
+        },
+        A::SourceRoots {
+            revision: unit.base_sha.clone(),
+            expected: roots,
+        },
+        A::TaskTop {
+            expected: unit.worktree.clone(),
+        },
+        A::TaskCommon { expected: common },
+        A::Branch {
+            expected: unit.branch.clone().context("original Task branch absent")?,
+        },
+    ])
+}
+impl NativePhaseHelperAction {
+    pub(super) fn cwd<'a>(&self, actor: &'a Arc<NativePreparationActor>) -> &'a Path {
+        match self {
+            Self::SourceTop { .. }
+            | Self::SourceGitDir { .. }
+            | Self::SourceCommon { .. }
+            | Self::SourceRoots { .. } => &actor.launch().marker().original_plan().project().0.root,
+            _ => &actor.launch().allocation().unit_snapshot().worktree,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,76 +385,5 @@ mod tests {
             crate::execution::workflow_source::parse_committed_tree(b"100644 blob a 3\tbad\xff\0")
                 .is_err()
         );
-    }
-}
-
-pub(super) fn namespace_actions(
-    actor: &Arc<NativePreparationActor>,
-) -> Result<Vec<NativePhaseHelperAction>> {
-    use NativePhaseHelperAction as A;
-    let marker = actor.launch().marker().original_plan();
-    let project = marker.project().0;
-    let task = marker.task_after().0;
-    let unit = actor.launch().allocation().unit_snapshot();
-    let (common, mut roots): (PathBuf, Vec<String>) =
-        serde_json::from_str(&project.repository_identity)?;
-    roots.sort();
-    ensure!(
-        project.root.canonicalize()? == project.root
-            && common.is_absolute()
-            && common.canonicalize()? == common
-            && !roots.is_empty()
-            && roots.iter().all(|r| super::super::valid_oid(r))
-            && roots.len() <= 128,
-        "original Project repository namespace unavailable"
-    );
-    // Reuse the original ownership policy with expected immutable facts before
-    // any effects; each fact is then checked against an authentic Git capture.
-    crate::git::validate_worktree_ownership(
-        project,
-        task,
-        crate::git::WorktreeOwnershipFacts {
-            source_top: project.root.clone(),
-            source_git_dir: common.clone(),
-            source_common: common.clone(),
-            source_roots: roots.clone(),
-            task_top: unit.worktree.clone(),
-            task_common: common.clone(),
-            branch: unit.branch.clone().context("original Task branch absent")?,
-            revision: unit.base_sha.clone(),
-        },
-    )?;
-    Ok(vec![
-        A::SourceTop {
-            expected: project.root.clone(),
-        },
-        A::SourceGitDir {
-            expected: common.clone(),
-        },
-        A::SourceCommon {
-            expected: common.clone(),
-        },
-        A::SourceRoots {
-            revision: unit.base_sha.clone(),
-            expected: roots,
-        },
-        A::TaskTop {
-            expected: unit.worktree.clone(),
-        },
-        A::TaskCommon { expected: common },
-        A::Branch {
-            expected: unit.branch.clone().context("original Task branch absent")?,
-        },
-    ])
-}
-impl NativePhaseHelperAction {
-    pub(super) fn cwd<'a>(&self, actor: &'a Arc<NativePreparationActor>) -> &'a Path {
-        match self {
-            Self::SourceTop { .. }
-            | Self::SourceGitDir { .. }
-            | Self::SourceCommon { .. }
-            | Self::SourceRoots { .. } => &actor.launch().marker().original_plan().project().0.root,
-            _ => &actor.launch().allocation().unit_snapshot().worktree,
-        }
     }
 }

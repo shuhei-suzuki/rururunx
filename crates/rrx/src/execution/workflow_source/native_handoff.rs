@@ -199,32 +199,6 @@ impl SourceNativeCustody {
     }
 }
 
-#[cfg(test)]
-mod seal_identity_tests {
-    use super::*;
-    #[test]
-    fn nongrant_seal_scalar_original_operation_pair_and_full_encoded_bytes() {
-        let operation = OperationId::new();
-        let pair = uuid::Uuid::new_v4();
-        let original = (
-            operation,
-            pair,
-            b"original exact encoded Context/template/pins".as_slice(),
-        );
-        validate_seal_identity(original, original).unwrap();
-        for changed in [
-            (OperationId::new(), pair, original.2),
-            (operation, uuid::Uuid::new_v4(), original.2),
-            (operation, pair, b"row-equal replacement payload".as_slice()),
-            (operation, pair, &original.2[..original.2.len() - 1]),
-        ] {
-            assert!(
-                validate_seal_identity(changed, original).is_err(),
-                "original seal facts must refuse substitution"
-            );
-        }
-    }
-}
 impl SourceNativeOrigin {
     pub(crate) fn lock_transfer<'a>(
         &'a self,
@@ -546,5 +520,32 @@ impl ManagedWorkflowSources {
             ticket,
             workflow: record.id,
         })
+    }
+}
+
+#[cfg(test)]
+mod seal_identity_tests {
+    use super::*;
+    #[test]
+    fn nongrant_seal_scalar_original_operation_pair_and_full_encoded_bytes() {
+        let operation = OperationId::new();
+        let pair = uuid::Uuid::new_v4();
+        let original = (
+            operation,
+            pair,
+            b"original exact encoded Context/template/pins".as_slice(),
+        );
+        validate_seal_identity(original, original).unwrap();
+        for changed in [
+            (OperationId::new(), pair, original.2),
+            (operation, uuid::Uuid::new_v4(), original.2),
+            (operation, pair, b"row-equal replacement payload".as_slice()),
+            (operation, pair, &original.2[..original.2.len() - 1]),
+        ] {
+            assert!(
+                validate_seal_identity(changed, original).is_err(),
+                "original seal facts must refuse substitution"
+            );
+        }
     }
 }

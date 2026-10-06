@@ -425,6 +425,8 @@ impl NativeSessions {
         // The existing owned-proof exception explicitly admits only the
         // version effect. Marked Git intent/spawn and private Prepared issuance
         // remain unreachable until their exact contract amendment is approved.
-        anyhow::bail!("original Native version observation retained; marked readonly Git effect contract amendment unavailable")
+        anyhow::bail!(
+            "original Native version observation retained; marked readonly Git effect contract amendment unavailable"
+        )
     }
 }
