@@ -25,6 +25,21 @@ prerequisite for publishing an adapter implementation checkpoint.
 Source: [Issue 6](https://github.com/shuhei-suzuki/rururunx/issues/6),
 product requirements and master Agent Adapter design.
 
+## Execution Domain normalization (#75)
+
+Provider-neutral workload ownership, containment profiles, revocation and cleanup settlement are now governed by [Issue 75 requirements](issue-75-requirements.md) and the [Execution Domain master design](../design/master/execution-domain.md).
+
+The detailed F1 material in this document remains binding for **Codex-specific** reachable-command inventory, native identity/effective-input binding, authentication/policy compatibility, protocol/session behavior and installed Codex conformance. Where it restates generic workload-lifetime rules, interpret it through #75 rather than as an independent weaker ownership system.
+
+In particular:
+
+- Codex receives an exact private Execution Domain permit before external execution; it does not create runtime ownership from PID/PGID/SID/native UUID evidence.
+- Linux Strong containment is implemented/qualified by #76; macOS Strong by #77.
+- Host-native selected ProcessGroup/inspection paths are Native/Compatibility evidence unless the applicable Strong backend is independently qualified.
+- Persistent external execution uses #78 and cannot be settled from native parent/group death.
+- #14 owns recovery of exact persisted Domain/delegation identities and #60 owns shared-effect compatibility.
+- Existing Codex evidence does not retroactively upgrade any capability to Strong.
+
 Current partial Stage A component availability is **EMPTY**. Ordinary launch,
 resume, checkpoint, attach and approval paths refuse before new effects; there is
 no ready workload backend or dispatch producer. The scoped source checkpoint may
