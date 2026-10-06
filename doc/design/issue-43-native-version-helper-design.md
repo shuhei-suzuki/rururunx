@@ -6,8 +6,16 @@ This is a proposed, STRICT implementation supplement to
 `issue-43-native-preparation-integration-design.md`, including its original
 custody and transport amendments. It does not replace the complete Binding
 contract or enable Native availability. Production implementation of this
-increment waits for independent design review and the ordered migration decision
-in §7. There is no authenticated CLI, four-Task, OS or process-death qualification.
+increment waits for independent design review and actual producer source review.
+There is no authenticated CLI, four-Task, OS or process-death qualification.
+
+This revision explicitly supersedes only frozen `b130e1ec735925dc1da0c1871229894cfdd6dfa2`
+§6's blanket exact-image `managed_effects` guards and §7's consequent new-migration
+prerequisite, including references to those obligations in §4/§8. It uses existing10
+with genuine owned proof and strict original inventory/CAS. All installed10 guards,
+private owner/input/Session/binder rules, complete #19-equivalent preparation,
+permissions, Task-version invariants and static preflight remain mandatory.
+The original HOW and its closed design reviews remain historical evidence.
 
 The source baseline is `10a4af99ee788dee6cf5e4065be986934559cfd6`:
 actual Root jobs create EMPTY custody before marker/start; actual selected Native
@@ -135,13 +143,36 @@ Unit/epoch/generation, profile/command digest and that exact helper ID. These
 fields are indexes/facts, never Native authority. Body ceiling is8 KiB. No raw
 environment or arbitrary stdout/stderr is included.
 
-Reserve exactly one pending `managed_effects` image under a private exact-image
-permit and same actual admission. Recheck complete original images and absence
+Reserve exactly one pending `managed_effects` image through this actual private
+producer and same actual admission, using existing10 SQL and writer guards.
+No effect-table permit, DDL or generic-authority exemption is added. Recheck
+complete original images and absence
 of the SAME helper ID/idempotency identity; commit before process creation.
 Task, Workflow, Context, Driver, Source, Session, input, owner and readiness stay
 unchanged. Count this helper once, never rotate IDs on an error. The full HOW's
 ≤32 helper-intents-per-original-operation ceiling remains; this increment permits
 one version intent only. Bounded reads use a sentinel, not unrestricted COUNT.
+
+The original plan saves a complete indexed Unit effect inventory, not just pending
+rows or selected receipt fields. A two-pass coherent read accepts at most256 rows,
+each complete body≤8 KiB and total encoded bodies≤2 MiB; a257th row or oversized
+body refuses before extraction/effects. Compare every indexed column, exact body,
+ID/idempotency identity and scope; reject index/body disagreement or duplicates.
+Existing original Source preparation may have recorded Git helpers. Their rows
+are nongrant bookkeeping beside the genuine accepted Source seal, not a substitute
+for that provenance. Accept only its finite pre-Session Git-helper baseline with
+confirmed/resolved state and the one actual new version intent; unexpected kinds,
+new IDs or unresolved baseline effects are Held even if another row says confirmed.
+This increment admits no delegated action. The baseline cannot supply the new
+version observation or prove that a missing child/dispatch was never created.
+
+The pre-intent baseline must leave room for the one helper: at most255 rows;
+the full expected post-intent set has at most256. The intent transaction checks
+that complete SAME saved baseline set and inserts
+the planned helper. Every subsequent private fence/settlement/continuation checks
+the corresponding exact expected set, including its pending or known settled
+helper image. No current-row refresh repairs drift. This preserves the original
+inventory across preparation while allowing unrelated Tasks' journals to change.
 
 ## 5. Raw child, capture and settlement
 
@@ -182,62 +213,94 @@ parsers are retained: Codex's exact `codex-cli 0.160.0` and Claude's local
 Unsupported version or malformed/overflow output is not a prepared proof.
 
 Only a SAME saved owned observation can plan pending→confirmed/unknown receipt
-CAS; strict complete body/version/index/operation checks are mandatory. Persistence
+CAS; strict complete body/version/index/operation and whole inventory checks are
+mandatory. The privately retained settlement plan fixes exact pre/post images and
+uses checked version advancement. Both normal write and uncertain-commit confirmation
+require that SAME plan/observation, original intent identity and exact indexed
+inventory; missing/mixed/unexpected images remain Held. A current confirmed receipt
+alone cannot issue settlement or repair a conflict. Persistence
 error cannot discard known exit or version, and receipt rows cannot recreate it.
 Unknown capture/creation remains Held. Complete physical collection never grants
 logical settlement or releases the preparation gate. No Task result or Workflow
 opinion is written, and no quota/native-input/Session/start continuation is admitted.
 
-## 6. All effect writers and nongrant closure
+## 6. Owned proof, compatible journal interference and nongrant closure
 
-Protect ALL `managed_effects` images for a Unit associated with a managed phase,
-not only the new kind/profile. Exact guards cover OLD and NEW Unit associations,
-prevent reclassification/move/delete/REPLACE bypass, and accept only compiled
-private image permits. Add the closed compiled column slice for this table; no
-public table selector, raw permission callback or generic effect exception.
+No blanket `managed_effects` exact-image SQL guards are introduced. Existing10
+keeps its existing version guards and private Binding protections unchanged.
+The new helper's intent/observation/settlement ports are private actual producers;
+their complete image/set CAS is mandatory even though the table permits other
+compatible journal writers. No public selector, optional authority mode, raw
+permission callback or generic marked-scope authorization is added.
 
-| Actual writer | Required protected behavior |
+| Actual writer or consumer | Required behavior in this increment |
 | --- | --- |
-| `effects.rs` generic reserve/reserve_effect_tx/native-input callers | Refuse; separate genuine private helper/input producer needed |
-| generic reconcile and `owner::HelperGuard` Drop | Refuse protected writes; original helper observation/abandonment port only |
-| `effects::fence_epoch_effects` | Bounded exact nongrant pending→unknown plans during actual epoch fencing, no row-to-owner restore or grant |
-| `cleanup.rs` delegated/cleanup insertion and reconciliation | Qualified exact nongrant cleanup intent/receipt ports; no effect-profile exemption |
-| `verification.rs` command/abandonment writers | Existing actual private verifier proof plus exact protected receipt permits; otherwise refuse |
-| `artifacts.rs` retained Git intents/receipts | Existing private retained-read or Source provenance plus exact permits; otherwise refuse |
-| future Native input/ACK/terminal writers | Genuine consumed pair and owned actor/terminal plus exact image permissions; current generic paths stay refused |
+| Generic reserve/helper/native-input paths | Existing marked Driver/Native authority refusals remain; no route through generic validation is enabled |
+| Generic reconcile or `owner::HelperGuard` Drop | Their existing journal writes do not mint an owned observation; any changed expected image/set causes private CAS conflict/Held; this helper never installs the generic guard |
+| Actual epoch fencing | Existing pending→unknown/version advance remains nongrant; original epoch/current/Driver/readiness failure stops eligibility, retains actual observations and never reconstructs/replays an actor |
+| Cleanup intents/receipts | Existing closed-Unit/current cleanup claim protects hygiene; receipt state cannot close Native permission or manufacture a helper/absence/Session/result proof |
+| Verifier and retained Git writers | Keep their own private grant/provenance and existing guards; a foreign or unexpected same-Unit effect is not this helper's owned observation and makes its inventory conflict/Held |
+| Later Native prepared/registration/input/ACK/terminal consumers | SAME actual owned helper evidence and exact original expected inventory are mandatory added conjuncts; existing genuine owner/input/ACK/terminal and protected-table permissions remain mandatory; rows alone never supply them |
 
-All complete plans/encoding happen outside SharedStore. Epoch/cleanup factual
-closure may operate after normal actor/Driver revocation, but validates exact
-original indexed effects and latest Unit/epoch/cleanup relation, writes only
-nongrant facts and cannot certify a version, input, owner, success or absence.
-Such allowance is distinct from new open preparation permission. Until every
-actual affected writer has an approved concrete port, the changed contract
-cannot be installed/enabled merely because version-probe tests pass.
+For example, generic `reconcile_managed_effect` can change this Pending1 row to
+Confirmed2 with an apparent exit/version receipt. The actual helper must not skip
+capture, replay or qualify from that row. Its actual capture remains independently
+owned; settlement of its saved Pending1 preimage conflicts and stays Held. After
+genuine settlement, a generic version3 update likewise conflicts with the saved
+postimage at the next private consumer. Delete/replace/index/body drift also
+refuses; version or state alone is insufficient. Supported API version advances
+cannot restore an original image. No current-row replanning hides interference.
 
-## 7. Ordered migration dependency
+An exact known-postimage confirmation is factual only when the independently
+retained SAME original plan and actual owned observation already exist. It is
+not a constructor from SQL. Future NoCurrentDispatch/parking must additionally
+use the complete actual helper-attempt manifest and actual outcomes, not just a
+query showing no pending/unknown rows. Unexpected confirmed delegated effects
+cannot prove absence or permit a new dispatch. This version-only increment
+produces neither NoCurrentDispatch nor full prepared input.
 
-Baseline `state::SCHEMA_VERSION` is10. `managed_effects` currently has ordinary
-writer-version guards but no Binding exact-image guard/slice. Its generic
-`reconcile_managed_effect` can update by ID/version without a protected-scope
-check. Consequently this stage requires a fresh ordered migration and cached
-old-writer defense; changing established10 DDL is forbidden.
+The existing journal remains weaker than a sole-writer immutable log. A compatible
+writer can alter diagnostic receipts, produce conflicts and delay progress; this
+design prevents such receipts from supplying Native authority, not every journal
+update. SQLite and child creation are not atomic: a journal writer may race after
+the last check and a genuinely already-admitted single helper may run. The actual
+original intent/one-shot creation state remains its cause; the raced row never
+authorizes another spawn, registration or input. Subsequent exact consumers
+detect drift/Held. Intentional same-user SQL mutate-and-restore is outside the
+cooperative accident model; rururunx is not a security sandbox.
 
-The existing reservation is **Verifier8 → Runtime9 → Binding10 → ReviewRound11**,
-in the approved Binding design§1 (`2e364bb792d23de365ad5e727356c874db9bf560`,
-design-approval checkpoint) and `master/workflow-engine.md:22`. Root coordination
-also assigns active Review implementation authorship to C; that coordination is
-not proof that schema11 is installed or implemented. The Root schema owner must
-allocate the actual next migration and adjust any uninstalled reservation before
-production work. This document assigns no number and silently installs nothing.
+All full plans/encoding remain outside SharedStore. Terminal/cancel/epoch cleanup
+does not need open preparation authority to record nongrant facts, but may not
+convert Unknown into an owned success, discard known exit or reopen the actor.
+Both Unit permission flags/currentness and actual retained ownership remain
+separate from journal state. Best-effort cleanup does not certify child/descendant
+death or logically settled work. Existing restart/closure defects, if found, keep
+their own gates; this increment does not claim to repair or qualify all of them.
 
-Migration must boundedly qualify existing effects, roll back malformed/oversize
-inventories without repair, compose every existing guard and qualify current
-layout without recreating it. Formal matrix includes preopened/cache-compiled
-actual10 writer, new-open actual10, new writer on previous/current/future layout,
-and protected INSERT/UPDATE/DELETE/REPLACE attempts. Cached old10 writes must fail
-before effects under the new version; a new binary's simulated number is not that
-control. Actual migration allocation/all-writer closure are engineering dependencies,
-not a request to weaken authority or a claim of human approval.
+## 7. Existing10 compatibility and evidence boundary
+
+Baseline `state::SCHEMA_VERSION` is10. This increment changes neither schema,
+layout fingerprint, trigger/permit slices nor writer-contract registration. It
+uses existing effect columns with bounded producer-generated values. No11
+allocation or all-writer conversion is required for this narrower owned-proof
+contract. A future journal-integrity/new-layout feature would need its own ordered
+migration and actual cached-writer matrix; it is not silently delivered here.
+
+The uninstalled reservation **Verifier8 → Runtime9 → Binding10 → ReviewRound11**
+remains as recorded in approved Binding design§1
+(`2e364bb792d23de365ad5e727356c874db9bf560`) and `master/workflow-engine.md:22`.
+No installed or implemented Review11 is inferred, and this helper does not consume
+that reservation or depend on future Review authority.
+
+An actual cached or newly opened old10 writer remains compatible with existing10;
+do not claim its permitted effect journaling is rejected by a new schema fence.
+Its changed row/set must instead conflict at the new private actual helper
+consumer, with original observation retained and no input/prepared/Session proof.
+Existing old9/newer-version rejection, Binding exact owner/input/Workflow/Session/
+Driver/Source/audit guards and Task-version immutability remain unchanged and
+must continue to hold. A new binary with a simulated old version is not evidence
+about actual old10 behavior. Actual compiled old10 interference controls qualify
+this narrower boundary, not journal immutability or new migration readiness.
 
 ## 8. Verification gates and remaining work
 
@@ -253,8 +316,17 @@ known intent and spawn; error after raw-child creation before PID/pipes/reader;
 unpolled capture task/future Drop; bounded overflow/no-terminal/held-pipe timeout;
 known exit before optional Store fault; SAME original intent/observation retry;
 stale epoch/Unit/source/ticket/readiness/owner refusal; Task/version unchanged;
-other Task's helper continues; all-writer and actual-old10 matrix above. Compiled
-mutations must fail intended runtime assertions, not compile/setup failures.
+other Task's helper continues. Actual generic reconciliation must change the
+pending image before capture and the settled image before the next private
+consumer: each conflicts/Held without a second child or fabricated qualification.
+Exercise missing/replaced/foreign/index-mismatched/oversized rows, extra confirmed
+same-Unit effects, complete inventory boundary255→256/257 and actual compatible
+cached/new-open old10 journal interference. Protected owner/input/Session/Workflow/
+Driver/Source and old9/newer-version negative controls remain separate gates.
+Compiled omissions of actual owned-observation dependency, original full set/CAS,
+saved postimage, epoch/current/Driver/source/pair or one-shot spawn checks must
+fail intended consumer assertions. Compile/setup failures do not count as
+mutation kills.
 
 This component leaves generic authority refused and global composition issuer
 unavailable until genuine full prepared-input, remaining Git/hooks/quota/transport,
