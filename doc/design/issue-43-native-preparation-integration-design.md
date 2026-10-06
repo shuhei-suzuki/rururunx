@@ -131,9 +131,14 @@ later increments; this first stage does not enable them or native availability.
 The actor is issued only within actual `NativeSessions::start_phase`, from the
 same selected installed port and retained launch, never a public DTO. Its private
 fields retain `Arc<PhaseLaunchParts>`, the actual same-Unit
-`OwnedMutexGuard<()>` start gate and original complete bounded input bytes. It is
+start gate (an owned guard in a private one-time-release cell) and original
+complete bounded input bytes. It is
 non-Clone/non-Deserialize; Arcs share this same real actor, not a replacement.
 The input-byte copy is nongrant immutable captured content, not regenerated pins.
+The actor never strongly owns its saved plan or preparation custody. The real
+Root job owns the independently retained custody described in §3.2 before the
+start future exists; the actual Native producer installs its SAME actor/plan
+there before the first Immediate.
 
 ```rust
 // Native constructors stay private to actual selected start.
@@ -194,11 +199,113 @@ source origin, current/Driver-live and every original factual owner/Unit/input/
 epoch/generation/lifecycle/pin/lock predicate. Only readiness changes from exact
 allocated to preparing. Task/W/Context/Driver/Source/input/owner/effect rows stay
 unchanged. Its known commit is no helper dispatch permission or prepared-input
-completion proof. The actual actor retains the original plan on uncertainty and
-accepts only its exact original known-commit reconciliation, never a row-to-actor
+completion proof. Independent preparation custody retains the SAME actor and
+original plan on uncertainty and accepts only that exact original known-commit
+reconciliation, never a row-to-actor
 constructor. Actual registered/prepared and helper observations remain mandatory
 for the later consumers. Generic authority and public protected-scope refusals
 are unchanged; no shared public access mode is added by this stage.
+
+### 3.2 Independent preparation custody and gate release
+
+The literal actor→saved-plan→actor graph is forbidden. The concrete graph is:
+
+```text
+actual Runtime PhaseJobs entry -> actual JobState -> NativePreparationCustody
+    -> SAME NativePreparationActor -> SAME PhaseLaunchParts/original allocation
+    -> SAME NativePreparationPlan -> SAME NativePreparationActor
+    -> known-commit observation -> SAME original plan
+NativePreparationActor -Weak-> custody (only an exact-original observation)
+NativeSessions preparation index -Weak-> custody
+```
+
+Plan retains the SAME actor strongly; the actor holds no strong plan/custody/
+registry/Root job reference. Custody holds actor and original plan as siblings.
+Neither custody nor plan owns NativeSessions/NativeAdapter, Runtime, the outer
+PhaseJobs registry or its JoinHandle. The launch and marker still retain their
+genuine original objects; the native index must be Weak so it does not return
+through marker→Driver worker→Engine→NativeSessions. This removes this local
+return edge, not a proof that every existing ownership graph is cycle-free.
+
+Root's real PhaseJobs reservation preallocates a concrete EMPTY
+`NativePreparationCustody` for its SAME original allocation and stores its Arc
+in actual JobState BEFORE constructing/spawning the selected start future.
+Empty contains no actor, plan, prepared completion or permission. It is not a
+Native owner factory. The specific private selected-vtable start port receives
+this SAME custody with the genuine launch; it verifies pointer-identical
+original allocation/job retention, selected port/session and actual Root source
+origin. This is an extension of the real PhaseJobs/Native start consumer, not a
+generic arbitrary future/proof callback. Existing launch+error/outcome alone is
+explicitly insufficient and cannot be used as an interim implementation.
+
+The coordinated private signature change is
+`NativePhasePort::start_phase(PhaseLaunch, Arc<NativePreparationCustody>)` and
+the same actual NativeSessions start port. Root's actual reserve creates the
+nongrant empty cell from its authentic `Arc<NativeAllocation>`; Native alone can
+install the private actor and qualified plan. Root stores this exact Arc before
+its existing eager RunningJob guard/task spawn. Neither empty-cell construction
+nor a public observation calls a proof factory; IDs cannot construct allocation.
+Source/marker/admission predicates are still mandatory before any stage effect.
+
+Actual Native start acquires the same-Unit start gate and constructs its private
+actor, then installs that SAME Arc in custody before any readiness transaction.
+The selected owner's separate bounded snapshot makes the plan outside custody/
+Store locks. A short custody lock installs that SAME original plan exactly once
+before admission or first Immediate; it never spans planning, hashing, SQL or
+await. Duplicate installation checks exact actor/plan pointers. The actual start
+observes this stored original plan; no actor method caches a strong plan.
+
+The eager original-operation abandonment guard is constructed before the start
+future/first poll. Caller Drop, future abort, returned NativePhaseStartError,
+Engine timeout and failed status delivery mark this actual custody Held but do
+not dispose actor/plan or automatically retire its Unit/gate. Runtime observer
+access is nongrant and cannot construct a new actor or start from IDs. Native's
+Weak index can only upgrade its SAME original custody; losing the actual strong
+custodian is a visible unsupported/held state, never a current-row fallback.
+Cooperative Runtime shutdown reports pending and keeps Held entries. Final
+Runtime Drop performs trusted revocation; a still-live independently owned job
+holds the SAME inner custody, not the outer registry or handle. If all actual
+custodians/executor end, final Drop performs nongrant abandonment and preserves
+factual held/uncertain state where storage permits; it does not falsely promise
+memory survival after every owner or process dies. Restart cannot reconstruct an
+actor/plan from those rows or treat OS mutex release as logical settlement.
+No graph or gate behavior is certified until these genuine consumers exist.
+
+Custody has finite current slots: actor, one original plan and one exact
+known-commit observation, plus bounded state/reason; no notification history or
+replacement plan list. At most128 actual preparation entries are retained,
+including Held entries, matching the actual bounded PhaseJobs policy. Fullness
+refuses before start/preparation and never evicts an armed original. Root/Natives
+must coordinate that real storage/type/signature change before implementing this
+first increment. A local Arc or merely adding Weak to the plan is insufficient.
+
+Known-commit reconciliation retains the original actor, plan and exact before/
+after readiness/pair/current images, then uses the reviewed original-plan
+transaction protocol. Only that original known commit or exact original sealed
+postimage confirmation can record `NativePreparationCommit`; exact rollback/
+absence permits only an original eligible retry. Mixed images, foreign suffix,
+stale originals or unknown commit stay Held. A same-ID row, generic Store error,
+empty child cell or missing Session never recreates the plan/commit or proves
+NoCurrentDispatch. At most one exact reconciliation attempt is made per due wake
+with capped backoff; original assets are not overwritten on an error.
+
+The same-Unit gate is released only by a concrete authenticated local transition:
+
+| Actual private transition | Gate/custody handling |
+| --- | --- |
+| Readiness known commit only | Keep actor/plan/gate; this is not prepared completion or permission to replay a helper/start |
+| Readiness rollback/absence proved | Preserve original actor/plan. Retry only the same original operation after complete current eligibility; rollback alone does not retire the marked operation |
+| Genuine registered/prepared-to-Core handoff | Only after the same actual registered actor/child and eager Core ownership accept the handoff, revoke this actor's preparation admission and release its gate once; retain immutable original history/plan as required |
+| Trusted cancel/fence or genuine nongrant preparation closure | Revoke further preparation first. Only the actual original custody and trusted exact Unit/operation closure can release its gate; no error/NoChild inference, generic retirement Task write or permission reopening |
+| Uncertain readiness/helper/start/closure | Retain gate and originals, visibly Held; no forced gate unlock permits a replacement start. Physical hygiene cannot certify logical closure |
+
+Release moves the actual guard out of its one-time cell and drops it outside all
+Store/custody/queue locks. The producer retains the SAME private actor identity;
+releasing the gate never authorizes another preparation or owner. Removing the
+registry entry requires acknowledged authentic handoff/eligible closure and no
+remaining reconciliation responsibility; removal and final Arc drops happen
+outside those locks. A clean executor teardown can release memory/OS mutexes,
+but is not a rollback, completed cleanup, new-attempt or across-epoch proof.
 
 Every effect/registration/input/normal projection Immediate transaction checks:
 selected actual database, SAME retained launch/allocation/operation, actual
@@ -476,6 +583,7 @@ implementation. Overall availability cannot be enabled by this component alone.
 | Native transport admission | Real private registration/intent and SAME stop gate; pause after commit before spawn, race actual stop, verify its winning order and exact retained child/no-child custody; other Tasks proceed after the short section |
 | Pre-Core child handoff | Real raw Child created before injected ID/pipe/registry/projection fault or future Drop; retained actual custody stops/reconciles same child without input/replay/Task write; identity fault never counts as NoChild; eager guard survives unpolled Core job; registration uncertainty prevents spawn |
 | First preparation stage | Actual selected start, genuine launch/source seal/admission, exact allocated→preparing readiness CAS; changed original source/Unit/owner/lock refuses, stopped admission refuses; no helper/Session/input grant from the commit |
+| Preparation custody lifetime | Actual Root job preallocates custody before selected start future; real readiness uncertainty then caller/future Drop preserves SAME actor/plan; authentic reconciliation/handoff or trusted closure releases same-Unit gate once, with Weak actor/plan probes proving no local self-cycle |
 | Preparation state | Same actor/readiness preparing, registration once; replay or another alias/pair/Session refused; rollback and uncertain commit preserve original plan, no new UUID |
 | Pre-Session wait | Settled helpers and genuine NoCurrentDispatch; exact parked due record resumes SAME operation/Unit/pair once, Task/W versions unchanged; unknown helper/duplicate/stale waiter refuses |
 | Quota independence | Marked plus legacy active lease union, caps/fairness/boundary overflow, foreign/stale bucket; same-lease live recovery, no probe mint or Task/W write, no input resend |
