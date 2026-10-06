@@ -73,7 +73,7 @@ pub enum NativeStart {
 pub(crate) enum NativePhaseStart {
     Launched {
         handle: ManagedSessionRef,
-        binding: NativePhaseBinding,
+        binding: Box<NativePhaseBinding>,
     },
     Waiting {
         launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
@@ -221,7 +221,10 @@ impl NativeSessions {
         {
             NativeStart::Launched(handle) => {
                 let binding = self.phase_binding(&handle)?;
-                Ok(NativePhaseStart::Launched { handle, binding })
+                Ok(NativePhaseStart::Launched {
+                    handle,
+                    binding: Box::new(binding),
+                })
             }
             NativeStart::Waiting {
                 unit,
@@ -636,6 +639,9 @@ impl NativeSessions {
             invocation: seed.id,
             collector: native_result::Collector::default(),
             receipt_saved: false,
+            captured_terminal: None,
+            observed_input: None,
+            observed_terminal: None,
             frozen_terminal: frozen_terminal.clone(),
             wire: Lines::new(stdin, stdout, limit),
             child,
@@ -708,7 +714,7 @@ impl NativeSessions {
     }
     pub fn status(&self, handle: &ManagedSessionRef) -> Result<NativeStatus> {
         let mut status = self.entry(handle)?.0.borrow().clone();
-        let (pending, updater) = {
+        let (pending, updater, phase) = {
             let entries = self
                 .entries
                 .lock()
@@ -716,25 +722,30 @@ impl NativeSessions {
             let entry = entries
                 .get(&handle.session)
                 .context("native Session missing")?;
-            (entry.terminal.clone(), entry.update.clone())
+            (
+                entry.terminal.clone(),
+                entry.update.clone(),
+                entry.phase.clone(),
+            )
         };
         let mut reconciled = false;
-        let mut store = self
-            .owner
-            .store
+        let frozen = pending
             .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-        let mut frozen = pending
-            .lock()
-            .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
+            .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?
+            .clone();
         if let Some(proof) = frozen.as_ref() {
             status.observed_work = Some(proof.receipt.observed_work);
-            if proof.persist(&mut store).is_ok() {
-                *frozen = None;
+            if persist_saved_terminal(&self.owner, phase.as_ref(), proof).is_ok() {
+                clear_saved_terminal(&pending, proof)?;
                 reconciled = true;
                 status.diagnostic = None;
             }
         }
+        let store = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
         let unit = store.execution_unit(handle.unit)?;
         if let Some((session, _)) = store.session(handle.session)? {
             status.session = session;
@@ -1071,6 +1082,31 @@ fn native_authority(
     store.validate_execution(&unit.authority(), true, false)?;
     Ok(unit.authority())
 }
+fn actual_native_authority(
+    owner: &RuntimeOwner,
+    pinned: &ExecutionUnit,
+    session: SessionId,
+    phase: Option<&Arc<NativePhaseSession>>,
+) -> Result<ExecutionAuthority> {
+    let Some(phase) = phase else {
+        return native_authority(owner, pinned, session);
+    };
+    let facts = phase.allocation().facts();
+    ensure!(
+        facts.unit_id == pinned.id
+            && facts.scope == &pinned.scope
+            && facts.generation == pinned.generation
+            && facts.epoch == pinned.owner_epoch
+            && facts.session_id == session,
+        "actual Native actor semantic identity changed"
+    );
+    let plan = crate::state::Store::plan_native_phase_owner(owner, phase)?;
+    owner
+        .store
+        .lock()
+        .map_err(|_| anyhow::anyhow!("state poisoned"))?
+        .validate_phase_owner(plan)
+}
 // These non-Clone private-field values originate only at the actual Native actor.
 // DTO/GenericRecord/tool JSON cannot construct a dispatch or terminal producer.
 pub(crate) struct NativeSeed {
@@ -1227,6 +1263,107 @@ impl NativeTerminal {
         self.failure
     }
 }
+/// Retry only the actual saved terminal and its original private phase plan.
+/// Full planning/projection runs outside SharedStore; no persisted DTO issues a
+/// phase owner or a new input/settlement proof.
+fn retain_saved_terminal(
+    pending: &Mutex<Option<Arc<NativeTerminal>>>,
+    proof: &Arc<NativeTerminal>,
+) -> Result<()> {
+    let mut frozen = pending
+        .lock()
+        .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
+    if let Some(original) = frozen.as_ref() {
+        ensure!(
+            Arc::ptr_eq(original, proof),
+            "different actual native terminal already captured"
+        );
+    } else {
+        *frozen = Some(proof.clone());
+    }
+    Ok(())
+}
+fn clear_saved_terminal(
+    pending: &Mutex<Option<Arc<NativeTerminal>>>,
+    proof: &Arc<NativeTerminal>,
+) -> Result<()> {
+    let mut frozen = pending
+        .lock()
+        .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
+    if let Some(original) = frozen.as_ref() {
+        ensure!(
+            Arc::ptr_eq(original, proof),
+            "native terminal compare-clear origin changed"
+        );
+        *frozen = None;
+    }
+    Ok(())
+}
+fn persist_saved_terminal(
+    owner: &RuntimeOwner,
+    phase: Option<&Arc<phase_protocol::PhaseActor>>,
+    terminal: &Arc<NativeTerminal>,
+) -> Result<(
+    ExecutionUnit,
+    native_result::NativeResultReceipt,
+    Session,
+    u64,
+)> {
+    if let Some(phase) = phase {
+        let original = phase.terminal_plan(owner, terminal)?;
+        let first = owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .finish_phase_terminal(&original);
+        let commit = match first {
+            Ok(commit) => commit,
+            Err(error) => {
+                // A failed commit might actually have committed. Only actual
+                // receipt absence permits replacing its original plan. At most
+                // one confirmed-rollback replan is attempted per observation.
+                if !original.confirmed_absent(owner)? {
+                    return Err(error);
+                }
+                let next = phase.replan_terminal_after_absence(owner, &original, terminal)?;
+                owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .finish_phase_terminal(&next)?
+            }
+        };
+        let (saved, actual_owner, unit, receipt, session, version, owned_success) =
+            commit.into_parts();
+        ensure!(
+            Arc::ptr_eq(&saved, terminal) && Arc::ptr_eq(&actual_owner, &phase.owner),
+            "native terminal transaction changed private origin"
+        );
+        if owned_success {
+            phase.settled(
+                saved,
+                unit.clone(),
+                receipt.clone(),
+                session.clone(),
+                version,
+            )?;
+        } else {
+            phase.owner.project(&session, version)?;
+            phase.owner.revoke();
+        }
+        return Ok((unit, receipt, session, version));
+    }
+    let mut store = owner
+        .store
+        .lock()
+        .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+    let (unit, receipt, session) = terminal.persist(&mut store)?;
+    let version = store
+        .session(session.id)?
+        .context("native terminal Session missing")?
+        .1;
+    Ok((unit, receipt, session, version))
+}
 struct Core {
     owner: Arc<RuntimeOwner>,
     unit: ExecutionUnit,
@@ -1235,6 +1372,9 @@ struct Core {
     invocation: NativeInvocationId,
     collector: native_result::Collector,
     receipt_saved: bool,
+    captured_terminal: Option<Arc<NativeTerminal>>,
+    observed_input: Option<(String, Option<String>)>,
+    observed_terminal: Option<(WorkOutcome, Disposition, Option<NativeFailure>)>,
     frozen_terminal: Arc<Mutex<Option<Arc<NativeTerminal>>>>,
     wire: Lines,
     child: process::OwnedProcess,
@@ -1245,9 +1385,97 @@ struct Core {
     phase: Option<Arc<phase_protocol::PhaseActor>>,
 }
 impl Core {
+    fn retain_input_ack(&mut self, thread: &str, turn: Option<&str>) -> Result<()> {
+        claude_wire::bounded_id(&json!(thread))?;
+        if let Some(turn) = turn {
+            claude_wire::bounded_id(&json!(turn))?;
+        }
+        if let Some((old_thread, old_turn)) = &self.observed_input {
+            ensure!(
+                old_thread == thread && old_turn.as_deref() == turn,
+                "actual owned input acknowledgement changed"
+            );
+        } else {
+            self.observed_input = Some((thread.into(), turn.map(str::to_owned)));
+        }
+        if let Some(phase) = &self.phase {
+            phase.consumed()?.acknowledge(thread, turn)?;
+        }
+        Ok(())
+    }
     fn authority(&self) -> Result<ExecutionAuthority> {
-        native_authority(&self.owner, &self.unit, self.session.id)
-            .context(NativeFailure::AuthorityUnavailable)
+        actual_native_authority(
+            &self.owner,
+            &self.unit,
+            self.session.id,
+            self.phase.as_ref().map(|phase| &phase.owner),
+        )
+        .context(NativeFailure::AuthorityUnavailable)
+    }
+    fn admit(
+        &self,
+        value: &Value,
+        authority: Option<&ExecutionAuthority>,
+        kind: &str,
+    ) -> Result<OperationId> {
+        let Some(phase) = &self.phase else {
+            return admit_native_frame(
+                &self.owner,
+                &self.unit,
+                self.session.id,
+                self.invocation,
+                authority,
+                kind,
+                value,
+            );
+        };
+        let plan = crate::state::Store::plan_native_phase_dispatch(
+            &self.owner,
+            &phase.owner,
+            authority,
+            kind,
+            value,
+        )?;
+        let commit = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .admit_phase_dispatch(plan)?;
+        let (operation, digest, expected_thread, input) = commit.into_parts();
+        if input {
+            // Only the successful actual same-TX input intent reaches this
+            // private producer; retain it BEFORE the first wire await.
+            phase.admitted(operation, digest, expected_thread)?;
+        }
+        Ok(operation)
+    }
+    fn acknowledge_input(&self, thread: &str, turn: Option<&str>) -> Result<()> {
+        if let Some(phase) = &self.phase {
+            let consumed = phase.consumed()?;
+            // This is an observed response from the owned protocol, not a DB
+            // lookup. Retain it across a later persistence error or lost return.
+            consumed.acknowledge(thread, turn)?;
+            let plan = crate::state::Store::plan_native_phase_input_ack(
+                &self.owner,
+                &phase.owner,
+                consumed,
+                thread,
+                turn,
+            )?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .acknowledge_phase_input(plan)
+        } else {
+            let authority = self.authority()?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .ack_native_invocation(&authority, self.invocation, thread, turn)
+        }
     }
     async fn send_effect(
         &mut self,
@@ -1255,15 +1483,7 @@ impl Core {
         authority: Option<&ExecutionAuthority>,
         kind: &str,
     ) -> Result<()> {
-        let operation = admit_native_frame(
-            &self.owner,
-            &self.unit,
-            self.session.id,
-            self.invocation,
-            authority,
-            kind,
-            value,
-        )?;
+        let operation = self.admit(value, authority, kind)?;
         // The durable intent is the dispatch winner. Later retirement cannot revoke
         // already issued bytes, and lost acknowledgements are never blindly replayed.
         let sent = self.wire.send(value).await;
@@ -1293,22 +1513,26 @@ impl Core {
         params: Value,
         kind: Option<&str>,
     ) -> Result<Value> {
+        // Every actual phase request crosses the same before-wire journal;
+        // metadata/setup has no input-consumption authority of its own.
+        let kind = if self.phase.is_some() {
+            Some(kind.unwrap_or("native_setup"))
+        } else {
+            kind
+        };
         let operation = kind
             .map(|kind| {
-                admit_native_frame(
-                    &self.owner,
-                    &self.unit,
-                    self.session.id,
-                    self.invocation,
+                self.admit(
+                    &json!({"id":self.wire.next,"method":method,"params":params}),
                     None,
                     kind,
-                    &json!({"id":self.wire.next,"method":method,"params":params}),
                 )
             })
             .transpose()?;
         let owner = self.owner.clone();
         let pinned = self.unit.clone();
         let session = self.session.id;
+        let phase = self.phase.as_ref().map(|phase| phase.owner.clone());
         let mut fence = tokio::time::interval(Duration::from_millis(100));
         let result = {
             let call = self.wire.call(method, params);
@@ -1320,10 +1544,23 @@ impl Core {
                         Some(Control::Approval {response,..})=>{let _=response.send(Err(anyhow::anyhow!("native turn not established")));},
                         _=>break Err(anyhow::anyhow!("native bootstrap cancelled"))
                     },
-                    _=fence.tick()=>{if let Err(error)=native_authority(&owner,&pinned,session){break Err(error);}}
+                    _=fence.tick()=>{if let Err(error)=actual_native_authority(&owner,&pinned,session,phase.as_ref()){break Err(error);}}
                 }
             }
         };
+        if method == "turn/start"
+            && let Ok(response) = &result
+        {
+            let turn = claude_wire::bounded_id(&response["turn"]["id"])?;
+            let thread = self
+                .session
+                .native_ref
+                .clone()
+                .context("actual turn response lacks established thread")?;
+            // Save the owned response BEFORE any transport-receipt write. A
+            // Store fault below must not erase an ACK that was already read.
+            self.retain_input_ack(&thread, Some(&turn))?;
+        }
         if let Some(operation) = operation {
             self.owner
                 .store
@@ -1351,6 +1588,11 @@ impl Core {
         result
     }
     fn ack(&mut self, native: String) -> Result<()> {
+        if self.unit.provider == "claude" {
+            // RunState accepted this exact owned initialize observation. Retain
+            // input consumption before Session/Unit projection can fail.
+            self.retain_input_ack(&native, None)?;
+        }
         let mut session = self.session.clone();
         session.native_ref = Some(native);
         session.state = SessionState::Running;
@@ -1383,16 +1625,7 @@ impl Core {
         self.unit = unit;
         self.record_version = version;
         if self.unit.provider == "claude" {
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .ack_native_invocation(
-                    &self.unit.authority(),
-                    self.invocation,
-                    &self.native,
-                    None,
-                )?;
+            self.acknowledge_input(&self.native, None)?;
         }
         self.update.send_modify(|s| {
             s.session = self.session.clone();
@@ -1403,7 +1636,6 @@ impl Core {
     }
     fn capture(
         &mut self,
-        invocation: &native_result::NativeInvocation,
         work: WorkOutcome,
         disposition: Disposition,
         failure: Option<NativeFailure>,
@@ -1416,6 +1648,24 @@ impl Core {
             terminal_sha256,
             diagnostics,
         } = self.collector.content();
+        let (actual_ack, projected_session, projected_version) = if let Some(phase) = &self.phase {
+            let binding = phase.owner.binding_snapshot()?;
+            (
+                binding
+                    .consumed()
+                    .map(|input| input.acknowledgement())
+                    .transpose()?
+                    .flatten(),
+                binding.session().clone(),
+                binding.record_version(),
+            )
+        } else {
+            (
+                self.observed_input.clone(),
+                self.session.clone(),
+                self.record_version,
+            )
+        };
         let mut receipt = native_result::NativeResultReceipt {
             id: NativeResultId::new(),
             invocation_id: self.invocation,
@@ -1425,8 +1675,8 @@ impl Core {
             generation: self.unit.generation,
             owner_epoch: self.unit.owner_epoch,
             provider: self.unit.provider.clone(),
-            native_thread: invocation.native_thread.clone(),
-            native_turn: invocation.native_turn.clone(),
+            native_thread: actual_ack.as_ref().map(|ack| ack.0.clone()),
+            native_turn: actual_ack.as_ref().and_then(|ack| ack.1.clone()),
             acquisition,
             authority: native_result::ReceiptAuthority::HistoricalDraft,
             text,
@@ -1464,9 +1714,9 @@ impl Core {
         }
         Ok(NativeTerminal {
             receipt,
-            session: self.session.clone(),
+            session: projected_session,
             failure,
-            session_version: self.record_version,
+            session_version: projected_version,
         })
     }
     async fn run(
@@ -1481,7 +1731,7 @@ impl Core {
         } else {
             self.claude(&input).await
         };
-        let (work, disposition, _output, failure) = match result {
+        let (mut work, mut disposition, _output, mut failure) = match result {
             Ok(value) => (value.0, value.1, value.2, None),
             Err(error) => {
                 // Never retain raw native errors, output or credentials. Only
@@ -1517,6 +1767,15 @@ impl Core {
                 (WorkOutcome::Unknown, disposition, None, Some(category))
             }
         };
+        if let Some((observed_work, observed_disposition, observed_failure)) =
+            self.observed_terminal
+        {
+            // This came from the owned, validated terminal frame. Subsequent
+            // optional quota/storage bookkeeping is not a Native work failure.
+            work = observed_work;
+            disposition = observed_disposition;
+            failure = observed_failure;
+        }
         if disposition == Disposition::Completed && work != WorkOutcome::Unknown {
             self.collector.confirm_complete();
         }
@@ -1531,25 +1790,18 @@ impl Core {
         // Content, native work, Session closure and quota release commit together.
         // Hygiene runs afterward and cannot replace the known work axis.
         let persisted = (|| {
-            let owner = self.owner.clone();
-            let mut store = owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            let invocation = store.native_invocation(self.invocation)?;
-            let proof = self.capture(&invocation, work, disposition, failure)?;
+            // Capture actual owned protocol facts BEFORE the first Store read.
+            // No Store outage can force a known terminal to be recaptured Unknown.
+            let proof = Arc::new(self.capture(work, disposition, failure)?);
+            self.captured_terminal = Some(proof.clone());
             let pending = self.frozen_terminal.clone();
-            let mut frozen = pending
-                .lock()
-                .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?;
-            ensure!(frozen.is_none(), "native terminal already captured");
-            *frozen = Some(Arc::new(proof));
-            let (_, receipt, session) = frozen
-                .as_ref()
-                .expect("captured terminal")
-                .persist(&mut store)?;
-            *frozen = None;
+            retain_saved_terminal(&pending, &proof)?;
+            let (unit, receipt, session, version) =
+                persist_saved_terminal(&self.owner, self.phase.as_ref(), &proof)?;
+            clear_saved_terminal(&pending, &proof)?;
+            self.unit = unit;
             self.session = session;
+            self.record_version = version;
             self.receipt_saved = true;
             Ok::<_, anyhow::Error>(receipt)
         })();
@@ -1647,6 +1899,82 @@ impl Core {
             };
         });
     }
+    fn drop_phase(&mut self) {
+        self.drain.abort();
+        let pending = self.frozen_terminal.clone();
+        let Ok(mut proof) = pending.lock().map(|f| f.clone()) else {
+            return;
+        };
+        if proof.is_none() {
+            proof = self.captured_terminal.clone();
+        }
+        let saved_receipt = self
+            .owner
+            .store
+            .lock()
+            .ok()
+            .and_then(|store| store.native_session_result(self.session.id).ok().flatten());
+        if saved_receipt.is_some() {
+            self.receipt_saved = true;
+        }
+        if proof.is_none() && !self.receipt_saved {
+            self.collector.protocol_lost();
+            if let Ok(captured) = self.capture(WorkOutcome::Unknown, Disposition::Lost, None) {
+                let captured = Arc::new(captured);
+                self.captured_terminal = Some(captured.clone());
+                if retain_saved_terminal(&pending, &captured).is_ok() {
+                    proof = Some(captured);
+                }
+            }
+        }
+        let mut terminal_pending = proof.is_some();
+        let observed = proof.as_ref().map(|proof| proof.receipt.observed_work);
+        if let Some(proof) = proof.as_ref()
+            && let Ok((unit, _, session, version)) =
+                persist_saved_terminal(&self.owner, self.phase.as_ref(), proof)
+        {
+            self.unit = unit;
+            self.session = session;
+            self.record_version = version;
+            self.receipt_saved = true;
+            if clear_saved_terminal(&pending, proof).is_ok() {
+                terminal_pending = false;
+            }
+        }
+        let Ok(store) = self.owner.store.lock() else {
+            return;
+        };
+        let Ok(unit) = store.execution_unit(self.unit.id) else {
+            return;
+        };
+        let session = store.session(self.session.id).ok().flatten().map(|s| s.0);
+        let receipt = store.native_session_result(self.session.id).ok().flatten();
+        self.update.send_modify(|s| {
+            if let Some(session) = session {
+                s.session = session;
+            }
+            s.authority = unit.authority();
+            s.work = unit.work;
+            s.disposition = unit.disposition;
+            s.wait_reason = unit.wait_reason;
+            s.cleanup = unit.cleanup;
+            s.pending.clear();
+            if let Some(receipt) = receipt {
+                s.receipt = Some(receipt.id);
+                s.result = Some(receipt.projection());
+                s.observed_work = Some(receipt.observed_work);
+            }
+            if unit.disposition == Disposition::Cancelled {
+                s.failure = None;
+            }
+            if terminal_pending {
+                s.observed_work = observed;
+                s.diagnostic = Some("native terminal pending persistence");
+            } else if s.diagnostic == Some("native terminal pending persistence") {
+                s.diagnostic = None;
+            }
+        });
+    }
     async fn codex(
         &mut self,
         input: &PreparedInput,
@@ -1658,9 +1986,12 @@ impl Core {
         let init=self.boot_call("initialize",json!({"clientInfo":{"name":"rururunx","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}}),None).await?;
         crate::codex::managed::initialization(&init)
             .context(NativeFailure::UnsupportedCapability)?;
-        self.wire
-            .send(&json!({"method":"initialized","params":{}}))
-            .await?;
+        let initialized = json!({"method":"initialized","params":{}});
+        if self.phase.is_some() {
+            self.send_effect(&initialized, None, "native_setup").await?;
+        } else {
+            self.wire.send(&initialized).await?;
+        }
         let account = self
             .boot_call("account/read", json!({"refreshToken":false}), None)
             .await?;
@@ -1727,12 +2058,7 @@ impl Core {
             .boot_call("turn/start", turn, Some("native_input"))
             .await?;
         let turn_id = claude_wire::bounded_id(&started["turn"]["id"])?;
-        let authority = self.authority()?;
-        self.owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .ack_native_invocation(&authority, self.invocation, &thread_id, Some(&turn_id))?;
+        self.acknowledge_input(&thread_id, Some(&turn_id))?;
         let mut approvals =
             crate::codex::managed::Approvals::new(&thread_id, &turn_id, &self.unit.worktree);
         let mut quota_ended = false;
@@ -1766,6 +2092,14 @@ impl Core {
                         },
                         Some("turn/completed") if p["threadId"]==thread_id && p["turn"]["id"]==turn_id=>{
                             let status=p["turn"]["status"].as_str().context("native turn status missing")?;
+                            if matches!(status,"completed"|"failed") {
+                                self.collector.codex_terminal(&p["turn"]);
+                                self.observed_terminal=Some(if status=="completed" {(WorkOutcome::Success,Disposition::Completed,None)}
+                                    else if quota_ended || quota::codex_subscription_error(&p["turn"]["error"]) {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
+                                    else if p["turn"]["error"]["codexErrorInfo"]=="unauthorized" {(WorkOutcome::Unknown,Disposition::Refused,Some(NativeFailure::AuthenticationUnavailable))}
+                                    else if quota::codex_capacity_error(&p["turn"]["error"]) {(WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)}
+                                    else {(WorkOutcome::Failure,Disposition::Completed,None)});
+                            }
                             // The terminal may be the only subscription error notification,
                             // or follow a willRetry=true notification for the same turn.
                             if status=="failed" && quota::codex_subscription_error(&p["turn"]["error"]) {
@@ -1780,7 +2114,6 @@ impl Core {
                                     quota::QuotaScheduler::new(self.owner.clone()).observe_probe(&self.authority()?,&QuotaObservation {status:QuotaStatus::Available,observed_at:now_ms(),source_version:"codex-cli 0.160.0/correlated recovery turn completed".into(),..old})?;
                                 }
                             }
-                            if status=="completed" || status=="failed" {self.collector.codex_terminal(&p["turn"]);}
                             return Ok(if status=="completed" {(WorkOutcome::Success,Disposition::Completed,Some(p["turn"].clone()))}
                                 else if quota_ended {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
                                 else if status=="failed" && p["turn"]["error"]["codexErrorInfo"]=="unauthorized" {anyhow::bail!(NativeFailure::AuthenticationUnavailable)}
@@ -1808,12 +2141,16 @@ impl Core {
         input: &PreparedInput,
     ) -> Result<(WorkOutcome, Disposition, Option<Value>)> {
         self.authority()?;
-        self.wire
-            .send(&claude_wire::control("initialize", "rrx-initialize"))
-            .await?;
+        let initialize = claude_wire::control("initialize", "rrx-initialize");
+        if self.phase.is_some() {
+            self.send_effect(&initialize, None, "native_setup").await?;
+        } else {
+            self.wire.send(&initialize).await?;
+        }
         let owner = self.owner.clone();
         let pinned = self.unit.clone();
         let session = self.session.id;
+        let phase = self.phase.as_ref().map(|phase| phase.owner.clone());
         let mut fence = tokio::time::interval(Duration::from_millis(100));
         tokio::time::timeout(Duration::from_secs(30),async {
             loop {tokio::select! {
@@ -1828,7 +2165,7 @@ impl Core {
                     Some(Control::Approval {response,..})=>{let _=response.send(Err(anyhow::anyhow!("native input not established")));},
                     _=>anyhow::bail!("native bootstrap cancelled")
                 },
-                _=fence.tick()=>{native_authority(&owner,&pinned,session)?;}
+                _=fence.tick()=>{actual_native_authority(&owner,&pinned,session,phase.as_ref())?;}
             }}Ok::<_,anyhow::Error>(())
         }).await??;
         self.authority()?;
@@ -1883,14 +2220,29 @@ impl Core {
                     if self.collector.overflowed() {return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));}
 
                     if seen.as_ref().is_err_and(|e|e.kind==ErrorKind::ProcessFailure) {
+                        // Capture this accepted owned terminal BEFORE optional Store
+                        // bookkeeping. A quota-sensitive execution error remains
+                        // Unknown if accepted bucket state cannot be read; an outage
+                        // cannot invent work failure or subscription exhaustion.
+                        self.collector.claude_terminal(&frame);
+                        let quota_sensitive=matches!(frame["subtype"].as_str(),Some("success"|"error_during_execution"));
+                        let provisional=if quota_sensitive && !quota_buckets.is_empty() {
+                            (WorkOutcome::Unknown,Disposition::Lost,None)
+                        } else if state.terminal_capacity || (unclassified_limit && quota_sensitive) {
+                            (WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)
+                        } else {
+                            (WorkOutcome::Failure,Disposition::Completed,None)
+                        };
+                        self.observed_terminal=Some(provisional);
                         // Consult accepted bucket state, not the last telemetry frame.
                         // Budget/turn/output caps remain work failures even during quota exhaustion.
-                        let quota_exhausted=matches!(frame["subtype"].as_str(),Some("success"|"error_during_execution")) && self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?
+                        let quota_exhausted=quota_sensitive && !quota_buckets.is_empty() && self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?
                             .quota_observations("claude","unknown")?.iter().any(|o|o.status==QuotaStatus::Exhausted && quota_buckets.contains(&o.bucket));
-                        self.collector.claude_terminal(&frame);
-                        return Ok(if quota_exhausted{(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
-                            else if state.terminal_capacity || (unclassified_limit && matches!(frame["subtype"].as_str(),Some("success"|"error_during_execution"))){(WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)}
-                            else{(WorkOutcome::Failure,Disposition::Completed,Some(frame))});
+                        let observed=if quota_exhausted {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
+                            else if state.terminal_capacity || (unclassified_limit && quota_sensitive) {(WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)}
+                            else {(WorkOutcome::Failure,Disposition::Completed,None)};
+                        self.observed_terminal=Some(observed);
+                        return Ok((observed.0,observed.1,if observed.0==WorkOutcome::Failure {Some(frame)} else {None}));
                     }
                     seen?;
                     if state.initialized && self.session.native_ref.is_none(){self.ack(self.native.clone())?;}
@@ -1925,6 +2277,8 @@ impl Drop for Core {
             // Revoke normal/live delivery before every early Drop return. A
             // previously retained known settlement has its separate late path.
             phase.owner.revoke();
+            self.drop_phase();
+            return;
         }
         self.drain.abort();
         let owner = self.owner.clone();
@@ -1935,18 +2289,23 @@ impl Drop for Core {
             return;
         };
         let pending = self.frozen_terminal.clone();
-        let Ok(mut frozen) = pending.lock() else {
+        let Ok(mut proof) = pending.lock().map(|f| f.clone()) else {
             return;
         };
-        if let Some(proof) = frozen.as_ref()
+        if proof.is_none() {
+            proof = self.captured_terminal.clone();
+        }
+        let mut terminal_pending = proof.is_some();
+        if let Some(proof) = proof.as_ref()
             && let Ok((saved, _, session)) = proof.persist(&mut store)
         {
             unit = saved;
             self.session = session;
             self.receipt_saved = true;
-            *frozen = None;
+            if clear_saved_terminal(&pending, proof).is_ok() {
+                terminal_pending = false;
+            }
         }
-        let terminal_pending = frozen.is_some();
         let abandoned = unit.native_effects_open && !terminal_pending;
         if abandoned {
             let Ok(retired) =
@@ -1958,9 +2317,7 @@ impl Drop for Core {
         }
         if !self.receipt_saved && !terminal_pending {
             self.collector.protocol_lost();
-            if let Ok(invocation) = store.native_invocation(self.invocation)
-                && let Ok(proof) =
-                    self.capture(&invocation, WorkOutcome::Unknown, Disposition::Lost, None)
+            if let Ok(proof) = self.capture(WorkOutcome::Unknown, Disposition::Lost, None)
                 && let Ok((_, _, session)) = store.finish_native_result(&proof)
             {
                 self.session = session;
@@ -2019,7 +2376,7 @@ impl Drop for Core {
             }
             s.pending.clear();
             if terminal_pending {
-                s.observed_work = frozen.as_ref().map(|proof| proof.receipt.observed_work);
+                s.observed_work = proof.as_ref().map(|proof| proof.receipt.observed_work);
                 s.diagnostic = Some("native terminal pending persistence");
             }
             if abandoned {

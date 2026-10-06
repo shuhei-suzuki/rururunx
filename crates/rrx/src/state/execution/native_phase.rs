@@ -2,7 +2,7 @@
 //! needs the genuine retained launch and the actual Native issuer after commit.
 use super::*;
 use crate::{
-    execution::native::{NativePhaseBinding, NativePhaseSession, NativeSeed},
+    execution::native::{ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession, NativeSeed},
     state::managed_binding::{
         CurrentWorkflowSuccessor, ExactRowMutation, PhaseLaunchParts, phase_pair_columns,
         plan_current_phase, snapshot, validate_current_tx,
@@ -12,6 +12,9 @@ use rusqlite::{params_from_iter, types::Value as SqlValue};
 use std::sync::Arc;
 
 const PAIR_BODY_BYTES: usize = 32 * 1024;
+
+mod terminal;
+pub(crate) use terminal::NativeTerminalPlan;
 
 fn selected_database(connection: &rusqlite::Connection, launch: &PhaseLaunchParts) -> Result<()> {
     ensure!(
@@ -32,6 +35,28 @@ struct PairRow {
     values: Vec<SqlValue>,
 }
 impl PairRow {
+    fn insert_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        let columns = phase_pair_columns(self.table).context("Native columns absent")?;
+        let placeholders = (1..=columns.len())
+            .map(|i| format!("?{i}"))
+            .collect::<Vec<_>>();
+        ensure!(
+            tx.execute(
+                &format!(
+                    "INSERT INTO {}({}) VALUES({})",
+                    self.table,
+                    columns.join(","),
+                    placeholders.join(",")
+                ),
+                params_from_iter(&self.values)
+            )? == 1,
+            "Native pair insertion missing"
+        );
+        Ok(())
+    }
+    fn insert_permission(&self) -> Result<ExactRowMutation> {
+        ExactRowMutation::new(self.table, "INSERT", None, Some(self.values.clone()))
+    }
     fn read(tx: &Transaction<'_>, table: &'static str, key: &str) -> Result<Self> {
         let columns = phase_pair_columns(table).context("unsupported Native pair table")?;
         ensure!(
@@ -177,7 +202,7 @@ impl PairRow {
 
 /// A current observation is tied to a real Core-issued owner, not a Session
 /// lookup. All decoding/comparison/planned encodings happen outside SharedStore.
-struct NativeOwnerPlan {
+pub(crate) struct NativeOwnerPlan {
     binding: NativePhaseBinding,
     current: CurrentWorkflowSuccessor,
     session: PairRow,
@@ -188,9 +213,19 @@ fn plan_native_owner(
     runtime: &crate::execution::RuntimeOwner,
     phase: &Arc<NativePhaseSession>,
 ) -> Result<NativeOwnerPlan> {
+    plan_owner_currency(runtime, phase, false)
+}
+// A captured known terminal may settle after Core Drop revoked NEW effects. It
+// still needs exact current original currency and the real Driver in this TX.
+// Only the terminal child module calls this ended-owner planning mode.
+fn plan_owner_currency(
+    runtime: &crate::execution::RuntimeOwner,
+    phase: &Arc<NativePhaseSession>,
+    terminal_ending: bool,
+) -> Result<NativeOwnerPlan> {
     let binding = phase.binding_snapshot()?;
     ensure!(
-        binding.is_live() && phase.launch_parts().is_retained(),
+        (terminal_ending || binding.is_live()) && phase.launch_parts().is_retained(),
         "actual Native owner ended"
     );
     let current = plan_current_phase(runtime, phase.marker())?;
@@ -210,6 +245,7 @@ fn plan_native_owner(
     );
     let (session, owner, readiness) = snapshot(runtime, |tx| {
         validate_current_tx(tx, phase.marker(), &current)?;
+        phase.marker().validate_driver_live_tx(tx)?;
         let session = PairRow::read(tx, "records", &f.session_id.to_string())?;
         let body = session.body()?;
         let record: Record = serde_json::from_value(body)?;
@@ -308,12 +344,459 @@ impl NativeOwnerPlan {
             "actual Native owner revoked"
         );
         validate_current_tx(tx, self.binding.marker(), &self.current)?;
+        self.binding.marker().validate_driver_live_tx(tx)?;
         validate_authority(tx, &self.current.unit().authority(), true, false)?;
         self.session.validate_tx(tx)?;
         self.owner.validate_tx(tx)?;
         self.readiness.validate_tx(tx)?;
         Ok(())
     }
+    fn validate_terminal_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        ensure!(
+            self.binding.owner().launch_parts().is_retained(),
+            "actual terminal owner lost custody"
+        );
+        validate_current_tx(tx, self.binding.marker(), &self.current)?;
+        self.binding.marker().validate_driver_live_tx(tx)?;
+        validate_authority(tx, &self.current.unit().authority(), false, true)?;
+        self.session.validate_tx(tx)?;
+        self.owner.validate_tx(tx)?;
+        self.readiness.validate_tx(tx)?;
+        Ok(())
+    }
+}
+
+/// A complete invocation image is acquired on the same query-only snapshot as
+/// this real owner's current plan. Neither this image nor its hash is authority.
+struct InvocationImage {
+    value: crate::execution::native_result::NativeInvocation,
+    raw: String,
+}
+impl InvocationImage {
+    fn read(tx: &Transaction<'_>, id: crate::execution::NativeInvocationId) -> Result<Self> {
+        let raw: Option<String> = tx.query_row("SELECT CASE WHEN length(CAST(body AS BLOB))<=?2 THEN body END FROM native_invocations WHERE id=?1",params![id.to_string(),crate::execution::native_result::INVOCATION_BYTES],|r|r.get(0))?;
+        let raw = raw.context("bounded Native invocation absent")?;
+        let decoded = crate::execution::strict_json::decode(
+            raw.as_bytes(),
+            crate::execution::strict_json::Limits {
+                frame_bytes: crate::execution::native_result::INVOCATION_BYTES,
+                depth: 12,
+                nodes: 2048,
+                string_bytes: 4096,
+                total_string_bytes: crate::execution::native_result::INVOCATION_BYTES,
+                object_entries: 256,
+                array_entries: 128,
+            },
+        )?;
+        let value: crate::execution::native_result::NativeInvocation =
+            serde_json::from_value(decoded.clone())?;
+        ensure!(
+            serde_json::to_value(&value)? == decoded,
+            "Native invocation drops unknown fields"
+        );
+        value.validate()?;
+        ensure!(
+            serde_json::to_value(native_results::invocation_tx(tx, id)?)? == decoded,
+            "Native invocation indexed body changed"
+        );
+        Ok(Self { value, raw })
+    }
+    fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        let n = &self.value;
+        let exact:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM native_invocations WHERE id=?1 AND unit_id=?2 AND session_id=?3 AND project_id=?4 AND goal_id=?5 AND task_id=?6 AND generation=?7 AND owner_epoch=?8 AND provider=?9 AND state=?10 AND version=?11 AND input_operation IS ?12 AND native_thread IS ?13 AND native_turn IS ?14 AND body=?15)",params![n.id.to_string(),n.unit_id.to_string(),n.session_id.to_string(),n.scope.project_id.to_string(),n.scope.goal_id.context("Native Goal absent")?.to_string(),n.scope.task_id.context("Native Task absent")?.to_string(),n.generation,n.owner_epoch,n.provider,key(n.state),n.version,n.input_operation.map(|id|id.to_string()),n.native_thread,n.native_turn,self.raw],|r|r.get(0))?;
+        ensure!(exact, "Native invocation complete image changed");
+        Ok(())
+    }
+    fn encoded(value: crate::execution::native_result::NativeInvocation) -> Result<Self> {
+        value.validate()?;
+        let raw = serde_json::to_string(&value)?;
+        Ok(Self { value, raw })
+    }
+    fn update_tx(&self, tx: &Transaction<'_>, after: &Self) -> Result<()> {
+        let n = &after.value;
+        ensure!(tx.execute("UPDATE native_invocations SET state=?1,version=?2,input_operation=?3,native_thread=?4,native_turn=?5,body=?6 WHERE id=?7 AND version=?8 AND body=?9",params![key(n.state),n.version,n.input_operation.map(|id|id.to_string()),n.native_thread,n.native_turn,after.raw,n.id.to_string(),self.value.version,self.raw])?==1,"Native invocation complete CAS changed");
+        Ok(())
+    }
+}
+
+/// Sealed actual-owner before-wire plan. Raw Agent/permission bytes are not
+/// persisted. This plan cannot be built from Session IDs or a public authority.
+pub(crate) struct NativeDispatchPlan {
+    owner: NativeOwnerPlan,
+    before: InvocationImage,
+    after: Option<InvocationImage>,
+    effect: ManagedEffect,
+    admission: Option<PairRow>,
+    digest: String,
+    expected_thread: Option<String>,
+}
+/// Issued by the real intent transaction only. Actual Native consumes this once
+/// before awaiting wire I/O; the public result/status DTOs never carry it.
+pub(crate) struct NativeDispatchCommit {
+    effect: OperationId,
+    digest: String,
+    expected_thread: Option<String>,
+    input: bool,
+}
+impl NativeDispatchCommit {
+    pub(crate) fn into_parts(self) -> (OperationId, String, Option<String>, bool) {
+        (self.effect, self.digest, self.expected_thread, self.input)
+    }
+}
+
+fn plan_phase_dispatch(
+    runtime: &crate::execution::RuntimeOwner,
+    phase: &Arc<NativePhaseSession>,
+    expected: Option<&ExecutionAuthority>,
+    kind: &str,
+    frame: &Value,
+) -> Result<NativeDispatchPlan> {
+    use crate::execution::native_result::InvocationState;
+    ensure!(
+        matches!(kind, "native_input" | "native_permission" | "native_setup"),
+        "invalid actual Native dispatch kind"
+    );
+    let bytes = serde_json::to_vec(frame)?;
+    ensure!(
+        bytes.len() <= 1024 * 1024,
+        "actual Native outgoing frame exceeds profile"
+    );
+    let digest = crate::execution::native_result::digest(&bytes);
+    let owner = plan_native_owner(runtime, phase)?;
+    if kind == "native_input" {
+        ensure!(
+            matches!(
+                owner.current.unit().state,
+                UnitState::DispatchPending | UnitState::Running
+            ),
+            "quota wait excludes a new Native input"
+        );
+    }
+    ensure!(
+        expected.is_none_or(|a| *a == owner.current.unit().authority()),
+        "actual Native dispatch expected authority changed"
+    );
+    let f = phase.allocation().facts();
+    let before = snapshot(runtime, |tx| {
+        owner.validate_tx(tx)?;
+        let before = InvocationImage::read(tx, f.invocation_id)?;
+        let n = &before.value;
+        ensure!(
+            n.unit_id == f.unit_id
+                && n.session_id == f.session_id
+                && n.scope == *f.scope
+                && n.generation == f.generation
+                && n.owner_epoch == f.epoch
+                && n.provider == f.provider
+                && n.state != InvocationState::Closed,
+            "actual Native dispatch invocation differs"
+        );
+        if kind == "native_input" {
+            let absent:bool=tx.query_row("SELECT NOT EXISTS(SELECT 1 FROM managed_phase_admissions WHERE pair_id=?1 OR operation_id=?2 OR native_invocation_id=?3)",params![f.pair_id.to_string(),f.operation_id.to_string(),f.invocation_id.to_string()],|r|r.get(0))?;
+            ensure!(
+                absent
+                    && phase.binding_snapshot()?.consumed().is_none()
+                    && n.state == InvocationState::NotDispatched
+                    && n.input_operation.is_none(),
+                "actual Native input already admitted"
+            );
+        }
+        Ok(before)
+    })?;
+    // Hash the complete original frozen Context outside SharedStore. The Root
+    // current/pair guard compares its original encoded bytes in the same intent TX.
+    ensure!(
+        before.value.context_version == Some(f.input.version)
+            && before.value.context_sha256.as_deref()
+                == Some(
+                    crate::execution::native_result::digest(&serde_json::to_vec(
+                        phase.marker().original_plan().context().0
+                    )?)
+                    .as_str()
+                )
+            && before.value.source_versions == f.input.source_versions
+            && before.value.revision == f.input.revision
+            && before.value.payload_sha256
+                == crate::execution::native_result::digest(f.input.payload.as_bytes())
+            && before.value.artifact_id == f.artifact,
+        "actual Native dispatch original input differs"
+    );
+    let operation = OperationId::new();
+    let effect = ManagedEffect {
+        id: operation,
+        unit_id: f.unit_id,
+        scope: f.scope.clone(),
+        kind: kind.into(),
+        idempotency_key: format!("native-{operation}"),
+        expected_target: format!("session/{}/sha256/{digest}", f.session_id),
+        state: EffectState::Pending,
+        receipt: BTreeMap::new(),
+        version: 1,
+    };
+    let expected_thread = if kind == "native_input" {
+        let thread = if f.provider == "codex" {
+            ensure!(
+                frame["method"] == "turn/start"
+                    && frame["params"]["input"]
+                        .as_array()
+                        .is_some_and(|a| a.len() == 1)
+                    && frame["params"]["input"][0]["type"] == "text"
+                    && frame["params"]["input"][0]["text"] == f.input.payload
+                    && frame["params"]["input"][0]["text_elements"] == json!([]),
+                "actual Codex input frame differs from original prepared text"
+            );
+            frame["params"]["threadId"]
+                .as_str()
+                .context("actual Codex thread absent")?
+        } else {
+            ensure!(
+                frame["type"] == "user"
+                    && frame["parent_tool_use_id"].is_null()
+                    && frame["message"]["role"] == "user"
+                    && frame["message"]["content"] == f.input.payload,
+                "actual Claude input frame differs from original prepared text"
+            );
+            frame["session_id"]
+                .as_str()
+                .context("actual Claude input Session absent")?
+        };
+        ensure!(
+            !thread.is_empty()
+                && thread.len() <= 256
+                && !thread.chars().any(char::is_control)
+                && owner
+                    .binding
+                    .session()
+                    .native_ref
+                    .as_deref()
+                    .is_none_or(|old| old == thread),
+            "actual input thread differs from current own Session"
+        );
+        Some(thread.to_owned())
+    } else {
+        owner.binding.session().native_ref.clone()
+    };
+    let (after, admission) = if kind == "native_input" {
+        let mut after = before.value.clone();
+        after.version = after
+            .version
+            .checked_add(1)
+            .context("Native invocation version exhausted")?;
+        after.state = InvocationState::InputPending;
+        after.input_operation = Some(operation);
+        after.frame_sha256 = Some(digest.clone());
+        let body = json!({"pair_id":f.pair_id,"operation_id":f.operation_id,"owner_id":f.pair_id,
+            "native_invocation_id":f.invocation_id,"input_effect_id":operation,"frame_sha256":digest,
+            "native_thread":null,"native_turn":null,"confirmed":false,"uncertain":false,"settled":false,"version":1});
+        let raw = serde_json::to_string(&body)?;
+        ensure!(
+            raw.len() <= 8192,
+            "Native admission encoding exceeds profile"
+        );
+        let admission = PairRow {
+            table: "managed_phase_admissions",
+            values: vec![
+                SqlValue::Text(f.pair_id.to_string()),
+                SqlValue::Text(f.operation_id.to_string()),
+                SqlValue::Text(f.pair_id.to_string()),
+                SqlValue::Text(f.invocation_id.to_string()),
+                SqlValue::Text(operation.to_string()),
+                SqlValue::Text(digest.clone()),
+                SqlValue::Null,
+                SqlValue::Null,
+                SqlValue::Integer(0),
+                SqlValue::Integer(0),
+                SqlValue::Integer(0),
+                SqlValue::Integer(1),
+                SqlValue::Text(raw),
+            ],
+        };
+        admission.body()?;
+        (Some(InvocationImage::encoded(after)?), Some(admission))
+    } else {
+        (None, None)
+    };
+    Ok(NativeDispatchPlan {
+        owner,
+        before,
+        after,
+        effect,
+        admission,
+        digest,
+        expected_thread,
+    })
+}
+
+pub(crate) struct NativeInputAckPlan {
+    owner: NativeOwnerPlan,
+    consumed: Arc<ConsumedPhaseInput>,
+    before: InvocationImage,
+    after: Option<InvocationImage>,
+    admission: PairRow,
+    admission_after: Option<PairRow>,
+    effect_raw: String,
+    effect_version: u64,
+}
+fn plan_phase_input_ack(
+    runtime: &crate::execution::RuntimeOwner,
+    phase: &Arc<NativePhaseSession>,
+    consumed: Arc<ConsumedPhaseInput>,
+    thread: &str,
+    turn: Option<&str>,
+) -> Result<NativeInputAckPlan> {
+    use crate::execution::native_result::InvocationState;
+    ensure!(
+        consumed.belongs_to(phase)
+            && consumed
+                .acknowledgement()?
+                .as_ref()
+                .is_some_and(|(t, v)| t == thread && v.as_deref() == turn),
+        "actual owned input has no matching observed ACK"
+    );
+    let owner = plan_native_owner(runtime, phase)?;
+    ensure!(
+        owner
+            .binding
+            .consumed()
+            .is_some_and(|current| std::ptr::eq(current, consumed.as_ref()))
+            && owner.binding.session().state == SessionState::Running
+            && owner.binding.session().native_ref.as_deref() == Some(thread),
+        "actual ACK differs from current own Session/input"
+    );
+    let f = phase.allocation().facts();
+    let (before, admission, effect_raw, effect_version) = snapshot(runtime, |tx| {
+        owner.validate_tx(tx)?;
+        let before = InvocationImage::read(tx, f.invocation_id)?;
+        let n = &before.value;
+        ensure!(
+            n.input_operation == Some(consumed.effect())
+                && n.frame_sha256.as_deref() == Some(consumed.frame_sha256())
+                && matches!(
+                    n.state,
+                    InvocationState::InputPending | InvocationState::Acknowledged
+                ),
+            "actual ACK invocation input differs"
+        );
+        let admission = PairRow::read(tx, "managed_phase_admissions", &f.pair_id.to_string())?;
+        let acknowledged = n.state == InvocationState::Acknowledged;
+        let version = if acknowledged { 2 } else { 1 };
+        let body = json!({"pair_id":f.pair_id,"operation_id":f.operation_id,"owner_id":f.pair_id,
+            "native_invocation_id":f.invocation_id,"input_effect_id":consumed.effect(),"frame_sha256":consumed.frame_sha256(),
+            "native_thread":if acknowledged {Some(thread)}else{None},"native_turn":if acknowledged {turn}else{None},
+            "confirmed":acknowledged,"uncertain":false,"settled":false,"version":version});
+        ensure!(
+            admission.body()? == body,
+            "actual ACK admission complete body differs"
+        );
+        let columns = [
+            ("pair_id", SqlValue::Text(f.pair_id.to_string())),
+            ("operation_id", SqlValue::Text(f.operation_id.to_string())),
+            ("owner_id", SqlValue::Text(f.pair_id.to_string())),
+            (
+                "native_invocation_id",
+                SqlValue::Text(f.invocation_id.to_string()),
+            ),
+            (
+                "input_effect_id",
+                SqlValue::Text(consumed.effect().to_string()),
+            ),
+            (
+                "frame_sha256",
+                SqlValue::Text(consumed.frame_sha256().to_owned()),
+            ),
+            (
+                "native_thread",
+                if acknowledged {
+                    SqlValue::Text(thread.into())
+                } else {
+                    SqlValue::Null
+                },
+            ),
+            (
+                "native_turn",
+                if acknowledged {
+                    turn.map(|s| SqlValue::Text(s.into()))
+                        .unwrap_or(SqlValue::Null)
+                } else {
+                    SqlValue::Null
+                },
+            ),
+            ("confirmed", SqlValue::Integer(i64::from(acknowledged))),
+            ("uncertain", SqlValue::Integer(0)),
+            ("settled", SqlValue::Integer(0)),
+            ("version", SqlValue::Integer(version)),
+        ];
+        for (column, value) in columns {
+            ensure!(
+                admission.column(column)? == &value,
+                "actual ACK admission index differs"
+            );
+        }
+        if acknowledged {
+            ensure!(
+                n.native_thread.as_deref() == Some(thread) && n.native_turn.as_deref() == turn,
+                "actual duplicate ACK changes thread/turn"
+            );
+        }
+        let raw:Option<String>=tx.query_row("SELECT CASE WHEN length(CAST(body AS BLOB))<=8192 THEN body END FROM managed_effects WHERE id=?1",[consumed.effect().to_string()],|r|r.get(0))?;
+        let raw = raw.context("actual confirmed input effect body over bound")?;
+        let effect = effect_tx(tx, consumed.effect())?;
+        ensure!(
+            effect.unit_id == f.unit_id
+                && effect.scope == *f.scope
+                && effect.kind == "native_input"
+                && effect.state == EffectState::Confirmed
+                && effect.expected_target
+                    == format!(
+                        "session/{}/sha256/{}",
+                        f.session_id,
+                        consumed.frame_sha256()
+                    ),
+            "actual ACK lacks matching confirmed input transport"
+        );
+        Ok((before, admission, raw, effect.version))
+    })?;
+    let (after, admission_after) = if before.value.state == InvocationState::Acknowledged {
+        (None, None)
+    } else {
+        let mut n = before.value.clone();
+        n.version = n
+            .version
+            .checked_add(1)
+            .context("Native invocation version exhausted")?;
+        n.state = InvocationState::Acknowledged;
+        n.native_thread = Some(thread.into());
+        n.native_turn = turn.map(str::to_owned);
+        let mut after = PairRow {
+            table: admission.table,
+            values: admission.values.clone(),
+        };
+        let mut body = after.body()?;
+        body["confirmed"] = json!(true);
+        body["version"] = json!(2);
+        body["native_thread"] = json!(thread);
+        body["native_turn"] = json!(turn);
+        after.replace("confirmed", SqlValue::Integer(1))?;
+        after.replace("version", SqlValue::Integer(2))?;
+        after.replace("native_thread", SqlValue::Text(thread.into()))?;
+        after.replace(
+            "native_turn",
+            turn.map(|s| SqlValue::Text(s.into()))
+                .unwrap_or(SqlValue::Null),
+        )?;
+        after.set_body(&body)?;
+        (Some(InvocationImage::encoded(n)?), Some(after))
+    };
+    Ok(NativeInputAckPlan {
+        owner,
+        consumed,
+        before,
+        after,
+        admission,
+        admission_after,
+        effect_raw,
+        effect_version,
+    })
 }
 
 pub(crate) struct NativeProjectionPlan {
@@ -620,6 +1103,7 @@ pub(crate) fn plan_phase_registration(
     registration_attempt(&current, &launch)?;
     let (owner_before, readiness_before, artifact_version) = snapshot(owner, |tx| {
         validate_current_tx(tx, launch.marker(), &current)?;
+        launch.marker().validate_driver_live_tx(tx)?;
         registration_unit(current.unit(), &launch)?;
         no_registration(tx, &launch)?;
         let artifact_version = current
@@ -713,6 +1197,149 @@ pub(crate) fn plan_phase_registration(
 }
 
 impl Store {
+    pub(crate) fn plan_native_phase_input_ack(
+        runtime: &crate::execution::RuntimeOwner,
+        phase: &Arc<NativePhaseSession>,
+        consumed: Arc<ConsumedPhaseInput>,
+        thread: &str,
+        turn: Option<&str>,
+    ) -> Result<NativeInputAckPlan> {
+        plan_phase_input_ack(runtime, phase, consumed, thread, turn)
+    }
+    /// A real observed ACK updates only this consumed pair's facts and Native6
+    /// invocation. It cannot mint an input or reconstruct an owner from rows.
+    pub(crate) fn acknowledge_phase_input(&mut self, plan: NativeInputAckPlan) -> Result<()> {
+        selected_database(&self.connection, plan.owner.binding.owner().launch_parts())?;
+        let mutation = plan
+            .admission_after
+            .as_ref()
+            .map(|after| plan.admission.update_permission(after))
+            .transpose()?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let write = || -> Result<()> {
+            plan.owner.validate_tx(&tx)?;
+            plan.before.validate_tx(&tx)?;
+            plan.admission.validate_tx(&tx)?;
+            ensure!(
+                plan.consumed.belongs_to(plan.owner.binding.owner()),
+                "actual ACK belongs to another input owner"
+            );
+            let effect: &str = &plan.effect_raw;
+            let exact:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE id=?1 AND unit_id=?2 AND project_id=?3 AND goal_id=?4 AND task_id=?5 AND state='confirmed' AND version=?6 AND body=?7)",params![plan.consumed.effect().to_string(),plan.owner.current.unit().id.to_string(),plan.owner.current.unit().scope.project_id.to_string(),plan.owner.current.unit().scope.goal_id.context("Native Goal absent")?.to_string(),plan.owner.current.unit().scope.task_id.context("Native Task absent")?.to_string(),plan.effect_version,effect],|r|r.get(0))?;
+            ensure!(exact, "actual ACK input transport advanced");
+            if let Some(after) = &plan.admission_after {
+                plan.before.update_tx(
+                    &tx,
+                    plan.after
+                        .as_ref()
+                        .context("actual ACK invocation image absent")?,
+                )?;
+                plan.admission.update_tx(&tx, after)?;
+                self.binding_permits.ensure_consumed()?;
+            }
+            Ok(())
+        };
+        if let Some(mutation) = mutation {
+            self.binding_permits
+                .with_exact_permit(vec![mutation], write)?;
+        } else {
+            write()?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+    pub(crate) fn plan_native_phase_dispatch(
+        runtime: &crate::execution::RuntimeOwner,
+        phase: &Arc<NativePhaseSession>,
+        expected: Option<&ExecutionAuthority>,
+        kind: &str,
+        frame: &Value,
+    ) -> Result<NativeDispatchPlan> {
+        plan_phase_dispatch(runtime, phase, expected, kind, frame)
+    }
+    /// The exact genuine owner/pair/current Driver conjunction is the dispatch
+    /// winner. One input admission and Native6 intent share this Immediate;
+    /// later transport observations do not reconstruct or replay this permission.
+    pub(crate) fn admit_phase_dispatch(
+        &mut self,
+        plan: NativeDispatchPlan,
+    ) -> Result<NativeDispatchCommit> {
+        selected_database(&self.connection, plan.owner.binding.owner().launch_parts())?;
+        let mutations = plan
+            .admission
+            .as_ref()
+            .map(PairRow::insert_permission)
+            .transpose()?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let write = || -> Result<()> {
+            plan.owner.validate_tx(&tx)?;
+            plan.before.validate_tx(&tx)?;
+            let count: usize = tx.query_row(
+                "SELECT count(*) FROM (SELECT 1 FROM managed_effects WHERE unit_id=?1 LIMIT 257)",
+                [plan.effect.unit_id.to_string()],
+                |r| r.get(0),
+            )?;
+            ensure!(count < 256, "Native effect admission profile exhausted");
+            if let Some(admission) = &plan.admission {
+                let f = plan.owner.binding.allocation().facts();
+                let absent:bool=tx.query_row("SELECT NOT EXISTS(SELECT 1 FROM managed_phase_admissions WHERE pair_id=?1 OR operation_id=?2 OR native_invocation_id=?3)",params![f.pair_id.to_string(),f.operation_id.to_string(),f.invocation_id.to_string()],|r|r.get(0))?;
+                ensure!(absent, "actual Native input pair already consumed");
+                effects::reserve_effect_tx(
+                    &tx,
+                    &plan.owner.current.unit().authority(),
+                    &plan.effect,
+                )?;
+                plan.before.update_tx(
+                    &tx,
+                    plan.after.as_ref().context("Native input image absent")?,
+                )?;
+                admission.insert_tx(&tx)?;
+                self.binding_permits.ensure_consumed()?;
+            } else {
+                effects::reserve_effect_tx(
+                    &tx,
+                    &plan.owner.current.unit().authority(),
+                    &plan.effect,
+                )?;
+            }
+            Ok(())
+        };
+        if let Some(mutation) = mutations {
+            self.binding_permits
+                .with_exact_permit(vec![mutation], write)?;
+        } else {
+            write()?;
+        }
+        tx.commit()?;
+        Ok(NativeDispatchCommit {
+            effect: plan.effect.id,
+            digest: plan.digest,
+            expected_thread: plan.expected_thread,
+            input: plan.admission.is_some(),
+        })
+    }
+    pub(crate) fn validate_phase_owner(
+        &mut self,
+        plan: NativeOwnerPlan,
+    ) -> Result<ExecutionAuthority> {
+        selected_database(&self.connection, plan.binding.owner().launch_parts())?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        plan.validate_tx(&tx)?;
+        tx.commit()?;
+        Ok(plan.current.unit().authority())
+    }
+    pub(crate) fn plan_native_phase_owner(
+        runtime: &crate::execution::RuntimeOwner,
+        phase: &Arc<NativePhaseSession>,
+    ) -> Result<NativeOwnerPlan> {
+        plan_native_owner(runtime, phase)
+    }
     pub(crate) fn plan_native_phase_projection(
         runtime: &crate::execution::RuntimeOwner,
         phase: &Arc<NativePhaseSession>,
@@ -763,6 +1390,7 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         validate_current_tx(&tx, launch.marker(), current)?;
+        launch.marker().validate_driver_live_tx(&tx)?;
         registration_unit(current.unit(), launch)?;
         validate_authority(&tx, &current.unit().authority(), true, false)?;
         original_owner(&tx, launch)?;
@@ -817,6 +1445,7 @@ impl Store {
         self.binding_permits.with_exact_permit(mutations, || {
             let tx = self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             validate_current_tx(&tx,plan.launch.marker(),&plan.current)?;
+            plan.launch.marker().validate_driver_live_tx(&tx)?;
             registration_unit(plan.current.unit(),&plan.launch)?;
             validate_authority(&tx,&plan.current.unit().authority(),true,false)?;
             no_registration(&tx,&plan.launch)?;

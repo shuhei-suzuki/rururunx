@@ -178,3 +178,17 @@ job retirement, cancellation and restart recovery remain required next steps.
 Bound is a private binding observation, not completed work or process reclamation.
 The composition issuer remains unavailable; actual producer-backed planning/CAS
 fault and cancellation controls cannot be claimed until its missing routes work.
+
+## 7. Boxed Native return integration
+
+The concrete Native producer now returns its actual non-Clone binding in a Box
+to keep the private start-result representation finite. Runtime consumes that
+same owned Box into the existing Arc retention with `Arc::from`; the binding's
+actual owner, original launch/allocation and all normal binder predicates remain
+unchanged. This is the sole Runtime consumer conversion, not another issuer.
+The independently reviewed initial Driver/Evidence/first-Executor and Native
+input/terminal source components are integrated on a new frozen candidate.
+Genuine Sources-to-Runtime preparation handoff, private preparatory/helper/quota
+authority and installed full composition remain unavailable; source integration
+does not enable native preflight, certify authenticated CLI execution or qualify
+four Task/both-OS behavior.

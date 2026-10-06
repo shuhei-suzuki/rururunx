@@ -185,7 +185,7 @@ impl PhaseJobs {
                 .map(|start| match start {
                     NativePhaseStart::Launched { handle, binding } => RetainedStart::Launched {
                         _handle: handle,
-                        binding: Arc::new(binding),
+                        binding: Arc::from(binding),
                     },
                     waiting @ NativePhaseStart::Waiting { .. } => {
                         RetainedStart::Waiting(Box::new(waiting))

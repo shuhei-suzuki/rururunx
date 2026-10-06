@@ -2422,3 +2422,5 @@ async fn native_concurrent_terminal_retry_survives_supervisor_watch_publication(
     );
     sessions.release(&handle).unwrap();
 }
+
+mod terminal_lock_tests;
