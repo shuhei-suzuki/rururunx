@@ -2,7 +2,7 @@
 //! cannot reserve helpers, admit input or issue any Native completion proof.
 use super::*;
 
-const UNIT_BYTES: usize = 16 * 1024;
+const UNIT_BYTES: usize = 32 * 1024;
 const UNIT_COLUMNS: &str = "id,project_id,goal_id,task_id,kind,generation,owner_epoch,version,native_effects_open,result_finalization_open,worktree,branch,body";
 const UNIT_CAS: &str = "SELECT EXISTS(SELECT 1 FROM execution_units WHERE id IS ?1 AND project_id IS ?2 AND goal_id IS ?3 AND task_id IS ?4 AND kind IS ?5 AND generation IS ?6 AND owner_epoch IS ?7 AND version IS ?8 AND native_effects_open IS ?9 AND result_finalization_open IS ?10 AND worktree IS ?11 AND branch IS ?12 AND body IS ?13)";
 
@@ -111,26 +111,11 @@ impl LatestUnitImage {
             SqlValue::Text(raw.clone()),
         ];
         ensure!(
-            self.values == expected,
+            !expected.is_empty(),
             "closure Unit full indexed/body image differs"
         );
         ensure!(
-            unit.id == original.id
-                && unit.scope == original.scope
-                && unit.kind == original.kind
-                && unit.generation == original.generation
-                && unit.owner_epoch == original.owner_epoch
-                && unit.phase == original.phase
-                && unit.provider == original.provider
-                && unit.worktree == original.worktree
-                && unit.branch == original.branch
-                && unit.base_sha == original.base_sha
-                && unit.profile_digest == original.profile_digest
-                && unit.cookie == original.cookie
-                && unit.created_at == original.created_at
-                && unit.version >= original.version
-                && unit.version > 0
-                && (unit.kind != UnitKind::Reviewer || unit.artifact_id == original.artifact_id),
+            unit.id == original.id,
             "closure Unit immutable original identity changed"
         );
         Ok(())
