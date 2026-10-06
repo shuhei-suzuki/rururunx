@@ -131,6 +131,11 @@ job retains the actual typed returned Native result or error. Engine callers get
 only a nongrant level observation; dropping or cancelling that waiter neither
 aborts the start future nor consumes its binding proof. Waiting/error/panic are
 held observations, never NoCurrentDispatch, Task failure, retry or cleanup proof.
+The uncertainty guard is constructed before spawn and captured by that future,
+so destruction before its first poll also publishes Uncertain without releasing
+its original launch or allocation. Source review found and corrected the former
+inside-body placement; a genuine producer-backed pre-poll control is still
+unverified, so the source correction is not Native execution qualification.
 
 Commit uncertainty retains the original pre-transaction plan and reserved job.
 Only confirmation of that SAME actual plan can perform the first handoff. A known

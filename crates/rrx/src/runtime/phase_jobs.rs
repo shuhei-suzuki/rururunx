@@ -155,8 +155,11 @@ impl PhaseJobs {
         }
         job.changed.send_replace(InvocationObservation::Starting);
         let changed = job.changed.subscribe();
+        // Capture an already-constructed guard: an unpolled future can be
+        // destroyed when its Tokio executor stops, before its body ever runs.
+        let running = RunningJob(job.clone());
         entry.handle = Some(tokio::spawn(async move {
-            let _running = RunningJob(job.clone());
+            let _running = running;
             let outcome = job.allocation.selected_port().start_phase(launch).await;
             let observation = match &outcome {
                 Ok(NativePhaseStart::Launched { .. }) => InvocationObservation::Launched,
