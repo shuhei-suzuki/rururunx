@@ -238,7 +238,12 @@ fn nongrant_git_pathset_inclusive_mib_and_4096_entry_limits() {
     }
     assert_eq!(output.len(), GIT_BYTES);
     qualify_pathset(&output, &index).unwrap();
-    output.push(0);
+    // Keep the same complete, unique and properly framed path set. Only the
+    // inclusive byte bound changes, so removing its guard admits this image.
+    let (path, entry) = index.pop_first().unwrap();
+    index.insert(format!("z{path}"), entry);
+    output.insert(0, b'z');
+    assert_eq!(output.len(), GIT_BYTES + 1);
     assert!(qualify_pathset(&output, &index).is_err());
     index.clear();
     output.clear();
