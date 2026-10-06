@@ -1022,3 +1022,121 @@ pub(in crate::state) fn accept_tx(
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn old7(path: &std::path::Path) -> Connection {
+        let old = Connection::open(path).unwrap();
+        old.create_scalar_function(
+            "rrx_writer_contract_version",
+            0,
+            rusqlite::functions::FunctionFlags::SQLITE_UTF8
+                | rusqlite::functions::FunctionFlags::SQLITE_INNOCUOUS
+                | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC,
+            |_| Ok(7_i64),
+        )
+        .unwrap();
+        old.execute_batch(include_str!("../schema.sql")).unwrap();
+        old.execute_batch(include_str!("../execution.sql")).unwrap();
+        old.execute_batch(include_str!("native_results.sql"))
+            .unwrap();
+        old.execute_batch(include_str!("source_recovery.sql"))
+            .unwrap();
+        old.execute(
+            "INSERT INTO runtime_epoch(singleton,instance_id,epoch) VALUES(1,?1,0)",
+            [Uuid::new_v4().to_string()],
+        )
+        .unwrap();
+        for table in MUTABLE_TABLES.iter().filter(|t| {
+            !matches!(
+                **t,
+                "verification_profiles"
+                    | "workflow_verification_contracts"
+                    | "verification_runs"
+                    | "verification_commands"
+            )
+        }) {
+            for action in ["INSERT", "UPDATE", "DELETE"] {
+                old.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>7 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
+            }
+        }
+        old.pragma_update(None, "application_id", APPLICATION_ID)
+            .unwrap();
+        old.pragma_update(None, "user_version", 7).unwrap();
+        old
+    }
+    #[test]
+    fn schema8_orders_real7_layout_and_fences_cached7_writers_on_all_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("old7.db");
+        let old = old7(&path);
+        let mut cached = old
+            .prepare("UPDATE runtime_epoch SET epoch=epoch+1 WHERE singleton=1")
+            .unwrap();
+        cached.execute([]).unwrap();
+        let current = Store::open(&path).unwrap();
+        assert_eq!(current.schema_version().unwrap(), 8);
+        assert!(
+            cached
+                .execute([])
+                .unwrap_err()
+                .to_string()
+                .contains("incompatible rrx writer contract")
+        );
+        for table in MUTABLE_TABLES {
+            for action in ["INSERT", "UPDATE", "DELETE"] {
+                let sql: String = current
+                    .connection
+                    .query_row(
+                        "SELECT sql FROM sqlite_schema WHERE type='trigger' AND name=?1",
+                        [format!("writer_{table}_{action}")],
+                        |r| r.get(0),
+                    )
+                    .unwrap();
+                assert!(sql.contains("<>8"));
+            }
+        }
+        let count: u64 = current
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_verification_contracts",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+        drop(cached);
+        drop(old);
+        drop(current);
+        assert_eq!(Store::open(&path).unwrap().schema_version().unwrap(), 8);
+    }
+    #[test]
+    fn schema8_namespace_collision_refuses_without_changing7_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("collision7.db");
+        let old = old7(&path);
+        old.execute_batch("CREATE TABLE verification_runs(unrelated TEXT); INSERT INTO verification_runs VALUES('preserve')").unwrap();
+        drop(old);
+        let before = std::fs::read(&path).unwrap();
+        assert!(
+            Store::open(&path)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("legacy verification namespace")
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let old = Connection::open(&path).unwrap();
+        let version: i64 = old
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 7);
+        assert_eq!(
+            old.query_row("SELECT unrelated FROM verification_runs", [], |r| r
+                .get::<_, String>(0))
+                .unwrap(),
+            "preserve"
+        );
+    }
+}
