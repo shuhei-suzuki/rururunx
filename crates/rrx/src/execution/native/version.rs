@@ -105,9 +105,9 @@ impl NativeVersionObservation {
     pub(crate) fn settle_confirmed(&self) -> bool {
         self.complete
             && match self.plan.action() {
-                readonly::NativePhaseHelperAction::Version => {
-                    self.exit.is_some_and(|e| e.success())
-                }
+                // Preserve version's complete-capture factual bookkeeping;
+                // its successful-exit/profile qualification stays separate.
+                readonly::NativePhaseHelperAction::Version => true,
                 readonly::NativePhaseHelperAction::Git(a) => {
                     a.accepts_exit(self.exit.and_then(|e| e.code()))
                 }
