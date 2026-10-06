@@ -527,12 +527,9 @@ fn nongrant_current_writer_denies_protected_insert_and_session_projection() {
     );
     assert_eq!(raw.total_changes(), changes);
     assert_eq!(
-        raw.query_row(
-            "SELECT count(*) FROM task_drivers",
-            [],
-            |row| row.get::<_, usize>(0)
-        )
-        .unwrap(),
+        raw.query_row("SELECT count(*) FROM task_drivers", [], |row| row
+            .get::<_, usize>(0))
+            .unwrap(),
         0
     );
     let mut session = Record::new(Scope::project(project.id), RecordKind::Session, json!({}));
