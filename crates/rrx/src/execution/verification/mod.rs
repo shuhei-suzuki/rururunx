@@ -447,7 +447,13 @@ impl ManagedVerifier {
                     }),
                 })
             }
-            Err(_) => {
+            Err(error) => {
+                // Fixture diagnostics distinguish real admission/source failures
+                // from a rendezvous timeout; production retains protected intents
+                // and its conservative stable Waiting response.
+                #[cfg(test)]
+                eprintln!("verification fixture operation failure: {error:#}");
+                let _ = &error;
                 let _ = self
                     .owner
                     .store
