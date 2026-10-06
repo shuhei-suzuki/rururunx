@@ -332,7 +332,14 @@ impl Store {
             .4
             .context("legacy worktree Task exceeds body bound")?;
         let task: Task = decode(body)?;
-        // Mutation: omit exact Task body/index identity.
+        ensure!(
+            task.id == id
+                && indexed.0 == id.to_string()
+                && indexed.1 == task.project_id.to_string()
+                && indexed.2 == task.goal_id.to_string()
+                && indexed.3 == task.version,
+            "legacy worktree Task body/index identity differs"
+        );
         ensure!(
             !indexed.5,
             "accepted Goal worktree helpers require the unavailable managed Driver/binding producer"
