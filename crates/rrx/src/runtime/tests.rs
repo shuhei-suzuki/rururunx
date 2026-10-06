@@ -943,7 +943,8 @@ async fn actual_accepted_worktree_routes_refuse_before_valid_native_git_helpers(
         );
     }
     let valid_before = crate::git::observed_git_outputs();
-    f.project.repo_id = crate::git::repository_identity(&f.project.root, "main").unwrap();
+    f.project.repository_identity =
+        crate::git::repository_identity(&f.project.root, "main").unwrap();
     assert!(
         crate::git::observed_git_outputs() > valid_before,
         "valid native repository identity must reach actual helper outputs"
