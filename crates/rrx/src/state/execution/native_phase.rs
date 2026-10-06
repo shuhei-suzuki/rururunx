@@ -30,9 +30,11 @@ pub(crate) use version::{
 };
 mod live_quota;
 mod transport;
+#[cfg(test)]
+pub(crate) use transport::RegistrationAckSource;
 pub(crate) use transport::{
     KnownTransportRegistration, NativeTransportSettlementPlan, NativeTransportStartPlan,
-    RegistrationAck, RegistrationAckSource, RegistrationProbe,
+    RegistrationAck, RegistrationProbe,
 };
 mod terminal;
 pub(crate) use terminal::NativeTerminalPlan;
