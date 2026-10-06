@@ -44,6 +44,17 @@ pub(crate) struct PreparationGuard {
     armed: bool,
 }
 impl PreparationGuard {
+    /// Nongrant identity inspection for transfer to the actual Runtime queue.
+    pub(crate) fn matches(
+        &self,
+        owner: &Arc<RuntimeOwner>,
+        unit: &super::ExecutionUnit,
+    ) -> Result<bool> {
+        Ok(self.armed
+            && Arc::ptr_eq(&self.owner, owner)
+            && serde_json::to_value(&self.unit)? == serde_json::to_value(unit)?)
+    }
+
     pub(crate) fn new(owner: Arc<RuntimeOwner>, unit: &super::ExecutionUnit) -> Self {
         Self {
             owner,
