@@ -50,7 +50,7 @@ fn selected_database(connection: &rusqlite::Connection, launch: &PhaseLaunchPart
     Ok(())
 }
 fn registered_readiness_matches(registered: u64, version: u64, ended: bool) -> bool {
-    matches!(registered, 3)
+    matches!(registered, 3 | 5)
         && if ended {
             registered.checked_add(1) == Some(version)
         } else {
