@@ -107,7 +107,7 @@ pub(super) type PrerequisiteRows = Vec<(String, u64, String, String, u64, String
 pub(super) const PREREQUISITE_ROWS: usize = 128;
 pub(super) const PREREQUISITE_BYTES: usize = 16 * 1024 * 1024;
 pub(super) fn read_prerequisites(c: &Connection, task: &Task) -> Result<PrerequisiteRows> {
-    read_prerequisites_bounded(c, task, usize::MAX, usize::MAX)
+    read_prerequisites_bounded(c, task, PREREQUISITE_ROWS, PREREQUISITE_BYTES)
 }
 fn read_prerequisites_bounded(
     c: &Connection,
