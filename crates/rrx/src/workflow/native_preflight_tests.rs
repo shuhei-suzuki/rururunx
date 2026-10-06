@@ -14,10 +14,12 @@ struct Descriptor {
     advertised: BTreeSet<Capability>,
     info: AgentInfo,
     probe_fails: bool,
+    capability_calls: AtomicUsize,
     probes: AtomicUsize,
 }
 impl AgentAdapter for Descriptor {
     fn capabilities(&self) -> BTreeSet<Capability> {
+        self.capability_calls.fetch_add(1, Ordering::SeqCst);
         self.advertised.clone()
     }
     fn probe(&self) -> AdapterResult<AgentInfo> {
@@ -109,6 +111,7 @@ fn descriptor(role: Capability) -> Descriptor {
             capabilities: caps,
         },
         probe_fails: false,
+        capability_calls: AtomicUsize::new(0),
         probes: AtomicUsize::new(0),
     }
 }
@@ -146,40 +149,33 @@ fn preflight_descriptor_negatives_do_not_admit_either_native_role() {
     ] {
         for case in 0..8 {
             let mut d = descriptor(role);
-            let expected = match case {
+            match case {
                 0 => {
                     d.advertised.remove(&role);
-                    NativePreflightRefusal::MissingCapability(role)
                 }
                 1 => {
                     d.advertised.remove(&Capability::PreparedInputAdmission);
-                    NativePreflightRefusal::MissingCapability(Capability::PreparedInputAdmission)
                 }
                 2 => {
                     d.probe_fails = true;
-                    NativePreflightRefusal::ProbeFailed
                 }
                 3 => {
                     d.info.agent = "foreign".into();
-                    NativePreflightRefusal::IdentityMismatch
                 }
                 4 => {
                     d.info.provider = "  ".into();
-                    NativePreflightRefusal::IdentityMismatch
                 }
                 5 => {
                     d.info.capabilities.remove(&role);
-                    NativePreflightRefusal::MissingCapability(role)
                 }
                 6 => {
                     d.info
                         .capabilities
                         .remove(&Capability::PreparedInputAdmission);
-                    NativePreflightRefusal::MissingCapability(Capability::PreparedInputAdmission)
                 }
-                7 => NativePreflightRefusal::ManagedBindingUnavailable,
+                7 => {}
                 _ => unreachable!(),
-            };
+            }
             let d = Arc::new(d);
             let engine = engine(Some(d.clone()));
             let task = task();
@@ -188,20 +184,12 @@ fn preflight_descriptor_negatives_do_not_admit_either_native_role() {
                 let error = refusal(&engine, &task, phase);
                 assert_eq!(
                     error.downcast_ref::<NativePreflightRefusal>(),
-                    Some(&expected),
+                    Some(&NativePreflightRefusal::ManagedBindingUnavailable),
                     "role {role:?}, case {case}: {error:#}"
                 );
-                if case == 2 {
-                    assert_eq!(
-                        error.downcast_ref::<AdapterError>().unwrap().kind,
-                        ErrorKind::UnsupportedCapability
-                    );
-                }
             }
-            assert_eq!(
-                d.probes.load(Ordering::SeqCst),
-                if case < 2 { 0 } else { 2 }
-            );
+            assert_eq!(d.capability_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(d.probes.load(Ordering::SeqCst), 0);
             assert_eq!(serde_json::to_vec(&task).unwrap(), before);
         }
     }
@@ -223,11 +211,14 @@ fn preflight_all_native_phases_keep_private_composition_unavailable() {
         } else {
             Capability::Review
         };
-        let engine = engine(Some(Arc::new(descriptor(role))));
+        let descriptor = Arc::new(descriptor(role));
+        let engine = engine(Some(descriptor.clone()));
         assert_eq!(
             refusal(&engine, &task(), phase).downcast_ref::<NativePreflightRefusal>(),
             Some(&NativePreflightRefusal::ManagedBindingUnavailable)
         );
+        assert_eq!(descriptor.capability_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(descriptor.probes.load(Ordering::SeqCst), 0);
     }
     assert_eq!(
         require_managed_native_binding_composed()

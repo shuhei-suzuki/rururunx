@@ -1344,6 +1344,11 @@ impl WorkflowEngine {
         let adapter = self.registry.get(agent).map_err(|error| {
             anyhow::Error::new(error).context(NativePreflightRefusal::AdapterUnavailable)
         })?;
+        // Registry lookup is internal metadata. Public trait callbacks (including
+        // capabilities) have no effect-free seal, so the genuine static composition
+        // check must precede every callback. Diagnostics below stay unreachable
+        // until the implementation-owned joint protocol is installed.
+        require_managed_native_binding_composed()?;
         let capabilities = adapter.capabilities();
         for required in [needed, Capability::PreparedInputAdmission] {
             if !capabilities.contains(&required) {
@@ -1361,7 +1366,6 @@ impl WorkflowEngine {
                 return Err(NativePreflightRefusal::MissingCapability(required).into());
             }
         }
-        require_managed_native_binding_composed()?;
         Ok(NativeAdapterSelection {
             adapter,
             agent: agent.clone(),
