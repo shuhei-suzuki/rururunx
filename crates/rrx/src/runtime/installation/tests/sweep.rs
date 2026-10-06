@@ -165,7 +165,13 @@ async fn c13_original_composition_bounded_reread_refuses_before_validate_for() {
         .current_task_bounded(&key)
         .unwrap();
     let composition = f.runtime.installed_driver_composition(&original).unwrap();
-    replace_body(&f, &key, bounded_body(body(&f, &key), 1048577).into());
+    let mut changed: serde_json::Value = serde_json::from_str(&body(&f, &key)).unwrap();
+    changed["title"] = "reread changed body".into();
+    replace_body(
+        &f,
+        &key,
+        bounded_body(serde_json::to_string(&changed).unwrap(), 1048577).into(),
+    );
     let writes = count(&f, "audit");
     assert!(
         matches!(
@@ -260,7 +266,12 @@ async fn c15_actual_service_pass_keeps_cursor_after_32_paused_tasks() {
         0,
         "first sweep exceeded 32 evaluations"
     );
-    let cursor = f.runtime.admission_cursor.lock().unwrap().clone().unwrap();
+    let cursor = f.runtime.admission_cursor.lock().unwrap().clone();
+    assert!(
+        cursor.is_some(),
+        "32-evaluation cursor was not stored between sweeps"
+    );
+    let cursor = cursor.unwrap();
     assert_eq!(
         cursor.task_id, page[31].task_id,
         "first finite pass did not retain exact cursor"
