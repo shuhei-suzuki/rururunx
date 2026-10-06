@@ -160,13 +160,29 @@ impl InitialInputFrame {
         adopted: &ExecutionUnit,
         plan: &Arc<crate::state::DriverPreparationAdvance>,
     ) -> Result<()> {
-        self.validate_adoption(&self.producer.owner, adopted)?;
+        // Keep map membership stable through the exact cache publication.
+        // Same order as validation; the async slot is tried without waiting.
+        let tasks = self
+            .producer
+            .tasks
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Sources poisoned"))?;
+        ensure!(
+            tasks
+                .get(&self.unit.scope.task_id.context("Task missing")?)
+                .is_some_and(|s| Arc::ptr_eq(s, &self.slot)),
+            "adoption Sources slot replaced"
+        );
         let mut slot = self
             .slot
             .try_lock()
             .map_err(|_| anyhow::anyhow!("adoption Sources busy"))?;
-        slot.as_mut()
-            .context("adoption Sources removed")?
+        let state = slot.as_mut().context("adoption Sources removed")?;
+        ensure!(
+            Arc::ptr_eq(&state.frame, &self.frame) && state.recovery.is_none(),
+            "adoption Sources frame replaced"
+        );
+        state
             .prepared
             .as_mut()
             .context("adoption preparation removed")?
