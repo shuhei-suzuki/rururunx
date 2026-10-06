@@ -2,6 +2,21 @@
 use super::*;
 use crate::execution::native::transport::NativeTransportObservation;
 
+fn observation_readiness_matches(
+    registered: u64,
+    version: u64,
+    ended: bool,
+    known: bool,
+    state: &str,
+) -> bool {
+    (state == "registered" && !known && registered_readiness_matches(registered, version, ended))
+        || (state == "closed"
+            && ended
+            && known
+            && (registered.checked_add(1) == Some(version)
+                || registered.checked_add(2) == Some(version)))
+}
+
 pub(crate) struct NativeTransportSettlementPlan {
     observation: Arc<NativeTransportObservation>,
     owner: Option<NativeOwnerPlan>,
@@ -83,9 +98,10 @@ impl Store {
                 let ended=body["start_ended"].as_bool().context("transport readiness ended absent")?;
                 let known=body["known_terminal"].as_bool().context("transport readiness terminal absent")?;
                 let registered=origin.registered_readiness()?;
-                ensure!((version==registered && !ended && !known && body["state"]=="registered") || (version==registered+1 && ended && body["state"]=="closed"),"transport readiness lineage changed");
-                ensure!(body==json!({"operation_id":f.operation_id,"origin":f.origin_id,"owner_epoch":f.epoch,"state":if ended {"closed"} else {"registered"},"start_ended":ended,"known_terminal":known,"parking_version":null,"version":version}),"transport readiness original body changed");
-                for (name,value) in [("operation_id",SqlValue::Text(f.operation_id.to_string())),("origin",SqlValue::Text(f.origin_id.to_string())),("owner_epoch",SqlValue::Integer(i64::try_from(f.epoch)?)),("state",SqlValue::Text(if ended {"closed"} else {"registered"}.into())),("start_ended",SqlValue::Integer(i64::from(ended))),("known_terminal",SqlValue::Integer(i64::from(known))),("parking_version",SqlValue::Null),("version",SqlValue::Integer(i64::try_from(version)?))] { ensure!(readiness.column(name)?==&value,"transport readiness indexed/body mismatch"); }
+                ensure!(observation_readiness_matches(registered,version,ended,known,body["state"].as_str().context("transport readiness state absent")?),"transport readiness lineage changed");
+                let state=if known {"closed"} else {"registered"};
+                ensure!(body==json!({"operation_id":f.operation_id,"origin":f.origin_id,"owner_epoch":f.epoch,"state":state,"start_ended":ended,"known_terminal":known,"parking_version":null,"version":version}),"transport readiness original body changed");
+                for (name,value) in [("operation_id",SqlValue::Text(f.operation_id.to_string())),("origin",SqlValue::Text(f.origin_id.to_string())),("owner_epoch",SqlValue::Integer(i64::try_from(f.epoch)?)),("state",SqlValue::Text(state.into())),("start_ended",SqlValue::Integer(i64::from(ended))),("known_terminal",SqlValue::Integer(i64::from(known))),("parking_version",SqlValue::Null),("version",SqlValue::Integer(i64::try_from(version)?))] { ensure!(readiness.column(name)?==&value,"transport readiness indexed/body mismatch"); }
                 Ok((unit,session,owner_row,readiness))
             })())
         })?;
@@ -155,5 +171,72 @@ impl Store {
         }
         tx.commit()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod transport_readiness_primitive_tests {
+    use super::observation_readiness_matches;
+    // Scalar lifecycle controls only: no actor, acknowledgement or SQL grant.
+    #[test]
+    fn factual_closure_tracks_registration_start_end_and_known_terminal() {
+        for registered in [3, 5] {
+            assert!(observation_readiness_matches(
+                registered,
+                registered,
+                false,
+                false,
+                "registered"
+            ));
+            assert!(observation_readiness_matches(
+                registered,
+                registered + 1,
+                true,
+                false,
+                "registered"
+            ));
+            assert!(observation_readiness_matches(
+                registered,
+                registered + 1,
+                true,
+                true,
+                "closed"
+            ));
+            assert!(observation_readiness_matches(
+                registered,
+                registered + 2,
+                true,
+                true,
+                "closed"
+            ));
+            assert!(!observation_readiness_matches(
+                registered,
+                registered + 3,
+                true,
+                true,
+                "closed"
+            ));
+            assert!(!observation_readiness_matches(
+                registered,
+                registered + 1,
+                true,
+                false,
+                "closed"
+            ));
+            assert!(!observation_readiness_matches(
+                registered,
+                registered,
+                false,
+                true,
+                "registered"
+            ));
+            assert!(!observation_readiness_matches(
+                registered,
+                registered + 2,
+                true,
+                false,
+                "registered"
+            ));
+        }
     }
 }
