@@ -224,6 +224,9 @@ impl Store {
                     tx.pragma_update(None, "user_version", next)?;
                 }
             }
+            if locked_version < SCHEMA_VERSION {
+                managed_binding::install_retained_guards(&tx)?;
+            }
             if locked_version > 0 && locked_version < 8 {
                 execution::verification::hold_existing_managed(&tx)?;
             }
