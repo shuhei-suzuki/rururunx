@@ -79,6 +79,10 @@ pub(crate) enum SourceRefusalRestoration {
 }
 
 impl SourceNativeCustody {
+    /// Original selected object only; no allocation or dispatch permission.
+    pub(crate) fn selected_port(&self) -> &Arc<NativePhasePort> {
+        &self.selected
+    }
     pub(crate) fn original_origin(&self) -> Result<SourceNativeOrigin> {
         Ok(SourceNativeOrigin {
             producer: self.producer.upgrade().context("original Sources ended")?,

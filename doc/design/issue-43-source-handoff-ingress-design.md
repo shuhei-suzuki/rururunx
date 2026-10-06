@@ -172,3 +172,41 @@ This is a proposed concrete ingress/Engine increment. Source availability,
 successful Driver composition, authenticated native execution, helper/transport
 permissions, full regression/lint and both-OS/four-Task acceptance remain open.
 No code, capability, schema or README change follows from this design.
+
+## 6. First source increment and remaining execution boundary
+
+The implementation increment is based on the ordinary composition
+`707554327520635ee3b8b62f2761210399d18e59`, which includes the independently
+reviewed Native readiness-only source and corrected ingress design. Runtime now
+owns an Arc of its SAME handoff registry. The actual Driver passes its original
+Weak Runtime observation to Engine, and the active first Executor can reserve
+EMPTY ingress before the concrete Source offer. The unchanged genuine preflight
+still precedes every new offer and public adapter callback.
+
+`SourceHandoffReservation::offer_first_executor` constructs a private eager
+`InlineSourceOffer` from the actual Sources method, not a caller-supplied future.
+Its poll saves a successful envelope in SAME poll before any fallible action.
+Its Drop explicitly drops the sole inline offer before dropping the reservation,
+so generator field destruction order is not the original-empty proof. There is
+no spawned offer, generic producer injection or exported install operation.
+
+The pre-offer consumer has Weak original supervisor and selected-port references,
+and no PhaseJobs reference: this increment ends at capacity/original lineage.
+Any future job/marker continuation must preserve the Weak pre-offer rule. Strong
+consumer construction follows independent envelope retention; the original
+producer ticket, port and owner pointers must match. Poisoned lookup returns Err,
+not absence. Filled or Held slots are never released by observer/drop labels.
+
+The new ownership controls exercise only actual EMPTY bookkeeping, real Runtime
+service shutdown, queue/jobs Drop and poisoned registry lookup. They do not mint
+tickets, allocations, Source custody, marker, Native actor or prepared-input proof.
+The ticket-checked Source success/cancellation, genuine cross-Task marked queue,
+compiled mutation controls and authenticated Agent routes need their own evidence.
+An executable-missing setup error is not an ownership-control failure or kill.
+
+Actual transfer still ends at capacity/original lineage. It does not call the
+original marker publication, Native invocation, binding or terminal consumers.
+The installed composition issuer remains unavailable, and Native helper/quota/
+transport and genuine positive Workflow fixtures remain unfinished. This source
+increment grants no capability or new SQL writer permission. It cannot qualify
+actual Agent launch, full regression/lint, four-Task independence or both-OS CI.

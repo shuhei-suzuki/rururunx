@@ -13,6 +13,7 @@ impl WorkflowEngine {
         task_id: TaskId,
         sources: &Arc<ManagedWorkflowSources>,
         lifetime: &WorkerLifetime,
+        runtime: &std::sync::Weak<crate::runtime::Runtime>,
     ) -> Result<StepResult> {
         let installed: Arc<dyn WorkflowSources> = sources.clone();
         ensure!(
@@ -34,13 +35,9 @@ impl WorkflowEngine {
         if !matches!(phase, Phase::Issue | Phase::Worktree) {
             if phase.actor() == Actor::Executor {
                 if snapshot.workflow.active.is_some() {
-                    // Reservation is not a launch/binding/terminal observation.
-                    // Root's retained marker/job handoff remains a separate port.
-                    return Ok(StepResult::Waiting {
-                        phase,
-                        reason: "first Executor requires the retained Runtime marker/job handoff"
-                            .into(),
-                    });
+                    return self
+                        .offer_driven_first_executor(snapshot, sources, lifetime, runtime, phase)
+                        .await;
                 }
                 // Keep this unchanged genuine-composition refusal before every
                 // namespace helper and every preparatory write.
@@ -132,6 +129,67 @@ impl WorkflowEngine {
                 session: None,
             })
         }
+    }
+    async fn offer_driven_first_executor(
+        &self,
+        snapshot: Snapshot,
+        sources: &Arc<ManagedWorkflowSources>,
+        lifetime: &WorkerLifetime,
+        runtime: &std::sync::Weak<crate::runtime::Runtime>,
+        phase: Phase,
+    ) -> Result<StepResult> {
+        let observation = {
+            let runtime = runtime.upgrade().context("original Runtime ended")?;
+            runtime.observe_source_handoff(snapshot.task.id)?
+        };
+        if let Some(observation) = observation {
+            // Observation never authorizes a new offer, retry or Workflow write.
+            return Ok(StepResult::Waiting {
+                phase,
+                reason: format!(
+                    "original Source handoff {:?}; marker/binding/terminal continuation required",
+                    observation.state()
+                ),
+            });
+        }
+        // Unchanged genuine-composition preflight precedes callbacks and offer.
+        let selected = self.preflight_native_adapter(&snapshot.task, phase)?;
+        let port = self.registry.native_phase_port(&snapshot.task.executor)?;
+        ensure!(
+            selected.agent == port.alias() && selected.provider == port.provider(),
+            "first Executor registry selection differs"
+        );
+        let owner = self
+            .registry
+            .managed_owner()
+            .context("Driver Runtime owner missing")?;
+        let context = self.context(&snapshot)?;
+        let ticket = crate::state::read_driver_ticket(owner, lifetime.association()?)?
+            .with_gate_namespace()?;
+        ticket.matches_input_view(&snapshot.task, &snapshot.record, &context)?;
+        let reservation = {
+            let runtime = runtime.upgrade().context("original Runtime ended")?;
+            runtime.reserve_source_handoff(&ticket, &port)?
+        };
+        // This concrete inline port retains the returned envelope in SAME poll.
+        // Its eager Drop ends the offer future BEFORE removing original EMPTY.
+        let observation = reservation
+            .offer_first_executor(
+                sources,
+                &snapshot.task,
+                &snapshot.record,
+                &context,
+                ticket,
+                port,
+            )
+            .await?;
+        Ok(StepResult::Waiting {
+            phase,
+            reason: format!(
+                "original Source handoff {:?}; marker/binding/terminal continuation required",
+                observation.state()
+            ),
+        })
     }
     async fn reserve_driven_first_executor(
         &self,

@@ -57,6 +57,10 @@ impl InstalledDriverComposition {
     pub(crate) fn provider(&self) -> &str {
         self.selected.provider()
     }
+    /// SAME original Weak only; worker holds no strong Runtime across Source.
+    pub(crate) fn runtime(&self) -> &Weak<Runtime> {
+        &self.runtime
+    }
 }
 
 impl Runtime {

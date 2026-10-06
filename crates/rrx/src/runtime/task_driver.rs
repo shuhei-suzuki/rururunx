@@ -71,6 +71,7 @@ async fn drive(claim: PendingDriverClaim, lifetime: WorkerLifetime) -> Result<()
     let sources = claim.composition().sources().clone();
     let engine = claim.composition().engine().clone();
     let provider = claim.composition().provider().to_owned();
+    let runtime = claim.composition().runtime().clone();
     let ticket = crate::state::read_driver_ticket(claim.owner().clone(), lifetime.association()?)?;
     {
         let mut store = claim
@@ -100,7 +101,7 @@ async fn drive(claim: PendingDriverClaim, lifetime: WorkerLifetime) -> Result<()
         let result = tokio::select! {
             biased;
             ()=lifetime.cancelled()=>return Err(anyhow::anyhow!("Task Driver cancelled")),
-            result=engine.step_driven_initial(task,&sources,&lifetime)=>result?,
+            result=engine.step_driven_initial(task,&sources,&lifetime,&runtime)=>result?,
         };
         if matches!(result, crate::workflow::StepResult::Finished) {
             return Ok(());

@@ -1,21 +1,25 @@
 //! Custody of the actual Source envelope; observations grant no Native authority.
 use super::phase_supervisor::{PendingPhaseCapacity, PendingReservationError, PhaseSupervisor};
 use crate::{
-    domain::TaskId,
+    adapter::native::NativePhasePort,
+    domain::{ContextVersion, Record, Task, TaskId},
     execution::{
-        OperationId, RuntimeOwner,
+        RuntimeOwner,
         phase::NativeAllocation,
-        workflow_source::{SourceNativeCustody, SourceNativeHandoff},
+        workflow_source::{ManagedWorkflowSources, SourceNativeCustody, SourceNativeHandoff},
     },
     state::{DriverReadTicket, managed_binding::OriginalMarker},
 };
 use anyhow::{Result, ensure};
 use std::{
     collections::BTreeMap,
+    future::Future,
+    pin::Pin,
     sync::{
         Arc, Mutex, Weak,
         atomic::{AtomicBool, Ordering},
     },
+    task::{Context, Poll},
 };
 use tokio::{sync::watch, task::JoinHandle};
 
@@ -23,6 +27,7 @@ const MAX_HANDOFFS: usize = 128;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SourceHandoffState {
+    AwaitingOffer,
     Retained,
     Transferring,
     Reserved,
@@ -100,14 +105,40 @@ struct Handoff {
     changed: watch::Sender<SourceHandoffState>,
 }
 struct Entry {
-    handoff: Arc<Handoff>,
+    slot: Arc<IngressSlot>,
     // The independently owned handle is never captured by its own future.
     handle: Option<JoinHandle<()>>,
 }
 
 #[derive(Default)]
 pub(super) struct PhaseHandoffs {
-    entries: Mutex<BTreeMap<OperationId, Entry>>,
+    entries: Mutex<BTreeMap<TaskId, Entry>>,
+}
+
+/// Independent EMPTY slot. It owns no ticket, allocation, plan or Consumer.
+struct IngressSlot {
+    task: TaskId,
+    handoff: Mutex<Option<Arc<Handoff>>>,
+    changed: watch::Sender<SourceHandoffState>,
+}
+
+/// Held by the actual inline Source producer, never a spawned offer. The queue
+/// reference is Weak: another Task's marker can retain the whole Driver registry.
+struct PreOfferConsumer {
+    owner: Arc<RuntimeOwner>,
+    phases: Weak<PhaseSupervisor>,
+    selected: Weak<NativePhasePort>,
+    control: Arc<tokio::sync::Mutex<()>>,
+    running: Arc<AtomicBool>,
+    stopping: Arc<AtomicBool>,
+}
+
+/// Nongrant finite ingress reservation. Consumed once in the SAME poll as the
+/// actual inline offer returns; Drop can remove only this SAME original EMPTY.
+pub(crate) struct SourceHandoffReservation {
+    registry: Weak<PhaseHandoffs>,
+    slot: Arc<IngressSlot>,
+    consumer: PreOfferConsumer,
 }
 
 /// Dropping an observer neither aborts the invocation nor releases its assets.
@@ -123,7 +154,9 @@ impl SourceHandoffObservation {
             let state = *self.changed.borrow_and_update();
             if !matches!(
                 state,
-                SourceHandoffState::Retained | SourceHandoffState::Transferring
+                SourceHandoffState::AwaitingOffer
+                    | SourceHandoffState::Retained
+                    | SourceHandoffState::Transferring
             ) {
                 return state;
             }
@@ -221,35 +254,128 @@ impl Consumer {
     }
 }
 
+impl PreOfferConsumer {
+    fn accepting(&self) -> bool {
+        self.running.load(Ordering::SeqCst) && !self.stopping.load(Ordering::SeqCst)
+    }
+    /// Used only AFTER the original envelope is saved in the independent slot.
+    fn upgrade(&self, source: &SourceNativeHandoff) -> Result<Consumer> {
+        ensure!(
+            self.accepting(),
+            "Runtime stopped before Source installation"
+        );
+        let phases = self
+            .phases
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("original phase supervisor ended"))?;
+        let selected = self
+            .selected
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("original selected port ended"))?;
+        ensure!(
+            phases.belongs_to(&self.owner)
+                && source.ticket().belongs_to_owner(&self.owner)
+                && Arc::ptr_eq(source.custody().selected_port(), &selected),
+            "Source installation has different original components"
+        );
+        Ok(Consumer {
+            owner: self.owner.clone(),
+            phases,
+            control: self.control.clone(),
+            running: self.running.clone(),
+            stopping: self.stopping.clone(),
+        })
+    }
+}
+
 impl PhaseHandoffs {
-    fn retain(
-        &self,
-        source: SourceNativeHandoff,
-        consumer: Consumer,
-    ) -> std::result::Result<SourceHandoffObservation, SourceNativeHandoff> {
-        let executor = match tokio::runtime::Handle::try_current() {
-            Ok(handle) => handle,
-            Err(_) => return Err(source),
-        };
-        let mut entries = match self.entries.lock() {
-            Ok(entries) => entries,
-            Err(_) => return Err(source),
-        };
-        // The finite first-Executor lane is stricter than per-Unit uniqueness:
-        // only one original handoff per Task may be held here. IDs are keys only;
-        // the actual private envelope/ticket remains the sole continuation.
-        let operation = source.custody().operation();
-        let task = source.ticket().task().id;
-        if !consumer.accepting()
-            || entries.len() >= MAX_HANDOFFS
-            || entries.contains_key(&operation)
-            || entries
-                .values()
-                .any(|e| e.handoff.source.ticket().task().id == task)
-        {
-            return Err(source);
+    /// Actual private Runtime calls this only after its complete original ticket
+    /// read. Task is a capacity key; no Native/Driver proof is constructed here.
+    fn reserve_empty(
+        self: &Arc<Self>,
+        task: TaskId,
+        consumer: PreOfferConsumer,
+    ) -> Result<SourceHandoffReservation> {
+        ensure!(
+            consumer.accepting(),
+            "Runtime is not accepting Source handoffs"
+        );
+        tokio::runtime::Handle::try_current()?;
+        let mut entries = self
+            .entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Source handoffs poisoned"))?;
+        ensure!(
+            entries.len() < MAX_HANDOFFS && !entries.contains_key(&task),
+            "Source handoff ingress full or Task already retained"
+        );
+        let (changed, _) = watch::channel(SourceHandoffState::AwaitingOffer);
+        let slot = Arc::new(IngressSlot {
+            task,
+            handoff: Mutex::new(None),
+            changed,
+        });
+        entries.insert(
+            task,
+            Entry {
+                slot: slot.clone(),
+                handle: None,
+            },
+        );
+        Ok(SourceHandoffReservation {
+            registry: Arc::downgrade(self),
+            slot,
+            consumer,
+        })
+    }
+
+    pub(super) fn observe(&self, task: TaskId) -> Result<Option<SourceHandoffObservation>> {
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Source handoffs poisoned"))?;
+        Ok(entries.get(&task).map(|entry| SourceHandoffObservation {
+            changed: entry.slot.changed.subscribe(),
+        }))
+    }
+
+    pub(super) fn ensure_shutdown_complete(&self) -> Result<()> {
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Source handoffs poisoned"))?;
+        // Future completion alone cannot settle Source originals/capacity. This
+        // increment has no genuine closure/retirement producer, so none is evicted.
+        ensure!(
+            entries.is_empty(),
+            "Source handoff shutdown remains pending with retained originals"
+        );
+        Ok(())
+    }
+}
+
+impl SourceHandoffReservation {
+    /// No caller-supplied future or validator. This wrapper owns ONLY the actual
+    /// Sources producer and establishes its cancellation/destructor ordering.
+    pub(crate) fn offer_first_executor<'a>(
+        self,
+        sources: &'a Arc<ManagedWorkflowSources>,
+        task: &'a Task,
+        record: &'a Record,
+        context: &'a ContextVersion,
+        ticket: DriverReadTicket,
+        selected: Arc<NativePhasePort>,
+    ) -> impl Future<Output = Result<SourceHandoffObservation>> + Send + 'a {
+        InlineSourceOffer {
+            offer: Some(Box::pin(
+                sources.offer_first_executor(task, record, context, ticket, selected),
+            )),
+            reservation: Some(self),
         }
-        let (changed, _) = watch::channel(SourceHandoffState::Retained);
+    }
+    /// Infallible ownership move, NOT an acceptance/proof API. No await, status
+    /// projection or origin check can precede saving the SAME actual envelope.
+    fn install(self, source: SourceNativeHandoff) -> SourceHandoffObservation {
         let handoff = Arc::new(Handoff {
             source,
             assets: Mutex::new(Assets {
@@ -258,21 +384,66 @@ impl PhaseHandoffs {
                 malformed_return: None,
                 error: None,
             }),
-            changed,
+            changed: self.slot.changed.clone(),
         });
+        let poisoned = match self.slot.handoff.lock() {
+            Ok(mut saved) => {
+                *saved = Some(handoff.clone());
+                false
+            }
+            Err(error) => {
+                *error.into_inner() = Some(handoff.clone());
+                true
+            }
+        };
+        // This slot can be filled only by this non-Clone consuming reservation.
+        // It is independently owned before any fallible check or future exists.
+        handoff.changed.send_replace(SourceHandoffState::Retained);
         let observation = SourceHandoffObservation {
             changed: handoff.changed.subscribe(),
         };
-        entries.insert(
-            operation,
-            Entry {
-                handoff: handoff.clone(),
-                handle: None,
-            },
+        let installed = if poisoned {
+            Err(anyhow::anyhow!("original ingress slot poisoned"))
+        } else {
+            self.install_retained(&handoff)
+        };
+        if let Err(error) = installed {
+            handoff
+                .assets
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .error = Some(error);
+            handoff.changed.send_replace(SourceHandoffState::Held);
+        }
+        observation
+    }
+
+    fn install_retained(&self, handoff: &Arc<Handoff>) -> Result<()> {
+        ensure!(
+            handoff.source.ticket().task().id == self.slot.task,
+            "Source envelope belongs to a different original Task"
         );
-        // The envelope is independently retained before constructing this future.
-        // An eager guard also covers destruction BEFORE its first poll.
+        // Strong queue ownership is constructed here only AFTER saving envelope,
+        // then moved into the independently retained invocation, not the Driver.
+        let consumer = self.consumer.upgrade(&handoff.source)?;
+        let executor = tokio::runtime::Handle::try_current()?;
+        let registry = self
+            .registry
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("original handoff registry ended"))?;
+        let mut entries = registry
+            .entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Source handoffs poisoned"))?;
+        let entry = entries
+            .get_mut(&self.slot.task)
+            .ok_or_else(|| anyhow::anyhow!("original ingress slot ended"))?;
+        ensure!(
+            Arc::ptr_eq(&entry.slot, &self.slot) && entry.handle.is_none(),
+            "original ingress slot replaced or already invoked"
+        );
         let running = RunningHandoff(handoff.clone());
+        let handoff = handoff.clone();
         let handle = executor.spawn(async move {
             let _running = running;
             handoff
@@ -292,36 +463,85 @@ impl PhaseHandoffs {
                 }
             }
         });
-        // No await occurs before the actual handle reaches its independent owner.
-        entries
-            .get_mut(&operation)
-            .expect("retained actual Source envelope")
-            .handle = Some(handle);
-        Ok(observation)
-    }
-
-    pub(super) fn observe(&self, task: TaskId) -> Option<SourceHandoffObservation> {
-        let entries = self.entries.lock().ok()?;
-        entries
-            .values()
-            .find(|e| e.handoff.source.ticket().task().id == task)
-            .map(|e| SourceHandoffObservation {
-                changed: e.handoff.changed.subscribe(),
-            })
-    }
-
-    pub(super) fn ensure_shutdown_complete(&self) -> Result<()> {
-        let entries = self
-            .entries
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Source handoffs poisoned"))?;
-        // Future completion alone cannot settle Source originals/capacity. This
-        // increment has no genuine closure/retirement producer, so none is evicted.
-        ensure!(
-            entries.is_empty(),
-            "Source handoff shutdown remains pending with retained originals"
-        );
+        // No await follows spawn before the actual handle reaches its owner.
+        entry.handle = Some(handle);
         Ok(())
+    }
+}
+
+/// Private concrete producer owner; no public arbitrary-future constructor.
+struct InlineSourceOffer<'a> {
+    offer: Option<Pin<Box<dyn Future<Output = Result<SourceNativeHandoff>> + Send + 'a>>>,
+    reservation: Option<SourceHandoffReservation>,
+}
+impl Future for InlineSourceOffer<'_> {
+    type Output = Result<SourceHandoffObservation>;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match self
+            .offer
+            .as_mut()
+            .expect("actual inline Source producer")
+            .as_mut()
+            .poll(cx)
+        {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Ok(source)) => {
+                // First save real ownership; no fallible action or await between
+                // actual producer success and independent retention.
+                let observation = self
+                    .reservation
+                    .take()
+                    .expect("original ingress reservation")
+                    .install(source);
+                drop(self.offer.take());
+                Poll::Ready(Ok(observation))
+            }
+            Poll::Ready(Err(error)) => {
+                drop(self.offer.take());
+                drop(self.reservation.take());
+                Poll::Ready(Err(error))
+            }
+        }
+    }
+}
+impl Drop for InlineSourceOffer<'_> {
+    fn drop(&mut self) {
+        // Never infer producer termination from a watch or timeout. End the real
+        // sole inline future before Drop can remove this original EMPTY slot.
+        drop(self.offer.take());
+        drop(self.reservation.take());
+    }
+}
+
+impl Drop for SourceHandoffReservation {
+    fn drop(&mut self) {
+        // In the concrete inline callsite this Drop means the sole offer future
+        // ended or was dropped. No detached offer may still produce an envelope.
+        let Some(registry) = self.registry.upgrade() else {
+            return;
+        };
+        let Ok(mut entries) = registry.entries.lock() else {
+            self.slot.changed.send_replace(SourceHandoffState::Held);
+            return;
+        };
+        let Some(entry) = entries.get(&self.slot.task) else {
+            return;
+        };
+        if !Arc::ptr_eq(&entry.slot, &self.slot) || entry.handle.is_some() {
+            return;
+        }
+        let Ok(saved) = self.slot.handoff.lock() else {
+            self.slot.changed.send_replace(SourceHandoffState::Held);
+            return;
+        };
+        if saved.is_some() {
+            return;
+        }
+        // Detach only this SAME actual EMPTY; no ID/status/timer settlement.
+        let removed = entries.remove(&self.slot.task);
+        drop(saved);
+        drop(entries);
+        drop(removed);
     }
 }
 
@@ -343,21 +563,41 @@ impl Drop for RunningHandoff {
 }
 
 impl super::Runtime {
-    /// Concrete synchronous entry. On ordinary refusal caller MUST retain the
-    /// SAME returned envelope; no copied IDs can later reconstruct it.
-    pub(crate) fn retain_source_handoff(
+    fn source_consumer(&self, selected: &Arc<NativePhasePort>) -> PreOfferConsumer {
+        PreOfferConsumer {
+            owner: self.owner.clone(),
+            phases: Arc::downgrade(&self.phases),
+            selected: Arc::downgrade(selected),
+            control: self.control_admission.clone(),
+            running: self.running.clone(),
+            stopping: self.stopping.clone(),
+        }
+    }
+    pub(crate) fn observe_source_handoff(
         &self,
-        source: SourceNativeHandoff,
-    ) -> std::result::Result<SourceHandoffObservation, SourceNativeHandoff> {
-        self.phase_handoffs.retain(
-            source,
-            Consumer {
-                owner: self.owner.clone(),
-                phases: self.phases.clone(),
-                control: self.control_admission.clone(),
-                running: self.running.clone(),
-                stopping: self.stopping.clone(),
-            },
-        )
+        task: TaskId,
+    ) -> Result<Option<SourceHandoffObservation>> {
+        self.phase_handoffs.observe(task)
+    }
+    /// Reserve before the actual inline offer. Strong Runtime ends before await.
+    pub(crate) fn reserve_source_handoff(
+        &self,
+        ticket: &DriverReadTicket,
+        selected: &Arc<NativePhasePort>,
+    ) -> Result<SourceHandoffReservation> {
+        ensure!(
+            self.service_running()
+                && ticket.belongs_to_owner(&self.owner)
+                && std::ptr::eq(selected.owner(), self.owner.as_ref())
+                && selected.alias() == ticket.task().executor,
+            "Source ingress has different original Runtime/selection"
+        );
+        selected.selected_adapter()?;
+        ticket.validate_current_read()?;
+        self.phase_handoffs
+            .reserve_empty(ticket.task().id, self.source_consumer(selected))
     }
 }
+
+#[cfg(test)]
+mod tests;
