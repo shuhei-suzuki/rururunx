@@ -14,6 +14,7 @@ use std::{os::unix::fs::PermissionsExt, time::Duration};
 mod activation;
 mod nonsuccess;
 mod preparation;
+mod success;
 mod sweep;
 
 fn fixture(provider: &str, declared: bool) -> ControlFixture {
@@ -24,13 +25,30 @@ fn fixture_with(
     declared: bool,
     configure: impl FnOnce(&mut crate::config::Config),
 ) -> ControlFixture {
+    fixture_mode(provider, declared, Some("answer-normal"), configure)
+}
+/// `scenario: None` is the commit mode: the peer waits for
+/// `fixture-release`, commits `fixture-result.txt`, then completes.
+fn fixture_mode(
+    provider: &str,
+    declared: bool,
+    scenario: Option<&str>,
+    configure: impl FnOnce(&mut crate::config::Config),
+) -> ControlFixture {
+    let scenario = scenario.map_or_else(String::new, |s| format!("WORKFLOW_SCENARIO={s:?}\n"));
     ControlFixture::configured(|dir| {
         let path = dir.join("configured-protocol-fixture");
         let source = include_str!("../../execution/native/native_fixture.py");
         // Hold only the external protocol peer's bootstrap, after a real spawn.
         // This is not an rrx admission/authority or permission switch.
         let source=source.replacen("while True: time.sleep(0.02)","while not os.path.exists(os.path.join(os.environ[\"RRX_OUTPUT_DIR\"], \"fixture-bootstrap-release\")): time.sleep(0.02)",1);
-        std::fs::write(&path,format!("#!/usr/bin/python3\nPROVIDER={provider:?}\nBOOTSTRAP_HOLD=True\nWORKFLOW_SCENARIO='answer-normal'\n{source}")).unwrap();
+        std::fs::write(
+            &path,
+            format!(
+                "#!/usr/bin/python3\nPROVIDER={provider:?}\nBOOTSTRAP_HOLD=True\n{scenario}{source}"
+            ),
+        )
+        .unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
         let mut config = crate::config::Config {
             minimum_workflow: crate::config::WorkflowClass::Quick,

@@ -458,3 +458,11 @@ impl Store {
         Ok(task)
     }
 }
+
+#[cfg(test)]
+impl Store {
+    /// Read-only observer of the generic Driver reader; grants nothing.
+    pub(crate) fn validate_task_driver(&self, task: TaskId) -> Result<()> {
+        validate(&self.connection, task)
+    }
+}

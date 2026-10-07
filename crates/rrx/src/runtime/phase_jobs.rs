@@ -252,6 +252,13 @@ pub(super) struct ObservedJob {
     pub preparation: crate::execution::native::PreparationFacts,
     pub due: Instant,
     pub preparation_due: Instant,
+    pub observation: InvocationObservation,
+    pub bound: bool,
+    pub success: bool,
+    pub success_closed: bool,
+    pub success_attention: Option<&'static str>,
+    pub owner_live: Option<bool>,
+    pub settled: Option<bool>,
     pub preparation_busy: u64,
     /// (attempt time, applied backoff in ms) per Held confirmation.
     pub preparation_attempts: Vec<(Instant, u64)>,
@@ -373,6 +380,25 @@ impl PhaseJobs {
                     preparation: state.preparation.observed_facts(),
                     due: state.closure_due,
                     preparation_due: state.preparation_due,
+                    observation: state.observation,
+                    bound: state.binding_ack.is_some(),
+                    success: state.success.is_some(),
+                    success_closed: state.success_ack.is_some(),
+                    success_attention: state.success_attention,
+                    owner_live: match &state.outcome {
+                        Some(Ok(RetainedStart::Launched { binding, .. })) => {
+                            Some(binding.owner().is_live())
+                        }
+                        _ => None,
+                    },
+                    settled: match &state.outcome {
+                        Some(Ok(RetainedStart::Launched { binding, .. })) => binding
+                            .owner_arc()
+                            .binding_snapshot()
+                            .ok()
+                            .map(|s| s.settlement().is_some()),
+                        _ => None,
+                    },
                     preparation_busy: state.preparation_busy,
                     preparation_attempts: state.preparation_attempts.clone(),
                 }
