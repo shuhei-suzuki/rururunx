@@ -15,6 +15,8 @@ use std::{
 };
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
+#[path = "runtime_cli/recorded.rs"]
+mod recorded;
 
 struct Fixture {
     dir: tempfile::TempDir,
