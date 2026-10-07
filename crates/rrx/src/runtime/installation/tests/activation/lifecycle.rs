@@ -25,11 +25,11 @@ async fn ca4b_activation_segment_linearizes_before_shutdown() {
     .await;
     let original = observations.lock().unwrap()[0].clone();
     release.add_permits(1);
-    wait_for(|| block.parked(), "SETUP: genuine activation S2 absent").await;
+    block.wait_parked();
     let runtime = f.runtime.clone();
     let shutdown = tokio::spawn(async move { runtime.shutdown().await });
-    let end = tokio::time::Instant::now() + Duration::from_secs(1);
-    while tokio::time::Instant::now() < end {
+    let end = std::time::Instant::now() + Duration::from_secs(1);
+    while std::time::Instant::now() < end {
         assert!(
             !f.runtime.is_stopping(),
             "CA4b stop passed the original activation admission"
@@ -38,7 +38,7 @@ async fn ca4b_activation_segment_linearizes_before_shutdown() {
             !shutdown.is_finished(),
             "CA4b shutdown completed inside admitted segment"
         );
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        std::thread::sleep(Duration::from_millis(10));
     }
     block.open();
     tokio::time::timeout(Duration::from_secs(5), shutdown)
@@ -88,7 +88,7 @@ async fn ca4b_segment_keeps_runtime_alive_after_external_drop() {
     )
     .await;
     release.add_permits(1);
-    wait_for(|| block.parked(), "SETUP: S2 absent").await;
+    block.wait_parked();
     let weak = Arc::downgrade(&f.runtime);
     drop(f.runtime);
     assert!(

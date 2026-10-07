@@ -201,16 +201,14 @@ async fn ca3_missing_alias_is_rejected_at_accepted_ingress() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca3b_original_composition_cross_pairs_refuse_before_store() {
     let mut f = fixture("claude", true);
-    f.register_real_git_project();
-    let mut p = task_plan(&["rev-a"]);
-    let mut b = p.tasks[0].clone();
-    b.key = "b".into();
-    b.title = "task-b".into();
-    b.reviewers = vec!["rev-b".into()];
-    p.tasks.push(b);
-    let tasks = accepted_plan(&f, p).await;
-    let a = tasks.iter().find(|t| t.title != "task-b").unwrap().id;
-    let b = tasks.iter().find(|t| t.title == "task-b").unwrap().id;
+    f.register_real_git_project_named("ca3b-project-a");
+    let task_a = accepted_plan(&f, task_plan(&["rev-a"])).await.remove(0);
+    f.register_real_git_project_named("ca3b-project-b");
+    let task_b = accepted_plan(&f, task_plan(&["rev-b"])).await.remove(0);
+    let (a, b) = (task_a.id, task_b.id);
+    let tasks = [task_a, task_b];
+    // SAME Runtime/registry, distinct genuine Projects. The original same-Project
+    // failure is preserved in evidence; no namespace image is refreshed here.
     let release = Arc::new(tokio::sync::Semaphore::new(0));
     let checks = Arc::new(AtomicBool::new(false));
     let captures = Arc::new(Mutex::new(Vec::new()));

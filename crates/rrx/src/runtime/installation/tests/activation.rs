@@ -51,6 +51,18 @@ impl ServicePark {
     fn parked(&self) -> bool {
         *self.state.lock().unwrap() == 2
     }
+    fn wait_parked(&self) {
+        let end = std::time::Instant::now() + Duration::from_secs(40);
+        let mut state = self.state.lock().unwrap();
+        while *state != 2 {
+            let remaining = end.saturating_duration_since(std::time::Instant::now());
+            assert!(
+                !remaining.is_zero(),
+                "SETUP: synchronous segment did not park"
+            );
+            state = self.changed.wait_timeout(state, remaining).unwrap().0;
+        }
+    }
     fn open(&self) {
         *self.state.lock().unwrap() = 3;
         self.changed.notify_all();
