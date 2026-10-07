@@ -237,7 +237,14 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation) {
             attempt.detail.as_deref(),
             Some("native start ended before dispatch; explicit retry required")
         );
-        assert!(!snapshot.finished && snapshot.completed.is_empty());
+        let original: crate::workflow::WorkflowSnapshot =
+            serde_json::from_value(workflow_before.data.clone()).unwrap();
+        assert!(!snapshot.finished);
+        assert_eq!(
+            serde_json::to_value(&snapshot.completed).unwrap(),
+            serde_json::to_value(&original.completed).unwrap(),
+            "RN changed genuine initial gate completions"
+        );
         let operation_after: (i64, i64, String) = raw(&f)
             .query_row(
                 "SELECT phase_open,version,body FROM managed_phase_operations",
