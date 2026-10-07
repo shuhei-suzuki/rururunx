@@ -362,6 +362,51 @@ impl PreOfferConsumer {
 }
 
 impl PhaseHandoffs {
+    /// Root custody lookup for SC: the Task's retained original allocation,
+    /// only when its SAME original ticket belongs to the caller's association.
+    /// One lock at a time; nothing is read from SQL.
+    pub(super) fn settled_origin(
+        &self,
+        task: TaskId,
+        association: &crate::runtime::driver::DriverAssociation,
+    ) -> Result<Option<Arc<NativeAllocation>>> {
+        let slot = {
+            let entries = self
+                .entries
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase handoffs poisoned"))?;
+            let Some(entry) = entries.get(&task) else {
+                return Ok(None);
+            };
+            entry.slot.clone()
+        };
+        let handoff = slot
+            .handoff
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase handoff slot poisoned"))?
+            .clone();
+        let Some(handoff) = handoff else {
+            return Ok(None);
+        };
+        let origin = handoff
+            .assets
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase handoff assets poisoned"))?
+            .origin
+            .clone();
+        let Some(origin) = origin else {
+            return Ok(None);
+        };
+        let ticket = origin
+            .ticket
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("original Source ticket ended"))?;
+        ensure!(
+            ticket.association().same_association(association),
+            "settled lookup from a different Driver association"
+        );
+        Ok(Some(origin.allocation.clone()))
+    }
     /// Actual private Runtime calls this only after its complete original ticket
     /// read. Task is a capacity key; no Native/Driver proof is constructed here.
     fn reserve_empty(

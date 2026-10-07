@@ -9,8 +9,10 @@ use crate::execution::{
     phase::NativeAllocation,
 };
 use crate::state::managed_binding::{
-    ManagedBindingPlan, ManagedBindingWrite, plan_managed_binding,
+    BindingAcknowledgment, ManagedBindingPlan, ManagedBindingWrite, plan_managed_binding,
 };
+
+mod success;
 use anyhow::{Result, ensure};
 use std::{
     cell::Cell,
@@ -19,6 +21,7 @@ use std::{
     sync::{Arc, Mutex, Weak},
     time::{Duration, Instant},
 };
+pub(crate) use success::{ClosedPhaseAck, SettledLookup, SuccessContinuation};
 use tokio::{sync::watch, task::JoinHandle};
 
 const MAX_JOBS: usize = 128;
@@ -151,6 +154,19 @@ pub(crate) enum InvocationObservation {
     ClosedNonSuccess,
 }
 
+/// What the retained binding plan's last write or confirmation established.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BindingState {
+    /// No write outcome yet (no plan, or the start task is writing).
+    Unwritten,
+    /// The write returned Err: only the SAME plan may be confirmed.
+    Uncertain,
+    /// Confirmation proved the SAME plan rolled back.
+    RolledBack,
+    /// The write was definitively refused before any write.
+    Conflict,
+}
+
 struct JobState {
     // EMPTY/nongrant until the SAME actual selected Native start installs its
     // own actor and original plan. Retained BEFORE marker/start/future effects.
@@ -160,6 +176,13 @@ struct JobState {
     outcome: Option<std::result::Result<RetainedStart, NativePhaseStartError>>,
     binding_plan: Option<Arc<ManagedBindingPlan>>,
     binding_error: Option<anyhow::Error>,
+    // Outcome of the retained binding plan; Known is `binding_ack`.
+    binding_state: BindingState,
+    binding_ack: Option<Arc<BindingAcknowledgment>>,
+    success: Option<Arc<SuccessContinuation>>,
+    success_due: Instant,
+    success_backoff: u64,
+    success_attention: Option<&'static str>,
     nonsuccess: Option<Arc<crate::state::NativeNonSuccessClosurePlan>>,
     closed_ack: Option<Arc<crate::state::PhaseClosedAcknowledgment>>,
     closure_due: Instant,
@@ -207,6 +230,9 @@ pub(super) struct PhaseJobs {
     entries: Mutex<BTreeMap<OperationId, Entry>>,
     closure_cursor: Mutex<Option<OperationId>>,
     preparation_cursor: Mutex<Option<OperationId>>,
+    success_cursor: Mutex<Option<OperationId>>,
+    #[cfg(test)]
+    success_turns: Arc<Mutex<Vec<(OperationId, &'static str)>>>,
     #[cfg(test)]
     closure_turns: Arc<Mutex<Vec<(OperationId, u8)>>>,
 }
@@ -765,6 +791,12 @@ impl PhaseJobs {
                 outcome: None,
                 binding_plan: None,
                 binding_error: None,
+                binding_state: BindingState::Unwritten,
+                binding_ack: None,
+                success: None,
+                success_due: Instant::now(),
+                success_backoff: 100,
+                success_attention: None,
                 nonsuccess: None,
                 closed_ack: None,
                 closure_due: Instant::now(),
@@ -1030,23 +1062,63 @@ impl Job {
     fn bind_returned(&self, proof: Arc<NativePhaseBinding>) -> Result<()> {
         let owner = self.allocation.selected_port().owner();
         let plan = Arc::new(plan_managed_binding(owner, proof)?);
-        {
-            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            ensure!(
-                state.binding_plan.is_none(),
-                "binding plan already retained"
-            );
-            state.binding_plan = Some(plan.clone());
-        }
+        self.retain_binding_plan(&plan)?;
+        #[cfg(test)]
+        success::pause_before_normal_write(self.allocation.facts().scope.task_id);
         // Short job locks above never overlap the selected owner's Store lock.
         let write = owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("binding Store poisoned"))?
-            .bind_managed_phase(&plan)?;
+            .bind_managed_phase(&plan);
+        self.record_binding_write(&plan, write)
+    }
+    /// A retained plan is replaced only after it was RolledBack or
+    /// definitively refused; never two plans for one job.
+    fn retain_binding_plan(&self, plan: &Arc<ManagedBindingPlan>) -> Result<()> {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        ensure!(
+            state.binding_ack.is_none()
+                && (state.binding_plan.is_none()
+                    || matches!(
+                        state.binding_state,
+                        BindingState::RolledBack | BindingState::Conflict
+                    )),
+            "binding plan already retained"
+        );
+        state.binding_plan = Some(plan.clone());
+        state.binding_state = BindingState::Unwritten;
+        Ok(())
+    }
+    /// Records Known, typed Conflict or uncertain for the SAME retained plan.
+    fn record_binding_write(
+        &self,
+        plan: &Arc<ManagedBindingPlan>,
+        write: Result<ManagedBindingWrite>,
+    ) -> Result<()> {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        ensure!(
+            state
+                .binding_plan
+                .as_ref()
+                .is_some_and(|retained| Arc::ptr_eq(retained, plan)),
+            "binding outcome differs from the retained plan"
+        );
         match write {
-            ManagedBindingWrite::Known(_ack) => Ok(()),
-            ManagedBindingWrite::Conflict(cause) => Err(cause.context("binding refused")),
+            Ok(ManagedBindingWrite::Known(ack)) => {
+                ensure!(ack.matches_plan(plan), "binding acknowledgment differs");
+                state.binding_ack = Some(ack);
+                state.binding_state = BindingState::Unwritten;
+                Ok(())
+            }
+            Ok(ManagedBindingWrite::Conflict(cause)) => {
+                state.binding_state = BindingState::Conflict;
+                Err(cause.context("binding definitively refused"))
+            }
+            Err(cause) => {
+                state.binding_state = BindingState::Uncertain;
+                Err(cause.context("binding outcome uncertain"))
+            }
         }
     }
 }

@@ -850,6 +850,9 @@ impl PhaseDispatcher {
         self.phase_jobs
             .reconcile_nonsuccess(&self.phases, &self.stopping)
     }
+    pub(super) fn reconcile_success(&self) -> Result<bool> {
+        self.phase_jobs.reconcile_success(&self.stopping)
+    }
     pub(super) fn reconcile_preparations(&self) -> Result<Vec<super::phase_jobs::PreparationItem>> {
         self.phase_jobs.reconcile_preparations(&self.stopping)
     }

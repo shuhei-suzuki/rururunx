@@ -1,0 +1,451 @@
+//! SC Root sweep: binding convergence (D1), settlement discovery (D2) and
+//! continuation housekeeping (D3). Classification runs under short job locks;
+//! each turn takes at most one snapshot plus one Store transaction.
+use super::*;
+use crate::state::managed_binding::{ManagedBindingConfirmation, SettledPhase, plan_late_binding};
+
+const SUCCESS_TURNS: usize = 8;
+const SETTLEMENT_REPOLL_MS: u64 = 5000;
+
+/// Retained once per job after a bound owned success is observed. The stage
+/// mutex is a leaf and the single-flight token for Driver and Root writers.
+pub(crate) struct SuccessContinuation {
+    settled: Arc<SettledPhase>,
+    stage: Mutex<SuccessStage>,
+}
+/// Retained compact plans and acknowledgments of the continuation. None of
+/// them points back to a Job, PhaseJobs or Runtime.
+#[derive(Default)]
+pub(crate) struct SuccessStage {}
+impl SuccessContinuation {
+    pub(crate) fn settled(&self) -> &Arc<SettledPhase> {
+        &self.settled
+    }
+    /// Single-flight: Some only if no other caller holds the stage.
+    pub(crate) fn try_stage(&self) -> Result<Option<std::sync::MutexGuard<'_, SuccessStage>>> {
+        match self.stage.try_lock() {
+            Ok(guard) => Ok(Some(guard)),
+            Err(std::sync::TryLockError::WouldBlock) => Ok(None),
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                anyhow::bail!("success stage poisoned")
+            }
+        }
+    }
+}
+
+/// What one turn did, for the cfg(test) turn observer only.
+enum Turn {
+    Skipped,
+    Taken(&'static str),
+}
+
+impl PhaseJobs {
+    #[cfg(test)]
+    pub(in crate::runtime) fn observed_success_turns(&self) -> Vec<(OperationId, &'static str)> {
+        self.success_turns.lock().unwrap().clone()
+    }
+    fn set_success_cursor(&self, cursor: Option<OperationId>) -> Result<()> {
+        let _depth = RootLockDepth::enter();
+        *self
+            .success_cursor
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase success cursor poisoned"))? = cursor;
+        Ok(())
+    }
+    /// Synchronous classification and unadmitted Store turns. Returns whether
+    /// a retained action remains pending.
+    pub(in crate::runtime) fn reconcile_success(&self, stopping: &AtomicBool) -> Result<bool> {
+        let snapshot = self.rotated_snapshot(&self.success_cursor)?;
+        let mut turns = 0usize;
+        let mut pending = false;
+        for (operation, job, _finished) in snapshot {
+            if stopping.load(Ordering::SeqCst) {
+                return Ok(false);
+            }
+            if turns == SUCCESS_TURNS {
+                self.set_success_cursor(Some(operation))?;
+                return Ok(true);
+            }
+            match job.success_turn()? {
+                Turn::Skipped => {}
+                Turn::Taken(label) => {
+                    turns += 1;
+                    pending = true;
+                    #[cfg(test)]
+                    self.success_turns.lock().unwrap().push((operation, label));
+                    #[cfg(not(test))]
+                    let _ = label;
+                }
+            }
+        }
+        self.set_success_cursor(None)?;
+        Ok(pending)
+    }
+}
+
+/// Classification read under one short job lock.
+struct Classified {
+    binding: Arc<NativePhaseBinding>,
+    plan: Option<Arc<ManagedBindingPlan>>,
+    state: BindingState,
+    ack: Option<Arc<BindingAcknowledgment>>,
+}
+
+impl Job {
+    fn classify(&self) -> Result<Option<Classified>> {
+        let _depth = RootLockDepth::enter();
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+        let Some(Ok(RetainedStart::Launched { binding, .. })) = &state.outcome else {
+            return Ok(None);
+        };
+        // The start task's one-shot binding is still in flight.
+        if state.observation == InvocationObservation::Binding
+            || state.closed_ack.is_some()
+            || state.success_due > Instant::now()
+            || state.success.is_some()
+        {
+            return Ok(None);
+        }
+        Ok(Some(Classified {
+            binding: binding.clone(),
+            plan: state.binding_plan.clone(),
+            state: state.binding_state,
+            ack: state.binding_ack.clone(),
+        }))
+    }
+    fn success_turn(&self) -> Result<Turn> {
+        let Some(c) = self.classify()? else {
+            return Ok(Turn::Skipped);
+        };
+        match c.ack {
+            Some(ack) => self.settlement_turn(&c.binding, ack),
+            None => self.binding_turn(c),
+        }
+    }
+    /// D1: converge the binding of the SAME owner.
+    fn binding_turn(&self, c: Classified) -> Result<Turn> {
+        let owner = self.allocation.selected_port().owner();
+        if let (BindingState::Uncertain, Some(plan)) = (c.state, &c.plan) {
+            let confirmation = owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("binding Store poisoned"))?
+                .confirm_managed_binding(plan);
+            match confirmation {
+                Ok(ManagedBindingConfirmation::Known(ack)) => self.install_ack(plan, ack)?,
+                Ok(ManagedBindingConfirmation::RolledBack) => {
+                    self.set_binding_state(plan, BindingState::RolledBack)?;
+                    self.success_ready()?;
+                }
+                Err(_cause) => self.success_held("binding outcome uncertain; Held", 5000)?,
+            }
+            return Ok(Turn::Taken("binding confirm"));
+        }
+        let snap = Arc::new(c.binding.owner_arc().binding_snapshot()?);
+        let retained_late = c.plan.as_ref().is_some_and(|p| p.is_late());
+        let plan = if snap.settlement().is_some() {
+            match (c.state, retained_late) {
+                // Every late image derives from the SAME settlement: a late
+                // plan's own refusal cannot be repaired by replanning.
+                (BindingState::Conflict, true) => {
+                    self.success_held("late binding refused; Held", 5000)?;
+                    return Ok(Turn::Taken("late refused"));
+                }
+                (BindingState::RolledBack, true) => c.plan.clone().expect("retained late plan"),
+                _ => match plan_late_binding(owner, snap) {
+                    Ok(plan) => {
+                        let plan = Arc::new(plan);
+                        self.retain_binding_plan(&plan)?;
+                        plan
+                    }
+                    Err(_cause) => {
+                        self.success_held("late binding plan refused; Held", 5000)?;
+                        return Ok(Turn::Taken("late plan refused"));
+                    }
+                },
+            }
+        } else if snap.is_live() {
+            match (c.state, &c.plan) {
+                (BindingState::Conflict, _) => match plan_managed_binding(owner, snap) {
+                    Ok(plan) => {
+                        let plan = Arc::new(plan);
+                        self.retain_binding_plan(&plan)?;
+                        plan
+                    }
+                    Err(_cause) => {
+                        self.success_retry()?;
+                        return Ok(Turn::Taken("normal plan refused"));
+                    }
+                },
+                (BindingState::RolledBack, Some(plan)) => plan.clone(),
+                _ => return Ok(Turn::Skipped),
+            }
+        } else {
+            // Revoked and unbound without a settlement: no conclusion.
+            self.success_held(
+                "owned success settlement not observed",
+                SETTLEMENT_REPOLL_MS,
+            )?;
+            return Ok(Turn::Taken("unbound settlement poll"));
+        };
+        let write = owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("binding Store poisoned"))?
+            .bind_managed_phase(&plan);
+        match self.record_binding_write(&plan, write) {
+            Ok(()) => {
+                self.set_observation(InvocationObservation::Bound)?;
+            }
+            Err(_cause) => self.success_retry()?,
+        }
+        Ok(Turn::Taken(if plan.is_late() {
+            "late bind"
+        } else {
+            "normal bind"
+        }))
+    }
+    /// D2: a bound owner that is no longer live may hold its settlement.
+    fn settlement_turn(
+        &self,
+        binding: &Arc<NativePhaseBinding>,
+        ack: Arc<BindingAcknowledgment>,
+    ) -> Result<Turn> {
+        // One atomic load; a live owner costs no turn.
+        if binding.owner().is_live() {
+            return Ok(Turn::Skipped);
+        }
+        let snap = Arc::new(binding.owner_arc().binding_snapshot()?);
+        if snap.settlement().is_none() {
+            // The revoke->settle gap, a Core drop before its saved terminal
+            // settles, or a non-success terminal: never concluded here.
+            self.success_held(
+                "owned success settlement not observed",
+                SETTLEMENT_REPOLL_MS,
+            )?;
+            return Ok(Turn::Taken("settlement poll"));
+        }
+        let settled = SettledPhase::issue(snap, ack)?;
+        {
+            let _depth = RootLockDepth::enter();
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+            ensure!(state.success.is_none(), "success continuation installed");
+            state.success = Some(Arc::new(SuccessContinuation {
+                settled,
+                stage: Mutex::new(SuccessStage::default()),
+            }));
+            state.success_attention = None;
+            state.success_backoff = 100;
+        }
+        // Hint only; the Driver re-reads retained custody.
+        self.changed.send_replace(InvocationObservation::Bound);
+        Ok(Turn::Taken("continuation installed"))
+    }
+    fn install_ack(
+        &self,
+        plan: &Arc<ManagedBindingPlan>,
+        ack: Arc<BindingAcknowledgment>,
+    ) -> Result<()> {
+        {
+            let _depth = RootLockDepth::enter();
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+            ensure!(
+                ack.matches_plan(plan)
+                    && state
+                        .binding_plan
+                        .as_ref()
+                        .is_some_and(|retained| Arc::ptr_eq(retained, plan))
+                    && state.binding_ack.is_none(),
+                "binding confirmation differs from the retained plan"
+            );
+            state.binding_ack = Some(ack);
+            state.binding_state = BindingState::Unwritten;
+            state.observation = InvocationObservation::Bound;
+        }
+        self.changed.send_replace(InvocationObservation::Bound);
+        self.success_ready()
+    }
+    fn set_binding_state(&self, plan: &Arc<ManagedBindingPlan>, next: BindingState) -> Result<()> {
+        let _depth = RootLockDepth::enter();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+        ensure!(
+            state
+                .binding_plan
+                .as_ref()
+                .is_some_and(|retained| Arc::ptr_eq(retained, plan)),
+            "binding state differs from the retained plan"
+        );
+        state.binding_state = next;
+        Ok(())
+    }
+    fn set_observation(&self, observation: InvocationObservation) -> Result<()> {
+        {
+            let _depth = RootLockDepth::enter();
+            self.state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?
+                .observation = observation;
+        }
+        self.changed.send_replace(observation);
+        Ok(())
+    }
+    fn success_held(&self, reason: &'static str, delay_ms: u64) -> Result<()> {
+        let _depth = RootLockDepth::enter();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+        state.success_attention = Some(reason);
+        state.success_backoff = delay_ms;
+        state.success_due = Instant::now() + Duration::from_millis(delay_ms);
+        Ok(())
+    }
+    fn success_retry(&self) -> Result<()> {
+        let _depth = RootLockDepth::enter();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+        state.success_due = Instant::now() + Duration::from_millis(state.success_backoff);
+        state.success_backoff = state.success_backoff.saturating_mul(2).min(5000);
+        Ok(())
+    }
+    fn success_ready(&self) -> Result<()> {
+        let _depth = RootLockDepth::enter();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+        state.success_due = Instant::now();
+        state.success_backoff = 100;
+        state.success_attention = None;
+        Ok(())
+    }
+}
+
+/// Test-only, Task-scoped hold of the start task between its normal binding
+/// plan and write. It parks and resumes only; it grants nothing.
+#[cfg(test)]
+pub(crate) struct WritePause {
+    state: Mutex<u8>,
+    changed: std::sync::Condvar,
+}
+#[cfg(test)]
+static WRITE_PAUSES: Mutex<Vec<(crate::domain::TaskId, Arc<WritePause>)>> = Mutex::new(Vec::new());
+#[cfg(test)]
+impl WritePause {
+    pub(crate) fn arm(task: crate::domain::TaskId) -> Arc<Self> {
+        let pause = Arc::new(Self {
+            state: Mutex::new(0),
+            changed: std::sync::Condvar::new(),
+        });
+        WRITE_PAUSES.lock().unwrap().push((task, pause.clone()));
+        pause
+    }
+    pub(crate) fn reached(&self) -> bool {
+        *self.state.lock().unwrap() == 1
+    }
+    pub(crate) fn release(&self) {
+        *self.state.lock().unwrap() = 2;
+        self.changed.notify_all();
+    }
+}
+#[cfg(test)]
+pub(super) fn pause_before_normal_write(task: Option<crate::domain::TaskId>) {
+    let Some(task) = task else { return };
+    let pause = {
+        let mut pauses = WRITE_PAUSES.lock().unwrap();
+        pauses
+            .iter()
+            .position(|(armed, _)| *armed == task)
+            .map(|index| pauses.remove(index).1)
+    };
+    let Some(pause) = pause else { return };
+    *pause.state.lock().unwrap() = 1;
+    pause.changed.notify_all();
+    let wait = || {
+        let mut state = pause.state.lock().unwrap();
+        while *state != 2 {
+            state = pause.changed.wait(state).unwrap();
+        }
+    };
+    match tokio::runtime::Handle::try_current().map(|h| h.runtime_flavor()) {
+        Ok(tokio::runtime::RuntimeFlavor::MultiThread) => tokio::task::block_in_place(wait),
+        _ => wait(),
+    }
+}
+
+/// A closed phase's acknowledgment retained by its job.
+pub(crate) enum ClosedPhaseAck {
+    NonSuccess(Arc<crate::state::PhaseClosedAcknowledgment>),
+}
+/// Root custody read for the SAME Driver association; nongrant.
+pub(crate) enum SettledLookup {
+    NoHandoff,
+    Pending,
+    Held(&'static str),
+    Settled(Arc<SuccessContinuation>),
+    Closed(ClosedPhaseAck),
+}
+
+impl PhaseJobs {
+    /// The job whose allocation is pointer-equal to the original handoff's.
+    fn settled_lookup(&self, allocation: &Arc<NativeAllocation>) -> Result<SettledLookup> {
+        let job = {
+            let _depth = RootLockDepth::enter();
+            let entries = self
+                .entries
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase jobs poisoned"))?;
+            match entries.get(&allocation.facts().operation_id) {
+                Some(entry) if Arc::ptr_eq(&entry.job.allocation, allocation) => entry.job.clone(),
+                Some(_) => return Ok(SettledLookup::Held("phase job allocation differs")),
+                None => return Ok(SettledLookup::Pending),
+            }
+        };
+        let _depth = RootLockDepth::enter();
+        let state = job
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+        if let Some(ack) = &state.closed_ack {
+            return Ok(SettledLookup::Closed(ClosedPhaseAck::NonSuccess(
+                ack.clone(),
+            )));
+        }
+        if let Some(success) = &state.success {
+            return Ok(SettledLookup::Settled(success.clone()));
+        }
+        Ok(match state.success_attention {
+            Some(reason) if reason.ends_with("Held") => SettledLookup::Held(reason),
+            _ => SettledLookup::Pending,
+        })
+    }
+}
+
+impl crate::runtime::Runtime {
+    /// Root custody only, pointer-checked, one lock at a time; no SQL.
+    /// Passive status and Goal views never call this.
+    pub(crate) fn settled_phase(
+        &self,
+        task: crate::domain::TaskId,
+        association: &crate::runtime::driver::DriverAssociation,
+    ) -> Result<SettledLookup> {
+        match self.phase_handoffs.settled_origin(task, association)? {
+            None => Ok(SettledLookup::NoHandoff),
+            Some(allocation) => self.phase_jobs.settled_lookup(&allocation),
+        }
+    }
+}

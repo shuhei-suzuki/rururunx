@@ -30,6 +30,7 @@ mod schema;
 mod schema_tests;
 mod session_identity;
 mod snapshot;
+mod success;
 mod successor;
 mod unpublished;
 pub(super) use permits::{
@@ -56,6 +57,7 @@ pub(crate) use publication::{
 #[cfg(test)]
 pub(crate) use snapshot::plan_scope;
 pub(in crate::state) use snapshot::{ScopePlan, read_scope, snapshot};
+pub(crate) use success::SettledPhase;
 pub(in crate::state) use successor::validate_planned_unit_tx;
 pub(crate) use successor::{CurrentWorkflowSuccessor, plan_current_phase, validate_current_tx};
 pub(crate) use unpublished::{UnpublishedMarkerProof, plan_unpublished_marker};

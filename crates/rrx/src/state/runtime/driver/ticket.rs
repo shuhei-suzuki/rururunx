@@ -84,6 +84,10 @@ pub(crate) fn read_driver_ticket(
 }
 
 impl DriverReadTicket {
+    /// The retained association by reference; read-only, nongrant.
+    pub(crate) fn association(&self) -> &DriverAssociation {
+        &self.association
+    }
     /// Original owner pointer only; this neither recaptures nor grants a ticket.
     pub(crate) fn belongs_to_owner(&self, owner: &Arc<RuntimeOwner>) -> bool {
         Arc::ptr_eq(&self.owner, owner)
