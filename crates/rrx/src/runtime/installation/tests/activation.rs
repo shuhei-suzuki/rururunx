@@ -48,8 +48,19 @@ impl ServicePark {
         if *state == 1 {
             *state = 2;
             self.changed.notify_all();
-            while *state == 2 {
-                state = self.changed.wait(state).unwrap();
+            drop(state);
+            // Parking blocks this thread. On a multi-thread worker, hand its
+            // scheduler core (and possibly the timer driver) to another thread
+            // so the test's bounded waits keep firing.
+            let wait = || {
+                let mut state = self.state.lock().unwrap();
+                while *state == 2 {
+                    state = self.changed.wait(state).unwrap();
+                }
+            };
+            match tokio::runtime::Handle::try_current().map(|h| h.runtime_flavor()) {
+                Ok(tokio::runtime::RuntimeFlavor::MultiThread) => tokio::task::block_in_place(wait),
+                _ => wait(),
             }
         }
     }
