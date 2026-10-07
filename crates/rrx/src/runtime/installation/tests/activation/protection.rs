@@ -266,3 +266,45 @@ async fn nongrant_ca4e_task_controls_cannot_supply_drift_producer() {
     f.runtime.shutdown().await.unwrap();
     finish(f).await;
 }
+
+/// Marker-dispatch HOW: an uncertain postcommit Driver cache publication keeps
+/// the SAME custody/plan and is reconciled by exact confirmation, never replanned
+/// or rolled back. The cfg(test) seam injects only that one fault.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn ca7_postcommit_cache_fault_reconciles_same_custody_once() {
+    let mut f = fixture("claude", true);
+    f.register_real_git_project();
+    let (_, tasks) = accept(&f, 1).await;
+    crate::state::managed_binding::arm_driver_publication_fault(tasks[0].id);
+    f.runtime.start().await.unwrap();
+    let (record, workflow) = wait_bound(&f, &tasks[0]).await;
+    let operations: usize = raw(&f)
+        .query_row(
+            "SELECT count(*) FROM managed_phase_operations WHERE task_id=?1",
+            [tasks[0].id.to_string()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(operations, 1, "CA7 marker replanned or published twice");
+    let bound: usize = raw(&f)
+        .query_row(
+            "SELECT count(*) FROM audit WHERE kind='rrx.private.workflow.session_bound' AND task_id=?1",
+            [tasks[0].id.to_string()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(bound, 1, "CA7 SAME reconciled launch bound once");
+    let workflow_version: u64 = raw(&f)
+        .query_row(
+            "SELECT version FROM records WHERE id=?1",
+            [record.id.to_string()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        workflow_version, record.version,
+        "CA7 Workflow advanced past Bound"
+    );
+    release_peer(&f, &workflow);
+    finish(f).await;
+}

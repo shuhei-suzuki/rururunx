@@ -131,6 +131,15 @@ impl OriginalPublicationCustody {
         }
         diagnostic
     }
+    /// A commit was attempted (Ok, Err or no return) and the SAME original
+    /// launch was not handed off: only exact same-custody confirmation applies.
+    pub(super) fn may_attempt_reconcile(&self) -> Result<bool> {
+        use crate::state::managed_binding::MarkerTransactionObservation as Tx;
+        Ok(matches!(
+            self.outcome.transaction()?,
+            Tx::CommitAttempted | Tx::CommitError | Tx::Committed
+        ) && !self.capacity.slot.launch_handed_off.load(Ordering::SeqCst))
+    }
     pub(super) fn may_attempt_unpublished(&self) -> Result<bool> {
         use crate::state::managed_binding::MarkerTransactionObservation as Tx;
         Ok(matches!(

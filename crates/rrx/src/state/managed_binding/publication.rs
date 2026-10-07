@@ -307,6 +307,25 @@ fn decide_contract(
     );
     Ok(body)
 }
+/// Fault-only test seam: fails exactly one postcommit Driver cache publication
+/// of the named Task. It never commits, plans or confirms anything itself.
+#[cfg(test)]
+static DRIVER_PUBLICATION_FAULTS: Mutex<Vec<crate::domain::TaskId>> = Mutex::new(Vec::new());
+#[cfg(test)]
+pub(crate) fn arm_driver_publication_fault(task: crate::domain::TaskId) {
+    DRIVER_PUBLICATION_FAULTS.lock().unwrap().push(task);
+}
+#[cfg(test)]
+fn take_driver_publication_fault(task: crate::domain::TaskId) -> bool {
+    let mut faults = DRIVER_PUBLICATION_FAULTS.lock().unwrap();
+    match faults.iter().position(|armed| *armed == task) {
+        Some(index) => {
+            faults.swap_remove(index);
+            true
+        }
+        None => false,
+    }
+}
 #[cfg(test)]
 pub(crate) fn check_native_contract_integrity(
     allocation: &NativeAllocation,
@@ -544,6 +563,11 @@ impl Store {
         })?;
         // A publication failure after commit never creates a replacement plan
         // or rolls the marker back. Runtime keeps this original pending slot.
+        #[cfg(test)]
+        ensure!(
+            !take_driver_publication_fault(plan.marker.before.task.parsed().id),
+            "injected postcommit Driver cache publication fault"
+        );
         self.publish_driver_marker(&plan.driver)?;
         Ok(outcome.retain_first_marker())
     }

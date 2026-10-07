@@ -251,6 +251,14 @@ impl Consumer {
                 self.dispatcher
                     .rollback_marker_publication(&publication)
                     .await?;
+            } else if publication.may_attempt_reconcile()? {
+                // One inline exact confirmation of the SAME saved plan under a
+                // fresh admission; never a replan, replay or rollback inference.
+                self.dispatcher
+                    .reconcile_phase_marker(&publication)
+                    .await
+                    .context("actual original marker reconciliation")?;
+                return Ok(state);
             }
             return Err(error.context("actual original marker publication"));
         }

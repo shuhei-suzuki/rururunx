@@ -24,7 +24,7 @@ mod permits;
 mod protection;
 mod publication;
 #[cfg(test)]
-pub(crate) use publication::check_native_contract_integrity;
+pub(crate) use publication::{arm_driver_publication_fault, check_native_contract_integrity};
 mod schema;
 #[cfg(test)]
 mod schema_tests;
