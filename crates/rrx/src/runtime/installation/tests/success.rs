@@ -1868,3 +1868,84 @@ async fn sc5d_claude_revoke_settle_gap_records_no_conclusion() {
 async fn sc5d_codex_revoke_settle_gap_records_no_conclusion() {
     sc5d_gap("codex").await;
 }
+
+/// SC4-N: a normal binding whose commit is reported uncertain, then the
+/// genuine owned terminal before the Root confirmation: confirmation is Known
+/// (committed variant) or RolledBack (pre-commit variant) despite the
+/// advanced Unit/invocation/Session/readiness/admission rows; the RolledBack
+/// variant then late-binds once with `closed_settlement`.
+async fn sc4n(provider: &str, fault: crate::state::managed_binding::fault::CommitFault) {
+    use crate::runtime::phase_jobs::BINDING_CONFIRM;
+    use crate::state::managed_binding::fault::{BIND, CommitFault, arm_commit_fault};
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    arm_commit_fault(task.id, BIND, fault);
+    let confirm = held(task, BINDING_CONFIRM);
+    f.runtime.start().await.unwrap();
+    wait_for(
+        || confirm.0.reached(),
+        "SETUP: binding confirmation not reached",
+        60,
+    )
+    .await;
+    let unit = f.runtime.phase_jobs.observed_jobs()[0].unit;
+    let unit = f.owner.store.lock().unwrap().execution_unit(unit).unwrap();
+    release_unit(&f, &unit);
+    wait_for(
+        || {
+            f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .any(|j| j.settled == Some(true))
+        },
+        "SETUP: owned terminal before confirmation",
+        60,
+    )
+    .await;
+    confirm.0.release();
+    wait_for(
+        || links(&f, task).last().map(String::as_str) == Some("phase_closed"),
+        "SC4-N: chain did not close",
+        90,
+    )
+    .await;
+    let expected = match fault {
+        CommitFault::AfterCommit => "normal_return",
+        _ => "closed_settlement",
+    };
+    assert_eq!(
+        binding_proof(&f, task),
+        expected,
+        "SC4-N {provider} {fault:?}"
+    );
+    assert_eq!(
+        links(&f, task),
+        [
+            "session_bound",
+            "gate_claim",
+            "gate_observed",
+            "phase_closed"
+        ],
+        "SC4-N {provider} {fault:?}: one binding"
+    );
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc4n_claude_uncertain_bind_then_terminal_confirms() {
+    use crate::state::managed_binding::fault::CommitFault;
+    sc4n("claude", CommitFault::AfterCommit).await;
+    sc4n("claude", CommitFault::BeforeCommit).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc4n_codex_uncertain_bind_then_terminal_confirms() {
+    use crate::state::managed_binding::fault::CommitFault;
+    sc4n("codex", CommitFault::AfterCommit).await;
+    sc4n("codex", CommitFault::BeforeCommit).await;
+}

@@ -372,6 +372,8 @@ impl Job {
     fn binding_turn(&self, c: Classified) -> Result<Turn> {
         let owner = self.allocation.selected_port().owner();
         if let (BindingState::Uncertain, Some(plan)) = (c.state, &c.plan) {
+            #[cfg(test)]
+            pause_at(self.allocation.facts().scope.task_id, BINDING_CONFIRM);
             let confirmation = owner
                 .store
                 .lock()
@@ -707,6 +709,8 @@ pub(crate) const SETTLED_CLOSURE: &str = "settled closure";
 pub(crate) const SUCCESS_ADMISSION: &str = "success admission";
 #[cfg(test)]
 pub(crate) const SETTLEMENT_GAP: &str = "settlement gap";
+#[cfg(test)]
+pub(crate) const BINDING_CONFIRM: &str = "binding confirm";
 #[cfg(test)]
 pub(crate) const OWNER_IMMEDIATE: &str = "owner immediate";
 #[cfg(test)]
