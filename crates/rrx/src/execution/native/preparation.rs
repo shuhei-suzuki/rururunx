@@ -276,6 +276,7 @@ impl NativePreparationCustody {
         ensure!(
             state.abandoned
                 && state.closed.is_none()
+                && state.closure.is_none()
                 && state
                     .actor
                     .as_ref()

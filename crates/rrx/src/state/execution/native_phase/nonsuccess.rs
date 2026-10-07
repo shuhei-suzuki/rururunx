@@ -59,6 +59,10 @@ fn validate_open(tx: &Transaction<'_>, plan: &NativeNonSuccessClosurePlan) -> Re
         .closure(&NonSuccessReader(()))
         .unit()
         .validate_indexed_tx(tx)?;
+    plan.proof
+        .closure(&NonSuccessReader(()))
+        .unit()
+        .validate_tx(tx)?;
     plan.images.validate_budget_tx(
         tx,
         plan.proof.launch().marker(),
@@ -142,7 +146,9 @@ impl Store {
     ) -> Result<NativeNonSuccessWrite> {
         crate::runtime::record_nonsuccess_store_attempt();
         let plan = &material.plan;
-        selected_database(&self.connection, plan.proof.launch())?;
+        if let Err(cause) = selected_database(&self.connection, plan.proof.launch()) {
+            return Ok(NativeNonSuccessWrite::Conflict(cause));
+        }
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
