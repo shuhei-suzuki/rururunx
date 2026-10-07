@@ -67,7 +67,10 @@ impl NativePreparationCustody {
             transport: state.transport.is_some(),
             closure: state.closure.is_some(),
             closed: state.closed.is_some(),
-            saved_closure: state.closure.as_ref().map(|p| (Arc::as_ptr(p) as usize, p.observed_at())),
+            saved_closure: state
+                .closure
+                .as_ref()
+                .map(|p| (Arc::as_ptr(p) as usize, p.observed_at())),
         }
     }
     pub(super) fn validate_nonsuccess_original(

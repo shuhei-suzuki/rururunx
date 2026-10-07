@@ -199,24 +199,53 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation, prepara
             let started = std::time::Instant::now();
             f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap();
             let uncertain = f.runtime.phase_jobs.observed_jobs();
-            assert!(uncertain[0].preparation.closure && !uncertain[0].preparation.closed, "P1 actual write contention did not retain U: {uncertain:?}");
+            assert!(
+                uncertain[0].preparation.closure && !uncertain[0].preparation.closed,
+                "P1 actual write contention did not retain U: {uncertain:?}"
+            );
             let saved = uncertain[0].preparation.saved_closure.unwrap();
             assert_eq!(f.runtime.phase_jobs.observed_turns().len(), 1);
             assert_eq!(f.runtime.phase_jobs.observed_turns()[0].1, 1);
-            assert!(uncertain[0].due.saturating_duration_since(std::time::Instant::now()) <= Duration::from_millis(100));
+            assert!(
+                uncertain[0]
+                    .due
+                    .saturating_duration_since(std::time::Instant::now())
+                    <= Duration::from_millis(100)
+            );
             assert_eq!(links(&f), 0);
             writer.execute_batch("ROLLBACK").unwrap();
             // Deliver nothing before the genuine per-job backoff expires.
             f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap();
-            assert_eq!(f.runtime.phase_jobs.observed_turns().len(), 1, "P1 ignored actual backoff");
-            wait_for(|| std::time::Instant::now() >= f.runtime.phase_jobs.observed_jobs()[0].due, "P1 actual backoff did not expire").await;
-            assert_eq!(f.runtime.phase_jobs.observed_jobs()[0].preparation.saved_closure, Some(saved), "P1 changed saved U before confirm");
+            assert_eq!(
+                f.runtime.phase_jobs.observed_turns().len(),
+                1,
+                "P1 ignored actual backoff"
+            );
+            wait_for(
+                || std::time::Instant::now() >= f.runtime.phase_jobs.observed_jobs()[0].due,
+                "P1 actual backoff did not expire",
+            )
+            .await;
+            assert_eq!(
+                f.runtime.phase_jobs.observed_jobs()[0]
+                    .preparation
+                    .saved_closure,
+                Some(saved),
+                "P1 changed saved U before confirm"
+            );
             assert!(f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap());
             let rolled_back = f.runtime.phase_jobs.observed_jobs();
-            assert!(!rolled_back[0].preparation.closure && !rolled_back[0].preparation.closed, "P1 confirmed rollback did not clear to N: {rolled_back:?}");
+            assert!(
+                !rolled_back[0].preparation.closure && !rolled_back[0].preparation.closed,
+                "P1 confirmed rollback did not clear to N: {rolled_back:?}"
+            );
             assert_eq!(f.runtime.phase_jobs.observed_turns().len(), 2);
             assert_eq!(f.runtime.phase_jobs.observed_turns()[1].1, 1);
-            eprintln!("RN P1 actual contention elapsed_ms={} backoff_ms=100 saved_at={} rollback_state=N", started.elapsed().as_millis(), saved.1);
+            eprintln!(
+                "RN P1 actual contention elapsed_ms={} backoff_ms=100 saved_at={} rollback_state=N",
+                started.elapsed().as_millis(),
+                saved.1
+            );
         }
         assert!(
             f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap(),
@@ -295,8 +324,15 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation, prepara
         f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap();
         assert_eq!(links(&f), 1);
         let turns = f.runtime.phase_jobs.observed_turns();
-        assert_eq!(turns.len(), if preparation_busy { 4 } else { 2 }, "N/U/K actual completion turn count: {turns:?}");
-        assert!(turns.iter().all(|(_, attempts)| *attempts == 1), "more than one or missing actual Store transaction in turn: {turns:?}");
+        assert_eq!(
+            turns.len(),
+            if preparation_busy { 4 } else { 2 },
+            "N/U/K actual completion turn count: {turns:?}"
+        );
+        assert!(
+            turns.iter().all(|(_, attempts)| *attempts == 1),
+            "more than one or missing actual Store transaction in turn: {turns:?}"
+        );
     } else {
         f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap();
         let held = f.runtime.phase_jobs.observed_jobs();

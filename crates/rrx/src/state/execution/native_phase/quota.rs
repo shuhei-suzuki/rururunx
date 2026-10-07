@@ -52,7 +52,9 @@ impl NativePreparationClosureCommit {
 }
 impl NativeQuotaClosurePlan {
     #[cfg(test)]
-    pub(crate) fn observed_at(&self) -> i64 { self.at }
+    pub(crate) fn observed_at(&self) -> i64 {
+        self.at
+    }
     pub(crate) fn matches_no_dispatch(&self, value: &Arc<PreparedPhaseNoCurrentDispatch>) -> bool {
         Arc::ptr_eq(&self.no_dispatch, value)
     }

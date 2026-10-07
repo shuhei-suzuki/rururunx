@@ -91,12 +91,20 @@ struct ClosureTurn {
     operation: OperationId,
 }
 impl ClosureTurn {
-    fn enter(#[cfg(test)] observations: Arc<Mutex<Vec<(OperationId, u8)>>>, #[cfg(test)] operation: OperationId) -> Self {
+    fn enter(
+        #[cfg(test)] observations: Arc<Mutex<Vec<(OperationId, u8)>>>,
+        #[cfg(test)] operation: OperationId,
+    ) -> Self {
         TURN_TRANSACTIONS.with(|v| {
             debug_assert!(v.get().is_none());
             v.set(Some(0));
         });
-        Self { #[cfg(test)] observations, #[cfg(test)] operation }
+        Self {
+            #[cfg(test)]
+            observations,
+            #[cfg(test)]
+            operation,
+        }
     }
 }
 impl Drop for ClosureTurn {
@@ -231,7 +239,9 @@ impl PhaseInvocation {
 
 impl PhaseJobs {
     #[cfg(test)]
-    pub(super) fn observed_turns(&self) -> Vec<(OperationId, u8)> { self.closure_turns.lock().unwrap().clone() }
+    pub(super) fn observed_turns(&self) -> Vec<(OperationId, u8)> {
+        self.closure_turns.lock().unwrap().clone()
+    }
     /// Nongrant observations from existing entries, never constructors.
     #[cfg(test)]
     pub(super) fn observed_jobs(&self) -> Vec<ObservedJob> {
@@ -409,7 +419,12 @@ impl PhaseJobs {
                 self.set_closure_cursor(Some(operation))?;
                 return Ok(true);
             }
-            let _turn = ClosureTurn::enter(#[cfg(test)] self.closure_turns.clone(), #[cfg(test)] operation);
+            let _turn = ClosureTurn::enter(
+                #[cfg(test)]
+                self.closure_turns.clone(),
+                #[cfg(test)]
+                operation,
+            );
             let owner = job
                 .allocation
                 .selected_port()
