@@ -1,6 +1,6 @@
 # Issue 43: fixture migration to accepted ingress (FM) HOW — draft
 
-- **Status:** draft, revision R1 (R0 plus the prototype evidence in §6). Not submitted for review: user decisions D1 and D3 are pending (§4); §6 shows that D2 is forced for part of group A. Nothing is implemented.
+- **Status:** draft, revision R1 (R0 plus the prototype evidence in §6 and the classification in §7). Not submitted for review: user decisions D1 and D3 are pending (§4); §6 shows that D2 is forced for part of group A. Nothing is implemented.
 - **Pin:** `cb5dddd`. Paths are relative to `crates/rrx/`. The inventory is `doc/design/issue-43-fixture-migration-inventory.md` (`415453f`).
 - **Why:** Linux CI on PR #80 reports 418 passed / 284 failed / 20 ignored. All 284 failures are the trusted-ingress fixture refusals; no SC/BR control fails.
 - **Constraints (STRICT, unchanged):**
@@ -89,10 +89,11 @@ The fixture's remaining users now fail later, past the ingress check:
 
 | Failure | Count | Where | Meaning |
 | --- | --- | --- | --- |
-| F2 refusal | 22 | `workflow/verification_tests.rs:80` (12), `workflow/managed_tests.rs` (5), `execution/native/tests.rs` (≥2), others | needs D2 |
-| `managed command failed (exit 128)` | 8 | `retained_tests/routing_tests.rs:74`, `managed_tests.rs`, `native/tests.rs` | Git setup inside the test; not yet triaged |
+| F2 refusal | 24 | `workflow/verification_tests.rs:80` (12), `workflow_source/recovery_tests.rs:122` (7, the Implement `engine.step`), `workflow/committed_source_tests.rs` (4), `workflow/managed_tests.rs:626` (1) | the legacy Engine steps into a native phase; see §7 |
+| `managed command failed (exit 128)` | 8 | `retained_tests/routing_tests.rs:74`, `managed_tests.rs:235,418,797,966`, `native/tests.rs:1925,2241` | prototype defect, not a product refusal: these tests hard-code `dir.path().join("repo")`; the prototype rooted the Project at `real-git-source`. The fix is to keep the Project root at `dir/repo`. |
 | Docker probe unavailable | 7 | `execution/docker/tests.rs` | environment: this container has no Docker; the GitHub Linux runner does |
-| F1 refusal | 7 | `workflow_source/recovery_tests.rs:122` | these use the accepted fixture and the public route; they need D2 |
+
+Correction to R1 as first pushed (`2e53a64`): `recovery_tests.rs:122` is F2, not F1, because `ManagedWorkflowSources::prepare` at `:113` passes on legacy rows. No test in `execution/native/tests.rs` hits F2.
 
 ### 6.3 Open question this raises (for D3 and review)
 
@@ -117,3 +118,76 @@ The per-test classification is therefore part of the HOW review: legacy-reachabl
   - becomes a refusal assertion where its subject is the legacy step itself.
 
 Proposed rule for the D3 table: mechanics that are origin-agnostic per F4 go on legacy rows; anything that reaches Native execution, the Driver, Workflow steps or accepted-only writers goes on D2.
+
+## 7. Classification (R1, read-only analysis at `7362bf7`)
+
+### 7.1 Further source facts
+
+- **S1.** The public legacy `WorkflowEngine::initialize` / `step` has no production caller; only tests call it. Production uses `initialize_driven` and `step_driven_initial` (`runtime/task_driver.rs:117,126`).
+- **S2.** The D2 driven lane reaches only:
+  - the initial Evidence phases;
+  - the first Executor phase;
+  - its settled closure.
+
+  The next phase returns "typed Driver continuation unavailable (SC-N)" (`workflow/driven_settled.rs:29-49`, `driven_initial.rs:154`).
+  - D2 runs only through the installed `NativePhasePort`, and `allocate` accepts only `claude|codex` (`adapter/native.rs:143`).
+  - Commit, Tests, Review, PR, MergeGate, Cleanup, escalation and retry have no D2 target today.
+- **S3.** The standalone Native entry refuses protected Tasks: `NativeSessions::start` returns `AuthorityUnavailable` when `managed_phase_required` (`execution/native.rs:278-285`; `managed_binding/protection.rs:77`). `execution::native` and `adapter::native` tests can therefore pass only on legacy rows.
+- **S4.** `put_goal` refuses any change on every row (`state/mod.rs:438-441`). `SetGoalLifecycle` requires `goal_authority` (`state/runtime/goals.rs:227-231`). Consequences:
+  - a Goal pause or cancel is impossible on legacy rows;
+  - a Goal objective, constraints or blockers change is impossible on any rows.
+- **S5.** On legacy rows the generic `put_task` still writes (`state/mod.rs:453-509`), so `issue`, a binding and sibling Tasks are expressible there through the legacy writer.
+
+### 7.2 Table (approximate counts; split tests by name in §7.3)
+
+Class key:
+- **L:** legacy rows.
+- **D2:** accepted Goal plus the started Runtime and Driver.
+- **R:** refusal assertion.
+- **I:** depends on D1.
+
+| Module | n | Class | Reason |
+| --- | --- | --- | --- |
+| `codex::session::tests` (+ `custody_mechanics`), `codex::ownership::tests` | 53 | L + I (drop `issue`) | ScopeSnapshot, approval and custody mechanics. No assertion reads `issue`. `WorktreeManager::create` works on legacy rows. |
+| `adapter::grok::{environment,reader,fixture_support,receipt_support}` | 40 | L | Fixture `tests/support/grok_fixture.rs:51-88` forges a worktree. Use `WorktreeManager::create` on the legacy Task instead. Counts include isolated child re-runs. |
+| `adapter::git_owner::tests` | 9 | L | GenericCliAdapter owner pool. 4 direct tests plus meta-test child re-runs. |
+| `state::execution::tests`, `native_results_tests`, `native_dispatch_tests` | 30 | L (3 split by S4) | Ledger and CAS mechanics. `driver::validate` returns Ok for unmanaged Tasks (`driver.rs:321-324`). |
+| `execution::{native,results,ipc,phase,cleanup,docker}`, `adapter::native` | ≈52 | L (only option, S3) | 41 already pass in the prototype. The rest are the exit-128 prototype defect and Docker. |
+| `workflow::tests` | 64 | 4 L, 4 split, **56 R** | Step into Implement or later on the legacy Engine, which hits F2 (`workflow.rs:1598`). S1: no production caller. S2: no D2 target. FakeAgent cannot run on D2. `native_preflight_tests.rs:198` already pins the refusal. |
+| `workflow::tests::unbound_retry` | 8 | R | `ready_agent` steps into a native phase, which hits F2. |
+| `adapter::grok::environment_workflow_tests` | 2 | R | The legacy Engine with Grok steps into Implement, which hits F2. Grok is not an installed provider. |
+| `workflow::committed_source_tests` | 9 | 5 L, 4 D2 | The 5 cover initial Evidence and gates. The 4 step into Implement; 301 then asserts Commit and Tests, which is past S2. |
+| `workflow::committed_source_tests::verification_tests` | 12 | D2, **blocked by S2** | `publish()` needs native Implement, then Commit and Tests. |
+| `workflow::managed_tests` | 5 | D2, partly blocked by S2 | Steps into a native phase. 511 reaches Review. |
+| `execution::workflow_source::{recovery_tests,tests}` | 9 | D2 (8) / L (1) | The Implement step hits F2. First-Executor adoption is inside the lane. |
+| `adapter::tests` | 4 | 2 L, 2 split by S4 | |
+| `runtime::phase_supervisor::tests` | 7 | uncertain | Already accepted. F1 at `:225-228` (public prepare). The subject is the test-only `reserve_pending_phase`, and Native start is forbidden. A live Driver would go past preparation. |
+
+Approximate tally:
+- **L:** ≈175.
+- **R:** ≈66.
+- **D2:** ≈36, of which 17 are blocked by S2 today.
+- **Uncertain:** 7.
+
+### 7.3 Tests blocked by S4 (Goal change)
+
+These tests need a split: replace the Goal change with a Project or Task change, or turn the Goal half into a refusal.
+
+- `workflow::tests`: 1097 (pause), 3818 (cancel), 2083 (constraints; also `issue`, a sibling Task and the forged `feature/fresh-task`), and the `set_goal` helper.
+- `adapter::tests`: 2090 (objective), 2177 (pause).
+- `state::execution::tests`: 1343 (pause and resume), 1604 (constraints and blockers).
+- `state::native_dispatch_tests`: 46 (objective).
+- `codex::session::tests`: `session.rs:4459` (pause).
+- `committed_source_tests`: 631.
+- `verification_tests`: 576.
+
+### 7.4 Decisions this adds (user)
+
+- **D3 (sharpened):** about 66 legacy-Engine tests become refusal assertions (R). This drops their positive coverage of legacy-only phases that production never runs (S1). Managed equivalents beyond S2 do not exist until the typed continuation (SC-N) lands.
+- **D4:** the 17 D2 tests blocked by S2:
+  - (a) convert to R now; or
+  - (b) keep them and carry the remaining positive scenarios into the SC-N continuation work.
+
+  Ignoring or disabling is excluded, so (b) needs another home for these tests before Linux CI can be green.
+- **D5:** the S4 Goal-change halves (§7.3): replace the Goal change with a Project or Task change, or turn that half into a refusal.
+- **Note:** an existing SQL-seeded historical builder exists at `execution/native/tests/terminal_lock_tests.rs:11-128` ("old9", raw `INSERT`s, then `Store::open` migrates). FM does not use it: the "no SQL-seeded positive" rule.
