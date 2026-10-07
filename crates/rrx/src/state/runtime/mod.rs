@@ -1,6 +1,7 @@
 //! Runtime integration; routing observations carry no executable authority.
 pub(crate) mod driver;
 mod goals;
+mod recorded;
 mod proposals;
 mod routing;
 mod service;

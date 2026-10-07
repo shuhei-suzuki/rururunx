@@ -205,10 +205,19 @@ async fn goal_control(
                         goal,
                         after,
                         maximum: usize::from(maximum),
+                        view: Some(rrx::runtime::control::GoalReadView::RecordedV1),
                     },
-                    None => ControlAction::GoalStatus { project, goal },
+                    None => ControlAction::GoalStatus {
+                        project,
+                        goal,
+                        view: Some(rrx::runtime::control::GoalReadView::RecordedV1),
+                    },
                 };
-                let response = client::request(state, action).await?;
+                let response = client::request(state, action).await.map_err(|e| {
+                    anyhow::anyhow!(
+                        "{e}; if this service predates recorded_v1, restart a matching rrx serve"
+                    )
+                })?;
                 ensure!(
                     matches!(
                         (&response, page),
@@ -220,7 +229,9 @@ async fn goal_control(
                     ),
                     "unexpected Goal response"
                 );
-                return print_control(response, json, false);
+                rrx::cli::goal_facts::validate(&response, project, goal)?;
+                println!("{}", rrx::cli::goal_facts::render(&response, json)?);
+                return Ok(());
             }
         };
         ensure!(

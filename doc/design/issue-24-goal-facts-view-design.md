@@ -1,6 +1,6 @@
 # Issue 24: Recorded Goal facts view — HOW
 
-Status: proposed; Sol author, verified Opus findings corrected; independent Opus high delta re-review pending. No implementation or execution qualification is asserted.
+Status: WHAT/HOW approved by independent Opus high delta review; source implementation present, source tests and independent source review pending. No native, full-Workflow, MVP or merge qualification is asserted.
 
 ## 1. Baseline and unchanged read boundary
 

@@ -275,6 +275,7 @@ async fn c5_c6_actual_ingress_source_prepared_transport_and_record_only_binding(
             .handle_control(
                 &f.socket,
                 f.request(ControlAction::GoalStatus {
+                    view: None,
                     project: f.project.id,
                     goal,
                 }),

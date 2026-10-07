@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, path::PathBuf, time::Duration};
 use tokio::net::UnixStream;
 use uuid::Uuid;
+mod recorded;
+pub use recorded::*;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -35,12 +37,16 @@ pub enum ControlAction {
     GoalStatus {
         project: ProjectId,
         goal: GoalId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        view: Option<GoalReadView>,
     },
     GoalTasks {
         project: ProjectId,
         goal: GoalId,
         after: Option<TaskId>,
         maximum: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        view: Option<GoalReadView>,
     },
     SetGoalLifecycle {
         project: ProjectId,
@@ -100,6 +106,8 @@ pub enum ControlResponse {
         version: u64,
         state: GoalState,
         objective: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        recorded: Option<RecordedProposalStatus>,
         accepted: bool,
         task_count: usize,
         dispatch_available: bool,
@@ -111,6 +119,8 @@ pub enum ControlResponse {
         state: GoalState,
         task_count: usize,
         states: std::collections::BTreeMap<String, usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        recorded: Option<RecordedGoalStatus>,
         dispatch_available: bool,
         attention: UnavailableReason,
     },
@@ -124,6 +134,8 @@ pub enum ControlResponse {
         version: u64,
         tasks: Vec<TaskFacts>,
         next: Option<TaskId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        recorded: Option<RecordedGoalTaskPage>,
     },
     /// Control-service facts only; native Driver admission remains unavailable.
     RuntimeMetadata {
@@ -339,19 +351,10 @@ impl Runtime {
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?
                 .propose_runtime_goal(&ingress, &request);
         }
-        if let ControlAction::GoalStatus { project, goal } = &request.action {
-            return self
-                .owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .runtime_goal_facts(&ingress, *project, *goal);
-        }
-        if let ControlAction::GoalTasks {
+        if let ControlAction::GoalStatus {
             project,
             goal,
-            after,
-            maximum,
+            view,
         } = &request.action
         {
             return self
@@ -359,7 +362,22 @@ impl Runtime {
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .runtime_goal_task_page(&ingress, *project, *goal, *after, *maximum);
+                .runtime_goal_facts(&ingress, *project, *goal, *view);
+        }
+        if let ControlAction::GoalTasks {
+            project,
+            goal,
+            after,
+            maximum,
+            view,
+        } = &request.action
+        {
+            return self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .runtime_goal_task_page(&ingress, *project, *goal, *after, *maximum, *view);
         }
         if matches!(&request.action, ControlAction::SetGoalLifecycle { .. }) {
             let _admission = self.control_admission.lock().await;

@@ -332,6 +332,7 @@ async fn compiled_service_goal_pages_routing_and_reads_preserve_all_rows() {
         client::request(
             &f.state,
             ControlAction::GoalStatus {
+                view: None,
                 project: foreign,
                 goal
             }

@@ -1,7 +1,11 @@
 //! Accepted definitions originate at the actual local control ingress, not public Goal DTOs.
 use super::super::*;
+use super::recorded::{self, GOAL_TASK_PAGE_BYTES};
 use crate::runtime::{
-    control::{ControlAction, ControlRequest, ControlResponse, HumanIngress},
+    control::{
+        ControlAction, ControlRequest, ControlResponse, CriterionEvaluation, GoalReadView,
+        HumanIngress, RecordedGoalTaskPage, RunnableAdmission,
+    },
     goal::{CriterionEvaluator, ValidatedGoalPlan},
 };
 use sha2::{Digest, Sha256};
@@ -298,6 +302,7 @@ impl Store {
         ingress: &HumanIngress,
         project: ProjectId,
         id: GoalId,
+        view: Option<GoalReadView>,
     ) -> Result<ControlResponse> {
         let tx = self.connection.unchecked_transaction()?;
         owner_current(&tx, ingress)?;
@@ -307,7 +312,10 @@ impl Store {
             |r| r.get(0),
         )?;
         if !accepted {
-            let response = super::proposals::proposal_facts(&tx, project, id)?;
+            let mut response = super::proposals::proposal_facts(&tx, project, id)?;
+            if view.is_some() {
+                recorded::enrich_proposal(&mut response, project)?;
+            }
             tx.commit()?;
             return Ok(response);
         }
@@ -327,12 +335,13 @@ impl Store {
                 .or_insert(0) += 1;
         }
         let initial_driver:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM scheduler_tasks s JOIN task_drivers d ON d.task_id=s.task_id AND d.goal_id=s.goal_id AND d.project_id=s.project_id WHERE s.goal_id=?1 AND s.project_id=?2 AND s.attention IS NULL AND d.owner_epoch=?3 AND d.state='driving')",params![id.to_string(),project.to_string(),ingress.identity().1],|r|r.get(0))?;
-        let response = ControlResponse::GoalFacts {
+        let mut response = ControlResponse::GoalFacts {
             goal: id,
             version: goal.version,
             state: goal.state,
             task_count: tasks.len(),
             states,
+            recorded: None,
             dispatch_available: false,
             attention: if initial_driver {
                 crate::runtime::control::UnavailableReason::NativeContinuationUnavailable
@@ -340,6 +349,9 @@ impl Store {
                 crate::runtime::control::UnavailableReason::NativeBindingUnavailable
             },
         };
+        if view.is_some() {
+            recorded::enrich_status(&mut response, &goal, project)?;
+        }
         tx.commit()?;
         Ok(response)
     }
@@ -510,6 +522,7 @@ impl Store {
         id: GoalId,
         after: Option<TaskId>,
         maximum: usize,
+        view: Option<GoalReadView>,
     ) -> Result<ControlResponse> {
         use crate::runtime::control::TaskFacts;
         ensure!(
@@ -530,8 +543,28 @@ impl Store {
             .iter()
             .filter(|t| after.is_none_or(|a| t.id > a))
             .collect::<Vec<_>>();
+        let lookup = all.iter().map(|t| (t.id, t)).collect::<BTreeMap<_, _>>();
         let mut facts = Vec::new();
+        let mut enriched = view.map(|view| RecordedGoalTaskPage {
+            view,
+            project,
+            dag: recorded::dag(&goal),
+            nodes: Vec::new(),
+            criterion_evaluation: CriterionEvaluation::Unavailable,
+            runnable_admission: RunnableAdmission::Unknown,
+        });
         let mut next = None;
+        // Borrow candidates so packing never clones accumulated page strings/details.
+        #[derive(serde::Serialize)]
+        struct Candidate<'a> {
+            outcome: &'static str,
+            goal: GoalId,
+            version: u64,
+            tasks: &'a [TaskFacts],
+            next: Option<TaskId>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            recorded: &'a Option<RecordedGoalTaskPage>,
+        }
         for task in eligible.iter().take(maximum) {
             ensure!(
                 task.phase.as_ref().is_none_or(|p| p.len() <= 128),
@@ -546,15 +579,23 @@ impl Store {
                 ),
                 phase: task.phase.clone(),
             });
+            if let Some(page) = &mut enriched {
+                page.nodes.push(recorded::node(task, &goal, &lookup)?);
+            }
             let more = eligible.len() > facts.len();
-            let candidate = ControlResponse::GoalTaskPage {
+            let candidate = Candidate {
+                outcome: "goal_task_page",
                 goal: id,
                 version: goal.version,
-                tasks: facts.clone(),
+                tasks: &facts,
                 next: more.then_some(task.id),
+                recorded: &enriched,
             };
-            if serde_json::to_vec(&candidate)?.len() > 64 * 1024 {
+            if !recorded::fits(&candidate, GOAL_TASK_PAGE_BYTES) {
                 facts.pop();
+                if let Some(page) = &mut enriched {
+                    page.nodes.pop();
+                }
                 ensure!(!facts.is_empty(), "one Task status exceeds response budget");
                 next = facts.last().and_then(|f| f.scope.task_id);
                 break;
@@ -566,9 +607,10 @@ impl Store {
             version: goal.version,
             tasks: facts,
             next,
+            recorded: enriched,
         };
         ensure!(
-            serde_json::to_vec(&response)?.len() <= 64 * 1024,
+            recorded::fits(&response, GOAL_TASK_PAGE_BYTES),
             "Task response budget exceeded"
         );
         tx.commit()?;
