@@ -189,6 +189,35 @@ pub(super) fn encode(value: &Value, limit: usize) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
+    /// M1a (C1, SC-12): mechanical representation measurement only, not a
+    /// positive and no control credit. A document encoded at the bound is
+    /// owned twice by `Body` (raw + canonical); one byte over refuses.
+    #[test]
+    fn m1a_body_owned_encoding_at_the_bounds() {
+        for (name, limit) in [
+            ("Workflow/Context BODY_BYTES", BODY_BYTES),
+            ("Session SESSION_BYTES", super::super::schema::SESSION_BYTES),
+        ] {
+            // {"x":"aaa..."} sized to exactly `limit` encoded bytes.
+            let filler = limit - r#"{"x":""}"#.len();
+            let raw = format!(r#"{{"x":"{}"}}"#, "a".repeat(filler));
+            assert_eq!(raw.len(), limit);
+            let body = Body::<serde_json::Value>::decode(raw, limit).unwrap();
+            let owned = body.raw().len() + body.canonical.len();
+            eprintln!(
+                "M1a {name}: raw {} + canonical {} = {owned} owned bytes",
+                body.raw().len(),
+                body.canonical.len()
+            );
+            assert!(owned <= 2 * limit, "M1a {name}: owned within 2x the bound");
+            let over = format!(r#"{{"x":"{}"}}"#, "a".repeat(filler + 1));
+            assert!(
+                Body::<serde_json::Value>::decode(over, limit).is_err(),
+                "M1a {name}: one byte over the bound refuses"
+            );
+        }
+    }
+
     use super::*;
     use serde::Deserialize;
     use serde_json::json;
