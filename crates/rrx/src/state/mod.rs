@@ -27,6 +27,7 @@ pub(crate) use execution::cleanup::CleanupClaim;
 pub(crate) use execution::governing_digest as execution_governing_digest;
 #[cfg(test)]
 pub(crate) use execution::native_phase::RegistrationAckSource;
+pub(crate) use execution::native_phase::binding_advanced as native_binding_advanced;
 pub(crate) use execution::native_phase::{
     KnownTransportRegistration, NativeDispatchCommit, NativeHelperHistoryCommit,
     NativeHelperIntentCommit, NativeHelperSettlementCommit, NativeHelperSettlementPlan,

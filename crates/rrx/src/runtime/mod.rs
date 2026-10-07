@@ -8,6 +8,8 @@ pub(crate) mod installation;
 pub(crate) mod phase_effect_admission;
 mod phase_handoffs;
 mod phase_jobs;
+#[cfg(test)]
+pub(crate) use phase_jobs::{OWNER_IMMEDIATE, OWNER_PLANNING, SETTLED_EVALUATION, count, pause_at};
 pub(crate) mod phase_supervisor;
 mod service;
 mod task_driver;

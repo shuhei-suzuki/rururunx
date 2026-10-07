@@ -287,6 +287,43 @@ pub(crate) struct NativeOwnerPlan {
     owner: PairRow,
     readiness: PairRow,
 }
+/// Marks a currency refusal of an owner plan made before any Workflow link.
+/// It is attached only at the first owner check, before any write statement.
+#[derive(Debug)]
+pub(crate) struct UnlinkedOwnerStale {
+    // The failed plan's exact Unit encoding: a nongrant comparison value.
+    unit: Arc<str>,
+}
+impl std::fmt::Display for UnlinkedOwnerStale {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("actual Native owner planned before the Workflow binding link")
+    }
+}
+fn stale_unlinked(current: &CurrentWorkflowSuccessor, error: anyhow::Error) -> anyhow::Error {
+    if current.has_links() {
+        error
+    } else {
+        error.context(UnlinkedOwnerStale {
+            unit: Arc::from(current.unit_raw()),
+        })
+    }
+}
+
+/// The only legitimate pre-terminal advance of the SAME operation is its first
+/// `session_bound` link. A writer refused for an unlinked plan may re-plan once
+/// when the fresh successor holds exactly that link; nothing is relaxed.
+pub(crate) fn binding_advanced(
+    runtime: &crate::execution::RuntimeOwner,
+    phase: &Arc<NativePhaseSession>,
+    error: &anyhow::Error,
+) -> bool {
+    error
+        .downcast_ref::<UnlinkedOwnerStale>()
+        .is_some_and(|stale| {
+            plan_current_phase(runtime, phase.marker())
+                .is_ok_and(|c| c.is_sole_binding() && c.unit_raw() == &*stale.unit)
+        })
+}
 fn plan_native_owner(
     runtime: &crate::execution::RuntimeOwner,
     phase: &Arc<NativePhaseSession>,
@@ -309,6 +346,10 @@ fn plan_owner_currency(
     phase.validate_known_registration()?;
     let current = plan_current_phase(runtime, phase.marker())?;
     let f = phase.allocation().facts();
+    #[cfg(test)]
+    if !terminal_ending {
+        crate::runtime::pause_at(f.scope.task_id, crate::runtime::OWNER_PLANNING);
+    }
     let unit = current.unit();
     ensure!(
         unit.session_id == Some(f.session_id)
@@ -323,7 +364,18 @@ fn plan_owner_currency(
         "actual Native owner Unit is not open"
     );
     let (session, owner, readiness) = snapshot(runtime, |tx| {
-        validate_current_tx(tx, phase.marker(), &current)?;
+        validate_current_tx(tx, phase.marker(), &current).map_err(|e| {
+            if terminal_ending {
+                e
+            } else {
+                let e = stale_unlinked(&current, e);
+                #[cfg(test)]
+                if e.downcast_ref::<UnlinkedOwnerStale>().is_some() {
+                    crate::runtime::count(f.scope.task_id, "mark planning");
+                }
+                e
+            }
+        })?;
         phase.marker().validate_driver_live_tx(tx)?;
         let session = PairRow::read(tx, "records", &f.session_id.to_string())?;
         let body = session.body()?;
@@ -440,7 +492,17 @@ impl NativeOwnerPlan {
             self.binding.is_live() && self.binding.owner().launch_parts().is_retained(),
             "actual Native owner revoked"
         );
-        validate_current_tx(tx, self.binding.marker(), &self.current)?;
+        validate_current_tx(tx, self.binding.marker(), &self.current).map_err(|e| {
+            let e = stale_unlinked(&self.current, e);
+            #[cfg(test)]
+            if e.downcast_ref::<UnlinkedOwnerStale>().is_some() {
+                crate::runtime::count(
+                    self.binding.owner().allocation().facts().scope.task_id,
+                    "mark immediate",
+                );
+            }
+            e
+        })?;
         self.binding.marker().validate_driver_live_tx(tx)?;
         self.binding.owner().origin().prepared().validate_open()?;
         self.validate_registered_facts_tx(tx)?;

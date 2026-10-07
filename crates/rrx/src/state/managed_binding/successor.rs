@@ -116,6 +116,10 @@ impl CurrentWorkflowSuccessor {
     pub(crate) fn unit_raw(&self) -> &str {
         self.unit.raw()
     }
+    /// Nongrant: the ledger holds exactly its first `session_bound` link.
+    pub(crate) fn is_sole_binding(&self) -> bool {
+        self.sole_binding_link().is_some()
+    }
     pub(crate) fn has_links(&self) -> bool {
         self.count != 0
     }

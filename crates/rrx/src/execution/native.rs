@@ -1055,12 +1055,32 @@ fn actual_native_authority(
             && facts.session_id == session,
         "actual Native actor semantic identity changed"
     );
-    let plan = crate::state::Store::plan_native_phase_owner(owner, phase)?;
-    owner
-        .store
-        .lock()
-        .map_err(|_| anyhow::anyhow!("state poisoned"))?
-        .validate_phase_owner(plan)
+    native_write(owner, phase, || {
+        let plan = crate::state::Store::plan_native_phase_owner(owner, phase)?;
+        #[cfg(test)]
+        crate::runtime::pause_at(facts.scope.task_id, crate::runtime::OWNER_IMMEDIATE);
+        owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .validate_phase_owner(plan)
+    })
+}
+/// BR: one re-plan only after the SAME operation's first binding link was
+/// committed between an unlinked owner plan and its first owner check.
+fn native_write<T>(
+    owner: &RuntimeOwner,
+    phase: &Arc<NativePhaseSession>,
+    mut attempt: impl FnMut() -> Result<T>,
+) -> Result<T> {
+    match attempt() {
+        Err(error) if crate::state::native_binding_advanced(owner, phase, &error) => {
+            #[cfg(test)]
+            crate::runtime::count(phase.allocation().facts().scope.task_id, "br retry");
+            attempt()
+        }
+        other => other,
+    }
 }
 // These non-Clone private-field values originate only at the actual Native actor.
 // DTO/GenericRecord/tool JSON cannot construct a dispatch or terminal producer.
@@ -1385,19 +1405,20 @@ impl Core {
                 value,
             );
         };
-        let plan = crate::state::Store::plan_native_phase_dispatch(
-            &self.owner,
-            &phase.owner,
-            authority,
-            kind,
-            value,
-        )?;
-        let commit = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .admit_phase_dispatch(plan)?;
+        let commit = self.native_write(&phase.owner, || {
+            let plan = crate::state::Store::plan_native_phase_dispatch(
+                &self.owner,
+                &phase.owner,
+                authority,
+                kind,
+                value,
+            )?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .admit_phase_dispatch(plan)
+        })?;
         let (operation, digest, expected_thread, input) = phase.retain_dispatch(commit)?;
         if input {
             // Only the successful actual same-TX input intent reaches this
@@ -1412,18 +1433,20 @@ impl Core {
             // This is an observed response from the owned protocol, not a DB
             // lookup. Retain it across a later persistence error or lost return.
             consumed.acknowledge(thread, turn)?;
-            let plan = crate::state::Store::plan_native_phase_input_ack(
-                &self.owner,
-                &phase.owner,
-                consumed,
-                thread,
-                turn,
-            )?;
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .acknowledge_phase_input(plan)
+            self.native_write(&phase.owner, || {
+                let plan = crate::state::Store::plan_native_phase_input_ack(
+                    &self.owner,
+                    &phase.owner,
+                    consumed.clone(),
+                    thread,
+                    turn,
+                )?;
+                self.owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .acknowledge_phase_input(plan)
+            })
         } else {
             let authority = self.authority()?;
             self.owner
@@ -1460,14 +1483,16 @@ impl Core {
     }
     fn quota_read(&self) -> Result<(bool, Vec<QuotaObservation>)> {
         if let Some(phase) = &self.phase {
-            let plan = crate::state::Store::plan_phase_quota_read(&self.owner, &phase.owner)?;
-            let result = (plan.is_own_probe(), plan.observations().to_vec());
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .apply_phase_live_quota(plan)?;
-            Ok(result)
+            self.native_write(&phase.owner, || {
+                let plan = crate::state::Store::plan_phase_quota_read(&self.owner, &phase.owner)?;
+                let result = (plan.is_own_probe(), plan.observations().to_vec());
+                self.owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .apply_phase_live_quota(plan)?;
+                Ok(result)
+            })
         } else {
             let store = self
                 .owner
@@ -1488,18 +1513,20 @@ impl Core {
     }
     fn observe_quota(&self, observation: &QuotaObservation, recovery: bool) -> Result<()> {
         if let Some(phase) = &self.phase {
-            let plan = crate::state::Store::plan_phase_quota_observation(
-                &self.owner,
-                &phase.owner,
-                observation,
-                recovery,
-            )?;
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .apply_phase_live_quota(plan)?;
-            Ok(())
+            self.native_write(&phase.owner, || {
+                let plan = crate::state::Store::plan_phase_quota_observation(
+                    &self.owner,
+                    &phase.owner,
+                    observation,
+                    recovery,
+                )?;
+                self.owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .apply_phase_live_quota(plan)?;
+                Ok(())
+            })
         } else {
             let scheduler = quota::QuotaScheduler::new(self.owner.clone());
             if recovery {
@@ -1511,13 +1538,15 @@ impl Core {
     }
     fn quota_wait(&self, retry: bool) -> Result<ExecutionUnit> {
         if let Some(phase) = &self.phase {
-            let plan =
-                crate::state::Store::plan_phase_quota_wait(&self.owner, &phase.owner, retry)?;
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .apply_phase_live_quota(plan)
+            self.native_write(&phase.owner, || {
+                let plan =
+                    crate::state::Store::plan_phase_quota_wait(&self.owner, &phase.owner, retry)?;
+                self.owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .apply_phase_live_quota(plan)
+            })
         } else {
             let authority = self.authority()?;
             let mut store = self
@@ -1534,13 +1563,18 @@ impl Core {
     }
     fn quota_resume(&self, buckets: &std::collections::BTreeSet<String>) -> Result<ExecutionUnit> {
         if let Some(phase) = &self.phase {
-            let plan =
-                crate::state::Store::plan_phase_quota_resume(&self.owner, &phase.owner, buckets)?;
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .apply_phase_live_quota(plan)
+            self.native_write(&phase.owner, || {
+                let plan = crate::state::Store::plan_phase_quota_resume(
+                    &self.owner,
+                    &phase.owner,
+                    buckets,
+                )?;
+                self.owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .apply_phase_live_quota(plan)
+            })
         } else {
             let authority = self.authority()?;
             self.owner
@@ -1550,6 +1584,15 @@ impl Core {
                 .resume_execution_quota_wait(&authority, buckets)
         }
     }
+    /// BR: one re-plan only after the SAME operation's first binding link was
+    /// committed between an unlinked owner plan and its first owner check.
+    fn native_write<T>(
+        &self,
+        phase: &Arc<NativePhaseSession>,
+        attempt: impl FnMut() -> Result<T>,
+    ) -> Result<T> {
+        native_write(&self.owner, phase, attempt)
+    }
     fn record_dispatch_observation(
         &self,
         operation: OperationId,
@@ -1558,18 +1601,20 @@ impl Core {
     ) -> Result<()> {
         if let Some(phase) = &self.phase {
             let original = phase.dispatch(operation)?;
-            let plan = crate::state::Store::plan_phase_dispatch_receipt(
-                &self.owner,
-                &phase.owner,
-                original,
-                state,
-                receipt,
-            )?;
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .record_phase_dispatch_receipt(plan)
+            self.native_write(&phase.owner, || {
+                let plan = crate::state::Store::plan_phase_dispatch_receipt(
+                    &self.owner,
+                    &phase.owner,
+                    original.clone(),
+                    state,
+                    receipt.clone(),
+                )?;
+                self.owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .record_phase_dispatch_receipt(plan)
+            })
         } else {
             self.owner
                 .store
@@ -1663,17 +1708,18 @@ impl Core {
         session.native_ref = Some(native);
         session.state = SessionState::Running;
         let (unit, version) = if let Some(phase) = &self.phase {
-            let plan = crate::state::Store::plan_native_phase_projection(
-                &self.owner,
-                &phase.owner,
-                session,
-            )?;
-            let (unit, committed, version) = self
-                .owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .project_phase_session(plan)?;
+            let (unit, committed, version) = self.native_write(&phase.owner, || {
+                let plan = crate::state::Store::plan_native_phase_projection(
+                    &self.owner,
+                    &phase.owner,
+                    session.clone(),
+                )?;
+                self.owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .project_phase_session(plan)
+            })?;
             phase.owner.project(&committed, version)?;
             self.session = committed;
             (unit, version)

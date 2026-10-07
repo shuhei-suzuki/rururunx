@@ -680,23 +680,61 @@ impl Job {
     }
 }
 
-/// Test-only, Task-scoped hold of the start task between its normal binding
-/// plan and write. It parks and resumes only; it grants nothing.
+/// Test-only, Task-scoped hold at one named site (the start task between its
+/// normal binding plan and write, or a settled gate evaluation after its claim
+/// check). It parks and resumes only; it grants nothing.
 #[cfg(test)]
 pub(crate) struct WritePause {
     state: Mutex<u8>,
     changed: std::sync::Condvar,
 }
 #[cfg(test)]
-static WRITE_PAUSES: Mutex<Vec<(crate::domain::TaskId, Arc<WritePause>)>> = Mutex::new(Vec::new());
+type PauseKey = (crate::domain::TaskId, &'static str);
+#[cfg(test)]
+static WRITE_PAUSES: Mutex<Vec<(PauseKey, Arc<WritePause>)>> = Mutex::new(Vec::new());
+#[cfg(test)]
+pub(crate) const NORMAL_WRITE: &str = "normal write";
+#[cfg(test)]
+pub(crate) const SETTLED_EVALUATION: &str = "settled evaluation";
+#[cfg(test)]
+pub(crate) const OWNER_IMMEDIATE: &str = "owner immediate";
+#[cfg(test)]
+pub(crate) const OWNER_PLANNING: &str = "owner planning";
+/// Test-only Task-scoped event counters (marker sites, BR retries).
+#[cfg(test)]
+static COUNTS: Mutex<Vec<(PauseKey, usize)>> = Mutex::new(Vec::new());
+#[cfg(test)]
+pub(crate) fn count(task: Option<crate::domain::TaskId>, label: &'static str) {
+    let Some(task) = task else { return };
+    let mut counts = COUNTS.lock().unwrap();
+    match counts.iter_mut().find(|(key, _)| *key == (task, label)) {
+        Some((_, n)) => *n += 1,
+        None => counts.push(((task, label), 1)),
+    }
+}
+#[cfg(test)]
+pub(crate) fn counted(task: crate::domain::TaskId, label: &'static str) -> usize {
+    COUNTS
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|(key, _)| *key == (task, label))
+        .map_or(0, |(_, n)| *n)
+}
 #[cfg(test)]
 impl WritePause {
     pub(crate) fn arm(task: crate::domain::TaskId) -> Arc<Self> {
+        Self::arm_at(task, NORMAL_WRITE)
+    }
+    pub(crate) fn arm_at(task: crate::domain::TaskId, site: &'static str) -> Arc<Self> {
         let pause = Arc::new(Self {
             state: Mutex::new(0),
             changed: std::sync::Condvar::new(),
         });
-        WRITE_PAUSES.lock().unwrap().push((task, pause.clone()));
+        WRITE_PAUSES
+            .lock()
+            .unwrap()
+            .push(((task, site), pause.clone()));
         pause
     }
     pub(crate) fn reached(&self) -> bool {
@@ -709,12 +747,16 @@ impl WritePause {
 }
 #[cfg(test)]
 pub(super) fn pause_before_normal_write(task: Option<crate::domain::TaskId>) {
+    pause_at(task, NORMAL_WRITE);
+}
+#[cfg(test)]
+pub(crate) fn pause_at(task: Option<crate::domain::TaskId>, site: &'static str) {
     let Some(task) = task else { return };
     let pause = {
         let mut pauses = WRITE_PAUSES.lock().unwrap();
         pauses
             .iter()
-            .position(|(armed, _)| *armed == task)
+            .position(|(armed, _)| *armed == (task, site))
             .map(|index| pauses.remove(index).1)
     };
     let Some(pause) = pause else { return };

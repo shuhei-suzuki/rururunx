@@ -646,6 +646,10 @@ claim, Passed/Waiting/Failed/Unknown observation and closure actions. Captures,
 helpers and publication use a protected settled currency instead of the generic
 authority. Closure appends `gate_claim`, `gate_observed` and `phase_closed`,
 bumps the Task once to the next phase and re-anchors the Driver marker-free.
-Status reports the read-only `workflow_wait`. No success control has passed yet:
-the SC1 lane is blocked by the Native writer/normal binding race, whose
-[HOW](../issue-43-native-writer-binding-race-design.md) is under review.
+Status reports the read-only `workflow_wait`. A sealed Unknown observation is
+stored as an exact audited delta (Waiting, fixed detail and held_reason). The
+Native owner writers re-plan once after the SAME operation's first binding link,
+per the approved [binding-race HOW](../issue-43-native-writer-binding-race-design.md).
+On the account-free fixture lane (commit mode, Claude and Codex) the SC1, SC2,
+SC3-P, SC5(c), SC7, SC12 and SC-U controls and BR1-BR3 pass; this does not
+qualify official Native execution, the remaining SC controls or a full Workflow.

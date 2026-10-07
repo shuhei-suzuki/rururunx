@@ -26,6 +26,11 @@ pub(crate) use success::{
     ClosedPhaseAck, ClosureStage, ClosureState, Retained, SettledLookup, SuccessContinuation,
     SuccessStage,
 };
+#[cfg(test)]
+pub(crate) use success::{
+    NORMAL_WRITE, OWNER_IMMEDIATE, OWNER_PLANNING, SETTLED_EVALUATION, WritePause, count, counted,
+    pause_at,
+};
 use tokio::{sync::watch, task::JoinHandle};
 
 const MAX_JOBS: usize = 128;

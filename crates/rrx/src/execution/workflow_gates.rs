@@ -458,6 +458,11 @@ impl ManagedWorkflowGates {
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
             Self::claim(&store, &invocation)?
         };
+        #[cfg(test)]
+        crate::runtime::pause_at(
+            invocation.task.scope().task_id,
+            crate::runtime::SETTLED_EVALUATION,
+        );
         let sources = invocation.sources.clone();
         let (outcome, receipt) = match self
             .evaluate_settled_checked(claim, &invocation, checked, &workflow)

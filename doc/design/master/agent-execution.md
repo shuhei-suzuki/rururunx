@@ -227,7 +227,8 @@ provided by the source increment.
 
 On the #43 branch, an owned Native success terminal seals its committed terminal
 images for the success continuation, which captures results only through a
-protected settled currency. A Native owner writer still refuses when the normal
-`session_bound` binding commits between its plan and its write, so post-bind
-effects and the owned terminal are not reached on the commit-mode fixture lane;
-the binding-race HOW is proposed and unreviewed.
+protected settled currency. A Native owner writer refused for an unlinked plan
+re-plans exactly once when a fresh successor holds only the SAME operation's
+first `session_bound` link and the identical Unit; terminal planning is never
+retried. Post-bind effects and the owned terminal are reached on the
+commit-mode fixture lane, which does not qualify official Native execution.
