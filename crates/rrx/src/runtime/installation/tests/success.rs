@@ -1234,3 +1234,203 @@ async fn sc4_claude_uncertain_writes_confirm_and_close_once() {
 async fn sc4_codex_uncertain_writes_confirm_and_close_once() {
     sc4_all("codex").await;
 }
+
+fn binding_proof(f: &ControlFixture, task: &Task) -> String {
+    raw(f)
+        .query_row(
+            "SELECT json_extract(data,'$.proof_source') FROM audit WHERE task_id=?1 AND kind='rrx.private.workflow.session_bound'",
+            [task.id.to_string()],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+/// SC3: while the normal write is held, the genuine Native owner advances its
+/// own Session record (bootstrap released). The held write returns the typed
+/// pre-write `Conflict`; a later normal plan binds `normal_return` once.
+async fn sc3_conflict(provider: &str) {
+    use crate::runtime::phase_jobs::NORMAL_WRITE;
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    let binding = held(task, NORMAL_WRITE);
+    f.runtime.start().await.unwrap();
+    wait_for(
+        || binding.0.reached(),
+        "SETUP: normal write not reached",
+        60,
+    )
+    .await;
+    let unit = f.runtime.phase_jobs.observed_jobs()[0].unit;
+    let session_version = |f: &ControlFixture| -> i64 {
+        raw(f)
+            .query_row(
+                "SELECT version FROM records WHERE kind='session' AND task_id=?1",
+                [task.id.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    let before = session_version(&f);
+    // Only the bootstrap: the owner projects its Session; completion stays held.
+    let profile = crate::execution::resources::ResourceManager::new(f.owner.clone())
+        .profile(&f.owner.store.lock().unwrap().execution_unit(unit).unwrap())
+        .unwrap();
+    std::fs::write(profile.output.join("fixture-bootstrap-release"), "release").unwrap();
+    let advanced = {
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        loop {
+            if session_version(&f) > before {
+                break true;
+            }
+            if std::time::Instant::now() > deadline {
+                break false;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    };
+    if !advanced {
+        panic!("SETUP: SC3 {provider}: the genuine owner produced no Session record advance");
+    }
+    binding.0.release();
+    wait_normal_bound(&f, task).await;
+    let jobs = f.runtime.phase_jobs.observed_jobs();
+    assert!(
+        jobs[0]
+            .binding_error
+            .as_deref()
+            .is_some_and(|e| e.contains("binding definitively refused")),
+        "SC3 {provider}: typed Conflict from the held write; jobs {jobs:?}"
+    );
+    assert_eq!(
+        binding_proof(&f, task),
+        "normal_return",
+        "SC3 {provider}: retried normal"
+    );
+    release_completion(&f, task);
+    wait_for(
+        || links(&f, task).last().map(String::as_str) == Some("phase_closed"),
+        "SC3: chain did not close",
+        90,
+    )
+    .await;
+    assert_eq!(
+        links(&f, task),
+        [
+            "session_bound",
+            "gate_claim",
+            "gate_observed",
+            "phase_closed"
+        ],
+        "SC3 {provider}: no closed_settlement link, one binding"
+    );
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc3_claude_owner_session_advance_conflicts_then_binds_normal() {
+    sc3_conflict("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc3_codex_owner_session_advance_conflicts_then_binds_normal() {
+    sc3_conflict("codex").await;
+}
+
+/// SC3 (lock variant): a second connection holds the SQLite writer lock
+/// across the held normal write: the outcome is uncertain (not Conflict),
+/// confirmation proves RolledBack and a later plan binds `normal_return`.
+async fn sc3_lock(provider: &str) {
+    use crate::runtime::phase_jobs::NORMAL_WRITE;
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    let binding = held(task, NORMAL_WRITE);
+    f.runtime.start().await.unwrap();
+    wait_for(
+        || binding.0.reached(),
+        "SETUP: normal write not reached",
+        60,
+    )
+    .await;
+    let writer = raw(&f);
+    writer.execute_batch("BEGIN IMMEDIATE").unwrap();
+    binding.0.release();
+    wait_for(
+        || {
+            f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .any(|j| j.binding_error.is_some())
+        },
+        "SC3-L: held write did not return",
+        60,
+    )
+    .await;
+    let jobs = f.runtime.phase_jobs.observed_jobs();
+    assert!(
+        jobs[0]
+            .binding_error
+            .as_deref()
+            .is_some_and(|e| e.contains("binding outcome uncertain")),
+        "SC3-L {provider}: uncertain, not Conflict; jobs {jobs:?}"
+    );
+    assert!(
+        links(&f, task).is_empty(),
+        "SC3-L {provider}: nothing written"
+    );
+    writer.execute_batch("ROLLBACK").unwrap();
+    drop(writer);
+    // Design SC3-L ends at the confirmation: the held lock may also refuse the
+    // live Core's own writes, so a later rebinding is accepted, not required.
+    wait_for(
+        || {
+            f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .any(|j| j.binding_state == "rolled back" || j.bound)
+        },
+        "SC3-L: confirmation absent",
+        60,
+    )
+    .await;
+    assert!(
+        f.runtime
+            .phase_jobs
+            .observed_success_turns()
+            .iter()
+            .any(|(_, l)| *l == "binding confirm"),
+        "SC3-L {provider}: confirmed by the Root sweep"
+    );
+    let jobs = f.runtime.phase_jobs.observed_jobs();
+    if jobs[0].bound {
+        // Confirmed RolledBack, then a fresh normal plan bound while the
+        // owner was still live.
+        assert_eq!(binding_proof(&f, task), "normal_return", "SC3-L {provider}");
+    } else {
+        assert_eq!(
+            jobs[0].binding_state, "rolled back",
+            "SC3-L {provider}: RolledBack; jobs {jobs:?}"
+        );
+        assert!(links(&f, task).is_empty(), "SC3-L {provider}: zero links");
+    }
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc3l_claude_writer_lock_is_uncertain_then_rolled_back() {
+    sc3_lock("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc3l_codex_writer_lock_is_uncertain_then_rolled_back() {
+    sc3_lock("codex").await;
+}

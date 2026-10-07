@@ -264,6 +264,8 @@ pub(super) struct ObservedJob {
     pub success_attention: Option<&'static str>,
     pub owner_live: Option<bool>,
     pub settled: Option<bool>,
+    pub binding_error: Option<String>,
+    pub binding_state: &'static str,
     pub preparation_busy: u64,
     /// (attempt time, applied backoff in ms) per Held confirmation.
     pub preparation_attempts: Vec<(Instant, u64)>,
@@ -387,6 +389,13 @@ impl PhaseJobs {
                     preparation_due: state.preparation_due,
                     observation: state.observation,
                     bound: state.binding_ack.is_some(),
+                    binding_error: state.binding_error.as_ref().map(|e| format!("{e:#}")),
+                    binding_state: match state.binding_state {
+                        BindingState::Unwritten => "unwritten",
+                        BindingState::Uncertain => "uncertain",
+                        BindingState::RolledBack => "rolled back",
+                        BindingState::Conflict => "conflict",
+                    },
                     success: state.success.is_some(),
                     success_closed: state.success_ack.is_some(),
                     success_attention: state.success_attention,
