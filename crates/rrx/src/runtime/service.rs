@@ -78,6 +78,7 @@ impl Runtime {
                     )?;
                 sequence = next;
                 let pending = runtime.phases.reconcile_pending()?;
+                let nonsuccess_pending = runtime.phase_dispatcher.reconcile_nonsuccess()?;
                 let driver_pending = runtime.observe_task_drivers()?;
                 // A refusal after reservation ends only this saved-cursor
                 // sweep. Its retained claim/closure owns the outcome.
@@ -87,7 +88,7 @@ impl Runtime {
                     runtime.admit_ready_tasks().unwrap_or_default()
                 };
                 let delay = super::phase_supervisor::PhaseSupervisor::delay(
-                    pending || driver_pending > 0 || claims > 0,
+                    pending || nonsuccess_pending || driver_pending > 0 || claims > 0,
                     &mut backoff,
                 );
                 let wake = runtime.wake.clone();

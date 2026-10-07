@@ -35,8 +35,10 @@ impl NativeSessions {
         custody: &Arc<NativePreparationCustody>,
     ) -> PreparationStep {
         let result = (|| -> Result<PreparationStep> {
+            crate::runtime::assert_nonsuccess_unlocked();
             let (actor, no_dispatch, lineage, saved) = custody.closure_original()?;
             if let Some(saved) = saved {
+                crate::runtime::record_nonsuccess_store_attempt();
                 let confirmed = {
                     let mut store = self
                         .owner
@@ -65,6 +67,7 @@ impl NativeSessions {
                 now_ms(),
             )?;
             custody.retain_closure_plan(plan.clone())?;
+            crate::runtime::record_nonsuccess_store_attempt();
             let result = {
                 let mut store = self
                     .owner

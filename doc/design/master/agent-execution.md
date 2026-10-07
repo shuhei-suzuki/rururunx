@@ -201,8 +201,12 @@ has a synchronous one-transaction close/confirm step: confirmed rollback clears
 the saved preparation plan before a later fresh close attempt. Transport custody
 consumption clears the pre-dispatch witness. The sealed ended-start closure
 interface retains the same actor, no-dispatch and known preparation closure;
-the Root RN-1 transaction and acknowledgment consumer remain unconnected.
-These private interfaces do not qualify Native execution or composition.
+the Root sweep consumes only its same-job ended-start witness. It runs at most
+eight due closure turns per bounded registry pass, saves the first unserved due
+job in a rotation cursor, and keeps uncertain plans unchanged across confirmation.
+Typed known acknowledgments alone retire the original publishing slot and
+finished job. These private interfaces do not qualify Native execution or
+composition; genuine activation and normal ended-start controls remain pending.
 Private Prepared issuance checks
 the SAME allocation's fixed provider/role budget at version, Git, Prepared and
 registration. Private quota uses two prebuilt branches and at most eight exact

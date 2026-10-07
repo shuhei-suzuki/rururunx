@@ -83,29 +83,30 @@ impl Store {
         );
         let at = now_ms();
         let reader = NonSuccessReader(());
-        let (images, unit_after) = snapshot(owner, |tx| {
+        let (images, unit_after, audit_data) = snapshot(owner, |tx| {
             let budget = InventoryBudget::new(tx)?;
             budget.finish((|| {
                 validate_common(tx, &proof)?;
                 let closure = proof.closure(&reader);
                 closure.unit().validate_indexed_tx(tx)?;
-                Ok((
-                    plan_unlinked_closure(&reader, tx, launch.marker(), at)?,
-                    closure.unit().plan_retired(launch, at)?,
-                ))
+                closure.unit().validate_tx(tx)?;
+                let images = plan_unlinked_closure(&reader, tx, launch.marker(), at)?;
+                let unit_after = closure.unit().plan_retired(launch, at)?;
+                let (readiness_version, lease_released, probe_released) =
+                    closure.payload_facts()?;
+                let facts = PhaseClosedFacts {
+                    allocated_session_id: f.session_id.to_string(),
+                    unit_id: unit_after.unit_id().into(),
+                    unit_versions: unit_after.versions(),
+                    readiness_version,
+                    lease_released,
+                    probe_released,
+                };
+                let audit_data = images.audit_data(launch.marker(), &facts)?;
+                images.validate_budget_tx(tx, launch.marker(), audit_data.len() as u64)?;
+                Ok((images, unit_after, audit_data))
             })())
         })?;
-        let (readiness_version, lease_released, probe_released) =
-            proof.closure(&reader).payload_facts()?;
-        let facts = PhaseClosedFacts {
-            allocated_session_id: f.session_id.to_string(),
-            unit_id: unit_after.unit_id().into(),
-            unit_versions: unit_after.versions(),
-            readiness_version,
-            lease_released,
-            probe_released,
-        };
-        let audit_data = images.audit_data(launch.marker(), &facts)?;
         let plan = Arc::new(NativeNonSuccessClosurePlan {
             proof,
             images,
@@ -117,6 +118,7 @@ impl Store {
     pub(crate) fn materialize_phase_nonsuccess(
         plan: &Arc<NativeNonSuccessClosurePlan>,
     ) -> Result<NativeNonSuccessMaterial> {
+        crate::runtime::assert_nonsuccess_unlocked();
         plan.proof.validate_original()?;
         Ok(NativeNonSuccessMaterial {
             plan: plan.clone(),
@@ -127,6 +129,7 @@ impl Store {
         &mut self,
         material: &NativeNonSuccessMaterial,
     ) -> Result<NativeNonSuccessWrite> {
+        crate::runtime::record_nonsuccess_store_attempt();
         let plan = &material.plan;
         selected_database(&self.connection, plan.proof.launch())?;
         let tx = self
@@ -162,6 +165,7 @@ impl Store {
         &mut self,
         material: &NativeNonSuccessMaterial,
     ) -> Result<NativeNonSuccessConfirmation> {
+        crate::runtime::record_nonsuccess_store_attempt();
         let plan = &material.plan;
         selected_database(&self.connection, plan.proof.launch())?;
         let tx = self

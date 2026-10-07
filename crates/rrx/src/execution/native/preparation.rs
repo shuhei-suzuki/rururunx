@@ -87,6 +87,7 @@ impl NativePreparationCustody {
         self: &Arc<Self>,
         ended: &crate::runtime::StartEnded,
     ) -> super::NativeClosureStep {
+        crate::runtime::assert_nonsuccess_unlocked();
         use super::NativeClosureStep;
         let result = (|| -> Result<NativeClosureStep> {
             ensure!(

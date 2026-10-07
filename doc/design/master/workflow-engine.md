@@ -105,8 +105,13 @@ Store, then retires the exact open Unit, closes the operation, changes only the
 active Workflow attempt to Failed and inserts one private phase-closed link in
 one Immediate. Confirmation compares all saved preimages or all postimages
 with unchanged original currency. Task, Context and Session remain untouched;
-no retry or cleanup producer is supplied. Root sweep/acknowledgment wiring and
-genuine activation-dependent qualification remain incomplete.
+no retry or cleanup producer is supplied. Root runs one preparation or RN-1
+transaction per due turn, outside its registry, job and queue locks; turn material
+is freed after the Store guard. The retained acknowledgment releases the marked
+slot and finished job. The active Failed Executor branch reports its recorded
+failure before consulting the Source handoff. Driver and Source retirement are
+separate producers, so the Task remains occupied by its driving Driver. Genuine
+activation-dependent qualification remains incomplete.
 
 The private Prepared issuer retains all SAME custody conjuncts and checks a fixed
 provider/role budget before returning the original Prepared value. Version and
