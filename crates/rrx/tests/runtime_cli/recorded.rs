@@ -4,6 +4,7 @@ use rrx::runtime::{
     goal::PlanDependency,
 };
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 
 fn plan(count: usize) -> GoalPlan {
     GoalPlan {
@@ -88,6 +89,131 @@ impl Fixture {
             String::from_utf8_lossy(&out.stderr)
         );
         String::from_utf8(out.stdout).unwrap()
+    }
+    /// One compiled plain Task page compared byte-for-byte with text built from the
+    /// genuine stored Goal/Task rows. The paired JSON page supplies only its budget
+    /// decisions (returned length, incoming availability) and the effective state.
+    fn plain_page(
+        &self,
+        project: ProjectId,
+        goal: GoalId,
+        after: Option<&str>,
+        maximum: u16,
+    ) -> (String, Vec<String>, Option<String>) {
+        let (project_text, goal_text, maximum) =
+            (project.to_string(), goal.to_string(), maximum.to_string());
+        let mut args = vec![
+            "goal",
+            "tasks",
+            goal_text.as_str(),
+            "--project",
+            project_text.as_str(),
+            "--maximum",
+            maximum.as_str(),
+        ];
+        if let Some(after) = after {
+            args.extend(["--after", after]);
+        }
+        let plain = self.plain(&args);
+        args.push("--json");
+        let json = self.cli_json(&args);
+        let goals = stored(&self.state, "goals");
+        let raw_goal = &goals[&goal_text];
+        let raw = stored(&self.state, "tasks");
+        let inventory = raw
+            .iter()
+            .filter(|(_, task)| task["goal_id"] == goal_text.as_str())
+            .map(|(id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        let start = after.map_or(0, |after| {
+            inventory.iter().position(|id| *id == after).unwrap() + 1
+        });
+        let tasks = json["facts"]["tasks"].as_array().unwrap();
+        let nodes = json["facts"]["recorded"]["nodes"].as_array().unwrap();
+        assert!(!tasks.is_empty() && tasks.len() == nodes.len());
+        let returned = &inventory[start..start + tasks.len()];
+        let next = (start + tasks.len() < inventory.len()).then(|| returned[returned.len() - 1]);
+        let edges = raw_goal["dag"]["edges"].as_array().unwrap();
+        let hard_edges = edges.iter().filter(|e| e["hard"] == true).count();
+        let mut expected = format!(
+            "Project: {project}\nGoal: {goal} version {}\nDAG: {} nodes, {hard_edges} hard edges, {} soft edges\n",
+            raw_goal["version"],
+            inventory.len(),
+            edges.len() - hard_edges
+        );
+        let mut overflow = false;
+        for ((id, fact), node) in returned.iter().zip(tasks).zip(nodes) {
+            let task = &raw[*id];
+            assert_eq!(fact["scope"]["task_id"], *id);
+            assert!(
+                task["phase"].is_null() && fact["phase"].is_null(),
+                "only the genuine null phase baseline has a producer"
+            );
+            let mut incoming = edges
+                .iter()
+                .filter(|e| e["dependent"] == *id)
+                .collect::<Vec<_>>();
+            incoming.sort_by(|a, b| a["prerequisite"].as_str().cmp(&b["prerequisite"].as_str()));
+            let hard = incoming.iter().filter(|e| e["hard"] == true).count();
+            writeln!(
+                expected,
+                "Task: {id} version {} stored state {} effective state {} phase null",
+                task["version"], task["state"], fact["state"]
+            )
+            .unwrap();
+            writeln!(
+                expected,
+                "Structural dependencies: \"{}\"; incoming: {} (hard: {hard})",
+                if hard == 0 {
+                    "unconstrained"
+                } else {
+                    "requires_prerequisite_evidence"
+                },
+                incoming.len()
+            )
+            .unwrap();
+            if node["incoming"]["availability"] == "unavailable" {
+                overflow = true;
+                expected.push_str("  Incoming detail: unavailable (projection_budget)\n");
+            } else {
+                for edge in incoming {
+                    let prerequisite = edge["prerequisite"].as_str().unwrap();
+                    writeln!(
+                        expected,
+                        "  {} prerequisite: {prerequisite} version {} stored state {}",
+                        if edge["hard"] == true { "hard" } else { "soft" },
+                        raw[prerequisite]["version"],
+                        raw[prerequisite]["state"]
+                    )
+                    .unwrap();
+                }
+            }
+        }
+        let mut incomplete = vec![
+            "native_dispatch",
+            "unit_provider_evidence",
+            "wait_cleanup_details",
+            "verified_criterion_completion",
+            "runnable_admission",
+        ];
+        if overflow {
+            incomplete.push("task_incoming_relationships");
+        }
+        assert_eq!(json["complete"], false);
+        assert_eq!(json["unavailable_fields"], serde_json::json!(incomplete));
+        writeln!(
+            expected,
+            "Next: {}\nverified criterion completion: unavailable\nrunnable admission: unknown\nIndependent scoped observation; incomplete: {}\n",
+            next.unwrap_or("null"),
+            incomplete.join(", ")
+        )
+        .unwrap();
+        assert_eq!(plain, expected, "plain Task page diverged from stored rows");
+        (
+            plain,
+            returned.iter().map(|id| id.to_string()).collect(),
+            next.map(str::to_owned),
+        )
     }
 }
 fn stored(state: &Path, table: &str) -> BTreeMap<String, Value> {
@@ -281,6 +407,32 @@ async fn recorded_accepted_criteria_dag_scope_and_rows_are_exact() {
             assert!(edges.iter().any(|e|e["prerequisite"]==endpoint["task"]&&e["hard"]==endpoint["hard"]));
         }
     }
+    let (full, ids, next) = f.plain_page(project, goal, None, 64);
+    assert_eq!((ids.len(), next), (4, None));
+    for label in [
+        "  hard prerequisite: ",
+        "  soft prerequisite: ",
+        "Structural dependencies: \"unconstrained\"; incoming: 0 (hard: 0)\n",
+        "Structural dependencies: \"requires_prerequisite_evidence\"; incoming: 2 (hard: 1)\n",
+        "\nNext: null\n",
+    ] {
+        assert!(full.contains(label), "genuine plain page lacks {label:?}");
+    }
+    let (first, mut paged, cursor) = f.plain_page(project, goal, None, 3);
+    let cursor = cursor.unwrap();
+    assert_eq!(paged.len(), 3);
+    assert_eq!(cursor, paged[2]);
+    assert!(first.contains(&format!("\nNext: {cursor}\n")));
+    let (_, rest, end) = f.plain_page(project, goal, Some(&cursor), 3);
+    assert_eq!((rest.len(), end), (1, None));
+    paged.extend(rest);
+    assert_eq!(
+        paged, ids,
+        "plain cursor pages omitted or duplicated a Task"
+    );
+    eprintln!(
+        "UNVERIFIED: nondefault Task phase and effective/stored state divergence lack a genuine producer; plain labels are pinned only at the null/equal baseline"
+    );
     let foreign_page = client::request(
         &f.state,
         ControlAction::GoalTasks {
@@ -611,6 +763,42 @@ async fn recorded_budgets_pack_whole_sets_and_fresh_independent_pages() {
         seen.iter().cloned().collect::<BTreeSet<_>>(),
         actual.keys().cloned().collect()
     );
+    let t127 = actual
+        .iter()
+        .find(|(_, task)| task["title"] == "Task 127")
+        .unwrap()
+        .0
+        .clone();
+    let mut cursor = None::<String>;
+    let mut plain_seen = Vec::new();
+    let mut plain_overflow = false;
+    loop {
+        let (plain, ids, next) = f.plain_page(project, goal, cursor.as_deref(), 128);
+        if plain_seen.is_empty() {
+            assert!(
+                ids.len() < 128 && next.is_some(),
+                "genuine DAG must reduce the first plain page"
+            );
+        }
+        if ids.contains(&t127) {
+            plain_overflow = true;
+            assert!(plain.contains(
+                "Structural dependencies: \"requires_prerequisite_evidence\"; incoming: 127 (hard: 60)\n  Incoming detail: unavailable (projection_budget)\n"
+            ));
+            assert!(plain.contains(", task_incoming_relationships\n"));
+        }
+        plain_seen.extend(ids);
+        assert!(plain_seen.len() <= 128);
+        match next {
+            Some(next) => cursor = Some(next),
+            None => break,
+        }
+    }
+    assert!(
+        plain_overflow,
+        "scoped cursors must reach the 127-incoming Task"
+    );
+    assert_eq!(plain_seen, seen);
     assert_eq!(rows(&f.state), before);
     client::request(
         &f.state,
