@@ -182,9 +182,14 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation) {
     );
     assert!(refused[0].preparation.revoked && !refused[0].preparation.transport);
     assert!(!refused[0].preparation.closure && !refused[0].preparation.closed);
-    assert_eq!(
-        count(&f, "sessions"),
-        0,
+    assert!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .records(&task.scope(), RecordKind::Session)
+            .unwrap()
+            .is_empty(),
         "physical refusal registered a Session"
     );
     if stage == PreparationObservation::BeforeTransport {
