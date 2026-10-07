@@ -33,6 +33,8 @@ mod registration;
 pub(crate) mod transport;
 pub(crate) mod version;
 pub(crate) use phase_protocol::{ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession};
+#[cfg(test)]
+pub(crate) use preparation::PreparationFacts;
 pub(crate) use preparation::{NativePreparationActor, NativePreparationCustody};
 pub(crate) use prepared::PreparedNativePhase;
 #[cfg(test)]
@@ -160,8 +162,36 @@ pub struct NativeSessions {
     entries: Mutex<BTreeMap<SessionId, Entry>>,
     starts: Mutex<BTreeMap<UnitId, Weak<tokio::sync::Mutex<()>>>>,
     preparations: Mutex<BTreeMap<UnitId, Weak<NativePreparationCustody>>>,
+    #[cfg(test)]
+    preparation_observer: Mutex<Option<PreparationObserver>>,
 }
+/// Timing only: the observer receives no actor, proof, owner or allocation.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PreparationObservation {
+    BeforeCommand,
+    BeforeTransport,
+}
+#[cfg(test)]
+type PreparationObserver = Arc<
+    dyn Fn(
+            PreparationObservation,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+        + Send
+        + Sync,
+>;
 impl NativeSessions {
+    #[cfg(test)]
+    pub(crate) fn set_preparation_observer(&self, observer: Option<PreparationObserver>) {
+        *self.preparation_observer.lock().unwrap() = observer;
+    }
+    #[cfg(test)]
+    async fn observe_preparation(&self, stage: PreparationObservation) {
+        let observer = self.preparation_observer.lock().unwrap().clone();
+        if let Some(observer) = observer {
+            observer(stage).await;
+        }
+    }
     pub fn new(owner: Arc<RuntimeOwner>) -> Result<Self> {
         Self::with_limits(owner, NativeLimits::default_policy())
     }
@@ -176,6 +206,8 @@ impl NativeSessions {
             entries: Mutex::new(BTreeMap::new()),
             starts: Mutex::new(BTreeMap::new()),
             preparations: Mutex::new(BTreeMap::new()),
+            #[cfg(test)]
+            preparation_observer: Mutex::new(None),
         })
     }
     pub async fn start(
@@ -213,6 +245,9 @@ impl NativeSessions {
         let prepared = self
             .begin_phase_preparation(launch, custody.clone())
             .await?;
+        #[cfg(test)]
+        self.observe_preparation(PreparationObservation::BeforeTransport)
+            .await;
         self.start_prepared_transport(&custody, prepared).await
     }
     async fn start_legacy(

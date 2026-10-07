@@ -12,6 +12,7 @@ use crate::{
 use std::{os::unix::fs::PermissionsExt, time::Duration};
 
 mod activation;
+mod nonsuccess;
 mod sweep;
 
 fn fixture(provider: &str, declared: bool) -> ControlFixture {

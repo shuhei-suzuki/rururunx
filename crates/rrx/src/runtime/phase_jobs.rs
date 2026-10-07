@@ -179,6 +179,15 @@ pub(super) struct PhaseJobs {
     entries: Mutex<BTreeMap<OperationId, Entry>>,
     closure_cursor: Mutex<Option<OperationId>>,
 }
+#[cfg(test)]
+#[derive(Debug)]
+pub(super) struct ObservedJob {
+    pub unit: crate::execution::UnitId,
+    pub finished: bool,
+    pub refusal: Option<String>,
+    pub attention: Option<&'static str>,
+    pub preparation: crate::execution::native::PreparationFacts,
+}
 
 /// Observation only. Drop does not abort, release, retry or remove anything.
 pub(crate) struct PhaseInvocation {
@@ -207,6 +216,28 @@ impl PhaseInvocation {
 }
 
 impl PhaseJobs {
+    /// Nongrant observations from existing entries, never constructors.
+    #[cfg(test)]
+    pub(super) fn observed_jobs(&self) -> Vec<ObservedJob> {
+        let entries = self.entries.lock().unwrap();
+        entries
+            .values()
+            .map(|entry| {
+                let state = entry.job.state.lock().unwrap();
+                ObservedJob {
+                    unit: entry.job.allocation.facts().unit_id,
+                    finished: entry.handle.as_ref().is_some_and(JoinHandle::is_finished),
+                    refusal: state
+                        .outcome
+                        .as_ref()
+                        .and_then(|r| r.as_ref().err())
+                        .map(|e| e.error.to_string()),
+                    attention: state.attention,
+                    preparation: state.preparation.observed_facts(),
+                }
+            })
+            .collect()
+    }
     /// Test-only borrowing of an existing original retained object. A copied
     /// Unit ID can select a reader result, never construct an allocation.
     #[cfg(test)]

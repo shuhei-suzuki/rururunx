@@ -10,6 +10,16 @@ type ClosureOriginal = (
     Arc<crate::state::NativeReadyLineage>,
     Option<Arc<crate::state::NativeQuotaClosurePlan>>,
 );
+#[cfg(test)]
+#[derive(Debug)]
+pub(crate) struct PreparationFacts {
+    pub revoked: bool,
+    pub helpers_completed: bool,
+    pub no_dispatch: bool,
+    pub transport: bool,
+    pub closure: bool,
+    pub closed: bool,
+}
 
 /// The real Runtime job creates this empty cell before its start future. The
 /// selected Native issuer alone installs an actor; public DTOs cannot do so.
@@ -45,6 +55,19 @@ struct CustodyState {
     nonsuccess: Option<Arc<super::NativeNoDispatchClosureProof>>,
 }
 impl NativePreparationCustody {
+    /// Reads retained facts; these booleans cannot be used by an issuer.
+    #[cfg(test)]
+    pub(crate) fn observed_facts(&self) -> PreparationFacts {
+        let state = self.state.lock().unwrap();
+        PreparationFacts {
+            revoked: state.actor.as_ref().is_some_and(|a| a.is_revoked()),
+            helpers_completed: state.completion.is_some(),
+            no_dispatch: state.no_dispatch.is_some(),
+            transport: state.transport.is_some(),
+            closure: state.closure.is_some(),
+            closed: state.closed.is_some(),
+        }
+    }
     pub(super) fn validate_nonsuccess_original(
         &self,
         proof: &super::NativeNoDispatchClosureProof,
@@ -1055,6 +1078,9 @@ impl NativeSessions {
             .prepare_phase_git(custody.clone(), version.clone())
             .await?;
         let compat = compat.observe(version)?;
+        #[cfg(test)]
+        self.observe_preparation(PreparationObservation::BeforeCommand)
+            .await;
         let command =
             super::prepared::plan_native_command(&self.owner, &actor, &completion, &compat)?;
         custody.retain_compatible_command(compat, command)?;
