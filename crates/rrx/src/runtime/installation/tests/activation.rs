@@ -7,6 +7,13 @@ use std::sync::{
     Mutex,
     atomic::{AtomicBool, Ordering},
 };
+fn engine(f: &ControlFixture) -> &Arc<crate::workflow::WorkflowEngine> {
+    &f.runtime
+        .installed
+        .as_ref()
+        .unwrap_or_else(|refusal| panic!("SETUP: {}", refusal.0))
+        .engine
+}
 
 fn canonical(value: &serde_json::Value) -> Vec<u8> {
     fn ordered(v: &serde_json::Value) -> serde_json::Value {
@@ -126,20 +133,14 @@ async fn ca1_actual_activation_gates_marker_and_record_only_bound() {
         let arrived = Arc::new(AtomicBool::new(false));
         let capture = expected.clone();
         let signal = arrived.clone();
-        f.runtime
-            .installed
-            .as_ref()
-            .ok()
-            .unwrap()
-            .engine
-            .set_activation_hooks(
-                Some(Arc::new(move |probe| {
-                    *capture.lock().unwrap() = Some(expected_contract(&probe));
-                    signal.store(true, Ordering::SeqCst);
-                    Box::pin(async {})
-                })),
-                None,
-            );
+        engine(&f).set_activation_hooks(
+            Some(Arc::new(move |probe| {
+                *capture.lock().unwrap() = Some(expected_contract(&probe));
+                signal.store(true, Ordering::SeqCst);
+                Box::pin(async {})
+            })),
+            None,
+        );
         f.runtime.start().await.unwrap();
         wait_for(
             || arrived.load(Ordering::SeqCst),
