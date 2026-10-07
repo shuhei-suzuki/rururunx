@@ -1275,7 +1275,9 @@ fn effect_tx(connection: &Connection, id: OperationId) -> Result<ManagedEffect> 
 mod artifacts;
 pub(super) mod source_recovery;
 pub(super) mod verification;
-pub(super) use artifacts::{complete_workflow_readonly_tx, publish_workflow_result_tx};
+pub(super) use artifacts::{
+    complete_workflow_readonly_tx, publish_result_core, publish_workflow_result_tx,
+};
 pub(crate) mod cleanup;
 mod effects;
 mod quota_observation;

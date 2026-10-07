@@ -173,6 +173,10 @@ impl OriginalMarker {
     pub(super) fn validate_unadvanced_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         self.plan.rows.validate_unadvanced_tx(tx)
     }
+    /// The SAME marker's Driver advance (success closure re-anchors from it).
+    pub(super) fn driver_advance(&self) -> &DriverMarkerAdvance {
+        &self.plan.driver
+    }
     pub(super) fn original_operation_image(&self) -> Result<&[rusqlite::types::Value]> {
         self.plan.rows.original_operation_image()
     }

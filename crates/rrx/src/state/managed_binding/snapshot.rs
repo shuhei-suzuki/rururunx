@@ -376,6 +376,33 @@ impl ScopePlan {
         );
         self.validate_projection_context(c, task, task_raw, Some(workflow), Some(context))
     }
+    /// Head relations of a successful closure postimage: exact P/G and the
+    /// closed Task, the sole Workflow, the complete lock set, and the closure
+    /// Context as the owner's latest (version, body, index).
+    pub(in crate::state) fn validate_success_projection(
+        &self,
+        c: &Connection,
+        task: &Task,
+        task_raw: &str,
+        workflow: (&Record, &str),
+        context: (&ContextVersion, &str),
+    ) -> Result<()> {
+        let old = self
+            .context
+            .as_ref()
+            .context("success original Context missing")?;
+        ensure!(
+            context.0.version
+                == old
+                    .parsed()
+                    .version
+                    .checked_add(1)
+                    .context("Context version overflow")?
+                && task.context_version == context.0.version,
+            "success Context successor differs"
+        );
+        self.validate_projection_context(c, task, task_raw, Some(workflow), Some(context))
+    }
     pub(in crate::state) fn workflow_input(&self) -> Result<(&Record, &ContextVersion)> {
         Ok((
             self.workflow.as_ref().context("Workflow missing")?.parsed(),

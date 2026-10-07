@@ -116,7 +116,7 @@ impl GateObservedAcknowledgment {
     }
 }
 
-fn typed(before: &Record) -> Result<WorkflowSnapshot> {
+pub(super) fn typed(before: &Record) -> Result<WorkflowSnapshot> {
     let workflow: WorkflowSnapshot = serde_json::from_value(before.data.clone())?;
     ensure!(
         encode(&serde_json::to_value(&workflow)?, BODY_BYTES)? == encode(&before.data, BODY_BYTES)?,
@@ -235,7 +235,7 @@ fn observed_delta(
 }
 
 /// The trigger-required header shared by every typed link.
-fn header(
+pub(super) fn header(
     currency: &SettledCurrency,
     after: &Body<Record>,
     kind: &str,
@@ -262,7 +262,7 @@ fn header(
     Ok(data.as_object().cloned().context("link header object")?)
 }
 
-fn link_data(mut header: Map<String, Value>, extra: Value) -> Result<String> {
+pub(super) fn link_data(mut header: Map<String, Value>, extra: Value) -> Result<String> {
     for (key, value) in extra.as_object().context("link extra object")? {
         ensure!(
             header.insert(key.clone(), value.clone()).is_none(),
@@ -298,7 +298,7 @@ fn advance(
     })
 }
 
-fn selected_database(c: &Connection, settled: &SettledPhase) -> Result<()> {
+pub(super) fn selected_database(c: &Connection, settled: &SettledPhase) -> Result<()> {
     ensure!(
         settled
             .allocation()

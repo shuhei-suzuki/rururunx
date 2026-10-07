@@ -673,6 +673,10 @@ impl OwnedPhaseSettlement {
     pub(crate) fn validate_terminal_images_tx(&self, tx: &rusqlite::Transaction<'_>) -> Result<()> {
         self.images.validate_tx(tx)
     }
+    /// The terminal's exact stored Unit body; a fact, not a grant.
+    pub(crate) fn terminal_unit_raw(&self) -> &str {
+        self.images.unit_raw()
+    }
     /// The stored Unit row equals the terminal's sealed postimage exactly.
     pub(crate) fn validate_terminal_unit_tx(&self, tx: &rusqlite::Transaction<'_>) -> Result<()> {
         self.images.validate_unit_tx(tx)

@@ -119,7 +119,7 @@ fn workflow_delta(
     crate::workflow::validate_transition(task, &after, Some(before))?;
     Ok((index, after))
 }
-fn operation_delta(before: &[SqlValue]) -> Result<Vec<SqlValue>> {
+pub(super) fn operation_delta(before: &[SqlValue]) -> Result<Vec<SqlValue>> {
     ensure!(
         before.len() == 32
             && before[29] == SqlValue::Integer(1)

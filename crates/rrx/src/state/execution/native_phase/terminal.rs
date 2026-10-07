@@ -173,6 +173,10 @@ impl SettledTerminalImages {
     pub(crate) fn validate_unit_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         self.unit.validate_tx(tx)
     }
+    /// The terminal's exact stored Unit body (the closure's W1 old image).
+    pub(crate) fn unit_raw(&self) -> &str {
+        &self.unit.raw
+    }
 }
 
 /// Exact committed receipt row of this terminal, if present.
