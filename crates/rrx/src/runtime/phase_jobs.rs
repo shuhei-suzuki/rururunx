@@ -24,9 +24,9 @@ use std::{
 pub(in crate::runtime) use success::SuccessSweep;
 #[cfg(test)]
 pub(crate) use success::{
-    BINDING_CONFIRM, HelperHold, NORMAL_WRITE, OWNER_IMMEDIATE, OWNER_PLANNING, SETTLED_CLOSURE,
-    SETTLED_EVALUATION, SETTLEMENT_GAP, SUCCESS_ADMISSION, WritePause, count, counted, hold_helper,
-    pause_at,
+    BINDING_CONFIRM, CLOSURE_CONFIRM, HelperHold, NORMAL_WRITE, OWNER_IMMEDIATE, OWNER_PLANNING,
+    SETTLED_CLOSURE, SETTLED_EVALUATION, SETTLEMENT_GAP, SUCCESS_ADMISSION, WritePause, count,
+    counted, hold_helper, pause_at,
 };
 pub(crate) use success::{
     ClosedPhaseAck, ClosureStage, ClosureState, Retained, SettledLookup, SuccessContinuation,

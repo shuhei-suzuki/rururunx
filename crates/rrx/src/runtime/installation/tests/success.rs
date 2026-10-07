@@ -1949,3 +1949,83 @@ async fn sc4n_codex_uncertain_bind_then_terminal_confirms() {
     sc4n("codex", CommitFault::AfterCommit).await;
     sc4n("codex", CommitFault::BeforeCommit).await;
 }
+
+/// SC4-C: after a closure commit reported uncertain, a later Context version
+/// of the same owner is inserted (negative-only raw stimulus) before the Root
+/// confirmation: the postimage branch fails the latest-Context head relation
+/// and the outcome stays Held, never Known (no publication, no release).
+async fn sc4c(provider: &str) {
+    use crate::runtime::phase_jobs::CLOSURE_CONFIRM;
+    use crate::state::managed_binding::fault::{CLOSURE, CommitFault, arm_commit_fault};
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    arm_commit_fault(task.id, CLOSURE, CommitFault::AfterCommit);
+    let confirm = held(task, CLOSURE_CONFIRM);
+    f.runtime.start().await.unwrap();
+    wait_normal_bound(&f, task).await;
+    release_completion(&f, task);
+    wait_for(
+        || confirm.0.reached(),
+        "SETUP: closure confirmation not reached",
+        90,
+    )
+    .await;
+    assert_eq!(
+        links(&f, task).last().map(String::as_str),
+        Some("phase_closed")
+    );
+    // Negative-only raw stimulus: one more Context version of the same owner.
+    let writer = raw(&f);
+    let (owner, version, body): (String, i64, String) = writer
+        .query_row(
+            "SELECT owner,version,body FROM context_versions WHERE task_id=?1 ORDER BY version DESC LIMIT 1",
+            [task.id.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    let mut next: serde_json::Value = serde_json::from_str(&body).unwrap();
+    next["version"] = serde_json::json!(version + 1);
+    writer
+        .execute(
+            "INSERT INTO context_versions(project_id,goal_id,task_id,owner,version,body) SELECT project_id,goal_id,task_id,owner,?2,?3 FROM context_versions WHERE task_id=?1 AND owner=?4 AND version=?5",
+            rusqlite::params![task.id.to_string(), version + 1, next.to_string(), owner, version],
+        )
+        .unwrap();
+    drop(writer);
+    confirm.0.release();
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(6) {
+        f.runtime.wake.notify_one();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let jobs = f.runtime.phase_jobs.observed_jobs();
+    assert!(!jobs.is_empty(), "SC4-C {provider}: never released");
+    assert!(
+        jobs.iter().all(|j| !j.success_closed),
+        "SC4-C {provider}: never Known; jobs {jobs:?}"
+    );
+    assert!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .validate_task_driver(task.id)
+            .is_err(),
+        "SC4-C {provider}: the Driver was not published"
+    );
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc4c_claude_later_context_keeps_uncertain_closure_held() {
+    sc4c("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc4c_codex_later_context_keeps_uncertain_closure_held() {
+    sc4c("codex").await;
+}

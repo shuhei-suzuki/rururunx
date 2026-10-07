@@ -182,6 +182,11 @@ impl SuccessAction {
         };
         match (self.kind, &closure.state) {
             (ActionKind::ConfirmClosure, ClosureState::Uncertain) => {
+                #[cfg(test)]
+                pause_at(
+                    self.success.settled().marker().scope().task_id,
+                    CLOSURE_CONFIRM,
+                );
                 let material = crate::state::Store::materialize_phase_success(&closure.plan)?;
                 let mut store = owner
                     .store
@@ -711,6 +716,8 @@ pub(crate) const SUCCESS_ADMISSION: &str = "success admission";
 pub(crate) const SETTLEMENT_GAP: &str = "settlement gap";
 #[cfg(test)]
 pub(crate) const BINDING_CONFIRM: &str = "binding confirm";
+#[cfg(test)]
+pub(crate) const CLOSURE_CONFIRM: &str = "closure confirm";
 #[cfg(test)]
 pub(crate) const OWNER_IMMEDIATE: &str = "owner immediate";
 #[cfg(test)]
