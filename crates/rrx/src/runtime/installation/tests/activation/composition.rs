@@ -1,6 +1,79 @@
 use super::*;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn ca2_four_tasks_two_projects_retain_own_scope_and_roster() {
+    let mut f = fixture_with("claude", true, |config| {
+        let mut codex = config.agents["worker"].clone();
+        let old_path = std::path::Path::new(&codex.command[0]);
+        let codex_path = old_path.with_file_name("configured-codex-protocol-fixture");
+        let source = std::fs::read_to_string(old_path).unwrap().replacen(
+            "PROVIDER=\"claude\"",
+            "PROVIDER=\"codex\"",
+            1,
+        );
+        std::fs::write(&codex_path, source).unwrap();
+        std::fs::set_permissions(&codex_path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        codex.command = vec![codex_path.to_string_lossy().into()];
+        codex.provider = Some("codex".into());
+        codex.compatibility.as_mut().unwrap().cli_version = "codex-cli 0.160.0".into();
+        config.agents.insert("codex-worker".into(), codex);
+    });
+    let observations = Arc::new(Mutex::new(Vec::new()));
+    let captures = observations.clone();
+    engine(&f).set_activation_hooks(
+        Some(Arc::new(move |probe| {
+            captures
+                .lock()
+                .unwrap()
+                .push(ObservedActivation::from_probe(&probe));
+            Box::pin(async {})
+        })),
+        None,
+    );
+    f.runtime.start().await.unwrap();
+    let mut tasks = Vec::new();
+    let mut workflows = Vec::new();
+    for project in ["ca2-project-a", "ca2-project-b"] {
+        f.register_real_git_project_named(project);
+        for executor in ["worker", "codex-worker"] {
+            let mut p = task_plan(&["rev-a", "rev-b"]);
+            p.tasks[0].executor = executor.into();
+            let task = accepted_plan(&f, p).await.remove(0);
+            let (_, workflow) = wait_bound(&f, &task).await;
+            tasks.push(task);
+            workflows.push(workflow);
+        }
+    }
+    assert_eq!(
+        count(&f, "workflow_native_contracts"),
+        4,
+        "CA2 own activation count"
+    );
+    assert_eq!(
+        count(&f, "native_invocations"),
+        4,
+        "CA2 configured peer launch count"
+    );
+    let actual = observations.lock().unwrap().clone();
+    assert_eq!(actual.len(), 4);
+    for o in &actual {
+        assert_contract(&f, o, "CA2 original scoped contract");
+    }
+    assert_ne!(tasks[0].project_id, tasks[2].project_id);
+    assert_eq!(tasks[0].project_id, tasks[1].project_id);
+    assert_eq!(tasks[2].project_id, tasks[3].project_id);
+    let unique = actual
+        .iter()
+        .map(|o| o.expected["workflow_id"].as_str().unwrap())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(unique.len(), 4, "CA2 cross-Workflow reuse");
+    for workflow in &workflows {
+        release_peer(&f, workflow);
+    }
+    finish(f).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca3_representable_roster_refusals_preserve_claimed_sibling() {
     use crate::runtime::task_driver::{AdmitOutcome, SkipReason};
     use crate::state::CandidatePage;

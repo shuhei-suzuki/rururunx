@@ -10,6 +10,7 @@ use std::sync::{
 };
 mod composition;
 mod lifecycle;
+mod pages;
 
 #[derive(Clone)]
 struct ObservedActivation {

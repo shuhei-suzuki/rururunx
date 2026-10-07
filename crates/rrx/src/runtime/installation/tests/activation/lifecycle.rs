@@ -1,6 +1,111 @@
 use super::*;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn ca4b_activation_segment_linearizes_before_shutdown() {
+    let mut f = fixture("claude", true);
+    f.register_real_git_project();
+    accept(&f, 1).await;
+    let block = Arc::new(ServicePark::default());
+    block.close();
+    let _release_on_drop = OpenPark(block.clone());
+    let segment = block.clone();
+    let seams = Arc::new(ActivationSeams {
+        precommit: Some(Arc::new(move |_| {
+            segment.visit();
+            Ok(())
+        })),
+        ..Default::default()
+    });
+    let (observations, release) = install_pause(&f, Some(seams));
+    f.runtime.start().await.unwrap();
+    wait_for(
+        || observations.lock().unwrap().len() == 1,
+        "SETUP: S1 absent",
+    )
+    .await;
+    let original = observations.lock().unwrap()[0].clone();
+    release.add_permits(1);
+    wait_for(|| block.parked(), "SETUP: genuine activation S2 absent").await;
+    let runtime = f.runtime.clone();
+    let shutdown = tokio::spawn(async move { runtime.shutdown().await });
+    let end = tokio::time::Instant::now() + Duration::from_secs(1);
+    while tokio::time::Instant::now() < end {
+        assert!(
+            !f.runtime.is_stopping(),
+            "CA4b stop passed the original activation admission"
+        );
+        assert!(
+            !shutdown.is_finished(),
+            "CA4b shutdown completed inside admitted segment"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    block.open();
+    tokio::time::timeout(Duration::from_secs(5), shutdown)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        count(&f, "workflow_native_contracts"),
+        1,
+        "CA4b admitted activation did not commit"
+    );
+    assert_contract(&f, &original, "CA4b linearized commit");
+    assert!(
+        !original.plan.is_retained().unwrap(),
+        "CA4b cache not published before stop"
+    );
+    assert_eq!(
+        original.association.binding().unwrap().2,
+        original.plan.planned_binding().2,
+        "CA4b planned Driver cache differs"
+    );
+    finish(f).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn ca4b_segment_keeps_runtime_alive_after_external_drop() {
+    let mut f = fixture("claude", true);
+    f.register_real_git_project();
+    accept(&f, 1).await;
+    let block = Arc::new(ServicePark::default());
+    block.close();
+    let _release_on_drop = OpenPark(block.clone());
+    let segment = block.clone();
+    let seams = Arc::new(ActivationSeams {
+        precommit: Some(Arc::new(move |_| {
+            segment.visit();
+            Ok(())
+        })),
+        ..Default::default()
+    });
+    let (observations, release) = install_pause(&f, Some(seams));
+    f.runtime.start().await.unwrap();
+    wait_for(
+        || observations.lock().unwrap().len() == 1,
+        "SETUP: S1 absent",
+    )
+    .await;
+    release.add_permits(1);
+    wait_for(|| block.parked(), "SETUP: S2 absent").await;
+    let weak = Arc::downgrade(&f.runtime);
+    drop(f.runtime);
+    assert!(
+        weak.upgrade().is_some(),
+        "CA4b Runtime ended within synchronous activation segment"
+    );
+    block.open();
+    wait_for(
+        || weak.upgrade().is_none(),
+        "CA4b Runtime failed to end after segment",
+    )
+    .await;
+    // This observation does not isolate a strong-retention mutant: the service
+    // may also own a strong reference, as the approved HOW records.
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca4a_stop_at_genuine_retained_pre_admission_rolls_back() {
     let mut f = fixture("claude", true);
     f.register_real_git_project();
