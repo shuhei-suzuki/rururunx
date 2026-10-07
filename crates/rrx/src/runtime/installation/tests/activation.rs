@@ -5,8 +5,136 @@ use crate::state::managed_binding::ActivationSeams;
 use sha2::{Digest, Sha256};
 use std::sync::{
     Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
+mod composition;
+mod lifecycle;
+
+#[derive(Clone)]
+struct ObservedActivation {
+    plan: Arc<crate::state::DriverPreparationAdvance>,
+    association: crate::runtime::driver::DriverAssociation,
+    expected: serde_json::Value,
+}
+impl ObservedActivation {
+    fn from_probe(probe: &crate::workflow::ActivationProbe<'_>) -> Self {
+        Self {
+            plan: probe.plan().clone(),
+            association: probe.lifetime().association().unwrap(),
+            expected: expected_contract(probe),
+        }
+    }
+}
+/// One service arrival parks. Later direct observation calls use the genuine
+/// production sweep without being blocked by this test timing seam.
+#[derive(Default)]
+struct ServicePark {
+    state: Mutex<u8>, // 0 open, 1 closed, 2 parked, 3 released
+    changed: std::sync::Condvar,
+}
+impl ServicePark {
+    fn close(&self) {
+        *self.state.lock().unwrap() = 1;
+    }
+    fn visit(&self) {
+        let mut state = self.state.lock().unwrap();
+        if *state == 1 {
+            *state = 2;
+            self.changed.notify_all();
+            while *state == 2 {
+                state = self.changed.wait(state).unwrap();
+            }
+        }
+    }
+    fn parked(&self) -> bool {
+        *self.state.lock().unwrap() == 2
+    }
+    fn open(&self) {
+        *self.state.lock().unwrap() = 3;
+        self.changed.notify_all();
+    }
+}
+struct OpenPark(Arc<ServicePark>);
+impl Drop for OpenPark {
+    fn drop(&mut self) {
+        self.0.open();
+    }
+}
+fn service_park(f: &ControlFixture) -> (Arc<ServicePark>, OpenPark) {
+    let park = Arc::new(ServicePark::default());
+    let hook = park.clone();
+    *f.runtime.before_service_reconcile.lock().unwrap() = Some(Arc::new(move || hook.visit()));
+    (park.clone(), OpenPark(park))
+}
+fn install_pause(
+    f: &ControlFixture,
+    seams: Option<Arc<ActivationSeams>>,
+) -> (
+    Arc<Mutex<Vec<ObservedActivation>>>,
+    Arc<tokio::sync::Semaphore>,
+) {
+    let observations = Arc::new(Mutex::new(Vec::new()));
+    let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let capture = observations.clone();
+    let permits = release.clone();
+    engine(f).set_activation_hooks(
+        Some(Arc::new(move |probe| {
+            capture
+                .lock()
+                .unwrap()
+                .push(ObservedActivation::from_probe(&probe));
+            let permits = permits.clone();
+            Box::pin(async move {
+                permits.acquire().await.unwrap().forget();
+            })
+        })),
+        seams,
+    );
+    (observations, release)
+}
+async fn accepted_plan(f: &ControlFixture, p: GoalPlan) -> Vec<Task> {
+    let goal = f.create(p).await;
+    let store = f.owner.store.lock().unwrap();
+    store
+        .goal(goal)
+        .unwrap()
+        .unwrap()
+        .dag
+        .nodes
+        .iter()
+        .map(|id| store.task(*id).unwrap().unwrap())
+        .collect()
+}
+fn task_plan(reviewers: &[&str]) -> GoalPlan {
+    let mut p = plan();
+    p.tasks[0].risk = RiskClass::R1;
+    p.tasks[0].reviewers = reviewers.iter().map(|s| (*s).into()).collect();
+    p
+}
+fn assert_contract(f: &ControlFixture, observed: &ObservedActivation, label: &str) {
+    let contract: String = raw(f)
+        .query_row(
+            "SELECT body FROM workflow_native_contracts WHERE task_id=?1",
+            [observed.expected["task_id"].as_str().unwrap()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        contract.as_bytes(),
+        canonical(&observed.expected),
+        "{label}: exact original contract"
+    );
+}
+async fn wait_exited(f: &ControlFixture, expected: usize) {
+    wait_for(
+        || {
+            f.runtime._drivers.observe_finished().unwrap() == 0
+                && f.runtime._drivers.pending_exits().unwrap().len() >= expected
+        },
+        "actual Driver jobs did not finish",
+    )
+    .await;
+}
 fn engine(f: &ControlFixture) -> &Arc<crate::workflow::WorkflowEngine> {
     &f.runtime
         .installed
