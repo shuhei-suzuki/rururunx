@@ -3,6 +3,11 @@
 //! The marker/binding producer and Native protocol are not yet composed. These
 //! bounded read primitives must not enable Workflow or replace its private proof.
 mod binding;
+mod closure;
+pub(in crate::state) use closure::{
+    PhaseClosedFacts, PhaseClosureImages, PhaseImage, UnlinkedPhaseClosure, plan_unlinked_closure,
+    validate_original_phase_tx,
+};
 mod canonical;
 pub(in crate::state) use canonical::Body;
 pub(in crate::state) use marker_plan::unit_index_matches as unit_image_matches;

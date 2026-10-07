@@ -12,8 +12,8 @@ use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 mod closure;
-pub(super) use closure::LatestUnitImage;
 pub(crate) use closure::NativeVersionClosurePlan;
+pub(super) use closure::{LatestUnitImage, RetiredUnitImage};
 
 const ROWS: usize = 256;
 const BODY_BYTES: usize = 8192;

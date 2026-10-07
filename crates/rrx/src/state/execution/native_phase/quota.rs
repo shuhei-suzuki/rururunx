@@ -61,7 +61,7 @@ impl NativeQuotaClosurePlan {
     ) -> bool {
         Arc::ptr_eq(&self.actor, actor) && Arc::ptr_eq(&self.lineage, lineage)
     }
-    fn validate_original(&self, tx: &Transaction<'_>) -> Result<()> {
+    pub(super) fn validate_original(&self, tx: &Transaction<'_>) -> Result<()> {
         self.actor.validate_original()?;
         ensure!(
             self.actor.is_revoked(),
@@ -72,6 +72,44 @@ impl NativeQuotaClosurePlan {
         self.no_dispatch.completion.commit.validate_inventory(tx)?;
         self.unit
             .validate_original(self.actor.launch().allocation().unit_snapshot())
+    }
+    pub(super) fn unit(&self) -> &super::version::LatestUnitImage {
+        &self.unit
+    }
+    pub(super) fn validate_after_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        self.readiness.validate_tx(tx)?;
+        let id = t(self.actor.launch().allocation().facts().unit_id);
+        ensure!(
+            image_matches(tx, "quota_waiters", WAITER_COLUMNS, &id, &None)?
+                && (image_matches(tx, "quota_leases", LEASE_COLUMNS, &id, &self.after.lease)?
+                    || image_matches(tx, "quota_leases", LEASE_COLUMNS, &id, &None)?),
+            "non-success preparation quota close images changed"
+        );
+        Ok(())
+    }
+    pub(super) fn payload_facts(&self) -> Result<(i64, bool, bool)> {
+        let version = match self.readiness.column("version")? {
+            SqlValue::Integer(v) => *v,
+            _ => anyhow::bail!("closed readiness version absent"),
+        };
+        let lease_released = self
+            .before
+            .lease
+            .as_ref()
+            .is_some_and(|v| v[5] == SqlValue::Integer(1))
+            && self
+                .after
+                .lease
+                .as_ref()
+                .is_none_or(|v| v[5] == SqlValue::Integer(0));
+        let probe_released = self.before.pool.as_ref().is_some_and(|v| {
+            v[3] == SqlValue::Text(self.actor.launch().allocation().facts().unit_id.to_string())
+        }) && self
+            .after
+            .pool
+            .as_ref()
+            .is_some_and(|v| v[3] == SqlValue::Null);
+        Ok((version, lease_released, probe_released))
     }
 }
 struct Snapshot {

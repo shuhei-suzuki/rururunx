@@ -99,6 +99,14 @@ Source versions remain unchanged. Root derives Waiting from the custody watch
 while the SAME start future remains retained. Nongrant revoked closure can compare
 the latest factual same-owner Unit, leaves that Unit untouched and releases only
 the own lease, waiter and probe. It cannot refresh a grant lineage.
+The private non-success Store port consumes a sealed ended-start custody proof
+and complete original marker images. It plans bounded turn material outside
+Store, then retires the exact open Unit, closes the operation, changes only the
+active Workflow attempt to Failed and inserts one private phase-closed link in
+one Immediate. Confirmation compares all saved preimages or all postimages
+with unchanged original currency. Task, Context and Session remain untouched;
+no retry or cleanup producer is supplied. Root sweep/acknowledgment wiring and
+genuine activation-dependent qualification remain incomplete.
 
 The private Prepared issuer retains all SAME custody conjuncts and checks a fixed
 provider/role budget before returning the original Prepared value. Version and

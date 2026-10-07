@@ -94,6 +94,42 @@ fn body(value: &serde_json::Value, bound: usize) -> Result<String> {
 }
 
 impl MarkerRows {
+    pub(super) fn original_operation_image(&self) -> Result<&[SqlValue]> {
+        Ok(&self
+            .rows
+            .iter()
+            .find(|r| r.table == "managed_phase_operations")
+            .context("original operation image absent")?
+            .values)
+    }
+    pub(super) fn validate_unadvanced_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        for table in [
+            "managed_phase_operations",
+            "managed_phase_inputs",
+            "managed_phase_owners",
+        ] {
+            self.rows
+                .iter()
+                .find(|r| r.table == table)
+                .context("original unadvanced marker image absent")?
+                .validate_tx(tx)?;
+        }
+        Ok(())
+    }
+    pub(super) fn validate_closed_tx(
+        &self,
+        tx: &Transaction<'_>,
+        operation: &[SqlValue],
+    ) -> Result<()> {
+        for table in ["managed_phase_inputs", "managed_phase_owners"] {
+            self.rows
+                .iter()
+                .find(|r| r.table == table)
+                .context("original unadvanced marker image absent")?
+                .validate_tx(tx)?;
+        }
+        Insert::new("managed_phase_operations", operation.to_vec())?.validate_tx(tx)
+    }
     pub(super) fn validate_open_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         // Native owner/readiness facts may advance separately. The original
         // open operation and preparation template stay exact and immutable.

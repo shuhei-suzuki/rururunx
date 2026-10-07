@@ -2234,4 +2234,7 @@ fn reserved_audit_kind(kind: &str) -> bool {
         )
 }
 
-pub(crate) use execution::native_phase::NonSuccessReader;
+pub(crate) use execution::native_phase::{
+    NativeNonSuccessClosurePlan, NativeNonSuccessConfirmation, NativeNonSuccessMaterial,
+    NativeNonSuccessWrite, NonSuccessReader, PhaseClosedAcknowledgment,
+};
