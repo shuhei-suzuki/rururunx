@@ -170,6 +170,10 @@ impl crate::runtime::Runtime {
     }
 }
 impl SuccessAction {
+    #[cfg(test)]
+    pub(in crate::runtime) fn task(&self) -> Option<crate::domain::TaskId> {
+        self.success.settled().marker().scope().task_id
+    }
     /// ONE synchronous Store turn under the caller's admission. The Root
     /// confirms or publishes only; it never commits a new closure.
     pub(in crate::runtime) fn run(self, admitted: &SuccessAdmission) -> Result<()> {
@@ -718,6 +722,8 @@ pub(crate) const SETTLEMENT_GAP: &str = "settlement gap";
 pub(crate) const BINDING_CONFIRM: &str = "binding confirm";
 #[cfg(test)]
 pub(crate) const CLOSURE_CONFIRM: &str = "closure confirm";
+#[cfg(test)]
+pub(crate) const ROOT_ADMISSION: &str = "root admission";
 #[cfg(test)]
 pub(crate) const OWNER_IMMEDIATE: &str = "owner immediate";
 #[cfg(test)]

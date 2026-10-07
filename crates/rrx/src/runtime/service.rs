@@ -100,12 +100,16 @@ impl Runtime {
                 // Each admitted action under its own non-blocking admission;
                 // a busy admission keeps the action for a later turn. No await.
                 for action in success_actions {
+                    #[cfg(test)]
+                    super::phase_jobs::pause_at(action.task(), super::phase_jobs::ROOT_ADMISSION);
                     match super::Runtime::try_admit_root_success(&retained) {
                         Ok(Some(admitted)) => {
                             action.run(&admitted)?;
                             drop(admitted);
                         }
                         Ok(None) | Err(_) => {
+                            #[cfg(test)]
+                            super::phase_jobs::count(action.task(), "root admission refused");
                             success_pending = true;
                             break;
                         }

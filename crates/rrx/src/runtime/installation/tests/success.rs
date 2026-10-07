@@ -2191,3 +2191,71 @@ async fn sc9c_claude_pending_publication_stays_held_after_shutdown() {
 async fn sc9c_codex_pending_publication_stays_held_after_shutdown() {
     sc9c("codex").await;
 }
+
+/// SC9(b): shutdown takes the control admission first and joins the service
+/// task while the Root holds a pending closure confirmation: the Root's
+/// non-blocking admission returns None without awaiting, the service exits on
+/// `stopping` and shutdown completes promptly; no confirmation is written.
+async fn sc9b(provider: &str) {
+    use crate::runtime::phase_jobs::{ROOT_ADMISSION, counted};
+    use crate::state::managed_binding::fault::{CLOSURE, CommitFault, arm_commit_fault};
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    arm_commit_fault(task.id, CLOSURE, CommitFault::AfterCommit);
+    let root = held(task, ROOT_ADMISSION);
+    f.runtime.start().await.unwrap();
+    wait_normal_bound(&f, task).await;
+    release_completion(&f, task);
+    wait_for(
+        || root.0.reached(),
+        "SETUP: Root closure action not reached",
+        90,
+    )
+    .await;
+    let runtime = f.runtime.clone();
+    let shutdown = tokio::spawn(async move { runtime.shutdown().await });
+    wait_for(
+        || f.runtime.stopping.load(std::sync::atomic::Ordering::SeqCst),
+        "SETUP: shutdown did not take the admission",
+        10,
+    )
+    .await;
+    let released = std::time::Instant::now();
+    root.0.release();
+    let _ = tokio::time::timeout(Duration::from_secs(8), shutdown)
+        .await
+        .expect("SC9(b): shutdown did not complete")
+        .unwrap();
+    assert!(
+        released.elapsed() < Duration::from_secs(5),
+        "SC9(b) {provider}: shutdown completed without the 5 s timeout ({:?})",
+        released.elapsed()
+    );
+    assert_eq!(
+        counted(task.id, "root admission refused"),
+        1,
+        "SC9(b) {provider}: the Root's try-admission returned None"
+    );
+    assert!(
+        f.runtime
+            .phase_jobs
+            .observed_jobs()
+            .iter()
+            .all(|j| !j.success_closed),
+        "SC9(b) {provider}: no confirmation was written"
+    );
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc9b_claude_shutdown_preempts_root_success_action() {
+    sc9b("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc9b_codex_shutdown_preempts_root_success_action() {
+    sc9b("codex").await;
+}
