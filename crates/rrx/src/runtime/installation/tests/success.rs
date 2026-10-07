@@ -1568,13 +1568,24 @@ async fn sc10_four_projects_close_independently() {
     for task in &tasks {
         release_completion(&f, task);
     }
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
     for task in &tasks {
-        wait_for(
-            || links(&f, task).last().map(String::as_str) == Some("phase_closed"),
-            "SC10: a Task did not close",
-            120,
-        )
-        .await;
+        while links(&f, task).last().map(String::as_str) != Some("phase_closed") {
+            if tokio::time::Instant::now() > deadline {
+                let (_, snapshot) = workflow(&f, task);
+                panic!(
+                    "SC10: Task {} did not close; links {:?}; attempt {:?}; jobs {:?}",
+                    task.id,
+                    links(&f, task),
+                    snapshot.active.map(|i| (
+                        snapshot.history[i].state.clone(),
+                        snapshot.history[i].detail.clone()
+                    )),
+                    f.runtime.phase_jobs.observed_jobs()
+                );
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
     }
     for (task, marked) in tasks.iter().zip(&marked) {
         assert_eq!(

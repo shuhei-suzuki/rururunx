@@ -57,16 +57,29 @@ struct LinkAdvance {
 pub(crate) struct GateClaimPlan {
     advance: LinkAdvance,
 }
+/// Compact Known claim: the SAME settled phase, the committed Workflow
+/// postimage (raw only) and the ledger count. The plan's currency and images
+/// are not retained once Known (SC §12).
 pub(crate) struct GateClaimAcknowledgment {
-    plan: Arc<GateClaimPlan>,
+    settled: Arc<SettledPhase>,
+    after_raw: String,
+    link_count: usize,
 }
 impl GateClaimAcknowledgment {
+    fn known(plan: &GateClaimPlan) -> Self {
+        Self {
+            settled: plan.advance.currency.settled().clone(),
+            after_raw: plan.advance.after.raw().to_owned(),
+            link_count: plan.advance.currency.current().link_count() + 1,
+        }
+    }
     pub(crate) fn settled(&self) -> &Arc<SettledPhase> {
-        self.plan.advance.currency.settled()
+        &self.settled
     }
 }
 
 /// What a fused observation records; built only from a sealed completion.
+#[derive(Clone)]
 enum Observed {
     Passed(Box<(Evidence, Record)>),
     Waiting(String),
@@ -77,27 +90,44 @@ pub(crate) struct GateObservedPlan {
     observed: Observed,
     advance: LinkAdvance,
 }
+/// Compact Known observation: the SAME settled phase, the observed facts,
+/// the committed Workflow postimage (raw only) and the ledger count.
 pub(crate) struct GateObservedAcknowledgment {
-    plan: Arc<GateObservedPlan>,
+    settled: Arc<SettledPhase>,
+    observed: Observed,
+    after_raw: String,
+    link_count: usize,
 }
 impl GateObservedAcknowledgment {
+    fn known(plan: &GateObservedPlan) -> Self {
+        Self {
+            settled: plan.advance.currency.settled().clone(),
+            observed: plan.observed.clone(),
+            after_raw: plan.advance.after.raw().to_owned(),
+            link_count: plan.advance.currency.current().link_count() + 1,
+        }
+    }
     pub(crate) fn settled(&self) -> &Arc<SettledPhase> {
-        self.plan.advance.currency.settled()
+        &self.settled
     }
     /// The Passed evidence and its gate receipt; None for any other outcome.
     pub(crate) fn passed(&self) -> Option<(&Evidence, &Record)> {
-        match &self.plan.observed {
+        match &self.observed {
             Observed::Passed(passed) => Some((&passed.0, &passed.1)),
             _ => None,
         }
     }
-    /// The Workflow postimage this acknowledgment committed.
-    pub(in crate::state) fn workflow_after(&self) -> &Body<Record> {
-        &self.plan.advance.after
+    /// The Workflow postimage this acknowledgment committed (raw).
+    pub(in crate::state) fn workflow_after_raw(&self) -> &str {
+        &self.after_raw
+    }
+    /// The same postimage, materialized per use (never retained decoded).
+    pub(in crate::state) fn workflow_after(&self) -> Result<Body<Record>> {
+        Body::decode(self.after_raw.clone(), BODY_BYTES)
     }
     /// The ledger count after this acknowledgment's link.
     pub(in crate::state) fn link_count(&self) -> usize {
-        self.plan.advance.currency.current().link_count() + 1
+        self.link_count
     }
 }
 
@@ -480,7 +510,7 @@ impl Store {
         plan: &Arc<GateClaimPlan>,
     ) -> Result<SuccessWrite<GateClaimAcknowledgment>> {
         Ok(match self.write_advance(&plan.advance)? {
-            None => SuccessWrite::Known(Arc::new(GateClaimAcknowledgment { plan: plan.clone() })),
+            None => SuccessWrite::Known(Arc::new(GateClaimAcknowledgment::known(plan))),
             Some(cause) => SuccessWrite::Conflict(cause),
         })
     }
@@ -490,7 +520,7 @@ impl Store {
     ) -> Result<SuccessConfirmation<GateClaimAcknowledgment>> {
         match self.confirm_advance(&plan.advance)? {
             Some(true) => Ok(SuccessConfirmation::Known(Arc::new(
-                GateClaimAcknowledgment { plan: plan.clone() },
+                GateClaimAcknowledgment::known(plan),
             ))),
             Some(false) => Ok(SuccessConfirmation::RolledBack),
             None => anyhow::bail!("gate claim is neither committed nor rolled back"),
@@ -534,10 +564,9 @@ impl Store {
             _ => Observed::Unknown,
         };
         let currency = plan_settled_currency(owner, settled)?;
-        let claimed = &claim.plan.advance;
         ensure!(
-            currency.current().workflow_raw() == claimed.after.raw()
-                && currency.current().link_count() == claimed.currency.current().link_count() + 1,
+            currency.current().workflow_raw() == claim.after_raw
+                && currency.current().link_count() == claim.link_count,
             "gate observation is not at the SAME claim endpoint"
         );
         let task = settled.marker().original_plan().task_after().0;
@@ -592,9 +621,7 @@ impl Store {
         plan: &Arc<GateObservedPlan>,
     ) -> Result<SuccessWrite<GateObservedAcknowledgment>> {
         Ok(match self.write_advance(&plan.advance)? {
-            None => {
-                SuccessWrite::Known(Arc::new(GateObservedAcknowledgment { plan: plan.clone() }))
-            }
+            None => SuccessWrite::Known(Arc::new(GateObservedAcknowledgment::known(plan))),
             Some(cause) => SuccessWrite::Conflict(cause),
         })
     }
@@ -604,7 +631,7 @@ impl Store {
     ) -> Result<SuccessConfirmation<GateObservedAcknowledgment>> {
         match self.confirm_advance(&plan.advance)? {
             Some(true) => Ok(SuccessConfirmation::Known(Arc::new(
-                GateObservedAcknowledgment { plan: plan.clone() },
+                GateObservedAcknowledgment::known(plan),
             ))),
             Some(false) => Ok(SuccessConfirmation::RolledBack),
             None => anyhow::bail!("gate observation is neither committed nor rolled back"),

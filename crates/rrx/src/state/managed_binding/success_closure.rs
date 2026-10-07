@@ -95,7 +95,7 @@ fn images(plan: &Arc<SuccessClosurePlan>) -> Result<SuccessClosureMaterial> {
         .observed
         .passed()
         .context("success closure requires a Passed observation")?;
-    let before = plan.observed.workflow_after();
+    let before = plan.observed.workflow_after()?;
     let mut workflow = typed(before.parsed())?;
     let index = workflow
         .active
@@ -278,7 +278,7 @@ fn checked_close_tx(tx: &Transaction<'_>, m: &SuccessClosureMaterial) -> Result<
     let marker = settled.marker();
     validate_settled_tx(tx, &plan.currency)?;
     ensure!(
-        plan.currency.current().workflow_raw() == plan.observed.workflow_after().raw()
+        plan.currency.current().workflow_raw() == plan.observed.workflow_after_raw()
             && plan.currency.current().link_count() == plan.observed.link_count()
             && plan.currency.current().link_count() < 256,
         "success closure endpoint is not the SAME Passed observation"
@@ -313,7 +313,7 @@ fn checked_close_tx(tx: &Transaction<'_>, m: &SuccessClosureMaterial) -> Result<
         "success closure Driver no longer owns a live worker"
     );
     let growth = (m.workflow.raw().len() as u64)
-        .saturating_sub(plan.observed.workflow_after().raw().len() as u64)
+        .saturating_sub(plan.observed.workflow_after_raw().len() as u64)
         .saturating_add((m.task_raw.len() as u64).saturating_sub(task_before_raw.len() as u64))
         .saturating_add(plan.context_raw.len() as u64)
         .saturating_add(m.data.len() as u64);
@@ -375,7 +375,7 @@ fn confirm_close_tx(tx: &Transaction<'_>, m: &SuccessClosureMaterial) -> Result<
         )?;
         return Ok(Some(true));
     }
-    if workflow_raw == plan.observed.workflow_after().raw() {
+    if workflow_raw == plan.observed.workflow_after_raw() {
         // Preimage branch: the gate_observed endpoint, link absent.
         validate_settled_tx(tx, &plan.currency)?;
         let artifact = plan.publication.artifact();
@@ -405,7 +405,7 @@ impl Store {
         let settled = observed.settled();
         let currency = plan_settled_currency(owner, settled)?;
         ensure!(
-            currency.current().workflow_raw() == observed.workflow_after().raw()
+            currency.current().workflow_raw() == observed.workflow_after_raw()
                 && currency.current().link_count() == observed.link_count(),
             "success closure is not at the SAME Passed observation endpoint"
         );
@@ -528,7 +528,7 @@ impl Store {
             SqlValue::Integer(m.plan.at),
             SqlValue::Text(m.data.clone()),
         ];
-        let before = m.plan.observed.workflow_after();
+        let before = m.plan.observed.workflow_after()?;
         let mut writes = vec![
             ExactRowMutation::new(
                 "managed_phase_operations",
