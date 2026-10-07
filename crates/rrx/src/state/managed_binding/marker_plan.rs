@@ -438,9 +438,6 @@ impl ManagedMarkerPlan {
     pub(crate) fn marker_digest(&self) -> &str {
         &self.frame_digest
     }
-    pub(crate) fn context_digest(&self) -> &str {
-        &self.context_digest
-    }
 
     /// Nongrant transaction recheck, to be composed only with actual retained
     /// capacity/Driver/allocation consumers. This cannot publish or start.

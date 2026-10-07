@@ -61,12 +61,6 @@ impl NativeAllocation {
         self.seed.port()
     }
 
-    /// Original prepared bytes and routing facts for the same selected start.
-    /// Protected entry still requires the actual marker and current pair CAS.
-    pub(crate) fn prepared_input(&self) -> &super::native::ManagedInput {
-        self.seed.input()
-    }
-
     /// Exact captured Unit content, never an additional allocation or grant.
     pub(crate) fn unit_snapshot(&self) -> &ExecutionUnit {
         self.seed.unit()

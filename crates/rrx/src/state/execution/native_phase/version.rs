@@ -579,7 +579,7 @@ impl Store {
             id,
             unit_id: unit.id,
             scope: unit.scope.clone(),
-            kind: "native_phase_version".into(),
+            kind: NativePhaseHelperAction::Version.kind().into(),
             idempotency_key: format!("native-version-{id}"),
             expected_target: format!("version:{identity}"),
             state: EffectState::Pending,
@@ -660,7 +660,7 @@ impl Store {
             id,
             unit_id: allocation.facts().unit_id,
             scope: allocation.unit_snapshot().scope.clone(),
-            kind: "native_phase_git".into(),
+            kind: NativePhaseHelperAction::Git(action).kind().into(),
             idempotency_key: format!("native-git-{id}"),
             expected_target: seal.target(action),
             state: EffectState::Pending,
@@ -819,36 +819,6 @@ impl Store {
             after,
             effect,
         }))
-    }
-    pub(crate) fn record_phase_version_observation(
-        &mut self,
-        settlement: &Arc<NativeHelperSettlementPlan>,
-    ) -> Result<()> {
-        let plan = &settlement.original;
-        ensure!(
-            settlement.observation.matches_plan(plan),
-            "Native settlement observation replaced"
-        );
-        selected_database(&self.connection, plan.actor().launch())?;
-        let tx = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        {
-            let budget = InventoryBudget::new(&tx)?;
-            budget.finish((|| {
-                plan.validate_ready(&tx)?;
-                let current = Inventory::read(&tx,plan.actor().launch().allocation().facts().unit_id)?;
-                if current == *settlement.after { return Ok(()); }
-                ensure!(current == *plan.pending, "Native settlement original full inventory CAS changed");
-                let mut values = settlement.effect.values();
-                values.extend(plan.effect.values());
-                ensure!(tx.execute("UPDATE managed_effects SET id=?1,unit_id=?2,project_id=?3,goal_id=?4,task_id=?5,idempotency_key=?6,state=?7,body=?8,version=?9 WHERE id IS ?10 AND unit_id IS ?11 AND project_id IS ?12 AND goal_id IS ?13 AND task_id IS ?14 AND idempotency_key IS ?15 AND state IS ?16 AND body IS ?17 AND version IS ?18",
-                    params_from_iter(values))? == 1, "Native settlement exact image CAS conflict");
-                Ok(())
-            })())?;
-        }
-        tx.commit()?;
-        Ok(())
     }
 }
 

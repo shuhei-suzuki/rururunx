@@ -53,9 +53,6 @@ impl NativeTransportObservation {
     pub(crate) fn plan(&self) -> &Arc<NativeTransportStartPlan> {
         &self.plan
     }
-    pub(crate) fn actor(&self) -> &Arc<phase_protocol::PhaseActor> {
-        &self.actor
-    }
     pub(crate) fn state(&self) -> EffectState {
         self.state
     }

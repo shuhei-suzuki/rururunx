@@ -650,26 +650,6 @@ impl NativeSessions {
     pub fn subscribe(&self, handle: &ManagedSessionRef) -> Result<watch::Receiver<NativeStatus>> {
         Ok(self.entry(handle)?.0)
     }
-    /// Read a proof issued by the retained actual Native actor. Session IDs and
-    /// persisted rows cannot manufacture this private owner observation.
-    pub(crate) fn phase_binding(&self, handle: &ManagedSessionRef) -> Result<NativePhaseBinding> {
-        let phase = {
-            let entries = self
-                .entries
-                .lock()
-                .map_err(|_| anyhow::anyhow!("native registry unavailable"))?;
-            let entry = entries
-                .get(&handle.session)
-                .context("native Session missing")?;
-            ensure!(entry.handle == *handle, "foreign native phase Session");
-            entry
-                .phase
-                .clone()
-                .context("actual native phase owner unavailable")?
-        };
-        // No registry lock spans projection copying or later Store validation.
-        phase.owner.binding_snapshot()
-    }
     pub fn status(&self, handle: &ManagedSessionRef) -> Result<NativeStatus> {
         let mut status = self.entry(handle)?.0.borrow().clone();
         let (pending, updater, phase) = {

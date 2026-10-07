@@ -533,12 +533,6 @@ impl ConsumedPhaseInput {
         }
         Ok(())
     }
-    pub(crate) fn marker(&self) -> &OriginalMarker {
-        self.owner.marker()
-    }
-    pub(crate) fn allocation(&self) -> &NativeAllocation {
-        self.owner.allocation()
-    }
     pub(crate) fn effect(&self) -> OperationId {
         self.effect
     }
