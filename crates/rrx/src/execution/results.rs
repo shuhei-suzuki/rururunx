@@ -480,6 +480,54 @@ impl ResultStore {
             artifact,
         })
     }
+    /// G5 for a settled phase: the sole sibling issuer of the private
+    /// `WorkflowPublication`. The protected reader runs before and after the
+    /// current-reader graph verification, whose helpers are protected (G1-G3).
+    pub(crate) async fn settled_publication(
+        &self,
+        currency: &Arc<crate::state::managed_binding::SettledCurrency>,
+        artifact: ArtifactId,
+    ) -> Result<WorkflowPublication> {
+        let unit = currency.settled().settlement().unit().clone();
+        let artifact = {
+            let mut store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            store.validate_settled_helper(currency, &unit)?;
+            store.result_artifact(artifact)?
+        };
+        ensure!(
+            unit.kind == UnitKind::Executor
+                && unit.work == Some(WorkOutcome::Success)
+                && !unit.native_effects_open
+                && artifact.unit_id == unit.id
+                && artifact.scope == unit.scope
+                && artifact.state == ArtifactState::Ready,
+            "publication verification requires exact successful executor artifact"
+        );
+        let io = UnitGit::for_settled(self.owner.clone(), currency.clone())?;
+        self.verify_inner(&artifact, RetainedReader::Current(&io))
+            .await?;
+        {
+            let mut store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            store.validate_settled_helper(currency, &unit)?;
+            ensure!(
+                serde_json::to_value(store.result_artifact(artifact.id)?)?
+                    == serde_json::to_value(&artifact)?,
+                "artifact changed during publication verification"
+            );
+        }
+        Ok(WorkflowPublication {
+            authority: unit.authority(),
+            artifact,
+        })
+    }
     async fn verify_inner(&self, artifact: &ResultArtifact, io: RetainedReader<'_>) -> Result<()> {
         ensure!(
             matches!(

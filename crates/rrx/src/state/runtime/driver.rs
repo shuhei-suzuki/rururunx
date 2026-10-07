@@ -17,7 +17,7 @@ mod preparation;
 pub(in crate::state) use namespace::NamespaceSnapshot;
 pub(crate) use preparation::{DriverPreparationAdvance, InitialGateEdge};
 mod observation;
-pub(crate) use marker::{DriverMarkerAdvance, DriverPublication};
+pub(crate) use marker::{DriverClosureAdvance, DriverMarkerAdvance, DriverPublication};
 pub(crate) use observation::DriverExitPublication;
 
 #[derive(Clone, Serialize, Deserialize)]

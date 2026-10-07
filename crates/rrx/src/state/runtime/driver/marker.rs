@@ -221,3 +221,149 @@ impl Store {
         plan.ticket.association.publish_exact(&publication)
     }
 }
+
+/// The successful closure's Driver re-anchor: the SAME frozen post-marker row
+/// to a marker-free row whose pins are exactly what the generic snapshot
+/// recomputes from the planned postimages. Built only from the SAME
+/// `DriverMarkerAdvance`; not Clone/Deserialize and never a credential.
+pub(crate) struct DriverClosureAdvance {
+    ticket: Arc<DriverReadTicket>,
+    task: TaskId,
+    old: Row,
+    old_body: String,
+    next: Row,
+    body: String,
+}
+impl DriverMarkerAdvance {
+    /// `unit_after` is the decoded closure postimage as the generic reader
+    /// sees it (its `cleanup` field carries the current read overlay).
+    pub(crate) fn plan_success_closure(
+        &self,
+        task_after: &Task,
+        workflow_after: &Record,
+        context_after: &ContextVersion,
+        unit_after: &crate::execution::ExecutionUnit,
+    ) -> Result<DriverClosureAdvance> {
+        ensure!(
+            self.source.is_none() && self.next.pins.source.is_none(),
+            "Source7-anchored success closure unsupported"
+        );
+        ensure!(
+            self.next.marker.is_some()
+                && task_after.id == self.task.id
+                && workflow_after.id == self.workflow.id
+                && context_after.scope == task_after.scope()
+                && context_after.version == task_after.context_version
+                && unit_after.scope == task_after.scope()
+                && self
+                    .next
+                    .pins
+                    .preparation
+                    .as_ref()
+                    .is_some_and(|p| p.unit == unit_after.id),
+            "success closure Driver postimages differ from the marker advance"
+        );
+        let mut next = self.next.clone();
+        next.version = next
+            .version
+            .checked_add(1)
+            .filter(|v| *v <= i64::MAX as u64)
+            .context("Driver version exhausted")?;
+        next.marker = None;
+        next.pins.task = pin(task_after.version, task_after)?;
+        next.pins.workflow = Some((
+            workflow_after.id,
+            pin(workflow_after.version, workflow_after)?,
+        ));
+        next.pins.context = Some(pin(context_after.version, context_after)?);
+        next.pins.preparation = Some(PreparationPin {
+            unit: unit_after.id,
+            version: unit_after.version,
+            digest: hash(unit_after)?,
+        });
+        next.pins.source = None;
+        let body = serde_json::to_string(&next)?;
+        ensure!(
+            body.len() <= 128 * 1024,
+            "closure Driver exceeds metadata bound"
+        );
+        Ok(DriverClosureAdvance {
+            ticket: self.ticket.clone(),
+            task: self.task.id,
+            old: self.next.clone(),
+            old_body: self.body.clone(),
+            next,
+            body,
+        })
+    }
+}
+impl DriverClosureAdvance {
+    pub(in crate::state) fn exact_mutations(&self) -> Result<Vec<ExactRowMutation>> {
+        Ok(vec![ExactRowMutation::new(
+            "task_drivers",
+            "UPDATE",
+            Some(image(&self.old, &self.old_body)?),
+            Some(image(&self.next, &self.body)?),
+        )?])
+    }
+    /// The SAME frozen post-marker row is current and its worker is live.
+    pub(crate) fn validate_current_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        self.validate_row_tx(tx, &self.old, &self.old_body)
+    }
+    /// The planned marker-free row is current (postimage branch).
+    pub(crate) fn validate_closed_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        self.validate_row_tx(tx, &self.next, &self.body)
+    }
+    fn validate_row_tx(&self, tx: &Transaction<'_>, row: &Row, body: &str) -> Result<()> {
+        let exact: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM task_drivers d JOIN runtime_epoch e ON e.singleton=1 AND e.epoch=d.owner_epoch WHERE d.task_id=?1 AND d.id=?2 AND d.owner_epoch=?3 AND d.version=?4 AND d.state='driving' AND d.body=?5 AND e.instance_id=?6)", params![self.task.to_string(),row.id.to_string(),row.epoch,row.version,body,self.ticket.owner.instance_id()],|r|r.get(0))?;
+        ensure!(exact, "success closure Driver row differs");
+        Ok(())
+    }
+    pub(in crate::state) fn write_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        ensure!(tx.execute("UPDATE task_drivers SET version=?1,body=?2 WHERE task_id=?3 AND id=?4 AND owner_epoch=?5 AND version=?6 AND state='driving' AND body=?7",params![self.next.version,self.body,self.task.to_string(),self.next.id.to_string(),self.next.epoch,self.old.version,self.old_body])?==1,"success closure Driver CAS changed");
+        Ok(())
+    }
+    /// The SAME association owns the frozen row; nongrant.
+    pub(crate) fn association_live(&self) -> bool {
+        self.ticket.association.owner_matches(&self.ticket.owner)
+            && self.ticket.association.validates(
+                self.old.id,
+                self.old.epoch,
+                self.old.version,
+                &self.old_body,
+            )
+    }
+    pub(crate) fn same_association(
+        &self,
+        other: &crate::runtime::driver::DriverAssociation,
+    ) -> bool {
+        self.ticket.association.same_association(other)
+    }
+    pub(crate) fn version_after(&self) -> u64 {
+        self.next.version
+    }
+}
+impl Store {
+    /// Known-commit publication of the closure's marker-free Driver row; the
+    /// SAME association's idempotent `publish_exact`. Caller holds the
+    /// control admission (a `SuccessAdmission`).
+    pub(crate) fn publish_driver_closure(&mut self, plan: &DriverClosureAdvance) -> Result<()> {
+        ensure!(
+            self.connection.is_autocommit(),
+            "Driver publication precedes commit"
+        );
+        let tx = self.connection.transaction()?;
+        plan.validate_closed_tx(&tx)?;
+        tx.commit()?;
+        let publication = DriverPublication {
+            task: plan.task,
+            id: plan.next.id,
+            epoch: plan.next.epoch,
+            before_version: plan.old.version,
+            before_body: plan.old_body.clone(),
+            after_version: plan.next.version,
+            after_body: plan.body.clone(),
+        };
+        plan.ticket.association.publish_exact(&publication)
+    }
+}
