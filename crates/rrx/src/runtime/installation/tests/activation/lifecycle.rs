@@ -453,13 +453,13 @@ async fn ca4h_precommit_panic_stays_poisoned_and_rolls_back() {
     wait_for(|| park.parked(), "SETUP: service S5 absent").await;
     release.add_permits(1);
     wait_exited(&f, 1).await;
-    assert_eq!(
-        f.runtime._drivers.pending_exits().unwrap()[0].label(),
-        "panicked"
-    );
     assert!(
         f.owner.store.lock().is_err(),
         "CA4h uncontained panic did not poison SharedStore"
+    );
+    assert_eq!(
+        f.runtime._drivers.pending_exits().unwrap()[0].label(),
+        "panicked"
     );
     let readonly = rusqlite::Connection::open_with_flags(
         f.owner.state_path(),

@@ -385,10 +385,18 @@ async fn ca1_actual_activation_gates_marker_and_record_only_bound() {
         )
         .await;
         wait_for(
-            || count(&f, "workflow_native_contracts") == 1,
+            || {
+                count(&f, "workflow_native_contracts") == 1
+                    || f.runtime._drivers.observe_finished().unwrap() == 0
+            },
             "CA1 activation stage: composed contract absent",
         )
         .await;
+        assert_eq!(
+            count(&f, "workflow_native_contracts"),
+            1,
+            "CA1 activation stage: composed contract absent after actual worker exit"
+        );
         let expected = expected.lock().unwrap().clone().unwrap();
         let contract: String = raw(&f)
             .query_row("SELECT body FROM workflow_native_contracts", [], |r| {
@@ -405,31 +413,32 @@ async fn ca1_actual_activation_gates_marker_and_record_only_bound() {
             atomic.load(Ordering::SeqCst),
             "CA1 atomic activation not observed"
         );
-        let store = f.owner.store.lock().unwrap();
-        let windows = store.record_window_observations();
-        assert_eq!(
-            windows.len(),
-            4,
-            "CA1 Reserve/Claim/Complete/first-Executor windows"
-        );
-        for (index, &(id, old_version, planned_at, actual_version, actual_at, consumed)) in
-            windows.iter().enumerate()
         {
-            assert_eq!(id, record.id);
+            let store = f.owner.store.lock().unwrap();
+            let windows = store.record_window_observations();
             assert_eq!(
-                old_version,
-                index as u64 + 1,
-                "CA1 original persisted previous version"
+                windows.len(),
+                4,
+                "CA1 Reserve/Claim/Complete/first-Executor windows"
             );
-            assert_eq!(
-                actual_version,
-                old_version + 1,
-                "CA1 consecutive Record version"
-            );
-            assert_eq!(actual_at, planned_at, "CA1 original planned timestamp");
-            assert_eq!(consumed, 1, "CA1 actual records ensure_consumed event");
+            for (index, &(id, old_version, planned_at, actual_version, actual_at, consumed)) in
+                windows.iter().enumerate()
+            {
+                assert_eq!(id, record.id);
+                assert_eq!(
+                    old_version,
+                    index as u64 + 1,
+                    "CA1 original persisted previous version"
+                );
+                assert_eq!(
+                    actual_version,
+                    old_version + 1,
+                    "CA1 consecutive Record version"
+                );
+                assert_eq!(actual_at, planned_at, "CA1 original planned timestamp");
+                assert_eq!(consumed, 1, "CA1 actual records ensure_consumed event");
+            }
         }
-        drop(store);
         let stored = f
             .owner
             .store
