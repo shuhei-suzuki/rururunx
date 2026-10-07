@@ -99,3 +99,21 @@ The fixture's remaining users now fail later, past the ingress check:
 A test that passes on legacy rows covers the legacy row, not an accepted Goal. This is real coverage only where production still executes that path for migrated legacy Goals. Where the path is accepted-only in production, the test must use D2 instead; otherwise it gives false assurance.
 
 The per-test classification is therefore part of the HOW review: legacy-reachable mechanics go on legacy rows, accepted-only paths go on the started Runtime and Driver.
+
+### 6.4 Classification facts (for the D3 table)
+
+- **F3.** The public `AttemptManager::prepare` / `prepare_snapshot` route has no production caller; only tests use it. Production preparation goes through two routes:
+  - `ManagedWorkflowSources::prepare` → `prepare_workflow_source` (`execution/workflow_source.rs:619`), which refuses accepted Goals per F1;
+  - the Driver routes `prepare_driver_source` and the workflow reservation.
+- **F4.** Outside preparation, production code reads `goal_authority` only in these places:
+  - Goal and Context writers: `state/mod.rs:452,1448`;
+  - Runtime ingress, Driver and attention: `state/runtime/{goals,driver,service}.rs`;
+  - the protected snapshot: `state/managed_binding/protection.rs:28`;
+  - the schema table lists: `state/execution.rs:37`, `state/runtime/mod.rs:11`.
+
+  `ResultStore` capture, publish, verify and snapshot, and the retained-inspection mechanics, do not consult it. So for these mechanics, the unit's origin (legacy row or Driver-prepared) changes only how the test reaches the unit, not the code under test.
+- **F5.** The F2 refusal is intended and pinned: the installed-composition HOW C4 keeps legacy `step` returning `ManagedBindingUnavailable` (`doc/design/issue-43-native-installed-composition-design.md:317`). Tests that reach it on legacy rows must not relax it. Each such test either:
+  - moves to the started Runtime and installed driven lane (D2); or
+  - becomes a refusal assertion where its subject is the legacy step itself.
+
+Proposed rule for the D3 table: mechanics that are origin-agnostic per F4 go on legacy rows; anything that reaches Native execution, the Driver, Workflow steps or accepted-only writers goes on D2.
