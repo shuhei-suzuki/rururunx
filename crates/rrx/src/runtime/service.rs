@@ -90,7 +90,8 @@ impl Runtime {
                 sequence = next;
                 let pending = runtime.phases.reconcile_pending()?;
                 let nonsuccess_pending = runtime.phase_dispatcher.reconcile_nonsuccess()?;
-                let success_pending = runtime.phase_dispatcher.reconcile_success()?;
+                let (success_actions, mut success_pending) =
+                    runtime.phase_dispatcher.reconcile_success()?.into_actions();
                 let preparations = runtime.phase_dispatcher.reconcile_preparations()?;
                 let driver_pending = runtime.observe_task_drivers()?;
                 // A refusal after reservation ends only this saved-cursor
@@ -110,6 +111,20 @@ impl Runtime {
                 );
                 let wake = runtime.wake.clone();
                 drop(runtime);
+                // Each admitted action under its own non-blocking admission;
+                // a busy admission keeps the action for a later turn. No await.
+                for action in success_actions {
+                    match super::Runtime::try_admit_root_success(&retained) {
+                        Ok(Some(admitted)) => {
+                            action.run(&admitted)?;
+                            drop(admitted);
+                        }
+                        Ok(None) | Err(_) => {
+                            success_pending = true;
+                            break;
+                        }
+                    }
+                }
                 // Only the selected custody Arcs remain: one admission try and
                 // at most one confirmation transaction each, never awaiting
                 // the control admission that a shutdown may hold.

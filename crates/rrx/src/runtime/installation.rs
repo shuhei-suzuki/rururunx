@@ -86,6 +86,42 @@ pub(crate) struct ActivationAdmission {
     _runtime: Arc<Runtime>,
 }
 
+/// Stop exclusion for one admitted success segment (closure, confirmation or
+/// Driver publication): no SQL permission or Native grant. Field order drops
+/// the admission before the last strong Runtime reference.
+pub(crate) struct SuccessAdmission {
+    _admission: tokio::sync::OwnedMutexGuard<()>,
+    runtime: Arc<Runtime>,
+}
+impl SuccessAdmission {
+    pub(crate) fn runtime(&self) -> &Arc<Runtime> {
+        &self.runtime
+    }
+}
+impl Runtime {
+    /// Root path: upgrade the service task's Weak, then a NON-BLOCKING
+    /// admission try while holding that strong Arc. Ok(None) when busy (for
+    /// example, shutdown holds it while joining the service task): the
+    /// action is kept and nothing is attempted. The Root never awaits it.
+    pub(crate) fn try_admit_root_success(weak: &Weak<Runtime>) -> Result<Option<SuccessAdmission>> {
+        let runtime = weak
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("success Runtime ended"))?;
+        let Ok(admission) = runtime.control_admission.clone().try_lock_owned() else {
+            return Ok(None);
+        };
+        ensure!(
+            runtime.service_running()
+                && !runtime.stopping.load(std::sync::atomic::Ordering::SeqCst),
+            "Runtime stopped before success action"
+        );
+        Ok(Some(SuccessAdmission {
+            _admission: admission,
+            runtime,
+        }))
+    }
+}
+
 /// Non-Clone/non-Deserialize; private fields retain REAL component objects,
 /// rather than a boolean readiness switch or a caller's SQL/capability witness.
 pub(crate) struct InstalledDriverComposition {
@@ -190,6 +226,34 @@ impl InstalledDriverComposition {
         Ok(ActivationAdmission {
             _admission: admission,
             _runtime: runtime,
+        })
+    }
+    /// Driver worker path, like `admit_activation`: Weak upgrade, then a
+    /// cancel-biased admission wait, then service/composition/association.
+    pub(crate) async fn admit_success(
+        &self,
+        lifetime: &WorkerLifetime,
+    ) -> Result<SuccessAdmission> {
+        let runtime = self
+            .runtime
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("success Runtime ended"))?;
+        let admission = tokio::select! { biased;
+            ()=lifetime.cancelled()=>return Err(anyhow::anyhow!("success Driver cancelled")),
+            guard=runtime.control_admission.clone().lock_owned()=>guard,
+        };
+        ensure!(
+            runtime.service_running() && self.is_current(),
+            "Runtime stopped before success closure"
+        );
+        let association = lifetime.association()?;
+        ensure!(
+            self.original_task.id == association.task(),
+            "success worker linkage differs"
+        );
+        Ok(SuccessAdmission {
+            _admission: admission,
+            runtime,
         })
     }
     pub(crate) fn validate_for(&self, owner: &RuntimeOwner, task: &Task) -> Result<()> {

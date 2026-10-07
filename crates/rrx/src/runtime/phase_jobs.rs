@@ -21,6 +21,7 @@ use std::{
     sync::{Arc, Mutex, Weak},
     time::{Duration, Instant},
 };
+pub(in crate::runtime) use success::SuccessSweep;
 pub(crate) use success::{ClosedPhaseAck, SettledLookup, SuccessContinuation};
 use tokio::{sync::watch, task::JoinHandle};
 
@@ -152,6 +153,7 @@ pub(crate) enum InvocationObservation {
     Failed,
     Uncertain,
     ClosedNonSuccess,
+    ClosedSuccess,
 }
 
 /// What the retained binding plan's last write or confirmation established.
@@ -180,6 +182,7 @@ struct JobState {
     binding_state: BindingState,
     binding_ack: Option<Arc<BindingAcknowledgment>>,
     success: Option<Arc<SuccessContinuation>>,
+    success_ack: Option<Arc<crate::state::managed_binding::SuccessClosureAcknowledgment>>,
     success_due: Instant,
     success_backoff: u64,
     success_attention: Option<&'static str>,
@@ -794,6 +797,7 @@ impl PhaseJobs {
                 binding_state: BindingState::Unwritten,
                 binding_ack: None,
                 success: None,
+                success_ack: None,
                 success_due: Instant::now(),
                 success_backoff: 100,
                 success_attention: None,

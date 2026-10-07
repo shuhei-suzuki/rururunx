@@ -2,9 +2,11 @@
 //! continuation housekeeping (D3). Classification runs under short job locks;
 //! each turn takes at most one snapshot plus one Store transaction.
 use super::*;
+use crate::runtime::installation::SuccessAdmission;
 use crate::state::managed_binding::{
     GateClaimAcknowledgment, GateClaimPlan, GateObservedAcknowledgment, GateObservedPlan,
-    ManagedBindingConfirmation, SettledPhase, SuccessConfirmation, SuccessWrite, plan_late_binding,
+    ManagedBindingConfirmation, SettledPhase, SuccessClosureAcknowledgment, SuccessClosurePlan,
+    SuccessConfirmation, SuccessWrite, plan_late_binding,
 };
 
 const SUCCESS_TURNS: usize = 8;
@@ -25,6 +27,23 @@ pub(crate) struct SuccessStage {
     pub(crate) evaluation_started: bool,
     pub(crate) completion: Option<crate::execution::workflow_gates::SettledGateCompletion>,
     pub(crate) observed: Option<Retained<GateObservedPlan, GateObservedAcknowledgment>>,
+    pub(crate) closure: Option<ClosureStage>,
+}
+/// The retained closure: its SAME plan and what is known about it.
+pub(crate) struct ClosureStage {
+    pub(crate) plan: Arc<SuccessClosurePlan>,
+    pub(crate) state: ClosureState,
+}
+pub(crate) enum ClosureState {
+    /// The write returned Err: only the SAME plan may be confirmed.
+    Uncertain,
+    /// Confirmation proved the SAME plan rolled back.
+    RolledBack,
+    /// Known; `published` once the SAME association published the Driver.
+    Known {
+        ack: Arc<SuccessClosureAcknowledgment>,
+        published: bool,
+    },
 }
 /// One retained write: its SAME plan and what its write or confirmation
 /// established. A typed Conflict drops the plan.
@@ -72,6 +91,96 @@ impl SuccessStage {
         self.claim.as_ref().is_some_and(Retained::is_uncertain)
             || self.observed.as_ref().is_some_and(Retained::is_uncertain)
     }
+    /// Root D3: an admitted action (closure confirmation, publication retry).
+    fn admitted_action(&self) -> Option<ActionKind> {
+        match &self.closure.as_ref()?.state {
+            ClosureState::Uncertain => Some(ActionKind::ConfirmClosure),
+            ClosureState::Known {
+                published: false, ..
+            } => Some(ActionKind::RetryPublication),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ActionKind {
+    ConfirmClosure,
+    RetryPublication,
+}
+/// One admitted Root turn, run by the service loop under its own
+/// non-blocking admission after the synchronous sweep returns.
+pub(in crate::runtime) struct SuccessAction {
+    job: Weak<Job>,
+    success: Arc<SuccessContinuation>,
+    kind: ActionKind,
+}
+pub(in crate::runtime) struct SuccessSweep {
+    actions: Vec<SuccessAction>,
+    pending: bool,
+}
+impl SuccessSweep {
+    pub(in crate::runtime) fn into_actions(self) -> (Vec<SuccessAction>, bool) {
+        (self.actions, self.pending)
+    }
+}
+impl SuccessAction {
+    /// ONE synchronous Store turn under the caller's admission. The Root
+    /// confirms or publishes only; it never commits a new closure.
+    pub(in crate::runtime) fn run(self, admitted: &SuccessAdmission) -> Result<()> {
+        let owner = admitted.runtime().owner.clone();
+        let Some(mut stage) = self.success.try_stage()? else {
+            return Ok(());
+        };
+        let Some(closure) = stage.closure.as_mut() else {
+            return Ok(());
+        };
+        match (self.kind, &closure.state) {
+            (ActionKind::ConfirmClosure, ClosureState::Uncertain) => {
+                let material = crate::state::Store::materialize_phase_success(&closure.plan)?;
+                let mut store = owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("success Store poisoned"))?;
+                match store.confirm_phase_success(&material) {
+                    Ok(SuccessConfirmation::Known(ack)) => {
+                        let published = store.publish_success_driver(&ack).is_ok();
+                        drop(store);
+                        closure.state = ClosureState::Known {
+                            ack: ack.clone(),
+                            published,
+                        };
+                        drop(stage);
+                        if let Some(job) = self.job.upgrade() {
+                            job.install_success_ack(&self.success, ack)?;
+                        }
+                    }
+                    Ok(SuccessConfirmation::RolledBack) => {
+                        closure.state = ClosureState::RolledBack;
+                    }
+                    Err(_cause) => {
+                        drop(store);
+                        drop(stage);
+                        if let Some(job) = self.job.upgrade() {
+                            job.success_held("success closure outcome uncertain; Held", 5000)?;
+                        }
+                    }
+                }
+            }
+            (ActionKind::RetryPublication, ClosureState::Known { ack, .. }) => {
+                let ack = ack.clone();
+                let published = owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("success Store poisoned"))?
+                    .publish_success_driver(&ack)
+                    .is_ok();
+                closure.state = ClosureState::Known { ack, published };
+            }
+            _ => {}
+        }
+        Ok(())
+    }
 }
 impl SuccessContinuation {
     pub(crate) fn settled(&self) -> &Arc<SettledPhase> {
@@ -93,6 +202,8 @@ impl SuccessContinuation {
 enum Turn {
     Skipped,
     Taken(&'static str),
+    /// Returned for the service loop's admitted segment.
+    Action(Arc<SuccessContinuation>, ActionKind),
 }
 
 impl PhaseJobs {
@@ -110,32 +221,49 @@ impl PhaseJobs {
     }
     /// Synchronous classification and unadmitted Store turns. Returns whether
     /// a retained action remains pending.
-    pub(in crate::runtime) fn reconcile_success(&self, stopping: &AtomicBool) -> Result<bool> {
+    pub(in crate::runtime) fn reconcile_success(
+        &self,
+        stopping: &AtomicBool,
+    ) -> Result<SuccessSweep> {
         let snapshot = self.rotated_snapshot(&self.success_cursor)?;
         let mut turns = 0usize;
-        let mut pending = false;
+        let mut sweep = SuccessSweep {
+            actions: Vec::new(),
+            pending: false,
+        };
         for (operation, job, _finished) in snapshot {
             if stopping.load(Ordering::SeqCst) {
-                return Ok(false);
+                return Ok(SuccessSweep {
+                    actions: Vec::new(),
+                    pending: false,
+                });
             }
             if turns == SUCCESS_TURNS {
                 self.set_success_cursor(Some(operation))?;
-                return Ok(true);
+                sweep.pending = true;
+                return Ok(sweep);
             }
-            match job.success_turn()? {
-                Turn::Skipped => {}
-                Turn::Taken(label) => {
-                    turns += 1;
-                    pending = true;
-                    #[cfg(test)]
-                    self.success_turns.lock().unwrap().push((operation, label));
-                    #[cfg(not(test))]
-                    let _ = label;
+            let label = match job.success_turn()? {
+                Turn::Skipped => continue,
+                Turn::Taken(label) => label,
+                Turn::Action(success, kind) => {
+                    sweep.actions.push(SuccessAction {
+                        job: Arc::downgrade(&job),
+                        success,
+                        kind,
+                    });
+                    "admitted action"
                 }
-            }
+            };
+            turns += 1;
+            sweep.pending = true;
+            #[cfg(test)]
+            self.success_turns.lock().unwrap().push((operation, label));
+            #[cfg(not(test))]
+            let _ = label;
         }
         self.set_success_cursor(None)?;
-        Ok(pending)
+        Ok(sweep)
     }
 }
 
@@ -313,6 +441,10 @@ impl Job {
         let Some(mut stage) = success.try_stage()? else {
             return Ok(Turn::Skipped);
         };
+        if let Some(kind) = stage.admitted_action() {
+            drop(stage);
+            return Ok(Turn::Action(success.clone(), kind));
+        }
         if !stage.has_uncertain() {
             return Ok(Turn::Skipped);
         }
@@ -347,6 +479,36 @@ impl Job {
             self.success_held("settled write outcome uncertain; Held", 5000)?;
         }
         Ok(Turn::Taken("success confirm"))
+    }
+    /// Installs the Known closure acknowledgment once (pointer-checked) and
+    /// sends `ClosedSuccess`.
+    pub(crate) fn install_success_ack(
+        &self,
+        success: &Arc<SuccessContinuation>,
+        ack: Arc<SuccessClosureAcknowledgment>,
+    ) -> Result<()> {
+        {
+            let _depth = RootLockDepth::enter();
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+            ensure!(
+                state
+                    .success
+                    .as_ref()
+                    .is_some_and(|retained| Arc::ptr_eq(retained, success))
+                    && Arc::ptr_eq(ack.settled(), success.settled()),
+                "success acknowledgment differs from the retained continuation"
+            );
+            if state.success_ack.is_none() {
+                state.success_ack = Some(ack);
+            }
+            state.observation = InvocationObservation::ClosedSuccess;
+        }
+        self.changed
+            .send_replace(InvocationObservation::ClosedSuccess);
+        Ok(())
     }
     fn install_ack(
         &self,
