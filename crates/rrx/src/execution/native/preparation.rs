@@ -42,8 +42,154 @@ struct CustodyState {
     first_parked_at: Option<i64>,
     closure: Option<Arc<crate::state::NativeQuotaClosurePlan>>,
     closed: Option<Arc<crate::state::NativePreparationClosureCommit>>,
+    nonsuccess: Option<Arc<super::NativeNoDispatchClosureProof>>,
 }
 impl NativePreparationCustody {
+    pub(super) fn validate_nonsuccess_original(
+        &self,
+        proof: &super::NativeNoDispatchClosureProof,
+        actor: &Arc<NativePreparationActor>,
+        no_dispatch: &Arc<super::prepared::PreparedPhaseNoCurrentDispatch>,
+        closure: &Arc<crate::state::NativeQuotaClosurePlan>,
+        closed: &Arc<crate::state::NativePreparationClosureCommit>,
+    ) -> Result<()> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        ensure!(
+            state.abandoned
+                && state.transport.is_none()
+                && state
+                    .nonsuccess
+                    .as_ref()
+                    .is_some_and(|p| std::ptr::eq(p.as_ref(), proof))
+                && state.actor.as_ref().is_some_and(|p| Arc::ptr_eq(p, actor))
+                && state
+                    .no_dispatch
+                    .as_ref()
+                    .is_some_and(|p| Arc::ptr_eq(p, no_dispatch))
+                && state
+                    .closure
+                    .as_ref()
+                    .is_some_and(|p| Arc::ptr_eq(p, closure))
+                && state
+                    .closed
+                    .as_ref()
+                    .is_some_and(|p| Arc::ptr_eq(p, closed))
+                && closed.matches_plan(closure)
+                && closure.matches_no_dispatch(no_dispatch),
+            "non-success original custody changed"
+        );
+        Ok(())
+    }
+    pub(crate) fn nonsuccess_step(
+        self: &Arc<Self>,
+        ended: &crate::runtime::StartEnded,
+    ) -> super::NativeClosureStep {
+        use super::NativeClosureStep;
+        let result = (|| -> Result<NativeClosureStep> {
+            ensure!(
+                ended.matches_allocation(&self.allocation),
+                "non-success ended a different allocation"
+            );
+            let (actor, no_dispatch, lineage, closure, closed) = {
+                let state = self
+                    .state
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+                if let Some(proof) = &state.nonsuccess {
+                    return Ok(NativeClosureStep::Proof(proof.clone()));
+                }
+                if !state.abandoned || state.transport.is_some() {
+                    return Ok(NativeClosureStep::NotEligible);
+                }
+                let actor = state.actor.clone().context("non-success actor absent")?;
+                if !actor.is_revoked() {
+                    return Ok(NativeClosureStep::NotEligible);
+                }
+                let no_dispatch = state
+                    .no_dispatch
+                    .clone()
+                    .context("pre-no-dispatch start ended; Held")?;
+                (
+                    actor,
+                    no_dispatch.clone(),
+                    state
+                        .lineage
+                        .clone()
+                        .unwrap_or_else(|| no_dispatch.issued.clone()),
+                    state.closure.clone(),
+                    state.closed.clone(),
+                )
+            };
+            let Some(closed) = closed else {
+                let sessions = actor
+                    .sessions
+                    .upgrade()
+                    .context("selected Native sessions ended")?;
+                return Ok(match sessions.close_prepared_step(self) {
+                    super::prepared::PreparationStep::Closed => {
+                        NativeClosureStep::Preparation(super::PreparationYield::Closed)
+                    }
+                    super::prepared::PreparationStep::RolledBack => {
+                        NativeClosureStep::Preparation(super::PreparationYield::RolledBack)
+                    }
+                    super::prepared::PreparationStep::Conflict => {
+                        NativeClosureStep::Preparation(super::PreparationYield::Conflict)
+                    }
+                    super::prepared::PreparationStep::Uncertain(_) => {
+                        NativeClosureStep::Preparation(super::PreparationYield::Uncertain)
+                    }
+                    super::prepared::PreparationStep::Held(error) => NativeClosureStep::Held(error),
+                });
+            };
+            let closure = closure.context("known non-success preparation closure absent")?;
+            ensure!(
+                closed.matches_plan(&closure)
+                    && closure.matches(&actor, &lineage)
+                    && closure.matches_no_dispatch(&no_dispatch),
+                "non-success closure differs from original custody"
+            );
+            actor.validate_original()?;
+            no_dispatch.validate_original(&actor)?;
+            let proof = Arc::new(super::NativeNoDispatchClosureProof::issue(
+                self,
+                actor.clone(),
+                no_dispatch.clone(),
+                closure.clone(),
+                closed.clone(),
+            ));
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+            ensure!(
+                state.abandoned
+                    && state.transport.is_none()
+                    && state.actor.as_ref().is_some_and(|p| Arc::ptr_eq(p, &actor))
+                    && state
+                        .no_dispatch
+                        .as_ref()
+                        .is_some_and(|p| Arc::ptr_eq(p, &no_dispatch))
+                    && state
+                        .closure
+                        .as_ref()
+                        .is_some_and(|p| Arc::ptr_eq(p, &closure))
+                    && state
+                        .closed
+                        .as_ref()
+                        .is_some_and(|p| Arc::ptr_eq(p, &closed)),
+                "non-success issuer custody raced"
+            );
+            if let Some(original) = &state.nonsuccess {
+                return Ok(NativeClosureStep::Proof(original.clone()));
+            }
+            state.nonsuccess = Some(proof.clone());
+            Ok(NativeClosureStep::Proof(proof))
+        })();
+        result.unwrap_or_else(NativeClosureStep::Held)
+    }
     /// Runtime snapshots retained custody Arcs before calling this without locks.
     pub(crate) fn request_stop(&self) {
         self.abandon();
@@ -68,6 +214,11 @@ impl NativePreparationCustody {
             "transport does not consume SAME issued Prepared"
         );
         state.transport = Some(transport);
+        // Transport consumption permanently invalidates the pre-dispatch
+        // witness. Its lifecycle owner remains retained by Prepared/custody.
+        let no_dispatch = state.no_dispatch.take();
+        drop(state);
+        drop(no_dispatch);
         Ok(())
     }
     pub(super) fn clear_definitive_closure_conflict(
@@ -91,7 +242,7 @@ impl NativePreparationCustody {
             .lock()
             .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
         ensure!(
-            state.abandoned && state.closed.is_none(),
+            state.abandoned && state.closed.is_none() && state.transport.is_none(),
             "nongrant closure not revoked or already closed"
         );
         let no_dispatch = state

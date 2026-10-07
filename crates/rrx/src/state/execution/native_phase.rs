@@ -13,6 +13,8 @@ use std::sync::Arc;
 
 const PAIR_BODY_BYTES: usize = 32 * 1024;
 
+mod nonsuccess;
+pub(crate) use nonsuccess::NonSuccessReader;
 mod preparation;
 mod quota;
 pub(crate) use preparation::{NativePreparationCommit, NativePreparationPlan, NativeReadyLineage};

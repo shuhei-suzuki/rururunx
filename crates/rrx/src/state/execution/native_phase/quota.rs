@@ -51,6 +51,9 @@ impl NativePreparationClosureCommit {
     }
 }
 impl NativeQuotaClosurePlan {
+    pub(crate) fn matches_no_dispatch(&self, value: &Arc<PreparedPhaseNoCurrentDispatch>) -> bool {
+        Arc::ptr_eq(&self.no_dispatch, value)
+    }
     pub(crate) fn matches(
         &self,
         actor: &Arc<NativePreparationActor>,

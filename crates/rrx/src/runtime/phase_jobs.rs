@@ -18,6 +18,17 @@ use tokio::{sync::watch, task::JoinHandle};
 
 const MAX_JOBS: usize = 128;
 
+/// Issued only from this registry's retained outcome and finished start task.
+/// The allocation pointer is a witness, never reconstructed from an ID or row.
+pub(crate) struct StartEnded {
+    allocation: Arc<NativeAllocation>,
+}
+impl StartEnded {
+    pub(crate) fn matches_allocation(&self, allocation: &Arc<NativeAllocation>) -> bool {
+        Arc::ptr_eq(&self.allocation, allocation)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum InvocationObservation {
     Reserved,
