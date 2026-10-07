@@ -740,6 +740,26 @@ impl Store {
         &mut self,
         plan: &Arc<ManagedBindingPlan>,
     ) -> Result<ManagedBindingWrite> {
+        #[cfg(test)]
+        let fault = super::fault::take(
+            plan.proof.owner().allocation().facts().scope.task_id,
+            super::fault::BIND,
+        );
+        #[cfg(test)]
+        super::fault::before(fault)?;
+        let result = self.bind_managed_phase_inner(plan)?;
+        #[cfg(test)]
+        let result = super::fault::after(
+            fault,
+            matches!(result, ManagedBindingWrite::Known(_)),
+            result,
+        )?;
+        Ok(result)
+    }
+    fn bind_managed_phase_inner(
+        &mut self,
+        plan: &Arc<ManagedBindingPlan>,
+    ) -> Result<ManagedBindingWrite> {
         if let Err(cause) = selected_binding_database(&self.connection, plan) {
             return Ok(ManagedBindingWrite::Conflict(cause));
         }

@@ -462,6 +462,22 @@ impl Store {
         &mut self,
         plan: &Arc<GateClaimPlan>,
     ) -> Result<SuccessWrite<GateClaimAcknowledgment>> {
+        #[cfg(test)]
+        let fault = super::fault::take(
+            plan.advance.currency.settled().marker().scope().task_id,
+            super::fault::CLAIM,
+        );
+        #[cfg(test)]
+        super::fault::before(fault)?;
+        let result = self.claim_settled_gate_inner(plan)?;
+        #[cfg(test)]
+        let result = super::fault::after(fault, matches!(result, SuccessWrite::Known(_)), result)?;
+        Ok(result)
+    }
+    fn claim_settled_gate_inner(
+        &mut self,
+        plan: &Arc<GateClaimPlan>,
+    ) -> Result<SuccessWrite<GateClaimAcknowledgment>> {
         Ok(match self.write_advance(&plan.advance)? {
             None => SuccessWrite::Known(Arc::new(GateClaimAcknowledgment { plan: plan.clone() })),
             Some(cause) => SuccessWrite::Conflict(cause),
@@ -544,6 +560,22 @@ impl Store {
         }))
     }
     pub(crate) fn observe_settled_gate(
+        &mut self,
+        plan: &Arc<GateObservedPlan>,
+    ) -> Result<SuccessWrite<GateObservedAcknowledgment>> {
+        #[cfg(test)]
+        let fault = super::fault::take(
+            plan.advance.currency.settled().marker().scope().task_id,
+            super::fault::OBSERVED,
+        );
+        #[cfg(test)]
+        super::fault::before(fault)?;
+        let result = self.observe_settled_gate_inner(plan)?;
+        #[cfg(test)]
+        let result = super::fault::after(fault, matches!(result, SuccessWrite::Known(_)), result)?;
+        Ok(result)
+    }
+    fn observe_settled_gate_inner(
         &mut self,
         plan: &Arc<GateObservedPlan>,
     ) -> Result<SuccessWrite<GateObservedAcknowledgment>> {

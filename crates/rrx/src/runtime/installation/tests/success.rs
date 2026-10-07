@@ -1166,3 +1166,71 @@ async fn sc8_claude_results_graph_corruption_blocks_closure() {
 async fn sc8_codex_results_graph_corruption_blocks_closure() {
     sc8_graph("codex").await;
 }
+
+/// SC4: an uncertain write (an `Err` before the transaction, or after a
+/// genuine commit) at each SC writer is confirmed Known or RolledBack, and
+/// the SAME chain still closes with exactly one link of each kind.
+async fn sc4_uncertain(
+    provider: &str,
+    site: &'static str,
+    fault: crate::state::managed_binding::fault::CommitFault,
+) {
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    crate::state::managed_binding::fault::arm_commit_fault(task.id, site, fault);
+    f.runtime.start().await.unwrap();
+    wait_normal_bound(&f, task).await;
+    let marked = stored_task(&f, task);
+    release_completion(&f, task);
+    wait_for(
+        || links(&f, task).last().map(String::as_str) == Some("phase_closed"),
+        &format!(
+            "SC4 {provider} {site} {fault:?}: chain did not close; links {:?}",
+            links(&f, task)
+        ),
+        90,
+    )
+    .await;
+    assert!(
+        !crate::state::managed_binding::fault::armed(task.id, site),
+        "SETUP: SC4 {provider} {site} {fault:?}: the fault never fired"
+    );
+    assert_eq!(
+        links(&f, task),
+        [
+            "session_bound",
+            "gate_claim",
+            "gate_observed",
+            "phase_closed"
+        ],
+        "SC4 {provider} {site} {fault:?}: exactly one link of each kind"
+    );
+    assert_eq!(
+        stored_task(&f, task).version,
+        marked.version + 1,
+        "SC4 {provider} {site} {fault:?}: Task bumped once"
+    );
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+async fn sc4_all(provider: &str) {
+    use crate::state::managed_binding::fault::{BIND, CLAIM, CLOSURE, CommitFault, OBSERVED};
+    for site in [BIND, CLAIM, OBSERVED, CLOSURE] {
+        for fault in [CommitFault::BeforeCommit, CommitFault::AfterCommit] {
+            sc4_uncertain(provider, site, fault).await;
+        }
+    }
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc4_claude_uncertain_writes_confirm_and_close_once() {
+    sc4_all("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc4_codex_uncertain_writes_confirm_and_close_once() {
+    sc4_all("codex").await;
+}

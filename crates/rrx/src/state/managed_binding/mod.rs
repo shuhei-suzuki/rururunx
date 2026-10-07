@@ -10,6 +10,8 @@ pub(crate) use activation::{
     ActivationCommit, NativeActivationPlan, member_digest, plan_native_activation, roster_digest,
 };
 mod closure;
+#[cfg(test)]
+pub(crate) mod fault;
 mod gate;
 pub(in crate::state) use closure::{
     PhaseClosedFacts, PhaseClosureImages, PhaseImage, UnlinkedPhaseClosure, plan_unlinked_closure,

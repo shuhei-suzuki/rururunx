@@ -442,6 +442,22 @@ impl Store {
         &mut self,
         m: &SuccessClosureMaterial,
     ) -> Result<SuccessWrite<SuccessClosureAcknowledgment>> {
+        #[cfg(test)]
+        let fault = super::fault::take(
+            m.plan.currency.settled().marker().scope().task_id,
+            super::fault::CLOSURE,
+        );
+        #[cfg(test)]
+        super::fault::before(fault)?;
+        let result = self.close_phase_success_inner(m)?;
+        #[cfg(test)]
+        let result = super::fault::after(fault, matches!(result, SuccessWrite::Known(_)), result)?;
+        Ok(result)
+    }
+    fn close_phase_success_inner(
+        &mut self,
+        m: &SuccessClosureMaterial,
+    ) -> Result<SuccessWrite<SuccessClosureAcknowledgment>> {
         let settled = m.plan.currency.settled();
         if let Err(cause) = selected_database(&self.connection, settled) {
             return Ok(SuccessWrite::Conflict(cause));
