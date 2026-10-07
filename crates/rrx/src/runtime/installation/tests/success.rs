@@ -1512,3 +1512,111 @@ async fn scr_claude_completion_survives_refused_plan_and_conflict() {
 async fn scr_codex_completion_survives_refused_plan_and_conflict() {
     retained_all("codex").await;
 }
+
+/// SC10: four Tasks in four distinct Projects (two Claude, two Codex; one
+/// active Task per Project) close independently in commit mode, with no
+/// cross-job acknowledgment or Driver publication.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc10_four_projects_close_independently() {
+    let mut f = fixture_mode("claude", true, None, |config| {
+        // A second configured agent: the same protocol fixture as Codex.
+        let mut codex = config.agents["worker"].clone();
+        let claude_script = std::path::PathBuf::from(&codex.command[0]);
+        let codex_script = claude_script.with_file_name("configured-protocol-fixture-codex");
+        let source = std::fs::read_to_string(&claude_script).unwrap();
+        std::fs::write(
+            &codex_script,
+            source.replacen("PROVIDER=\"claude\"", "PROVIDER=\"codex\"", 1),
+        )
+        .unwrap();
+        std::fs::set_permissions(&codex_script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        codex.provider = Some("codex".into());
+        codex.command = vec![codex_script.to_string_lossy().into()];
+        if let Some(compat) = codex.compatibility.as_mut() {
+            compat.cli_version = "codex-cli 0.160.0".into();
+        }
+        config.agents.insert("worker-codex".into(), codex);
+    });
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let mut tasks = Vec::new();
+    for (i, executor) in ["worker", "worker-codex", "worker", "worker-codex"]
+        .iter()
+        .enumerate()
+    {
+        f.register_real_git_project_named(&format!("sc10-project-{i}"));
+        let mut p = plan();
+        p.tasks[0].risk = RiskClass::R1;
+        p.tasks[0].reviewers = vec!["rev-a".into(), "rev-b".into()];
+        p.tasks[0].executor = (*executor).into();
+        let goal = f.create(p).await;
+        let task = {
+            let store = f.owner.store.lock().unwrap();
+            let id = store.goal(goal).unwrap().unwrap().dag.nodes[0];
+            store.task(id).unwrap().unwrap()
+        };
+        tasks.push(task);
+    }
+    let projects: std::collections::BTreeSet<_> = tasks.iter().map(|t| t.project_id).collect();
+    assert_eq!(projects.len(), 4, "SETUP: four distinct Projects");
+    f.runtime.start().await.unwrap();
+    for task in &tasks {
+        wait_normal_bound(&f, task).await;
+    }
+    let marked: Vec<_> = tasks.iter().map(|t| stored_task(&f, t)).collect();
+    for task in &tasks {
+        release_completion(&f, task);
+    }
+    for task in &tasks {
+        wait_for(
+            || links(&f, task).last().map(String::as_str) == Some("phase_closed"),
+            "SC10: a Task did not close",
+            120,
+        )
+        .await;
+    }
+    for (task, marked) in tasks.iter().zip(&marked) {
+        assert_eq!(
+            links(&f, task),
+            [
+                "session_bound",
+                "gate_claim",
+                "gate_observed",
+                "phase_closed"
+            ],
+            "SC10: independent typed links"
+        );
+        assert_eq!(
+            stored_task(&f, task).version,
+            marked.version + 1,
+            "SC10: bumped once"
+        );
+        // Each closure acknowledges only its own operation.
+        let operations: i64 = raw(&f)
+            .query_row(
+                "SELECT count(DISTINCT json_extract(data,'$.private_operation_ref')) FROM audit WHERE task_id=?1 AND kind LIKE 'rrx.private.workflow.%'",
+                [task.id.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(operations, 1, "SC10: no cross-job link");
+    }
+    for task in &tasks {
+        wait_for(
+            || {
+                f.owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .validate_task_driver(task.id)
+                    .is_ok()
+            },
+            "SC10: own Driver publication",
+            30,
+        )
+        .await;
+    }
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
