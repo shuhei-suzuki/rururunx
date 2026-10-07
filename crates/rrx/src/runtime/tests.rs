@@ -570,6 +570,7 @@ async fn actual_accepted_goal_pages_scope_complete_inventory_and_native_hold() {
         .handle_control(
             &f.socket,
             f.request(ControlAction::GoalTasks {
+                view: None,
                 project: f.project.id,
                 goal,
                 after: None,
@@ -598,6 +599,7 @@ async fn actual_accepted_goal_pages_scope_complete_inventory_and_native_hold() {
         .handle_control(
             &f.socket,
             f.request(ControlAction::GoalTasks {
+                view: None,
                 project: f.project.id,
                 goal,
                 after: Some(next),
@@ -617,6 +619,7 @@ async fn actual_accepted_goal_pages_scope_complete_inventory_and_native_hold() {
                 .handle_control(
                     &f.socket,
                     f.request(ControlAction::GoalTasks {
+                        view: None,
                         project: f.project.id,
                         goal,
                         after,
@@ -655,6 +658,7 @@ async fn actual_accepted_goal_pages_scope_complete_inventory_and_native_hold() {
             .handle_control(
                 &f.socket,
                 f.request(ControlAction::GoalStatus {
+                    view: None,
                     project: f.project.id,
                     goal
                 })

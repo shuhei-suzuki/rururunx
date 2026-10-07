@@ -337,6 +337,22 @@ remain independent observations. A final page does not assert a complete snapsho
 
 These read clients do not construct owners or write rows, versions, epochs,
 acknowledgements, audits or attention. Native dispatch is explicitly unavailable.
+Goal status and Task reads explicitly request the strict `recorded_v1` view.
+Omitted/null view requests retain legacy wire output. Status projects exact
+recorded criteria and DAG counts from the validated Goal; Task pages pair the
+original effective state with exact stored state/version and incoming hard/soft
+endpoint identities, versions and stored states from the same validated inventory.
+Recorded flags/evidence are not verified completion; criterion evaluation remains
+unavailable and runnable admission unknown. Evidence stays opaque, without reads.
+The complete recorded status/proposal response is capped at 128 KiB, preserving
+every existing valid 16 KiB proposal objective including JSON escape expansion.
+Task pages retain 64 KiB and incoming detail is capped at 8 KiB. Whole criteria or
+incoming sets that exceed their budget are explicitly unavailable with exact
+recorded counts; page packing preserves matched Task/node pairs and bare cursor
+membership/order. Transport and strict output profiles retain their existing limits.
+Plain formatting escapes every user-controlled Unicode control character including
+DEL/C1; JSON preserves exact decoded stored strings. Both formats label independent,
+incomplete observations and never infer combined completeness, evaluation or capacity.
 Inline and bounded UTF-8 file objectives now persist through actual Human ingress
 as inert Analyzing proposals. They have no criteria, Tasks, accepted GoalAuthority
 or scheduler entries. Existing protected Goal observation rows pin nongrant

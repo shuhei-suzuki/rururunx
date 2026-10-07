@@ -195,6 +195,7 @@ pub(super) fn proposal_facts(
         version,
         state: goal.state,
         objective: goal.objective,
+        recorded: None,
         accepted: false,
         task_count: 0,
         dispatch_available: false,
