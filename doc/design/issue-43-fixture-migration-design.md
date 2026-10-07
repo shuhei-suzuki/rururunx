@@ -1,6 +1,6 @@
 # Issue 43: fixture migration to accepted ingress (FM) HOW — draft
 
-- **Status:** draft, revision R0. Not submitted for review: three user decisions are pending (§4). Nothing is implemented.
+- **Status:** draft, revision R1 (R0 plus the prototype evidence in §6). Not submitted for review: user decisions D1 and D3 are pending (§4); §6 shows that D2 is forced for part of group A. Nothing is implemented.
 - **Pin:** `cb5dddd`. Paths are relative to `crates/rrx/`. The inventory is `doc/design/issue-43-fixture-migration-inventory.md` (`415453f`).
 - **Why:** Linux CI on PR #80 reports 418 passed / 284 failed / 20 ignored. All 284 failures are the trusted-ingress fixture refusals; no SC/BR control fails.
 - **Constraints (STRICT, unchanged):**
@@ -51,3 +51,51 @@ Only the public route is used: `rrx::cli::service::serve(state, config)` on a te
 1. Groups are migrated in A → C → B → I → L order, in separate commits.
 2. Each commit records its HEAD, the selected test names (never a zero-test run) and the unchanged STRICT guards.
 3. The target is Linux CI with 0 failed; macOS CI stays on the user's machine.
+
+## 6. Prototype evidence (R1)
+
+The prototype is a scratch patch and is not committed. It swaps only the shared `src/execution/results/tests.rs` `fixture()` (used by 13 sibling modules) for genuinely legacy rows. Those rows are built through the ordered historical migration path from an accepted-ingress Goal, exactly as `66f170b` `ordered_format_migration_*` does: the historical schema, a copy of the non-grant tables only, `user_version = 2`, then `Store::open` migrates. No authority, Driver or execution row is copied, and no guard is changed.
+
+### 6.1 Source facts
+
+- **F1.** The public preparation route refuses accepted Goals. `AttemptManager::prepare`, `ManagedWorkflowSources::prepare` and `WorktreeManager::*` read `Store::legacy_worktree_task`, which refuses when a `goal_authority` row exists (`src/state/runtime/driver.rs:436-459`). Existing controls pin this refusal: `src/runtime/tests.rs` `actual_accepted_worktree_routes_refuse_before_valid_native_git_helpers` and `public_source_preparation_refuses_accepted_goal_before_unit_or_helper_effects`.
+
+  Consequence: for group A, swapping in the accepted-ingress fixture alone cannot work. Each test that prepares a unit needs either:
+  - legacy rows (D3(b), applied to group A); or
+  - the started Runtime and live Driver (D2).
+- **F2.** Native execution on legacy rows refuses with "managed native binding and private admission are not composed" (`src/workflow.rs:43`). Tests that reach that point need D2 whatever is chosen for F1.
+
+### 6.2 Measurements (lib, Linux)
+
+| Run | HEAD | Result |
+| --- | --- | --- |
+| Base | `5e6392d` | 418 passed / 284 failed / 20 ignored |
+| Prototype (one fixture swap) | `5e6392d` + scratch patch | 459 passed / 243 failed / 20 ignored |
+
+By test name: 41 newly pass and 0 newly fail. The 41 are:
+
+| Module | Tests |
+| --- | --- |
+| `execution::native::tests` | 20 |
+| `execution::results::tests` | 7 |
+| `workflow::committed_source_tests` | 5 |
+| `execution::ipc::tests` | 3 |
+| `adapter::native::tests` | 2 |
+| `execution::phase::tests` | 2 |
+| `execution::cleanup::tests` | 1 |
+| `execution::workflow_source::tests` | 1 |
+
+The fixture's remaining users now fail later, past the ingress check:
+
+| Failure | Count | Where | Meaning |
+| --- | --- | --- | --- |
+| F2 refusal | 22 | `workflow/verification_tests.rs:80` (12), `workflow/managed_tests.rs` (5), `execution/native/tests.rs` (≥2), others | needs D2 |
+| `managed command failed (exit 128)` | 8 | `retained_tests/routing_tests.rs:74`, `managed_tests.rs`, `native/tests.rs` | Git setup inside the test; not yet triaged |
+| Docker probe unavailable | 7 | `execution/docker/tests.rs` | environment: this container has no Docker; the GitHub Linux runner does |
+| F1 refusal | 7 | `workflow_source/recovery_tests.rs:122` | these use the accepted fixture and the public route; they need D2 |
+
+### 6.3 Open question this raises (for D3 and review)
+
+A test that passes on legacy rows covers the legacy row, not an accepted Goal. This is real coverage only where production still executes that path for migrated legacy Goals. Where the path is accepted-only in production, the test must use D2 instead; otherwise it gives false assurance.
+
+The per-test classification is therefore part of the HOW review: legacy-reachable mechanics go on legacy rows, accepted-only paths go on the started Runtime and Driver.
