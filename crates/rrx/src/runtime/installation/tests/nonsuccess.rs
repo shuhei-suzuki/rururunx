@@ -308,6 +308,9 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation) {
             .contains("Source phase shutdown remains pending")
             || shutdown
                 .to_string()
+                .contains("Source handoff shutdown remains pending")
+            || shutdown
+                .to_string()
                 .contains("Native phase shutdown remains pending"),
         "unexpected shutdown: {shutdown}"
     );
