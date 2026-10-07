@@ -323,6 +323,9 @@ fn checked_close_tx(tx: &Transaction<'_>, m: &SuccessClosureMaterial) -> Result<
             .is_some_and(|v| v <= WORKFLOW_BYTES),
         "success closure scope budget exhausted"
     );
+    next_audit_sequence(tx)
+}
+fn next_audit_sequence(tx: &Transaction<'_>) -> Result<i64> {
     let sequence: i64 = tx.query_row(
         "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='audit'),0)",
         [],
@@ -446,7 +449,7 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let sequence = match checked_close_tx(&tx, m) {
+        let _planned = match checked_close_tx(&tx, m) {
             Ok(sequence) => sequence,
             Err(cause) => {
                 drop(tx);
@@ -487,6 +490,8 @@ impl Store {
             "execution.result_published",
             json!({"unit":terminal.id,"artifact":artifact.id,"sha":artifact.revision,"workflow":m.workflow.parsed().id,"context_version":m.plan.context.version}),
         )?;
+        // W1-W4 appended their own audit rows; the typed link takes the next.
+        let sequence = next_audit_sequence(&tx)?;
         let scope = marker.scope();
         let audit = vec![
             SqlValue::Integer(sequence),

@@ -116,6 +116,15 @@ fn advanced(
     task: &Task,
     at: i64,
 ) -> Result<Body<Record>> {
+    advanced_from(before, before, workflow, task, at)
+}
+fn advanced_from(
+    before: &Record,
+    previous: &Record,
+    workflow: WorkflowSnapshot,
+    task: &Task,
+    at: i64,
+) -> Result<Body<Record>> {
     let mut after = before.clone();
     after.version = before
         .version
@@ -124,7 +133,7 @@ fn advanced(
         .context("settled Workflow version exhausted")?;
     after.updated_at = at;
     after.data = serde_json::to_value(workflow)?;
-    crate::workflow::validate_transition(task, &after, Some(before))?;
+    crate::workflow::validate_transition(task, &after, Some(previous))?;
     Body::decode(serde_json::to_string(&after)?, BODY_BYTES)
 }
 
@@ -211,13 +220,21 @@ fn observed_delta(
         serde_json::to_vec(&observation)?.len() <= OBSERVATION_BYTES,
         "settled observation exceeds its bound"
     );
-    attempt.observations.push(observation);
+    attempt.observations.push(observation.clone());
     match observed {
         Observed::Failed => workflow.held_reason = Some(GATE_FAILED_DETAIL.into()),
         Observed::Unknown => workflow.held_reason = Some(GATE_UNKNOWN_DETAIL.into()),
         _ => {}
     }
-    Ok((index, advanced(before, workflow, task, at)?))
+    // The audited link is the observer. As in the Driver gate writer, the
+    // exact virtual observer image (only this observation appended) is the
+    // transition predecessor; every other transition rule stays unchanged.
+    let mut image = original;
+    image.history[index].observations.push(observation);
+    let mut observer = before.clone();
+    observer.data = serde_json::to_value(&image)?;
+    let after = advanced_from(before, &observer, workflow, task, at)?;
+    Ok((index, after))
 }
 
 /// The trigger-required header shared by every typed link.

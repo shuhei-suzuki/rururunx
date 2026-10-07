@@ -358,7 +358,7 @@ pub(crate) fn plan_phase_terminal(
             let mut indices = scoped_columns(&record.scope);
             indices.extend([
                 ("id", json!(record.id)),
-                ("kind", json!(record.kind)),
+                ("kind", json!("session")),
                 ("version", json!(record.version)),
             ]);
             check_indexed(tx, "records", &indices)?;
