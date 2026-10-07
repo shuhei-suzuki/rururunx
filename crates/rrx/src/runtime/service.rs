@@ -90,6 +90,7 @@ impl Runtime {
                 sequence = next;
                 let pending = runtime.phases.reconcile_pending()?;
                 let nonsuccess_pending = runtime.phase_dispatcher.reconcile_nonsuccess()?;
+                let preparations = runtime.phase_dispatcher.reconcile_preparations()?;
                 let driver_pending = runtime.observe_task_drivers()?;
                 // A refusal after reservation ends only this saved-cursor
                 // sweep. Its retained claim/closure owns the outcome.
@@ -104,6 +105,14 @@ impl Runtime {
                 );
                 let wake = runtime.wake.clone();
                 drop(runtime);
+                // Only the selected custody Arcs remain: one admission try and
+                // at most one confirmation transaction each, never awaiting
+                // the control admission that a shutdown may hold.
+                #[cfg(test)]
+                super::phase_jobs::park_selected_preparations(&preparations).await;
+                for preparation in preparations {
+                    preparation.confirm()?;
+                }
                 if more {
                     tokio::task::yield_now().await;
                     continue;

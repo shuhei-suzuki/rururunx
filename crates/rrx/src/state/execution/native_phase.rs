@@ -21,6 +21,8 @@ pub(crate) use nonsuccess::{
 mod preparation;
 mod quota;
 pub(crate) use preparation::{NativePreparationCommit, NativePreparationPlan, NativeReadyLineage};
+#[cfg(test)]
+pub(crate) use preparation::{PreparationFault, arm_preparation_fault};
 pub(crate) use quota::{
     NativeParkedPhase, NativeQuotaAdmitted, NativeQuotaCaps, NativeQuotaConfirmation,
     NativeQuotaOutcome, NativeQuotaPlan, NativeQuotaWrite,

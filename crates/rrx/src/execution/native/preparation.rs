@@ -13,6 +13,8 @@ type ClosureOriginal = (
 #[cfg(test)]
 #[derive(Debug)]
 pub(crate) struct PreparationFacts {
+    pub plan: bool,
+    pub known: bool,
     pub revoked: bool,
     pub helpers_completed: bool,
     pub no_dispatch: bool,
@@ -61,6 +63,8 @@ impl NativePreparationCustody {
     pub(crate) fn observed_facts(&self) -> PreparationFacts {
         let state = self.state.lock().unwrap();
         PreparationFacts {
+            plan: state.plan.is_some(),
+            known: state.known.is_some(),
             revoked: state.actor.as_ref().is_some_and(|a| a.is_revoked()),
             helpers_completed: state.completion.is_some(),
             no_dispatch: state.no_dispatch.is_some(),
@@ -808,76 +812,39 @@ impl NativePreparationCustody {
         state.completion = Some(completion);
         Ok(())
     }
-    /// Nongrant confirmation of the same saved postimage. A wake cannot
-    /// replace the actor/plan, replay preparation, or reopen a revoked actor.
-    pub(crate) async fn reconcile_known_commit(self: &Arc<Self>) -> Result<()> {
-        let transport = {
-            let state = self
-                .state
-                .lock()
-                .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-            state.transport.clone().zip(state.actor.clone())
-        };
-        if let Some((transport, actor)) = transport {
-            let sessions = actor
-                .sessions
-                .upgrade()
-                .context("actual transport issuer ended")?;
-            return transport.reconcile(&sessions.owner).await;
+    /// Nongrant predicate for Root's sweep: an uncertain preparation commit
+    /// (original plan retained, no known commit, nothing issued after it).
+    pub(crate) fn known_commit_due(&self) -> bool {
+        self.state.lock().is_ok_and(|state| {
+            state.plan.is_some()
+                && state.known.is_none()
+                && state.no_dispatch.is_none()
+                && state.transport.is_none()
+        })
+    }
+    /// Root's single factual confirmation of the SAME saved preparation
+    /// postimage. It never waits for the control admission, never replays
+    /// preparation, classifies no rollback/absence and reopens no actor.
+    pub(crate) fn confirm_preparation_nonblocking(self: &Arc<Self>) -> PreparationConfirm {
+        match self.confirm_preparation_once() {
+            Ok(true) => PreparationConfirm::Known,
+            Ok(false) => PreparationConfirm::NotAttempted,
+            Err(_cause) => PreparationConfirm::Held,
         }
-        let closure_actor = {
-            let state = self
-                .state
-                .lock()
-                .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-            if state.closed.is_some() {
-                return Ok(());
-            }
-            if state.abandoned && state.no_dispatch.is_some() {
-                state.actor.clone()
-            } else {
-                None
-            }
-        };
-        if let Some(actor) = closure_actor {
-            let sessions = actor
-                .sessions
-                .upgrade()
-                .context("actual preparation closure issuer ended")?;
-            return sessions.close_prepared_on_revocation(self).await;
-        }
-        let helper = {
-            let state = self
-                .state
-                .lock()
-                .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-            state.helpers.last().cloned()
-        };
-        if let Some(helper) = helper {
-            let actor = {
-                let state = self
-                    .state
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
-                state
-                    .actor
-                    .clone()
-                    .context("original helper actor unavailable")?
-            };
-            let sessions = actor
-                .sessions
-                .upgrade()
-                .context("actual preparation issuer ended")?;
-            return helper.reconcile(&sessions.owner);
-        }
+    }
+    fn confirm_preparation_once(self: &Arc<Self>) -> Result<bool> {
         let plan = {
             let state = self
                 .state
                 .lock()
                 .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
             if state.known.is_some() {
-                return Ok(());
+                return Ok(true);
             }
+            ensure!(
+                state.no_dispatch.is_none() && state.transport.is_none(),
+                "preparation already issued past its commit"
+            );
             state
                 .plan
                 .clone()
@@ -889,7 +856,9 @@ impl NativePreparationCustody {
             .upgrade()
             .context("actual preparation issuer ended")?;
         let launch = actor.launch().clone();
-        let admission = launch.admission().enter(launch.clone()).await?;
+        let Some(admission) = launch.admission().try_enter(launch.clone())? else {
+            return Ok(false);
+        };
         let commit = {
             let mut store = sessions
                 .owner
@@ -899,8 +868,15 @@ impl NativePreparationCustody {
             store.confirm_native_preparation(plan, &admission)?
         };
         self.retain_commit(commit)?;
-        Ok(())
+        Ok(true)
     }
+}
+/// Outcome of one Root confirmation attempt. `NotAttempted` is not an attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PreparationConfirm {
+    Known,
+    NotAttempted,
+    Held,
 }
 impl Drop for NativePreparationCustody {
     fn drop(&mut self) {

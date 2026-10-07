@@ -35,7 +35,9 @@ pub(crate) mod version;
 pub(crate) use phase_protocol::{ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession};
 #[cfg(test)]
 pub(crate) use preparation::PreparationFacts;
-pub(crate) use preparation::{NativePreparationActor, NativePreparationCustody};
+pub(crate) use preparation::{
+    NativePreparationActor, NativePreparationCustody, PreparationConfirm,
+};
 pub(crate) use prepared::PreparedNativePhase;
 #[cfg(test)]
 pub(crate) mod tests;

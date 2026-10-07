@@ -304,6 +304,26 @@ impl Store {
         plan: Arc<NativePreparationPlan>,
         admission: &PhaseEffectAdmissionGuard,
     ) -> Result<NativePreparationCommit> {
+        #[cfg(test)]
+        let fault = take_preparation_fault(&plan);
+        #[cfg(test)]
+        ensure!(
+            fault != Some(PreparationFault::BeforeCommit),
+            "injected precommit preparation fault"
+        );
+        let commit = self.begin_native_preparation_inner(plan, admission)?;
+        #[cfg(test)]
+        ensure!(
+            fault != Some(PreparationFault::AfterCommit),
+            "injected postcommit preparation fault"
+        );
+        Ok(commit)
+    }
+    fn begin_native_preparation_inner(
+        &mut self,
+        plan: Arc<NativePreparationPlan>,
+        admission: &PhaseEffectAdmissionGuard,
+    ) -> Result<NativePreparationCommit> {
         selected_database(&self.connection, plan.actor.launch())?;
         let mutation = plan
             .readiness_before
@@ -343,4 +363,28 @@ impl Store {
         tx.commit()?;
         Ok(NativePreparationCommit { original: plan })
     }
+}
+
+/// Fault-only test seam: fails exactly one preparation commit call of the
+/// named Task, either before any transaction or after a genuine commit. It
+/// never commits, plans, confirms or grants anything itself.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PreparationFault {
+    BeforeCommit,
+    AfterCommit,
+}
+#[cfg(test)]
+static PREPARATION_FAULTS: std::sync::Mutex<Vec<(crate::domain::TaskId, PreparationFault)>> =
+    std::sync::Mutex::new(Vec::new());
+#[cfg(test)]
+pub(crate) fn arm_preparation_fault(task: crate::domain::TaskId, fault: PreparationFault) {
+    PREPARATION_FAULTS.lock().unwrap().push((task, fault));
+}
+#[cfg(test)]
+fn take_preparation_fault(plan: &NativePreparationPlan) -> Option<PreparationFault> {
+    let task = plan.actor.launch().allocation().facts().scope.task_id?;
+    let mut faults = PREPARATION_FAULTS.lock().unwrap();
+    let index = faults.iter().position(|(armed, _)| *armed == task)?;
+    Some(faults.swap_remove(index).1)
 }

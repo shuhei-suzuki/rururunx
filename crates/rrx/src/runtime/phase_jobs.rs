@@ -4,7 +4,7 @@ use crate::execution::{
     OperationId,
     native::{
         ManagedSessionRef, NativePhaseBinding, NativePhaseStart, NativePhaseStartError,
-        NativePreparationCustody,
+        NativePreparationCustody, PreparationConfirm,
     },
     phase::NativeAllocation,
 };
@@ -21,6 +21,7 @@ use tokio::{sync::watch, task::JoinHandle};
 
 const MAX_JOBS: usize = 128;
 const CLOSURE_TURNS: usize = 8;
+const PREPARATION_TURNS: usize = 8;
 fn rotate_closure_snapshot<K: Ord, T>(snapshot: &mut [(K, T, bool)], cursor: Option<K>) {
     if let Some(cursor) = cursor {
         let position = snapshot.partition_point(|(id, _, _)| *id < cursor);
@@ -161,6 +162,12 @@ struct JobState {
     closed_ack: Option<Arc<crate::state::PhaseClosedAcknowledgment>>,
     closure_due: Instant,
     closure_backoff: u64,
+    preparation_due: Instant,
+    preparation_backoff: u64,
+    #[cfg(test)]
+    preparation_busy: u64,
+    #[cfg(test)]
+    preparation_attempts: Vec<(Instant, u64)>,
     uncertain: bool,
     slot_released: bool,
     attention: Option<&'static str>,
@@ -197,6 +204,7 @@ pub(super) struct PhaseJobReservation {
 pub(super) struct PhaseJobs {
     entries: Mutex<BTreeMap<OperationId, Entry>>,
     closure_cursor: Mutex<Option<OperationId>>,
+    preparation_cursor: Mutex<Option<OperationId>>,
     #[cfg(test)]
     closure_turns: Arc<Mutex<Vec<(OperationId, u8)>>>,
 }
@@ -209,6 +217,101 @@ pub(super) struct ObservedJob {
     pub attention: Option<&'static str>,
     pub preparation: crate::execution::native::PreparationFacts,
     pub due: Instant,
+    pub preparation_due: Instant,
+    pub preparation_busy: u64,
+    /// (attempt time, applied backoff in ms) per Held confirmation.
+    pub preparation_attempts: Vec<(Instant, u64)>,
+}
+
+/// Test-only, Task-scoped synchronization point between the preparation
+/// sweep's selection and the admission try. It parks and resumes only; it
+/// grants, records and constructs nothing.
+#[cfg(test)]
+type PreparationPark = (
+    crate::domain::TaskId,
+    tokio::sync::oneshot::Sender<()>,
+    tokio::sync::oneshot::Receiver<()>,
+);
+#[cfg(test)]
+static PREPARATION_PARKS: Mutex<Vec<PreparationPark>> = Mutex::new(Vec::new());
+#[cfg(test)]
+pub(super) fn arm_preparation_park(
+    task: crate::domain::TaskId,
+) -> (
+    tokio::sync::oneshot::Receiver<()>,
+    tokio::sync::oneshot::Sender<()>,
+) {
+    let (reached, reached_rx) = tokio::sync::oneshot::channel();
+    let (release, release_rx) = tokio::sync::oneshot::channel();
+    PREPARATION_PARKS
+        .lock()
+        .unwrap()
+        .push((task, reached, release_rx));
+    (reached_rx, release)
+}
+#[cfg(test)]
+pub(super) async fn park_selected_preparations(items: &[PreparationItem]) {
+    for item in items {
+        let Some(task) = item.task() else { continue };
+        let park = {
+            let mut parks = PREPARATION_PARKS.lock().unwrap();
+            parks
+                .iter()
+                .position(|(armed, _, _)| *armed == task)
+                .map(|index| parks.remove(index))
+        };
+        if let Some((_, reached, release)) = park {
+            let _ = reached.send(());
+            let _ = release.await;
+        }
+    }
+}
+
+/// One selected uncertain preparation commit. Holds no strong Job, Runtime
+/// or Store; the outcome is applied only to the SAME job's custody.
+pub(super) struct PreparationItem {
+    job: Weak<Job>,
+    custody: Arc<NativePreparationCustody>,
+}
+impl PreparationItem {
+    #[cfg(test)]
+    pub(super) fn task(&self) -> Option<crate::domain::TaskId> {
+        self.job.upgrade()?.allocation.facts().scope.task_id
+    }
+    /// At most one admission try and one confirmation transaction.
+    pub(super) fn confirm(self) -> Result<()> {
+        let outcome = self.custody.confirm_preparation_nonblocking();
+        let Some(job) = self.job.upgrade() else {
+            return Ok(());
+        };
+        let _depth = RootLockDepth::enter();
+        let mut state = job
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+        if !Arc::ptr_eq(&state.preparation, &self.custody) {
+            return Ok(());
+        }
+        match outcome {
+            // Retained in the custody; the predicate no longer selects it.
+            PreparationConfirm::Known => {}
+            PreparationConfirm::Held => {
+                let backoff = state.preparation_backoff;
+                let now = Instant::now();
+                state.preparation_due = now + Duration::from_millis(backoff);
+                state.preparation_backoff = backoff.saturating_mul(2).min(5000);
+                #[cfg(test)]
+                state.preparation_attempts.push((now, backoff));
+            }
+            PreparationConfirm::NotAttempted => {
+                #[cfg(test)]
+                {
+                    state.preparation_busy += 1;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl PhaseJobs {
@@ -235,6 +338,9 @@ impl PhaseJobs {
                     attention: state.attention,
                     preparation: state.preparation.observed_facts(),
                     due: state.closure_due,
+                    preparation_due: state.preparation_due,
+                    preparation_busy: state.preparation_busy,
+                    preparation_attempts: state.preparation_attempts.clone(),
                 }
             })
             .collect()
@@ -255,6 +361,12 @@ impl PhaseJobs {
             .ok_or_else(|| anyhow::anyhow!("original retained allocation absent"))
     }
     fn closure_snapshot(&self) -> Result<Vec<(OperationId, Arc<Job>, bool)>> {
+        self.rotated_snapshot(&self.closure_cursor)
+    }
+    fn rotated_snapshot(
+        &self,
+        cursor: &Mutex<Option<OperationId>>,
+    ) -> Result<Vec<(OperationId, Arc<Job>, bool)>> {
         let mut snapshot = {
             let _depth = RootLockDepth::enter();
             let entries = self
@@ -277,8 +389,7 @@ impl PhaseJobs {
         };
         let cursor = {
             let _depth = RootLockDepth::enter();
-            *self
-                .closure_cursor
+            *cursor
                 .lock()
                 .map_err(|_| anyhow::anyhow!("phase closure cursor poisoned"))?
         };
@@ -292,6 +403,58 @@ impl PhaseJobs {
             .lock()
             .map_err(|_| anyhow::anyhow!("phase closure cursor poisoned"))? = cursor;
         Ok(())
+    }
+    fn set_preparation_cursor(&self, cursor: Option<OperationId>) -> Result<()> {
+        let _depth = RootLockDepth::enter();
+        *self
+            .preparation_cursor
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase preparation cursor poisoned"))? = cursor;
+        Ok(())
+    }
+    /// Selects at most eight ended jobs whose original preparation commit is
+    /// uncertain and due. Returns only the job Weak and the SAME custody Arc;
+    /// no Root lock, Runtime or Store access outlives this call.
+    pub(super) fn reconcile_preparations(
+        &self,
+        stopping: &AtomicBool,
+    ) -> Result<Vec<PreparationItem>> {
+        let snapshot = self.rotated_snapshot(&self.preparation_cursor)?;
+        let mut items = Vec::new();
+        for (operation, job, finished) in snapshot {
+            if stopping.load(Ordering::SeqCst) {
+                return Ok(Vec::new());
+            }
+            let (eligible, custody) = {
+                let _depth = RootLockDepth::enter();
+                let state = job
+                    .state
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+                (
+                    state.closed_ack.is_none()
+                        && state.preparation_due <= Instant::now()
+                        && (state.outcome.as_ref().is_some_and(Result::is_err)
+                            || (state.outcome.is_none()
+                                && state.observation == InvocationObservation::Uncertain
+                                && finished)),
+                    state.preparation.clone(),
+                )
+            };
+            if !eligible || !custody.known_commit_due() {
+                continue;
+            }
+            if items.len() == PREPARATION_TURNS {
+                self.set_preparation_cursor(Some(operation))?;
+                return Ok(items);
+            }
+            items.push(PreparationItem {
+                job: Arc::downgrade(&job),
+                custody,
+            });
+        }
+        self.set_preparation_cursor(None)?;
+        Ok(items)
     }
     fn retire_closed(&self, job: &Arc<Job>) -> Result<()> {
         {
@@ -604,6 +767,12 @@ impl PhaseJobs {
                 closed_ack: None,
                 closure_due: Instant::now(),
                 closure_backoff: 100,
+                preparation_due: Instant::now(),
+                preparation_backoff: 100,
+                #[cfg(test)]
+                preparation_busy: 0,
+                #[cfg(test)]
+                preparation_attempts: Vec::new(),
                 uncertain: false,
                 slot_released: false,
                 attention: None,

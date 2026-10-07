@@ -2311,3 +2311,5 @@ pub(crate) use execution::native_phase::{
     NativeNonSuccessClosurePlan, NativeNonSuccessConfirmation, NativeNonSuccessMaterial,
     NativeNonSuccessWrite, NonSuccessReader, PhaseClosedAcknowledgment,
 };
+#[cfg(test)]
+pub(crate) use execution::native_phase::{PreparationFault, arm_preparation_fault};

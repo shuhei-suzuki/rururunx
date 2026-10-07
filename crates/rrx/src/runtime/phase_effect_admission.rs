@@ -56,6 +56,26 @@ impl PhaseEffectAdmission {
         launch: Arc<PhaseLaunchParts>,
     ) -> Result<PhaseEffectAdmissionGuard> {
         let control = self.control.clone().lock_owned().await;
+        self.admit(launch, control)
+    }
+
+    /// Root's non-waiting variant: the same checks, but a held control
+    /// admission (for example a shutdown joining the service loop) is `None`.
+    pub(crate) fn try_enter(
+        self: &Arc<Self>,
+        launch: Arc<PhaseLaunchParts>,
+    ) -> Result<Option<PhaseEffectAdmissionGuard>> {
+        let Ok(control) = self.control.clone().try_lock_owned() else {
+            return Ok(None);
+        };
+        self.admit(launch, control).map(Some)
+    }
+
+    fn admit(
+        self: &Arc<Self>,
+        launch: Arc<PhaseLaunchParts>,
+        control: OwnedMutexGuard<()>,
+    ) -> Result<PhaseEffectAdmissionGuard> {
         ensure!(self.accepting(), "Runtime is not accepting Native effects");
         ensure!(
             self.matches_launch(&launch),
