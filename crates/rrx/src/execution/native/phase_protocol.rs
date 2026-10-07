@@ -315,7 +315,6 @@ pub(crate) struct OwnedPhaseSettlement {
     session: Session,
     record_version: u64,
     thread: String,
-    turn: Option<String>,
     /// Sealed rows of the SAME terminal commit; compared, never returned.
     images: crate::state::SettledTerminalImages,
 }
@@ -597,7 +596,7 @@ impl OwnedPhaseSettlement {
                 && session.state == SessionState::Exited,
             "native phase lacks actual owned logical success"
         );
-        let (thread, turn) = {
+        let thread = {
             let acknowledgement = consumed
                 .acknowledgement
                 .lock()
@@ -611,7 +610,7 @@ impl OwnedPhaseSettlement {
                     && session.native_ref.as_deref() == Some(ack.thread.as_str()),
                 "native phase terminal acknowledgement changed"
             );
-            (ack.thread.clone(), ack.turn.clone())
+            ack.thread.clone()
         };
         owner.project(&session, record_version)?;
         owner.revoke();
@@ -624,7 +623,6 @@ impl OwnedPhaseSettlement {
             session,
             record_version,
             thread,
-            turn,
             images,
         });
         let mut projection = owner
@@ -638,17 +636,11 @@ impl OwnedPhaseSettlement {
         projection.settlement = Some(Arc::downgrade(&settlement));
         Ok(settlement)
     }
-    pub(crate) fn marker(&self) -> &OriginalMarker {
-        self.owner.marker()
-    }
     pub(crate) fn allocation(&self) -> &NativeAllocation {
         self.owner.allocation()
     }
     pub(crate) fn consumed(&self) -> &ConsumedPhaseInput {
         &self.consumed
-    }
-    pub(crate) fn terminal(&self) -> &NativeTerminal {
-        &self.terminal
     }
     pub(crate) fn unit(&self) -> &ExecutionUnit {
         &self.unit
@@ -659,14 +651,8 @@ impl OwnedPhaseSettlement {
     pub(crate) fn session(&self) -> &Session {
         &self.session
     }
-    pub(crate) fn record_version(&self) -> u64 {
-        self.record_version
-    }
     pub(crate) fn thread(&self) -> &str {
         &self.thread
-    }
-    pub(crate) fn turn(&self) -> Option<&str> {
-        self.turn.as_deref()
     }
     /// Exact invocation, receipt, Session, owner, readiness and admission rows
     /// of the SAME terminal commit.

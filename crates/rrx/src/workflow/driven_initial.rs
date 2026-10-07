@@ -118,7 +118,22 @@ impl WorkflowEngine {
                                 reason: reason.into(),
                             });
                         }
-                        _ => {}
+                        crate::runtime::SettledLookup::Closed(ack) => {
+                            return Ok(StepResult::Waiting {
+                                phase,
+                                reason: match ack {
+                                    crate::runtime::ClosedPhaseAck::NonSuccess(_) => {
+                                        "phase closed without success; explicit retry required"
+                                    }
+                                    crate::runtime::ClosedPhaseAck::Success(_) => {
+                                        "phase closed with success; Workflow re-read"
+                                    }
+                                }
+                                .into(),
+                            });
+                        }
+                        crate::runtime::SettledLookup::Pending
+                        | crate::runtime::SettledLookup::NoHandoff => {}
                     }
                     return self
                         .offer_driven_first_executor(snapshot, composition, lifetime, phase)

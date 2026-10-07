@@ -333,12 +333,6 @@ impl DriverClosureAdvance {
                 &self.old_body,
             )
     }
-    pub(crate) fn same_association(
-        &self,
-        other: &crate::runtime::driver::DriverAssociation,
-    ) -> bool {
-        self.ticket.association.same_association(other)
-    }
     pub(crate) fn version_after(&self) -> u64 {
         self.next.version
     }

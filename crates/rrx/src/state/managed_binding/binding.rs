@@ -81,9 +81,6 @@ impl ManagedBindingPlan {
     pub(crate) fn is_late(&self) -> bool {
         self.kind == BindingKind::Late
     }
-    pub(crate) fn proof(&self) -> &Arc<NativePhaseBinding> {
-        &self.proof
-    }
 }
 
 fn text(value: impl ToString) -> SqlValue {

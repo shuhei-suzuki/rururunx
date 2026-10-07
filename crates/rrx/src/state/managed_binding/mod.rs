@@ -53,8 +53,7 @@ pub(crate) use binding::{
 };
 pub(crate) use gate::{
     GATE_FAILED_DETAIL, GATE_UNKNOWN_DETAIL, GateClaimAcknowledgment, GateClaimPlan,
-    GateObservedAcknowledgment, GateObservedPlan, SUCCESS_CLOSURE_HEADROOM, SuccessConfirmation,
-    SuccessWrite,
+    GateObservedAcknowledgment, GateObservedPlan, SuccessConfirmation, SuccessWrite,
 };
 pub(crate) use marker_plan::ManagedMarkerPlan;
 pub(crate) use publication::{
@@ -66,9 +65,7 @@ pub(crate) use snapshot::plan_scope;
 pub(in crate::state) use snapshot::{ScopePlan, read_scope, snapshot};
 pub(in crate::state) use success::validate_settled_tx;
 pub(crate) use success::{SettledCurrency, SettledPhase, plan_settled_currency};
-pub(crate) use success_closure::{
-    SuccessClosureAcknowledgment, SuccessClosureMaterial, SuccessClosurePlan,
-};
+pub(crate) use success_closure::{SuccessClosureAcknowledgment, SuccessClosurePlan};
 pub(in crate::state) use successor::validate_planned_unit_tx;
 pub(crate) use successor::{CurrentWorkflowSuccessor, plan_current_phase, validate_current_tx};
 pub(crate) use unpublished::{UnpublishedMarkerProof, plan_unpublished_marker};

@@ -71,17 +71,6 @@ impl SuccessClosureAcknowledgment {
     pub(crate) fn settled(&self) -> &Arc<SettledPhase> {
         self.plan.currency.settled()
     }
-    pub(crate) fn matches_plan(&self, plan: &Arc<SuccessClosurePlan>) -> bool {
-        Arc::ptr_eq(&self.plan, plan)
-    }
-    pub(crate) fn driver(&self) -> &Arc<DriverClosureAdvance> {
-        &self.driver
-    }
-}
-impl SuccessClosureMaterial {
-    pub(crate) fn plan(&self) -> &Arc<SuccessClosurePlan> {
-        &self.plan
-    }
 }
 
 fn sha(bytes: &[u8]) -> String {

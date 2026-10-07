@@ -65,20 +65,16 @@ impl GateClaimAcknowledgment {
     pub(crate) fn settled(&self) -> &Arc<SettledPhase> {
         self.plan.advance.currency.settled()
     }
-    pub(crate) fn matches_plan(&self, plan: &Arc<GateClaimPlan>) -> bool {
-        Arc::ptr_eq(&self.plan, plan)
-    }
 }
 
 /// What a fused observation records; built only from a sealed completion.
 enum Observed {
-    Passed { evidence: Evidence, receipt: Record },
+    Passed(Box<(Evidence, Record)>),
     Waiting(String),
     Failed,
     Unknown,
 }
 pub(crate) struct GateObservedPlan {
-    claim: Arc<GateClaimAcknowledgment>,
     observed: Observed,
     advance: LinkAdvance,
 }
@@ -89,26 +85,16 @@ impl GateObservedAcknowledgment {
     pub(crate) fn settled(&self) -> &Arc<SettledPhase> {
         self.plan.advance.currency.settled()
     }
-    pub(crate) fn matches_plan(&self, plan: &Arc<GateObservedPlan>) -> bool {
-        Arc::ptr_eq(&self.plan, plan)
-    }
-    pub(crate) fn claim(&self) -> &Arc<GateClaimAcknowledgment> {
-        &self.plan.claim
-    }
     /// The Passed evidence and its gate receipt; None for any other outcome.
     pub(crate) fn passed(&self) -> Option<(&Evidence, &Record)> {
         match &self.plan.observed {
-            Observed::Passed { evidence, receipt } => Some((evidence, receipt)),
+            Observed::Passed(passed) => Some((&passed.0, &passed.1)),
             _ => None,
         }
     }
     /// The Workflow postimage this acknowledgment committed.
     pub(in crate::state) fn workflow_after(&self) -> &Body<Record> {
         &self.plan.advance.after
-    }
-    pub(in crate::state) fn link(&self) -> (&'static str, i64, &str) {
-        let a = &self.plan.advance;
-        (a.kind, a.at, &a.data)
     }
     /// The ledger count after this acknowledgment's link.
     pub(in crate::state) fn link_count(&self) -> usize {
@@ -198,7 +184,7 @@ fn observed_delta(
         "settled observation requires the claimed Evaluating attempt"
     );
     let (outcome, error) = match observed {
-        Observed::Passed { evidence, .. } => (Some(GateOutcome::Passed(evidence.clone())), None),
+        Observed::Passed(passed) => (Some(GateOutcome::Passed(passed.0.clone())), None),
         Observed::Waiting(detail) => {
             attempt.state = AttemptState::Waiting;
             attempt.detail = Some(detail.clone());
@@ -259,7 +245,7 @@ pub(super) fn header(
         "workflow_body_sha256_after":after.digest(WORKFLOW_DOMAIN),
         "prior_ledger_digest":current.prior_ledger_digest(marker)?,
         "canonical_body_recipe":"rrx.workflow-body-sha256/v1","at":at});
-    Ok(data.as_object().cloned().context("link header object")?)
+    data.as_object().cloned().context("link header object")
 }
 
 pub(super) fn link_data(mut header: Map<String, Value>, extra: Value) -> Result<String> {
@@ -456,7 +442,7 @@ impl Store {
         let phase = settled.phase();
         let observed = match (outcome, receipt) {
             (SettledGateOutcome::Known(GateOutcome::Passed(evidence)), Some(receipt)) => {
-                Observed::Passed { evidence, receipt }
+                Observed::Passed(Box::new((evidence, receipt)))
             }
             (SettledGateOutcome::Known(GateOutcome::Waiting(detail)), None)
                 if detail
@@ -483,9 +469,9 @@ impl Store {
             observed_delta(currency.current().workflow(), task, &observed, &sources, at)?;
         let header = header(&currency, &after, OBSERVED_KIND, index, at)?;
         let extra = match &observed {
-            Observed::Passed { evidence, receipt } => json!({"outcome":"passed",
-                "reason_code":"gate_passed","gate_receipt_ref":receipt.id,
-                "evidence_sha256":crate::execution::native_result::digest(&serde_json::to_vec(evidence)?)}),
+            Observed::Passed(passed) => json!({"outcome":"passed",
+                "reason_code":"gate_passed","gate_receipt_ref":passed.1.id,
+                "evidence_sha256":crate::execution::native_result::digest(&serde_json::to_vec(&passed.0)?)}),
             Observed::Waiting(_) => {
                 json!({"outcome":"waiting","reason_code":"evidence_integration_unavailable"})
             }
@@ -493,13 +479,12 @@ impl Store {
             Observed::Unknown => json!({"outcome":"held","reason_code":"gate_unknown"}),
         };
         let data = link_data(header, extra)?;
-        let headroom = if matches!(observed, Observed::Passed { .. }) {
+        let headroom = if matches!(observed, Observed::Passed(_)) {
             SUCCESS_CLOSURE_HEADROOM
         } else {
             0
         };
         Ok(Arc::new(GateObservedPlan {
-            claim: claim.clone(),
             observed,
             advance: advance(currency, after, OBSERVED_KIND, data, at, headroom)?,
         }))

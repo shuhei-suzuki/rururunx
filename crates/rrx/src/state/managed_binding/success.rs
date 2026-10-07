@@ -22,7 +22,6 @@ use std::sync::Arc;
 /// acknowledgment of the SAME owner's committed `session_bound` link.
 pub(crate) struct SettledPhase {
     binding: Arc<NativePhaseBinding>,
-    bound: Arc<BindingAcknowledgment>,
     phase: Phase,
 }
 impl SettledPhase {
@@ -56,11 +55,7 @@ impl SettledPhase {
             .and_then(|index| workflow.history.get(index))
             .context("settled phase marker attempt absent")?
             .phase;
-        Ok(Arc::new(Self {
-            binding,
-            bound,
-            phase,
-        }))
+        Ok(Arc::new(Self { binding, phase }))
     }
     pub(crate) fn marker(&self) -> &OriginalMarker {
         self.binding.marker()
@@ -72,12 +67,6 @@ impl SettledPhase {
     }
     pub(crate) fn allocation(&self) -> &Arc<NativeAllocation> {
         self.binding.marker().allocation()
-    }
-    pub(crate) fn binding(&self) -> &Arc<NativePhaseBinding> {
-        &self.binding
-    }
-    pub(crate) fn bound(&self) -> &Arc<BindingAcknowledgment> {
-        &self.bound
     }
     /// The marker's active attempt.
     pub(crate) fn phase(&self) -> Phase {

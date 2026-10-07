@@ -788,9 +788,8 @@ impl PhaseJobs {
                 ack.clone(),
             )));
         }
-        if let Some(ack) = &state.success_ack {
-            return Ok(SettledLookup::Closed(ClosedPhaseAck::Success(ack.clone())));
-        }
+        // A closed success keeps its continuation: the Driver still releases
+        // its Sources slot through the SAME stage after the acknowledgment.
         if let Some(success) = &state.success {
             return Ok(SettledLookup::Settled(success.clone()));
         }
