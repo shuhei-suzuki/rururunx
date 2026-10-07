@@ -51,6 +51,13 @@ pub(in crate::state) enum PhaseImage<'a> {
     },
 }
 
+/// Borrowed W4 inputs of the SAME retained plan for one writer call.
+/// Fields and construction stay in this module; owns no images or payload.
+pub(in crate::state) struct PhaseClosedLink<'a> {
+    closure: &'a UnlinkedPhaseClosure,
+    audit_data: &'a str,
+}
+
 fn workflow_delta(
     before: &Record,
     task: &crate::domain::Task,
@@ -217,6 +224,12 @@ pub(in crate::state) fn plan_unlinked_closure(
     })
 }
 impl UnlinkedPhaseClosure {
+    pub(in crate::state) fn link<'a>(&'a self, audit_data: &'a str) -> PhaseClosedLink<'a> {
+        PhaseClosedLink {
+            closure: self,
+            audit_data,
+        }
+    }
     pub(in crate::state) fn attempt(&self) -> usize {
         self.attempt
     }
@@ -281,8 +294,7 @@ impl PhaseClosureImages {
         tx: &Transaction<'_>,
         permits: &PrivatePermitManager,
         marker: &OriginalMarker,
-        closure: &UnlinkedPhaseClosure,
-        audit_data: &str,
+        link: PhaseClosedLink<'_>,
         w1: impl FnOnce(&Transaction<'_>) -> Result<()>,
     ) -> Result<()> {
         let before = marker.original_plan().workflow_after();
@@ -305,8 +317,8 @@ impl PhaseClosureImages {
                 .task_id
                 .map_or(SqlValue::Null, |v| SqlValue::Text(v.to_string())),
             SqlValue::Text(KIND.into()),
-            SqlValue::Integer(closure.at),
-            SqlValue::Text(audit_data.into()),
+            SqlValue::Integer(link.closure.at),
+            SqlValue::Text(link.audit_data.into()),
         ];
         let writes = vec![
             ExactRowMutation::new(
@@ -333,7 +345,7 @@ impl PhaseClosureImages {
             let predicate = names.iter().enumerate().map(|(i,n)| format!("{n} IS ?{}",i+33)).collect::<Vec<_>>().join(" AND ");
             ensure!(tx.execute(&format!("UPDATE managed_phase_operations SET {set} WHERE {predicate}"), params_from_iter(self.operation_after.iter().chain(marker.original_operation_image()?)))? == 1, "non-success operation complete CAS changed");
             ensure!(tx.execute("UPDATE records SET version=?1,body=?2 WHERE id=?3 AND kind='workflow' AND project_id=?4 AND goal_id IS ?5 AND task_id IS ?6 AND version=?7 AND body=?8", params![self.workflow_after.version,self.workflow_after_raw,before.0.id.to_string(),scope.project_id.to_string(),scope.goal_id.map(|v|v.to_string()),scope.task_id.map(|v|v.to_string()),before.0.version,before.1])? == 1, "non-success Workflow CAS changed");
-            ensure!(tx.execute("INSERT INTO audit(sequence,project_id,goal_id,task_id,kind,at,data) VALUES(?1,?2,?3,?4,?5,?6,?7)", params![sequence,scope.project_id.to_string(),scope.goal_id.map(|v|v.to_string()),scope.task_id.map(|v|v.to_string()),KIND,closure.at,audit_data])? == 1, "non-success link missing");
+            ensure!(tx.execute("INSERT INTO audit(sequence,project_id,goal_id,task_id,kind,at,data) VALUES(?1,?2,?3,?4,?5,?6,?7)", params![sequence,scope.project_id.to_string(),scope.goal_id.map(|v|v.to_string()),scope.task_id.map(|v|v.to_string()),KIND,link.closure.at,link.audit_data])? == 1, "non-success link missing");
             permits.ensure_consumed()
         })
     }

@@ -38,6 +38,7 @@
    - RN1-SOL-09: the turn protocol, and delivery versus completion bounds (§6).
 
    RN1-SOL-02 to 04 stay resolved and unchanged. The source pin is unchanged. The G5 component `c51af44` was read only to locate the replaced bail and the driven entry (§§9, 15); it is not a source pin of this HOW.
+8. **Writer API grouping (lint).** The frozen implementation source `1d783440b7f4d705bf8cf4c667e022f5cec87777` implements the former eight-input `PhaseClosureImages::write_tx` (`state/managed_binding/closure.rs:278–287` at that commit; its sole caller is `state/execution/native_phase/nonsuccess.rs:161`). Strict Clippy refuses that signature as `too_many_arguments` (8/7), and the mandatory lint gate is not waived. This revision only replaces the `closure` and `audit_data` inputs with one borrowed `PhaseClosedLink` view of the SAME retained plan (§4). Every role, token, check, write order, image, bound and callback stays unchanged. Those source paths are implementation to migrate; this document claims nothing implemented.
 
 ### 1.1 One-line acceptance condition (P)
 
@@ -206,6 +207,14 @@ pub(in crate::state) enum PhaseImage<'a> {
     Open,
     Closed { images: &'a PhaseClosureImages, at: i64, data: &'a str },
 }
+/// Borrowed W4 link inputs of ONE retained plan, for exactly one `write_tx` call. Built only
+/// by `UnlinkedPhaseClosure::link`; fields private to closure.rs; no Clone, Copy, Serialize,
+/// Deserialize, Default or Drop logic. It copies, allocates and retains nothing, and grants
+/// nothing: only `write_tx` consumes it, and only with `&NonSuccessReader`.
+pub(in crate::state) struct PhaseClosedLink<'a> {
+    closure: &'a UnlinkedPhaseClosure,                // the SAME plan's compact closure (its `at`)
+    audit_data: &'a str,                              // the SAME plan's exact §7.4 payload
+}
 pub(in crate::state) fn plan_unlinked_closure(_: &NonSuccessReader, tx: &Transaction<'_>,
     marker: &OriginalMarker, at: i64) -> Result<UnlinkedPhaseClosure>;
 /// Operation/input/owner images, projection and ledger (§7.2 item 2, §8). The Unit is
@@ -218,18 +227,22 @@ impl UnlinkedPhaseClosure {
     pub(in crate::state) fn audit_data(&self, marker: &OriginalMarker, facts: &PhaseClosedFacts)
         -> Result<String>;                            // exact §7.4 key set, <= 4096 bytes
     pub(in crate::state) fn materialize(&self, marker: &OriginalMarker) -> Result<PhaseClosureImages>;
+    /// Pairs this closure with its own plan's `audit_data`. Both are borrowed from the SAME
+    /// retained `NativeNonSuccessClosurePlan` by the sole caller; no check, copy or allocation.
+    pub(in crate::state) fn link<'a>(&'a self, audit_data: &'a str) -> PhaseClosedLink<'a>;
     pub(in crate::state) fn validate_budget_tx(&self, tx: &Transaction<'_>, marker: &OriginalMarker,
         audit_bytes: u64) -> Result<()>;
 }
 impl PhaseClosureImages {
     /// Sole W1–W4 sequencer (§7.3). Reads `sequence` under the TX, then builds the three
     /// one-use permit rows (operation and Workflow UPDATE copies, audit INSERT) from its own
-    /// images and the marker originals. Inside `permits.with_exact_permit` it runs `w1(tx)`,
-    /// then W2, W3 and W4 (rowcount 1 each), then `ensure_consumed`. The caller commits.
-    /// Returns no image.
+    /// images, the marker originals and `link` (the plan's `at` and exact `audit_data`).
+    /// Inside `permits.with_exact_permit` it runs `w1(tx)`, then W2, W3 and W4 (rowcount 1
+    /// each), then `ensure_consumed`. The caller commits. Returns no image. Seven inputs,
+    /// counting `self`, satisfy strict Clippy `too_many_arguments`; no suppression.
     pub(in crate::state) fn write_tx(&self, _: &NonSuccessReader, tx: &Transaction<'_>,
-        permits: &PrivatePermitManager, marker: &OriginalMarker, closure: &UnlinkedPhaseClosure,
-        audit_data: &str, w1: impl FnOnce(&Transaction<'_>) -> Result<()>) -> Result<()>;
+        permits: &PrivatePermitManager, marker: &OriginalMarker, link: PhaseClosedLink<'_>,
+        w1: impl FnOnce(&Transaction<'_>) -> Result<()>) -> Result<()>;
 }
 
 // state/managed_binding/successor.rs (extended). `rows`, `Link` and `KINDS` stay private.
@@ -331,8 +344,9 @@ Supporting accessors on existing types, each at a legal and narrowest visibility
 | `NativeQuotaClosurePlan` (A, `quota.rs`) | existing `plan_phase_quota_closure` | issuer → `matches`, `matches_no_dispatch`; `native_phase::nonsuccess` → `validate_original`, `validate_after_tx`, `unit()`, `payload_facts()` | images, readiness |
 | `LatestUnitImage` (A, `version/closure.rs`) | existing `read` | `native_phase::nonsuccess` → `plan_retired`, `validate_tx`, `validate_indexed_tx`, `write_retired_tx` | `values` |
 | `RetiredUnitImage` (new, same module; re-exported by `version.rs` beside `LatestUnitImage`, `closure` module private) | `plan_retired` | plan field; ports → `validate_indexed_tx`, `write_retired_tx` argument; payload → `unit_id()`, `versions()` | `values`, `before` |
-| `UnlinkedPhaseClosure` (`managed_binding::closure`) | `plan_unlinked_closure` | plan field; → `attempt()`, `at()`, `audit_data`, `materialize`, `validate_budget_tx` | digests, growth |
+| `UnlinkedPhaseClosure` (`managed_binding::closure`) | `plan_unlinked_closure` | plan field; → `attempt()`, `at()`, `audit_data`, `link`, `materialize`, `validate_budget_tx` | digests, growth |
 | `PhaseClosureImages` (same) | `materialize` | Material field; → `validate_original_phase_tx(…, Closed)`, `write_tx` | Record, raw, 32 columns; permit rows exist only inside `write_tx` |
+| `PhaseClosedLink<'_>` (same; borrowed view, not re-exported) | `UnlinkedPhaseClosure::link` | sole caller `close_phase_nonsuccess` → `plan.images.link(&plan.audit_data)`, moved into its one `write_tx` call (gone when that call returns); `write_tx` → `at` and `audit_data` for the W4 permit row and INSERT only | both fields; two borrows of the SAME retained plan, no copy |
 | Ledger links (`successor.rs`) | — | `closure.rs` → `validate_closure_ledger_tx` | `rows`, `Link`, `KINDS` |
 | `NativeNonSuccessClosurePlan`, `NativeNonSuccessMaterial`, `PhaseClosedAcknowledgment`, `NonSuccessReader` | `native_phase::nonsuccess` | Root → opaque Arc, `&material`, `matches_allocation`, `matches_marker` | all fields |
 
@@ -756,7 +770,7 @@ The roles are local Runtime and cross-Task roles; there are no web roles.
 | `close_prepared_on_revocation` → loop over `close_prepared_step` (§5.1); `clear_definitive_closure_conflict` is also used after a confirmed rollback | `prepared.rs:24–101,173,179`; `preparation.rs:73–110,670` | Same return values and backoff; after `Uncertain`, the loop confirms at once, as today. A confirmed rollback now also clears the SAME saved plan, which it proved uncommitted, so a later step plans afresh instead of reconfirming |
 | Closure-plan accessors: `validate_original`, `unit`, `validate_after_tx`, `payload_facts` (`pub(super)`); `matches_no_dispatch` | `quota.rs`; `native_phase/nonsuccess.rs` | Read-only; no new constructor |
 | `LatestUnitImage::plan_retired`, `validate_indexed_tx`, `write_retired_tx`; new `RetiredUnitImage` and its re-export | `version/closure.rs:11–160`; `version.rs:14–16` (re-export list gains `RetiredUnitImage`; `mod closure` stays private); `registration_unit` (`native_phase.rs:1180–`, private, visible to descendants); predicate of `unit_index_matches` (`marker_plan.rs:141–154`, unchanged) | Additive; `read`, `validate_original`, `validate_tx` and `NativeVersionClosurePlan` unchanged |
-| `OriginalMarker::validate_unadvanced_tx`, `original_operation_image`; successor `validate_closure_ledger_tx` (`rows`, `Link`, `KINDS` stay private); new `managed_binding/closure.rs` and its `mod.rs` re-exports | `marker_rows.rs:59–108`; `publication.rs:186–233`; `successor.rs:19,32–35,151–190`; `managed_binding/mod.rs:5–44` | Read-only, except `write_tx`, which takes `&NonSuccessReader`; `validate_open_tx` and `validate_current_tx` unchanged |
+| `OriginalMarker::validate_unadvanced_tx`, `original_operation_image`; successor `validate_closure_ledger_tx` (`rows`, `Link`, `KINDS` stay private); new `managed_binding/closure.rs` and its `mod.rs` re-exports | `marker_rows.rs:59–108`; `publication.rs:186–233`; `successor.rs:19,32–35,151–190`; `managed_binding/mod.rs:5–44` | Read-only, except `write_tx`, which takes `&NonSuccessReader` and one borrowed `PhaseClosedLink` (seven inputs, for strict Clippy `too_many_arguments`; no suppression); `validate_open_tx` and `validate_current_tx` unchanged |
 | Permit manager: `ExactRowMutation::new`, `with_exact_permit` and `ensure_consumed`, used by `write_tx` | `permits.rs:185–330`; binder `binding.rs:452–462`; `close_phase_quota` (`quota.rs:1304–1363`) | API unchanged; one more one-use set of 3 rows (≤128) |
 | First `phase_closed` producer | `schema.rs:358–414`; `successor.rs:19` (KINDS) | After close, `validate_open_tx` fails, so every open-currency consumer refuses: binder, registration, quota, transport, version helpers, `plan_current_phase`. Intended |
 | `phase_open=0` | `publication.rs:366` (reservation release); `waiting.rs:60`; `driver/claim.rs:337`; `quota_policy.rs:118`; `quota.rs:13`; admission trigger `schema.sql:195` | Status stops; the reservation and the operation member of the occupancy union free; the Task stays occupied by its `driving` Driver (§9); consumption impossible |

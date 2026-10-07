@@ -164,8 +164,7 @@ impl Store {
             &tx,
             &self.binding_permits,
             plan.proof.launch().marker(),
-            &plan.images,
-            &plan.audit_data,
+            plan.images.link(&plan.audit_data),
             |tx| {
                 plan.proof
                     .closure(&reader)
