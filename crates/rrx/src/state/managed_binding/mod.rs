@@ -18,6 +18,8 @@ pub(in crate::state) use marker_rows::record_image;
 mod permits;
 mod protection;
 mod publication;
+#[cfg(test)]
+pub(crate) use publication::check_native_contract_integrity;
 mod schema;
 #[cfg(test)]
 mod schema_tests;

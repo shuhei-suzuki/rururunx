@@ -11,6 +11,7 @@ use std::sync::{
 mod composition;
 mod lifecycle;
 mod pages;
+mod protection;
 
 #[derive(Clone)]
 struct ObservedActivation {

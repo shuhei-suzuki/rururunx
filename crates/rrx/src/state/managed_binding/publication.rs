@@ -243,7 +243,30 @@ pub(crate) fn plan_marker_publication(
             profile,
         ))
     })?;
-    // Strict decoding and both digests occur only after query-only snapshot ends.
+    let body = decide_contract(&allocation, workflow, raw, &contract_profile, &member)?;
+    let contract_body = body.raw().to_owned();
+    Ok(Arc::new(MarkerPublicationPlan {
+        owner,
+        allocation,
+        marker,
+        driver,
+        rows,
+        contract_body,
+        contract_origin,
+        contract_profile,
+    }))
+}
+// Nongrant decision used by the real marker planner, after its query-only
+// snapshot ends. The returned bytes remain pinned by validate_contract.
+fn decide_contract(
+    allocation: &NativeAllocation,
+    workflow: RecordId,
+    raw: String,
+    contract_profile: &str,
+    member: &str,
+) -> Result<Body<NativeContract>> {
+    let f = allocation.facts();
+    let contract_origin = allocation.selected_port().installation_id();
     let body = Body::<NativeContract>::decode(raw, 4096)?;
     let contract = body.parsed();
     ensure!(
@@ -263,20 +286,23 @@ pub(crate) fn plan_marker_publication(
         "actual Workflow roster digest differs"
     );
     ensure!(
-        contract.members.binary_search(&member).is_ok(),
+        contract
+            .members
+            .binary_search_by(|candidate| candidate.as_str().cmp(member))
+            .is_ok(),
         "selected Native port absent from original roster"
     );
-    let contract_body = body.raw().to_owned();
-    Ok(Arc::new(MarkerPublicationPlan {
-        owner,
-        allocation,
-        marker,
-        driver,
-        rows,
-        contract_body,
-        contract_origin,
-        contract_profile,
-    }))
+    Ok(body)
+}
+#[cfg(test)]
+pub(crate) fn check_native_contract_integrity(
+    allocation: &NativeAllocation,
+    workflow: RecordId,
+    raw: String,
+    contract_profile: &str,
+) -> Result<()> {
+    let member = member_digest(allocation.facts().role, allocation.selected_port())?;
+    decide_contract(allocation, workflow, raw, contract_profile, &member).map(|_| ())
 }
 impl MarkerPublicationPlan {
     /// Immutable original-object linkage, never a currency or effect grant.
