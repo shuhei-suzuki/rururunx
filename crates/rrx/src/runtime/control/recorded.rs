@@ -119,3 +119,30 @@ pub struct RecordedPrerequisite {
     pub stored_state: TaskState,
     pub hard: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime::control::ControlAction;
+    #[test]
+    fn omitted_and_null_view_preserve_legacy_bytes_and_strict_shapes() {
+        let old = r#"{"action":"goal_status","project":"11111111-1111-1111-1111-111111111111","goal":"22222222-2222-2222-2222-222222222222"}"#;
+        let action: ControlAction = serde_json::from_str(old).unwrap();
+        assert_eq!(serde_json::to_string(&action).unwrap(), old);
+        let null = old.strip_suffix('}').unwrap().to_owned() + ",\"view\":null}";
+        let action: ControlAction = serde_json::from_str(&null).unwrap();
+        assert_eq!(serde_json::to_string(&action).unwrap(), old);
+        for value in ["\"unknown\"", "false", "{}", "[]"] {
+            let raw = old.strip_suffix('}').unwrap().to_owned() + ",\"view\":" + value + "}";
+            assert!(serde_json::from_str::<ControlAction>(&raw).is_err());
+        }
+        let extra = r#"{"availability":"unavailable","recorded_count":7,"reason":"projection_budget","items":[]}"#;
+        assert!(serde_json::from_str::<RecordedCriteria>(extra).is_err());
+        assert!(
+            serde_json::from_str::<RecordedIncoming>(
+                r#"{"availability":"available","items":[],"grant":true}"#
+            )
+            .is_err()
+        );
+    }
+}

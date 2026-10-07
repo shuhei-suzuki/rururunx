@@ -638,3 +638,74 @@ async fn recorded_budgets_pack_whole_sets_and_fresh_independent_pages() {
     assert_eq!(rows(&f.state), before);
     f.stop().await;
 }
+
+#[tokio::test]
+async fn recorded_new_cli_refuses_old_service_without_downgrade_or_writes() {
+    let Some(binary) = std::env::var_os("RRX_LEGACY_CLI") else {
+        eprintln!("UNVERIFIED: compiled c979 old-service artifact absent");
+        return;
+    };
+    let mut f = Fixture::new();
+    let project = f.project("one");
+    f.child = Some(
+        Command::new(binary)
+            .arg("--state")
+            .arg(&f.state)
+            .arg("--config")
+            .arg(&f.config)
+            .arg("serve")
+            .current_dir(f.dir.path())
+            .stdout(Stdio::null())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap(),
+    );
+    let until = Instant::now() + Duration::from_secs(10);
+    loop {
+        assert!(f.child.as_mut().unwrap().try_wait().unwrap().is_none());
+        if client::request(&f.state, ControlAction::RuntimeStatus)
+            .await
+            .is_ok()
+        {
+            break;
+        }
+        assert!(Instant::now() < until);
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let goal = f.create(project, 1).await;
+    let before = f.idle().await;
+    for verb in ["status", "tasks"] {
+        let out = f
+            .command()
+            .args([
+                "goal",
+                verb,
+                &goal.to_string(),
+                "--project",
+                "one",
+                "--json",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            !out.status.success(),
+            "new CLI must not silently downgrade old service"
+        );
+        assert!(out.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&out.stderr).contains("restart a matching rrx serve"));
+    }
+    assert!(
+        client::request(
+            &f.state,
+            ControlAction::GoalStatus {
+                project,
+                goal,
+                view: None
+            }
+        )
+        .await
+        .is_ok()
+    );
+    assert_eq!(rows(&f.state), before);
+    f.stop().await;
+}
