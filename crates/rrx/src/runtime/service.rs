@@ -90,8 +90,13 @@ impl Runtime {
                 sequence = next;
                 let pending = runtime.phases.reconcile_pending()?;
                 let nonsuccess_pending = runtime.phase_dispatcher.reconcile_nonsuccess()?;
-                let (success_actions, mut success_pending) =
+                let (success_actions, success_releases, mut success_pending) =
                     runtime.phase_dispatcher.reconcile_success()?.into_actions();
+                for release in success_releases {
+                    if runtime.release_success(release).is_err() {
+                        success_pending = true;
+                    }
+                }
                 let preparations = runtime.phase_dispatcher.reconcile_preparations()?;
                 let driver_pending = runtime.observe_task_drivers()?;
                 // A refusal after reservation ends only this saved-cursor

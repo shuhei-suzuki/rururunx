@@ -642,7 +642,7 @@ impl PhaseSupervisor {
     }
     pub(super) fn retire_closed_marked(
         &self,
-        ack: &crate::state::PhaseClosedAcknowledgment,
+        ack: &super::phase_jobs::ClosedPhaseAck,
     ) -> Result<()> {
         let removed = {
             let _depth = super::phase_jobs::RootLockDepth::enter();
@@ -674,7 +674,7 @@ impl PhaseSupervisor {
                         .map_err(|_| anyhow::anyhow!("original slot marker poisoned"))?
                         .as_ref()
                         .is_some_and(|m| ack.matches_marker(m)),
-                "non-success acknowledgment differs from publishing marked slot"
+                "closed acknowledgment differs from publishing marked slot"
             );
             let project = slot.allocation.facts().scope.project_id;
             ensure!(

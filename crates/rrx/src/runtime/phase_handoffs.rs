@@ -457,6 +457,49 @@ impl PhaseHandoffs {
         }))
     }
 
+    /// Removes the Task's handoff only for the SAME acknowledged allocation
+    /// whose offer future has finished. Retried without any DB write.
+    pub(super) fn retire_closed(
+        &self,
+        task: TaskId,
+        ack: &super::phase_jobs::ClosedPhaseAck,
+    ) -> Result<()> {
+        let removed = {
+            let mut entries = self
+                .entries
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Source handoffs poisoned"))?;
+            let Some(entry) = entries.get(&task) else {
+                return Ok(());
+            };
+            let handoff = entry
+                .slot
+                .handoff
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase handoff slot poisoned"))?
+                .clone();
+            let origin = handoff
+                .as_ref()
+                .map(|h| {
+                    h.assets
+                        .lock()
+                        .map(|assets| assets.origin.clone())
+                        .map_err(|_| anyhow::anyhow!("phase handoff assets poisoned"))
+                })
+                .transpose()?
+                .flatten();
+            ensure!(
+                origin
+                    .as_ref()
+                    .is_some_and(|origin| ack.matches_allocation(&origin.allocation))
+                    && entry.handle.as_ref().is_some_and(JoinHandle::is_finished),
+                "closed handoff differs or its offer has not finished"
+            );
+            entries.remove(&task)
+        };
+        drop(removed);
+        Ok(())
+    }
     pub(super) fn ensure_shutdown_complete(&self) -> Result<()> {
         let entries = self
             .entries

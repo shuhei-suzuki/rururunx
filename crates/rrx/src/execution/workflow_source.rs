@@ -937,6 +937,29 @@ impl ManagedWorkflowSources {
         }
         Ok(())
     }
+    /// After a Known, published success closure: releases this slot's Source
+    /// handoff custody of the SAME acknowledged allocation (pointer-checked).
+    /// The committed frame stays; no DB write occurs.
+    pub(crate) async fn retire_closed_handoff(
+        &self,
+        task: TaskId,
+        ack: &crate::state::managed_binding::SuccessClosureAcknowledgment,
+    ) -> Result<()> {
+        let slot = self.slot(task)?;
+        let mut slot = slot.lock().await;
+        let state = slot
+            .as_mut()
+            .context("committed Workflow source preparation required")?;
+        let Some(custody) = &state.handoff else {
+            return Ok(());
+        };
+        ensure!(
+            custody.same_allocation(ack.settled().allocation())?,
+            "closed handoff custody differs"
+        );
+        state.handoff = None;
+        Ok(())
+    }
     /// G8 for a settled phase: the capture branch of `frame()` under the SAME
     /// slot serialization, with protected helpers and staging. The slot's
     /// handoff custody must be the settlement's allocation. A Ready artifact

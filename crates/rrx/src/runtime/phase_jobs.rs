@@ -495,7 +495,7 @@ impl PhaseJobs {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
             ensure!(
-                state.closed_ack.is_some() && state.slot_released,
+                (state.closed_ack.is_some() || state.success_ack.is_some()) && state.slot_released,
                 "phase closure not acknowledged/released"
             );
         }
@@ -533,7 +533,7 @@ impl PhaseJobs {
                 .slot_released
         };
         if !released {
-            phases.retire_closed_marked(ack)?;
+            phases.retire_closed_marked(&ClosedPhaseAck::NonSuccess(ack.clone()))?;
             let _depth = RootLockDepth::enter();
             job.state
                 .lock()

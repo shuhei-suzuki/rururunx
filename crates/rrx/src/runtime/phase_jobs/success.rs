@@ -16,7 +16,7 @@ const SETTLEMENT_REPOLL_MS: u64 = 5000;
 /// mutex is a leaf and the single-flight token for Driver and Root writers.
 pub(crate) struct SuccessContinuation {
     settled: Arc<SettledPhase>,
-    stage: Mutex<SuccessStage>,
+    stage: tokio::sync::Mutex<SuccessStage>,
 }
 /// Retained compact plans and acknowledgments of the continuation. None of
 /// them points back to a Job, PhaseJobs or Runtime.
@@ -28,6 +28,8 @@ pub(crate) struct SuccessStage {
     pub(crate) completion: Option<crate::execution::workflow_gates::SettledGateCompletion>,
     pub(crate) observed: Option<Retained<GateObservedPlan, GateObservedAcknowledgment>>,
     pub(crate) closure: Option<ClosureStage>,
+    /// Set once the SAME Driver retired its Sources slot handoff custody.
+    pub(crate) sources_retired: bool,
 }
 /// The retained closure: its SAME plan and what is known about it.
 pub(crate) struct ClosureStage {
@@ -117,11 +119,54 @@ pub(in crate::runtime) struct SuccessAction {
 }
 pub(in crate::runtime) struct SuccessSweep {
     actions: Vec<SuccessAction>,
+    releases: Vec<SuccessRelease>,
     pending: bool,
 }
 impl SuccessSweep {
-    pub(in crate::runtime) fn into_actions(self) -> (Vec<SuccessAction>, bool) {
-        (self.actions, self.pending)
+    pub(in crate::runtime) fn into_actions(
+        self,
+    ) -> (Vec<SuccessAction>, Vec<SuccessRelease>, bool) {
+        (self.actions, self.releases, self.pending)
+    }
+}
+/// A closed, published and Sources-retired success whose Root custody can
+/// be released; pointer-checked, retried without any DB write.
+pub(in crate::runtime) struct SuccessRelease {
+    job: Weak<Job>,
+    ack: Arc<SuccessClosureAcknowledgment>,
+}
+impl crate::runtime::Runtime {
+    /// Root release order: the PhaseSupervisor slot, the Source handoff, then
+    /// the PhaseJobs entry. Nothing here writes the database.
+    pub(in crate::runtime) fn release_success(&self, release: SuccessRelease) -> Result<()> {
+        let Some(job) = release.job.upgrade() else {
+            return Ok(());
+        };
+        let closed = ClosedPhaseAck::Success(release.ack.clone());
+        let released = {
+            let _depth = RootLockDepth::enter();
+            job.state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?
+                .slot_released
+        };
+        if !released {
+            self.phases.retire_closed_marked(&closed)?;
+            let _depth = RootLockDepth::enter();
+            job.state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?
+                .slot_released = true;
+        }
+        let task = release
+            .ack
+            .settled()
+            .marker()
+            .scope()
+            .task_id
+            .ok_or_else(|| anyhow::anyhow!("success release Task absent"))?;
+        self.phase_handoffs.retire_closed(task, &closed)?;
+        self.phase_jobs.retire_closed(&job)
     }
 }
 impl SuccessAction {
@@ -187,14 +232,13 @@ impl SuccessContinuation {
         &self.settled
     }
     /// Single-flight: Some only if no other caller holds the stage.
-    pub(crate) fn try_stage(&self) -> Result<Option<std::sync::MutexGuard<'_, SuccessStage>>> {
-        match self.stage.try_lock() {
-            Ok(guard) => Ok(Some(guard)),
-            Err(std::sync::TryLockError::WouldBlock) => Ok(None),
-            Err(std::sync::TryLockError::Poisoned(_)) => {
-                anyhow::bail!("success stage poisoned")
-            }
-        }
+    pub(crate) fn try_stage(&self) -> Result<Option<tokio::sync::MutexGuard<'_, SuccessStage>>> {
+        Ok(self.stage.try_lock().ok())
+    }
+    /// The SAME live Driver worker's single-flight token; it may be held
+    /// across the worker's own capture and gate awaits, never under Store.
+    pub(crate) async fn lock_stage(&self) -> tokio::sync::MutexGuard<'_, SuccessStage> {
+        self.stage.lock().await
     }
 }
 
@@ -204,6 +248,8 @@ enum Turn {
     Taken(&'static str),
     /// Returned for the service loop's admitted segment.
     Action(Arc<SuccessContinuation>, ActionKind),
+    /// Returned for the service loop's Root release.
+    Release(Arc<SuccessClosureAcknowledgment>),
 }
 
 impl PhaseJobs {
@@ -229,12 +275,14 @@ impl PhaseJobs {
         let mut turns = 0usize;
         let mut sweep = SuccessSweep {
             actions: Vec::new(),
+            releases: Vec::new(),
             pending: false,
         };
         for (operation, job, _finished) in snapshot {
             if stopping.load(Ordering::SeqCst) {
                 return Ok(SuccessSweep {
                     actions: Vec::new(),
+                    releases: Vec::new(),
                     pending: false,
                 });
             }
@@ -253,6 +301,13 @@ impl PhaseJobs {
                         kind,
                     });
                     "admitted action"
+                }
+                Turn::Release(ack) => {
+                    sweep.releases.push(SuccessRelease {
+                        job: Arc::downgrade(&job),
+                        ack,
+                    });
+                    "release"
                 }
             };
             turns += 1;
@@ -426,7 +481,7 @@ impl Job {
             ensure!(state.success.is_none(), "success continuation installed");
             state.success = Some(Arc::new(SuccessContinuation {
                 settled,
-                stage: Mutex::new(SuccessStage::default()),
+                stage: tokio::sync::Mutex::new(SuccessStage::default()),
             }));
             state.success_attention = None;
             state.success_backoff = 100;
@@ -444,6 +499,33 @@ impl Job {
         if let Some(kind) = stage.admitted_action() {
             drop(stage);
             return Ok(Turn::Action(success.clone(), kind));
+        }
+        if let Some(ClosureState::Known {
+            ack,
+            published: true,
+        }) = stage.closure.as_ref().map(|c| &c.state)
+        {
+            let ack = ack.clone();
+            let retired = stage.sources_retired;
+            drop(stage);
+            // Install the Driver's Known closure once (pointer-checked).
+            let installed = {
+                let _depth = RootLockDepth::enter();
+                self.state
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?
+                    .success_ack
+                    .is_some()
+            };
+            if !installed {
+                self.install_success_ack(success, ack)?;
+                return Ok(Turn::Taken("success acknowledged"));
+            }
+            return Ok(if retired {
+                Turn::Release(ack)
+            } else {
+                Turn::Skipped
+            });
         }
         if !stage.has_uncertain() {
             return Ok(Turn::Skipped);
@@ -653,6 +735,24 @@ pub(super) fn pause_before_normal_write(task: Option<crate::domain::TaskId>) {
 /// A closed phase's acknowledgment retained by its job.
 pub(crate) enum ClosedPhaseAck {
     NonSuccess(Arc<crate::state::PhaseClosedAcknowledgment>),
+    Success(Arc<SuccessClosureAcknowledgment>),
+}
+impl ClosedPhaseAck {
+    pub(crate) fn matches_allocation(&self, allocation: &Arc<NativeAllocation>) -> bool {
+        match self {
+            Self::NonSuccess(ack) => ack.matches_allocation(allocation),
+            Self::Success(ack) => Arc::ptr_eq(ack.settled().allocation(), allocation),
+        }
+    }
+    pub(crate) fn matches_marker(
+        &self,
+        marker: &Arc<crate::state::managed_binding::OriginalMarker>,
+    ) -> bool {
+        match self {
+            Self::NonSuccess(ack) => ack.matches_marker(marker),
+            Self::Success(ack) => std::ptr::eq(ack.settled().marker(), marker.as_ref()),
+        }
+    }
 }
 /// Root custody read for the SAME Driver association; nongrant.
 pub(crate) enum SettledLookup {
@@ -687,6 +787,9 @@ impl PhaseJobs {
             return Ok(SettledLookup::Closed(ClosedPhaseAck::NonSuccess(
                 ack.clone(),
             )));
+        }
+        if let Some(ack) = &state.success_ack {
+            return Ok(SettledLookup::Closed(ClosedPhaseAck::Success(ack.clone())));
         }
         if let Some(success) = &state.success {
             return Ok(SettledLookup::Settled(success.clone()));
