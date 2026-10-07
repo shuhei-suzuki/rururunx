@@ -7,8 +7,21 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
             config.scheduler.global_max_sessions = 128;
             config.scheduler.max_tasks_per_project = 128;
         });
-        f.register_real_git_project();
-        let (_, tasks) = accept(&f, 128).await;
+        let mut tasks = Vec::new();
+        for i in 0..128 {
+            f.register_real_git_project_named(&format!("ca4i-project-{i}"));
+            tasks.extend(accepted_plan(&f, task_plan(&["rev-a", "rev-b"])).await);
+        }
+        assert_eq!(
+            tasks
+                .iter()
+                .map(|t| t.project_id)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            128
+        );
+        // SAME Runtime with 128 genuine accepted Projects. Original whole-Project
+        // namespace pins remain unchanged; same-Project contention stays open.
         let held = tasks[0].id;
         let (park, _open) = service_park(&f);
         let release_held = Arc::new(tokio::sync::Semaphore::new(0));
@@ -51,7 +64,7 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
             Some(seams),
         );
         f.runtime.start().await.unwrap();
-        let setup_end = tokio::time::Instant::now() + Duration::from_secs(40);
+        let setup_end = tokio::time::Instant::now() + Duration::from_secs(120);
         let mut progress = tokio::time::Instant::now();
         while observations.lock().unwrap().len() != 128 {
             if tokio::time::Instant::now() >= progress {

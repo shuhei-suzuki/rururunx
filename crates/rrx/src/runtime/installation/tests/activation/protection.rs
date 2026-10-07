@@ -34,7 +34,11 @@ async fn ca5d_integrity_decision_uses_genuine_allocation_and_negative_raw_member
     )
     .unwrap();
     let mut negative: serde_json::Value = serde_json::from_str(&body).unwrap();
-    negative["members"] = serde_json::json!(["0".repeat(64)]);
+    let members = negative["members"].as_array_mut().unwrap();
+    members.push(serde_json::json!("0".repeat(64)));
+    members.sort_by(|a, b| a.as_str().unwrap().cmp(b.as_str().unwrap()));
+    // Preserve genuine membership, so digest removal alone accepts this forged
+    // negative row. An earlier membership refusal cannot earn integrity credit.
     let error = crate::state::managed_binding::check_native_contract_integrity(
         &allocation,
         record.id,
