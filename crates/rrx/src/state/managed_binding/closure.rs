@@ -91,7 +91,7 @@ fn workflow_delta(before: &Record, marker: &OriginalMarker, at: i64) -> Result<(
     let original_workflow: WorkflowSnapshot = serde_json::from_value(before.data.clone())?;
     // Check every field, including unrecognized data already covered by roundtrip.
     let mut neutral = workflow.clone();
-    neutral.history[index].state = original_workflow.history[index].state;
+    neutral.history[index].state = original_workflow.history[index].state.clone();
     neutral.history[index].completed_at = original_workflow.history[index].completed_at;
     neutral.history[index]
         .detail

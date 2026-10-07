@@ -78,7 +78,7 @@ impl NativeQuotaClosurePlan {
     }
     pub(super) fn validate_after_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         self.readiness.validate_tx(tx)?;
-        let id = t(self.actor.launch().allocation().facts().unit_id);
+        let id = t(self.actor.launch().allocation().facts().unit_id.to_string());
         ensure!(
             image_matches(tx, "quota_waiters", WAITER_COLUMNS, &id, &None)?
                 && (image_matches(tx, "quota_leases", LEASE_COLUMNS, &id, &self.after.lease)?
