@@ -386,6 +386,8 @@ impl WorkflowEngine {
             }
         };
         let material = crate::state::Store::materialize_phase_success(&plan)?;
+        #[cfg(test)]
+        crate::runtime::pause_at(Some(snapshot.task.id), crate::runtime::SUCCESS_ADMISSION);
         let admission = composition.admit_success(lifetime).await?;
         let (write, published) = {
             let mut store = self

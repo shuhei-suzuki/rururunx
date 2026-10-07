@@ -28,8 +28,8 @@ pub(crate) use success::{
 };
 #[cfg(test)]
 pub(crate) use success::{
-    NORMAL_WRITE, OWNER_IMMEDIATE, OWNER_PLANNING, SETTLED_CLOSURE, SETTLED_EVALUATION, WritePause,
-    count, counted, pause_at,
+    NORMAL_WRITE, OWNER_IMMEDIATE, OWNER_PLANNING, SETTLED_CLOSURE, SETTLED_EVALUATION,
+    SUCCESS_ADMISSION, WritePause, count, counted, pause_at,
 };
 use tokio::{sync::watch, task::JoinHandle};
 

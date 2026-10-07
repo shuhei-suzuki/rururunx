@@ -704,6 +704,8 @@ pub(crate) const SETTLED_EVALUATION: &str = "settled evaluation";
 #[cfg(test)]
 pub(crate) const SETTLED_CLOSURE: &str = "settled closure";
 #[cfg(test)]
+pub(crate) const SUCCESS_ADMISSION: &str = "success admission";
+#[cfg(test)]
 pub(crate) const OWNER_IMMEDIATE: &str = "owner immediate";
 #[cfg(test)]
 pub(crate) const OWNER_PLANNING: &str = "owner planning";

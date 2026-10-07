@@ -240,7 +240,11 @@ impl InstalledDriverComposition {
             .upgrade()
             .ok_or_else(|| anyhow::anyhow!("success Runtime ended"))?;
         let admission = tokio::select! { biased;
-            ()=lifetime.cancelled()=>return Err(anyhow::anyhow!("success Driver cancelled")),
+            ()=lifetime.cancelled()=>{
+                #[cfg(test)]
+                crate::runtime::count(Some(self.original_task.id), "success admission cancelled");
+                return Err(anyhow::anyhow!("success Driver cancelled"))
+            }
             guard=runtime.control_admission.clone().lock_owned()=>guard,
         };
         ensure!(

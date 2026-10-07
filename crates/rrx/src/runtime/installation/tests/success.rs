@@ -1620,3 +1620,64 @@ async fn sc10_four_projects_close_independently() {
     let _ = f.runtime.shutdown().await;
     finish(f).await;
 }
+
+/// SC9(a): shutdown takes the control admission and cancels the worker while
+/// it is held before its closure; resumed, the worker's cancel-biased
+/// `admit_success` returns cancelled and the closure never commits.
+async fn sc9a_stop(provider: &str) {
+    use crate::runtime::phase_jobs::SUCCESS_ADMISSION;
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    let closure = held(task, SUCCESS_ADMISSION);
+    f.runtime.start().await.unwrap();
+    wait_normal_bound(&f, task).await;
+    let marked = stored_task(&f, task);
+    release_completion(&f, task);
+    wait_for(
+        || closure.0.reached(),
+        "SETUP: success admission not reached",
+        90,
+    )
+    .await;
+    let runtime = f.runtime.clone();
+    let shutdown = tokio::spawn(async move { runtime.shutdown().await });
+    // Let shutdown take the admission and cancel the worker's lifetime.
+    wait_for(
+        || f.runtime.stopping.load(std::sync::atomic::Ordering::SeqCst),
+        "SETUP: shutdown did not begin",
+        10,
+    )
+    .await;
+    closure.0.release();
+    let _ = shutdown.await.unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(
+        links(&f, task),
+        ["session_bound", "gate_claim", "gate_observed"],
+        "SC9(a) {provider}: no closure after shutdown"
+    );
+    assert_eq!(
+        stored_task(&f, task).version,
+        marked.version,
+        "SC9(a) {provider}: Task unchanged"
+    );
+    assert_eq!(
+        crate::runtime::phase_jobs::counted(task.id, "success admission cancelled"),
+        1,
+        "SC9(a) {provider}: the cancel-biased admission returned cancelled"
+    );
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc9a_claude_shutdown_cancels_success_admission() {
+    sc9a_stop("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc9a_codex_shutdown_cancels_success_admission() {
+    sc9a_stop("codex").await;
+}
