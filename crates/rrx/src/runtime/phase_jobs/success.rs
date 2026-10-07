@@ -725,6 +725,8 @@ pub(crate) const CLOSURE_CONFIRM: &str = "closure confirm";
 #[cfg(test)]
 pub(crate) const ROOT_ADMISSION: &str = "root admission";
 #[cfg(test)]
+pub(crate) const SUCCESS_ADMITTED: &str = "success admitted";
+#[cfg(test)]
 pub(crate) const OWNER_IMMEDIATE: &str = "owner immediate";
 #[cfg(test)]
 pub(crate) const OWNER_PLANNING: &str = "owner planning";

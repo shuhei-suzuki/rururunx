@@ -602,6 +602,12 @@ impl Store {
             ack.plan.currency.settled().marker().scope().task_id,
             super::fault::PUBLISH,
         ))?;
-        self.publish_driver_closure(&ack.driver)
+        self.publish_driver_closure(&ack.driver)?;
+        #[cfg(test)]
+        crate::runtime::count(
+            ack.plan.currency.settled().marker().scope().task_id,
+            "success published",
+        );
+        Ok(())
     }
 }

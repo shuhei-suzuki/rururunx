@@ -26,7 +26,7 @@ pub(in crate::runtime) use success::SuccessSweep;
 pub(crate) use success::{
     BINDING_CONFIRM, CLOSURE_CONFIRM, HelperHold, NORMAL_WRITE, OWNER_IMMEDIATE, OWNER_PLANNING,
     ROOT_ADMISSION, SETTLED_CLOSURE, SETTLED_EVALUATION, SETTLEMENT_GAP, SUCCESS_ADMISSION,
-    WritePause, count, counted, hold_helper, pause_at,
+    SUCCESS_ADMITTED, WritePause, count, counted, hold_helper, pause_at,
 };
 pub(crate) use success::{
     ClosedPhaseAck, ClosureStage, ClosureState, Retained, SettledLookup, SuccessContinuation,

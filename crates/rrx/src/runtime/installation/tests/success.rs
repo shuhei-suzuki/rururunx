@@ -2259,3 +2259,61 @@ async fn sc9b_claude_shutdown_preempts_root_success_action() {
 async fn sc9b_codex_shutdown_preempts_root_success_action() {
     sc9b("codex").await;
 }
+
+/// SC9(d): shutdown's admission acquisition cannot interleave inside an
+/// admitted closure turn: while the worker holds its success admission,
+/// shutdown waits; the closure commit and its Driver publication are then
+/// observed together.
+async fn sc9d(provider: &str) {
+    use crate::runtime::phase_jobs::SUCCESS_ADMITTED;
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    let admitted = held(task, SUCCESS_ADMITTED);
+    f.runtime.start().await.unwrap();
+    wait_normal_bound(&f, task).await;
+    release_completion(&f, task);
+    wait_for(
+        || admitted.0.reached(),
+        "SETUP: admitted closure turn not reached",
+        90,
+    )
+    .await;
+    let runtime = f.runtime.clone();
+    let shutdown = tokio::spawn(async move { runtime.shutdown().await });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(
+        !f.runtime.stopping.load(std::sync::atomic::Ordering::SeqCst),
+        "SC9(d) {provider}: shutdown waits for the admitted closure turn"
+    );
+    assert!(
+        links(&f, task).last().map(String::as_str) != Some("phase_closed"),
+        "SETUP: closure not yet committed"
+    );
+    admitted.0.release();
+    let _ = tokio::time::timeout(Duration::from_secs(8), shutdown)
+        .await
+        .expect("SC9(d): shutdown did not complete")
+        .unwrap();
+    let closed = links(&f, task).last().map(String::as_str) == Some("phase_closed");
+    // The registry is stopped after shutdown, so publication is observed by
+    // its own cfg(test) counter rather than by a later cache read.
+    let published = crate::runtime::phase_jobs::counted(task.id, "success published") == 1;
+    assert!(
+        closed && published,
+        "SC9(d) {provider}: commit {closed} and publication {published} together"
+    );
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc9d_claude_shutdown_cannot_interleave_admitted_closure() {
+    sc9d("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc9d_codex_shutdown_cannot_interleave_admitted_closure() {
+    sc9d("codex").await;
+}

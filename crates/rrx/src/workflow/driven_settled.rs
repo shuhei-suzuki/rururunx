@@ -389,6 +389,8 @@ impl WorkflowEngine {
         #[cfg(test)]
         crate::runtime::pause_at(Some(snapshot.task.id), crate::runtime::SUCCESS_ADMISSION);
         let admission = composition.admit_success(lifetime).await?;
+        #[cfg(test)]
+        crate::runtime::pause_at(Some(snapshot.task.id), crate::runtime::SUCCESS_ADMITTED);
         let (write, published) = {
             let mut store = self
                 .store
