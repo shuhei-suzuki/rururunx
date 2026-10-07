@@ -332,3 +332,122 @@ mod waiting_observation_tests {
         assert_eq!(facts.observation(), None);
     }
 }
+
+/// Workflow-derived wait of a managed Task (SC): one bounded, read-only,
+/// nongrant reader over durable rows. It never decodes the whole Workflow
+/// body, writes nothing and grants nothing; raw text is never echoed.
+pub(super) fn workflow_wait(
+    c: &Connection,
+    task: &Task,
+) -> Result<Option<crate::runtime::control::WorkflowWait>> {
+    use crate::runtime::control::{WorkflowWait, WorkflowWaitKind};
+    use crate::state::managed_binding::{GATE_FAILED_DETAIL, GATE_UNKNOWN_DETAIL};
+    let scope = task.scope();
+    let operation: Option<(String, i64)> = c
+        .query_row(
+            "SELECT operation_id,phase_open FROM managed_phase_operations WHERE task_id=?1 AND goal_id=?2 AND project_id=?3 ORDER BY rowid DESC LIMIT 1",
+            params![task.id.to_string(), task.goal_id.to_string(), task.project_id.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let Some((operation, open)) = operation else {
+        return Ok(None);
+    };
+    let mut statement = c.prepare(
+        "SELECT json_extract(body,'$.data.active'),json_extract(body,'$.data.held_reason'),json_extract(body,'$.data.finished') FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='workflow' LIMIT 2",
+    )?;
+    let rows = statement
+        .query_map(
+            params![
+                scope.project_id.to_string(),
+                scope.goal_id.map(|v| v.to_string()),
+                scope.task_id.map(|v| v.to_string())
+            ],
+            |r| {
+                Ok((
+                    r.get::<_, Option<i64>>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, Option<bool>>(2)?,
+                ))
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    ensure!(rows.len() == 1, "Task Workflow is not unique");
+    let (active, held_reason, finished) = rows.into_iter().next().expect("one Workflow");
+    let attempt = |field: &str| -> Result<Option<String>> {
+        let Some(index) = active else {
+            return Ok(None);
+        };
+        Ok(c.query_row(
+            &format!("SELECT json_extract(body,'$.data.history[{index}].{field}') FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='workflow'"),
+            params![
+                scope.project_id.to_string(),
+                scope.goal_id.map(|v| v.to_string()),
+                scope.task_id.map(|v| v.to_string())
+            ],
+            |r| r.get::<_, Option<String>>(0),
+        )?)
+    };
+    let fixed = |kind, detail: &str| {
+        Some(WorkflowWait {
+            kind,
+            detail: detail.into(),
+        })
+    };
+    if open == 1 {
+        let state = attempt("state")?;
+        if state.as_deref() != Some("waiting") && held_reason.is_none() {
+            return Ok(None);
+        }
+        let phase = attempt("phase")?;
+        let detail = held_reason.or(attempt("detail")?);
+        let evidence =
+            phase.map(|p| format!("{p} requires its qualified production evidence integration"));
+        return Ok(match detail.as_deref() {
+            Some(d) if d == GATE_FAILED_DETAIL => {
+                fixed(WorkflowWaitKind::GateFailed, GATE_FAILED_DETAIL)
+            }
+            Some(d) if d == GATE_UNKNOWN_DETAIL => {
+                fixed(WorkflowWaitKind::GateUnknown, GATE_UNKNOWN_DETAIL)
+            }
+            Some(d) if Some(d) == evidence.as_deref() && d.len() <= 128 => {
+                fixed(WorkflowWaitKind::EvidenceIntegrationUnavailable, d)
+            }
+            _ => fixed(WorkflowWaitKind::Held, "workflow held"),
+        });
+    }
+    // Post-closure: the durable state a successful first-Executor closure
+    // produces; the in-memory Driver Waiting is never read.
+    let closed: i64 = c.query_row(
+        "SELECT count(*) FROM audit WHERE kind='rrx.private.workflow.phase_closed' AND json_extract(data,'$.private_operation_ref')=?1 AND json_extract(data,'$.closure')='success'",
+        [&operation],
+        |r| r.get(0),
+    )?;
+    let next: Option<String> = c.query_row(
+        "SELECT (SELECT p.value FROM json_each(json_extract(body,'$.data.configured_phases')) p WHERE json_type(json_extract(body,'$.data.completed'),'$.' || p.value) IS NULL ORDER BY p.key LIMIT 1) FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='workflow'",
+        params![
+            scope.project_id.to_string(),
+            scope.goal_id.map(|v| v.to_string()),
+            scope.task_id.map(|v| v.to_string())
+        ],
+        |r| r.get(0),
+    )?;
+    let driver: Option<(String, bool)> = c
+        .query_row(
+            "SELECT state,json_extract(body,'$.marker') IS NULL FROM task_drivers WHERE task_id=?1",
+            [task.id.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    Ok((closed == 1
+        && active.is_none()
+        && finished == Some(false)
+        && next.is_some()
+        && task.phase == next
+        && driver.is_some_and(|(state, free)| state == "driving" && free))
+    .then(|| WorkflowWait {
+        kind: WorkflowWaitKind::NextPhaseUnavailable,
+        detail: "next phase typed Driver continuation unavailable (SC-N)".into(),
+    }))
+}

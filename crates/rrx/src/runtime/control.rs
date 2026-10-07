@@ -162,6 +162,25 @@ pub struct TaskFacts {
     pub version: u64,
     pub state: TaskState,
     pub phase: Option<String>,
+    /// Read-only Workflow wait derived from durable rows; never a grant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_wait: Option<WorkflowWait>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowWaitKind {
+    EvidenceIntegrationUnavailable,
+    GateFailed,
+    GateUnknown,
+    NextPhaseUnavailable,
+    Held,
+}
+/// One fixed kind and one of the fixed detail constants (<=128 bytes).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowWait {
+    pub kind: WorkflowWaitKind,
+    pub detail: String,
 }
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -578,6 +578,12 @@ impl Store {
                     super::waiting::observe(&tx, task, &goal).as_ref(),
                 ),
                 phase: task.phase.clone(),
+                workflow_wait: super::waiting::workflow_wait(&tx, task).unwrap_or_else(|_| {
+                    Some(crate::runtime::control::WorkflowWait {
+                        kind: crate::runtime::control::WorkflowWaitKind::Held,
+                        detail: "workflow held".into(),
+                    })
+                }),
             });
             if let Some(page) = &mut enriched {
                 page.nodes.push(recorded::node(task, &goal, &lookup)?);

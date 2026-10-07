@@ -197,6 +197,14 @@ pub fn render(response: &ControlResponse, json: bool) -> Result<String> {
                         .map(quoted)
                         .unwrap_or_else(|| "null".into())
                 )?;
+                if let Some(wait) = &t.workflow_wait {
+                    writeln!(
+                        output,
+                        "Workflow wait: {} {}",
+                        wire(&wait.kind),
+                        quoted(&wait.detail)
+                    )?;
+                }
                 writeln!(
                     output,
                     "Structural dependencies: {}; incoming: {} (hard: {})",
