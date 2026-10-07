@@ -490,3 +490,62 @@ async fn ca1_actual_activation_gates_marker_and_record_only_bound() {
         finish(f).await;
     }
 }
+
+/// Separate stage control: activation's asserting observer would detect an
+/// absent contract before the first Reserve, masking the permit-window cause.
+/// This follows the identical genuine producer chain without that observer.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn ca1_gate_and_first_executor_windows_reach_original_bound() {
+    for provider in ["claude", "codex"] {
+        let mut f = fixture(provider, true);
+        f.register_real_git_project();
+        let (_, tasks) = accept(&f, 1).await;
+        let (observations, release) = install_pause(&f, None);
+        f.runtime.start().await.unwrap();
+        wait_for(
+            || observations.lock().unwrap().len() == 1,
+            "SETUP: genuine retained activation S1 absent",
+        )
+        .await;
+        release.add_permits(1);
+        wait_for(
+            || {
+                let complete = f
+                    .owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .record_window_observations()
+                    .len()
+                    == 4;
+                complete || f.runtime._drivers.observe_finished().unwrap() == 0
+            },
+            "CA1 gate/first-Executor stage did not settle",
+        )
+        .await;
+        {
+            let store = f.owner.store.lock().unwrap();
+            let windows = store.record_window_observations();
+            assert_eq!(
+                windows.len(),
+                4,
+                "CA1 gate/first-Executor stage: prescribed Record windows absent after actual worker exit"
+            );
+            for (index, &(_, before, planned_at, after, actual_at, consumed)) in
+                windows.iter().enumerate()
+            {
+                assert_eq!(
+                    before,
+                    index as u64 + 1,
+                    "CA1 original persisted gate previous version"
+                );
+                assert_eq!(after, before + 1, "CA1 gate consecutive Record version");
+                assert_eq!(actual_at, planned_at, "CA1 gate original planned timestamp");
+                assert_eq!(consumed, 1, "CA1 gate actual records ensure_consumed event");
+            }
+        }
+        let (_, workflow) = wait_bound(&f, &tasks[0]).await;
+        release_peer(&f, &workflow);
+        finish(f).await;
+    }
+}
