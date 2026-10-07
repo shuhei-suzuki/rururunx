@@ -38,3 +38,14 @@ Plus `SettledTerminalImages` ≤ about 6.3 MiB (§12, unchanged). The maximum is
 - Exact CAS and two-branch confirmation.
 - The completion is retained until the observation is Known (SOL-M02).
 - The claim and completion are released at Known on both the Driver and the Root paths.
+
+## 5. M1 status (as of `ccaef5f`)
+
+- **M1a (measurement only, `e4190cd`):** a document encoded exactly at `BODY_BYTES` is owned as 8 388 608 raw + 8 388 608 canonical = 16 MiB; at `SESSION_BYTES`, 8 MiB. One byte over each bound refuses. These are the 2W figures used in §1.
+- **M1b:** not yet measured (needs a reachable large genuine closure Context and retained/per-turn instrumentation).
+- **M1c: SETUP (unreachable precondition).** It asks for legitimate `Store::put_context` history in the Task scope before Goal acceptance. That precondition cannot be produced:
+  - `context_versions` has foreign keys to the Goal and the Task (`state/schema.sql:40–50`);
+  - Goals and Tasks exist only through accepted ingress (generic Goal creation refuses);
+  - after acceptance, `put_context` refuses ("accepted Goal Context requires genuine owned publication", `state/mod.rs:1443–1458`).
+
+  The `gate_claim` headroom check therefore remains defense-only, as the SC design already allows.
