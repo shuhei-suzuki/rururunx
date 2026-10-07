@@ -662,7 +662,6 @@ impl ManagedWorkflowSources {
     /// current-owner source claim. This does not reconstruct a Runtime driver.
     // The Runtime driver is a subsequent consumer; this private source port is
     // exercised through real retained producers below, never a persisted grant.
-    #[allow(dead_code)]
     pub(crate) async fn recover_retained(&self, task: TaskId) -> Result<()> {
         self.recover_retained_inner(
             task,

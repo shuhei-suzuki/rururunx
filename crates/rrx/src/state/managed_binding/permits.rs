@@ -181,14 +181,12 @@ pub(super) fn columns(table: &str) -> Option<&'static [&'static str]> {
 
 /// Not serializable; only managed-binding Store code can build a full row plan.
 /// Value::Real is rejected, rather than conflating SQLite numeric encodings.
-#[allow(dead_code)] // Actual marker/binder producer is composed separately.
 pub(in crate::state) struct ExactRowMutation {
     table: &'static str,
     action: &'static str,
     old: Vec<Value>,
     new: Vec<Value>,
 }
-#[allow(dead_code)]
 impl ExactRowMutation {
     /// Copy only this exact already validated SQL image for retained-plan retry.
     /// This never issues a Native proof and is private to managed-binding code.
@@ -262,7 +260,6 @@ impl Drop for Revoke<'_> {
         }
     }
 }
-#[allow(dead_code)]
 impl PrivatePermitManager {
     /// No async boundary. The closure must commit or roll back its own transaction;
     /// no manager lock is held while SQLite invokes the permission callback.

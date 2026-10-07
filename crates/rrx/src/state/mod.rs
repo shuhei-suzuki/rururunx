@@ -87,7 +87,6 @@ pub(crate) enum WorkflowAccess {
 
 pub struct Store {
     connection: Connection,
-    #[allow(dead_code)] // Actual managed marker/binder is composed separately.
     binding_permits: std::sync::Arc<managed_binding::PrivatePermitManager>,
     /// Finite read-only observations of real committed test-build windows.
     #[cfg(test)]
