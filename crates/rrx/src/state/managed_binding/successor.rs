@@ -277,6 +277,16 @@ pub(crate) fn plan_current_phase(
     owner: &RuntimeOwner,
     marker: &OriginalMarker,
 ) -> Result<CurrentWorkflowSuccessor> {
+    snapshot(owner, |tx| current_phase_tx(tx, owner, marker))
+}
+
+/// The same complete chain extraction inside a caller's query-only snapshot,
+/// so one coherent snapshot can plan the successor with its other facts.
+pub(crate) fn current_phase_tx(
+    tx: &Transaction<'_>,
+    owner: &RuntimeOwner,
+    marker: &OriginalMarker,
+) -> Result<CurrentWorkflowSuccessor> {
     let original = marker.original_plan();
     let f = marker.allocation().facts();
     ensure!(
@@ -285,93 +295,89 @@ pub(crate) fn plan_current_phase(
             && f.epoch == owner.epoch(),
         "current plan uses another actual owner"
     );
-    snapshot(owner, |tx| {
-        marker.validate_open_tx(tx)?;
-        let unit = current_unit(tx, marker)?;
-        let current = read_scope(tx, owner, &marker.scope())?;
-        let workflow = current.workflow.context("current Workflow absent")?;
-        original.before.validate_projection(
-            tx,
-            original.task_after.parsed(),
-            original.task_after.raw(),
-            Some((workflow.parsed(), workflow.raw())),
-        )?;
-        let template: WorkflowSnapshot =
-            serde_json::from_value(original.workflow_after.parsed().data.clone())?;
-        let index = template
-            .active
-            .context("original marker active attempt absent")?;
-        let phase = template
-            .history
-            .get(index)
-            .context("original marker attempt absent")?
-            .phase
-            .key();
-        let links = rows(tx, marker)?;
-        if links.is_empty() {
-            ensure!(
-                workflow.raw() == original.workflow_after.raw(),
-                "unlinked original Workflow encoded bytes changed"
-            );
-        }
-        let mut version = original.workflow_after.parsed().version;
-        let mut body_digest = original.workflow_after.digest(WORKFLOW_DOMAIN);
-        let mut ledger_digest = marker.frame_digest().to_owned();
-        let mut sequence = 0;
-        for (ordinal, link) in links.iter().enumerate() {
-            let event = &link.event;
-            let data = &event.data;
-            ensure!(
-                event.sequence > sequence
-                    && event.scope == marker.scope()
-                    && data["kind"].as_str() == event.kind.strip_prefix("rrx.private.workflow.")
-                    && data["canonical_body_recipe"] == RECIPE
-                    && data["project_id"] == f.scope.project_id.to_string()
-                    && data["goal_id"]
-                        == f.scope.goal_id.context("marker Goal absent")?.to_string()
-                    && data["task_id"]
-                        == f.scope.task_id.context("marker Task absent")?.to_string()
-                    && data["workflow_id"] == workflow.parsed().id.to_string()
-                    && data["private_operation_ref"] == marker.operation().to_string()
-                    && data["original_marker_frame_sha256"] == marker.frame_digest()
-                    && data["generation"].as_u64() == Some(template.generation)
-                    && data["attempt_index"].as_u64() == Some(u64::try_from(index)?)
-                    && data["phase"] == phase
-                    && data["context_version"].as_u64() == Some(original.context().0.version)
-                    && data["workflow_version_before"].as_u64() == Some(version)
-                    && data["workflow_version_after"].as_u64() == version.checked_add(1)
-                    && data["workflow_body_sha256_before"] == body_digest
-                    && data["prior_ledger_digest"] == ledger_digest,
-                "original complete Workflow ledger predecessor differs"
-            );
-            if event.kind == "rrx.private.workflow.session_bound" {
-                ensure!(ordinal == 0, "binding is not the first factual link");
-            }
-            // Own digest is excluded; immutable payload is hashed in full.
-            ensure!(
-                data.get("ledger_digest").is_none(),
-                "self-referential Workflow digest"
-            );
-            body_digest = hash_text(&data["workflow_body_sha256_after"])?.to_owned();
-            ledger_digest = Body::<Value>::decode(link.raw.clone(), 4096)?.digest(LEDGER_DOMAIN);
-            version = version
-                .checked_add(1)
-                .context("Workflow version exhausted")?;
-            sequence = event.sequence;
-        }
+    marker.validate_open_tx(tx)?;
+    let unit = current_unit(tx, marker)?;
+    let current = read_scope(tx, owner, &marker.scope())?;
+    let workflow = current.workflow.context("current Workflow absent")?;
+    original.before.validate_projection(
+        tx,
+        original.task_after.parsed(),
+        original.task_after.raw(),
+        Some((workflow.parsed(), workflow.raw())),
+    )?;
+    let template: WorkflowSnapshot =
+        serde_json::from_value(original.workflow_after.parsed().data.clone())?;
+    let index = template
+        .active
+        .context("original marker active attempt absent")?;
+    let phase = template
+        .history
+        .get(index)
+        .context("original marker attempt absent")?
+        .phase
+        .key();
+    let links = rows(tx, marker)?;
+    if links.is_empty() {
         ensure!(
-            workflow.parsed().id == original.workflow_after.parsed().id
-                && workflow.parsed().version == version
-                && workflow.digest(WORKFLOW_DOMAIN) == body_digest,
-            "current Workflow is not the complete ledger endpoint"
+            workflow.raw() == original.workflow_after.raw(),
+            "unlinked original Workflow encoded bytes changed"
         );
-        Ok(CurrentWorkflowSuccessor {
-            original: marker.publication_plan(),
-            workflow: Arc::new(workflow),
-            unit: Arc::new(unit),
-            count: links.len(),
-            head: links.into_iter().last().map(Arc::new),
-        })
+    }
+    let mut version = original.workflow_after.parsed().version;
+    let mut body_digest = original.workflow_after.digest(WORKFLOW_DOMAIN);
+    let mut ledger_digest = marker.frame_digest().to_owned();
+    let mut sequence = 0;
+    for (ordinal, link) in links.iter().enumerate() {
+        let event = &link.event;
+        let data = &event.data;
+        ensure!(
+            event.sequence > sequence
+                && event.scope == marker.scope()
+                && data["kind"].as_str() == event.kind.strip_prefix("rrx.private.workflow.")
+                && data["canonical_body_recipe"] == RECIPE
+                && data["project_id"] == f.scope.project_id.to_string()
+                && data["goal_id"] == f.scope.goal_id.context("marker Goal absent")?.to_string()
+                && data["task_id"] == f.scope.task_id.context("marker Task absent")?.to_string()
+                && data["workflow_id"] == workflow.parsed().id.to_string()
+                && data["private_operation_ref"] == marker.operation().to_string()
+                && data["original_marker_frame_sha256"] == marker.frame_digest()
+                && data["generation"].as_u64() == Some(template.generation)
+                && data["attempt_index"].as_u64() == Some(u64::try_from(index)?)
+                && data["phase"] == phase
+                && data["context_version"].as_u64() == Some(original.context().0.version)
+                && data["workflow_version_before"].as_u64() == Some(version)
+                && data["workflow_version_after"].as_u64() == version.checked_add(1)
+                && data["workflow_body_sha256_before"] == body_digest
+                && data["prior_ledger_digest"] == ledger_digest,
+            "original complete Workflow ledger predecessor differs"
+        );
+        if event.kind == "rrx.private.workflow.session_bound" {
+            ensure!(ordinal == 0, "binding is not the first factual link");
+        }
+        // Own digest is excluded; immutable payload is hashed in full.
+        ensure!(
+            data.get("ledger_digest").is_none(),
+            "self-referential Workflow digest"
+        );
+        body_digest = hash_text(&data["workflow_body_sha256_after"])?.to_owned();
+        ledger_digest = Body::<Value>::decode(link.raw.clone(), 4096)?.digest(LEDGER_DOMAIN);
+        version = version
+            .checked_add(1)
+            .context("Workflow version exhausted")?;
+        sequence = event.sequence;
+    }
+    ensure!(
+        workflow.parsed().id == original.workflow_after.parsed().id
+            && workflow.parsed().version == version
+            && workflow.digest(WORKFLOW_DOMAIN) == body_digest,
+        "current Workflow is not the complete ledger endpoint"
+    );
+    Ok(CurrentWorkflowSuccessor {
+        original: marker.publication_plan(),
+        workflow: Arc::new(workflow),
+        unit: Arc::new(unit),
+        count: links.len(),
+        head: links.into_iter().last().map(Arc::new),
     })
 }
 

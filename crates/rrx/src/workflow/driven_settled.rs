@@ -214,17 +214,19 @@ impl WorkflowEngine {
                 reason: reason.into(),
             })
         };
+        // A Known observation no longer needs the claim or the completion
+        // (released below when it became Known; SC §12 compact retention).
+        if let Some(Retained::Known(ack)) = stage.observed.as_ref() {
+            let ack = ack.clone();
+            if ack.passed().is_none() {
+                return waiting("settled gate observed; Workflow re-read");
+            }
+            return self.settled_closure(stage, step, &ack).await;
+        }
         let Some(claim) = stage.claim.as_ref().and_then(Retained::known).cloned() else {
             return waiting(HELD_UNKNOWN);
         };
         let observed_plan = match stage.observed.take() {
-            Some(Retained::Known(ack)) => {
-                stage.observed = Some(Retained::Known(ack.clone()));
-                if ack.passed().is_none() {
-                    return waiting("settled gate observed; Workflow re-read");
-                }
-                return self.settled_closure(stage, step, &ack).await;
-            }
             Some(Retained::RolledBack(plan)) => plan,
             Some(other) => {
                 stage.observed = Some(other);
@@ -266,16 +268,21 @@ impl WorkflowEngine {
                         Err(_cause) => return waiting(HELD_UNKNOWN),
                     }
                 }
+                // The sealed completion stays in the stage until its
+                // observation is Known; a refused plan is this turn's Held.
                 let completion = stage
                     .completion
-                    .take()
+                    .as_ref()
                     .context("settled gate completion absent")?;
-                crate::state::Store::plan_settled_gate_observed(
+                match crate::state::Store::plan_settled_gate_observed(
                     owner,
                     &claim,
                     completion,
                     now_ms(),
-                )?
+                ) {
+                    Ok(plan) => plan,
+                    Err(_cause) => return waiting(HELD_UNKNOWN),
+                }
             }
         };
         let write = self
@@ -284,6 +291,10 @@ impl WorkflowEngine {
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .observe_settled_gate(&observed_plan);
         stage.observed = Retained::from_write(observed_plan, write);
+        if matches!(stage.observed, Some(Retained::Known(_))) {
+            stage.completion = None;
+            stage.claim = None;
+        }
         Ok(StepResult::Started {
             phase,
             session: None,

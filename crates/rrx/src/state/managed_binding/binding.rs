@@ -8,7 +8,7 @@ use super::{
     publication::charged_scope_bytes,
     session_identity::validate_negative_identities,
     snapshot::snapshot,
-    successor::{CurrentWorkflowSuccessor, plan_current_phase, validate_current_tx},
+    successor::{CurrentWorkflowSuccessor, current_phase_tx, validate_current_tx},
 };
 use crate::{
     domain::*,
@@ -457,27 +457,27 @@ fn plan_binding(
     proof: Arc<NativePhaseBinding>,
     kind: BindingKind,
 ) -> Result<ManagedBindingPlan> {
-    let current = plan_current_phase(owner, proof.marker())?;
-    let late = match kind {
-        BindingKind::Normal => {
-            normal_eligibility(&proof, &current)?;
-            None
-        }
-        BindingKind::Late => Some(late_eligibility(&proof, &current)?),
-    };
-    let closed = late.is_some();
-    let (session, owner_raw, invocation) = snapshot(owner, |tx| {
-        validate_current_tx(tx, proof.marker(), &current)?;
+    // One coherent query-only snapshot plans the successor and the Session,
+    // owner and invocation facts together (SC §5.2, §12).
+    let (current, late, session, owner_raw, invocation) = snapshot(owner, |tx| {
+        let current = current_phase_tx(tx, owner, proof.marker())?;
+        let late = match kind {
+            BindingKind::Normal => {
+                normal_eligibility(&proof, &current)?;
+                None
+            }
+            BindingKind::Late => Some(late_eligibility(&proof, &current)?),
+        };
+        let closed = late.is_some();
         proof.marker().validate_driver_live_tx(tx)?;
         if let Some(settled) = late {
             settled.validate_terminal_images_tx(tx)?;
             settled.validate_terminal_unit_tx(tx)?;
         }
-        Ok((
-            latest_session(tx, &proof, late)?,
-            registered_owner(tx, &proof, closed)?,
-            binding_invocation(tx, &proof, &current, closed)?,
-        ))
+        let session = latest_session(tx, &proof, late)?;
+        let owner_raw = registered_owner(tx, &proof, closed)?;
+        let invocation = binding_invocation(tx, &proof, &current, closed)?;
+        Ok((current, late, session, owner_raw, invocation))
     })?;
     let already_bound = current.has_links();
     let at = if already_bound {

@@ -51,7 +51,6 @@ struct LinkAdvance {
     kind: &'static str,
     data: String,
     at: i64,
-    record_mutation: ExactRowMutation,
     headroom: u64,
 }
 
@@ -320,20 +319,12 @@ fn advance(
     at: i64,
     headroom: u64,
 ) -> Result<LinkAdvance> {
-    let current = currency.current();
-    let record_mutation = ExactRowMutation::new(
-        "records",
-        "UPDATE",
-        Some(record_image(current.workflow(), current.workflow_raw())?),
-        Some(record_image(after.parsed(), after.raw())?),
-    )?;
     Ok(LinkAdvance {
         currency,
         after,
         kind,
         data,
         at,
-        record_mutation,
         headroom,
     })
 }
@@ -407,7 +398,17 @@ impl Store {
             SqlValue::Text(a.data.clone()),
         ];
         let writes = vec![
-            a.record_mutation.copy_for_transaction()?,
+            // Materialized per write from the SAME retained images; plans
+            // never keep a duplicate full-image mutation (SC §12).
+            ExactRowMutation::new(
+                "records",
+                "UPDATE",
+                Some(record_image(
+                    a.currency.current().workflow(),
+                    a.currency.current().workflow_raw(),
+                )?),
+                Some(record_image(a.after.parsed(), a.after.raw())?),
+            )?,
             ExactRowMutation::new("audit", "INSERT", None, Some(audit))?,
         ];
         self.binding_permits.with_exact_permit(writes, || {
@@ -500,29 +501,34 @@ impl Store {
     pub(crate) fn plan_settled_gate_observed(
         owner: &RuntimeOwner,
         claim: &Arc<GateClaimAcknowledgment>,
-        completion: SettledGateCompletion,
+        completion: &SettledGateCompletion,
         at: i64,
     ) -> Result<Arc<GateObservedPlan>> {
         ensure!(
             completion.belongs_to(claim),
             "gate completion belongs to another claim"
         );
-        let (outcome, receipt, sources, _) = completion.into_parts();
+        #[cfg(test)]
+        super::fault::before(super::fault::take(
+            claim.settled().marker().scope().task_id,
+            super::fault::OBSERVED_PLAN,
+        ))?;
+        let (outcome, receipt, sources) = completion.parts();
         let settled = claim.settled();
         let phase = settled.phase();
         let observed = match (outcome, receipt) {
             (SettledGateOutcome::Known(GateOutcome::Passed(evidence)), Some(receipt)) => {
-                Observed::Passed(Box::new((evidence, receipt)))
+                Observed::Passed(Box::new((evidence.clone(), receipt.clone())))
             }
             (SettledGateOutcome::Known(GateOutcome::Waiting(detail)), None)
-                if detail
+                if *detail
                     == format!(
                         "{} requires its qualified production evidence integration",
                         phase.key()
                     )
                     && detail.len() <= 128 =>
             {
-                Observed::Waiting(detail)
+                Observed::Waiting(detail.clone())
             }
             (SettledGateOutcome::Known(GateOutcome::Failed(_)), None) => Observed::Failed,
             _ => Observed::Unknown,
@@ -536,7 +542,7 @@ impl Store {
         );
         let task = settled.marker().original_plan().task_after().0;
         let (index, after) =
-            observed_delta(currency.current().workflow(), task, &observed, &sources, at)?;
+            observed_delta(currency.current().workflow(), task, &observed, sources, at)?;
         let header = header(&currency, &after, OBSERVED_KIND, index, at)?;
         let extra = match &observed {
             Observed::Passed(passed) => json!({"outcome":"passed",
@@ -570,6 +576,12 @@ impl Store {
         );
         #[cfg(test)]
         super::fault::before(fault)?;
+        #[cfg(test)]
+        if fault == Some(super::fault::CommitFault::Conflict) {
+            return Ok(SuccessWrite::Conflict(anyhow::anyhow!(
+                "injected typed observed conflict"
+            )));
+        }
         let result = self.observe_settled_gate_inner(plan)?;
         #[cfg(test)]
         let result = super::fault::after(fault, matches!(result, SuccessWrite::Known(_)), result)?;

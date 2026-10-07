@@ -187,6 +187,13 @@ impl OriginalMarker {
     ) -> Result<()> {
         self.plan.rows.validate_closed_tx(tx, operation)
     }
+    pub(super) fn validate_success_closed_tx(
+        &self,
+        tx: &Transaction<'_>,
+        operation: &[rusqlite::types::Value],
+    ) -> Result<()> {
+        self.plan.rows.validate_success_closed_tx(tx, operation)
+    }
     /// Immutable original lineage; copied rows or a fresh ticket cannot match.
     /// Current successor, live Driver and actual Native eligibility are separate.
     pub(crate) fn matches_source_ticket(&self, ticket: &Arc<DriverReadTicket>) -> bool {

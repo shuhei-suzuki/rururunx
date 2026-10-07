@@ -333,6 +333,23 @@ impl DriverClosureAdvance {
                 &self.old_body,
             )
     }
+    /// The SAME live association, whose cache holds the frozen row before
+    /// publication or the closed row after it; an ended or revoked worker is
+    /// never current. Nongrant.
+    pub(crate) fn association_current(&self) -> bool {
+        self.ticket.association.owner_matches(&self.ticket.owner)
+            && (self.ticket.association.validates(
+                self.old.id,
+                self.old.epoch,
+                self.old.version,
+                &self.old_body,
+            ) || self.ticket.association.validates(
+                self.next.id,
+                self.next.epoch,
+                self.next.version,
+                &self.body,
+            ))
+    }
     pub(crate) fn version_after(&self) -> u64 {
         self.next.version
     }

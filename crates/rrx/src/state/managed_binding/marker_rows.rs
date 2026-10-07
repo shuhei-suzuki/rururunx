@@ -116,6 +116,21 @@ impl MarkerRows {
         }
         Ok(())
     }
+    /// Success closure (SC): the original input row and the closed operation.
+    /// The owner was registered after the marker; its exact registered image
+    /// is checked by the sealed terminal images, never by this marker image.
+    pub(super) fn validate_success_closed_tx(
+        &self,
+        tx: &Transaction<'_>,
+        operation: &[SqlValue],
+    ) -> Result<()> {
+        self.rows
+            .iter()
+            .find(|r| r.table == "managed_phase_inputs")
+            .context("original unadvanced marker image absent")?
+            .validate_tx(tx)?;
+        Insert::new("managed_phase_operations", operation.to_vec())?.validate_tx(tx)
+    }
     pub(super) fn validate_closed_tx(
         &self,
         tx: &Transaction<'_>,

@@ -53,15 +53,10 @@ impl SettledGateCompletion {
     ) -> bool {
         Arc::ptr_eq(&self.claim, claim)
     }
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        SettledGateOutcome,
-        Option<Record>,
-        SourceSnapshot,
-        Arc<crate::state::managed_binding::GateClaimAcknowledgment>,
-    ) {
-        (self.outcome, self.receipt, self.sources, self.claim)
+    /// Borrowed sealed parts: the completion stays retained by its stage
+    /// until its observation is Known, so a refused plan never loses it.
+    pub(crate) fn parts(&self) -> (&SettledGateOutcome, Option<&Record>, &SourceSnapshot) {
+        (&self.outcome, self.receipt.as_ref(), &self.sources)
     }
 }
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -463,6 +458,8 @@ impl ManagedWorkflowGates {
             invocation.task.scope().task_id,
             crate::runtime::SETTLED_EVALUATION,
         );
+        #[cfg(test)]
+        crate::runtime::count(invocation.task.scope().task_id, "settled evaluation");
         let sources = invocation.sources.clone();
         let (outcome, receipt) = match self
             .evaluate_settled_checked(claim, &invocation, checked, &workflow)

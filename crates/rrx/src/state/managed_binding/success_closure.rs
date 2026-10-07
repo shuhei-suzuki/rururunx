@@ -358,8 +358,14 @@ fn confirm_close_tx(tx: &Transaction<'_>, m: &SuccessClosureMaterial) -> Result<
         if !closed {
             return Ok(None);
         }
-        marker.validate_closed_tx(tx, &m.operation)?;
+        // The registered owner, readiness and admission are the sealed
+        // terminal images checked above; the marker supplies input/operation.
+        marker.validate_success_closed_tx(tx, &m.operation)?;
         m.driver.validate_closed_tx(tx)?;
+        ensure!(
+            m.driver.association_current(),
+            "success closure Driver association ended"
+        );
         original.before.validate_success_projection(
             tx,
             &m.task,

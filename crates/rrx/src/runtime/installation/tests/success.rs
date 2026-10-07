@@ -1215,6 +1215,22 @@ async fn sc4_uncertain(
         marked.version + 1,
         "SC4 {provider} {site} {fault:?}: Task bumped once"
     );
+    // The uncertain write was confirmed Known: the Driver is published
+    // marker-free and the job's custody released (as in SC1).
+    wait_for(
+        || {
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .validate_task_driver(task.id)
+                .is_ok()
+                && f.runtime.phase_jobs.observed_jobs().is_empty()
+        },
+        &format!("SC4 {provider} {site} {fault:?}: confirmation, publication and release"),
+        30,
+    )
+    .await;
     let _ = f.runtime.shutdown().await;
     finish(f).await;
 }
@@ -1433,4 +1449,66 @@ async fn sc3l_claude_writer_lock_is_uncertain_then_rolled_back() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc3l_codex_writer_lock_is_uncertain_then_rolled_back() {
     sc3_lock("codex").await;
+}
+
+/// SOL-M02: a sealed completion survives a refused observed plan and a typed
+/// observed Conflict: the gate is evaluated once, the SAME completion is
+/// planned again, and the chain closes with exactly one link of each kind.
+async fn retained_completion(
+    provider: &str,
+    site: &'static str,
+    fault: crate::state::managed_binding::fault::CommitFault,
+) {
+    use crate::runtime::phase_jobs::counted;
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    crate::state::managed_binding::fault::arm_commit_fault(task.id, site, fault);
+    f.runtime.start().await.unwrap();
+    wait_normal_bound(&f, task).await;
+    release_completion(&f, task);
+    wait_for(
+        || links(&f, task).last().map(String::as_str) == Some("phase_closed"),
+        "SC-R: chain did not close",
+        90,
+    )
+    .await;
+    assert!(
+        !crate::state::managed_binding::fault::armed(task.id, site),
+        "SETUP: SC-R {provider} {site} {fault:?}: the fault never fired"
+    );
+    assert_eq!(
+        counted(task.id, "settled evaluation"),
+        1,
+        "SC-R {provider} {site} {fault:?}: evaluated once"
+    );
+    assert_eq!(
+        links(&f, task),
+        [
+            "session_bound",
+            "gate_claim",
+            "gate_observed",
+            "phase_closed"
+        ],
+        "SC-R {provider} {site} {fault:?}: one link of each kind"
+    );
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+async fn retained_all(provider: &str) {
+    use crate::state::managed_binding::fault::{CommitFault, OBSERVED, OBSERVED_PLAN};
+    retained_completion(provider, OBSERVED_PLAN, CommitFault::BeforeCommit).await;
+    retained_completion(provider, OBSERVED, CommitFault::Conflict).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn scr_claude_completion_survives_refused_plan_and_conflict() {
+    retained_all("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn scr_codex_completion_survives_refused_plan_and_conflict() {
+    retained_all("codex").await;
 }

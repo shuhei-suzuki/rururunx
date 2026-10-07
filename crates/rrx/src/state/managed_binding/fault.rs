@@ -8,6 +8,8 @@ use std::sync::Mutex;
 pub(crate) enum CommitFault {
     BeforeCommit,
     AfterCommit,
+    /// A typed pre-write Conflict instead of the write (observed only).
+    Conflict,
 }
 type Armed = ((TaskId, &'static str), CommitFault);
 static FAULTS: Mutex<Vec<Armed>> = Mutex::new(Vec::new());
@@ -16,6 +18,8 @@ pub(crate) const BIND: &str = "bind";
 pub(crate) const CLAIM: &str = "claim";
 pub(crate) const OBSERVED: &str = "observed";
 pub(crate) const CLOSURE: &str = "closure";
+/// The observed planner (a refused plan, not a write).
+pub(crate) const OBSERVED_PLAN: &str = "observed plan";
 
 pub(crate) fn arm_commit_fault(task: TaskId, site: &'static str, fault: CommitFault) {
     FAULTS.lock().unwrap().push(((task, site), fault));

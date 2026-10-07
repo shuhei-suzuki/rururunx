@@ -547,6 +547,11 @@ impl Job {
                 plan.clone(),
                 store.confirm_settled_gate_observed(&plan),
             );
+            if matches!(next, Retained::Known(_)) {
+                // Compact retention: the claim and completion are spent.
+                stage.claim = None;
+                stage.completion = None;
+            }
             stage.observed = Some(next);
             confirmed
         } else {
