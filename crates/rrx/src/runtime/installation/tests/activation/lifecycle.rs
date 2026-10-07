@@ -412,12 +412,14 @@ async fn ca4g_actual_exited_worker_keeps_same_plan_held() {
             "CA4g revoked cache advanced"
         );
         assert_contract(&f, &original, "CA4g Held");
-        park.open();
         assert!(
             f.runtime.observe_task_drivers().unwrap() >= 1,
             "CA4g Held plan omitted from pending count"
         );
         assert_eq!(f.runtime._drivers.observe_finished().unwrap(), 0);
+        // The private direct sweep has one observer while S5 parks the service.
+        // Open only after these assertions, before genuine shutdown joins it.
+        park.open();
         let error = f.runtime.shutdown().await.unwrap_err();
         assert!(
             error
