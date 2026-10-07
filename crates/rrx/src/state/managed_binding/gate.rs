@@ -125,6 +125,11 @@ fn advanced_from(
     task: &Task,
     at: i64,
 ) -> Result<Body<Record>> {
+    let after = bumped(before, workflow, at)?;
+    crate::workflow::validate_transition(task, &after, Some(previous))?;
+    Body::decode(serde_json::to_string(&after)?, BODY_BYTES)
+}
+fn bumped(before: &Record, workflow: WorkflowSnapshot, at: i64) -> Result<Record> {
     let mut after = before.clone();
     after.version = before
         .version
@@ -133,8 +138,7 @@ fn advanced_from(
         .context("settled Workflow version exhausted")?;
     after.updated_at = at;
     after.data = serde_json::to_value(workflow)?;
-    crate::workflow::validate_transition(task, &after, Some(previous))?;
-    Body::decode(serde_json::to_string(&after)?, BODY_BYTES)
+    Ok(after)
 }
 
 /// Running (bound) -> Evaluating; claimed_observations = observations.len().
@@ -225,6 +229,39 @@ fn observed_delta(
         Observed::Failed => workflow.held_reason = Some(GATE_FAILED_DETAIL.into()),
         Observed::Unknown => workflow.held_reason = Some(GATE_UNKNOWN_DETAIL.into()),
         _ => {}
+    }
+    if matches!(observed, Observed::Unknown) {
+        // A sealed Unknown has no known outcome, so the generic validator's
+        // known-observation exit cannot admit it. Its SC-only audited
+        // disposition is checked as an exact delta from the persisted before:
+        // one observation plus the fixed Waiting/detail/held_reason, nothing else.
+        let mut neutral = workflow.clone();
+        let attempt = &mut neutral.history[index];
+        let appended = attempt
+            .observations
+            .pop()
+            .context("settled Unknown observation absent")?;
+        ensure!(
+            appended.outcome.is_none()
+                && appended.error.as_deref() == Some(GATE_UNKNOWN_DETAIL)
+                && attempt.state == AttemptState::Waiting
+                && attempt.detail.as_deref() == Some(GATE_UNKNOWN_DETAIL)
+                && neutral.held_reason.as_deref() == Some(GATE_UNKNOWN_DETAIL),
+            "settled Unknown disposition differs"
+        );
+        attempt.state = original.history[index].state.clone();
+        attempt.detail = original.history[index].detail.clone();
+        neutral.held_reason = original.held_reason.clone();
+        ensure!(
+            encode(&serde_json::to_value(neutral)?, BODY_BYTES)?
+                == encode(&before.data, BODY_BYTES)?,
+            "settled Unknown changes unrelated facts"
+        );
+        let after = bumped(before, workflow, at)?;
+        return Ok((
+            index,
+            Body::decode(serde_json::to_string(&after)?, BODY_BYTES)?,
+        ));
     }
     // The audited link is the observer. As in the Driver gate writer, the
     // exact virtual observer image (only this observation appended) is the
