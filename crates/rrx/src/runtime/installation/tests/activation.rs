@@ -189,12 +189,12 @@ async fn ca1_actual_activation_gates_marker_and_record_only_bound() {
             "CA1 binder record version"
         );
         assert_eq!(
-            workflow_version, 9,
-            "CA1 initial + six gate edges + Executor reservation + marker"
+            workflow_version, 6,
+            "CA1 initial + QUICK gate Reserve/Claim/Complete + Executor reservation + marker"
         );
         let advances:u64=raw(&f).query_row("SELECT count(*) FROM audit WHERE kind='rrx.private.runtime.driver_initial_input_advanced'",[],|r|r.get(0)).unwrap();
         assert_eq!(
-            advances, 8,
+            advances, 5,
             "CA1 activation, Reserve/Claim/Complete and Executor record windows"
         );
         assert_eq!(
