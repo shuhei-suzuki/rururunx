@@ -574,6 +574,12 @@ pub struct WorkflowEngine {
     hooks: EngineHooks,
 }
 impl WorkflowEngine {
+    pub(crate) fn installed_native_port(
+        &self,
+        alias: &str,
+    ) -> Result<Arc<crate::adapter::native::NativePhasePort>> {
+        Ok(self.registry.native_phase_port(alias)?)
+    }
     /// Pure identity checks against the real retained producer/vtable. Public
     /// trait callbacks, capability descriptors and ledger DTOs are not consulted.
     pub(crate) fn matches_composition(
@@ -922,15 +928,15 @@ impl WorkflowEngine {
     pub(crate) async fn initialize_driven(
         &self,
         task_id: TaskId,
-        sources: &Arc<crate::execution::workflow_source::ManagedWorkflowSources>,
+        composition: &crate::runtime::installation::InstalledDriverComposition,
         lifetime: &crate::runtime::driver::WorkerLifetime,
     ) -> Result<WorkflowSnapshot> {
-        let installed: Arc<dyn WorkflowSources> = sources.clone();
+        let installed: Arc<dyn WorkflowSources> = composition.sources().clone();
         ensure!(
             Arc::ptr_eq(&self.sources, &installed),
             "Driver Engine has another Sources producer"
         );
-        self.initialize_inner(task_id, None, Some((sources, lifetime)))
+        self.initialize_inner(task_id, None, Some((composition, lifetime)))
             .await
     }
     async fn initialize_inner(
@@ -938,7 +944,7 @@ impl WorkflowEngine {
         task_id: TaskId,
         stricter: Option<WorkflowClass>,
         driven: Option<(
-            &Arc<crate::execution::workflow_source::ManagedWorkflowSources>,
+            &crate::runtime::installation::InstalledDriverComposition,
             &crate::runtime::driver::WorkerLifetime,
         )>,
     ) -> Result<WorkflowSnapshot> {
@@ -1032,29 +1038,79 @@ impl WorkflowEngine {
                 )?,
             );
         }
-        if let Some((sources, _)) = driven {
-            let (frame, unit) = sources
+        if let Some((composition, lifetime)) = driven {
+            let (frame, unit) = composition
+                .sources()
                 .initial_input_frame(&original_task, &snapshot.record, &context)
                 .await?;
+            let activation = crate::state::managed_binding::plan_native_activation(
+                composition.activation_roster(&snapshot.task)?,
+                &snapshot.record,
+                &snapshot.task,
+            )?;
             let plan = driver_ticket
                 .context("Driver ticket missing")?
-                .plan_initial_input(frame, unit, &snapshot.task, &snapshot.record, &context)?;
-            let mut store = self
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            store.activate_driven_workflow(
-                &mut snapshot.task,
-                &mut snapshot.record,
-                &context,
-                snapshot.project.version,
-                snapshot.goal.version,
-                snapshot
-                    .verification_activation
-                    .as_ref()
-                    .context("managed activation missing")?,
-                &plan,
-            )?;
+                .plan_initial_input(
+                    frame,
+                    unit,
+                    &snapshot.task,
+                    &snapshot.record,
+                    &context,
+                    activation,
+                )?;
+            let admission = composition.admit_activation(&plan, lifetime).await?;
+            let outcome = {
+                let mut store = self
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+                store.activate_driven_workflow(
+                    &mut snapshot.task,
+                    &mut snapshot.record,
+                    &context,
+                    snapshot.project.version,
+                    snapshot.goal.version,
+                    snapshot
+                        .verification_activation
+                        .as_ref()
+                        .context("managed activation missing")?,
+                    &plan,
+                )?
+            };
+            drop(admission);
+            if matches!(
+                outcome,
+                crate::state::managed_binding::ActivationCommit::Deferred
+            ) {
+                let mut recovered = false;
+                for segment in 0..3 {
+                    if segment > 0 {
+                        tokio::select! { biased;
+                            ()=lifetime.cancelled()=>bail!("activation recovery cancelled"),
+                            ()=tokio::time::sleep(std::time::Duration::from_millis(100))=>{},
+                        }
+                    }
+                    let admission = composition
+                        .admit_activation_recovery(&plan, lifetime)
+                        .await?;
+                    {
+                        let mut store = self
+                            .store
+                            .lock()
+                            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+                        store.reconcile_driver_preparation(&plan)?;
+                        let (id, epoch, version, body) = plan.planned_binding();
+                        recovered = !plan.is_retained()?
+                            && lifetime.association()?.binding()?
+                                == (id, epoch, version, body.to_owned());
+                    }
+                    drop(admission);
+                    if recovered {
+                        break;
+                    }
+                }
+                ensure!(recovered, "activation SAME-worker publication remains Held");
+            }
         } else {
             self.persist(&mut snapshot, Some(&context))?;
         }

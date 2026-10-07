@@ -2,12 +2,17 @@
 //!
 //! The marker/binding producer and Native protocol are not yet composed. These
 //! bounded read primitives must not enable Workflow or replace its private proof.
+mod activation;
 mod binding;
+pub(crate) use activation::{
+    ActivationCommit, NativeActivationPlan, member_digest, plan_native_activation, roster_digest,
+};
 mod canonical;
 pub(in crate::state) use canonical::Body;
 pub(in crate::state) use marker_plan::unit_index_matches as unit_image_matches;
 mod marker_plan;
 mod marker_rows;
+pub(in crate::state) use marker_rows::record_image;
 mod permits;
 mod protection;
 mod publication;
@@ -28,7 +33,7 @@ pub(super) use schema::{
     validate_legacy_namespace,
 };
 
-pub(crate) use crate::runtime::installation::InstalledDriverComposition;
+pub(crate) use crate::runtime::installation::{ActivationRoster, InstalledDriverComposition};
 pub(crate) use crate::runtime::phase_supervisor::{PhaseLaunch, PhaseLaunchParts};
 pub(crate) use binding::{ManagedBindingPlan, plan_managed_binding};
 pub(crate) use marker_plan::ManagedMarkerPlan;

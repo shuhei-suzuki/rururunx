@@ -229,6 +229,37 @@ pub(in crate::state) fn read_scope(
 }
 
 impl ScopePlan {
+    pub(in crate::state) fn workflow_record_mutation(
+        &self,
+        record: &Record,
+        raw: &str,
+        timestamp: i64,
+    ) -> Result<super::permits::ExactRowMutation> {
+        let original = self
+            .workflow
+            .as_ref()
+            .context("original persisted Workflow absent")?;
+        let before = original.parsed();
+        ensure!(
+            record.id == before.id
+                && record.kind == before.kind
+                && record.scope == before.scope
+                && record.version
+                    == before
+                        .version
+                        .checked_add(1)
+                        .context("Workflow version exhausted")?
+                && record.updated_at == timestamp
+                && serde_json::to_string(record)? == raw,
+            "prescribed Workflow postimage differs"
+        );
+        super::permits::ExactRowMutation::new(
+            "records",
+            "UPDATE",
+            Some(super::marker_rows::record_image(before, original.raw())?),
+            Some(super::marker_rows::record_image(record, raw)?),
+        )
+    }
     pub(in crate::state) fn governing_owners(&self) -> (&Project, &Goal) {
         (self.project.parsed(), self.goal.parsed())
     }

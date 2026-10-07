@@ -287,6 +287,10 @@ impl DriverReadTicket {
             "initial Evidence governing changed"
         );
         let unit_body = serde_json::to_string(&unit)?;
+        let records =
+            self.scope
+                .workflow_record_mutation(&record, &record_body, task.updated_at)?;
+        let record_image = crate::state::managed_binding::record_image(&record, &record_body)?;
         let plan = Arc::new(DriverPreparationAdvance {
             ticket: self,
             unit,
@@ -298,6 +302,9 @@ impl DriverReadTicket {
             initial: false,
             governing,
             input: Some(InitialInput {
+                activation: None,
+                records: Some(records),
+                record_image,
                 gate: Some(gate),
                 executor: None,
                 fresh_context,

@@ -405,6 +405,7 @@ impl AgentRegistry {
             managed_owner: Some(owner.clone()),
             ..Self::default()
         };
+        let installation = uuid::Uuid::new_v4();
         for (name, provider, program, compatibility) in selected {
             let adapter = Arc::new(native::NativeAdapter {
                 owner: owner.clone(),
@@ -415,9 +416,10 @@ impl AgentRegistry {
                 compatibility,
             });
             registry.register(name.clone(), adapter.clone())?;
-            registry
-                .native_ports
-                .insert(name, Arc::new(native::NativePhasePort::installed(adapter)));
+            registry.native_ports.insert(
+                name,
+                Arc::new(native::NativePhasePort::installed(adapter, installation)),
+            );
         }
         Ok(registry)
     }

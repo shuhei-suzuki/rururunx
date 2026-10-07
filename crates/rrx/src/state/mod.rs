@@ -531,6 +531,7 @@ impl Store {
             access,
             None,
         )
+        .and_then(managed_binding::ActivationCommit::require_published)
     }
     pub(crate) fn put_workflow_result_transition(
         &mut self,
@@ -550,6 +551,7 @@ impl Store {
             WorkflowAccess::StateOnly,
             Some(WorkflowCompletion::Executor(publication)),
         )
+        .and_then(managed_binding::ActivationCommit::require_published)
     }
     pub(crate) fn put_workflow_readonly_transition(
         &mut self,
@@ -569,6 +571,7 @@ impl Store {
             WorkflowAccess::StateOnly,
             Some(WorkflowCompletion::Readonly(completion)),
         )
+        .and_then(managed_binding::ActivationCommit::require_published)
     }
     pub(crate) fn put_workflow_verification_transition(
         &mut self,
@@ -588,6 +591,7 @@ impl Store {
             WorkflowAccess::StateOnly,
             Some(WorkflowCompletion::Verification(completion)),
         )
+        .and_then(managed_binding::ActivationCommit::require_published)
     }
     pub(crate) fn activate_managed_workflow(
         &mut self,
@@ -607,6 +611,7 @@ impl Store {
             WorkflowAccess::StateOnly,
             Some(WorkflowCompletion::Activation(activation, None)),
         )
+        .and_then(managed_binding::ActivationCommit::require_published)
     }
     /// Same first-input plan retained by the real worker before this write.
     #[allow(clippy::too_many_arguments)] // Exact owner CAS and private plan are independent inputs.
@@ -619,7 +624,7 @@ impl Store {
         goal_version: u64,
         activation: &crate::execution::verification::ManagedVerificationActivation,
         plan: &std::sync::Arc<DriverPreparationAdvance>,
-    ) -> Result<()> {
+    ) -> Result<managed_binding::ActivationCommit> {
         self.put_workflow_transition_inner(
             task,
             workflow,
@@ -644,6 +649,7 @@ impl Store {
             WorkflowAccess::StateOnly,
             Some(WorkflowCompletion::DriverGate(plan)),
         )
+        .and_then(managed_binding::ActivationCommit::require_published)
     }
     pub(crate) fn reserve_driven_first_executor(
         &mut self,
@@ -659,6 +665,7 @@ impl Store {
             WorkflowAccess::StateOnly,
             Some(WorkflowCompletion::DriverFirstExecutor(plan)),
         )
+        .and_then(managed_binding::ActivationCommit::require_published)
     }
     // Exact owner CAS and optional completion proof are independent inputs.
     #[allow(clippy::too_many_arguments)]
@@ -671,7 +678,7 @@ impl Store {
         goal_version: u64,
         access: WorkflowAccess,
         publication: Option<WorkflowCompletion<'_>>,
-    ) -> Result<()> {
+    ) -> Result<managed_binding::ActivationCommit> {
         ensure!(
             workflow.kind == RecordKind::Workflow && workflow.scope == task.scope(),
             "workflow requires exact owning Task scope"
@@ -1082,14 +1089,16 @@ impl Store {
                 plan.input_timestamp(),
                 Some(plan.input_namespace()?),
             )?;
-            guard_record_tx(&tx, workflow)?;
-            let next_workflow = write_record_tx_at(&tx, workflow, plan.input_timestamp())?;
+            let next_workflow = plan.write_input_record_tx(&tx, &self.binding_permits, workflow)?;
             (next_task, next_workflow)
         } else {
             (put_task_tx(&tx, task)?, put_record_tx(&tx, workflow)?)
         };
         if let Some(WorkflowCompletion::Activation(activation, _)) = &publication {
             execution::verification::install_contract(&tx, activation, workflow, &next_task)?;
+        }
+        if let Some(WorkflowCompletion::Activation(_, Some(plan))) = &publication {
+            plan.write_native_activation_tx(&tx, &self.binding_permits)?;
         }
         execution::source_recovery::after_write(
             &tx,
@@ -1101,12 +1110,37 @@ impl Store {
             plan.finish_input_tx(&tx, &self.binding_permits, &next_task, &next_workflow)?;
         }
         tx.commit()?;
+        let mut outcome = managed_binding::ActivationCommit::Published;
         if let Some(plan) = driver_input {
-            self.publish_driver_preparation(plan)?;
+            if matches!(
+                &publication,
+                Some(WorkflowCompletion::Activation(_, Some(_)))
+            ) {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    self.publish_driver_preparation(plan)
+                })) {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        if !self.connection.is_autocommit() {
+                            return Err(error);
+                        }
+                        outcome = managed_binding::ActivationCommit::Deferred;
+                    }
+                    Err(payload) => {
+                        if !self.connection.is_autocommit() {
+                            std::panic::resume_unwind(payload);
+                        }
+                        drop(payload);
+                        outcome = managed_binding::ActivationCommit::Deferred;
+                    }
+                }
+            } else {
+                self.publish_driver_preparation(plan)?;
+            }
         }
         *task = next_task;
         *workflow = next_workflow;
-        Ok(())
+        Ok(outcome)
     }
 
     /// Conservative factual journal independent of owner activity. This never

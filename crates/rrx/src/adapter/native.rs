@@ -31,6 +31,7 @@ pub(crate) struct NativePhasePort {
     provider: String,
     program: PathBuf,
     origin_id: uuid::Uuid,
+    installation: uuid::Uuid,
 }
 
 /// Opaque producer seed. No other module can initialize its private fields.
@@ -46,7 +47,7 @@ pub(crate) struct NativeAllocationSeed {
 }
 
 impl NativePhasePort {
-    pub(super) fn installed(adapter: Arc<NativeAdapter>) -> Self {
+    pub(super) fn installed(adapter: Arc<NativeAdapter>, installation: uuid::Uuid) -> Self {
         Self {
             sessions: Arc::downgrade(&adapter.sessions),
             owner: adapter.owner.clone(),
@@ -55,7 +56,11 @@ impl NativePhasePort {
             program: adapter.program.clone(),
             adapter: Arc::downgrade(&adapter),
             origin_id: uuid::Uuid::new_v4(),
+            installation,
         }
+    }
+    pub(crate) fn installation_id(&self) -> uuid::Uuid {
+        self.installation
     }
     pub(crate) fn origin_id(&self) -> uuid::Uuid {
         self.origin_id

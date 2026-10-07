@@ -114,7 +114,7 @@ async fn drive(claim: PendingDriverClaim, lifetime: WorkerLifetime) -> Result<()
     tokio::select! {
         biased;
         ()=lifetime.cancelled()=>return Err(anyhow::anyhow!("Task Driver cancelled before Workflow initialization")),
-        result=engine.initialize_driven(task,&sources,&lifetime)=>{result?;}
+        result=engine.initialize_driven(task,claim.composition(),&lifetime)=>{result?;}
     }
     loop {
         if lifetime.revoked() {

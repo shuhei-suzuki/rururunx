@@ -25,6 +25,9 @@ pub(crate) struct DriverPreparationAdvance {
     reconcile_ready: std::sync::atomic::AtomicBool,
 }
 struct InitialInput {
+    activation: Option<crate::state::managed_binding::NativeActivationPlan>,
+    records: Option<ExactRowMutation>,
+    record_image: Vec<rusqlite::types::Value>,
     gate: Option<gates::GateInput>,
     executor: Option<executor::ExecutorInput>,
     fresh_context: bool,
@@ -45,6 +48,7 @@ impl DriverReadTicket {
         input: &Task,
         record: &Record,
         context: &ContextVersion,
+        activation: crate::state::managed_binding::NativeActivationPlan,
     ) -> Result<Arc<DriverPreparationAdvance>> {
         ensure!(
             !self.scope.has_input_history()
@@ -116,6 +120,11 @@ impl DriverReadTicket {
                 && context_body.len() <= 8 * 1024 * 1024,
             "initial input body exceeds bounds"
         );
+        ensure!(
+            activation.matches_input(record, input) && activation.roster().task() == self.task().id,
+            "activation/input ticket differs"
+        );
+        let record_image = crate::state::managed_binding::record_image(&next_record, &record_body)?;
         let unit_body = serde_json::to_string(&unit)?;
         let mut next = self.row.clone();
         bump(&mut next.version)?;
@@ -135,6 +144,9 @@ impl DriverReadTicket {
             initial: false,
             governing,
             input: Some(InitialInput {
+                activation: Some(activation),
+                records: None,
+                record_image,
                 gate: None,
                 executor: None,
                 fresh_context: true,
@@ -316,6 +328,52 @@ impl Drop for Applying<'_> {
     }
 }
 impl DriverPreparationAdvance {
+    pub(crate) fn activation_roster(
+        &self,
+    ) -> Result<&crate::state::managed_binding::ActivationRoster> {
+        Ok(self
+            .input
+            .as_ref()
+            .and_then(|i| i.activation.as_ref())
+            .context("not original activation input")?
+            .roster())
+    }
+    pub(crate) fn planned_binding(&self) -> (Uuid, u64, u64, &str) {
+        (self.next.id, self.next.epoch, self.next.version, &self.body)
+    }
+    pub(in crate::state) fn write_native_activation_tx(
+        &self,
+        tx: &Transaction<'_>,
+        permits: &crate::state::managed_binding::PrivatePermitManager,
+    ) -> Result<()> {
+        let input = self.input.as_ref().context("activation input absent")?;
+        input
+            .activation
+            .as_ref()
+            .context("native activation plan absent")?
+            .write_tx(tx, permits, &input.record_image)
+    }
+    pub(in crate::state) fn write_input_record_tx(
+        &self,
+        tx: &Transaction<'_>,
+        permits: &crate::state::managed_binding::PrivatePermitManager,
+        record: &Record,
+    ) -> Result<Record> {
+        let input = self.input.as_ref().context("input absent")?;
+        let write = || {
+            guard_record_tx(tx, record)?;
+            write_record_tx_at(tx, record, self.input_timestamp())
+        };
+        if let Some(records) = &input.records {
+            permits.with_exact_permit(vec![records.copy_for_transaction()?], || {
+                let next = write()?;
+                permits.ensure_consumed()?;
+                Ok(next)
+            })
+        } else {
+            write()
+        }
+    }
     pub(in crate::state) fn begin_input(self: &Arc<Self>) -> Result<Applying<'_>> {
         ensure!(
             self.input.is_some() && self.is_retained()?,
@@ -460,6 +518,9 @@ impl DriverPreparationAdvance {
         self.ticket.association.preparation_retained(self)
     }
     fn validate_rollback(&self, tx: &Transaction<'_>) -> Result<()> {
+        if let Some(activation) = self.input.as_ref().and_then(|i| i.activation.as_ref()) {
+            activation.validate_rollback(tx)?;
+        }
         // No liveness is granted: this proves only that THIS atomic write-plan
         // did not commit. Other effects/leases/history are never released.
         self.ticket.scope.validate_current(tx)?;
@@ -485,6 +546,9 @@ impl DriverPreparationAdvance {
         Ok(())
     }
     fn validate_result(&self, tx: &Transaction<'_>) -> Result<()> {
+        if let Some(activation) = self.input.as_ref().and_then(|i| i.activation.as_ref()) {
+            activation.validate_result(tx)?;
+        }
         if let Some(input) = &self.input {
             if input.executor.is_some() {
                 input

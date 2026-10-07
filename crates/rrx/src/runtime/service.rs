@@ -37,7 +37,7 @@ impl Runtime {
                 .record_driver_exit(&exit)?;
             self._drivers.acknowledge_exit(&exit, &publication)?;
         }
-        Ok(pending)
+        Ok(pending + self._drivers.retained_preparations()?)
     }
     /// Start exactly once on the existing owner. Missing native binding stays a
     /// named durable hold; the service does not instantiate another owner epoch.
