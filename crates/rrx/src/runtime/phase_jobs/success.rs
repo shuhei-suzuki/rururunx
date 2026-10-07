@@ -697,6 +697,8 @@ pub(crate) const NORMAL_WRITE: &str = "normal write";
 #[cfg(test)]
 pub(crate) const SETTLED_EVALUATION: &str = "settled evaluation";
 #[cfg(test)]
+pub(crate) const SETTLED_CLOSURE: &str = "settled closure";
+#[cfg(test)]
 pub(crate) const OWNER_IMMEDIATE: &str = "owner immediate";
 #[cfg(test)]
 pub(crate) const OWNER_PLANNING: &str = "owner planning";

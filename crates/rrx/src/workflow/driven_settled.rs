@@ -333,6 +333,8 @@ impl WorkflowEngine {
                     markers.len() == 1,
                     "settled closure requires one retained artifact"
                 );
+                #[cfg(test)]
+                crate::runtime::pause_at(Some(snapshot.task.id), crate::runtime::SETTLED_CLOSURE);
                 let currency = Arc::new(plan_settled_currency(owner, settled)?);
                 let publication = crate::execution::results::ResultStore::new(owner.clone())
                     .settled_publication(&currency, markers[0].parse()?)

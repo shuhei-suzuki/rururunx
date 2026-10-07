@@ -1078,3 +1078,91 @@ async fn sc6_claude_standard_requirements_waits_without_closure() {
 async fn sc6_codex_standard_requirements_waits_without_closure() {
     sc6_requirements("codex").await;
 }
+
+/// SC8: graph integrity. Between the Passed observation and the closure, a
+/// negative-only results.git ref move makes `settled_publication` refuse; the
+/// closure never commits and the Task stays as marked.
+async fn sc8_graph(provider: &str) {
+    use crate::runtime::phase_jobs::SETTLED_CLOSURE;
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    let closure = held(task, SETTLED_CLOSURE);
+    f.runtime.start().await.unwrap();
+    wait_normal_bound(&f, task).await;
+    let marked = stored_task(&f, task);
+    let unit = bound_unit(&f, task);
+    release_completion(&f, task);
+    wait_for(
+        || closure.0.reached(),
+        "SETUP: settled closure not reached",
+        90,
+    )
+    .await;
+    assert_eq!(
+        links(&f, task),
+        ["session_bound", "gate_claim", "gate_observed"]
+    );
+    let artifact: String = raw(&f)
+        .query_row(
+            "SELECT id FROM result_artifacts WHERE unit_id=?1",
+            [unit.id.to_string()],
+            |r| r.get(0),
+        )
+        .expect("SETUP: Ready artifact");
+    let repository = f
+        .owner
+        .root
+        .join("projects")
+        .join(marked.project_id.to_string())
+        .join("results.git");
+    let moved = std::process::Command::new("git")
+        .arg("--git-dir")
+        .arg(&repository)
+        .args([
+            "update-ref",
+            &format!("refs/rrx/{artifact}/commit"),
+            &unit.base_sha,
+        ])
+        .output()
+        .unwrap();
+    assert!(moved.status.success(), "SETUP: negative-only ref move");
+    closure.0.release();
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(6) {
+        f.runtime.wake.notify_one();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        links(&f, task),
+        ["session_bound", "gate_claim", "gate_observed"],
+        "SC8 {provider}: closure never commits"
+    );
+    assert_eq!(
+        stored_task(&f, task).version,
+        marked.version,
+        "SC8 {provider}: Task unchanged"
+    );
+    let state: String = raw(&f)
+        .query_row(
+            "SELECT state FROM result_artifacts WHERE id=?1",
+            [&artifact],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_ne!(state, "published", "SC8 {provider}: artifact not Published");
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc8_claude_results_graph_corruption_blocks_closure() {
+    sc8_graph("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc8_codex_results_graph_corruption_blocks_closure() {
+    sc8_graph("codex").await;
+}
