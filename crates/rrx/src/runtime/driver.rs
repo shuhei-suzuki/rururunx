@@ -360,7 +360,7 @@ impl WorkerLifetime {
     pub(super) fn revoked(&self) -> bool {
         self.slot.revoked.load(Ordering::SeqCst)
     }
-    pub(super) async fn cancelled(&self) {
+    pub(crate) async fn cancelled(&self) {
         loop {
             let notified = self.slot.cancel.notified();
             tokio::pin!(notified);

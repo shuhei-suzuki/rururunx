@@ -70,6 +70,27 @@ pub(crate) struct NativeActivationPlan {
     body: String,
     row: Vec<SqlValue>,
     insert: ExactRowMutation,
+    #[cfg(test)]
+    seams: Option<std::sync::Arc<ActivationSeams>>,
+}
+#[cfg(test)]
+pub(crate) type ActivationFault =
+    std::sync::Arc<dyn Fn(crate::domain::TaskId) -> Result<()> + Send + Sync>;
+#[cfg(test)]
+pub(crate) type ActivationDeferred = std::sync::Arc<
+    dyn Fn(
+            crate::domain::TaskId,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>
+        + Send
+        + Sync,
+>;
+/// Test timing/fault injection only. No object, row or capability is issued.
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct ActivationSeams {
+    pub(crate) precommit: Option<ActivationFault>,
+    pub(crate) postcommit: Option<ActivationFault>,
+    pub(crate) deferred: Option<ActivationDeferred>,
 }
 pub(crate) fn plan_native_activation(
     roster: ActivationRoster,
@@ -133,6 +154,8 @@ pub(crate) fn plan_native_activation(
         body,
         row,
         insert,
+        #[cfg(test)]
+        seams: None,
     })
 }
 pub(crate) enum ActivationCommit {
@@ -149,6 +172,31 @@ impl ActivationCommit {
     }
 }
 impl NativeActivationPlan {
+    #[cfg(test)]
+    pub(crate) fn set_seams(&mut self, seams: Option<std::sync::Arc<ActivationSeams>>) {
+        self.seams = seams;
+    }
+    #[cfg(test)]
+    pub(in crate::state) fn precommit(&self) -> Result<()> {
+        if let Some(hook) = self.seams.as_ref().and_then(|s| s.precommit.as_ref()) {
+            hook(self.roster.task())?;
+        }
+        Ok(())
+    }
+    #[cfg(test)]
+    pub(in crate::state) fn postcommit(&self) -> Result<()> {
+        if let Some(hook) = self.seams.as_ref().and_then(|s| s.postcommit.as_ref()) {
+            hook(self.roster.task())?;
+        }
+        Ok(())
+    }
+    #[cfg(test)]
+    pub(crate) async fn deferred(&self) -> Result<()> {
+        if let Some(hook) = self.seams.as_ref().and_then(|s| s.deferred.as_ref()) {
+            hook(self.roster.task()).await?;
+        }
+        Ok(())
+    }
     pub(crate) fn roster(&self) -> &ActivationRoster {
         &self.roster
     }
@@ -178,6 +226,10 @@ impl NativeActivationPlan {
         permits: &PrivatePermitManager,
         record: &[SqlValue],
     ) -> Result<()> {
+        ensure!(
+            self.row.last() == Some(&SqlValue::Text(self.body.clone())),
+            "retained activation body differs"
+        );
         ensure!(
             self.state_path
                 .to_str()

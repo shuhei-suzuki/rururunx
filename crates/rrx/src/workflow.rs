@@ -545,11 +545,47 @@ fn require_managed_native_binding_composed() -> Result<()> {
 #[cfg(test)]
 #[derive(Default)]
 struct EngineHooks {
+    before_activation_admission: std::sync::Mutex<Option<Arc<ActivationHook>>>,
+    activation_seams: std::sync::Mutex<Option<Arc<crate::state::managed_binding::ActivationSeams>>>,
     before_publication: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
     before_release: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
     before_wait_claim: std::sync::Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send>>>>,
     before_reserve: std::sync::Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send>>>>,
     attempt_started_at: std::sync::Mutex<Option<i64>>,
+}
+#[cfg(test)]
+pub(crate) type ActivationHook = dyn for<'a> Fn(ActivationProbe<'a>) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>
+    + Send
+    + Sync;
+/// A borrowed observation at the real retained activation boundary. It has no
+/// constructor outside this module and cannot create or return authority.
+#[cfg(test)]
+pub(crate) struct ActivationProbe<'a> {
+    composition: &'a crate::runtime::installation::InstalledDriverComposition,
+    plan: &'a Arc<crate::state::DriverPreparationAdvance>,
+    lifetime: &'a crate::runtime::driver::WorkerLifetime,
+    task: &'a Task,
+    record: &'a Record,
+}
+#[cfg(test)]
+impl<'a> ActivationProbe<'a> {
+    pub(crate) fn composition(
+        &self,
+    ) -> &'a crate::runtime::installation::InstalledDriverComposition {
+        self.composition
+    }
+    pub(crate) fn plan(&self) -> &'a Arc<crate::state::DriverPreparationAdvance> {
+        self.plan
+    }
+    pub(crate) fn lifetime(&self) -> &'a crate::runtime::driver::WorkerLifetime {
+        self.lifetime
+    }
+    pub(crate) fn task(&self) -> &'a Task {
+        self.task
+    }
+    pub(crate) fn record(&self) -> &'a Record {
+        self.record
+    }
 }
 
 /// Raw Workflow Store mutation stays private to the engine implementation.
@@ -574,6 +610,23 @@ pub struct WorkflowEngine {
     hooks: EngineHooks,
 }
 impl WorkflowEngine {
+    #[cfg(test)]
+    pub(crate) fn set_activation_hooks(
+        &self,
+        hook: Option<Arc<ActivationHook>>,
+        seams: Option<Arc<crate::state::managed_binding::ActivationSeams>>,
+    ) {
+        *self
+            .hooks
+            .before_activation_admission
+            .lock()
+            .expect("test activation hook") = hook;
+        *self
+            .hooks
+            .activation_seams
+            .lock()
+            .expect("test activation seams") = seams;
+    }
     pub(crate) fn installed_native_port(
         &self,
         alias: &str,
@@ -1048,6 +1101,18 @@ impl WorkflowEngine {
                 &snapshot.record,
                 &snapshot.task,
             )?;
+            #[cfg(test)]
+            let activation = {
+                let mut activation = activation;
+                activation.set_seams(
+                    self.hooks
+                        .activation_seams
+                        .lock()
+                        .expect("test activation seams")
+                        .clone(),
+                );
+                activation
+            };
             let plan = driver_ticket
                 .context("Driver ticket missing")?
                 .plan_initial_input(
@@ -1058,6 +1123,25 @@ impl WorkflowEngine {
                     &context,
                     activation,
                 )?;
+            #[cfg(test)]
+            {
+                let hook = self
+                    .hooks
+                    .before_activation_admission
+                    .lock()
+                    .expect("test activation hook")
+                    .clone();
+                if let Some(hook) = hook {
+                    hook(ActivationProbe {
+                        composition,
+                        plan: &plan,
+                        lifetime,
+                        task: &snapshot.task,
+                        record: &snapshot.record,
+                    })
+                    .await;
+                }
+            }
             let admission = composition.admit_activation(&plan, lifetime).await?;
             let outcome = {
                 let mut store = self
@@ -1082,11 +1166,13 @@ impl WorkflowEngine {
                 outcome,
                 crate::state::managed_binding::ActivationCommit::Deferred
             ) {
+                #[cfg(test)]
+                plan.activation_deferred().await?;
                 let mut recovered = false;
                 for segment in 0..3 {
                     if segment > 0 {
                         tokio::select! { biased;
-                            ()=lifetime.cancelled()=>bail!("activation recovery cancelled"),
+                            ()=lifetime.cancelled()=>anyhow::bail!("activation recovery cancelled"),
                             ()=tokio::time::sleep(std::time::Duration::from_millis(100))=>{},
                         }
                     }

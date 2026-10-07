@@ -1109,6 +1109,10 @@ impl Store {
         if let Some(plan) = driver_input {
             plan.finish_input_tx(&tx, &self.binding_permits, &next_task, &next_workflow)?;
         }
+        #[cfg(test)]
+        if let Some(WorkflowCompletion::Activation(_, Some(plan))) = &publication {
+            plan.activation_precommit()?;
+        }
         tx.commit()?;
         let mut outcome = managed_binding::ActivationCommit::Published;
         if let Some(plan) = driver_input {
@@ -1117,6 +1121,8 @@ impl Store {
                 Some(WorkflowCompletion::Activation(_, Some(_)))
             ) {
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    #[cfg(test)]
+                    plan.activation_postcommit()?;
                     self.publish_driver_preparation(plan)
                 })) {
                     Ok(Ok(())) => {}

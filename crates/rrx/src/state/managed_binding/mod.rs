@@ -3,6 +3,8 @@
 //! The marker/binding producer and Native protocol are not yet composed. These
 //! bounded read primitives must not enable Workflow or replace its private proof.
 mod activation;
+#[cfg(test)]
+pub(crate) use activation::ActivationSeams;
 mod binding;
 pub(crate) use activation::{
     ActivationCommit, NativeActivationPlan, member_digest, plan_native_activation, roster_digest,

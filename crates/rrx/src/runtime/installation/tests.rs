@@ -11,9 +11,17 @@ use crate::{
 };
 use std::{os::unix::fs::PermissionsExt, time::Duration};
 
+mod activation;
 mod sweep;
 
 fn fixture(provider: &str, declared: bool) -> ControlFixture {
+    fixture_with(provider, declared, |_| {})
+}
+fn fixture_with(
+    provider: &str,
+    declared: bool,
+    configure: impl FnOnce(&mut crate::config::Config),
+) -> ControlFixture {
     ControlFixture::configured(|dir| {
         let path = dir.join("configured-protocol-fixture");
         let source = include_str!("../../execution/native/native_fixture.py");
@@ -46,12 +54,19 @@ fn fixture(provider: &str, declared: bool) -> ControlFixture {
                 ..Default::default()
             },
         );
+        for alias in ["rev-a", "rev-b"] {
+            config
+                .agents
+                .insert(alias.into(), config.agents["worker"].clone());
+        }
+        configure(&mut config);
         config
     })
 }
 async fn accept(f: &ControlFixture, count: usize) -> (GoalId, Vec<Task>) {
     let mut p = plan();
     p.tasks[0].risk = RiskClass::R1;
+    p.tasks[0].reviewers = vec!["rev-a".into(), "rev-b".into()];
     let original = p.tasks[0].clone();
     p.tasks = (0..count)
         .map(|i| {

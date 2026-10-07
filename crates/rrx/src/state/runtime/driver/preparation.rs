@@ -328,6 +328,29 @@ impl Drop for Applying<'_> {
     }
 }
 impl DriverPreparationAdvance {
+    #[cfg(test)]
+    pub(in crate::state) fn activation_precommit(&self) -> Result<()> {
+        if let Some(activation) = self.input.as_ref().and_then(|i| i.activation.as_ref()) {
+            activation.precommit()?;
+        }
+        Ok(())
+    }
+    #[cfg(test)]
+    pub(in crate::state) fn activation_postcommit(&self) -> Result<()> {
+        if let Some(activation) = self.input.as_ref().and_then(|i| i.activation.as_ref()) {
+            activation.postcommit()?;
+        }
+        Ok(())
+    }
+    #[cfg(test)]
+    pub(crate) async fn activation_deferred(&self) -> Result<()> {
+        self.input
+            .as_ref()
+            .and_then(|i| i.activation.as_ref())
+            .context("activation recovery plan absent")?
+            .deferred()
+            .await
+    }
     pub(crate) fn activation_roster(
         &self,
     ) -> Result<&crate::state::managed_binding::ActivationRoster> {

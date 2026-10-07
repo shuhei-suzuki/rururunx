@@ -18,6 +18,17 @@ impl Drop for Running {
 
 impl Runtime {
     fn observe_task_drivers(&self) -> Result<usize> {
+        #[cfg(test)]
+        {
+            let hook = self
+                .before_service_reconcile
+                .lock()
+                .expect("test service seam")
+                .clone();
+            if let Some(hook) = hook {
+                hook();
+            }
+        }
         let pending = self._drivers.observe_finished()?;
         for plan in self._drivers.pending_preparations()? {
             // Held advances do not detach jobs, release capacity or authorize a
