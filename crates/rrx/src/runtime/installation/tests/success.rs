@@ -1692,3 +1692,128 @@ async fn sc9a_claude_shutdown_cancels_success_admission() {
 async fn sc9a_codex_shutdown_cancels_success_admission() {
     sc9a_stop("codex").await;
 }
+
+fn effect_states(f: &ControlFixture, task: &Task) -> Vec<String> {
+    let raw = raw(f);
+    let mut statement = raw
+        .prepare("SELECT state FROM managed_effects WHERE task_id=?1")
+        .unwrap();
+    statement
+        .query_map([task.id.to_string()], |r| r.get::<_, String>(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+/// SC11: a genuine protected Git helper of the settled capture is held in
+/// flight for >= 3 fence ticks; the fence runs `validate_settled_helper` on
+/// each tick, the helper completes, its effect is Confirmed and the chain
+/// closes. Negative: a parent Goal edit while it is held makes the next tick
+/// refuse: no claim, no closure.
+async fn sc11_fence(provider: &str, parent_edit: bool) {
+    use crate::runtime::phase_jobs::{HelperHold, counted};
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (goal, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    let hold = HelperHold::arm(task.id);
+    struct Released(Arc<HelperHold>);
+    impl Drop for Released {
+        fn drop(&mut self) {
+            self.0.release();
+        }
+    }
+    let hold = Released(hold);
+    f.runtime.start().await.unwrap();
+    wait_normal_bound(&f, task).await;
+    let marked = stored_task(&f, task);
+    release_completion(&f, task);
+    wait_for(|| hold.0.reached(), "SETUP: settled helper not held", 90).await;
+    let base = counted(task.id, "settled fence tick");
+    if parent_edit {
+        let expected_goal = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .goal(goal)
+            .unwrap()
+            .unwrap()
+            .version;
+        let changed = f
+            .runtime
+            .handle_control(
+                &f.socket,
+                f.request(ControlAction::SetGoalLifecycle {
+                    project: f.project.id,
+                    goal,
+                    expected_goal,
+                    target: crate::runtime::control::GoalControl::Pause,
+                    reason: "SC11 parent change".into(),
+                }),
+            )
+            .await
+            .unwrap();
+        assert!(
+            matches!(changed, ControlResponse::GoalLifecycleChanged { .. }),
+            "SETUP: legitimate Goal writer refused: {changed:?}"
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        hold.0.release();
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        assert_eq!(
+            links(&f, task),
+            ["session_bound"],
+            "SC11 {provider}: no claim, no closure"
+        );
+        assert_eq!(
+            stored_task(&f, task).version,
+            marked.version,
+            "SC11 {provider}: Task unchanged"
+        );
+        assert!(
+            !effect_states(&f, task).iter().all(|s| s == "confirmed"),
+            "SC11 {provider}: the refused helper's effect is not Confirmed"
+        );
+    } else {
+        wait_for(
+            || counted(task.id, "settled fence tick") >= base + 3,
+            "SC11: fewer than three fence ticks while held",
+            10,
+        )
+        .await;
+        hold.0.release();
+        wait_for(
+            || links(&f, task).last().map(String::as_str) == Some("phase_closed"),
+            "SC11: chain did not close",
+            90,
+        )
+        .await;
+        let states = effect_states(&f, task);
+        assert!(
+            !states.iter().any(|s| s == "unknown" || s == "pending"),
+            "SC11 {provider}: helper effects settled; {states:?}"
+        );
+    }
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc11_claude_settled_helper_fence_holds_and_confirms() {
+    sc11_fence("claude", false).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc11_codex_settled_helper_fence_holds_and_confirms() {
+    sc11_fence("codex", false).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc11n_claude_parent_edit_while_held_refuses_next_tick() {
+    sc11_fence("claude", true).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc11n_codex_parent_edit_while_held_refuses_next_tick() {
+    sc11_fence("codex", true).await;
+}

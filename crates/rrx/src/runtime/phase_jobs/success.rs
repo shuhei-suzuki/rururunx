@@ -709,6 +709,52 @@ pub(crate) const SUCCESS_ADMISSION: &str = "success admission";
 pub(crate) const OWNER_IMMEDIATE: &str = "owner immediate";
 #[cfg(test)]
 pub(crate) const OWNER_PLANNING: &str = "owner planning";
+/// Test-only async hold of one settled helper capture of a Task: the helper
+/// stays in flight while its fence keeps ticking. Parks and resumes only.
+#[cfg(test)]
+pub(crate) struct HelperHold {
+    reached: std::sync::atomic::AtomicBool,
+    release: tokio::sync::watch::Sender<bool>,
+}
+#[cfg(test)]
+static HELPER_HOLDS: Mutex<Vec<(crate::domain::TaskId, Arc<HelperHold>)>> = Mutex::new(Vec::new());
+#[cfg(test)]
+impl HelperHold {
+    pub(crate) fn arm(task: crate::domain::TaskId) -> Arc<Self> {
+        let hold = Arc::new(Self {
+            reached: std::sync::atomic::AtomicBool::new(false),
+            release: tokio::sync::watch::channel(false).0,
+        });
+        HELPER_HOLDS.lock().unwrap().push((task, hold.clone()));
+        hold
+    }
+    pub(crate) fn reached(&self) -> bool {
+        self.reached.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    pub(crate) fn release(&self) {
+        self.release.send_replace(true);
+    }
+}
+#[cfg(test)]
+pub(crate) async fn hold_helper(task: Option<crate::domain::TaskId>) {
+    let Some(task) = task else { return };
+    let hold = {
+        let mut holds = HELPER_HOLDS.lock().unwrap();
+        holds
+            .iter()
+            .position(|(armed, _)| *armed == task)
+            .map(|index| holds.remove(index).1)
+    };
+    let Some(hold) = hold else { return };
+    let mut released = hold.release.subscribe();
+    hold.reached
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    while !*released.borrow_and_update() {
+        if released.changed().await.is_err() {
+            return;
+        }
+    }
+}
 /// Test-only Task-scoped event counters (marker sites, BR retries).
 #[cfg(test)]
 static COUNTS: Mutex<Vec<(PauseKey, usize)>> = Mutex::new(Vec::new());

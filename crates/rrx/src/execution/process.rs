@@ -387,7 +387,16 @@ pub(crate) async fn capture_scoped_with(
     pinned: &super::ExecutionUnit,
     currency: HelperCurrency<'_>,
 ) -> Result<CommandCapture> {
-    let capture = capture_child(child);
+    #[cfg(test)]
+    let held = match &currency {
+        HelperCurrency::Settled(settled) => settled.settled().marker().scope().task_id,
+        HelperCurrency::Generic { .. } => None,
+    };
+    let capture = async move {
+        #[cfg(test)]
+        crate::runtime::hold_helper(held).await;
+        capture_child(child).await
+    };
     tokio::pin!(capture);
     let mut fence = tokio::time::interval(Duration::from_millis(50));
     loop {
@@ -406,6 +415,8 @@ pub(crate) async fn capture_scoped_with(
                         let current = store.execution_unit(pinned.id)?;
                         ensure!(current.scope == pinned.scope && current.generation == pinned.generation && current.owner_epoch == pinned.owner_epoch && current.session_id == pinned.session_id, "helper execution identity changed");
                         store.validate_settled_helper(settled, pinned)?;
+                        #[cfg(test)]
+                        crate::runtime::count(settled.settled().marker().scope().task_id, "settled fence tick");
                     }
                 }
             }
