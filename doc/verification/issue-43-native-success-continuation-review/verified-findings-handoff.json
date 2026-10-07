@@ -1,0 +1,43 @@
+{
+  "recorded_at": "2026-10-07T02:45:00.801608+00:00",
+  "task": "read-only SC01-12 frozen-object factual verification",
+  "head": "0c35653c7a8aa05c78c5285c2f4b5370db520e70",
+  "worktree_clean": true,
+  "review_body_unchanged": true,
+  "review_scratch_absent": true,
+  "new_owned_running_handles": [],
+  "ephemeral_checkouts_created": [],
+  "artifacts": [
+    {
+      "path": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/verified-findings-source-map.md",
+      "bytes": 209989,
+      "sha256": "52a67e5eba391c5f88f45b1b43b0e23678b289917d4d0fc4d018291c7947420e"
+    },
+    {
+      "path": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/verified-findings-source-map.json",
+      "bytes": 209787,
+      "sha256": "d19a325234f1a85b7df2cd62aeeeb3d2107b9a186bb0460bdaa33ee995b18911"
+    },
+    {
+      "path": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-object-manifest.json",
+      "bytes": 35972,
+      "sha256": "c431cbca72ace9bf411313297e06ef0b67eeb21747512a16baac8a7af995ea1a"
+    },
+    {
+      "path": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sol-independent-review-result.md",
+      "bytes": 19757,
+      "sha256": "dc5749ceff265c831b599387ef47781bf1623f851a88cfe88401ec9a808890f7"
+    },
+    {
+      "path": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/root-independent-review-go-ahead.json",
+      "bytes": 1407,
+      "sha256": "67ebc931eccd014f1c3d482b7bcb1c498f3f16eeb33872907e1e4cbd81d6c14b"
+    }
+  ],
+  "confirmed_corrections": 11,
+  "SC07_mandatory_status": "not independently established; producer-owned API/placement omission verified",
+  "source_implementation_authorized": false,
+  "native_qualified": false,
+  "mvp_qualified": false,
+  "merge_ready": false
+}

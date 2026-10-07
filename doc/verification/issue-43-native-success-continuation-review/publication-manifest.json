@@ -1,0 +1,94 @@
+{
+  "kind": "publication_of_existing_sc_review_and_correction_preparation",
+  "review_head": "0c35653c7a8aa05c78c5285c2f4b5370db520e70",
+  "mandatory_ids": [
+    "SC-01",
+    "SC-02",
+    "SC-03",
+    "SC-04",
+    "SC-05",
+    "SC-06",
+    "SC-08",
+    "SC-09",
+    "SC-10",
+    "SC-11",
+    "SC-12"
+  ],
+  "optional_ids": [
+    "SC-07",
+    "SC-13",
+    "SC-14"
+  ],
+  "corrected_design_draft_found": false,
+  "correction_delta_review_found": false,
+  "original_author_prompt_bytes": 412594,
+  "original_author_prompt_sha256": "a8d2268132b19be9706b8e8911a40d29d73d5e126fd45bfe228696b571cbb14b",
+  "author_input_omitted_sections": [
+    "GLOBAL-AGENTS.md",
+    "GLOBAL-claude.md",
+    "design-docs",
+    "security-skill"
+  ],
+  "retained_author_input_sections_unchanged": true,
+  "source_pins": {
+    "H": "0c35653c7a8aa05c78c5285c2f4b5370db520e70",
+    "R": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+    "CA": "95ef0e783c0b18c90dfef23ba1b77b9dc67735f1",
+    "RN": "1d783440b7f4d705bf8cf4c667e022f5cec87777",
+    "CA-current": "2c24f3f6e66f45692e416c77dc3e8d64fcbc9276",
+    "RN-current": "e70faa9dc900c5df0dd26d9983425cf6d63876a3"
+  },
+  "files": [
+    {
+      "path": "sol-independent-review-result.md",
+      "bytes": 19757,
+      "sha256": "dc5749ceff265c831b599387ef47781bf1623f851a88cfe88401ec9a808890f7",
+      "unchanged_original": true
+    },
+    {
+      "path": "root-verified-finding-disposition.json",
+      "bytes": 16956,
+      "sha256": "99ed136fcd9ef24cdaf552c6fc702171ec3b4b0c4a4b45aa7c7e24693a94888d",
+      "unchanged_original": true
+    },
+    {
+      "path": "verified-findings-source-map.md",
+      "bytes": 209989,
+      "sha256": "52a67e5eba391c5f88f45b1b43b0e23678b289917d4d0fc4d018291c7947420e",
+      "unchanged_original": true
+    },
+    {
+      "path": "verified-findings-source-map.json",
+      "bytes": 209787,
+      "sha256": "d19a325234f1a85b7df2cd62aeeeb3d2107b9a186bb0460bdaa33ee995b18911",
+      "unchanged_original": true
+    },
+    {
+      "path": "sc-source-object-manifest.json",
+      "bytes": 35972,
+      "sha256": "c431cbca72ace9bf411313297e06ef0b67eeb21747512a16baac8a7af995ea1a",
+      "unchanged_original": true
+    },
+    {
+      "path": "verified-findings-handoff.json",
+      "bytes": 2028,
+      "sha256": "00a91f129262a95caabecf0516cb12de7888d9a87434e438eef9860d65bea574",
+      "unchanged_original": true
+    },
+    {
+      "path": "correction-author-input.md",
+      "bytes": 345074,
+      "sha256": "06825f45621127618296272cc5d543cd30477c5a8b44ea6c444a91df1a81c6fa",
+      "unchanged_original": false
+    },
+    {
+      "path": "README.md",
+      "bytes": 4569,
+      "sha256": "382c5d33a6e9745a56d882ab48e218534bf11c0f1d1ebd61fb59ac011b1964dc",
+      "unchanged_original": false
+    }
+  ],
+  "credential_format_scan_matches": 0,
+  "runtime_or_mutant_credit": false,
+  "merge_ready": false
+}

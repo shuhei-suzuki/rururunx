@@ -1,0 +1,681 @@
+{
+  "pins": {
+    "H": "0c35653c7a8aa05c78c5285c2f4b5370db520e70",
+    "R": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+    "CA": "95ef0e783c0b18c90dfef23ba1b77b9dc67735f1",
+    "RN": "1d783440b7f4d705bf8cf4c667e022f5cec87777",
+    "CA-current": "2c24f3f6e66f45692e416c77dc3e8d64fcbc9276",
+    "RN-current": "e70faa9dc900c5df0dd26d9983425cf6d63876a3"
+  },
+  "rn_prefix_matches": [
+    "e70faa9dc900c5df0dd26d9983425cf6d63876a3"
+  ],
+  "differences": {
+    "CA-current": {
+      "older": "95ef0e783c0b18c90dfef23ba1b77b9dc67735f1",
+      "newer": "2c24f3f6e66f45692e416c77dc3e8d64fcbc9276",
+      "changed_paths": [
+        "crates/rrx/src/execution/native/version.rs",
+        "crates/rrx/src/runtime/installation/tests/activation.rs",
+        "crates/rrx/src/runtime/installation/tests/activation/composition.rs",
+        "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs",
+        "crates/rrx/src/runtime/installation/tests/activation/pages.rs",
+        "crates/rrx/src/runtime/installation/tests/activation/protection.rs",
+        "crates/rrx/src/runtime/phase_jobs.rs",
+        "crates/rrx/src/runtime/service.rs",
+        "crates/rrx/src/runtime/tests.rs",
+        "crates/rrx/src/state/managed_binding/activation.rs",
+        "crates/rrx/src/state/managed_binding/mod.rs",
+        "crates/rrx/src/state/managed_binding/permits.rs",
+        "crates/rrx/src/state/managed_binding/publication.rs",
+        "crates/rrx/src/state/managed_binding/snapshot.rs",
+        "crates/rrx/src/state/mod.rs",
+        "crates/rrx/src/state/runtime/driver/preparation.rs",
+        "doc/design/master/agent-adapter.md",
+        "doc/design/master/workflow-engine.md"
+      ],
+      "direct_consumer_changes": [
+        "crates/rrx/src/runtime/phase_jobs.rs",
+        "crates/rrx/src/runtime/service.rs",
+        "crates/rrx/src/state/managed_binding/permits.rs",
+        "crates/rrx/src/state/managed_binding/publication.rs",
+        "crates/rrx/src/state/managed_binding/snapshot.rs",
+        "crates/rrx/src/state/mod.rs"
+      ]
+    },
+    "RN-current": {
+      "older": "1d783440b7f4d705bf8cf4c667e022f5cec87777",
+      "newer": "e70faa9dc900c5df0dd26d9983425cf6d63876a3",
+      "changed_paths": [
+        "crates/rrx/src/state/execution/native_phase/nonsuccess.rs",
+        "crates/rrx/src/state/managed_binding/closure.rs",
+        "doc/design/issue-43-native-nonsuccess-closure-design.md"
+      ],
+      "direct_consumer_changes": [
+        "crates/rrx/src/state/managed_binding/closure.rs"
+      ]
+    }
+  },
+  "objects": [
+    {
+      "label": "H",
+      "commit": "0c35653c7a8aa05c78c5285c2f4b5370db520e70",
+      "path": "doc/design/issue-43-native-success-continuation-design.md",
+      "blob": "fd9010eb78c3b7f91dad165447e754166a7daaa7",
+      "sha256": "2022e85329253dfbbb7ae5f84f22e0b8d32f187337395614a8b3d38afeed4af6",
+      "bytes": 68120,
+      "lines": 695,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/H-doc__design__issue-43-native-success-continuation-design.md"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "doc/requirements/issue-43-managed-binding-requirements.md",
+      "blob": "0731deb88550750ece8a3f81e7aa08b7501f891d",
+      "sha256": "11ec2b9281fa38558ce10b8edcfaa58e2a7c3c419f8e5e9b3cffa655ad297387",
+      "bytes": 14618,
+      "lines": 191,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-doc__requirements__issue-43-managed-binding-requirements.md"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "doc/design/issue-43-managed-binding-design.md",
+      "blob": "cf19dcc12cf2d0410727a457e5e4d2eb5625f399",
+      "sha256": "f03efbb1b2ab7986936cac72be5580c939f31c223a4178c74d0a5d5e79dd4d00",
+      "bytes": 58938,
+      "lines": 758,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-doc__design__issue-43-managed-binding-design.md"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "doc/design/issue-43-native-prepared-producer-design.md",
+      "blob": "0a541476d18081cb6bf7e03b0c2477ecd6848eba",
+      "sha256": "02d30312099882f7744f0f79a6aa3db46845399a8e80fca7949fe64d4b39a326",
+      "bytes": 113054,
+      "lines": 806,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-doc__design__issue-43-native-prepared-producer-design.md"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/runtime/phase_jobs.rs",
+      "blob": "b1a892b6466d79b91d2859d9f1470df31bca01d4",
+      "sha256": "75bb4cb99696226695fe1cfdc0b40f1c80ca8ab6cd00434b2501d78daa6e0170",
+      "bytes": 15395,
+      "lines": 404,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__runtime__phase_jobs.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/runtime/service.rs",
+      "blob": "bfb50fa43f40cdaa578f6a0d43b1cde710907292",
+      "sha256": "ff678861e05e5a6da128756d5202bdd793d20ae048d6b92f4975df91a7a38d4d",
+      "bytes": 5977,
+      "lines": 146,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__runtime__service.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/runtime/installation.rs",
+      "blob": "f67f39baa93353a0a8a352c8001da6f25845a84c",
+      "sha256": "11824994d47a357578739f14c45a698c9465d6cc5981bbd131543b4feda06730",
+      "bytes": 6021,
+      "lines": 161,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__runtime__installation.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/runtime/task_driver.rs",
+      "blob": "390c6a9eec1aae244cae6f4515c54c9d4a7c8f37",
+      "sha256": "9f3e048085829108e720a932637bd3d658746466b46be29fea72dc00debbbf77",
+      "bytes": 5788,
+      "lines": 138,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__runtime__task_driver.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/managed_binding/binding.rs",
+      "blob": "310a55a2a30ed1dc09ecc7b807561af10428790a",
+      "sha256": "3ec2e6c63efdbea440a7f9f2473ff8af8ed7787aa81cd836ada30d83de915978",
+      "bytes": 21974,
+      "lines": 466,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__managed_binding__binding.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/managed_binding/successor.rs",
+      "blob": "b6779dd5f67acae63a4574d0f94f31d66a7dcf4d",
+      "sha256": "8ea5e1c24686a5c5afc56036c18c81063084d2afae3fdc5e234c38efe76efcc4",
+      "bytes": 18606,
+      "lines": 458,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__managed_binding__successor.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/managed_binding/canonical.rs",
+      "blob": "31e2aaa302ec65208b0b3679281a4a9fbfb9d944",
+      "sha256": "6f77f8b0a0218d47bd5ee6df77c147c518d6c84573ecd42a19bac9a6886e32a2",
+      "bytes": 9772,
+      "lines": 280,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__managed_binding__canonical.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/managed_binding/permits.rs",
+      "blob": "635bef05a90bf7b509351a7bfd8a65ae901885fc",
+      "sha256": "24b5c2fffc50c40a102f4cb37bedb88113b40c6c690cfb6eed8ff83c0453aace",
+      "bytes": 10982,
+      "lines": 372,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__managed_binding__permits.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/managed_binding/publication.rs",
+      "blob": "4f71978344a6aabed5b1372c2c5a59f3f9a3e68e",
+      "sha256": "2a9317663dc0ed7f986d21275b0dfb3e4501f8de6e9f3b5eb157eff8d7999bb6",
+      "bytes": 22636,
+      "lines": 511,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__managed_binding__publication.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/managed_binding/snapshot.rs",
+      "blob": "5fe6e48f5ea17c27d5db2a033e458b800c5640e0",
+      "sha256": "8f8616ea4496f5f019aefa7a544e96cf2cd33e79fc09b1207fe65fe6e565d803",
+      "bytes": 18316,
+      "lines": 440,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__managed_binding__snapshot.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/execution/native/phase_protocol.rs",
+      "blob": "26e8aec7f42316ea3f0e5828ff3d4e287a6af372",
+      "sha256": "96b3fa95c27c776be5f8d8991bbb5f9add3276554738f335493cdc9934d4fee8",
+      "bytes": 27010,
+      "lines": 724,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__execution__native__phase_protocol.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/execution/native.rs",
+      "blob": "5648a9559a29cef3d68d134ed54d004b38087bb1",
+      "sha256": "4095b9d0a45a40412c25ea1bdc8a59c4615cf27fad94858bf04b5dcda8388f30",
+      "bytes": 100240,
+      "lines": 2417,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__execution__native.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/execution/native_phase/terminal.rs",
+      "blob": "703082c30db807852839d3108341a18ca97dc90c",
+      "sha256": "37838036a6c0c45dd911c0e4e0a64ff53eeb9fc8503c995013f1f37060bbbf1d",
+      "bytes": 34329,
+      "lines": 749,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__execution__native_phase__terminal.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/execution/git_io.rs",
+      "blob": "a8c0d50371c3a344833bcebb4f64cab1c1ba79e6",
+      "sha256": "07942394dcef7dc45b05086532ed9d195bfe69dd1183841a6a96f4308f0dc2e7",
+      "bytes": 10171,
+      "lines": 311,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__execution__git_io.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/execution/process.rs",
+      "blob": "f5a63f7dcfb890142bba6b849f0962cec39f71b5",
+      "sha256": "249f046912cad6b757f063b3547f262043f2119c304e86c710b4fb0add2bf91f",
+      "bytes": 19376,
+      "lines": 547,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__execution__process.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/execution/results.rs",
+      "blob": "c4bdfc9c018b45479d327b764737f093c55074f2",
+      "sha256": "290baf091d847c9fd2ba3e900d67e5d9326cd50c7c741e45e3742534f8cec847",
+      "bytes": 29602,
+      "lines": 856,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__execution__results.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/execution/workflow_source.rs",
+      "blob": "15e3513b8abe19d94a1817ea34252bcdc31efb68",
+      "sha256": "4b57e5afa4e66a51c7e2a828e9bb07ce1dae763a6ac58dbbaebb04c76aa9a00f",
+      "bytes": 49715,
+      "lines": 1304,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__execution__workflow_source.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/execution/workflow_gates.rs",
+      "blob": "8bc39714fad0d82fb7df6527a8e0d2d2109a194b",
+      "sha256": "83244e016d798395aece728b3d61d60e210514b7e65e09ceb719586413b34785",
+      "bytes": 17643,
+      "lines": 420,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__execution__workflow_gates.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/execution/retained_io.rs",
+      "blob": "8af01ac89ae1baf3be4930daee83f7b12f4421ee",
+      "sha256": "e88f86e75a07ae6efd94bda1e7d8ebb283e9078d0838adbf9ca00ed303d799e5",
+      "bytes": 8758,
+      "lines": 231,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__execution__retained_io.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/execution/native_phase.rs",
+      "blob": "b60f5f0fa002f113e7dcf82734652a09e533995d",
+      "sha256": "6186f883b541edf15d99764914f79c0fafa2692147a924ddc21fe08bf9349473",
+      "bytes": 60633,
+      "lines": 1456,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__execution__native_phase.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/execution/native_phase/version.rs",
+      "blob": "769c7f68b01511f12dc91b4f7b38cbd2a049c39f",
+      "sha256": "33114dcadedce4dacaf9f85789d66e4eb05b7bed7aa521477947e408bb3f3845",
+      "bytes": 47216,
+      "lines": 1228,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__execution__native_phase__version.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/execution/effects.rs",
+      "blob": "6fcfea86d5b0cca54142a4d564f20a11495c1993",
+      "sha256": "76275722e63f1b7158272d0d88c2524e5d5576d0bda33c645e2827590547febb",
+      "bytes": 11132,
+      "lines": 298,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__execution__effects.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/runtime/driver.rs",
+      "blob": "18db97d7437cd3612355926002003fba5cbc3cba",
+      "sha256": "629e1c2dadd192e9597d5b87982f0961e99e2de6a827065c06613d7d5f66e153",
+      "bytes": 17328,
+      "lines": 460,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__runtime__driver.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/runtime/driver/marker.rs",
+      "blob": "66771f508f0dd146f56b4465c75bbf4575851d10",
+      "sha256": "96ebf29fcf391d8b560173a7a5e3667924e5ad2e4d066a9e07aef6befc4e6862",
+      "bytes": 9206,
+      "lines": 223,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__runtime__driver__marker.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/runtime/driver/ticket.rs",
+      "blob": "f6b04e1526874ee28aa226c89dce68c1bfcfc2ea",
+      "sha256": "96f27a4637638c102bc8657b64021953c43f3426d0613f2f0777979d737446c2",
+      "bytes": 10879,
+      "lines": 244,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__runtime__driver__ticket.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/runtime/goals.rs",
+      "blob": "a1a84ad03f6735d720384a08c5ffc082cf72e634",
+      "sha256": "d5622623d1689545c67365ae41dd78055240161bc5306c96468d160843142529",
+      "bytes": 24764,
+      "lines": 577,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__runtime__goals.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/runtime/waiting.rs",
+      "blob": "6bfce9f521cd909b40fd42e7208e411fb5ff6a91",
+      "sha256": "68b495c983534332b8de38f1ad0570161c861dc03aee91508f2da919e3470818",
+      "bytes": 14820,
+      "lines": 334,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__runtime__waiting.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/execution/artifacts.rs",
+      "blob": "830dbdc2558f41661645a392009716706924729a",
+      "sha256": "bf829c260d3fd5a7739c374cfc6daf869626ce5e764784b9432f464f0ec4c2ce",
+      "bytes": 22473,
+      "lines": 570,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__execution__artifacts.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/execution.rs",
+      "blob": "ba58dbbe685924efaf87bea0885eb6b52a0866fe",
+      "sha256": "f30614eacadc146368e5c0545060c0691a77b685271a4dc87f8476f502719d0a",
+      "bytes": 53476,
+      "lines": 1343,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__execution.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/mod.rs",
+      "blob": "f8bec61c9ab5258adaabad10525d4ce6fbe2cef0",
+      "sha256": "fbbd7f790809bf9fbaa4b9250af2aa589511e930d1883b1de3778f76cd98bb3f",
+      "bytes": 91669,
+      "lines": 2235,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__mod.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/execution/workflow_source/native_handoff.rs",
+      "blob": "8acfa9a0aa5eb1415e86ec0e27ca577d1bb920cd",
+      "sha256": "6fb8610c82d5844109ce61ddabaf961da8efb54b570c34c15cc0829f12bc155a",
+      "bytes": 27147,
+      "lines": 697,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__execution__workflow_source__native_handoff.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/execution/phase.rs",
+      "blob": "dac28d202bf05b4b257086844fbd944746b3480b",
+      "sha256": "ac02ccb3dc583f4e0b99ac23aad0cdc1adbc45314a805100bcf51d0a114991fe",
+      "bytes": 18782,
+      "lines": 497,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__execution__phase.rs"
+    },
+    {
+      "label": "CA",
+      "commit": "95ef0e783c0b18c90dfef23ba1b77b9dc67735f1",
+      "path": "crates/rrx/src/runtime/installation.rs",
+      "blob": "e0dab8d453a6bfa10700228f930d64b4ba291462",
+      "sha256": "8e39e03597afeb20a34e4e69101c071ad82432c09748f6daa82b603feb30ae3e",
+      "bytes": 13288,
+      "lines": 352,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-crates__rrx__src__runtime__installation.rs"
+    },
+    {
+      "label": "CA",
+      "commit": "95ef0e783c0b18c90dfef23ba1b77b9dc67735f1",
+      "path": "crates/rrx/src/runtime/service.rs",
+      "blob": "6d1353ffe5731ff12a6ec75d6527f2bc10d52cde",
+      "sha256": "e6820a65d8d54781ee0e30f73027e98c2d6c1b847eac69b63546d0355063c758",
+      "bytes": 6301,
+      "lines": 157,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-crates__rrx__src__runtime__service.rs"
+    },
+    {
+      "label": "RN",
+      "commit": "1d783440b7f4d705bf8cf4c667e022f5cec87777",
+      "path": "crates/rrx/src/runtime/phase_jobs.rs",
+      "blob": "73efd9255e56d2a5539dca4823b0bacaeb36e399",
+      "sha256": "ce58e32049e06847295d3ba6933354ea62ed4cfedf46badea8c3bd1c6af494fb",
+      "bytes": 36171,
+      "lines": 944,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/RN-crates__rrx__src__runtime__phase_jobs.rs"
+    },
+    {
+      "label": "RN",
+      "commit": "1d783440b7f4d705bf8cf4c667e022f5cec87777",
+      "path": "crates/rrx/src/state/managed_binding/closure.rs",
+      "blob": "7f3895e7e2f7227714282e93937b676256812ef4",
+      "sha256": "30a5c29e1f4da30908296e2f46d3f31a078100661c6de4759e85e89a08ac277b",
+      "bytes": 22302,
+      "lines": 537,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/RN-crates__rrx__src__state__managed_binding__closure.rs"
+    },
+    {
+      "label": "CA-current",
+      "commit": "2c24f3f6e66f45692e416c77dc3e8d64fcbc9276",
+      "path": "crates/rrx/src/runtime/phase_jobs.rs",
+      "blob": "3ad596827ea87ba75ee4dcae4d01b6fdbcac140a",
+      "sha256": "3643aabaa63e6a9cfa04f534f0009f226b3ffa94c928372c454701dfa1643f86",
+      "bytes": 16045,
+      "lines": 419,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-current-crates__rrx__src__runtime__phase_jobs.rs"
+    },
+    {
+      "label": "CA-current",
+      "commit": "2c24f3f6e66f45692e416c77dc3e8d64fcbc9276",
+      "path": "crates/rrx/src/runtime/service.rs",
+      "blob": "8db43c4a4a973f225bc1786ef32aa8e9a7fd533d",
+      "sha256": "efaf4ba0aa2c1361a0d81b2aaf3378366676e127ca51c8f3665dbd24ae0ce90e",
+      "bytes": 6312,
+      "lines": 157,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-current-crates__rrx__src__runtime__service.rs"
+    },
+    {
+      "label": "CA-current",
+      "commit": "2c24f3f6e66f45692e416c77dc3e8d64fcbc9276",
+      "path": "crates/rrx/src/state/managed_binding/permits.rs",
+      "blob": "92b8e1572ae8a86361b94de072e6bb39323b9cfb",
+      "sha256": "5b65b879519ae49f37246ba65f73052c80f82f4996363e9f9f83220e28f8d3e1",
+      "bytes": 11355,
+      "lines": 382,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-current-crates__rrx__src__state__managed_binding__permits.rs"
+    },
+    {
+      "label": "CA-current",
+      "commit": "2c24f3f6e66f45692e416c77dc3e8d64fcbc9276",
+      "path": "crates/rrx/src/state/managed_binding/publication.rs",
+      "blob": "c2761231449095a3e3441c81ae21a10683ea1aee",
+      "sha256": "67e95b880f2d7325fbb68b7239b249a3971a47ad195fec3bfe749c7f79c9cf56",
+      "bytes": 23776,
+      "lines": 537,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-current-crates__rrx__src__state__managed_binding__publication.rs"
+    },
+    {
+      "label": "CA-current",
+      "commit": "2c24f3f6e66f45692e416c77dc3e8d64fcbc9276",
+      "path": "crates/rrx/src/state/managed_binding/snapshot.rs",
+      "blob": "22e2cbff78c6e01effa832390dfb0fb9f99d352e",
+      "sha256": "0efd598557674012520e91328256d51d0bc4ce65784fc0b80562b583c73ca7b7",
+      "bytes": 19613,
+      "lines": 475,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-current-crates__rrx__src__state__managed_binding__snapshot.rs"
+    },
+    {
+      "label": "CA-current",
+      "commit": "2c24f3f6e66f45692e416c77dc3e8d64fcbc9276",
+      "path": "crates/rrx/src/state/mod.rs",
+      "blob": "707cd77af77b224167ae2bca4a56aa5ee10fb7ba",
+      "sha256": "d624a4a70b7fe43b18b3c4c2ae58722ad5c8231657f94baba3c28d8d9c16d663",
+      "bytes": 95030,
+      "lines": 2309,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-current-crates__rrx__src__state__mod.rs"
+    },
+    {
+      "label": "RN-current",
+      "commit": "e70faa9dc900c5df0dd26d9983425cf6d63876a3",
+      "path": "crates/rrx/src/state/managed_binding/closure.rs",
+      "blob": "32490867b2e2989591a7add30d9e89a0a1e8d1df",
+      "sha256": "e7b91f77e5609c95b39763f4d50fdba9869e12313c369d9dee35174b12b42519",
+      "bytes": 22740,
+      "lines": 549,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/RN-current-crates__rrx__src__state__managed_binding__closure.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/runtime/control.rs",
+      "blob": "e7ddbd3ea59d45a8da2dfb33905ae1c9448b000f",
+      "sha256": "03ffcab929390bb5d603bcc668215a386580f629662c9344ffc2f8907b749d2f",
+      "bytes": 14600,
+      "lines": 416,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__runtime__control.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/main.rs",
+      "blob": "e40bb9c3d690b09c98c42d501af9bb778ed1530b",
+      "sha256": "f88469d7e5dd97c2ebeaa54813d601e892f1ebfd25ee64550b71a1dcd7b606f9",
+      "bytes": 19805,
+      "lines": 554,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__main.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/domain.rs",
+      "blob": "a320327fff917543dca49101f6c86616884540db",
+      "sha256": "7903da7d3c61c607cf14d01f849983584e41b1f22e8b2cce69a3aa2218615df3",
+      "bytes": 11840,
+      "lines": 465,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__domain.rs"
+    },
+    {
+      "label": "RN",
+      "commit": "1d783440b7f4d705bf8cf4c667e022f5cec87777",
+      "path": "crates/rrx/src/state/execution/native_phase/nonsuccess.rs",
+      "blob": "2be1061c43407cb7d7b885f1277282b6a75e328c",
+      "sha256": "fb8f8d0a50354cb142f152ad72b559bc1ef27fffcfe119e27e2809230de4cae2",
+      "bytes": 9163,
+      "lines": 249,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/RN-crates__rrx__src__state__execution__native_phase__nonsuccess.rs"
+    },
+    {
+      "label": "RN-current",
+      "commit": "e70faa9dc900c5df0dd26d9983425cf6d63876a3",
+      "path": "crates/rrx/src/state/execution/native_phase/nonsuccess.rs",
+      "blob": "ea9d14630dad972851702fbad715878342fe6c64",
+      "sha256": "9cdf2556b4b54f4d6ce3f114d6118cc858c4073a37ebbca1c6d30dfb85952b71",
+      "bytes": 9155,
+      "lines": 248,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/RN-current-crates__rrx__src__state__execution__native_phase__nonsuccess.rs"
+    },
+    {
+      "label": "CA",
+      "commit": "95ef0e783c0b18c90dfef23ba1b77b9dc67735f1",
+      "path": "crates/rrx/src/runtime/installation/tests.rs",
+      "blob": "0e3b5973f81720e8b073feb252093e493d3b3f8d",
+      "sha256": "0ee62dffb2e55aaf3f562029be40aea5e0982ab58287a0c97fe990304adca369",
+      "bytes": 11304,
+      "lines": 322,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-crates__rrx__src__runtime__installation__tests.rs"
+    },
+    {
+      "label": "CA",
+      "commit": "95ef0e783c0b18c90dfef23ba1b77b9dc67735f1",
+      "path": "crates/rrx/src/runtime/installation/tests/activation.rs",
+      "blob": "d1c8d2c81842d857db789ea7cbfe4d9d13f89721",
+      "sha256": "2cbc0ac2d83b68e2df5681001adf64b512620c36a754b89d4eac46deac757695",
+      "bytes": 7896,
+      "lines": 216,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-crates__rrx__src__runtime__installation__tests__activation.rs"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/execution/native/native_fixture.py",
+      "blob": "5802c5f50b7a196008836aa6debef092eb61fb26",
+      "sha256": "0e46f8e3ec2cd6b3ab0248174eafbf134de0b621e493bb5ac478bcbdfd3fc5d2",
+      "bytes": 16659,
+      "lines": 207,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__execution__native__native_fixture.py"
+    },
+    {
+      "label": "R",
+      "commit": "66f170bd33dc487fc58a963c8ef8f7d2d9ca08c4",
+      "path": "crates/rrx/src/state/managed_binding/marker_rows.rs",
+      "blob": "22aa02fa8c6413f88dd7464a242bffbaeed06799",
+      "sha256": "caedca52a25d245fc9b10473bfe9d79a536a616cb4fd47fa4e5a4ea4a8f5a5b2",
+      "bytes": 14385,
+      "lines": 364,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/R-crates__rrx__src__state__managed_binding__marker_rows.rs"
+    },
+    {
+      "label": "CA",
+      "commit": "95ef0e783c0b18c90dfef23ba1b77b9dc67735f1",
+      "path": "crates/rrx/src/execution/native/version.rs",
+      "blob": "39f680d5fc2da0f51e656ffd8145245dca8c7436",
+      "sha256": "eb0f88376e736a944cd1acfc8e804d4f6dc15d861ef4c904a1996bbd6ad99bd8",
+      "bytes": 35637,
+      "lines": 941,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-crates__rrx__src__execution__native__version.rs"
+    },
+    {
+      "label": "CA",
+      "commit": "95ef0e783c0b18c90dfef23ba1b77b9dc67735f1",
+      "path": "crates/rrx/src/state/managed_binding/activation.rs",
+      "blob": "49544da677faff859b1d79a3bbd7c72ae8152027",
+      "sha256": "ecbd456a07d16aa681b14659149a069d7839323f134ecf7708e7d23e2c171312",
+      "bytes": 9503,
+      "lines": 252,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-crates__rrx__src__state__managed_binding__activation.rs"
+    },
+    {
+      "label": "CA",
+      "commit": "95ef0e783c0b18c90dfef23ba1b77b9dc67735f1",
+      "path": "crates/rrx/src/state/runtime/driver/preparation.rs",
+      "blob": "2ab35a50f15ec9d648ebb710626c3245eb1b062d",
+      "sha256": "b3abeb3a06639a954e047c06910afb361b9ab796ddf0a79447c033ea841c39de",
+      "bytes": 32762,
+      "lines": 748,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-crates__rrx__src__state__runtime__driver__preparation.rs"
+    },
+    {
+      "label": "CA-current",
+      "commit": "2c24f3f6e66f45692e416c77dc3e8d64fcbc9276",
+      "path": "crates/rrx/src/execution/native/version.rs",
+      "blob": "bf1ee4ffe2ccd151e85e48a7b501a5f89d077ca2",
+      "sha256": "45c8884f33ed2f3599af0dbf21ac6363650e2c9ac143fba97bcbfeb3702a7141",
+      "bytes": 35846,
+      "lines": 944,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-current-crates__rrx__src__execution__native__version.rs"
+    },
+    {
+      "label": "CA-current",
+      "commit": "2c24f3f6e66f45692e416c77dc3e8d64fcbc9276",
+      "path": "crates/rrx/src/state/managed_binding/activation.rs",
+      "blob": "f8ffe0c70e4feed3d2528a4dca605032354d5988",
+      "sha256": "4b69e8eb0be4c4a777c5ab3a6356e0d17de7ef26c9196755fac13dc68453c838",
+      "bytes": 9912,
+      "lines": 261,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-current-crates__rrx__src__state__managed_binding__activation.rs"
+    },
+    {
+      "label": "CA-current",
+      "commit": "2c24f3f6e66f45692e416c77dc3e8d64fcbc9276",
+      "path": "crates/rrx/src/state/runtime/driver/preparation.rs",
+      "blob": "f1fb9d7a7130d067040d7a56c6ed103f158ee406",
+      "sha256": "f4402b500c856d3630f65f1467e464305ac628bc4973f0710823c2bd3c23933d",
+      "bytes": 33323,
+      "lines": 763,
+      "saved": "/Users/shuheisuzuki/Documents/dev/rururunx/.rrx/development-evidence/issue43-native-success-continuation-design/sc-source-objects/CA-current-crates__rrx__src__state__runtime__driver__preparation.rs"
+    }
+  ]
+}

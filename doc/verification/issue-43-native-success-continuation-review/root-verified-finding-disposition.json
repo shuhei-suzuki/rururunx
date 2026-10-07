@@ -1,0 +1,283 @@
+{
+  "recorded_at": "2026-10-07T02:53:26.652079+00:00",
+  "review_head": "0c35653c7a8aa05c78c5285c2f4b5370db520e70",
+  "root_verified_git_objects": 62,
+  "root_verified_contiguous_excerpts": 79,
+  "root_full_read_original_final_review": true,
+  "root_read_factual_map_summary_lines": [
+    1,
+    215
+  ],
+  "root_literal_findings_checked": [
+    "SC-01",
+    "SC-02",
+    "SC-03",
+    "SC-04",
+    "SC-05",
+    "SC-06",
+    "SC-07",
+    "SC-08",
+    "SC-09",
+    "SC-10",
+    "SC-11",
+    "SC-12"
+  ],
+  "findings": [
+    {
+      "id": "SC-01",
+      "classification": "confirmed_mandatory_contract_correction",
+      "finding": "Acknowledged launched jobs awaiting settlement are excluded from the due predicate.",
+      "facts": "H requires no acknowledgment or an already installed continuation for due classification. The normal start stores Launched once and binds once; subsequent terminal delivery projects into the same Native owner. It does not change JobState.outcome. Thus the timer never enters the discovery step for normal Bound followed by settlement.",
+      "limits": "Static liveness contradiction, also independently confirmed by Root. No successful continuation control was executed. Preserve bounded fair discovery and avoid observer ownership.",
+      "refs": [
+        "H-due",
+        "H-next",
+        "job-shape",
+        "job-return",
+        "job-bind",
+        "binding-snapshot",
+        "terminal-delivery",
+        "WHAT-MB7-9",
+        "WHAT-AC"
+      ],
+      "root_disposition": "confirmed_required_correction",
+      "runtime_control_executed": false
+    },
+    {
+      "id": "SC-02",
+      "classification": "confirmed_mandatory_contract_correction",
+      "finding": "Protected Git helper admission does not replace the running helper currency monitor.",
+      "facts": "UnitGit awaits capture_scoped_pinned. The 50 ms timer checks Unit identity and then generic validate_execution even with driver=None. Generic Driver validation refuses a marked row. A monitor refusal is journaled Unknown and the proposed capture requires settled helpers. This is a live protected consumer absent from H\u2019s replacement map.",
+      "limits": "Do not delete the timer/fence. No executed timing or mutant credit; actual protected currency/lifetime must be connected at this consumer.",
+      "refs": [
+        "H-capture",
+        "git-run",
+        "git-monitor-call",
+        "process-monitor",
+        "marker-refusal",
+        "WHAT-MB7-9"
+      ],
+      "root_disposition": "confirmed_required_correction",
+      "runtime_control_executed": false
+    },
+    {
+      "id": "SC-03",
+      "classification": "confirmed_mandatory_contract_correction",
+      "finding": "The final Implement Unit check still reaches generic marker refusal.",
+      "facts": "H lists only three evaluate substitutions and preserves everything else. The existing evaluate path separately runs validate_execution(false,true) after historical verify and source recapture, then checks exact artifact and writes Verification. Replacing terminal alone leaves this check.",
+      "limits": "Preserve claim/artifact/currentness checks and connect this separate protected check; not a request for new evidence semantics.",
+      "refs": [
+        "H-gate",
+        "gate-final",
+        "marker-refusal",
+        "WHAT-AC"
+      ],
+      "root_disposition": "confirmed_required_correction",
+      "runtime_control_executed": false
+    },
+    {
+      "id": "SC-04",
+      "classification": "confirmed_mandatory_contract_correction",
+      "finding": "Full normal write currency prevents SAME-plan confirmation after genuine Native progress.",
+      "facts": "Normal eligibility requires proof.is_live, no settlement, open effects/finalization and absent work; owner/invocation and Session images remain exact. Terminal persistence advances Unit, invocation, Session, readiness and admission. completed also revokes the owner, so NativePhaseBinding::is_live checks the changing owner state as well as its captured live boolean. H confirms under full original currency and forbids replacing an uncertain plan before rollback/refusal. A genuine terminal can therefore strand committed and rolled-back binding classification.",
+      "limits": "Confirming factual commit/rollback is distinct from issuing a new normal write. No relaxation of original parent/input/owner/lock/epoch checks is authorized. No race control executed.",
+      "refs": [
+        "H-due",
+        "H-uncertain",
+        "normal-session",
+        "normal-eligibility",
+        "normal-write",
+        "binding-access",
+        "binding-snapshot",
+        "settlement-issuer",
+        "terminal-progress",
+        "WHAT-MB7-9",
+        "WHAT-AC"
+      ],
+      "root_disposition": "confirmed_required_correction",
+      "runtime_control_executed": false
+    },
+    {
+      "id": "SC-05",
+      "classification": "confirmed_mandatory_contract_correction",
+      "finding": "Existing settlement accessors cannot deliver the promised complete terminal postimages.",
+      "facts": "NativeTerminalPlan retains full invocation/readiness/admission before/after PairRow images. NativeTerminalCommit::into_parts and phase.settled deliver Unit, receipt, Session/version and settlement only. OwnedPhaseSettlement retains consumed input and thread/turn, not those complete terminal SQL postimages. Admission/readiness versions and bodies are derived from actual preimages. H says expected images come from the SAME settlement with existing accessors unchanged; that delivery is absent.",
+      "limits": "Rows read later can be compared as facts but cannot be adopted as the producer\u2019s expected images or create a grant. No new serializable image credential or constructor widening is authorized.",
+      "refs": [
+        "H-late",
+        "H-sealed",
+        "terminal-shape",
+        "terminal-progress",
+        "terminal-delivery",
+        "settlement-shape",
+        "settlement-access",
+        "WHAT-MB7-9"
+      ],
+      "root_disposition": "confirmed_required_correction",
+      "runtime_control_executed": false
+    },
+    {
+      "id": "SC-06",
+      "classification": "confirmed_mandatory_contract_correction",
+      "finding": "The closure/Root publication callers have no declared async admission and Runtime lifetime bridge.",
+      "facts": "H synchronously declares close_phase_success(&mut Store, material) and reconcile_success(&PhaseSupervisor,&AtomicBool), yet assigns awaited control_admission acquisition before Store and retention through publication/retries. Store contains only Connection and permits. Existing service sweep holds no admission. CA\u2019s real async admit_activation retains OwnedMutexGuard plus strong Arc<Runtime>, with explicit drop order and association/composition checks. None of those objects are arguments/owned fields in the proposed closure call path.",
+      "limits": "This confirms an owner/caller/lifetime contract gap, not an observed stop exploit. Both Driver closure and Root publication retries need a concrete caller bridge. Preserve actual CA ordering; do not add a launch barrier or settle SourceStop/Cancel/R2 policy.",
+      "refs": [
+        "H-api",
+        "H-closure",
+        "H-uncertain",
+        "H-lock",
+        "store-shape",
+        "admission-shape",
+        "admission-acquire",
+        "service-loop",
+        "driver-publish"
+      ],
+      "root_disposition": "confirmed_required_correction",
+      "runtime_control_executed": false
+    },
+    {
+      "id": "SC-07",
+      "classification": "verified_api_omission_mandatory_status_unverified",
+      "finding": "Private ownership is real; mandatory design blockage is not independently established.",
+      "facts": "DriverMarkerAdvance ticket/next/body are private to marker.rs. H places a new impl in its sibling closure.rs, but already declares the needed method on the existing type. That method can legally live in the original producer module without exposing fields. H\u2019s SettledGateCompletion private fields need a sealed consumption/accessor operation for a state-side planner; none is listed. Such an operation can also be supplied in the owning module without changing the authorized semantic contract.",
+      "limits": "Do not award compile-refusal credit: proposed code was never compiled. Narrow producer-owned placement/consumption clarification is useful. Source implementation must obey Rust privacy, but this inventory alone does not prove a new mandatory WHAT/HOW gate; Root decides classification before any author batch.",
+      "refs": [
+        "H-api",
+        "driver-private",
+        "driver-ports",
+        "driver-publish",
+        "WHAT-MB7-9"
+      ],
+      "root_disposition": "implementation_api_clarification_optional_design_change",
+      "runtime_control_executed": false
+    },
+    {
+      "id": "SC-08",
+      "classification": "confirmed_mandatory_cost_and_control_correction",
+      "finding": "The preserved capture catalogue exceeds the stated helper and write count.",
+      "facts": "Existing-repository capture contains 8 ownership + 3 format/ancestry/commit + 3 content scan + 5 destination/fetch/fsck/two traversals = 19 helper commands, plus one per .gitattributes and optional init; H also requires HEAD, historical verification, source corpus and later recapture/publication. Corpus admits at most 4096 entries and reads each eligible blob, not 14 helpers. Every UnitGit helper reserves then reconciles an effect; capture separately stages and marks Ready. Generic helper reservation has no aggregate count gate. The 256 admission gate and bounded Native inventory reader belong to distinct Native ports and do not bound this helper writer by construction. Existing workflow_publication validates generic finalization both before and after its five-command graph verification; H already replaces that publication entry point. Those two checks are inventoried here without creating another finding.",
+      "limits": "Confirmed false accounting and omitted capacity-consumer inventory. Valid large workloads may truthfully become Held at an existing profile bound; this map prescribes neither a new cap nor a guarantee that every maximum repository closes. No runtime overflow/control executed.",
+      "refs": [
+        "H-capture",
+        "H-next",
+        "H-closure",
+        "H-cost",
+        "capture-catalogue",
+        "capture-ownership",
+        "capture-content",
+        "capture-verify",
+        "corpus-bound",
+        "corpus-catalogue",
+        "helper-writer",
+        "input-effect-cap",
+        "inventory-cap",
+        "HOW-cost",
+        "WHAT-MB7-9"
+      ],
+      "root_disposition": "confirmed_required_correction",
+      "runtime_control_executed": false
+    },
+    {
+      "id": "SC-09",
+      "classification": "confirmed_mandatory_cost_correction",
+      "finding": "12 MiB per binding plan and the derived 2.5 GiB total omit retained encodings/images.",
+      "facts": "ManagedBindingPlan holds current successor, own Session/invocation/after Body and exact mutation. CurrentWorkflowSuccessor holds Arc<Body<Record>> and original plan. Body owns raw, canonical and parsed representations. ExactRowMutation holds independently owned old/new SqlValue vectors, and plan construction fills their body strings. Copy-for-transaction clones them again transiently. Shared Arcs do not imply repeated additional allocation, but the total retained custody and additional copies must be distinguished; the two named raw strings alone are not the whole encoded total.",
+      "limits": "No RSS/heap number or new cap is asserted; H explicitly disclaims those. This is an encoded/owned-copy accounting correction under existing finite-cost requirements. No allocation measurement performed.",
+      "refs": [
+        "H-cost",
+        "plan-memory",
+        "plan-construction",
+        "successor-memory",
+        "body-memory",
+        "mutation-memory",
+        "HOW-cost",
+        "WHAT-MB7-9"
+      ],
+      "root_disposition": "confirmed_required_correction",
+      "runtime_control_executed": false
+    },
+    {
+      "id": "SC-10",
+      "classification": "confirmed_mandatory_consumer_correction",
+      "finding": "The factual Workflow Waiting/Held status lacks a Goal/task-page/CLI consumer path.",
+      "facts": "H\u2019s gate_observed retains Waiting/detail or Held reason without a Task rewrite and promises derived Goal/CLI visibility. Goal status counts and task pages consume waiting::observe/effective_state. That bounded reader requires native effects open and readiness start_ended=0/known_terminal=0; settled success instead returns generic Held. Its only effective state mappings are quota/capacity. Runtime control delegates to those readers; CLI prints their response. No Workflow evidence_integration_unavailable/held_reason observation is connected.",
+      "limits": "Actual non-Implement integration Waiting is truthful and must remain unverified; visibility is the missing consumer. Do not write Task WaitingHuman/blocker or infer runnable/policy/completion from factual rows.",
+      "refs": [
+        "H-gate",
+        "gate-final",
+        "waiting-reader",
+        "goal-status",
+        "goal-page",
+        "control-read",
+        "cli-read",
+        "cli-format",
+        "HOW-status"
+      ],
+      "root_disposition": "confirmed_required_correction",
+      "runtime_control_executed": false
+    },
+    {
+      "id": "SC-11",
+      "classification": "confirmed_mandatory_control_plan_correction",
+      "finding": "SC3 does not establish the named Conflict branch or the claimed late-link mutant assertion.",
+      "facts": "Current Immediate acquisition propagates Err; H calls Err uncertain and SC3 nevertheless calls genuine lock contention Conflict. A future port could explicitly classify a known pre-transaction refusal, but the preserved current port does not. H\u2019s Root calls late planning only with settlement Some; removing a None/live check inside that planner does not by itself make this caller reach it without settlement, nor furnish its other required images/receipt. A direct planner check is not a committed closed_settlement link.",
+      "limits": "Correct causal-control/outcome attribution is mandatory for claimed evidence. No demonstrated production bypass and no executed mutant kill. A direct defense-only check or an explicitly genuine reachable consumer setup must be labeled honestly; this map does not choose new failure semantics.",
+      "refs": [
+        "H-due",
+        "H-uncertain",
+        "H-controls",
+        "normal-write",
+        "H-late",
+        "WHAT-AC"
+      ],
+      "root_disposition": "confirmed_required_correction",
+      "runtime_control_executed": false
+    },
+    {
+      "id": "SC-12",
+      "classification": "confirmed_mandatory_control_plan_correction",
+      "finding": "M1\u2019s original Context maximum and headroom mutant are not genuine accepted positive setups as stated.",
+      "facts": "Native Source serializes Context.data into payload and carries its source_hashes/revision/scope/version into the original input. encode_input admits payload <=1 MiB and whole escaped frame <=2 MiB. ContextVersion has precisely those fields. An ordinary compactly written original Context near the stored decoder\u2019s 8 MiB maximum cannot be counted as accepted merely from that decoder ceiling. A newly created closure Context and mechanical representation measurement are distinct. charged_scope_bytes aggregates whole scoped history plus open reservations; individual maximum bodies do not establish charged+growth+link near 128 MiB or causality for omitting 17.5 MiB headroom.",
+      "limits": "M1 can measure decoder/representation maxima separately, but oversized ingress is SETUP, not PR1 coverage. No admitted boundary or mutant kill was executed. Preserve actual input/scope bounds and genuine writer setup; no synthetic positive rows.",
+      "refs": [
+        "H-cost",
+        "H-controls",
+        "context-shape",
+        "context-input",
+        "input-limit",
+        "frame-limit",
+        "scope-charge",
+        "scope-bound",
+        "HOW-cost",
+        "WHAT-AC"
+      ],
+      "root_disposition": "confirmed_required_correction",
+      "runtime_control_executed": false
+    }
+  ],
+  "mandatory_ids": [
+    "SC-01",
+    "SC-02",
+    "SC-03",
+    "SC-04",
+    "SC-05",
+    "SC-06",
+    "SC-08",
+    "SC-09",
+    "SC-10",
+    "SC-11",
+    "SC-12"
+  ],
+  "optional_ids": [
+    "SC-07",
+    "SC-13",
+    "SC-14"
+  ],
+  "no_runtime_or_mutant_credit_from_static_verification": true,
+  "design_correction_scope": "One Opus high author batch for verified findings; then the original finding family performs one delta review. Preserve governing WHAT, all permission/currency/ownership/input protections and broader Workflow/MVP acceptance criteria.",
+  "source_implementation_authorized": false,
+  "native_qualified": false,
+  "mvp_qualified": false,
+  "merge_ready": false
+}
