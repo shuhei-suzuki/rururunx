@@ -1,6 +1,6 @@
 # Issue 43: fixture migration to accepted ingress (FM) HOW — draft
 
-- **Status:** draft, revision R1 (R0 plus the prototype evidence in §6 and the classification in §7). Not submitted for review: user decisions D1 and D3 are pending (§4); §6 shows that D2 is forced for part of group A. Nothing is implemented.
+- **Status:** revision R2, submitted for Sol HOW review. R2 records the user decisions D1–D5 (§4, 2026-10-07) and the concrete HOW (§8). Nothing is implemented. §5–§7 are kept as the evidence trail.
 - **Pin:** `cb5dddd`. Paths are relative to `crates/rrx/`. The inventory is `doc/design/issue-43-fixture-migration-inventory.md` (`415453f`).
 - **Why:** Linux CI on PR #80 reports 418 passed / 284 failed / 20 ignored. All 284 failures are the trusted-ingress fixture refusals; no SC/BR control fails.
 - **Constraints (STRICT, unchanged):**
@@ -32,19 +32,16 @@ Only the public route is used: `rrx::cli::service::serve(state, config)` on a te
 | L — legacy-only behavior | `tests/git.rs` (18; legacy `WorktreeManager`, issue-numbered worktrees, Tasks added after creation), `tests/goal_graph.rs` (2; generic Goal DAG mutation, legacy history) | decision D3 |
 | C — public route | `tests/managed_tools.rs`, `tests/managed_docker.rs` (1 each) | §2; a sibling Task moves into the plan |
 
-## 4. Decisions pending (user)
+## 4. Decisions (user, 2026-10-07)
 
-- **D1 `Task.issue`:**
-  - (a) add `issue` to `TaskDefinition` (a WHAT change); or
-  - (b) drop `issue` from fixtures whose assertions do not depend on it. Recommended: (b), which needs no WHAT change.
-
-  `issue` is consumed only by the legacy `WorktreeManager` naming (`src/git.rs:109`) and Driver namespace identity checks. Accepted Tasks always have `issue = None`.
-- **D2:** execution tests use a started Runtime and the live Driver (§1.3). Recommended: yes.
-- **D3 legacy-only behavior:**
-  - (a) convert into refusal controls on accepted Goals (the legacy writer refuses), keeping the old positive behavior out of scope; or
-  - (b) keep it on genuinely legacy rows built through the ordered historical migration path (precedent `66f170b` `ordered_format_migration_*`).
-
-  Disabling or ignoring is excluded.
+| # | Decision |
+| --- | --- |
+| D1 | (b): drop `issue` from fixtures whose assertions do not depend on it. There is no WHAT change. A test whose subject is issue-based naming keeps `issue` on a legacy row through the legacy `put_task` writer (§7.1 S5). |
+| D2 | Yes. Tests that must reach Native execution, the Driver or accepted-only writers use the started Runtime and live Driver. |
+| D3 | Per-test classification by the §6.4 rule: L, D2 or R (§7.2). |
+| D4 | (a): the 17 D2 tests blocked by S2 (verification 12, managed 5) become R now. Their positive scenarios are carried as SC-N continuation work, not as failing tests. |
+| D5 | The S4 Goal-change halves are replaced by a Project or Task change wherever that keeps the test's subject; otherwise that half becomes R. On the accepted harness, a Goal pause or cancel uses the real `SetGoalLifecycle` control. |
+| EF | The restart defect (EF HOW R1, `ccaef5f`) is fixed in #43, after Sol approves EF. |
 
 ## 5. Order and evidence
 
@@ -191,3 +188,89 @@ These tests need a split: replace the Goal change with a Project or Task change,
   Ignoring or disabling is excluded, so (b) needs another home for these tests before Linux CI can be green.
 - **D5:** the S4 Goal-change halves (§7.3): replace the Goal change with a Project or Task change, or turn that half into a refusal.
 - **Note:** an existing SQL-seeded historical builder exists at `execution/native/tests/terminal_lock_tests.rs:11-128` ("old9", raw `INSERT`s, then `Store::open` migrates). FM does not use it: the "no SQL-seeded positive" rule.
+
+## 8. HOW (R2)
+
+### 8.1 L: legacy-row harness
+
+Applies to about 175 tests.
+
+1. **The fixture.** `crate::runtime::legacy_goal_fixture(seed, plan) -> LegacyFixture` is `cfg(test)`, `pub(crate)`, in `src/runtime/tests.rs`. It works in three steps:
+   1. It creates the Goal through `ControlFixture` accepted Unix-peer ingress, with no authority constructor.
+   2. It runs the ordered historical migration, factored out of `workflow/tests.rs` `ordered_format_migration_*` (which then calls the helper):
+      - the historical `state/schema.sql`;
+      - `INSERT … SELECT` of the non-grant tables only (`projects`, `goals`, `tasks`, `records`, `context_versions`, `usage`, `audit`) from the accepted-ingress database;
+      - `user_version = 2`;
+      - `Store::open` migrates.
+   3. It opens a fresh `RuntimeOwner` on the migrated file.
+
+   The rows are produced by genuine ingress and only copied, so this is not an SQL-seeded positive. The authority, scheduler, Driver and execution tables are never copied; a post-condition asserts that they are empty.
+2. **`LegacyFixture` fields:** `{ holder, owner, task(s), root }`, with `path()`. The Project root is `<dir>/repo`, because tests hard-code it (§6.2 exit-128 defect). `seed(&root)` makes the initial commits before Goal creation. The five call sites typed `tempfile::TempDir` change to `LegacyFixture`.
+3. **Shape.** Sibling Tasks are expressed in the plan. Legacy `put_task` is used only where post-creation Task addition on a legacy row is itself the subject (S5).
+4. **Worktree and branch.** These come from `WorktreeManager::create` on the legacy Task. Forged `git worktree add -b feature/task` (grok fixture) and forged bindings are removed. Assertions on names are rewritten to the genuine values.
+5. **`issue` (D1).** It is removed from the codex fixture (`codex/ownership.rs:699`). Issue-naming subjects (`tests/git.rs`) set it on the legacy row through legacy `put_task`.
+6. **`Store::memory` sites** (`adapter.rs`, `state::execution::tests`, `native_dispatch_tests`) move to the file-backed migrated store.
+7. **Integration crate.** `tests/support/legacy.rs` does the same through the public route only:
+   1. `ProjectRegistry::add`;
+   2. `rrx::cli::service::serve`;
+   3. `rrx::cli::client::request(CreateGoal)`;
+   4. shutdown;
+   5. the same ordered-migration copy, with `rusqlite` and `include_str!` of the historical schema.
+
+   This applies to `tests/{adapter,git,context,state,project}.rs`.
+
+### 8.2 D2: accepted Goal plus the started Runtime and live Driver
+
+Applies to about 19 tests after D4.
+
+- **Harness.** The existing installed lane (`runtime/installation/tests.rs` `fixture(provider, declared)` and `accept`, as used by SC1). The installed `NativePhasePort` limits it to `claude|codex`.
+- **What the Driver prepares.** It prepares `rrx/{task}/{unit}`. Tests assert those genuine values.
+- **Targets:**
+  - `workflow_source::recovery_tests` (7) and `workflow_source::tests::first_adoption_refuses…` (1);
+  - `committed_source_tests` 301, 470, 631 and 970. For 301, assertions past S2 are split into an R tail.
+- **Integration.** `tests/managed_tools.rs` and `tests/managed_docker.rs` use `serve` plus the Driver (§2). Their sibling Task moves into the plan.
+
+### 8.3 R: refusal assertions
+
+Applies to about 83 tests: 66 plus 17 from D4.
+
+- **What stays.** Each test keeps its setup and scenario up to the first call that reaches a refused path. That call is the legacy `step`/`prepare_*` hitting F2, or the public route hitting F1.
+- **What it asserts at that call:**
+  1. the typed refusal (`NativePreflightRefusal::ManagedBindingUnavailable`, or the F1 message);
+  2. no effect:
+     - the Task body and version are unchanged;
+     - the event count is unchanged;
+     - there is no new execution unit or record;
+     - `observed_git_outputs()` is unchanged;
+     - no adapter callback runs.
+
+  This is the pattern of `public_source_preparation_refuses_accepted_goal_before_unit_or_helper_effects`.
+- **Documentation.** A doc comment on each test names the former positive behavior and why it is unreachable (S1, S2 or F5). No test is deleted, ignored or gated.
+- **Targets:**
+  - 56 tests in `workflow::tests`;
+  - `workflow::tests::unbound_retry` (8);
+  - `adapter::grok::environment_workflow_tests` (2);
+  - `verification_tests` (12) and `managed_tests` (5);
+  - `tests/goal_graph.rs` (2), which mutates the generic Goal DAG (S4).
+
+### 8.4 S4 splits (D5)
+
+Applies to the 12 tests listed in §7.3. In each:
+- an owner-change or pause subject becomes a Project registration change or a Task-level change on the same row; or
+- on the accepted harness, the subject uses `SetGoalLifecycle`; or
+- where neither keeps the subject, that half becomes R.
+
+### 8.5 Open item for review
+
+`runtime::phase_supervisor::tests` (7) has no class yet. Proposal: L, by opening the Runtime over a pre-built migrated legacy database. The subject is the test-only `reserve_pending_phase`, and a live Driver would go past it. If a multi-Project legacy fixture proves infeasible, these 7 become R. The reviewer is asked to choose.
+
+### 8.6 Order and evidence
+
+1. **Commits, in this order:**
+   1. L in-crate: the `results` fixture, then `codex`, `grok`, `git_owner`, `state`, `adapter`;
+   2. L integration;
+   3. D2;
+   4. R;
+   5. S4 splits.
+2. **Per commit:** each commit records its HEAD, the selected test names and counts (never a zero-test run), and the unchanged guards. The guards are proved with `grep` showing no edit under `state/runtime/driver.rs`, `state/mod.rs` writers, `workflow.rs::require_managed_native_binding_composed` or the #19 admission.
+3. **Target:** Linux `cargo test --workspace` with 0 failed. Docker tests are verified on the CI runner. macOS stays on the user's machine.
