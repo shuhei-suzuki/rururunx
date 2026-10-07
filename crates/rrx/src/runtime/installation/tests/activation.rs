@@ -20,7 +20,7 @@ struct ObservedActivation {
     expected: serde_json::Value,
 }
 struct InitialRecordObservation {
-    id: uuid::Uuid,
+    id: crate::domain::RecordId,
     raw: String,
 }
 impl ObservedActivation {
@@ -280,7 +280,13 @@ async fn ca1_actual_activation_gates_marker_and_record_only_bound() {
         let arrived = Arc::new(AtomicBool::new(false));
         let capture = expected.clone();
         let signal = arrived.clone();
-        let initial = Arc::new(Mutex::new(None));
+        let initial = Arc::new(Mutex::new(
+            None::<(
+                InitialRecordObservation,
+                (String, u64, u64, String),
+                (String, String),
+            )>,
+        ));
         let original = initial.clone();
         let reader = Mutex::new(
             rusqlite::Connection::open_with_flags(

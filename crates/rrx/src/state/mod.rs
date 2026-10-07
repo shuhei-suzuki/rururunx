@@ -91,7 +91,7 @@ pub struct Store {
     binding_permits: std::sync::Arc<managed_binding::PrivatePermitManager>,
     /// Finite read-only observations of real committed test-build windows.
     #[cfg(test)]
-    record_window_observations: Vec<(Uuid, u64, i64, u64, i64, u64)>,
+    record_window_observations: Vec<(RecordId, u64, i64, u64, i64, u64)>,
 }
 
 fn register_writer_contract(
@@ -281,7 +281,7 @@ impl Store {
     }
 
     #[cfg(test)]
-    pub(crate) fn record_window_observations(&self) -> &[(Uuid, u64, i64, u64, i64, u64)] {
+    pub(crate) fn record_window_observations(&self) -> &[(RecordId, u64, i64, u64, i64, u64)] {
         &self.record_window_observations
     }
 

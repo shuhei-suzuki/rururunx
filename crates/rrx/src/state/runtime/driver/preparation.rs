@@ -404,7 +404,7 @@ impl DriverPreparationAdvance {
         }
     }
     #[cfg(test)]
-    pub(in crate::state) fn record_window_probe(&self) -> Option<(Uuid, u64, i64)> {
+    pub(in crate::state) fn record_window_probe(&self) -> Option<(RecordId, u64, i64)> {
         self.input.as_ref()?.records.as_ref()?;
         Some((
             self.input.as_ref()?.record.id,
