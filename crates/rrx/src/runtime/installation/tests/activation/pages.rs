@@ -51,11 +51,39 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
             Some(seams),
         );
         f.runtime.start().await.unwrap();
-        wait_for(
-            || observations.lock().unwrap().len() == 128,
-            "SETUP: fewer than 128 genuine retained S1 preparations",
-        )
-        .await;
+        let setup_end = tokio::time::Instant::now() + Duration::from_secs(40);
+        let mut progress = tokio::time::Instant::now();
+        while observations.lock().unwrap().len() != 128 {
+            if tokio::time::Instant::now() >= progress {
+                let exits = f.runtime._drivers.pending_exits().unwrap();
+                let labels = exits.iter().map(|e| e.label()).collect::<Vec<_>>();
+                eprintln!(
+                    "CA4i actual setup progress: claimed={} S1={} unfinished={} exits_page={labels:?} retained={} units={} S2={}",
+                    count(&f, "task_drivers"),
+                    observations.lock().unwrap().len(),
+                    f.runtime._drivers.observe_finished().unwrap(),
+                    f.runtime._drivers.retained_preparations().unwrap(),
+                    count(&f, "execution_units"),
+                    precommit_calls.load(Ordering::SeqCst)
+                );
+                progress = tokio::time::Instant::now() + Duration::from_secs(10);
+            }
+            if tokio::time::Instant::now() >= setup_end {
+                let claims = count(&f, "task_drivers");
+                let s1 = observations.lock().unwrap().len();
+                let unfinished = f.runtime._drivers.observe_finished().unwrap();
+                eprintln!(
+                    "CA4i SETUP snapshot before teardown: claims={claims} S1={s1} unfinished={unfinished}"
+                );
+                let shutdown = f.runtime.shutdown().await;
+                eprintln!("CA4i controlled setup shutdown: {shutdown:?}");
+                finish(f).await;
+                panic!(
+                    "SETUP: fewer than 128 genuine retained S1 preparations; claims={claims} S1={s1} unfinished={unfinished}"
+                );
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
         assert_eq!(
             count(&f, "task_drivers"),
             128,
