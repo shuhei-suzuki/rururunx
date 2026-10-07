@@ -160,7 +160,7 @@ impl NativePreparationCustody {
                 no_dispatch.clone(),
                 closure.clone(),
                 closed.clone(),
-            ));
+            )?);
             let mut state = self
                 .state
                 .lock()

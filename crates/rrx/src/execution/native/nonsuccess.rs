@@ -27,14 +27,22 @@ impl NativeNoDispatchClosureProof {
         no_dispatch: Arc<prepared::PreparedPhaseNoCurrentDispatch>,
         closure: Arc<crate::state::NativeQuotaClosurePlan>,
         closed: Arc<crate::state::NativePreparationClosureCommit>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        actor.validate_original()?;
+        no_dispatch.validate_original(&actor)?;
+        ensure!(
+            actor.is_revoked()
+                && closed.matches_plan(&closure)
+                && closure.matches_no_dispatch(&no_dispatch),
+            "non-success proof differs from known preparation closure"
+        );
+        Ok(Self {
             custody: Arc::downgrade(custody),
             actor,
             no_dispatch,
             closure,
             closed,
-        }
+        })
     }
     pub(crate) fn launch(&self) -> &Arc<crate::state::managed_binding::PhaseLaunchParts> {
         self.actor.launch()
