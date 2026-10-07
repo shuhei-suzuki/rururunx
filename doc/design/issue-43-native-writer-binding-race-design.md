@@ -54,6 +54,7 @@ At most one extra `plan_current_phase` read, and one extra plan and Immediate pe
 
 - **Branch base:** prototype worktree at `8c9d4e5` plus §3.2 only.
 - **Result:** SC1 claude and codex pass (2 passed): `session_bound`, then `gate_claim`, then `gate_observed`, then success `phase_closed`.
+- **Full lib run** (prototype on `067b9fa`): 368 passed, 284 failed, 20 ignored. Every failure is in the `2e07cfc` baseline set (trusted-ingress fixtures); there are no new failures. SC1 ×2, `rn_p1`, `rn_h1` and DC1–DC4 pass under workspace load.
 - **R1 list incomplete:** with only the R1 writers wrapped, codex still ended `ProtocolFailure` from a marked refusal in owner validation and Session projection.
 - **Defects found and fixed separately in `8c9d4e5`** (implementation defects of approved designs, not BR):
   - the terminal Session index compared kind `SESSION` with the stored `session`;
