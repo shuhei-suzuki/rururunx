@@ -20,6 +20,45 @@ const KINDS: &str = "'rrx.private.workflow.session_bound','rrx.private.workflow.
 const RECIPE: &str = "rrx.workflow-body-sha256/v1";
 const UNIT_BYTES: usize = 16 * 1024;
 
+pub(super) enum ClosureLedger<'a> {
+    Empty,
+    SolePhaseClosed { at: i64, data: &'a str },
+}
+pub(super) fn validate_closure_ledger_tx(
+    c: &Connection,
+    marker: &OriginalMarker,
+    expected: ClosureLedger<'_>,
+) -> Result<()> {
+    match expected {
+        ClosureLedger::Empty => {
+            let present: bool = c.query_row(&format!("SELECT EXISTS(SELECT 1 FROM audit WHERE kind IN ({KINDS}) AND json_extract(data,'$.private_operation_ref')=?1)"), [marker.operation().to_string()], |r| r.get(0))?;
+            ensure!(!present, "non-success original ledger is not empty");
+        }
+        ClosureLedger::SolePhaseClosed { at, data } => {
+            ensure!(data.len() <= 4096, "non-success link exceeds bound");
+            let mut statement = c.prepare(&format!("SELECT sequence,project_id,goal_id,task_id,kind,at,CASE WHEN length(CAST(data AS BLOB))<=4096 THEN data END FROM audit WHERE kind IN ({KINDS}) AND json_extract(data,'$.private_operation_ref')=?1 ORDER BY sequence LIMIT 2"))?;
+            let mut rows = statement.query([marker.operation().to_string()])?;
+            let row = rows.next()?.context("non-success link absent")?;
+            let scope = marker.scope();
+            ensure!(
+                row.get::<_, i64>(0)? > 0
+                    && row.get::<_, String>(1)? == scope.project_id.to_string()
+                    && row.get::<_, Option<String>>(2)? == scope.goal_id.map(|v| v.to_string())
+                    && row.get::<_, Option<String>>(3)? == scope.task_id.map(|v| v.to_string())
+                    && row.get::<_, String>(4)? == "rrx.private.workflow.phase_closed"
+                    && row.get::<_, i64>(5)? == at
+                    && row.get::<_, Option<String>>(6)?.as_deref() == Some(data),
+                "non-success exact ledger link changed"
+            );
+            ensure!(
+                rows.next()?.is_none(),
+                "non-success ledger has additional links"
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Private coherent read product, not Clone/Deserialize or Native authority.
 /// Keeping the original actual plan prevents SQL/current-row origin replacement.
 pub(crate) struct CurrentWorkflowSuccessor {

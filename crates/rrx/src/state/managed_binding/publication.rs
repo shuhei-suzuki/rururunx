@@ -170,6 +170,19 @@ impl Drop for TransactionObserver<'_> {
     }
 }
 impl OriginalMarker {
+    pub(super) fn validate_unadvanced_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        self.plan.rows.validate_unadvanced_tx(tx)
+    }
+    pub(super) fn original_operation_image(&self) -> Result<&[rusqlite::types::Value]> {
+        self.plan.rows.original_operation_image()
+    }
+    pub(super) fn validate_closed_tx(
+        &self,
+        tx: &Transaction<'_>,
+        operation: &[rusqlite::types::Value],
+    ) -> Result<()> {
+        self.plan.rows.validate_closed_tx(tx, operation)
+    }
     /// Immutable original lineage; copied rows or a fresh ticket cannot match.
     /// Current successor, live Driver and actual Native eligibility are separate.
     pub(crate) fn matches_source_ticket(&self, ticket: &Arc<DriverReadTicket>) -> bool {

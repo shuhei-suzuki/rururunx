@@ -9,6 +9,11 @@ mod binding;
 pub(crate) use activation::{
     ActivationCommit, NativeActivationPlan, member_digest, plan_native_activation, roster_digest,
 };
+mod closure;
+pub(in crate::state) use closure::{
+    PhaseClosedFacts, PhaseClosureImages, PhaseImage, UnlinkedPhaseClosure, plan_unlinked_closure,
+    validate_original_phase_tx,
+};
 mod canonical;
 pub(in crate::state) use canonical::Body;
 pub(in crate::state) use marker_plan::unit_index_matches as unit_image_matches;

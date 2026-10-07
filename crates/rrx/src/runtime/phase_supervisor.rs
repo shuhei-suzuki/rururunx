@@ -5,7 +5,7 @@ use crate::{
     domain::ProjectId,
     execution::{OperationId, RuntimeOwner, owner::PreparationGuard, phase::NativeAllocation},
 };
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     sync::{
@@ -626,6 +626,67 @@ impl PhaseSupervisor {
             .take();
         drop(guard);
     }
+    pub(super) fn retire_closed_marked(
+        &self,
+        ack: &crate::state::PhaseClosedAcknowledgment,
+    ) -> Result<()> {
+        let removed = {
+            let _depth = super::phase_jobs::RootLockDepth::enter();
+            let mut q = self
+                .queue
+                .lock()
+                .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
+            // Locate only through the typed acknowledgment. SQL/observations
+            // cannot identify a removable marked slot.
+            let operation = q
+                .entries
+                .iter()
+                .find_map(|(id, slot)| ack.matches_allocation(&slot.allocation).then_some(*id))
+                .context("acknowledged original slot absent")?;
+            let slot = q
+                .entries
+                .get(&operation)
+                .context("acknowledged original slot absent")?;
+            ensure!(
+                *slot
+                    .publication
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("publication state poisoned"))?
+                    == PublicationState::Publishing
+                    && slot.launch_handed_off.load(Ordering::SeqCst)
+                    && slot
+                        .marker
+                        .lock()
+                        .map_err(|_| anyhow::anyhow!("original slot marker poisoned"))?
+                        .as_ref()
+                        .is_some_and(|m| ack.matches_marker(m)),
+                "non-success acknowledgment differs from publishing marked slot"
+            );
+            let project = slot.allocation.facts().scope.project_id;
+            ensure!(
+                q.projects
+                    .get(&project)
+                    .is_some_and(|ids| ids.contains(&operation)),
+                "acknowledged project rotation absent"
+            );
+            let removed = q
+                .entries
+                .remove(&operation)
+                .expect("checked acknowledged slot");
+            let ids = q
+                .projects
+                .get_mut(&project)
+                .expect("checked acknowledged project");
+            ids.retain(|id| *id != operation);
+            if ids.is_empty() {
+                q.projects.remove(&project);
+                q.rotation.retain(|p| *p != project);
+            }
+            removed
+        };
+        Self::release(removed);
+        Ok(())
+    }
     fn fair_page(&self) -> Result<Vec<Arc<Slot>>> {
         let mut q = self
             .queue
@@ -771,6 +832,10 @@ pub(super) struct PhaseDispatcher {
     stopping: Arc<AtomicBool>,
 }
 impl PhaseDispatcher {
+    pub(super) fn reconcile_nonsuccess(&self) -> Result<bool> {
+        self.phase_jobs
+            .reconcile_nonsuccess(&self.phases, &self.stopping)
+    }
     pub(super) fn new(
         owner: Arc<RuntimeOwner>,
         phases: Arc<PhaseSupervisor>,

@@ -11,12 +11,110 @@ use crate::execution::{
 use crate::state::managed_binding::{ManagedBindingPlan, plan_managed_binding};
 use anyhow::{Result, ensure};
 use std::{
+    cell::Cell,
     collections::BTreeMap,
+    sync::atomic::{AtomicBool, Ordering},
     sync::{Arc, Mutex, Weak},
+    time::{Duration, Instant},
 };
 use tokio::{sync::watch, task::JoinHandle};
 
 const MAX_JOBS: usize = 128;
+const CLOSURE_TURNS: usize = 8;
+fn rotate_closure_snapshot<K: Ord, T>(snapshot: &mut [(K, T, bool)], cursor: Option<K>) {
+    if let Some(cursor) = cursor {
+        let position = snapshot.partition_point(|(id, _, _)| *id < cursor);
+        let len = snapshot.len();
+        if len > 0 {
+            snapshot.rotate_left(position % len);
+        }
+    }
+}
+fn take_closure_turn(turns: &mut usize) -> bool {
+    if *turns == CLOSURE_TURNS {
+        return false;
+    }
+    *turns += 1;
+    true
+}
+/// Material destruction belongs to the caller, after both normal and poisoned
+/// Store guards. This private helper grants no authority to its callback.
+fn borrowed_store_turn<T, M, R>(
+    store: &Mutex<T>,
+    material: M,
+    call: impl FnOnce(&mut T, &M) -> Result<R>,
+) -> Result<R> {
+    assert_nonsuccess_unlocked();
+    let result = match store.lock() {
+        Ok(mut store) => call(&mut store, &material),
+        Err(poisoned) => {
+            drop(poisoned);
+            Err(anyhow::anyhow!("non-success Store poisoned"))
+        }
+    };
+    drop(material);
+    result
+}
+thread_local! {
+    static ROOT_LOCK_DEPTH: Cell<usize> = const { Cell::new(0) };
+    static TURN_TRANSACTIONS: Cell<Option<u8>> = const { Cell::new(None) };
+}
+pub(super) struct RootLockDepth;
+impl RootLockDepth {
+    pub(super) fn enter() -> Self {
+        ROOT_LOCK_DEPTH.with(|d| d.set(d.get() + 1));
+        Self
+    }
+}
+impl Drop for RootLockDepth {
+    fn drop(&mut self) {
+        ROOT_LOCK_DEPTH.with(|d| d.set(d.get() - 1));
+    }
+}
+pub(crate) fn assert_nonsuccess_unlocked() {
+    ROOT_LOCK_DEPTH.with(|d| debug_assert_eq!(d.get(), 0, "RN-1 Root lock spans external work"));
+}
+pub(crate) fn record_nonsuccess_store_attempt() {
+    assert_nonsuccess_unlocked();
+    TURN_TRANSACTIONS.with(|v| {
+        if let Some(count) = v.get() {
+            let count = count.saturating_add(1);
+            v.set(Some(count));
+            debug_assert!(count <= 1, "RN-1 turn runs more than one Store transaction");
+        }
+    });
+}
+struct ClosureTurn;
+impl ClosureTurn {
+    fn enter() -> Self {
+        TURN_TRANSACTIONS.with(|v| {
+            debug_assert!(v.get().is_none());
+            v.set(Some(0));
+        });
+        Self
+    }
+}
+impl Drop for ClosureTurn {
+    fn drop(&mut self) {
+        TURN_TRANSACTIONS.with(|v| {
+            let count = v.replace(None);
+            if !std::thread::panicking() {
+                debug_assert!(count.is_some_and(|n| n <= 1));
+            }
+        });
+    }
+}
+
+/// Issued only from this registry's retained outcome and finished start task.
+/// The allocation pointer is a witness, never reconstructed from an ID or row.
+pub(crate) struct StartEnded {
+    allocation: Arc<NativeAllocation>,
+}
+impl StartEnded {
+    pub(crate) fn matches_allocation(&self, allocation: &Arc<NativeAllocation>) -> bool {
+        Arc::ptr_eq(&self.allocation, allocation)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum InvocationObservation {
@@ -28,6 +126,7 @@ pub(crate) enum InvocationObservation {
     Waiting,
     Failed,
     Uncertain,
+    ClosedNonSuccess,
 }
 
 struct JobState {
@@ -39,6 +138,13 @@ struct JobState {
     outcome: Option<std::result::Result<RetainedStart, NativePhaseStartError>>,
     binding_plan: Option<Arc<ManagedBindingPlan>>,
     binding_error: Option<anyhow::Error>,
+    nonsuccess: Option<Arc<crate::state::NativeNonSuccessClosurePlan>>,
+    closed_ack: Option<Arc<crate::state::PhaseClosedAcknowledgment>>,
+    closure_due: Instant,
+    closure_backoff: u64,
+    uncertain: bool,
+    slot_released: bool,
+    attention: Option<&'static str>,
 }
 /// Actual returned objects, never reconstructed from DTOs or registry IDs.
 enum RetainedStart {
@@ -71,6 +177,7 @@ pub(super) struct PhaseJobReservation {
 #[derive(Default)]
 pub(super) struct PhaseJobs {
     entries: Mutex<BTreeMap<OperationId, Entry>>,
+    closure_cursor: Mutex<Option<OperationId>>,
 }
 
 /// Observation only. Drop does not abort, release, retry or remove anything.
@@ -115,6 +222,305 @@ impl PhaseJobs {
             .map(|entry| entry.job.allocation.clone())
             .ok_or_else(|| anyhow::anyhow!("original retained allocation absent"))
     }
+    fn closure_snapshot(&self) -> Result<Vec<(OperationId, Arc<Job>, bool)>> {
+        let mut snapshot = {
+            let _depth = RootLockDepth::enter();
+            let entries = self
+                .entries
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase jobs poisoned"))?;
+            ensure!(
+                entries.len() <= MAX_JOBS,
+                "phase closure registry exceeds bound"
+            );
+            entries
+                .iter()
+                .filter_map(|(id, entry)| {
+                    entry
+                        .handle
+                        .as_ref()
+                        .map(|handle| (*id, entry.job.clone(), handle.is_finished()))
+                })
+                .collect::<Vec<_>>()
+        };
+        let cursor = {
+            let _depth = RootLockDepth::enter();
+            *self
+                .closure_cursor
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase closure cursor poisoned"))?
+        };
+        rotate_closure_snapshot(&mut snapshot, cursor);
+        Ok(snapshot)
+    }
+    fn set_closure_cursor(&self, cursor: Option<OperationId>) -> Result<()> {
+        let _depth = RootLockDepth::enter();
+        *self
+            .closure_cursor
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase closure cursor poisoned"))? = cursor;
+        Ok(())
+    }
+    fn retire_closed(&self, job: &Arc<Job>) -> Result<()> {
+        {
+            let _depth = RootLockDepth::enter();
+            let state = job
+                .state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+            ensure!(
+                state.closed_ack.is_some() && state.slot_released,
+                "phase closure not acknowledged/released"
+            );
+        }
+        let removed = {
+            let _depth = RootLockDepth::enter();
+            let mut entries = self
+                .entries
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase jobs poisoned"))?;
+            let id = job.allocation.facts().operation_id;
+            let entry = entries
+                .get(&id)
+                .ok_or_else(|| anyhow::anyhow!("closed phase job absent"))?;
+            ensure!(
+                Arc::ptr_eq(&entry.job, job)
+                    && entry.handle.as_ref().is_some_and(JoinHandle::is_finished),
+                "closed phase start not finished or original job differs"
+            );
+            entries.remove(&id)
+        };
+        drop(removed);
+        Ok(())
+    }
+    fn release_acknowledged(
+        &self,
+        phases: &super::phase_supervisor::PhaseSupervisor,
+        job: &Arc<Job>,
+        ack: &Arc<crate::state::PhaseClosedAcknowledgment>,
+    ) -> Result<()> {
+        let released = {
+            let _depth = RootLockDepth::enter();
+            job.state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?
+                .slot_released
+        };
+        if !released {
+            phases.retire_closed_marked(ack)?;
+            let _depth = RootLockDepth::enter();
+            job.state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?
+                .slot_released = true;
+        }
+        self.retire_closed(job)
+    }
+    pub(super) fn reconcile_nonsuccess(
+        &self,
+        phases: &super::phase_supervisor::PhaseSupervisor,
+        stopping: &AtomicBool,
+    ) -> Result<bool> {
+        use crate::execution::native::{NativeClosureStep, PreparationYield};
+        use crate::state::{NativeNonSuccessConfirmation, NativeNonSuccessWrite, Store};
+        let snapshot = self.closure_snapshot()?;
+        let mut turns = 0usize;
+        let mut pending = false;
+        for (operation, job, finished) in snapshot {
+            if stopping.load(Ordering::SeqCst) {
+                return Ok(false);
+            }
+            let (ack, ended, due, custody, saved, uncertain) = {
+                let _depth = RootLockDepth::enter();
+                let state = job
+                    .state
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+                (
+                    state.closed_ack.clone(),
+                    state.outcome.as_ref().is_some_and(Result::is_err)
+                        || (state.outcome.is_none()
+                            && state.observation == InvocationObservation::Uncertain
+                            && finished),
+                    state.closure_due <= Instant::now(),
+                    state.preparation.clone(),
+                    state.nonsuccess.clone(),
+                    state.uncertain,
+                )
+            };
+            if let Some(ack) = ack {
+                if self.release_acknowledged(phases, &job, &ack).is_err() {
+                    pending = true;
+                }
+                continue;
+            }
+            if !ended || !due {
+                continue;
+            }
+            if !take_closure_turn(&mut turns) {
+                self.set_closure_cursor(Some(operation))?;
+                return Ok(true);
+            }
+            let _turn = ClosureTurn::enter();
+            let owner = job
+                .allocation
+                .selected_port()
+                .selected_adapter()?
+                .owner
+                .clone();
+            let plan = match saved {
+                Some(plan) => plan,
+                None => {
+                    let witness = StartEnded {
+                        allocation: job.allocation.clone(),
+                    };
+                    let proof = match custody.nonsuccess_step(&witness) {
+                        NativeClosureStep::NotEligible => {
+                            job.closure_held("not eligible")?;
+                            continue;
+                        }
+                        NativeClosureStep::Held(_cause) => {
+                            job.closure_held("original preparation Held")?;
+                            continue;
+                        }
+                        NativeClosureStep::Preparation(step) => {
+                            match step {
+                                PreparationYield::Closed | PreparationYield::RolledBack => {
+                                    job.closure_ready()?;
+                                    pending = true;
+                                }
+                                PreparationYield::Conflict | PreparationYield::Uncertain => {
+                                    job.closure_retry()?
+                                }
+                            }
+                            // Even Closed ends the turn: never run RN-1 here.
+                            continue;
+                        }
+                        NativeClosureStep::Proof(proof) => proof,
+                    };
+                    let plan = match Store::plan_phase_nonsuccess_closure(&owner, proof) {
+                        Ok(plan) => plan,
+                        Err(_cause) => {
+                            job.closure_held("original non-success plan Held")?;
+                            continue;
+                        }
+                    };
+                    {
+                        let _depth = RootLockDepth::enter();
+                        let mut state = job
+                            .state
+                            .lock()
+                            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+                        ensure!(
+                            state.nonsuccess.is_none() && state.closed_ack.is_none(),
+                            "non-success original plan already retained"
+                        );
+                        state.nonsuccess = Some(plan.clone());
+                    }
+                    plan
+                }
+            };
+            let material: crate::state::NativeNonSuccessMaterial =
+                match Store::materialize_phase_nonsuccess(&plan) {
+                    Ok(material) => material,
+                    Err(_cause) => {
+                        job.closure_held("SAME non-success material Held")?;
+                        continue;
+                    }
+                };
+            // Borrowed turn material outlives the Store guard on every path,
+            // including poisoning. Errors never transfer its ownership.
+            let result = borrowed_store_turn(&owner.store, material, |store, material| {
+                if uncertain {
+                    store
+                        .confirm_phase_nonsuccess(material)
+                        .map(|value| match value {
+                            NativeNonSuccessConfirmation::Known(ack) => TurnResult::Known(ack),
+                            NativeNonSuccessConfirmation::RolledBack => TurnResult::RolledBack,
+                        })
+                } else {
+                    store
+                        .close_phase_nonsuccess(material)
+                        .map(|value| match value {
+                            NativeNonSuccessWrite::Known(ack) => TurnResult::Known(ack),
+                            NativeNonSuccessWrite::Conflict(cause) => TurnResult::Conflict(cause),
+                        })
+                }
+            });
+            match result {
+                Ok(TurnResult::Known(ack)) => {
+                    ensure!(
+                        ack.matches_allocation(&job.allocation),
+                        "non-success acknowledgment differs from job allocation"
+                    );
+                    let ack = Arc::new(ack);
+                    {
+                        let _depth = RootLockDepth::enter();
+                        let mut state = job
+                            .state
+                            .lock()
+                            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+                        ensure!(
+                            state.closed_ack.is_none(),
+                            "non-success acknowledgment already retained"
+                        );
+                        state.closed_ack = Some(ack.clone());
+                        state.observation = InvocationObservation::ClosedNonSuccess;
+                    }
+                    job.changed
+                        .send_replace(InvocationObservation::ClosedNonSuccess);
+                    if self.release_acknowledged(phases, &job, &ack).is_err() {
+                        pending = true;
+                    }
+                }
+                Ok(TurnResult::Conflict(_cause)) => {
+                    let removed = {
+                        let _depth = RootLockDepth::enter();
+                        let mut state = job
+                            .state
+                            .lock()
+                            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+                        ensure!(
+                            state
+                                .nonsuccess
+                                .as_ref()
+                                .is_some_and(|p| Arc::ptr_eq(p, &plan)),
+                            "non-success conflict differs from retained plan"
+                        );
+                        state.uncertain = false;
+                        state.nonsuccess.take()
+                    };
+                    drop(removed);
+                    job.closure_held("original currency conflict; Held")?;
+                }
+                Ok(TurnResult::RolledBack) => {
+                    {
+                        let _depth = RootLockDepth::enter();
+                        let mut state = job
+                            .state
+                            .lock()
+                            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+                        state.uncertain = false;
+                    }
+                    job.closure_ready()?;
+                    pending = true;
+                }
+                Err(_cause) if uncertain => job.closure_held("SAME uncertain confirmation Held")?,
+                Err(_cause) => {
+                    {
+                        let _depth = RootLockDepth::enter();
+                        job.state
+                            .lock()
+                            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?
+                            .uncertain = true;
+                    }
+                    job.closure_retry()?;
+                }
+            }
+        }
+        self.set_closure_cursor(None)?;
+        Ok(pending)
+    }
     /// Caller already holds actual Runtime admission and publishing capacity.
     /// Called before SQL effects; duplicate IDs cannot substitute an allocation.
     pub(super) fn reserve(
@@ -157,6 +563,13 @@ impl PhaseJobs {
                 outcome: None,
                 binding_plan: None,
                 binding_error: None,
+                nonsuccess: None,
+                closed_ack: None,
+                closure_due: Instant::now(),
+                closure_backoff: 100,
+                uncertain: false,
+                slot_released: false,
+                attention: None,
             }),
             changed,
         });
@@ -376,6 +789,38 @@ impl PhaseJobs {
 }
 
 impl Job {
+    fn closure_held(&self, reason: &'static str) -> Result<()> {
+        debug_assert!(reason.len() <= 128);
+        let _depth = RootLockDepth::enter();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+        state.attention = Some(reason);
+        state.closure_due = Instant::now() + Duration::from_secs(5);
+        Ok(())
+    }
+    fn closure_retry(&self) -> Result<()> {
+        let _depth = RootLockDepth::enter();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+        state.closure_due = Instant::now() + Duration::from_millis(state.closure_backoff);
+        state.closure_backoff = state.closure_backoff.saturating_mul(2).min(5000);
+        Ok(())
+    }
+    fn closure_ready(&self) -> Result<()> {
+        let _depth = RootLockDepth::enter();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?;
+        state.closure_due = Instant::now();
+        state.closure_backoff = 100;
+        state.attention = None;
+        Ok(())
+    }
     fn bind_returned(&self, proof: Arc<NativePhaseBinding>) -> Result<()> {
         let owner = self.allocation.selected_port().owner();
         let plan = Arc::new(plan_managed_binding(owner, proof)?);
@@ -397,6 +842,12 @@ impl Job {
     }
 }
 
+enum TurnResult {
+    Known(crate::state::PhaseClosedAcknowledgment),
+    Conflict(anyhow::Error),
+    RolledBack,
+}
+
 struct RunningJob(Arc<Job>);
 impl Drop for RunningJob {
     fn drop(&mut self) {
@@ -415,5 +866,94 @@ impl Drop for RunningJob {
         if let Some(preparation) = preparation {
             preparation.abandon();
         }
+    }
+}
+
+#[cfg(test)]
+mod nonsuccess_primitives {
+    use super::*;
+    // Production scheduling/material helpers only: no Job, actor or proof.
+    #[test]
+    fn nongrant_rn1_due_rotation_delivers_every_job_within_finite_passes() {
+        for n in [1usize, 5, 8, 9, 17, 128] {
+            let mut delivered = vec![0usize; n];
+            let mut cursor = None;
+            for _ in 0..n.div_ceil(CLOSURE_TURNS) {
+                let mut rows = (0..n).map(|id| (id, (), true)).collect::<Vec<_>>();
+                rotate_closure_snapshot(&mut rows, cursor);
+                let mut turns = 0;
+                cursor = None;
+                for (id, _, _) in rows {
+                    if !take_closure_turn(&mut turns) {
+                        cursor = Some(id);
+                        break;
+                    }
+                    delivered[id] += 1;
+                }
+                assert!(turns <= 8);
+            }
+            assert!(
+                delivered.iter().all(|count| *count > 0),
+                "starved due job among {n}: {delivered:?}"
+            );
+        }
+    }
+    #[test]
+    fn nongrant_rn1_material_drops_after_store_on_result_and_poison_paths() {
+        struct Material {
+            store: Arc<Mutex<()>>,
+            dropped: Arc<AtomicBool>,
+        }
+        impl Drop for Material {
+            fn drop(&mut self) {
+                match self.store.try_lock() {
+                    Ok(guard) => drop(guard),
+                    Err(std::sync::TryLockError::Poisoned(error)) => drop(error),
+                    Err(std::sync::TryLockError::WouldBlock) => {
+                        panic!("Material dropped while Store held")
+                    }
+                }
+                self.dropped.store(true, Ordering::SeqCst);
+            }
+        }
+        for outcome in [0, 1, 2] {
+            let store = Arc::new(Mutex::new(()));
+            let dropped = Arc::new(AtomicBool::new(false));
+            let material = Material {
+                store: store.clone(),
+                dropped: dropped.clone(),
+            };
+            if outcome == 2 {
+                let poisoned = store.clone();
+                let _ = std::thread::spawn(move || {
+                    let _guard = poisoned.lock().unwrap();
+                    panic!("intentional local mutex poison");
+                })
+                .join();
+            }
+            let result = borrowed_store_turn(&store, material, |_, _| {
+                if outcome == 0 {
+                    Ok(())
+                } else {
+                    Err(anyhow::anyhow!("nongrant error"))
+                }
+            });
+            assert_eq!(result.is_ok(), outcome == 0);
+            assert!(dropped.load(Ordering::SeqCst));
+        }
+    }
+    #[test]
+    fn nongrant_rn1_debug_rejects_root_lock_and_second_transaction() {
+        let held = std::panic::catch_unwind(|| {
+            let _depth = RootLockDepth::enter();
+            assert_nonsuccess_unlocked();
+        });
+        assert_eq!(held.is_err(), cfg!(debug_assertions));
+        let second = std::panic::catch_unwind(|| {
+            let _turn = ClosureTurn::enter();
+            record_nonsuccess_store_attempt();
+            record_nonsuccess_store_attempt();
+        });
+        assert_eq!(second.is_err(), cfg!(debug_assertions));
     }
 }

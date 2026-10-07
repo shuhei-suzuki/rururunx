@@ -21,10 +21,12 @@ use tokio::{
 mod budget;
 pub(crate) mod compat;
 pub(crate) use budget::{NativeEffectBudget, native_effect_budget};
+mod nonsuccess;
 #[cfg(test)]
 mod phase_fence_tests;
 mod phase_protocol;
 mod preparation;
+pub(crate) use nonsuccess::{NativeClosureStep, NativeNoDispatchClosureProof, PreparationYield};
 pub(crate) mod prepared;
 pub(crate) mod readonly;
 mod registration;

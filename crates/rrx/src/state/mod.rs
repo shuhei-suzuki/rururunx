@@ -2307,3 +2307,8 @@ fn reserved_audit_kind(kind: &str) -> bool {
             "context.created" | "usage.recorded" | "workflow.gate_observed"
         )
 }
+
+pub(crate) use execution::native_phase::{
+    NativeNonSuccessClosurePlan, NativeNonSuccessConfirmation, NativeNonSuccessMaterial,
+    NativeNonSuccessWrite, NonSuccessReader, PhaseClosedAcknowledgment,
+};

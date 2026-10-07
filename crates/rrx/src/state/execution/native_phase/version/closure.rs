@@ -11,6 +11,67 @@ const UNIT_CAS: &str = "SELECT EXISTS(SELECT 1 FROM execution_units WHERE id IS 
 pub(in crate::state::execution::native_phase) struct LatestUnitImage {
     values: Vec<SqlValue>,
 }
+pub(in crate::state::execution::native_phase) struct RetiredUnitImage {
+    values: Vec<SqlValue>,
+    before: u64,
+}
+fn retirement_delta(mut unit: ExecutionUnit, at: i64) -> Result<ExecutionUnit> {
+    ensure!(
+        unit.state == UnitState::Preparing
+            && unit.session_id.is_none()
+            && unit.native_effects_open
+            && unit.result_finalization_open
+            && unit.work.is_none()
+            && unit.disposition == Disposition::Active
+            && matches!(
+                unit.wait_reason,
+                None | Some(WaitReason::Quota | WaitReason::Capacity)
+            ),
+        "non-success Unit is not eligible for permission retirement"
+    );
+    unit.version = unit
+        .version
+        .checked_add(1)
+        .filter(|v| *v <= i64::MAX as u64)
+        .context("non-success Unit version exhausted")?;
+    unit.state = UnitState::Retired;
+    unit.native_effects_open = false;
+    unit.result_finalization_open = false;
+    unit.wait_reason = None;
+    unit.disposition = Disposition::Refused;
+    unit.updated_at = at;
+    Ok(unit)
+}
+fn validate_indexed(tx: &Transaction<'_>, values: &[SqlValue]) -> Result<()> {
+    let predicate = UNIT_COLUMNS
+        .split(',')
+        .enumerate()
+        .map(|(i, n)| format!("u.{n} IS ?{}", i + 1))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    ensure!(tx.query_row(&format!("SELECT EXISTS(SELECT 1 FROM execution_units u JOIN task_execution t ON t.task_id=u.task_id WHERE {predicate} AND t.project_id=u.project_id AND t.goal_id=u.goal_id AND t.generation=u.generation)"), params_from_iter(values), |r| r.get::<_, bool>(0))?, "non-success indexed Unit/generation changed");
+    Ok(())
+}
+impl RetiredUnitImage {
+    pub(in crate::state::execution::native_phase) fn validate_indexed_tx(
+        &self,
+        tx: &Transaction<'_>,
+    ) -> Result<()> {
+        validate_indexed(tx, &self.values)
+    }
+    pub(in crate::state::execution::native_phase) fn unit_id(&self) -> &str {
+        match &self.values[0] {
+            SqlValue::Text(id) => id,
+            _ => unreachable!("sealed Unit ID is text"),
+        }
+    }
+    pub(in crate::state::execution::native_phase) fn versions(&self) -> (u64, u64) {
+        match self.values[7] {
+            SqlValue::Integer(v) => (self.before, v as u64),
+            _ => unreachable!("sealed Unit version is integer"),
+        }
+    }
+}
 // Fixed physical column vocabulary only; no caller SQL or grant is accepted.
 fn unit_projection() -> Vec<String> {
     UNIT_COLUMNS.split(',').enumerate().map(|(index, column)| {
@@ -26,6 +87,90 @@ fn unit_projection() -> Vec<String> {
     }).collect()
 }
 impl LatestUnitImage {
+    pub(in crate::state::execution::native_phase) fn validate_indexed_tx(
+        &self,
+        tx: &Transaction<'_>,
+    ) -> Result<()> {
+        validate_indexed(tx, &self.values)
+    }
+    pub(in crate::state::execution::native_phase) fn plan_retired(
+        &self,
+        launch: &PhaseLaunchParts,
+        at: i64,
+    ) -> Result<RetiredUnitImage> {
+        self.validate_original(launch.allocation().unit_snapshot())?;
+        let SqlValue::Text(raw) = &self.values[12] else {
+            anyhow::bail!("non-success Unit body absent")
+        };
+        let body = crate::execution::strict_json::decode(
+            raw.as_bytes(),
+            crate::execution::strict_json::Limits {
+                frame_bytes: UNIT_BYTES,
+                depth: 16,
+                nodes: 512,
+                string_bytes: UNIT_BYTES,
+                total_string_bytes: UNIT_BYTES,
+                object_entries: 128,
+                array_entries: 64,
+            },
+        )?;
+        let unit: ExecutionUnit = serde_json::from_value(body)?;
+        registration_unit(&unit, launch)?;
+        ensure!(
+            matches!(
+                unit.wait_reason,
+                None | Some(WaitReason::Quota | WaitReason::Capacity)
+            ),
+            "non-success Unit wait reason differs"
+        );
+        let before = unit.version;
+        let unit = retirement_delta(unit, at)?;
+        let raw = serde_json::to_string(&unit)?;
+        ensure!(
+            raw.len() <= UNIT_BYTES,
+            "non-success retired Unit body exceeds bound"
+        );
+        let mut values = self.values.clone();
+        values[7] = SqlValue::Integer(i64::try_from(unit.version)?);
+        values[8] = SqlValue::Integer(0);
+        values[9] = SqlValue::Integer(0);
+        values[12] = SqlValue::Text(raw);
+        LatestUnitImage {
+            values: values.clone(),
+        }
+        .validate_original(launch.allocation().unit_snapshot())?;
+        ensure!(
+            unit.version > before,
+            "non-success retired Unit version not increasing"
+        );
+        Ok(RetiredUnitImage { values, before })
+    }
+    pub(in crate::state::execution::native_phase) fn write_retired_tx(
+        &self,
+        tx: &Transaction<'_>,
+        after: &RetiredUnitImage,
+    ) -> Result<()> {
+        let set = UNIT_COLUMNS
+            .split(',')
+            .enumerate()
+            .map(|(i, n)| format!("{n}=?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(",");
+        let predicate = UNIT_COLUMNS
+            .split(',')
+            .enumerate()
+            .map(|(i, n)| format!("{n} IS ?{}", i + 14))
+            .collect::<Vec<_>>()
+            .join(" AND ");
+        ensure!(
+            tx.execute(
+                &format!("UPDATE execution_units SET {set} WHERE {predicate}"),
+                params_from_iter(after.values.iter().chain(&self.values))
+            )? == 1,
+            "non-success complete Unit CAS changed"
+        );
+        Ok(())
+    }
     pub(in crate::state::execution::native_phase) fn read(
         tx: &Transaction<'_>,
         original: &ExecutionUnit,
@@ -258,6 +403,47 @@ impl Store {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    #[test]
+    fn nongrant_rn1_unit_retirement_preserves_all_other_facts_and_refuses_open_aliases() {
+        let mut before = original();
+        before.state = UnitState::Preparing;
+        before.capacity_retry_at = Some(99);
+        before.wait_reason = Some(WaitReason::Capacity);
+        let after = retirement_delta(before.clone(), 88).unwrap();
+        assert_eq!(after.state, UnitState::Retired);
+        assert!(!after.native_effects_open && !after.result_finalization_open);
+        assert_eq!(after.disposition, Disposition::Refused);
+        assert!(after.work.is_none() && after.session_id.is_none() && after.wait_reason.is_none());
+        assert_eq!(after.version, before.version + 1);
+        assert_eq!(after.updated_at, 88);
+        let mut neutral = after;
+        neutral.state = before.state;
+        neutral.native_effects_open = before.native_effects_open;
+        neutral.result_finalization_open = before.result_finalization_open;
+        neutral.disposition = before.disposition;
+        neutral.wait_reason = before.wait_reason;
+        neutral.version = before.version;
+        neutral.updated_at = before.updated_at;
+        assert_eq!(
+            serde_json::to_value(neutral).unwrap(),
+            serde_json::to_value(&before).unwrap()
+        );
+        let changes: &[fn(&mut ExecutionUnit)] = &[
+            |u| u.state = UnitState::Retired,
+            |u| u.native_effects_open = false,
+            |u| u.result_finalization_open = false,
+            |u| u.session_id = Some(SessionId::new()),
+            |u| u.work = Some(WorkOutcome::Unknown),
+            |u| u.disposition = Disposition::Refused,
+            |u| u.wait_reason = Some(WaitReason::ExternalOutcome),
+            |u| u.version = i64::MAX as u64,
+        ];
+        for change in changes {
+            let mut changed = before.clone();
+            change(&mut changed);
+            assert!(retirement_delta(changed, 88).is_err());
+        }
+    }
 
     // Pure DTO/copied-value controls only. No persisted Unit, Driver, owner,
     // accepted Goal or Native actor/observation/capability is constructed.

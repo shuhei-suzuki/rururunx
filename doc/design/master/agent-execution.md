@@ -196,7 +196,18 @@ Successful correspondence remains a retained nongrant fact. The continuation
 retains installed compatibility, one checked nongrant command, a no-dispatch
 value and private pre-Session quota plans. Quota parking retains the SAME input,
 helpers and operation; own known postimages supply due-claim lineage. Revoked
-closure never refreshes that lineage from rows. Private Prepared issuance checks
+closure never refreshes that lineage from rows. Revoked preparation bookkeeping
+has a synchronous one-transaction close/confirm step: confirmed rollback clears
+the saved preparation plan before a later fresh close attempt. Transport custody
+consumption clears the pre-dispatch witness. The sealed ended-start closure
+interface retains the same actor, no-dispatch and known preparation closure;
+the Root sweep consumes only its same-job ended-start witness. It runs at most
+eight due closure turns per bounded registry pass, saves the first unserved due
+job in a rotation cursor, and keeps uncertain plans unchanged across confirmation.
+Typed known acknowledgments alone retire the original publishing slot and
+finished job. These private interfaces do not qualify Native execution or
+composition; genuine activation and normal ended-start controls remain pending.
+Private Prepared issuance checks
 the SAME allocation's fixed provider/role budget at version, Git, Prepared and
 registration. Private quota uses two prebuilt branches and at most eight exact
 writer-connected Legacy validations before the own fair position, with malformed

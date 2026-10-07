@@ -20,29 +20,44 @@ impl PreparedPhaseNoCurrentDispatch {
         Ok(())
     }
 }
+pub(super) enum PreparationStep {
+    Closed,
+    RolledBack,
+    Conflict,
+    Uncertain(anyhow::Error),
+    Held(anyhow::Error),
+}
 impl NativeSessions {
-    pub(super) async fn close_prepared_on_revocation(
+    /// One preparation transaction per turn. A known close ends this turn;
+    /// proof issuance and RN-1 always occur in a subsequent Root turn.
+    pub(super) fn close_prepared_step(
         &self,
         custody: &Arc<NativePreparationCustody>,
-    ) -> Result<()> {
-        let mut replans = 0u8;
-        let mut backoff = 100u64;
-        loop {
+    ) -> PreparationStep {
+        let result = (|| -> Result<PreparationStep> {
+            crate::runtime::assert_nonsuccess_unlocked();
             let (actor, no_dispatch, lineage, saved) = custody.closure_original()?;
-            // A retained uncertain plan is confirmed before any fresh factual
-            // snapshot. No later row can refresh a grant lineage.
             if let Some(saved) = saved {
-                let confirmed = self
-                    .owner
-                    .store
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .confirm_phase_quota_closure(saved)?;
-                if let crate::state::NativeQuotaClosureConfirmation::Known(known) = confirmed {
-                    custody.retain_closed(known)?;
-                    actor.release_gate();
-                    return Ok(());
-                }
+                crate::runtime::record_nonsuccess_store_attempt();
+                let confirmed = {
+                    let mut store = self
+                        .owner
+                        .store
+                        .lock()
+                        .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+                    store.confirm_phase_quota_closure(saved.clone())
+                }?;
+                return match confirmed {
+                    crate::state::NativeQuotaClosureConfirmation::Known(known) => {
+                        custody.retain_closed(known)?;
+                        actor.release_gate();
+                        Ok(PreparationStep::Closed)
+                    }
+                    crate::state::NativeQuotaClosureConfirmation::RolledBack => {
+                        custody.clear_definitive_closure_conflict(&saved)?;
+                        Ok(PreparationStep::RolledBack)
+                    }
+                };
             }
             let plan = crate::state::Store::plan_phase_quota_closure(
                 &self.owner,
@@ -52,44 +67,52 @@ impl NativeSessions {
                 now_ms(),
             )?;
             custody.retain_closure_plan(plan.clone())?;
-            let result = self
-                .owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .close_phase_quota(plan.clone());
+            crate::runtime::record_nonsuccess_store_attempt();
+            let result = {
+                let mut store = self
+                    .owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+                store.close_phase_quota(plan.clone())
+            };
             match result {
                 Ok(Some(known)) => {
                     custody.retain_closed(known)?;
                     actor.release_gate();
-                    return Ok(());
+                    Ok(PreparationStep::Closed)
                 }
                 Ok(None) => {
                     custody.clear_definitive_closure_conflict(&plan)?;
+                    Ok(PreparationStep::Conflict)
                 }
-                Err(error) => {
-                    match self
-                        .owner
-                        .store
-                        .lock()
-                        .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                        .confirm_phase_quota_closure(plan)
-                    {
-                        Ok(crate::state::NativeQuotaClosureConfirmation::Known(known)) => {
-                            custody.retain_closed(known)?;
-                            actor.release_gate();
-                            return Ok(());
-                        }
-                        Ok(crate::state::NativeQuotaClosureConfirmation::RolledBack) => {
-                            return Err(error);
-                        }
-                        Err(error) => {
-                            return Err(
-                                error.context("SAME nongrant closure commit uncertain; Held")
-                            );
-                        }
+                Err(error) => Ok(PreparationStep::Uncertain(error)),
+            }
+        })();
+        result.unwrap_or_else(PreparationStep::Held)
+    }
+    pub(super) async fn close_prepared_on_revocation(
+        &self,
+        custody: &Arc<NativePreparationCustody>,
+    ) -> Result<()> {
+        let mut replans = 0u8;
+        let mut backoff = 100u64;
+        let mut uncertain_error = None;
+        loop {
+            match self.close_prepared_step(custody) {
+                PreparationStep::Closed => return Ok(()),
+                PreparationStep::Uncertain(error) => {
+                    uncertain_error = Some(error);
+                    continue;
+                }
+                PreparationStep::RolledBack => {
+                    if let Some(error) = uncertain_error.take() {
+                        return Err(error);
                     }
+                    continue;
                 }
+                PreparationStep::Held(error) => return Err(error),
+                PreparationStep::Conflict => {}
             }
             replans = replans.saturating_add(1);
             if replans >= 8 {

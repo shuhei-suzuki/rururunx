@@ -76,6 +76,15 @@ impl WorkflowEngine {
             .context("driven phase missing")?;
         if !matches!(phase, Phase::Issue | Phase::Worktree) {
             if phase.actor() == Actor::Executor {
+                if let Some(index) = snapshot.workflow.active {
+                    let attempt = &snapshot.workflow.history[index];
+                    if attempt.state == AttemptState::Failed {
+                        return Ok(StepResult::Failed {
+                            phase,
+                            reason: attempt.detail.clone().unwrap_or_default(),
+                        });
+                    }
+                }
                 if snapshot.workflow.active.is_some() {
                     return self
                         .offer_driven_first_executor(snapshot, composition, lifetime, phase)
