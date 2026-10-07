@@ -392,7 +392,10 @@ impl ControlFixture {
         }
     }
     pub(super) fn register_real_git_project(&mut self) {
-        let real_root = self._dir.path().join("real-git-source");
+        self.register_real_git_project_named("real-git-source");
+    }
+    pub(super) fn register_real_git_project_named(&mut self, name: &str) {
+        let real_root = self._dir.path().join(name);
         std::fs::create_dir(&real_root).unwrap();
         self.project = crate::domain::Project::new(
             "real-source".into(),

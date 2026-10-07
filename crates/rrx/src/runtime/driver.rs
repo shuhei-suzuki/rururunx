@@ -360,7 +360,7 @@ impl WorkerLifetime {
     pub(super) fn revoked(&self) -> bool {
         self.slot.revoked.load(Ordering::SeqCst)
     }
-    pub(super) async fn cancelled(&self) {
+    pub(crate) async fn cancelled(&self) {
         loop {
             let notified = self.slot.cancel.notified();
             tokio::pin!(notified);
@@ -540,6 +540,26 @@ impl DriverRegistry {
         }
         Ok(plans)
     }
+    /// Whole-registry observation after Store reconciliation, never a grant.
+    pub(super) fn retained_preparations(&self) -> Result<usize> {
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Driver registry poisoned"))?;
+        ensure!(entries.len() <= 4096, "Driver registry count exceeds bound");
+        let mut count = 0;
+        for slot in entries.values() {
+            if slot
+                .preparation
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Driver preparation custody poisoned"))?
+                .is_some()
+            {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
     pub(super) fn pending_exits(&self) -> Result<Vec<DriverExit>> {
         let entries = self
             .entries
@@ -595,7 +615,13 @@ impl DriverRegistry {
             "Driver exit observation changed"
         );
         *pending = None;
-        let remove = publication.initial_closed() && exit.never_activated.is_some();
+        let remove = publication.initial_closed()
+            && exit.never_activated.is_some()
+            && slot
+                .preparation
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Driver preparation custody poisoned"))?
+                .is_none();
         drop(pending);
         if remove {
             entries.remove(&exit.task);

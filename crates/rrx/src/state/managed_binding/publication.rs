@@ -1,6 +1,7 @@
 //! Actual single-transaction marker publication from retained real producers.
 //! No row/DTO/capability callback can construct the known-commit marker below.
 use super::{
+    activation::{NativeContract, member_digest, roster_digest},
     canonical::Body,
     marker_plan::{ManagedMarkerPlan, plan_marker},
     marker_rows::{LINK_RESERVE_BYTES, MarkerRows, WORKFLOW_BYTES, workflow_mutation},
@@ -15,25 +16,8 @@ use crate::{
     },
 };
 use anyhow::{Context, Result, ensure};
-use rusqlite::{Transaction, TransactionBehavior, params};
-use serde::{Deserialize, Serialize};
+use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use std::sync::{Arc, Mutex};
-
-/// Complete activation encoding, checked outside the Store mutex. Successful
-/// decoding is nongrant: the real installed activation must already exist.
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct NativeContract {
-    workflow_id: RecordId,
-    project_id: crate::domain::ProjectId,
-    goal_id: crate::domain::GoalId,
-    task_id: crate::domain::TaskId,
-    owner_epoch: u64,
-    origin: uuid::Uuid,
-    profile_digest: String,
-    contract_state: String,
-    version: u64,
-}
 
 /// Strongly retained before the writer begins. Original captures are never
 /// replaced on commit uncertainty and cannot be rebuilt from operation rows.
@@ -44,6 +28,8 @@ pub(crate) struct MarkerPublicationPlan {
     driver: DriverMarkerAdvance,
     rows: MarkerRows,
     contract_body: String,
+    contract_origin: uuid::Uuid,
+    contract_profile: String,
 }
 /// Produced ONLY after this module's actual Immediate commit returns success.
 /// Field privacy, no Deserialize and no public constructor preserve provenance.
@@ -243,32 +229,22 @@ pub(crate) fn plan_marker_publication(
     let rows = MarkerRows::plan(&marker, &allocation)?;
     // This is the actual existing activation contract. No configured alias,
     // selected CLI or successful read synthesizes a composed activation.
-    let contract_body = snapshot(&owner, |tx| {
-        let f = allocation.facts();
-        let raw: Option<String> = tx.query_row(
-            "SELECT CASE WHEN length(CAST(body AS BLOB))<=4096 THEN body END FROM workflow_native_contracts WHERE workflow_id=?1 AND project_id=?2 AND goal_id=?3 AND task_id=?4 AND owner_epoch=?5 AND origin=?6 AND profile_digest=?7 AND contract_state='composed' AND version=1",
-            params![workflow.to_string(), f.scope.project_id.to_string(), f.scope.goal_id.context("marker Goal absent")?.to_string(), f.scope.task_id.context("marker Task absent")?.to_string(), f.epoch, f.origin_id.to_string(), f.profile_digest],
-            |r| r.get(0),
-        )?;
-        let body = Body::<NativeContract>::decode(
-            raw.context("actual composed Workflow activation unavailable")?,
-            4096,
-        )?;
-        let contract = body.parsed();
-        ensure!(
-            contract.workflow_id == workflow
-                && contract.project_id == f.scope.project_id
-                && Some(contract.goal_id) == f.scope.goal_id
-                && Some(contract.task_id) == f.scope.task_id
-                && contract.owner_epoch == f.epoch
-                && contract.origin == f.origin_id
-                && contract.profile_digest == f.profile_digest
-                && contract.contract_state == "composed"
-                && contract.version == 1,
-            "actual Workflow activation body/index differs"
-        );
-        Ok(body.raw().to_owned())
+    let f = allocation.facts();
+    let contract_origin = allocation.selected_port().installation_id();
+    let member = member_digest(f.role, allocation.selected_port())?;
+    let (raw, contract_profile) = snapshot(&owner, |tx| {
+        let row:Option<(Option<String>,String)>=tx.query_row(
+            "SELECT CASE WHEN length(CAST(body AS BLOB))<=4096 THEN body END,profile_digest FROM workflow_native_contracts WHERE workflow_id=?1 AND project_id=?2 AND goal_id=?3 AND task_id=?4 AND owner_epoch=?5 AND origin=?6 AND contract_state='composed' AND version=1",
+            params![workflow.to_string(),f.scope.project_id.to_string(),f.scope.goal_id.context("marker Goal absent")?.to_string(),f.scope.task_id.context("marker Task absent")?.to_string(),f.epoch,contract_origin.to_string()],
+            |r|Ok((r.get(0)?,r.get(1)?))).optional()?;
+        let (body, profile) = row.context("actual composed Workflow activation unavailable")?;
+        Ok((
+            body.context("actual composed Workflow activation exceeds bound")?,
+            profile,
+        ))
     })?;
+    let body = decide_contract(&allocation, workflow, raw, &contract_profile, &member)?;
+    let contract_body = body.raw().to_owned();
     Ok(Arc::new(MarkerPublicationPlan {
         owner,
         allocation,
@@ -276,7 +252,57 @@ pub(crate) fn plan_marker_publication(
         driver,
         rows,
         contract_body,
+        contract_origin,
+        contract_profile,
     }))
+}
+// Nongrant decision used by the real marker planner, after its query-only
+// snapshot ends. The returned bytes remain pinned by validate_contract.
+fn decide_contract(
+    allocation: &NativeAllocation,
+    workflow: RecordId,
+    raw: String,
+    contract_profile: &str,
+    member: &str,
+) -> Result<Body<NativeContract>> {
+    let f = allocation.facts();
+    let contract_origin = allocation.selected_port().installation_id();
+    let body = Body::<NativeContract>::decode(raw, 4096)?;
+    let contract = body.parsed();
+    ensure!(
+        contract.workflow_id == workflow
+            && contract.project_id == f.scope.project_id
+            && Some(contract.goal_id) == f.scope.goal_id
+            && Some(contract.task_id) == f.scope.task_id
+            && contract.owner_epoch == f.epoch
+            && contract.origin == contract_origin
+            && contract.profile_digest == contract_profile
+            && contract.contract_state == "composed"
+            && contract.version == 1,
+        "actual Workflow activation body/index differs"
+    );
+    ensure!(
+        roster_digest(&contract.members)? == contract_profile,
+        "actual Workflow roster digest differs"
+    );
+    ensure!(
+        contract
+            .members
+            .binary_search_by(|candidate| candidate.as_str().cmp(member))
+            .is_ok(),
+        "selected Native port absent from original roster"
+    );
+    Ok(body)
+}
+#[cfg(test)]
+pub(crate) fn check_native_contract_integrity(
+    allocation: &NativeAllocation,
+    workflow: RecordId,
+    raw: String,
+    contract_profile: &str,
+) -> Result<()> {
+    let member = member_digest(allocation.facts().role, allocation.selected_port())?;
+    decide_contract(allocation, workflow, raw, contract_profile, &member).map(|_| ())
 }
 impl MarkerPublicationPlan {
     /// Immutable original-object linkage, never a currency or effect grant.
@@ -290,7 +316,7 @@ impl MarkerPublicationPlan {
         let f = self.allocation.facts();
         let exact: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM workflow_native_contracts WHERE workflow_id=?1 AND project_id=?2 AND goal_id=?3 AND task_id=?4 AND owner_epoch=?5 AND origin=?6 AND profile_digest=?7 AND contract_state='composed' AND version=1 AND body=?8)",
-            params![self.marker.workflow_after.parsed().id.to_string(), f.scope.project_id.to_string(), f.scope.goal_id.context("marker Goal absent")?.to_string(), f.scope.task_id.context("marker Task absent")?.to_string(), f.epoch, f.origin_id.to_string(), f.profile_digest, self.contract_body],
+            params![self.marker.workflow_after.parsed().id.to_string(), f.scope.project_id.to_string(), f.scope.goal_id.context("marker Goal absent")?.to_string(), f.scope.task_id.context("marker Task absent")?.to_string(), f.epoch, self.contract_origin.to_string(), self.contract_profile, self.contract_body],
             |r| r.get(0),
         )?;
         ensure!(exact, "original Workflow activation changed");

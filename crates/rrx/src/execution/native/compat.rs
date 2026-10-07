@@ -7,6 +7,9 @@ pub(crate) struct NativeCompatDeclaration {
     digest: String,
 }
 impl NativeCompatDeclaration {
+    pub(crate) fn digest(&self) -> &str {
+        &self.digest
+    }
     // Only registry installation creates the immutable declaration Arc.
     pub(crate) fn installed(config: &NativeCompatConfig) -> Result<Arc<Self>> {
         Ok(Arc::new(Self {

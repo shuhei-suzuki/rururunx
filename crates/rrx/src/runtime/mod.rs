@@ -36,6 +36,8 @@ pub struct Runtime {
     control_admission: Arc<tokio::sync::Mutex<()>>,
     #[cfg(test)]
     goal_admission_pause: std::sync::Mutex<Option<GoalAdmissionPause>>,
+    #[cfg(test)]
+    before_service_reconcile: std::sync::Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
     supervisor: tokio::sync::Mutex<Option<tokio::task::JoinHandle<Result<()>>>>,
 }
 impl Runtime {
@@ -86,6 +88,8 @@ impl Runtime {
             control_admission,
             #[cfg(test)]
             goal_admission_pause: std::sync::Mutex::new(None),
+            #[cfg(test)]
+            before_service_reconcile: std::sync::Mutex::new(None),
             supervisor: tokio::sync::Mutex::new(None),
         })
     }

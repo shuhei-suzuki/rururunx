@@ -1,18 +1,95 @@
 //! Private transport for the actual retained Sources/Engine/native selection.
 //! Issued only by the one installed Runtime graph; rows and metadata are nongrant.
+use crate::state::managed_binding::{member_digest, roster_digest};
 use crate::{
     adapter::native::NativePhasePort,
-    domain::Task,
+    domain::{SessionRole, Task, TaskId},
     execution::{RuntimeOwner, workflow_source::ManagedWorkflowSources},
     runtime::{Runtime, phase_supervisor::PhaseSupervisor},
     workflow::WorkflowEngine,
 };
+use crate::{runtime::driver::WorkerLifetime, state::DriverPreparationAdvance};
 use anyhow::{Result, ensure};
 use std::sync::{Arc, Weak};
+
+struct CompositionIdentity {
+    task: TaskId,
+}
+/// Only the original composition issuer's module constructs this identity.
+pub(crate) struct ActivationRoster {
+    composition: Arc<CompositionIdentity>,
+    task: TaskId,
+    executor: String,
+    reviewers: Vec<String>,
+    installation: uuid::Uuid,
+    members: Vec<String>,
+    digest: String,
+    runtime: Weak<Runtime>,
+    phases: Weak<PhaseSupervisor>,
+    owner: Arc<RuntimeOwner>,
+}
+impl ActivationRoster {
+    fn new(
+        composition: &InstalledDriverComposition,
+        installation: uuid::Uuid,
+        members: Vec<String>,
+    ) -> Result<Self> {
+        let original = composition.original_task();
+        let digest = roster_digest(&members)?;
+        Ok(Self {
+            composition: composition.identity.clone(),
+            task: original.id,
+            executor: original.executor.clone(),
+            reviewers: original.reviewers.clone(),
+            installation,
+            members,
+            digest,
+            runtime: composition.runtime.clone(),
+            phases: composition.phases.clone(),
+            owner: composition.owner.clone(),
+        })
+    }
+    pub(crate) fn task(&self) -> TaskId {
+        self.task
+    }
+    pub(crate) fn executor(&self) -> &str {
+        &self.executor
+    }
+    pub(crate) fn reviewers(&self) -> &[String] {
+        &self.reviewers
+    }
+    pub(crate) fn installation(&self) -> uuid::Uuid {
+        self.installation
+    }
+    pub(crate) fn members(&self) -> &[String] {
+        &self.members
+    }
+    pub(crate) fn digest(&self) -> &str {
+        &self.digest
+    }
+    pub(crate) fn owner(&self) -> &Arc<RuntimeOwner> {
+        &self.owner
+    }
+    pub(crate) fn is_same_composition(&self, composition: &InstalledDriverComposition) -> bool {
+        Arc::ptr_eq(&self.composition, &composition.identity)
+            && self.composition.task == self.task
+            && self.task == composition.original_task.id
+            && Weak::ptr_eq(&self.runtime, &composition.runtime)
+            && Weak::ptr_eq(&self.phases, &composition.phases)
+            && Arc::ptr_eq(&self.owner, &composition.owner)
+    }
+}
+/// Stop exclusion only: no SQL permission or Native grant. Field order drops
+/// admission before the last strong Runtime reference.
+pub(crate) struct ActivationAdmission {
+    _admission: tokio::sync::OwnedMutexGuard<()>,
+    _runtime: Arc<Runtime>,
+}
 
 /// Non-Clone/non-Deserialize; private fields retain REAL component objects,
 /// rather than a boolean readiness switch or a caller's SQL/capability witness.
 pub(crate) struct InstalledDriverComposition {
+    identity: Arc<CompositionIdentity>,
     runtime: Weak<Runtime>,
     owner: Arc<RuntimeOwner>,
     phases: Weak<PhaseSupervisor>,
@@ -22,6 +99,99 @@ pub(crate) struct InstalledDriverComposition {
     selected: Arc<NativePhasePort>,
 }
 impl InstalledDriverComposition {
+    pub(crate) fn activation_roster(&self, task: &Task) -> Result<ActivationRoster> {
+        ensure!(
+            self.is_current()
+                && task.id == self.original_task.id
+                && task.executor == self.original_task.executor
+                && task.reviewers == self.original_task.reviewers,
+            "activation composition Task differs"
+        );
+        let installation = self.selected.installation_id();
+        ensure!(
+            self.original_task.executor == self.selected.alias()
+                && Arc::ptr_eq(
+                    &self.engine.installed_native_port(&task.executor)?,
+                    &self.selected
+                ),
+            "activation executor port differs"
+        );
+        ensure!(
+            (1..=8).contains(&task.reviewers.len())
+                && task
+                    .reviewers
+                    .iter()
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len()
+                    == task.reviewers.len(),
+            "activation reviewer roster invalid"
+        );
+        let mut members = Vec::with_capacity(task.reviewers.len() + 1);
+        for (role, alias) in std::iter::once((SessionRole::Executor, task.executor.as_str())).chain(
+            task.reviewers
+                .iter()
+                .map(|alias| (SessionRole::Reviewer, alias.as_str())),
+        ) {
+            let port = self.engine.installed_native_port(alias)?;
+            ensure!(
+                std::ptr::eq(port.owner(), self.owner.as_ref())
+                    && matches!(port.provider(), "claude" | "codex")
+                    && port.installation_id() == installation
+                    && port.selected_adapter()?.compatibility.is_some(),
+                "activation installed roster port differs"
+            );
+            members.push(member_digest(role, &port)?);
+        }
+        members.sort();
+        ActivationRoster::new(self, installation, members)
+    }
+    pub(crate) async fn admit_activation(
+        &self,
+        plan: &Arc<DriverPreparationAdvance>,
+        lifetime: &WorkerLifetime,
+    ) -> Result<ActivationAdmission> {
+        self.admit_activation_inner(plan, lifetime, true).await
+    }
+    pub(crate) async fn admit_activation_recovery(
+        &self,
+        plan: &Arc<DriverPreparationAdvance>,
+        lifetime: &WorkerLifetime,
+    ) -> Result<ActivationAdmission> {
+        self.admit_activation_inner(plan, lifetime, false).await
+    }
+    async fn admit_activation_inner(
+        &self,
+        plan: &Arc<DriverPreparationAdvance>,
+        lifetime: &WorkerLifetime,
+        require_retained: bool,
+    ) -> Result<ActivationAdmission> {
+        let runtime = self
+            .runtime
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("activation Runtime ended"))?;
+        let admission = tokio::select! { biased;
+            ()=lifetime.cancelled()=>return Err(anyhow::anyhow!("activation Driver cancelled")),
+            guard=runtime.control_admission.clone().lock_owned()=>guard,
+        };
+        ensure!(
+            runtime.service_running() && self.is_current(),
+            "Runtime stopped before activation"
+        );
+        let association = lifetime.association()?;
+        ensure!(
+            plan.activation_roster()?.is_same_composition(self)
+                && self.original_task.id == association.task()
+                && plan.belongs_to(&association),
+            "activation original composition/worker linkage differs"
+        );
+        if require_retained {
+            ensure!(plan.is_retained()?, "activation preparation lost custody");
+        }
+        Ok(ActivationAdmission {
+            _admission: admission,
+            _runtime: runtime,
+        })
+    }
     pub(crate) fn validate_for(&self, owner: &RuntimeOwner, task: &Task) -> Result<()> {
         let runtime = self
             .runtime
@@ -140,12 +310,33 @@ impl Runtime {
             "installed Native compatibility declaration absent"
         );
         ensure!(
+            (1..=8).contains(&task.reviewers.len())
+                && task
+                    .reviewers
+                    .iter()
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len()
+                    == task.reviewers.len(),
+            "installed reviewer roster invalid"
+        );
+        for alias in &task.reviewers {
+            let port = graph.registry.native_phase_port(alias)?;
+            ensure!(
+                std::ptr::eq(port.owner(), self.owner.as_ref())
+                    && matches!(port.provider(), "claude" | "codex")
+                    && port.installation_id() == selected.installation_id()
+                    && port.selected_adapter()?.compatibility.is_some(),
+                "installed reviewer declaration absent"
+            );
+        }
+        ensure!(
             graph
                 .engine
                 .matches_composition(&self.owner, &graph.sources, &selected),
             "installed Engine graph differs"
         );
         Ok(InstalledDriverComposition {
+            identity: Arc::new(CompositionIdentity { task: task.id }),
             runtime: Arc::downgrade(self),
             owner: self.owner.clone(),
             phases: Arc::downgrade(&self.phases),

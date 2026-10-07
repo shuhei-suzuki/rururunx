@@ -100,6 +100,21 @@ impl PhaseInvocation {
 }
 
 impl PhaseJobs {
+    /// Test-only borrowing of an existing original retained object. A copied
+    /// Unit ID can select a reader result, never construct an allocation.
+    #[cfg(test)]
+    pub(super) fn original_allocation(
+        &self,
+        unit: crate::execution::UnitId,
+    ) -> Result<Arc<NativeAllocation>> {
+        self.entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase jobs poisoned"))?
+            .values()
+            .find(|entry| entry.job.allocation.facts().unit_id == unit)
+            .map(|entry| entry.job.allocation.clone())
+            .ok_or_else(|| anyhow::anyhow!("original retained allocation absent"))
+    }
     /// Caller already holds actual Runtime admission and publishing capacity.
     /// Called before SQL effects; duplicate IDs cannot substitute an allocation.
     pub(super) fn reserve(

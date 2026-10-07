@@ -333,7 +333,7 @@ impl MarkerRows {
 }
 
 /// Complete encoded Record column image for the same private permit batch.
-pub(super) fn record_image(record: &Record, raw: &str) -> Result<Vec<SqlValue>> {
+pub(in crate::state) fn record_image(record: &Record, raw: &str) -> Result<Vec<SqlValue>> {
     Ok(vec![
         text(record.id),
         text(record.kind.key()),

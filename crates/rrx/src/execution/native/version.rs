@@ -721,7 +721,10 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
                     });
                     if !valid { break; }
                     if !exited {
-                        match helper.raw().exited_unreaped() {
+                        // End the raw guard before the arm may run hygiene,
+                        // which takes the same custody mutex again.
+                        let observed_exit = { helper.raw().exited_unreaped() };
+                        match observed_exit {
                             Ok(true) => {
                                 exited = true;
                                 let _ = helper.raw().hygiene();

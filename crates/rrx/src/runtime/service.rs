@@ -17,7 +17,18 @@ impl Drop for Running {
 }
 
 impl Runtime {
-    fn observe_task_drivers(&self) -> Result<usize> {
+    pub(super) fn observe_task_drivers(&self) -> Result<usize> {
+        #[cfg(test)]
+        {
+            let hook = self
+                .before_service_reconcile
+                .lock()
+                .expect("test service seam")
+                .clone();
+            if let Some(hook) = hook {
+                hook();
+            }
+        }
         let pending = self._drivers.observe_finished()?;
         for plan in self._drivers.pending_preparations()? {
             // Held advances do not detach jobs, release capacity or authorize a
@@ -37,7 +48,7 @@ impl Runtime {
                 .record_driver_exit(&exit)?;
             self._drivers.acknowledge_exit(&exit, &publication)?;
         }
-        Ok(pending)
+        Ok(pending + self._drivers.retained_preparations()?)
     }
     /// Start exactly once on the existing owner. Missing native binding stays a
     /// named durable hold; the service does not instantiate another owner epoch.
