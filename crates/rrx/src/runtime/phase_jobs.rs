@@ -84,20 +84,31 @@ pub(crate) fn record_nonsuccess_store_attempt() {
         }
     });
 }
-struct ClosureTurn;
+struct ClosureTurn {
+    #[cfg(test)]
+    observations: Arc<Mutex<Vec<(OperationId, u8)>>>,
+    #[cfg(test)]
+    operation: OperationId,
+}
 impl ClosureTurn {
-    fn enter() -> Self {
+    fn enter(#[cfg(test)] observations: Arc<Mutex<Vec<(OperationId, u8)>>>, #[cfg(test)] operation: OperationId) -> Self {
         TURN_TRANSACTIONS.with(|v| {
             debug_assert!(v.get().is_none());
             v.set(Some(0));
         });
-        Self
+        Self { #[cfg(test)] observations, #[cfg(test)] operation }
     }
 }
 impl Drop for ClosureTurn {
     fn drop(&mut self) {
         TURN_TRANSACTIONS.with(|v| {
             let count = v.replace(None);
+            #[cfg(test)]
+            if let Some(count) = count {
+                let mut observations = self.observations.lock().unwrap();
+                assert!(observations.len() < 4096, "test turn observation bound");
+                observations.push((self.operation, count));
+            }
             if !std::thread::panicking() {
                 debug_assert!(count.is_some_and(|n| n <= 1));
             }
@@ -178,6 +189,8 @@ pub(super) struct PhaseJobReservation {
 pub(super) struct PhaseJobs {
     entries: Mutex<BTreeMap<OperationId, Entry>>,
     closure_cursor: Mutex<Option<OperationId>>,
+    #[cfg(test)]
+    closure_turns: Arc<Mutex<Vec<(OperationId, u8)>>>,
 }
 #[cfg(test)]
 #[derive(Debug)]
@@ -187,6 +200,7 @@ pub(super) struct ObservedJob {
     pub refusal: Option<String>,
     pub attention: Option<&'static str>,
     pub preparation: crate::execution::native::PreparationFacts,
+    pub due: Instant,
 }
 
 /// Observation only. Drop does not abort, release, retry or remove anything.
@@ -216,6 +230,8 @@ impl PhaseInvocation {
 }
 
 impl PhaseJobs {
+    #[cfg(test)]
+    pub(super) fn observed_turns(&self) -> Vec<(OperationId, u8)> { self.closure_turns.lock().unwrap().clone() }
     /// Nongrant observations from existing entries, never constructors.
     #[cfg(test)]
     pub(super) fn observed_jobs(&self) -> Vec<ObservedJob> {
@@ -234,6 +250,7 @@ impl PhaseJobs {
                         .map(|e| e.error.to_string()),
                     attention: state.attention,
                     preparation: state.preparation.observed_facts(),
+                    due: state.closure_due,
                 }
             })
             .collect()
@@ -392,7 +409,7 @@ impl PhaseJobs {
                 self.set_closure_cursor(Some(operation))?;
                 return Ok(true);
             }
-            let _turn = ClosureTurn::enter();
+            let _turn = ClosureTurn::enter(#[cfg(test)] self.closure_turns.clone(), #[cfg(test)] operation);
             let owner = job
                 .allocation
                 .selected_port()

@@ -19,6 +19,7 @@ pub(crate) struct PreparationFacts {
     pub transport: bool,
     pub closure: bool,
     pub closed: bool,
+    pub saved_closure: Option<(usize, i64)>,
 }
 
 /// The real Runtime job creates this empty cell before its start future. The
@@ -66,6 +67,7 @@ impl NativePreparationCustody {
             transport: state.transport.is_some(),
             closure: state.closure.is_some(),
             closed: state.closed.is_some(),
+            saved_closure: state.closure.as_ref().map(|p| (Arc::as_ptr(p) as usize, p.observed_at())),
         }
     }
     pub(super) fn validate_nonsuccess_original(

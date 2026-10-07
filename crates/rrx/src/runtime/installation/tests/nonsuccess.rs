@@ -64,7 +64,7 @@ fn workflow(f: &ControlFixture, task: &Task) -> crate::domain::Record {
 }
 /// Only the configured executable is changed, after genuine helpers completed.
 /// Neither hook supplies an error: the production physical-profile check does.
-async fn physical_refusal(provider: &str, stage: PreparationObservation) {
+async fn physical_refusal(provider: &str, stage: PreparationObservation, preparation_busy: bool) {
     let mut f = fixture(provider, true);
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
@@ -193,6 +193,31 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation) {
         "physical refusal registered a Session"
     );
     if stage == PreparationObservation::BeforeTransport {
+        if preparation_busy {
+            let writer = raw(&f);
+            writer.execute_batch("BEGIN IMMEDIATE").unwrap();
+            let started = std::time::Instant::now();
+            f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap();
+            let uncertain = f.runtime.phase_jobs.observed_jobs();
+            assert!(uncertain[0].preparation.closure && !uncertain[0].preparation.closed, "P1 actual write contention did not retain U: {uncertain:?}");
+            let saved = uncertain[0].preparation.saved_closure.unwrap();
+            assert_eq!(f.runtime.phase_jobs.observed_turns().len(), 1);
+            assert_eq!(f.runtime.phase_jobs.observed_turns()[0].1, 1);
+            assert!(uncertain[0].due.saturating_duration_since(std::time::Instant::now()) <= Duration::from_millis(100));
+            assert_eq!(links(&f), 0);
+            writer.execute_batch("ROLLBACK").unwrap();
+            // Deliver nothing before the genuine per-job backoff expires.
+            f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap();
+            assert_eq!(f.runtime.phase_jobs.observed_turns().len(), 1, "P1 ignored actual backoff");
+            wait_for(|| std::time::Instant::now() >= f.runtime.phase_jobs.observed_jobs()[0].due, "P1 actual backoff did not expire").await;
+            assert_eq!(f.runtime.phase_jobs.observed_jobs()[0].preparation.saved_closure, Some(saved), "P1 changed saved U before confirm");
+            assert!(f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap());
+            let rolled_back = f.runtime.phase_jobs.observed_jobs();
+            assert!(!rolled_back[0].preparation.closure && !rolled_back[0].preparation.closed, "P1 confirmed rollback did not clear to N: {rolled_back:?}");
+            assert_eq!(f.runtime.phase_jobs.observed_turns().len(), 2);
+            assert_eq!(f.runtime.phase_jobs.observed_turns()[1].1, 1);
+            eprintln!("RN P1 actual contention elapsed_ms={} backoff_ms=100 saved_at={} rollback_state=N", started.elapsed().as_millis(), saved.1);
+        }
         assert!(
             f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap(),
             "N first turn did not yield after preparation closure"
@@ -269,6 +294,9 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation) {
         // Repeating the real consumer is idempotent, not a second close.
         f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap();
         assert_eq!(links(&f), 1);
+        let turns = f.runtime.phase_jobs.observed_turns();
+        assert_eq!(turns.len(), if preparation_busy { 4 } else { 2 }, "N/U/K actual completion turn count: {turns:?}");
+        assert!(turns.iter().all(|(_, attempts)| *attempts == 1), "more than one or missing actual Store transaction in turn: {turns:?}");
     } else {
         f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap();
         let held = f.runtime.phase_jobs.observed_jobs();
@@ -342,7 +370,12 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn rn_h1_genuine_normal_n_closes_and_pre_s5_refusal_stays_held() {
     for provider in ["claude", "codex"] {
-        physical_refusal(provider, PreparationObservation::BeforeTransport).await;
-        physical_refusal(provider, PreparationObservation::BeforeCommand).await;
+        physical_refusal(provider, PreparationObservation::BeforeTransport, false).await;
+        physical_refusal(provider, PreparationObservation::BeforeCommand, false).await;
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rn_p1_genuine_writer_contention_confirms_rollback_clears_u_then_closes() {
+    physical_refusal("claude", PreparationObservation::BeforeTransport, true).await;
 }
