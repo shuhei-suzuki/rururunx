@@ -1013,7 +1013,7 @@ mod nonsuccess_primitives {
         });
         assert_eq!(held.is_err(), cfg!(debug_assertions));
         let second = std::panic::catch_unwind(|| {
-            let _turn = ClosureTurn::enter();
+            let _turn = ClosureTurn::enter(Arc::default(), OperationId::new());
             record_nonsuccess_store_attempt();
             record_nonsuccess_store_attempt();
         });

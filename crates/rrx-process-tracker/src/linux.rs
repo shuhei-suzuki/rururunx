@@ -14,7 +14,7 @@ impl Handle {
         let Some(fd) = &self.0 else {
             return Termination::Unsupported;
         };
-        match pidfd_send_signal(fd, Signal::Kill) {
+        match pidfd_send_signal(fd, Signal::KILL) {
             Ok(()) => Termination::Sent,
             Err(rustix::io::Errno::SRCH) => Termination::AlreadyExited,
             Err(rustix::io::Errno::PERM | rustix::io::Errno::ACCESS) => Termination::Denied,
