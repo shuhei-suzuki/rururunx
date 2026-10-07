@@ -636,3 +636,16 @@ Task bytes/version and exact owner/context/Session guards. The installed first
 Executor now reaches its genuine normal composed binding. Later-phase,
 late-binding, Reviewer and terminal consumers require their owning integrations;
 ordinary legacy binding is not a fallback for that protected route.
+
+The approved success continuation design (`a40355d`, branch
+`docs/issue-43-native-success-continuation-design`) is implemented as an unqualified source increment on the #43 branch. A typed
+binding write returns Conflict only before its first write; other errors are
+confirmed by lineage. An owned success terminal seals its committed images. The
+Root sweep converges the binding, discovers the settlement and runs admitted
+claim, Passed/Waiting/Failed/Unknown observation and closure actions. Captures,
+helpers and publication use a protected settled currency instead of the generic
+authority. Closure appends `gate_claim`, `gate_observed` and `phase_closed`,
+bumps the Task once to the next phase and re-anchors the Driver marker-free.
+Status reports the read-only `workflow_wait`. No success control has passed yet:
+the SC1 lane is blocked by the Native writer/normal binding race, whose
+[HOW](../issue-43-native-writer-binding-race-design.md) is under review.
