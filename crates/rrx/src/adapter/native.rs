@@ -122,10 +122,7 @@ impl NativePhasePort {
         }) {
             Ok(adapter) => adapter,
             Err(error) => {
-                return Err(execution::native::NativePhaseStartError {
-                    launch: parts,
-                    error,
-                });
+                return Err(execution::native::NativePhaseStartError::new(error));
             }
         };
         adapter.sessions.start_phase(parts, custody).await

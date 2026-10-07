@@ -211,32 +211,6 @@ pub(super) struct ObservedJob {
     pub due: Instant,
 }
 
-/// Observation only. Drop does not abort, release, retry or remove anything.
-pub(crate) struct PhaseInvocation {
-    changed: watch::Receiver<InvocationObservation>,
-}
-impl PhaseInvocation {
-    pub(crate) fn observation(&self) -> InvocationObservation {
-        *self.changed.borrow()
-    }
-    pub(crate) async fn wait(&mut self) -> InvocationObservation {
-        loop {
-            let observation = *self.changed.borrow_and_update();
-            if !matches!(
-                observation,
-                InvocationObservation::Reserved
-                    | InvocationObservation::Starting
-                    | InvocationObservation::Binding
-            ) {
-                return observation;
-            }
-            if self.changed.changed().await.is_err() {
-                return InvocationObservation::Uncertain;
-            }
-        }
-    }
-}
-
 impl PhaseJobs {
     #[cfg(test)]
     pub(super) fn observed_turns(&self) -> Vec<(OperationId, u8)> {
@@ -720,7 +694,7 @@ impl PhaseJobs {
     /// Runtime admission serializes this with ready/rollback. After a known
     /// handoff, preserve custody even if a mutex was poisoned: recovery here
     /// only stores actual objects and never authorizes a protected Store write.
-    pub(super) fn start(&self, launch: PhaseLaunch) -> PhaseInvocation {
+    pub(super) fn start(&self, launch: PhaseLaunch) {
         let parts = launch.parts().clone();
         let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         let entry = entries
@@ -734,7 +708,6 @@ impl PhaseJobs {
             state.preparation.clone()
         };
         job.changed.send_replace(InvocationObservation::Starting);
-        let changed = job.changed.subscribe();
         // Capture an already-constructed guard: an unpolled future can be
         // destroyed when its Tokio executor stops, before its body ever runs.
         let running = RunningJob(job.clone());
@@ -799,7 +772,6 @@ impl PhaseJobs {
                 job.changed.send_replace(observation);
             }
         }));
-        PhaseInvocation { changed }
     }
 
     /// Only a caller holding the genuine unpublished rollback uses this port.

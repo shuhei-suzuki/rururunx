@@ -401,9 +401,6 @@ impl NativePhaseSession {
     pub(crate) fn is_live(&self) -> bool {
         self.state.load(Ordering::SeqCst) == LIVE && self.ack.get().is_some()
     }
-    pub(crate) fn registration_ack(&self) -> Option<RegistrationAck> {
-        self.ack.get().copied()
-    }
     pub(crate) fn origin(&self) -> &Arc<NativeTransportStartPlan> {
         &self.origin
     }

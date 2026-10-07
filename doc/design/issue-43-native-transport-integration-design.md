@@ -2,6 +2,8 @@
 
 ## 1. Status, scope and exact source
 
+> **Status note (DC HOW D3, Issue #43):** the §5.2 "known registration ack and LIVE/REVOKED" lane is implemented as `NativePhaseSession::validate_known_registration` (→ `known_ack`). The separate `registration_ack()` accessor sketched in §4 and the §8 table had no consumer and was deleted; every reference to `registration_ack()` below means that validated lane.
+
 This is the authorization/contract HOW supplement required by approved
 [Native preparation HOW](issue-43-native-preparation-integration-design.md)
 §4.1 ("exact durable representation and guard layout must be coordinated/reviewed

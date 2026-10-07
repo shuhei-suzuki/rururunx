@@ -226,6 +226,7 @@ impl PhaseLaunchParts {
     }
 }
 impl MarkerPublicationRetention {
+    #[cfg(test)]
     pub(crate) fn allocation(&self) -> &NativeAllocation {
         self.capacity.allocation()
     }
@@ -268,6 +269,7 @@ impl PendingPhaseCapacity {
     pub(crate) fn allocation(&self) -> &NativeAllocation {
         &self.slot.allocation
     }
+    #[cfg(test)]
     pub(crate) fn observation(&self) -> Result<PendingObservation> {
         Ok(*self
             .slot
@@ -282,6 +284,7 @@ impl PendingPhaseCapacity {
             .is_some_and(|s| s.contains(&self.slot))
     }
     /// Publication and marked operations cannot use this removal path.
+    #[cfg(test)]
     pub(crate) fn abandon_unmarked(self) -> Result<()> {
         let supervisor = self
             .supervisor
@@ -318,6 +321,7 @@ impl PhaseSupervisor {
             queue: Mutex::new(Queue::default()),
         })
     }
+    #[cfg(test)]
     pub(super) fn reserve(
         self: &Arc<Self>,
         allocation: NativeAllocation,
@@ -588,6 +592,7 @@ impl PhaseSupervisor {
         drop(removed_plan);
         Ok(())
     }
+    #[cfg(test)]
     fn remove_unmarked(&self, slot: &Arc<Slot>) -> Result<()> {
         let removed = {
             let mut q = self
@@ -985,15 +990,14 @@ impl PhaseDispatcher {
         drop(state);
         drop(q);
         // PhaseJobs retains its actual launch, eager guard, handle and results.
-        // Handoff does not keep an unused observation receiver.
-        drop(self.phase_jobs.start(PhaseLaunch {
+        self.phase_jobs.start(PhaseLaunch {
             parts: Arc::new(PhaseLaunchParts {
                 marker,
                 retention,
                 origin: publication.origin.clone(),
                 preparation: Arc::downgrade(&preparation),
             }),
-        }));
+        });
         publication.observation(PublicationObservation::HandedOff);
         Ok(())
     }
@@ -1298,6 +1302,7 @@ impl super::Runtime {
             .await
     }
     /// Genuine retained queue admission only. Native-ready Driver/marker is absent.
+    #[cfg(test)]
     pub(crate) async fn reserve_pending_phase(
         &self,
         allocation: NativeAllocation,

@@ -168,6 +168,7 @@ fn scoped_records(
 /// are read in ONE transaction. Hashes include complete bodies and are produced
 /// here, before any writer mutex is acquired. Zero Workflow is bootstrap data,
 /// not evidence permitting native launch; the marker producer requires one.
+#[cfg(test)]
 pub(crate) fn plan_scope(owner: &RuntimeOwner, scope: &Scope) -> Result<ScopePlan> {
     snapshot(owner, |tx| read_scope(tx, owner, scope))
 }

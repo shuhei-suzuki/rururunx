@@ -219,10 +219,6 @@ impl NativePreparationCustody {
         })();
         result.unwrap_or_else(NativeClosureStep::Held)
     }
-    /// Runtime snapshots retained custody Arcs before calling this without locks.
-    pub(crate) fn request_stop(&self) {
-        self.abandon();
-    }
     pub(super) fn retain_transport(
         &self,
         transport: Arc<super::transport::NativeTransportCustody>,

@@ -1,6 +1,8 @@
 //! Private source-only recovery claims. Stored metadata never recreates a grant.
 use super::*;
-use crate::execution::workflow_source::{ReconstructedFrame, digest, task_digest};
+#[cfg(test)]
+use crate::execution::workflow_source::ReconstructedFrame;
+use crate::execution::workflow_source::{digest, task_digest};
 use serde::{Deserialize, Serialize};
 
 const META_BYTES: usize = 128 * 1024;
@@ -48,12 +50,17 @@ struct MarkerSourceAnchor {
     prior_source_body_sha256: String,
 }
 struct Snapshot {
+    // Only the test-only recovery producer (`begin`) reads these (#14).
+    #[cfg(test)]
     project: Project,
+    #[cfg(test)]
     goal: Goal,
     task: Task,
     pins: Pins,
 }
 /// Created only by begin's atomic current-owner claim; deliberately non-Clone.
+/// Test-only until Runtime restart scheduling (#14) adds its consumer.
+#[cfg(test)]
 pub(crate) struct SourceRecovery {
     pub(crate) project: Project,
     pub(crate) goal: Goal,
@@ -75,6 +82,7 @@ impl SourceReadBinding {
         self.artifact == id
     }
 }
+#[cfg(test)]
 impl SourceRecovery {
     pub(crate) fn binding(&self) -> SourceReadBinding {
         self.binding.clone()
@@ -258,7 +266,9 @@ fn snapshot(c: &Connection, task_id: TaskId) -> Result<Snapshot> {
         instruction: task_digest(&task)?,
     };
     Ok(Snapshot {
+        #[cfg(test)]
         project,
+        #[cfg(test)]
         goal,
         task,
         pins,
@@ -583,6 +593,7 @@ impl Store {
         tx.commit()?;
         Ok(current)
     }
+    #[cfg(test)]
     pub(crate) fn begin_retained_source_recovery(
         &mut self,
         task: TaskId,
@@ -654,6 +665,7 @@ impl Store {
     pub(crate) fn validate_source_read(&self, binding: &SourceReadBinding) -> Result<()> {
         validate_binding(&self.connection, binding)
     }
+    #[cfg(test)]
     pub(crate) fn accept_retained_source_recovery(
         &mut self,
         claim: &SourceRecovery,
@@ -691,6 +703,7 @@ impl Store {
             artifact: row.pins.artifact.id,
         })
     }
+    #[cfg(test)]
     pub(crate) fn abandon_retained_source_recovery(
         &mut self,
         binding: &SourceReadBinding,

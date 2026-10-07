@@ -160,22 +160,6 @@ impl SourceHandoffObservation {
     pub(crate) fn state(&self) -> SourceHandoffState {
         *self.changed.borrow()
     }
-    pub(crate) async fn wait(&mut self) -> SourceHandoffState {
-        loop {
-            let state = *self.changed.borrow_and_update();
-            if !matches!(
-                state,
-                SourceHandoffState::AwaitingOffer
-                    | SourceHandoffState::Retained
-                    | SourceHandoffState::Transferring
-            ) {
-                return state;
-            }
-            if self.changed.changed().await.is_err() {
-                return SourceHandoffState::Held;
-            }
-        }
-    }
 }
 
 /// Concrete original Runtime objects, with no strong Runtime/registry backlink.

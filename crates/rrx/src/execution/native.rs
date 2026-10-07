@@ -89,9 +89,21 @@ pub(crate) enum NativePhaseStart {
         binding: Box<NativePhaseBinding>,
     },
 }
+/// A refused phase start. The error text has no production consumer (RN1);
+/// only the cfg(test) job observer reads it.
 pub(crate) struct NativePhaseStartError {
-    pub(crate) launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
+    #[cfg(test)]
     pub(crate) error: anyhow::Error,
+}
+impl NativePhaseStartError {
+    pub(crate) fn new(error: anyhow::Error) -> Self {
+        #[cfg(not(test))]
+        drop(error);
+        Self {
+            #[cfg(test)]
+            error,
+        }
+    }
 }
 enum Control {
     Cancel,
@@ -234,8 +246,9 @@ impl NativeSessions {
         launch: Arc<crate::state::managed_binding::PhaseLaunchParts>,
         custody: Arc<NativePreparationCustody>,
     ) -> std::result::Result<NativePhaseStart, NativePhaseStartError> {
-        let result = self.start_phase_inner(launch.clone(), custody).await;
-        result.map_err(|error| NativePhaseStartError { launch, error })
+        self.start_phase_inner(launch, custody)
+            .await
+            .map_err(NativePhaseStartError::new)
     }
     async fn start_phase_inner(
         &self,

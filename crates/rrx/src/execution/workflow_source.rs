@@ -272,10 +272,14 @@ impl InitialInputFrame {
     }
 }
 /// Only the complete corpus/rule/config producer below creates this proof.
+/// The producer stays test-only until Runtime restart scheduling (#14) adds
+/// its driver-claim consumer under its own review.
+#[cfg(test)]
 pub(crate) struct ReconstructedFrame {
     frame: Arc<Frame>,
     digest: String,
 }
+#[cfg(test)]
 impl ReconstructedFrame {
     pub(crate) fn scope(&self) -> &Scope {
         &self.frame.scope
@@ -304,10 +308,12 @@ struct RecoveryPause {
     reached: tokio::sync::oneshot::Sender<()>,
     release: tokio::sync::oneshot::Receiver<()>,
 }
+#[cfg(test)]
 struct RecoveryGuard {
     owner: Arc<RuntimeOwner>,
     binding: Option<crate::state::SourceReadBinding>,
 }
+#[cfg(test)]
 impl Drop for RecoveryGuard {
     fn drop(&mut self) {
         if let Some(binding) = self.binding.take()
@@ -662,6 +668,7 @@ impl ManagedWorkflowSources {
     /// current-owner source claim. This does not reconstruct a Runtime driver.
     // The Runtime driver is a subsequent consumer; this private source port is
     // exercised through real retained producers below, never a persisted grant.
+    #[cfg(test)]
     pub(crate) async fn recover_retained(&self, task: TaskId) -> Result<()> {
         self.recover_retained_inner(
             task,
@@ -670,6 +677,7 @@ impl ManagedWorkflowSources {
         )
         .await
     }
+    #[cfg(test)]
     async fn recover_retained_inner(
         &self,
         task: TaskId,
