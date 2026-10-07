@@ -1,6 +1,6 @@
 # Issue 24: Recorded Goal facts view — HOW
 
-Status: WHAT/HOW approved by independent Opus high delta review; source implementation present, source tests and independent source review pending. No native, full-Workflow, MVP or merge qualification is asserted.
+Status: WHAT/HOW approved by independent Opus high delta review; source implementation and genuine reader/CLI controls present, independent source review pending. Broader Runtime/Workflow baseline and strict clippy gates remain RED. No native, full-Workflow, MVP or merge qualification is asserted.
 
 ## 1. Baseline and unchanged read boundary
 
