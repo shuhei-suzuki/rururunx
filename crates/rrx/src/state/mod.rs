@@ -1123,7 +1123,10 @@ impl Store {
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     #[cfg(test)]
                     plan.activation_postcommit()?;
-                    self.publish_driver_preparation(plan)
+                    self.publish_driver_preparation(plan)?;
+                    #[cfg(test)]
+                    plan.activation_observe_published();
+                    Ok(())
                 })) {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => {

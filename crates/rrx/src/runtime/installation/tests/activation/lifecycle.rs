@@ -9,10 +9,26 @@ async fn ca4b_activation_segment_linearizes_before_shutdown() {
     block.close();
     let _release_on_drop = OpenPark(block.clone());
     let segment = block.clone();
+    let captures = Arc::new(Mutex::new(None::<ObservedActivation>));
+    let observed = captures.clone();
+    let published = Arc::new(AtomicBool::new(false));
+    let signal = published.clone();
     let seams = Arc::new(ActivationSeams {
         precommit: Some(Arc::new(move |_| {
             segment.visit();
             Ok(())
+        })),
+        published: Some(Arc::new(move || {
+            let guard = observed.lock().unwrap();
+            let original = guard.as_ref().unwrap();
+            let expected = original.plan.planned_binding();
+            assert_eq!(
+                original.association.binding().unwrap(),
+                (expected.0, expected.1, expected.2, expected.3.to_owned()),
+                "CA4b SAME exact cache publication inside activation segment"
+            );
+            assert!(!original.plan.is_retained().unwrap());
+            signal.store(true, Ordering::SeqCst);
         })),
         ..Default::default()
     });
@@ -24,10 +40,37 @@ async fn ca4b_activation_segment_linearizes_before_shutdown() {
     )
     .await;
     let original = observations.lock().unwrap()[0].clone();
+    *captures.lock().unwrap() = Some(original.clone());
     release.add_permits(1);
     block.wait_parked();
     let runtime = f.runtime.clone();
-    let shutdown = tokio::spawn(async move { runtime.shutdown().await });
+    let executor = tokio::runtime::Handle::current();
+    let queued = Arc::new(AtomicBool::new(false));
+    let waiting = queued.clone();
+    let shutdown = std::thread::spawn(move || {
+        let _entered = executor.enter();
+        let mut future = Box::pin(runtime.shutdown());
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        match std::future::Future::poll(future.as_mut(), &mut context) {
+            std::task::Poll::Pending => waiting.store(true, Ordering::SeqCst),
+            std::task::Poll::Ready(result) => return result,
+        }
+        // Continue the SAME already-polled shutdown future. Its mutex waiter is
+        // queued before the test releases S2; scheduling alone is not evidence.
+        executor.block_on(future)
+    });
+    let queue_deadline = std::time::Instant::now() + Duration::from_secs(2);
+    while !queued.load(Ordering::SeqCst) {
+        assert!(
+            !f.runtime.is_stopping(),
+            "CA4b stop passed the original activation admission"
+        );
+        assert!(
+            std::time::Instant::now() < queue_deadline,
+            "SETUP: actual shutdown admission wait not polled"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
     let end = std::time::Instant::now() + Duration::from_secs(1);
     while std::time::Instant::now() < end {
         assert!(
@@ -41,11 +84,11 @@ async fn ca4b_activation_segment_linearizes_before_shutdown() {
         std::thread::sleep(Duration::from_millis(10));
     }
     block.open();
-    tokio::time::timeout(Duration::from_secs(5), shutdown)
-        .await
-        .unwrap()
-        .unwrap()
-        .unwrap();
+    shutdown.join().unwrap().unwrap();
+    assert!(
+        published.load(Ordering::SeqCst),
+        "CA4b no exact SAME cache publication in segment"
+    );
     assert_eq!(
         count(&f, "workflow_native_contracts"),
         1,
@@ -55,11 +98,6 @@ async fn ca4b_activation_segment_linearizes_before_shutdown() {
     assert!(
         !original.plan.is_retained().unwrap(),
         "CA4b cache not published before stop"
-    );
-    assert_eq!(
-        original.association.binding().unwrap().2,
-        original.plan.planned_binding().2,
-        "CA4b planned Driver cache differs"
     );
     finish(f).await;
 }

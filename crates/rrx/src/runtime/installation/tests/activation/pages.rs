@@ -28,6 +28,7 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
             deferred: Some(Arc::new(|_| {
                 Box::pin(async { anyhow::bail!("CA4i actual worker exit") })
             })),
+            ..Default::default()
         });
         let captures = observations.clone();
         let held_permits = release_held.clone();

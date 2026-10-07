@@ -343,6 +343,12 @@ impl DriverPreparationAdvance {
         Ok(())
     }
     #[cfg(test)]
+    pub(in crate::state) fn activation_observe_published(&self) {
+        if let Some(activation) = self.input.as_ref().and_then(|i| i.activation.as_ref()) {
+            activation.observe_published();
+        }
+    }
+    #[cfg(test)]
     pub(crate) async fn activation_deferred(&self) -> Result<()> {
         self.input
             .as_ref()

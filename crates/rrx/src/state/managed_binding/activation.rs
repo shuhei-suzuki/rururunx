@@ -91,6 +91,9 @@ pub(crate) struct ActivationSeams {
     pub(crate) precommit: Option<ActivationFault>,
     pub(crate) postcommit: Option<ActivationFault>,
     pub(crate) deferred: Option<ActivationDeferred>,
+    /// Borrowed observation after exact publication, inside the same S3
+    /// contained segment. Returns no value and issues no authority.
+    pub(crate) published: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
 }
 pub(crate) fn plan_native_activation(
     roster: ActivationRoster,
@@ -189,6 +192,12 @@ impl NativeActivationPlan {
             hook(self.roster.task())?;
         }
         Ok(())
+    }
+    #[cfg(test)]
+    pub(in crate::state) fn observe_published(&self) {
+        if let Some(hook) = self.seams.as_ref().and_then(|s| s.published.as_ref()) {
+            hook();
+        }
     }
     #[cfg(test)]
     pub(crate) async fn deferred(&self) -> Result<()> {
