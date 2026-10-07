@@ -15,6 +15,33 @@ pub(in crate::state::execution::native_phase) struct RetiredUnitImage {
     values: Vec<SqlValue>,
     before: u64,
 }
+fn retirement_delta(mut unit: ExecutionUnit, at: i64) -> Result<ExecutionUnit> {
+    ensure!(
+        unit.state == UnitState::Preparing
+            && unit.session_id.is_none()
+            && unit.native_effects_open
+            && unit.result_finalization_open
+            && unit.work.is_none()
+            && unit.disposition == Disposition::Active
+            && matches!(
+                unit.wait_reason,
+                None | Some(WaitReason::Quota | WaitReason::Capacity)
+            ),
+        "non-success Unit is not eligible for permission retirement"
+    );
+    unit.version = unit
+        .version
+        .checked_add(1)
+        .filter(|v| *v <= i64::MAX as u64)
+        .context("non-success Unit version exhausted")?;
+    unit.state = UnitState::Retired;
+    unit.native_effects_open = false;
+    unit.result_finalization_open = false;
+    unit.wait_reason = None;
+    unit.disposition = Disposition::Refused;
+    unit.updated_at = at;
+    Ok(unit)
+}
 fn validate_indexed(tx: &Transaction<'_>, values: &[SqlValue]) -> Result<()> {
     let predicate = UNIT_COLUMNS
         .split(',')
@@ -87,7 +114,7 @@ impl LatestUnitImage {
                 array_entries: 64,
             },
         )?;
-        let mut unit: ExecutionUnit = serde_json::from_value(body)?;
+        let unit: ExecutionUnit = serde_json::from_value(body)?;
         registration_unit(&unit, launch)?;
         ensure!(
             matches!(
@@ -97,17 +124,7 @@ impl LatestUnitImage {
             "non-success Unit wait reason differs"
         );
         let before = unit.version;
-        unit.version = unit
-            .version
-            .checked_add(1)
-            .filter(|v| *v <= i64::MAX as u64)
-            .context("non-success Unit version exhausted")?;
-        unit.state = UnitState::Retired;
-        unit.native_effects_open = false;
-        unit.result_finalization_open = false;
-        unit.wait_reason = None;
-        unit.disposition = Disposition::Refused;
-        unit.updated_at = at;
+        let unit = retirement_delta(unit, at)?;
         let raw = serde_json::to_string(&unit)?;
         ensure!(
             raw.len() <= UNIT_BYTES,
@@ -386,6 +403,47 @@ impl Store {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    #[test]
+    fn nongrant_rn1_unit_retirement_preserves_all_other_facts_and_refuses_open_aliases() {
+        let mut before = original();
+        before.state = UnitState::Preparing;
+        before.capacity_retry_at = Some(99);
+        before.wait_reason = Some(WaitReason::Capacity);
+        let after = retirement_delta(before.clone(), 88).unwrap();
+        assert_eq!(after.state, UnitState::Retired);
+        assert!(!after.native_effects_open && !after.result_finalization_open);
+        assert_eq!(after.disposition, Disposition::Refused);
+        assert!(after.work.is_none() && after.session_id.is_none() && after.wait_reason.is_none());
+        assert_eq!(after.version, before.version + 1);
+        assert_eq!(after.updated_at, 88);
+        let mut neutral = after;
+        neutral.state = before.state;
+        neutral.native_effects_open = before.native_effects_open;
+        neutral.result_finalization_open = before.result_finalization_open;
+        neutral.disposition = before.disposition;
+        neutral.wait_reason = before.wait_reason;
+        neutral.version = before.version;
+        neutral.updated_at = before.updated_at;
+        assert_eq!(
+            serde_json::to_value(neutral).unwrap(),
+            serde_json::to_value(&before).unwrap()
+        );
+        let changes: &[fn(&mut ExecutionUnit)] = &[
+            |u| u.state = UnitState::Retired,
+            |u| u.native_effects_open = false,
+            |u| u.result_finalization_open = false,
+            |u| u.session_id = Some(SessionId::new()),
+            |u| u.work = Some(WorkOutcome::Unknown),
+            |u| u.disposition = Disposition::Refused,
+            |u| u.wait_reason = Some(WaitReason::ExternalOutcome),
+            |u| u.version = i64::MAX as u64,
+        ];
+        for change in changes {
+            let mut changed = before.clone();
+            change(&mut changed);
+            assert!(retirement_delta(changed, 88).is_err());
+        }
+    }
 
     // Pure DTO/copied-value controls only. No persisted Unit, Driver, owner,
     // accepted Goal or Native actor/observation/capability is constructed.

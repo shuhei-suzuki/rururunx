@@ -21,6 +21,40 @@ use tokio::{sync::watch, task::JoinHandle};
 
 const MAX_JOBS: usize = 128;
 const CLOSURE_TURNS: usize = 8;
+fn rotate_closure_snapshot<K: Ord, T>(snapshot: &mut [(K, T, bool)], cursor: Option<K>) {
+    if let Some(cursor) = cursor {
+        let position = snapshot.partition_point(|(id, _, _)| *id < cursor);
+        let len = snapshot.len();
+        if len > 0 {
+            snapshot.rotate_left(position % len);
+        }
+    }
+}
+fn take_closure_turn(turns: &mut usize) -> bool {
+    if *turns == CLOSURE_TURNS {
+        return false;
+    }
+    *turns += 1;
+    true
+}
+/// Material destruction belongs to the caller, after both normal and poisoned
+/// Store guards. This private helper grants no authority to its callback.
+fn borrowed_store_turn<T, M, R>(
+    store: &Mutex<T>,
+    material: M,
+    call: impl FnOnce(&mut T, &M) -> Result<R>,
+) -> Result<R> {
+    assert_nonsuccess_unlocked();
+    let result = match store.lock() {
+        Ok(mut store) => call(&mut store, &material),
+        Err(poisoned) => {
+            drop(poisoned);
+            Err(anyhow::anyhow!("non-success Store poisoned"))
+        }
+    };
+    drop(material);
+    result
+}
 thread_local! {
     static ROOT_LOCK_DEPTH: Cell<usize> = const { Cell::new(0) };
     static TURN_TRANSACTIONS: Cell<Option<u8>> = const { Cell::new(None) };
@@ -63,8 +97,10 @@ impl ClosureTurn {
 impl Drop for ClosureTurn {
     fn drop(&mut self) {
         TURN_TRANSACTIONS.with(|v| {
-            debug_assert!(v.get().is_some_and(|n| n <= 1));
-            v.set(None);
+            let count = v.replace(None);
+            if !std::thread::panicking() {
+                debug_assert!(count.is_some_and(|n| n <= 1));
+            }
         });
     }
 }
@@ -199,13 +235,7 @@ impl PhaseJobs {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("phase closure cursor poisoned"))?
         };
-        if let Some(cursor) = cursor {
-            let position = snapshot.partition_point(|(id, _, _)| *id < cursor);
-            let len = snapshot.len();
-            if len > 0 {
-                snapshot.rotate_left(position % len);
-            }
-        }
+        rotate_closure_snapshot(&mut snapshot, cursor);
         Ok(snapshot)
     }
     fn set_closure_cursor(&self, cursor: Option<OperationId>) -> Result<()> {
@@ -312,11 +342,10 @@ impl PhaseJobs {
             if !ended || !due {
                 continue;
             }
-            if turns == CLOSURE_TURNS {
+            if !take_closure_turn(&mut turns) {
                 self.set_closure_cursor(Some(operation))?;
                 return Ok(true);
             }
-            turns += 1;
             let _turn = ClosureTurn::enter();
             let owner = job
                 .allocation
@@ -386,29 +415,23 @@ impl PhaseJobs {
                 };
             // Borrowed turn material outlives the Store guard on every path,
             // including poisoning. Errors never transfer its ownership.
-            let result = match owner.store.lock() {
-                Ok(mut store) => {
-                    if uncertain {
-                        store
-                            .confirm_phase_nonsuccess(&material)
-                            .map(|value| match value {
-                                NativeNonSuccessConfirmation::Known(ack) => TurnResult::Known(ack),
-                                NativeNonSuccessConfirmation::RolledBack => TurnResult::RolledBack,
-                            })
-                    } else {
-                        store
-                            .close_phase_nonsuccess(&material)
-                            .map(|value| match value {
-                                NativeNonSuccessWrite::Known(ack) => TurnResult::Known(ack),
-                                NativeNonSuccessWrite::Conflict(cause) => {
-                                    TurnResult::Conflict(cause)
-                                }
-                            })
-                    }
+            let result = borrowed_store_turn(&owner.store, material, |store, material| {
+                if uncertain {
+                    store
+                        .confirm_phase_nonsuccess(material)
+                        .map(|value| match value {
+                            NativeNonSuccessConfirmation::Known(ack) => TurnResult::Known(ack),
+                            NativeNonSuccessConfirmation::RolledBack => TurnResult::RolledBack,
+                        })
+                } else {
+                    store
+                        .close_phase_nonsuccess(material)
+                        .map(|value| match value {
+                            NativeNonSuccessWrite::Known(ack) => TurnResult::Known(ack),
+                            NativeNonSuccessWrite::Conflict(cause) => TurnResult::Conflict(cause),
+                        })
                 }
-                Err(_) => Err(anyhow::anyhow!("non-success Store poisoned")),
-            };
-            drop(material);
+            });
             match result {
                 Ok(TurnResult::Known(ack)) => {
                     ensure!(
@@ -828,5 +851,94 @@ impl Drop for RunningJob {
         if let Some(preparation) = preparation {
             preparation.abandon();
         }
+    }
+}
+
+#[cfg(test)]
+mod nonsuccess_primitives {
+    use super::*;
+    // Production scheduling/material helpers only: no Job, actor or proof.
+    #[test]
+    fn nongrant_rn1_due_rotation_delivers_every_job_within_finite_passes() {
+        for n in [1usize, 5, 8, 9, 17, 128] {
+            let mut delivered = vec![0usize; n];
+            let mut cursor = None;
+            for _ in 0..n.div_ceil(CLOSURE_TURNS) {
+                let mut rows = (0..n).map(|id| (id, (), true)).collect::<Vec<_>>();
+                rotate_closure_snapshot(&mut rows, cursor);
+                let mut turns = 0;
+                cursor = None;
+                for (id, _, _) in rows {
+                    if !take_closure_turn(&mut turns) {
+                        cursor = Some(id);
+                        break;
+                    }
+                    delivered[id] += 1;
+                }
+                assert!(turns <= 8);
+            }
+            assert!(
+                delivered.iter().all(|count| *count > 0),
+                "starved due job among {n}: {delivered:?}"
+            );
+        }
+    }
+    #[test]
+    fn nongrant_rn1_material_drops_after_store_on_result_and_poison_paths() {
+        struct Material {
+            store: Arc<Mutex<()>>,
+            dropped: Arc<AtomicBool>,
+        }
+        impl Drop for Material {
+            fn drop(&mut self) {
+                match self.store.try_lock() {
+                    Ok(guard) => drop(guard),
+                    Err(std::sync::TryLockError::Poisoned(error)) => drop(error),
+                    Err(std::sync::TryLockError::WouldBlock) => {
+                        panic!("Material dropped while Store held")
+                    }
+                }
+                self.dropped.store(true, Ordering::SeqCst);
+            }
+        }
+        for outcome in [0, 1, 2] {
+            let store = Arc::new(Mutex::new(()));
+            let dropped = Arc::new(AtomicBool::new(false));
+            let material = Material {
+                store: store.clone(),
+                dropped: dropped.clone(),
+            };
+            if outcome == 2 {
+                let poisoned = store.clone();
+                let _ = std::thread::spawn(move || {
+                    let _guard = poisoned.lock().unwrap();
+                    panic!("intentional local mutex poison");
+                })
+                .join();
+            }
+            let result = borrowed_store_turn(&store, material, |_, _| {
+                if outcome == 0 {
+                    Ok(())
+                } else {
+                    Err(anyhow::anyhow!("nongrant error"))
+                }
+            });
+            assert_eq!(result.is_ok(), outcome == 0);
+            assert!(dropped.load(Ordering::SeqCst));
+        }
+    }
+    #[test]
+    fn nongrant_rn1_debug_rejects_root_lock_and_second_transaction() {
+        let held = std::panic::catch_unwind(|| {
+            let _depth = RootLockDepth::enter();
+            assert_nonsuccess_unlocked();
+        });
+        assert_eq!(held.is_err(), cfg!(debug_assertions));
+        let second = std::panic::catch_unwind(|| {
+            let _turn = ClosureTurn::enter();
+            record_nonsuccess_store_attempt();
+            record_nonsuccess_store_attempt();
+        });
+        assert_eq!(second.is_err(), cfg!(debug_assertions));
     }
 }

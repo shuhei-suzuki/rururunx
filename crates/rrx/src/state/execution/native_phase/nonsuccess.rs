@@ -65,6 +65,17 @@ fn validate_open(tx: &Transaction<'_>, plan: &NativeNonSuccessClosurePlan) -> Re
         plan.audit_data.len() as u64,
     )
 }
+fn classify_images(
+    closed: Result<()>,
+    unit_after: Result<()>,
+    open: impl FnOnce() -> Result<()>,
+) -> Result<bool> {
+    if closed.is_ok() && unit_after.is_ok() {
+        return Ok(true);
+    }
+    open().context("uncertain non-success mixed images or currency changed; Held")?;
+    Ok(false)
+}
 impl Store {
     pub(crate) fn plan_phase_nonsuccess_closure(
         owner: &Arc<RuntimeOwner>,
@@ -184,12 +195,9 @@ impl Store {
                         data: &plan.audit_data,
                     },
                 );
-                if closed.is_ok() && plan.unit_after.validate_indexed_tx(&tx).is_ok() {
-                    return Ok(true);
-                }
-                validate_open(&tx, plan)
-                    .context("uncertain non-success mixed images or currency changed; Held")?;
-                Ok(false)
+                classify_images(closed, plan.unit_after.validate_indexed_tx(&tx), || {
+                    validate_open(&tx, plan)
+                })
             })())?
         };
         tx.commit()?;
@@ -198,5 +206,38 @@ impl Store {
         } else {
             NativeNonSuccessConfirmation::RolledBack
         })
+    }
+}
+
+#[cfg(test)]
+mod primitives {
+    use super::*;
+    #[test]
+    fn nongrant_rn1_confirmation_requires_complete_post_or_complete_pre_images() {
+        // Truth-table control of the actual port classifier. No proof or SQL
+        // currency is constructed; genuine per-parent cases remain SETUP.
+        for mask in 0u8..16 {
+            let predicate = |value| {
+                if value {
+                    Ok(())
+                } else {
+                    Err(anyhow::anyhow!("nongrant image differs"))
+                }
+            };
+            let unit_post = mask & 1 != 0;
+            let operation_post = mask & 2 != 0;
+            let workflow_post = mask & 4 != 0;
+            let link_post = mask & 8 != 0;
+            let result = classify_images(
+                predicate(operation_post && workflow_post && link_post),
+                predicate(unit_post),
+                || predicate(mask == 0),
+            );
+            match mask {
+                15 => assert_eq!(result.unwrap(), true),
+                0 => assert_eq!(result.unwrap(), false),
+                _ => assert!(result.is_err(), "accepted mixed image mask {mask}"),
+            }
+        }
     }
 }

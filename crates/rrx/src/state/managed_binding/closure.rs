@@ -51,7 +51,12 @@ pub(in crate::state) enum PhaseImage<'a> {
     },
 }
 
-fn workflow_delta(before: &Record, marker: &OriginalMarker, at: i64) -> Result<(usize, Record)> {
+fn workflow_delta(
+    before: &Record,
+    task: &crate::domain::Task,
+    original_unit: &crate::execution::ExecutionUnit,
+    at: i64,
+) -> Result<(usize, Record)> {
     let mut workflow: WorkflowSnapshot = serde_json::from_value(before.data.clone())?;
     ensure!(
         encode(&serde_json::to_value(&workflow)?, BODY_BYTES)? == encode(&before.data, BODY_BYTES)?,
@@ -64,7 +69,6 @@ fn workflow_delta(before: &Record, marker: &OriginalMarker, at: i64) -> Result<(
         .history
         .get_mut(index)
         .context("non-success original attempt absent")?;
-    let f = marker.allocation().facts();
     let unit = attempt
         .unit
         .as_ref()
@@ -79,10 +83,7 @@ fn workflow_delta(before: &Record, marker: &OriginalMarker, at: i64) -> Result<(
             && attempt.next_due.is_none()
             && attempt.observations.is_empty()
             && attempt.claimed_observations == 0
-            && unit.scope == *f.scope
-            && unit.unit == f.unit_id
-            && unit.generation == f.generation
-            && unit.epoch == f.epoch,
+            && *unit == crate::execution::ManagedUnitRef::from(original_unit),
         "non-success attempt is not original undispatched Running"
     );
     attempt.state = AttemptState::Failed;
@@ -108,11 +109,7 @@ fn workflow_delta(before: &Record, marker: &OriginalMarker, at: i64) -> Result<(
         .context("non-success Workflow version exhausted")?;
     after.updated_at = at;
     after.data = serde_json::to_value(workflow)?;
-    crate::workflow::validate_transition(
-        marker.original_plan().task_after().0,
-        &after,
-        Some(before),
-    )?;
+    crate::workflow::validate_transition(task, &after, Some(before))?;
     Ok((index, after))
 }
 fn operation_delta(before: &[SqlValue]) -> Result<Vec<SqlValue>> {
@@ -143,8 +140,12 @@ fn operation_delta(before: &[SqlValue]) -> Result<Vec<SqlValue>> {
     Ok(after)
 }
 fn material(marker: &OriginalMarker, at: i64) -> Result<(usize, PhaseClosureImages)> {
-    let (index, workflow_after) =
-        workflow_delta(marker.original_plan().workflow_after().0, marker, at)?;
+    let (index, workflow_after) = workflow_delta(
+        marker.original_plan().workflow_after().0,
+        marker.original_plan().task_after().0,
+        marker.unit(),
+        at,
+    )?;
     let workflow_after_raw = serde_json::to_string(&workflow_after)?;
     ensure!(
         workflow_after_raw.len() <= BODY_BYTES,
@@ -335,5 +336,202 @@ impl PhaseClosureImages {
             ensure!(tx.execute("INSERT INTO audit(sequence,project_id,goal_id,task_id,kind,at,data) VALUES(?1,?2,?3,?4,?5,?6,?7)", params![sequence,scope.project_id.to_string(),scope.goal_id.map(|v|v.to_string()),scope.task_id.map(|v|v.to_string()),KIND,closure.at,audit_data])? == 1, "non-success link missing");
             permits.ensure_consumed()
         })
+    }
+}
+
+#[cfg(test)]
+mod primitives {
+    use super::*;
+    use crate::{
+        domain::*,
+        execution::*,
+        workflow::{Phase, PhaseAttempt, SourceSnapshot},
+    };
+    use std::collections::BTreeMap;
+
+    // Factual DTOs only. No database, Runtime, allocation, marker or proof.
+    fn facts() -> (Task, ExecutionUnit, Record) {
+        let mut task = Task::new(
+            ProjectId::new(),
+            GoalId::new(),
+            "nongrant".into(),
+            "claude".into(),
+        );
+        task.revision = Some("a".repeat(40));
+        task.context_version = 1;
+        let unit = ExecutionUnit {
+            id: UnitId::new(),
+            scope: task.scope(),
+            kind: UnitKind::Executor,
+            generation: 1,
+            owner_epoch: 1,
+            version: 1,
+            phase: "Implement".into(),
+            provider: "claude".into(),
+            state: UnitState::Preparing,
+            native_effects_open: true,
+            result_finalization_open: true,
+            work: None,
+            cleanup: CleanupOutcome::Unknown,
+            disposition: Disposition::Active,
+            worktree: "/nongrant".into(),
+            branch: Some("nongrant".into()),
+            base_sha: task.revision.clone().unwrap(),
+            profile_digest: "b".repeat(64),
+            cookie: "nongrant".into(),
+            session_id: None,
+            artifact_id: None,
+            wait_reason: None,
+            capacity_retry_at: None,
+            created_at: 1,
+            updated_at: 1,
+        };
+        let config = crate::config::Config::default();
+        let workflow = WorkflowSnapshot {
+            workflow: task.workflow,
+            risk: task.risk,
+            generation: 1,
+            context_version: 1,
+            context_fresh: true,
+            active: Some(0),
+            completed: BTreeMap::new(),
+            history: vec![PhaseAttempt {
+                phase: Phase::Implement,
+                generation: 1,
+                context_version: 1,
+                budget: crate::workflow::budget(task.workflow, Phase::Implement, &config),
+                state: AttemptState::Running,
+                session_id: None,
+                execution: None,
+                unit: Some(ManagedUnitRef::from(&unit)),
+                native_wait: None,
+                next_due: None,
+                dispatch_started: true,
+                observations: vec![],
+                claimed_observations: 0,
+                agent: Some("claude".into()),
+                started_at: 1,
+                completed_at: None,
+                detail: None,
+            }],
+            escalations: vec![],
+            retries: vec![],
+            invalidations: vec![],
+            terminal_decision: None,
+            finalizations: vec![],
+            sources: SourceSnapshot {
+                scope: task.scope(),
+                revision: task.revision.clone().unwrap(),
+                artifact: None,
+                source_versions: BTreeMap::new(),
+                payload: "nongrant".into(),
+            },
+            configured_phases: crate::workflow::phases(task.workflow, &config),
+            finished: false,
+            held_reason: None,
+        };
+        let record = Record::new(
+            task.scope(),
+            RecordKind::Workflow,
+            serde_json::to_value(workflow).unwrap(),
+        );
+        (task, unit, record)
+    }
+    #[test]
+    fn nongrant_rn1_workflow_delta_changes_only_failed_completion_detail_and_record_clock() {
+        let (task, unit, before) = facts();
+        let (index, after) = workflow_delta(&before, &task, &unit, 44).unwrap();
+        assert_eq!(index, 0);
+        assert_eq!(after.version, before.version + 1);
+        assert_eq!(after.updated_at, 44);
+        let workflow: WorkflowSnapshot = serde_json::from_value(after.data.clone()).unwrap();
+        assert_eq!(workflow.history[0].state, AttemptState::Failed);
+        assert_eq!(workflow.history[0].completed_at, Some(44));
+        assert_eq!(workflow.history[0].detail.as_deref(), Some(REASON_DETAIL));
+        assert!(
+            workflow.history[0].session_id.is_none() && workflow.history[0].execution.is_none()
+        );
+        let mut neutral = after.clone();
+        neutral.version = before.version;
+        neutral.updated_at = before.updated_at;
+        let mut value = workflow;
+        value.history[0].state = AttemptState::Running;
+        value.history[0].completed_at = None;
+        value.history[0].detail = None;
+        neutral.data = serde_json::to_value(value).unwrap();
+        assert_eq!(
+            serde_json::to_value(neutral).unwrap(),
+            serde_json::to_value(before).unwrap()
+        );
+    }
+    #[test]
+    fn nongrant_rn1_workflow_refuses_nonoriginal_states_fields_and_typed_loss() {
+        let (task, unit, before) = facts();
+        for (field, value) in [
+            ("state", json!("failed")),
+            ("dispatch_started", json!(false)),
+            ("session_id", json!(SessionId::new())),
+            ("completed_at", json!(9)),
+            ("native_wait", json!("quota")),
+            ("next_due", json!(9)),
+            ("claimed_observations", json!(1)),
+            ("unit", Value::Null),
+        ] {
+            let mut changed = before.clone();
+            changed.data["history"][0][field] = value;
+            assert!(
+                workflow_delta(&changed, &task, &unit, 44).is_err(),
+                "accepted {field}"
+            );
+        }
+        let mut changed = before.clone();
+        changed.data["unrecognized"] = json!("lost");
+        assert!(workflow_delta(&changed, &task, &unit, 44).is_err());
+        let mut changed_unit = unit.clone();
+        changed_unit.owner_epoch += 1;
+        assert!(workflow_delta(&before, &task, &changed_unit, 44).is_err());
+    }
+    fn operation(raw: String) -> Vec<SqlValue> {
+        let mut values = (0..32)
+            .map(|i| SqlValue::Text(format!("original-{i}")))
+            .collect::<Vec<_>>();
+        values[29] = SqlValue::Integer(1);
+        values[30] = SqlValue::Integer(1);
+        values[31] = SqlValue::Text(raw);
+        values
+    }
+    #[test]
+    fn nongrant_rn1_operation_delta_preserves_every_other_column_and_body_key() {
+        let body = json!({"phase_open":true,"version":1,"original_frame":{"a":[1,"keep"]},"owner_id":"original","extra":true});
+        let before = operation(body.to_string());
+        let after = operation_delta(&before).unwrap();
+        assert_eq!(&after[..29], &before[..29]);
+        assert_eq!(after[29], SqlValue::Integer(0));
+        assert_eq!(after[30], SqlValue::Integer(2));
+        let SqlValue::Text(raw) = &after[31] else {
+            panic!("body missing")
+        };
+        let mut changed: Value = serde_json::from_str(raw).unwrap();
+        assert_eq!(changed["phase_open"], false);
+        assert_eq!(changed["version"], 2);
+        changed["phase_open"] = json!(true);
+        changed["version"] = json!(1);
+        assert_eq!(changed, body);
+    }
+    #[test]
+    fn nongrant_rn1_operation_refuses_ambiguous_oversize_or_closed_preimages() {
+        for raw in [
+            "{\"phase_open\":true,\"phase_open\":false,\"version\":1}".into(),
+            "x".repeat(OP_BYTES + 1),
+            "{\"phase_open\":false,\"version\":1}".into(),
+        ] {
+            assert!(operation_delta(&operation(raw)).is_err());
+        }
+        let mut before = operation("{\"phase_open\":true,\"version\":1}".into());
+        before[29] = SqlValue::Integer(0);
+        assert!(operation_delta(&before).is_err());
+        before[29] = SqlValue::Integer(1);
+        before[30] = SqlValue::Integer(2);
+        assert!(operation_delta(&before).is_err());
     }
 }
