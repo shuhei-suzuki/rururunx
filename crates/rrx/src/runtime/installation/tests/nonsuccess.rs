@@ -67,12 +67,22 @@ fn workflow(f: &ControlFixture, task: &Task) -> crate::domain::Record {
 async fn physical_refusal(provider: &str, stage: PreparationObservation) {
     let mut f = fixture(provider, true);
     f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        // Diagnose only the physical fixture-local IPC syscall. This probe
+        // does not supply Runtime installation, an owner or Native admission.
+        let diagnostic =
+            std::os::unix::net::UnixListener::bind(f._dir.path().join("rn-ipc-diagnostic.sock"));
+        panic!(
+            "SETUP: {}; fixture-local Unix bind: {diagnostic:?}",
+            refusal.0
+        );
+    }
     let port = f
         .runtime
         .installed
         .as_ref()
         .ok()
-        .unwrap()
+        .unwrap_or_else(|| panic!("SETUP: Runtime installation unavailable"))
         .registry
         .native_phase_port("worker")
         .unwrap();
