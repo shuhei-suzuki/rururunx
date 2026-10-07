@@ -2,7 +2,7 @@
 
 ## 1. Status, scope and pins
 
-- **Status:** proposed STRICT HOW, revision R1. Nothing below is implemented. It is a prerequisite found while implementing the approved SC HOW (`a40355d`, §19 (g)): SC1 cannot reach an owned terminal.
+- **Status:** proposed STRICT HOW, revision R2 (supersedes R1 `8f66fa2`; §3.2 and §4 changed after an uncommitted prototype, §3.4). Nothing below is implemented on the branch. It is a prerequisite found while implementing the approved SC HOW (`a40355d`, §19 (g)): SC1 cannot reach an owned terminal.
 - **Pins.** Paths are relative to `crates/rrx/src/`. Line references are at `9e01c7c`-based HEAD `2e07cfc` (branch `feature/issue-43-native-nonsuccess-controls`) unless prefixed. The composition reviewed in Issue #43 comment 6032847626 (`732a88c`) contains the same code paths.
 - **Unchanged WHAT.** Managed binding requirements MB1–MB9 and MB-AC1…AC8. No guard is removed or widened; no pin is refreshed from rows; no Task.version binding.
 - **MVP rule.** At most one active Task per Project (#43 / #81); nothing here depends on same-Project parallelism.
@@ -27,34 +27,68 @@ This is a race between two legitimate writers of the SAME operation. The binding
 
 Before the Native terminal, the only writer that advances the open operation's Workflow and ledger is the first `session_bound` link (normal or late). Claim, observation and closure require the settled terminal; RN non-success requires an unbound, ended start. The trigger caps `session_bound` at 1 per operation (`state/managed_binding/schema.rs:397`). An unlinked → singly-linked transition can therefore happen at most once per operation.
 
-### 3.2 Re-plan once on that transition
+### 3.2 Re-plan once on that transition (R2: one typed mechanism)
 
-1. `NativeOwnerPlan` exposes a nongrant `linked()` (whether its planned successor has any link).
-2. **Inside planning:** `plan_owner_currency` keeps its two reads but, if the second snapshot's `validate_current_tx` fails, plans the successor once more; it retries exactly once, and only if the first plan was unlinked and the fresh successor has exactly one link whose kind is `session_bound` for the SAME operation. Otherwise the original error is returned.
-3. **Write call sites:** each Native owner writer reached from the Core (dispatch admission, dispatch receipt, input acknowledgment and the live-quota writer) is wrapped by one helper, `Core::native_write(plan_fn, write_fn)`: plan, write; on a write `Err`, re-plan once and retry only under the same condition (the failed plan unlinked, the fresh plan linked by the sole `session_bound`). A writer whose Immediate already executed a statement is not retried (its outcome is uncertain and stays the existing error). Each writer's first check is its owner/currency validation, before any write, so a retried attempt never doubles a write.
-4. **Terminal:** unchanged. Its existing protocol already handles one absent-confirmed replan (`persist_saved_terminal`: `confirmed_absent` → `replan_terminal_after_absence`), which covers a binding commit between the terminal plan and its Immediate.
-5. **Never:** no check is skipped or relaxed; the retried attempt re-validates the exact current successor, owner, pair, Driver and Unit. No retry for any other change (parent drift, Unit/Session drift, a second link kind), no loop, no wait, no timeout inference.
+R1 proposed two mechanisms (a planning retry and a write retry) and listed four Core writers. The prototype (§3.4) showed the list was incomplete and that one typed refusal covers planning and writing alike.
+
+1. **Typed refusal.** `UnlinkedOwnerStale` (nongrant marker, `state/execution/native_phase.rs`) is attached as error context only where an owner plan's exact currency is first checked, and only when that plan has no Workflow link:
+   - the second snapshot of `plan_owner_currency` (`validate_current_tx`), and
+   - `NativeOwnerPlan::validate_tx` (`validate_current_tx`), the first check of every owner writer's Immediate and of each later planning snapshot that revalidates the owner (for example `plan_phase_dispatch`'s invocation snapshot).
+
+   It is never attached by `validate_terminal_tx`, so the terminal path stays unchanged.
+2. **Predicate.** `binding_advanced(runtime, phase, error)` holds only when the error carries the marker AND a fresh `plan_current_phase` of the SAME marker has exactly one link, the first `session_bound` (`CurrentWorkflowSuccessor::is_sole_binding`, nongrant).
+3. **One helper.** `native_write(owner, phase, attempt)` in `execution/native.rs` runs `attempt` (plan + write) once more only when the predicate holds; otherwise it returns the original error. It wraps every owner writer reached from the Core:
+   - owner validation (`actual_native_authority` → `validate_phase_owner`),
+   - Session projection (`project_phase_session`),
+   - dispatch admission, dispatch receipt, input acknowledgment,
+   - the four live-quota writers (read, observation, wait, resume).
+4. **No doubled write.** A marked refusal is raised before `commit()`, so its Immediate rolls back with nothing applied. A commit error never carries the marker and is not retried; it keeps its existing uncertain handling.
+5. **Terminal.** Unchanged (its existing absent-confirmed replan applies).
+6. **Never.** No check is skipped or relaxed: the retry re-plans and re-validates the exact current successor, owner, pair, Driver and Unit. No retry for a linked plan, for any other change (parent drift, Unit/Session drift, a second link kind), and no loop, wait or timeout inference. Each call retries at most once; the transition itself happens at most once per operation (§3.1).
 
 ### 3.3 Cost
 
-At most one extra `plan_current_phase` read and one extra Immediate per writer call, and only on the single binding transition per operation.
+At most one extra `plan_current_phase` read, and one extra plan and Immediate per writer call, and only on the single binding transition per operation.
+
+### 3.4 Prototype evidence (uncommitted, Linux)
+
+- **Branch base:** prototype worktree at `8c9d4e5` plus §3.2 only.
+- **Result:** SC1 claude and codex pass (2 passed): `session_bound`, then `gate_claim`, then `gate_observed`, then success `phase_closed`.
+- **R1 list incomplete:** with only the R1 writers wrapped, codex still ended `ProtocolFailure` from a marked refusal in owner validation and Session projection.
+- **Defects found and fixed separately in `8c9d4e5`** (implementation defects of approved designs, not BR):
+  - the terminal Session index compared kind `SESSION` with the stored `session`;
+  - `gate_observed` needed the Driver gate writer's virtual-observer predecessor;
+  - the success closure's typed-link audit sequence collided after W1–W4 appends.
 
 ## 4. Controls and mutants (P; none executed)
 
-- **BR1 (positive, genuine):** SC1's lane (claude and codex, commit mode). A cfg(test) timing seam holds the Core's first dispatch receipt between its plan and its write until the normal `session_bound` link is committed (Task-scoped; parks and resumes only). Assertions: the writer re-planned exactly once (cfg(test) counter), the receipt is recorded, the Core reaches its owned terminal, and SC1's later assertions hold.
-- **BR2 (negative):** the same seam, but the concurrent change is a parent Task edit through an existing legitimate writer instead of the binding: no retry, the original refusal stands (Held as today).
-- **Mutants:** remove the planning retry (BR1: "managed Workflow changed", Core `ProtocolFailure`); remove the write retry (BR1: receipt refusal, Core `ProtocolFailure`); widen the condition to any link change (BR2: a retry occurs).
+- **BR1 (positive, genuine):**
+  - Lane: SC1 (claude and codex, commit mode).
+  - Seam: a cfg(test), Task-scoped timing seam parks the Core's first owner writer after its plan and before its Immediate, until the normal `session_bound` link commits. It only parks and resumes.
+  - Assertions: exactly one marked refusal and one retry (cfg(test) counter); the writer's row is recorded; the Core reaches its owned terminal; SC1's later assertions hold.
+- **BR2 (negative):**
+  - Same seam, but the concurrent change is a parent Task edit through an existing legitimate writer, not the binding.
+  - Assertions: the predicate is false, there is no retry, and the original refusal stands (Held as today).
+- **BR3 (negative):**
+  - A plan made after the binding (linked) and refused for another change.
+  - Assertion: no marker and no retry.
+- **Mutants:**
+  - Drop the marker at `validate_tx`. BR1 fails on the writer refusal and Core `ProtocolFailure`.
+  - Drop the helper on one listed writer (owner validation). BR1 fails.
+  - Widen the predicate to any link change. BR2 shows a retry.
+  - Attach the marker for linked plans. BR3 shows a retry.
 
 ## 5. Impact
 
 | Changed | Consumers | Handling |
 | --- | --- | --- |
-| `plan_owner_currency` | every Native owner writer | one guarded re-plan; same errors otherwise |
-| Core writer call sites | dispatch admission/receipt, input ack, live quota | one helper; behavior identical when no binding commits concurrently |
-| Tests | BR1, BR2 | new; existing Native and RN controls unchanged |
+| `plan_owner_currency`, `NativeOwnerPlan::validate_tx` | every Native owner writer | marker context on an unlinked plan's currency refusal; message and control flow otherwise unchanged |
+| `CurrentWorkflowSuccessor::is_sole_binding` | BR predicate | nongrant accessor |
+| Core writer call sites (§3.2 item 3) | owner validation, Session projection, dispatch admission/receipt, input ack, live quota | one helper; behavior identical when no binding commits concurrently |
+| Tests | BR1, BR2, BR3 | new; existing Native and RN controls unchanged |
 
 Not affected: binding (normal/late), RN, preparation, SC ports, schema, triggers, permits.
 
 ## 6. Review
 
-Requested from Sol 6.1 high through the `codex-ready` flow on Issue #43. No source change for BR lands before that review closes without Critical/High/Medium findings.
+R1 was requested from Sol 6.1 high through the `codex-ready` flow on Issue #43; R2 supersedes it in the same request. No source change for BR lands before that review closes without Critical/High/Medium findings.
