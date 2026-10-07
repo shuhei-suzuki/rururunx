@@ -614,6 +614,12 @@ impl OwnedPhaseSettlement {
         };
         owner.project(&session, record_version)?;
         owner.revoke();
+        // The revoke -> settle gap the Root sweep must never conclude on.
+        #[cfg(test)]
+        crate::runtime::pause_at(
+            owner.allocation().facts().scope.task_id,
+            crate::runtime::SETTLEMENT_GAP,
+        );
         let settlement = Arc::new(Self {
             owner: owner.clone(),
             consumed,

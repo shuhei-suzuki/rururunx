@@ -1817,3 +1817,54 @@ async fn sc11n_claude_parent_edit_while_held_refuses_next_tick() {
 async fn sc11n_codex_parent_edit_while_held_refuses_next_tick() {
     sc11_fence("codex", true).await;
 }
+
+/// SC5(d): the sweep runs while `completed` is held between the owner's
+/// revoke and the settlement Weak: it records no conclusion (no continuation,
+/// no closure); after release the continuation is installed and closes.
+async fn sc5d_gap(provider: &str) {
+    use crate::runtime::phase_jobs::SETTLEMENT_GAP;
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    let gap = held(task, SETTLEMENT_GAP);
+    f.runtime.start().await.unwrap();
+    wait_normal_bound(&f, task).await;
+    release_completion(&f, task);
+    wait_for(|| gap.0.reached(), "SETUP: settlement gap not reached", 90).await;
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(3) {
+        f.runtime.wake.notify_one();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let jobs = f.runtime.phase_jobs.observed_jobs();
+    assert!(
+        jobs.iter().all(|j| !j.success && !j.success_closed),
+        "SC5(d) {provider}: no conclusion in the gap; jobs {jobs:?}"
+    );
+    assert_eq!(
+        links(&f, task),
+        ["session_bound"],
+        "SC5(d) {provider}: no link in the gap"
+    );
+    gap.0.release();
+    wait_for(
+        || links(&f, task).last().map(String::as_str) == Some("phase_closed"),
+        "SC5(d): continuation not installed after the gap",
+        90,
+    )
+    .await;
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc5d_claude_revoke_settle_gap_records_no_conclusion() {
+    sc5d_gap("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc5d_codex_revoke_settle_gap_records_no_conclusion() {
+    sc5d_gap("codex").await;
+}
