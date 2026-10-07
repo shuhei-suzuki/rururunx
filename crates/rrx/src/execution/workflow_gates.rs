@@ -33,6 +33,37 @@ impl InitialGateCompletion {
         self.receipt.as_ref()
     }
 }
+/// Sealed settled-gate disposition. `GateOutcome` has no Unknown; the
+/// producer seals one for any evaluation failure after its claim check.
+pub(crate) enum SettledGateOutcome {
+    Known(GateOutcome),
+    Unknown,
+}
+/// Built only inside `evaluate_settled`; no other constructor.
+pub(crate) struct SettledGateCompletion {
+    outcome: SettledGateOutcome,
+    receipt: Option<Record>,
+    sources: SourceSnapshot,
+    claim: Arc<crate::state::managed_binding::GateClaimAcknowledgment>,
+}
+impl SettledGateCompletion {
+    pub(crate) fn belongs_to(
+        &self,
+        claim: &Arc<crate::state::managed_binding::GateClaimAcknowledgment>,
+    ) -> bool {
+        Arc::ptr_eq(&self.claim, claim)
+    }
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        SettledGateOutcome,
+        Option<Record>,
+        SourceSnapshot,
+        Arc<crate::state::managed_binding::GateClaimAcknowledgment>,
+    ) {
+        (self.outcome, self.receipt, self.sources, self.claim)
+    }
+}
 #[derive(Debug, PartialEq, Eq, Serialize)]
 struct Claim {
     record: RecordId,
@@ -407,6 +438,206 @@ impl ManagedWorkflowGates {
             session_id: transport.as_ref().map(|s| s.session.id),
             context_version: invocation.context.version,
         }))
+    }
+}
+impl ManagedWorkflowGates {
+    /// `evaluate` for a settled, bound, marker-bound phase. The claim check
+    /// failing returns Err and no completion; every later failure returns a
+    /// sealed `Unknown` completion. No generic `validate_execution`,
+    /// `validate_authority` or Driver `validate` is reached.
+    pub(crate) async fn evaluate_settled(
+        &self,
+        claim: &Arc<crate::state::managed_binding::GateClaimAcknowledgment>,
+        invocation: PhaseInvocation,
+    ) -> Result<SettledGateCompletion> {
+        let (checked, workflow) = {
+            let store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            Self::claim(&store, &invocation)?
+        };
+        let sources = invocation.sources.clone();
+        let (outcome, receipt) = match self
+            .evaluate_settled_checked(claim, &invocation, checked, &workflow)
+            .await
+        {
+            Ok((outcome, receipt)) => (SettledGateOutcome::Known(outcome), receipt),
+            // The raw error never reaches durable rows or payloads.
+            Err(_cause) => (SettledGateOutcome::Unknown, None),
+        };
+        Ok(SettledGateCompletion {
+            outcome,
+            receipt,
+            sources,
+            claim: claim.clone(),
+        })
+    }
+    async fn evaluate_settled_checked(
+        &self,
+        claim: &Arc<crate::state::managed_binding::GateClaimAcknowledgment>,
+        invocation: &PhaseInvocation,
+        checked: Claim,
+        workflow: &WorkflowSnapshot,
+    ) -> Result<(GateOutcome, Option<Record>)> {
+        let settled = claim.settled();
+        let phase = invocation.phase;
+        ensure!(phase == settled.phase(), "settled gate phase differs");
+        if phase != Phase::Implement {
+            return Ok((
+                GateOutcome::Waiting(format!(
+                    "{} requires its qualified production evidence integration",
+                    phase.key()
+                )),
+                None,
+            ));
+        }
+        // Planned query-only at the post-claim endpoint, reused below.
+        let currency = Arc::new(crate::state::managed_binding::plan_settled_currency(
+            &self.owner,
+            settled,
+        )?);
+        let (unit, artifact) = {
+            let mut store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            let unit = Self::settled_terminal(&mut store, invocation, workflow, &currency)?;
+            let artifact = store.result_artifact(
+                invocation
+                    .sources
+                    .artifact
+                    .context("retained result missing")?,
+            )?;
+            ensure!(
+                artifact.state == ArtifactState::Ready && artifact.unit_id == unit.id,
+                "Implement requires the successful unit's Ready artifact"
+            );
+            (unit, artifact)
+        };
+        ensure!(
+            invocation.sources.artifact == Some(artifact.id)
+                && artifact.scope == invocation.task.scope()
+                && artifact.revision == invocation.sources.revision
+                && artifact.dependencies == invocation.sources.source_versions,
+            "gate retained artifact differs from observed input"
+        );
+        ResultStore::new(self.owner.clone())
+            .verify(&artifact)
+            .await?;
+        let current = self
+            .sources
+            .capture_settled(
+                &currency,
+                &invocation.project,
+                &invocation.task,
+                phase,
+                &invocation.budget,
+            )
+            .await?;
+        ensure!(
+            current == invocation.sources,
+            "gate source changed during checks"
+        );
+        let mut store = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+        ensure!(
+            Self::claim(&store, invocation)?.0 == checked,
+            "gate claim changed during checks"
+        );
+        // G7: the stored Unit row equals the sealed terminal raw exactly.
+        store.validate_settled_helper(&currency, &unit)?;
+        ensure!(
+            serde_json::to_value(store.result_artifact(artifact.id)?)?
+                == serde_json::to_value(&artifact)?,
+            "gate artifact changed during checks"
+        );
+        let mut receipt = Record::new(
+            invocation.task.scope(),
+            RecordKind::Verification,
+            json!({"schema":"managed_workflow_gate_v1","claim":checked,"phase":phase,
+                "revision":invocation.sources.revision,"sources":invocation.sources.source_versions,
+                "launch_revision":invocation.context.revision,
+                "context_data_sha256":digest(&serde_json::to_vec(&invocation.context.data)?),
+                "unit":ManagedUnitRef::from(&unit),
+                "profile_digest":&unit.profile_digest,
+                "artifact":artifact.id,
+                "manifest_sha256":&artifact.manifest_sha256}),
+        );
+        ensure!(
+            serde_json::to_vec(&receipt.data)?.len() <= 64 * 1024,
+            "gate receipt exceeds bound"
+        );
+        store.put_record(&mut receipt)?;
+        let evidence = Evidence {
+            scope: invocation.task.scope(),
+            phase,
+            revision: invocation.sources.revision.clone(),
+            source_versions: invocation.sources.source_versions.clone(),
+            dependencies: invocation.sources.source_versions.clone(),
+            artifacts: vec![
+                format!("rrx-gate:{}", receipt.id),
+                format!("rrx-artifact:{}", artifact.id),
+            ],
+            review_approved: None,
+            session_id: Some(settled.settlement().session().id),
+            context_version: invocation.context.version,
+        };
+        Ok((GateOutcome::Passed(evidence), Some(receipt)))
+    }
+    /// `terminal`'s predicates sourced from the SAME settlement: decoded
+    /// values with the `cleanup` overlay excluded, and the stored Unit row
+    /// compared exactly through the protected reader.
+    fn settled_terminal(
+        store: &mut Store,
+        invocation: &PhaseInvocation,
+        workflow: &WorkflowSnapshot,
+        currency: &crate::state::managed_binding::SettledCurrency,
+    ) -> Result<ExecutionUnit> {
+        let attempt = &workflow.history[workflow.active.context("active claim missing")?];
+        let settlement = currency.settled().settlement();
+        let unit = settlement.unit();
+        let session = settlement.session();
+        let handle = crate::execution::native::ManagedSessionRef {
+            scope: unit.scope.clone(),
+            unit: unit.id,
+            generation: unit.generation,
+            epoch: unit.owner_epoch,
+            session: session.id,
+        };
+        ensure!(
+            session.state == SessionState::Exited
+                && settlement.receipt().observed_work == WorkOutcome::Success
+                && unit.work == Some(WorkOutcome::Success)
+                && unit.state == UnitState::WorkKnown
+                && unit.kind == UnitKind::Executor
+                && unit.phase == invocation.phase.key()
+                && !unit.native_effects_open
+                && unit.result_finalization_open
+                && attempt.execution.as_ref() == Some(&handle)
+                && attempt.unit.as_ref() == Some(&ManagedUnitRef::from(unit))
+                && attempt.session_id == Some(session.id)
+                && unit.session_id == Some(session.id)
+                && unit.scope == invocation.task.scope()
+                && session.role == SessionRole::Executor
+                && session.provider == unit.provider
+                && session.worktree == unit.worktree
+                && attempt.agent.as_ref() == Some(&session.agent),
+            "gate requires exact owned successful settlement"
+        );
+        let mut current = store.execution_unit(unit.id)?;
+        current.cleanup = unit.cleanup;
+        ensure!(
+            serde_json::to_value(&current)? == serde_json::to_value(unit)?,
+            "gate Unit differs from the settled terminal postimage"
+        );
+        store.validate_settled_helper(currency, unit)?;
+        Ok(unit.clone())
     }
 }
 impl PhaseGates for ManagedWorkflowGates {

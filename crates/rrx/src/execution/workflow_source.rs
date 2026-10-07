@@ -946,7 +946,9 @@ impl ManagedWorkflowSources {
         currency: &Arc<crate::state::managed_binding::SettledCurrency>,
         project: &Project,
         task: &Task,
-    ) -> Result<Arc<Frame>> {
+        phase: Phase,
+        budget: &ContextBudget,
+    ) -> Result<SourceSnapshot> {
         let slot = self.slot(task.id)?;
         let mut slot = slot.lock().await;
         let state = slot
@@ -1011,7 +1013,7 @@ impl ManagedWorkflowSources {
             frame.artifact = Some(artifact.id);
             state.frame = Arc::new(frame);
         }
-        Ok(state.frame.clone())
+        state.frame.render(task, phase, budget)
     }
 }
 #[cfg(test)]

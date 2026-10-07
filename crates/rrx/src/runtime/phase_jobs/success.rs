@@ -2,7 +2,10 @@
 //! continuation housekeeping (D3). Classification runs under short job locks;
 //! each turn takes at most one snapshot plus one Store transaction.
 use super::*;
-use crate::state::managed_binding::{ManagedBindingConfirmation, SettledPhase, plan_late_binding};
+use crate::state::managed_binding::{
+    GateClaimAcknowledgment, GateClaimPlan, GateObservedAcknowledgment, GateObservedPlan,
+    ManagedBindingConfirmation, SettledPhase, SuccessConfirmation, SuccessWrite, plan_late_binding,
+};
 
 const SUCCESS_TURNS: usize = 8;
 const SETTLEMENT_REPOLL_MS: u64 = 5000;
@@ -16,7 +19,60 @@ pub(crate) struct SuccessContinuation {
 /// Retained compact plans and acknowledgments of the continuation. None of
 /// them points back to a Job, PhaseJobs or Runtime.
 #[derive(Default)]
-pub(crate) struct SuccessStage {}
+pub(crate) struct SuccessStage {
+    pub(crate) claim: Option<Retained<GateClaimPlan, GateClaimAcknowledgment>>,
+    /// Set before evaluation starts; never re-evaluated afterwards.
+    pub(crate) evaluation_started: bool,
+    pub(crate) completion: Option<crate::execution::workflow_gates::SettledGateCompletion>,
+    pub(crate) observed: Option<Retained<GateObservedPlan, GateObservedAcknowledgment>>,
+}
+/// One retained write: its SAME plan and what its write or confirmation
+/// established. A typed Conflict drops the plan.
+pub(crate) enum Retained<P, A> {
+    /// The write returned Err: only the SAME plan may be confirmed.
+    Uncertain(Arc<P>),
+    /// Confirmation proved the SAME plan rolled back; retry it unchanged.
+    RolledBack(Arc<P>),
+    Known(Arc<A>),
+}
+impl<P, A> Retained<P, A> {
+    pub(crate) fn known(&self) -> Option<&Arc<A>> {
+        match self {
+            Self::Known(ack) => Some(ack),
+            _ => None,
+        }
+    }
+    pub(crate) fn is_uncertain(&self) -> bool {
+        matches!(self, Self::Uncertain(_))
+    }
+    /// Records a write outcome of the SAME plan: Known, uncertain, or None
+    /// for a typed Conflict (the plan is dropped).
+    pub(crate) fn from_write(plan: Arc<P>, write: Result<SuccessWrite<A>>) -> Option<Self> {
+        match write {
+            Ok(SuccessWrite::Known(ack)) => Some(Self::Known(ack)),
+            Ok(SuccessWrite::Conflict(_cause)) => None,
+            Err(_cause) => Some(Self::Uncertain(plan)),
+        }
+    }
+    /// Records a confirmation of the SAME plan; Err stays uncertain (Held).
+    pub(crate) fn from_confirmation(
+        plan: Arc<P>,
+        confirmation: Result<SuccessConfirmation<A>>,
+    ) -> (Self, bool) {
+        match confirmation {
+            Ok(SuccessConfirmation::Known(ack)) => (Self::Known(ack), true),
+            Ok(SuccessConfirmation::RolledBack) => (Self::RolledBack(plan), true),
+            Err(_cause) => (Self::Uncertain(plan), false),
+        }
+    }
+}
+impl SuccessStage {
+    /// Root D3: an uncertain claim or observed write awaiting confirmation.
+    fn has_uncertain(&self) -> bool {
+        self.claim.as_ref().is_some_and(Retained::is_uncertain)
+            || self.observed.as_ref().is_some_and(Retained::is_uncertain)
+    }
+}
 impl SuccessContinuation {
     pub(crate) fn settled(&self) -> &Arc<SettledPhase> {
         &self.settled
@@ -89,6 +145,7 @@ struct Classified {
     plan: Option<Arc<ManagedBindingPlan>>,
     state: BindingState,
     ack: Option<Arc<BindingAcknowledgment>>,
+    success: Option<Arc<SuccessContinuation>>,
 }
 
 impl Job {
@@ -105,7 +162,6 @@ impl Job {
         if state.observation == InvocationObservation::Binding
             || state.closed_ack.is_some()
             || state.success_due > Instant::now()
-            || state.success.is_some()
         {
             return Ok(None);
         }
@@ -114,12 +170,16 @@ impl Job {
             plan: state.binding_plan.clone(),
             state: state.binding_state,
             ack: state.binding_ack.clone(),
+            success: state.success.clone(),
         }))
     }
     fn success_turn(&self) -> Result<Turn> {
         let Some(c) = self.classify()? else {
             return Ok(Turn::Skipped);
         };
+        if let Some(success) = c.success {
+            return self.housekeeping_turn(&success);
+        }
         match c.ack {
             Some(ack) => self.settlement_turn(&c.binding, ack),
             None => self.binding_turn(c),
@@ -246,6 +306,47 @@ impl Job {
         // Hint only; the Driver re-reads retained custody.
         self.changed.send_replace(InvocationObservation::Bound);
         Ok(Turn::Taken("continuation installed"))
+    }
+    /// D3: confirm a retained uncertain claim or observed write (one Store
+    /// turn, no admission). A busy stage is skipped without a turn.
+    fn housekeeping_turn(&self, success: &Arc<SuccessContinuation>) -> Result<Turn> {
+        let Some(mut stage) = success.try_stage()? else {
+            return Ok(Turn::Skipped);
+        };
+        if !stage.has_uncertain() {
+            return Ok(Turn::Skipped);
+        }
+        let owner = self.allocation.selected_port().owner();
+        let mut store = owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("success Store poisoned"))?;
+        let confirmed = if let Some(Retained::Uncertain(plan)) = &stage.claim {
+            let plan = plan.clone();
+            let (next, confirmed) =
+                Retained::from_confirmation(plan.clone(), store.confirm_settled_gate_claim(&plan));
+            stage.claim = Some(next);
+            confirmed
+        } else if let Some(Retained::Uncertain(plan)) = &stage.observed {
+            let plan = plan.clone();
+            let (next, confirmed) = Retained::from_confirmation(
+                plan.clone(),
+                store.confirm_settled_gate_observed(&plan),
+            );
+            stage.observed = Some(next);
+            confirmed
+        } else {
+            return Ok(Turn::Skipped);
+        };
+        drop(store);
+        drop(stage);
+        if confirmed {
+            self.success_ready()?;
+            self.changed.send_replace(InvocationObservation::Bound);
+        } else {
+            self.success_held("settled write outcome uncertain; Held", 5000)?;
+        }
+        Ok(Turn::Taken("success confirm"))
     }
     fn install_ack(
         &self,

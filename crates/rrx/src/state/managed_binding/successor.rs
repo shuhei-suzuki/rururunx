@@ -119,6 +119,24 @@ impl CurrentWorkflowSuccessor {
     pub(crate) fn has_links(&self) -> bool {
         self.count != 0
     }
+    pub(super) fn link_count(&self) -> usize {
+        self.count
+    }
+    pub(super) fn workflow_body(&self) -> &Body<Record> {
+        &self.workflow
+    }
+    /// Ledger digest of the current head link (the next link's predecessor),
+    /// or the original marker frame digest when no link exists.
+    pub(super) fn prior_ledger_digest(&self, marker: &OriginalMarker) -> Result<String> {
+        match &self.head {
+            Some(head) => Ok(Body::<Value>::decode(head.raw.clone(), 4096)?.digest(LEDGER_DOMAIN)),
+            None => Ok(marker.frame_digest().to_owned()),
+        }
+    }
+    /// Sequence of the head link, 0 when no link exists.
+    pub(super) fn head_sequence(&self) -> i64 {
+        self.head.as_ref().map_or(0, |head| head.event.sequence)
+    }
 }
 
 fn validate_unit_identity(

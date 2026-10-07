@@ -3367,7 +3367,7 @@ fn clear_hold(snapshot: &mut Snapshot) {
         snapshot.task.blockers.retain(|b| b != &reason);
     }
 }
-fn authority_only(source: &SourceSnapshot) -> SourceSnapshot {
+pub(crate) fn authority_only(source: &SourceSnapshot) -> SourceSnapshot {
     SourceSnapshot {
         payload: String::new(),
         ..source.clone()

@@ -10,6 +10,7 @@ pub(crate) use activation::{
     ActivationCommit, NativeActivationPlan, member_digest, plan_native_activation, roster_digest,
 };
 mod closure;
+mod gate;
 pub(in crate::state) use closure::{
     PhaseClosedFacts, PhaseClosureImages, PhaseImage, UnlinkedPhaseClosure, plan_unlinked_closure,
     validate_original_phase_tx,
@@ -48,6 +49,11 @@ pub(crate) use crate::runtime::phase_supervisor::{PhaseLaunch, PhaseLaunchParts}
 pub(crate) use binding::{
     BindingAcknowledgment, ManagedBindingConfirmation, ManagedBindingPlan, ManagedBindingWrite,
     plan_late_binding, plan_managed_binding,
+};
+pub(crate) use gate::{
+    GATE_FAILED_DETAIL, GATE_UNKNOWN_DETAIL, GateClaimAcknowledgment, GateClaimPlan,
+    GateObservedAcknowledgment, GateObservedPlan, SUCCESS_CLOSURE_HEADROOM, SuccessConfirmation,
+    SuccessWrite,
 };
 pub(crate) use marker_plan::ManagedMarkerPlan;
 pub(crate) use publication::{
