@@ -5,7 +5,7 @@ use crate::{
     domain::ProjectId,
     execution::{OperationId, RuntimeOwner, owner::PreparationGuard, phase::NativeAllocation},
 };
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     sync::{

@@ -318,7 +318,12 @@ impl PhaseJobs {
             }
             turns += 1;
             let _turn = ClosureTurn::enter();
-            let owner = job.allocation.selected_port().owner();
+            let owner = job
+                .allocation
+                .selected_port()
+                .selected_adapter()?
+                .owner
+                .clone();
             let plan = match saved {
                 Some(plan) => plan,
                 None => {
@@ -349,7 +354,7 @@ impl PhaseJobs {
                         }
                         NativeClosureStep::Proof(proof) => proof,
                     };
-                    let plan = match Store::plan_phase_nonsuccess_closure(owner, proof) {
+                    let plan = match Store::plan_phase_nonsuccess_closure(&owner, proof) {
                         Ok(plan) => plan,
                         Err(_cause) => {
                             job.closure_held("original non-success plan Held")?;
@@ -371,13 +376,14 @@ impl PhaseJobs {
                     plan
                 }
             };
-            let material = match Store::materialize_phase_nonsuccess(&plan) {
-                Ok(material) => material,
-                Err(_cause) => {
-                    job.closure_held("SAME non-success material Held")?;
-                    continue;
-                }
-            };
+            let material: crate::state::NativeNonSuccessMaterial =
+                match Store::materialize_phase_nonsuccess(&plan) {
+                    Ok(material) => material,
+                    Err(_cause) => {
+                        job.closure_held("SAME non-success material Held")?;
+                        continue;
+                    }
+                };
             // Borrowed turn material outlives the Store guard on every path,
             // including poisoning. Errors never transfer its ownership.
             let result = match owner.store.lock() {
