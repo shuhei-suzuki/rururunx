@@ -1,6 +1,7 @@
 //! CA controls enter only through the actual Runtime and accepted Unix ingress.
 //! The configured peer is account-free protocol wiring, never qualification.
 use super::*;
+use crate::runtime::goal::GoalPlan;
 use crate::state::managed_binding::ActivationSeams;
 use sha2::{Digest, Sha256};
 use std::sync::{
@@ -13,14 +14,14 @@ mod lifecycle;
 #[derive(Clone)]
 struct ObservedActivation {
     plan: Arc<crate::state::DriverPreparationAdvance>,
-    association: crate::runtime::driver::DriverAssociation,
+    association: Arc<crate::runtime::driver::DriverAssociation>,
     expected: serde_json::Value,
 }
 impl ObservedActivation {
     fn from_probe(probe: &crate::workflow::ActivationProbe<'_>) -> Self {
         Self {
             plan: probe.plan().clone(),
-            association: probe.lifetime().association().unwrap(),
+            association: Arc::new(probe.lifetime().association().unwrap()),
             expected: expected_contract(probe),
         }
     }

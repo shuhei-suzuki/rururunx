@@ -17,7 +17,7 @@ impl Drop for Running {
 }
 
 impl Runtime {
-    fn observe_task_drivers(&self) -> Result<usize> {
+    pub(super) fn observe_task_drivers(&self) -> Result<usize> {
         #[cfg(test)]
         {
             let hook = self
