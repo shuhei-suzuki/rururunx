@@ -987,3 +987,94 @@ async fn br3_claude_linked_plan_is_never_marked() {
 async fn br3_codex_linked_plan_is_never_marked() {
     br3("codex").await;
 }
+
+/// SC6: STANDARD Requirements. Bind -> capture -> claim -> observed Waiting
+/// (evidence integration unavailable). After many Driver polls: one claim, no
+/// closure, Task unchanged, Requirements not completed.
+async fn sc6_requirements(provider: &str) {
+    let mut f = fixture_mode(provider, true, None, |config| {
+        config.minimum_workflow = crate::config::WorkflowClass::Standard;
+        config.workflow.risk_mapping = [crate::config::WorkflowClass::Standard; 4];
+    });
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (goal, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    f.runtime.start().await.unwrap();
+    wait_normal_bound(&f, task).await;
+    let marked = stored_task(&f, task);
+    release_completion(&f, task);
+    wait_for(
+        || links(&f, task).len() >= 3,
+        &format!(
+            "SC6 {provider}: gate_observed absent; links {:?}",
+            links(&f, task)
+        ),
+        90,
+    )
+    .await;
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(6) {
+        f.runtime.wake.notify_one();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        links(&f, task),
+        ["session_bound", "gate_claim", "gate_observed"],
+        "SC6 {provider}: one claim, no closure"
+    );
+    let (_, snapshot) = workflow(&f, task);
+    let attempt = &snapshot.history[snapshot.active.expect("SC6: phase stays open")];
+    assert_eq!(attempt.phase, crate::workflow::Phase::Requirements);
+    assert_eq!(attempt.state, crate::workflow::AttemptState::Waiting);
+    assert!(
+        !snapshot
+            .completed
+            .contains_key(&crate::workflow::Phase::Requirements),
+        "SC6 {provider}: Requirements not completed"
+    );
+    assert_eq!(
+        stored_task(&f, task).version,
+        marked.version,
+        "SC6 {provider}: Task unchanged"
+    );
+    // SC12: the Requirements wait is reported read-only.
+    let response = f
+        .runtime
+        .handle_control(
+            &f.socket,
+            f.request(ControlAction::GoalTasks {
+                view: None,
+                project: marked.project_id,
+                goal,
+                after: None,
+                maximum: 16,
+            }),
+        )
+        .await
+        .unwrap();
+    let ControlResponse::GoalTaskPage { tasks: facts, .. } = response else {
+        panic!("SC12 {provider}: GoalTaskPage")
+    };
+    let facts = facts
+        .iter()
+        .find(|t| t.scope.task_id == Some(task.id))
+        .expect("SC12: task facts");
+    assert_eq!(
+        facts.workflow_wait.as_ref().map(|w| w.kind),
+        Some(crate::runtime::control::WorkflowWaitKind::EvidenceIntegrationUnavailable),
+        "SC12 {provider}: evidence_integration_unavailable"
+    );
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc6_claude_standard_requirements_waits_without_closure() {
+    sc6_requirements("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc6_codex_standard_requirements_waits_without_closure() {
+    sc6_requirements("codex").await;
+}

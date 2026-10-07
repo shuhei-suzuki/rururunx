@@ -223,7 +223,7 @@ pub(super) fn workflow_wait(
     };
     if open == 1 {
         let state = attempt("state")?;
-        if state.as_deref() != Some("waiting") && held_reason.is_none() {
+        if state.as_deref() != Some("Waiting") && held_reason.is_none() {
             return Ok(None);
         }
         let phase = attempt("phase")?;
