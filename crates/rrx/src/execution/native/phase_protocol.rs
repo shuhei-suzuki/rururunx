@@ -261,6 +261,7 @@ impl PhaseActor {
         receipt: native_result::NativeResultReceipt,
         session: Session,
         record_version: u64,
+        images: crate::state::SettledTerminalImages,
     ) -> Result<Arc<OwnedPhaseSettlement>> {
         if let Some(previous) = self
             .retained
@@ -277,6 +278,8 @@ impl PhaseActor {
                     && serde_json::to_value(&previous.session)? == serde_json::to_value(&session)?,
                 "native phase changed settlement replay"
             );
+            // A replay keeps the first commit's sealed images.
+            drop(images);
             return Ok(previous);
         }
         let consumed = self.consumed()?;
@@ -287,6 +290,7 @@ impl PhaseActor {
             receipt,
             session,
             record_version,
+            images,
         )?;
         let mut retained = self
             .retained
@@ -312,6 +316,8 @@ pub(crate) struct OwnedPhaseSettlement {
     record_version: u64,
     thread: String,
     turn: Option<String>,
+    /// Sealed rows of the SAME terminal commit; compared, never returned.
+    images: crate::state::SettledTerminalImages,
 }
 impl NativePhaseSession {
     pub(crate) fn launch_parts(&self) -> &PhaseLaunchParts {
@@ -548,6 +554,7 @@ impl OwnedPhaseSettlement {
         receipt: native_result::NativeResultReceipt,
         session: Session,
         record_version: u64,
+        images: crate::state::SettledTerminalImages,
     ) -> Result<Arc<Self>> {
         let owner = consumed.owner.clone();
         let facts = owner.allocation().facts();
@@ -618,6 +625,7 @@ impl OwnedPhaseSettlement {
             record_version,
             thread,
             turn,
+            images,
         });
         let mut projection = owner
             .projection
@@ -659,6 +667,15 @@ impl OwnedPhaseSettlement {
     }
     pub(crate) fn turn(&self) -> Option<&str> {
         self.turn.as_deref()
+    }
+    /// Exact invocation, receipt, Session, owner, readiness and admission rows
+    /// of the SAME terminal commit.
+    pub(crate) fn validate_terminal_images_tx(&self, tx: &rusqlite::Transaction<'_>) -> Result<()> {
+        self.images.validate_tx(tx)
+    }
+    /// The stored Unit row equals the terminal's sealed postimage exactly.
+    pub(crate) fn validate_terminal_unit_tx(&self, tx: &rusqlite::Transaction<'_>) -> Result<()> {
+        self.images.validate_unit_tx(tx)
     }
 }
 

@@ -58,6 +58,12 @@ impl UnitImage {
         ensure!(raw.len() <= 16 * 1024, "terminal Unit encoded limit");
         Ok(Self { value, raw })
     }
+    fn copy_image(&self) -> Self {
+        Self {
+            value: self.value.clone(),
+            raw: self.raw.clone(),
+        }
+    }
     fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         let u = &self.value;
         let (p, g, t) = scope_keys(&u.scope)?;
@@ -135,6 +141,67 @@ pub(crate) struct NativeTerminalPlan {
     input_effect: Option<(OperationId, String, u64, EffectState)>,
 }
 
+/// Exact row images of the SAME owned-success terminal commit, built only by
+/// `NativeTerminalPlan::commit`. They are compared, never exported, copied or
+/// adopted from current rows; holding them grants nothing.
+pub(crate) struct SettledTerminalImages {
+    unit: UnitImage,
+    invocation: InvocationImage,
+    receipt: NativeResultReceipt,
+    receipt_raw: String,
+    session: PairRow,
+    owner: PairRow,
+    readiness: PairRow,
+    admission: PairRow,
+}
+impl SettledTerminalImages {
+    /// Exact invocation, receipt, Session, owner, readiness and admission rows.
+    /// The Unit is compared separately by `validate_unit_tx`.
+    pub(crate) fn validate_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        ensure!(
+            receipt_committed_tx(tx, &self.receipt, &self.receipt_raw)?,
+            "settled terminal receipt absent"
+        );
+        self.invocation.validate_tx(tx)?;
+        self.session.validate_tx(tx)?;
+        self.owner.validate_tx(tx)?;
+        self.readiness.validate_tx(tx)?;
+        self.admission.validate_tx(tx)
+    }
+    /// The stored Unit row (raw body and indexed columns) equals the terminal's
+    /// postimage exactly; the decoded `cleanup` overlay is not part of that row.
+    pub(crate) fn validate_unit_tx(&self, tx: &Transaction<'_>) -> Result<()> {
+        self.unit.validate_tx(tx)
+    }
+}
+
+/// Exact committed receipt row of this terminal, if present.
+fn receipt_committed_tx(
+    tx: &Transaction<'_>,
+    receipt: &NativeResultReceipt,
+    raw: &str,
+) -> Result<bool> {
+    let prior:Option<String>=tx.query_row("SELECT CASE WHEN length(CAST(body AS BLOB))<=?2 THEN body END FROM native_results WHERE invocation_id=?1",
+        params![receipt.invocation_id.to_string(),crate::execution::native_result::RECEIPT_BYTES],|r|r.get(0)).optional()?.flatten();
+    let Some(prior) = prior else { return Ok(false) };
+    ensure!(prior == raw, "saved terminal committed receipt differs");
+    let mut indices = scoped_columns(&receipt.scope);
+    indices.extend([
+        ("id", json!(receipt.id)),
+        ("invocation_id", json!(receipt.invocation_id)),
+        ("unit_id", json!(receipt.unit_id)),
+        ("session_id", json!(receipt.session_id)),
+        ("generation", json!(receipt.generation)),
+        ("owner_epoch", json!(receipt.owner_epoch)),
+        ("provider", json!(receipt.provider)),
+        ("acquisition", json!(receipt.acquisition)),
+        ("authority", json!(receipt.authority)),
+        ("version", json!(1)),
+    ]);
+    check_indexed(tx, "native_results", &indices)?;
+    Ok(true)
+}
+
 /// Only a known transaction/confirmation of the SAME retained plan creates this.
 /// It is consumed by the actual actor, not serialized or used as review approval.
 pub(crate) struct NativeTerminalCommit {
@@ -144,7 +211,8 @@ pub(crate) struct NativeTerminalCommit {
     receipt: NativeResultReceipt,
     session: Session,
     version: u64,
-    owned_success: bool,
+    /// Some iff the commit is an owned success.
+    images: Option<SettledTerminalImages>,
 }
 impl NativeTerminalCommit {
     pub(crate) fn into_parts(
@@ -156,7 +224,7 @@ impl NativeTerminalCommit {
         NativeResultReceipt,
         Session,
         u64,
-        bool,
+        Option<SettledTerminalImages>,
     ) {
         (
             self.terminal,
@@ -165,7 +233,7 @@ impl NativeTerminalCommit {
             self.receipt,
             self.session,
             self.version,
-            self.owned_success,
+            self.images,
         )
     }
 }
@@ -642,27 +710,9 @@ impl NativeTerminalPlan {
         })
     }
     fn committed_tx(&self, tx: &Transaction<'_>) -> Result<bool> {
-        let prior:Option<String>=tx.query_row("SELECT CASE WHEN length(CAST(body AS BLOB))<=?2 THEN body END FROM native_results WHERE invocation_id=?1",
-            params![self.receipt.invocation_id.to_string(),crate::execution::native_result::RECEIPT_BYTES],|r|r.get(0)).optional()?.flatten();
-        let Some(prior) = prior else { return Ok(false) };
-        ensure!(
-            prior == self.receipt_raw,
-            "saved terminal committed receipt differs"
-        );
-        let mut indices = scoped_columns(&self.receipt.scope);
-        indices.extend([
-            ("id", json!(self.receipt.id)),
-            ("invocation_id", json!(self.receipt.invocation_id)),
-            ("unit_id", json!(self.receipt.unit_id)),
-            ("session_id", json!(self.receipt.session_id)),
-            ("generation", json!(self.receipt.generation)),
-            ("owner_epoch", json!(self.receipt.owner_epoch)),
-            ("provider", json!(self.receipt.provider)),
-            ("acquisition", json!(self.receipt.acquisition)),
-            ("authority", json!(self.receipt.authority)),
-            ("version", json!(1)),
-        ]);
-        check_indexed(tx, "native_results", &indices)?;
+        if !receipt_committed_tx(tx, &self.receipt, &self.receipt_raw)? {
+            return Ok(false);
+        }
         self.unit_after.validate_tx(tx)?;
         self.invocation_after.validate_tx(tx)?;
         self.session_after.validate_tx(tx)?;
@@ -674,6 +724,24 @@ impl NativeTerminalPlan {
         Ok(true)
     }
     fn commit(&self) -> NativeTerminalCommit {
+        let owned_success = self.normal.is_some()
+            && self.receipt.authority == ReceiptAuthority::OwnedTerminal
+            && self.receipt.observed_work == WorkOutcome::Success
+            && self.receipt.disposition == Disposition::Completed
+            && self.receipt.acquisition == AcquisitionStatus::Complete;
+        let images = match (owned_success, &self.admission_after) {
+            (true, Some(admission)) => Some(SettledTerminalImages {
+                unit: self.unit_after.copy_image(),
+                invocation: self.invocation_after.copy_image(),
+                receipt: self.receipt.clone(),
+                receipt_raw: self.receipt_raw.clone(),
+                session: self.session_after.copy_image(),
+                owner: self.owner.copy_image(),
+                readiness: self.readiness_after.copy_image(),
+                admission: admission.copy_image(),
+            }),
+            _ => None,
+        };
         NativeTerminalCommit {
             terminal: self.terminal.clone(),
             phase: self.phase.clone(),
@@ -681,11 +749,7 @@ impl NativeTerminalPlan {
             receipt: self.receipt.clone(),
             session: self.closed_session.clone(),
             version: self.session_version,
-            owned_success: self.normal.is_some()
-                && self.receipt.authority == ReceiptAuthority::OwnedTerminal
-                && self.receipt.observed_work == WorkOutcome::Success
-                && self.receipt.disposition == Disposition::Completed
-                && self.receipt.acquisition == AcquisitionStatus::Complete,
+            images,
         }
     }
 }

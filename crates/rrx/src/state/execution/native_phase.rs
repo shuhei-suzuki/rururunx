@@ -44,7 +44,7 @@ pub(crate) use transport::{
     RegistrationAck, RegistrationProbe,
 };
 mod terminal;
-pub(crate) use terminal::NativeTerminalPlan;
+pub(crate) use terminal::{NativeTerminalPlan, SettledTerminalImages};
 
 fn selected_database(connection: &rusqlite::Connection, launch: &PhaseLaunchParts) -> Result<()> {
     ensure!(
@@ -477,6 +477,12 @@ struct InvocationImage {
     raw: String,
 }
 impl InvocationImage {
+    fn copy_image(&self) -> Self {
+        Self {
+            value: self.value.clone(),
+            raw: self.raw.clone(),
+        }
+    }
     fn read(tx: &Transaction<'_>, id: crate::execution::NativeInvocationId) -> Result<Self> {
         let raw: Option<String> = tx.query_row("SELECT CASE WHEN length(CAST(body AS BLOB))<=?2 THEN body END FROM native_invocations WHERE id=?1",params![id.to_string(),crate::execution::native_result::INVOCATION_BYTES],|r|r.get(0))?;
         let raw = raw.context("bounded Native invocation absent")?;

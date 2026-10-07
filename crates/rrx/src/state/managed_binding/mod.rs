@@ -44,7 +44,10 @@ pub(super) use schema::{
 
 pub(crate) use crate::runtime::installation::{ActivationRoster, InstalledDriverComposition};
 pub(crate) use crate::runtime::phase_supervisor::{PhaseLaunch, PhaseLaunchParts};
-pub(crate) use binding::{ManagedBindingPlan, plan_managed_binding};
+pub(crate) use binding::{
+    BindingAcknowledgment, ManagedBindingConfirmation, ManagedBindingPlan, ManagedBindingWrite,
+    plan_late_binding, plan_managed_binding,
+};
 pub(crate) use marker_plan::ManagedMarkerPlan;
 pub(crate) use publication::{
     MarkerPublicationOutcome, MarkerPublicationPlan, MarkerTransactionObservation, OriginalMarker,

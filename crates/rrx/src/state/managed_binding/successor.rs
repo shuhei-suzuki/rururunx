@@ -17,6 +17,7 @@ use serde_json::Value;
 use std::sync::Arc;
 
 const KINDS: &str = "'rrx.private.workflow.session_bound','rrx.private.workflow.native_diagnostic','rrx.private.workflow.gate_claim','rrx.private.workflow.gate_observed','rrx.private.workflow.gate_hold','rrx.private.workflow.terminal_decision','rrx.private.workflow.phase_closed'";
+pub(super) const LINK_KINDS: &str = KINDS;
 const RECIPE: &str = "rrx.workflow-body-sha256/v1";
 const UNIT_BYTES: usize = 16 * 1024;
 
@@ -185,6 +186,18 @@ fn current_unit(c: &Connection, marker: &OriginalMarker) -> Result<Body<Executio
     // mutable lifecycle/result fields are factual only; each actual consumer
     // must prove its own stage eligibility and original private input/owner.
     Ok(body)
+}
+
+/// The SAME allocated Unit (identity, complete index) at any legitimate
+/// lifecycle state at or after the planned version. Factual only.
+pub(super) fn current_unit_lineage(
+    c: &Connection,
+    marker: &OriginalMarker,
+    planned: &ExecutionUnit,
+) -> Result<ExecutionUnit> {
+    let body = current_unit(c, marker)?;
+    validate_unit_identity(body.parsed(), planned, false)?;
+    Ok(body.parsed().clone())
 }
 
 fn rows(c: &Connection, marker: &OriginalMarker) -> Result<Vec<Link>> {

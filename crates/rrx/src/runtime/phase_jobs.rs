@@ -8,7 +8,9 @@ use crate::execution::{
     },
     phase::NativeAllocation,
 };
-use crate::state::managed_binding::{ManagedBindingPlan, plan_managed_binding};
+use crate::state::managed_binding::{
+    ManagedBindingPlan, ManagedBindingWrite, plan_managed_binding,
+};
 use anyhow::{Result, ensure};
 use std::{
     cell::Cell,
@@ -1037,12 +1039,15 @@ impl Job {
             state.binding_plan = Some(plan.clone());
         }
         // Short job locks above never overlap the selected owner's Store lock.
-        owner
+        let write = owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("binding Store poisoned"))?
             .bind_managed_phase(&plan)?;
-        Ok(())
+        match write {
+            ManagedBindingWrite::Known(_ack) => Ok(()),
+            ManagedBindingWrite::Conflict(cause) => Err(cause.context("binding refused")),
+        }
     }
 }
 

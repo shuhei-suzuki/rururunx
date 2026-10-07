@@ -32,7 +32,9 @@ pub(crate) mod readonly;
 mod registration;
 pub(crate) mod transport;
 pub(crate) mod version;
-pub(crate) use phase_protocol::{ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession};
+pub(crate) use phase_protocol::{
+    ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession, OwnedPhaseSettlement,
+};
 #[cfg(test)]
 pub(crate) use preparation::PreparationFacts;
 pub(crate) use preparation::{
@@ -1286,19 +1288,19 @@ fn persist_saved_terminal(
                     .finish_phase_terminal(&next)?
             }
         };
-        let (saved, actual_owner, unit, receipt, session, version, owned_success) =
-            commit.into_parts();
+        let (saved, actual_owner, unit, receipt, session, version, images) = commit.into_parts();
         ensure!(
             Arc::ptr_eq(&saved, terminal) && Arc::ptr_eq(&actual_owner, &phase.owner),
             "native terminal transaction changed private origin"
         );
-        if owned_success {
+        if let Some(images) = images {
             phase.settled(
                 saved,
                 unit.clone(),
                 receipt.clone(),
                 session.clone(),
                 version,
+                images,
             )?;
         } else {
             phase.owner.project(&session, version)?;

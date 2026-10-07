@@ -35,7 +35,7 @@ pub(crate) use execution::native_phase::{
     NativeQuotaClosurePlan, NativeQuotaConfirmation, NativeQuotaOutcome, NativeQuotaPlan,
     NativeQuotaWrite, NativeReadyLineage, NativeTerminalPlan, NativeTransportSettlementPlan,
     NativeTransportStartPlan, NativeVersionClosurePlan, NativeVersionHelperPlan, RegistrationAck,
-    RegistrationProbe,
+    RegistrationProbe, SettledTerminalImages,
 };
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
