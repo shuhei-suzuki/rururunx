@@ -11,7 +11,7 @@ use super::{
         GateObservedAcknowledgment, SuccessConfirmation, SuccessWrite, header, link_data,
         selected_database, typed, validate_link_head_tx,
     },
-    marker_rows::{WORKFLOW_BYTES, record_image},
+    marker_rows::{WORKFLOW_BYTES, record_head, record_image, record_image_from_head},
     permits::ExactRowMutation,
     publication::charged_scope_bytes,
     success::{SettledCurrency, SettledPhase, plan_settled_currency, validate_settled_tx},
@@ -54,6 +54,11 @@ pub(crate) struct SuccessClosureMaterial {
     task: Task,
     task_raw: String,
     workflow: Body<Record>,
+    /// Identity of the SAME preimage, decoded at materialization so the
+    /// writer never re-decodes the retained raw inside its Immediate.
+    before_head: Vec<SqlValue>,
+    before_id: String,
+    before_version: u64,
     unit: ExecutionUnit,
     unit_raw: String,
     artifact: ResultArtifact,
@@ -204,11 +209,17 @@ fn images(plan: &Arc<SuccessClosurePlan>) -> Result<SuccessClosureMaterial> {
             "operation_version_after":2,"driver_version_after":driver.version_after()}),
     )?;
     let _ = task_before_raw;
+    let before_head = record_head(before.parsed())?;
+    let before_id = before.parsed().id.to_string();
+    let before_version = before.parsed().version;
     Ok(SuccessClosureMaterial {
         plan: plan.clone(),
         task,
         task_raw,
         workflow: workflow_body,
+        before_head,
+        before_id,
+        before_version,
         unit,
         unit_raw,
         artifact: published,
@@ -528,7 +539,7 @@ impl Store {
             SqlValue::Integer(m.plan.at),
             SqlValue::Text(m.data.clone()),
         ];
-        let before = m.plan.observed.workflow_after()?;
+        let before_raw = m.plan.observed.workflow_after_raw();
         let mut writes = vec![
             ExactRowMutation::new(
                 "managed_phase_operations",
@@ -539,7 +550,7 @@ impl Store {
             ExactRowMutation::new(
                 "records",
                 "UPDATE",
-                Some(record_image(before.parsed(), before.raw())?),
+                Some(record_image_from_head(m.before_head.clone(), before_raw)),
                 Some(record_image(m.workflow.parsed(), m.workflow.raw())?),
             )?,
             ExactRowMutation::new("audit", "INSERT", None, Some(audit))?,
@@ -552,8 +563,7 @@ impl Store {
             let predicate = names.iter().enumerate().map(|(i,n)| format!("{n} IS ?{}",i+33)).collect::<Vec<_>>().join(" AND ");
             ensure!(tx.execute(&format!("UPDATE managed_phase_operations SET {set} WHERE {predicate}"), params_from_iter(m.operation.iter().chain(marker.original_operation_image()?)))? == 1, "success operation complete CAS changed");
             // W6: Workflow.
-            let b = before.parsed();
-            ensure!(tx.execute("UPDATE records SET version=?1,body=?2 WHERE id=?3 AND kind='workflow' AND project_id=?4 AND goal_id IS ?5 AND task_id IS ?6 AND version=?7 AND body=?8", params![m.workflow.parsed().version,m.workflow.raw(),b.id.to_string(),scope.project_id.to_string(),scope.goal_id.map(|v|v.to_string()),scope.task_id.map(|v|v.to_string()),b.version,before.raw()])? == 1, "success Workflow CAS changed");
+            ensure!(tx.execute("UPDATE records SET version=?1,body=?2 WHERE id=?3 AND kind='workflow' AND project_id=?4 AND goal_id IS ?5 AND task_id IS ?6 AND version=?7 AND body=?8", params![m.workflow.parsed().version,m.workflow.raw(),m.before_id,scope.project_id.to_string(),scope.goal_id.map(|v|v.to_string()),scope.task_id.map(|v|v.to_string()),m.before_version,before_raw])? == 1, "success Workflow CAS changed");
             // W7: the typed success link.
             ensure!(tx.execute("INSERT INTO audit(sequence,project_id,goal_id,task_id,kind,at,data) VALUES(?1,?2,?3,?4,?5,?6,?7)", params![sequence,scope.project_id.to_string(),scope.goal_id.map(|v|v.to_string()),scope.task_id.map(|v|v.to_string()),KIND,m.plan.at,m.data])? == 1, "success link missing");
             // W8: the marker-free Driver.

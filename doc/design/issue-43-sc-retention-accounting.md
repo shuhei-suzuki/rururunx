@@ -14,7 +14,7 @@
 | `SettledGateCompletion` | from evaluation until the observation is Known (then released) | observation ≤64 KiB, gate receipt record and `SourceSnapshot` (small) |
 | Known `GateObservedAcknowledgment` | until the job is released | postimage raw ≤W, observed facts (evidence, receipt) ≈ **W = 8 MiB** |
 | `SuccessClosurePlan` | from closure planning until the job is released | its currency successor Workflow `Body` ≤2W, Context raw ≤W (8 MiB stored-decoder bound), publication (small); shares the observed acknowledgment ≈ **3W = 24 MiB** |
-| `SuccessClosureMaterial` | one write or confirmation turn, dropped after the Store guard | transient, as §12 already counts for writes |
+| `SuccessClosureMaterial` | from materialization (before admission) to the end of one write or confirmation turn | transient, counted separately in §6 (SOL-L03); not covered by the old §12 16 MiB figure |
 
 ## 2. Per-stage peaks
 
@@ -49,3 +49,25 @@ Plus `SettledTerminalImages` ≤ about 6.3 MiB (§12, unchanged). The maximum is
   - after acceptance, `put_context` refuses ("accepted Goal Context requires genuine owned publication", `state/mod.rs:1443–1458`).
 
   The `gate_claim` headroom check therefore remains defense-only, as the SC design already allows.
+
+## 6. Transient ownership (SOL-L03, as implemented after the SOL-M03 fix)
+
+The old §12 figure ("≤16 MiB, one at a time by Store serialization") is not inherited. A Driver or Root worker builds its material before control admission and the Store guard. Workers of different Projects can therefore hold materials at the same time; only the Store-held part is serialized.
+
+Units are encoded owned bytes, W = 8 MiB. Parsed values are heap only, as in §1.
+
+| Step | Store held | Owned during the step | Peak |
+| --- | --- | --- | --- |
+| Materialization `images()` + `material_digest` | no | decoded SAME preimage `Body` 2W (dropped on return); the new Workflow serialization moved into its `Body` 2W; the digest's JSON copy plus its serialization ≤2W | ≈ **5W ≈ 40 MiB**, momentary |
+| Held material, waiting for admission | no | Workflow postimage `Body` 2W; Task ≤1 MiB, Unit ≤16 KiB, artifact, operation and link data (small); identity head of the preimage (six columns, small) | ≈ **2W ≈ 16 MiB** per waiting worker |
+| Writer W1–W8 (`close_phase_success`) | yes, serialized | material 2W; permit old image (a raw copy of the retained preimage) W; permit new image W. No decode inside the Immediate since SOL-M03 | ≈ **4W ≈ 32 MiB**, one at a time |
+| Confirmation (`confirm_phase_success`) | yes, serialized | material 2W; the current Workflow row read ≤W | ≈ **3W ≈ 24 MiB**, one at a time |
+
+Per active success stage, the bound is the §2 retained peak (≈40.1 MiB) plus the transient. The transient is ≤5W at materialization, then 2W while waiting. The serialized writer adds ≤2W once system-wide.
+
+Worst case, counting every waiting worker at its momentary materialization peak: ≤128 jobs × (56.2 + 40.1 + 6.3 + 40) MiB ≈ **17.8 GiB** encoded, plus one serialized writer increment (16 MiB). As in §3, the practical bound under the #81 rule of one active Task per Project is the number of concurrently active Projects. No new cap or Task limit is proposed. These are encoded-byte bounds, not RSS figures; M1b remains the measurement.
+
+SOL-M03 source fix (`success_closure.rs`):
+- `images()` records the preimage's six identity columns (`record_head`), id and version, from the decode it already performs outside the Store.
+- The writer builds the permit old image from that head plus the retained raw (`record_image_from_head`), and the W6 CAS from the same id, version and raw.
+- The SAME inputs, the fixed `at`, the digests and the two-branch confirmation are unchanged.

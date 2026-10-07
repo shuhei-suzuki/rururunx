@@ -385,6 +385,11 @@ impl MarkerRows {
 
 /// Complete encoded Record column image for the same private permit batch.
 pub(in crate::state) fn record_image(record: &Record, raw: &str) -> Result<Vec<SqlValue>> {
+    Ok(record_image_from_head(record_head(record)?, raw))
+}
+
+/// The six identity columns of a Record image, without the body.
+pub(in crate::state) fn record_head(record: &Record) -> Result<Vec<SqlValue>> {
     Ok(vec![
         text(record.id),
         text(record.kind.key()),
@@ -392,8 +397,16 @@ pub(in crate::state) fn record_image(record: &Record, raw: &str) -> Result<Vec<S
         record.scope.goal_id.map(text).unwrap_or(SqlValue::Null),
         record.scope.task_id.map(text).unwrap_or(SqlValue::Null),
         number(record.version)?,
-        text(raw),
     ])
+}
+
+/// Completes a head from `record_head` with the exact raw body.
+pub(in crate::state) fn record_image_from_head(
+    mut head: Vec<SqlValue>,
+    raw: &str,
+) -> Vec<SqlValue> {
+    head.push(text(raw));
+    head
 }
 
 /// Marker-specific Record mutation, never a general binding/access-mode selector.
