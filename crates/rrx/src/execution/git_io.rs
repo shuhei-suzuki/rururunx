@@ -15,8 +15,27 @@ pub(crate) struct UnitGit {
     native: bool,
     git_lease: Option<Arc<owner::GitLease>>,
     driver: Option<crate::state::DriverReadTicket>,
+    settled: Option<Arc<crate::state::managed_binding::SettledCurrency>>,
 }
 impl UnitGit {
+    /// Helpers of a settled, marker-bound phase: G1-G3 use the protected
+    /// reader of this SAME planned currency; the Driver ticket is not used.
+    pub(crate) fn for_settled(
+        owner: Arc<RuntimeOwner>,
+        currency: Arc<crate::state::managed_binding::SettledCurrency>,
+    ) -> Result<Self> {
+        let unit = currency.settled().settlement().unit().clone();
+        let profile = resources::ResourceManager::new(owner.clone()).profile(&unit)?;
+        Ok(Self {
+            owner,
+            unit,
+            profile,
+            native: false,
+            git_lease: None,
+            driver: None,
+            settled: Some(currency),
+        })
+    }
     pub(crate) fn new(
         owner: Arc<RuntimeOwner>,
         unit: &ExecutionUnit,
@@ -30,12 +49,17 @@ impl UnitGit {
             native,
             git_lease: None,
             driver: None,
+            settled: None,
         })
     }
     pub(crate) fn with_driver_ticket(
         mut self,
         ticket: crate::state::DriverReadTicket,
     ) -> Result<Self> {
+        ensure!(
+            self.settled.is_none(),
+            "settled helpers take no Driver ticket"
+        );
         ticket.preparation_matches(&self.unit)?;
         self.driver = Some(ticket);
         Ok(self)
@@ -166,16 +190,22 @@ impl UnitGit {
                     && current.session_id == self.unit.session_id,
                 "Git preparation authority retired"
             );
-            store.validate_execution(&current.authority(), self.native, !self.native)?;
-            // Capture/inspection has Runtime-only finalization authority; never grant native tools.
-            store.reserve_execution_helper_pinned(
-                &current.authority(),
-                operation,
-                self.native,
-                root,
-                kind,
-                self.driver.as_ref(),
-            )?;
+            if let Some(settled) = &self.settled {
+                ensure!(kind == "git_helper", "settled helpers are Git helpers only");
+                store.validate_settled_helper(settled, &self.unit)?;
+                store.reserve_settled_helper(settled, operation, root)?;
+            } else {
+                store.validate_execution(&current.authority(), self.native, !self.native)?;
+                // Capture/inspection has Runtime-only finalization authority; never grant native tools.
+                store.reserve_execution_helper_pinned(
+                    &current.authority(),
+                    operation,
+                    self.native,
+                    root,
+                    kind,
+                    self.driver.as_ref(),
+                )?;
+            }
             match process::OwnedProcess::spawn(&mut command) {
                 Ok(child) => child,
                 Err(e) => {
@@ -190,14 +220,14 @@ impl UnitGit {
             }
         };
         let mut helper_guard = owner::HelperGuard::new(self.owner.clone(), operation);
-        let observed = process::capture_scoped_pinned(
-            child,
-            &self.owner,
-            &self.unit,
-            self.native,
-            self.driver.as_ref(),
-        )
-        .await;
+        let currency = match &self.settled {
+            Some(settled) => process::HelperCurrency::Settled(settled),
+            None => process::HelperCurrency::Generic {
+                native: self.native,
+                driver: self.driver.as_ref(),
+            },
+        };
+        let observed = process::capture_scoped_with(child, &self.owner, &self.unit, currency).await;
         let mut receipt = BTreeMap::new();
         if let Ok(o) = &observed {
             receipt.insert(

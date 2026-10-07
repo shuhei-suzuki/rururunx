@@ -277,7 +277,7 @@ impl SourceNativeCustody {
     pub(crate) fn operation(&self) -> OperationId {
         self.operation
     }
-    fn same_allocation(&self, allocation: &NativeAllocation) -> Result<bool> {
+    pub(super) fn same_allocation(&self, allocation: &NativeAllocation) -> Result<bool> {
         let f = allocation.facts();
         Ok(
             std::ptr::eq(allocation.selected_port(), self.selected.as_ref())

@@ -241,6 +241,41 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+    /// G4 for a settled phase: the same staging row and event, under the
+    /// protected reader instead of generic finalize authority.
+    pub(crate) fn stage_settled_result(
+        &mut self,
+        currency: &crate::state::managed_binding::SettledCurrency,
+        artifact: &ResultArtifact,
+    ) -> Result<()> {
+        let unit = currency.settled().settlement().unit();
+        ensure!(
+            artifact.unit_id == unit.id
+                && artifact.scope == unit.scope
+                && artifact.state == ArtifactState::Staging
+                && artifact.version == 1
+                && valid_oid(&artifact.revision)
+                && valid_oid(&artifact.base_sha)
+                && artifact.repository.is_absolute()
+                && artifact.manifest.is_absolute(),
+            "invalid staged artifact"
+        );
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        crate::state::managed_binding::validate_settled_tx(&tx, currency)?;
+        let (p, g, t) = scope_keys(&artifact.scope)?;
+        tx.execute("INSERT INTO result_artifacts(id,unit_id,project_id,goal_id,task_id,state,version,body) VALUES(?1,?2,?3,?4,?5,'staging',1,?6)",
+            params![artifact.id.to_string(),artifact.unit_id.to_string(),p,g,t,serde_json::to_string(artifact)?])?;
+        append_event(
+            &tx,
+            &artifact.scope,
+            "execution.result_staged",
+            json!({"unit":artifact.unit_id,"artifact":artifact.id,"sha":artifact.revision}),
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
     pub(crate) fn ready_result(&mut self, artifact: &ResultArtifact, expected: u64) -> Result<()> {
         ensure!(
             artifact.state == ArtifactState::Ready

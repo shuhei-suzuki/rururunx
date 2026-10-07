@@ -185,6 +185,12 @@ impl ResultSnapshot {
         Ok(())
     }
 }
+/// Which currency a capture's checks, helpers and staging use.
+#[derive(Clone, Copy)]
+enum CaptureCurrency<'a> {
+    Generic(&'a ExecutionAuthority),
+    Settled(&'a Arc<crate::state::managed_binding::SettledCurrency>),
+}
 impl ResultStore {
     pub fn new(owner: Arc<RuntimeOwner>) -> Self {
         Self {
@@ -198,6 +204,26 @@ impl ResultStore {
         revision: &str,
         sources: BTreeMap<String, String>,
     ) -> Result<ResultArtifact> {
+        self.capture_with(CaptureCurrency::Generic(authority), revision, sources)
+            .await
+    }
+    /// G4 for a settled phase: `capture`'s exact steps, with every helper
+    /// under `UnitGit::for_settled` and staging under the protected reader.
+    pub(crate) async fn capture_settled(
+        &self,
+        currency: &Arc<crate::state::managed_binding::SettledCurrency>,
+        revision: &str,
+        sources: BTreeMap<String, String>,
+    ) -> Result<ResultArtifact> {
+        self.capture_with(CaptureCurrency::Settled(currency), revision, sources)
+            .await
+    }
+    async fn capture_with(
+        &self,
+        currency: CaptureCurrency<'_>,
+        revision: &str,
+        sources: BTreeMap<String, String>,
+    ) -> Result<ResultArtifact> {
         ensure!(
             valid_oid(revision)
                 && sources.len() <= 128
@@ -206,12 +232,23 @@ impl ResultStore {
                     .all(|(k, v)| !k.is_empty() && k.len() <= 128 && v.len() <= 256),
             "invalid result identity/sources"
         );
-        let unit = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .validate_execution(authority, false, true)?;
+        let unit = match currency {
+            CaptureCurrency::Generic(authority) => self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .validate_execution(authority, false, true)?,
+            CaptureCurrency::Settled(settled) => {
+                let unit = settled.settled().settlement().unit().clone();
+                self.owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .validate_settled_helper(settled, &unit)?;
+                unit
+            }
+        };
         ensure!(
             unit.kind == UnitKind::Executor && unit.work == Some(WorkOutcome::Success),
             "capture requires known successful executor"
@@ -230,7 +267,12 @@ impl ResultStore {
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .task(unit.scope.task_id.context("Task missing")?)?
             .context("Task missing")?;
-        let io = UnitGit::new(self.owner.clone(), &unit, false)?;
+        let io = match currency {
+            CaptureCurrency::Generic(_) => UnitGit::new(self.owner.clone(), &unit, false)?,
+            CaptureCurrency::Settled(settled) => {
+                UnitGit::for_settled(self.owner.clone(), settled.clone())?
+            }
+        };
         io.ownership(&project, &source).await?;
         let format = io
             .text(&unit.worktree, ["rev-parse", "--show-object-format"])
@@ -288,11 +330,19 @@ impl ResultStore {
             version: 1,
             created_at: crate::domain::now_ms(),
         };
-        self.owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .stage_result(authority, &artifact)?;
+        {
+            let mut store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            match currency {
+                CaptureCurrency::Generic(authority) => store.stage_result(authority, &artifact)?,
+                CaptureCurrency::Settled(settled) => {
+                    store.stage_settled_result(settled, &artifact)?
+                }
+            }
+        }
         std::fs::create_dir_all(repository.parent().context("result parent missing")?)?;
         ensure!(
             !repository.starts_with(&unit.worktree) && !unit.worktree.starts_with(&repository),

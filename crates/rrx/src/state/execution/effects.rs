@@ -87,6 +87,58 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+    /// G2 for a settled phase: the same `git_helper` row shape as the generic
+    /// reservation, with the protected reader instead of generic authority.
+    pub(crate) fn reserve_settled_helper(
+        &mut self,
+        currency: &crate::state::managed_binding::SettledCurrency,
+        id: OperationId,
+        path: &std::path::Path,
+    ) -> Result<()> {
+        ensure!(path.is_absolute(), "helper path must be absolute");
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        crate::state::managed_binding::validate_settled_tx(&tx, currency)?;
+        let unit = currency.settled().settlement().unit();
+        let effect = ManagedEffect {
+            id,
+            unit_id: unit.id,
+            scope: unit.scope.clone(),
+            kind: "git_helper".into(),
+            idempotency_key: format!("helper-{id}"),
+            expected_target: path.to_string_lossy().into(),
+            state: EffectState::Pending,
+            receipt: BTreeMap::new(),
+            version: 1,
+        };
+        let (p, g, t) = scope_keys(&effect.scope)?;
+        tx.execute("INSERT INTO managed_effects(id,unit_id,project_id,goal_id,task_id,idempotency_key,state,version,body) VALUES(?1,?2,?3,?4,?5,?6,'pending',1,?7)",
+            params![id.to_string(),effect.unit_id.to_string(),p,g,t,effect.idempotency_key,serde_json::to_string(&effect)?])?;
+        tx.commit()?;
+        Ok(())
+    }
+    /// G1/G3 for a settled phase: read-only protected currency of the pinned
+    /// SAME Unit, run before spawn and on every fence tick.
+    pub(crate) fn validate_settled_helper(
+        &mut self,
+        currency: &crate::state::managed_binding::SettledCurrency,
+        pinned: &ExecutionUnit,
+    ) -> Result<()> {
+        let unit = currency.settled().settlement().unit();
+        ensure!(
+            pinned.id == unit.id
+                && pinned.scope == unit.scope
+                && pinned.generation == unit.generation
+                && pinned.owner_epoch == unit.owner_epoch
+                && pinned.session_id == unit.session_id,
+            "settled helper pinned Unit differs"
+        );
+        let tx = self.connection.transaction()?;
+        crate::state::managed_binding::validate_settled_tx(&tx, currency)?;
+        tx.commit()?;
+        Ok(())
+    }
     pub(crate) fn reserve_managed_effect(
         &mut self,
         authority: &ExecutionAuthority,

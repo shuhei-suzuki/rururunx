@@ -869,60 +869,147 @@ impl ManagedWorkflowSources {
             frame.artifact = Some(artifact.id);
             state.frame = Arc::new(frame);
         } else if let Some(artifact) = artifact {
-            ensure!(artifact.scope == task.scope(), "foreign retained input");
-            if let Some(binding) = state
-                .recovery
-                .as_ref()
-                .filter(|b| b.owns_artifact(artifact.id))
-            {
-                result.verify_recovery(&artifact, binding).await?;
-            } else {
-                result.verify(&artifact).await?;
-            }
-            if state.frame.artifact != Some(artifact.id)
-                || state.frame.revision != artifact.revision
-            {
-                let io = if let Some(binding) = state
-                    .recovery
-                    .as_ref()
-                    .filter(|b| b.owns_artifact(artifact.id))
-                {
-                    RetainedGit::for_recovery(self.owner.clone(), &artifact, binding.clone())?
-                } else {
-                    RetainedGit::new(self.owner.clone(), &artifact)?
-                };
-                let files = read_corpus(
-                    CorpusReader::Retained(&io),
-                    &artifact.repository,
-                    &artifact.revision,
-                )
+            self.retained_frame(state, project, &goal, task, &artifact, &result)
                 .await?;
-                let frame = Frame::build(
-                    project,
-                    &goal,
-                    task,
-                    &self.runtime,
-                    artifact.revision.clone(),
-                    Some(artifact.id),
-                    files,
-                )?;
-                ensure!(
-                    frame.versions == artifact.dependencies,
-                    "retained dependency frame changed"
-                );
-                state.frame = Arc::new(frame);
-            } else {
-                ensure!(
-                    state.frame.versions == artifact.dependencies,
-                    "cached retained dependency frame changed"
-                );
-            }
         } else if let Some(prepared) = &state.prepared {
             self.owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?
                 .validate_execution(&prepared.unit().authority(), true, true)?;
+        }
+        Ok(state.frame.clone())
+    }
+    async fn retained_frame(
+        &self,
+        state: &mut TaskSources,
+        project: &Project,
+        goal: &Goal,
+        task: &Task,
+        artifact: &ResultArtifact,
+        result: &results::ResultStore,
+    ) -> Result<()> {
+        ensure!(artifact.scope == task.scope(), "foreign retained input");
+        if let Some(binding) = state
+            .recovery
+            .as_ref()
+            .filter(|b| b.owns_artifact(artifact.id))
+        {
+            result.verify_recovery(artifact, binding).await?;
+        } else {
+            result.verify(artifact).await?;
+        }
+        if state.frame.artifact != Some(artifact.id) || state.frame.revision != artifact.revision {
+            let io = if let Some(binding) = state
+                .recovery
+                .as_ref()
+                .filter(|b| b.owns_artifact(artifact.id))
+            {
+                RetainedGit::for_recovery(self.owner.clone(), artifact, binding.clone())?
+            } else {
+                RetainedGit::new(self.owner.clone(), artifact)?
+            };
+            let files = read_corpus(
+                CorpusReader::Retained(&io),
+                &artifact.repository,
+                &artifact.revision,
+            )
+            .await?;
+            let frame = Frame::build(
+                project,
+                goal,
+                task,
+                &self.runtime,
+                artifact.revision.clone(),
+                Some(artifact.id),
+                files,
+            )?;
+            ensure!(
+                frame.versions == artifact.dependencies,
+                "retained dependency frame changed"
+            );
+            state.frame = Arc::new(frame);
+        } else {
+            ensure!(
+                state.frame.versions == artifact.dependencies,
+                "cached retained dependency frame changed"
+            );
+        }
+        Ok(())
+    }
+    /// G8 for a settled phase: the capture branch of `frame()` under the SAME
+    /// slot serialization, with protected helpers and staging. The slot's
+    /// handoff custody must be the settlement's allocation. A Ready artifact
+    /// of this Unit is re-verified (historical reader) instead of recaptured.
+    pub(crate) async fn capture_settled(
+        &self,
+        currency: &Arc<crate::state::managed_binding::SettledCurrency>,
+        project: &Project,
+        task: &Task,
+    ) -> Result<Arc<Frame>> {
+        let slot = self.slot(task.id)?;
+        let mut slot = slot.lock().await;
+        let state = slot
+            .as_mut()
+            .context("committed Workflow source preparation required")?;
+        let settled = currency.settled();
+        ensure!(
+            state.frame.scope == task.scope()
+                && project.id == task.project_id
+                && state.recovery.is_none()
+                && state
+                    .handoff
+                    .as_ref()
+                    .map(|custody| custody.same_allocation(settled.allocation()))
+                    .transpose()?
+                    == Some(true),
+            "settled capture lacks the SAME Source handoff custody"
+        );
+        let unit = settled.settlement().unit().clone();
+        let (artifact, goal) = {
+            let store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            let artifact = store
+                .result_artifacts(&task.scope())?
+                .into_iter()
+                .find(|a| {
+                    a.unit_id == unit.id
+                        && matches!(a.state, ArtifactState::Ready | ArtifactState::Published)
+                });
+            (artifact, store.goal(task.goal_id)?.context("Goal missing")?)
+        };
+        ensure!(
+            state.frame.governing_digest
+                == crate::state::execution_governing_digest(project, &goal)?,
+            "committed Project/Goal instructions changed; fresh input recovery required"
+        );
+        let result = results::ResultStore::new(self.owner.clone());
+        if let Some(artifact) = artifact {
+            self.retained_frame(state, project, &goal, task, &artifact, &result)
+                .await?;
+        } else {
+            let io = UnitGit::for_settled(self.owner.clone(), currency.clone())?;
+            let revision = io.text(&unit.worktree, ["rev-parse", "HEAD"]).await?;
+            ensure!(valid_oid(&revision), "result source requires exact commit");
+            let files = read_corpus(CorpusReader::Prepared(&io), &unit.worktree, &revision).await?;
+            let mut frame = Frame::build(
+                project,
+                &goal,
+                task,
+                &self.runtime,
+                revision.clone(),
+                None,
+                files,
+            )?;
+            let artifact = result
+                .capture_settled(currency, &revision, frame.versions.clone())
+                .await?;
+            result.verify(&artifact).await?;
+            frame.artifact = Some(artifact.id);
+            state.frame = Arc::new(frame);
         }
         Ok(state.frame.clone())
     }

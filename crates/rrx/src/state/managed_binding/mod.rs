@@ -57,7 +57,8 @@ pub(crate) use publication::{
 #[cfg(test)]
 pub(crate) use snapshot::plan_scope;
 pub(in crate::state) use snapshot::{ScopePlan, read_scope, snapshot};
-pub(crate) use success::SettledPhase;
+pub(in crate::state) use success::validate_settled_tx;
+pub(crate) use success::{SettledCurrency, SettledPhase, plan_settled_currency};
 pub(in crate::state) use successor::validate_planned_unit_tx;
 pub(crate) use successor::{CurrentWorkflowSuccessor, plan_current_phase, validate_current_tx};
 pub(crate) use unpublished::{UnpublishedMarkerProof, plan_unpublished_marker};
