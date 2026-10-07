@@ -88,6 +88,22 @@ C1 answers the independent review recorded in `doc/verification/issue-43-native-
 | SC-13 (optional, adopted) | Cleanup is a read overlay (`cleanup_observations`, applied by `unit_tx` at `I:state/execution.rs:249–264`), not an `execution_units` CAS (`record_execution_cleanup`, `I:state/execution.rs:1129–1160`). The "cleanup axis (version, updated_at, cleanup)" tolerance is replaced by: the stored Unit row (raw body and indexed columns, `unit_index_matches`) is compared exactly with the terminal postimage, and only the decoded `cleanup` field, which is that overlay, is excluded from decoded-value comparisons | §2, §5.1, §7, §9.2, §10.1 |
 | #81 alignment | SC10 runs four Tasks in four distinct Projects (one active Task per Project) | §16 |
 
+### 1.4 Correction batch C2 (delta from `e9a572a`)
+
+C2 answers the Sol 6.1 high delta review of C1 (Issue #43 comment 6031710785: REQUEST CHANGES, C1-H01, C1-M01…M05, C1-L01…L03). Each finding was re-verified against pin I before correction. WHAT, guards and the MVP rule are unchanged.
+
+| Finding | Correction | Sections |
+| --- | --- | --- |
+| C1-H01 | Claim, observed and closure confirmation no longer use the open-phase validator alone. Each confirms by two exclusive branches after common immutable authority checks: complete postimage plus exact link (Known), or complete preimage plus link absence (RolledBack); anything mixed is Held. Closure follows the RN closed/open classification (`RN:state/execution/native_phase/nonsuccess.rs:194–206`) | §10.6, §11 |
+| C1-M01 | Every Root admission is non-blocking (`try_lock_owned`); a busy admission keeps the action for a later turn. The Root never awaits `control_admission`, so it cannot wait on a shutdown that holds the guard while joining the service task | §4, §5.2, §10.2, §10.4, §16 SC9 |
+| C1-M02 | The post-closure `NextPhaseUnavailable` status is derived from durable rows (closed operation with a success `phase_closed` link, `active=None`, not finished, Task phase = next phase, marker-free `driving` Driver); ordinary Running/Evaluating attempts report no wait | §9.3.1 |
+| C1-M03 | SC3's normal-retry positive is restricted to a genuine Session-record advance (otherwise SETUP); a Task/Goal change is a separate parent-drift negative that stays Held with zero links | §16 SC3 |
+| C1-M04 | The "closure effect probe accepts Unknown" mutant is defense-only: no genuine producer leaves an Unknown effect after a Passed observation while closure is still reachable | §16 mutants |
+| C1-M05 | `SettledGateCompletion` carries a sealed `SettledGateOutcome::{Known(GateOutcome), Unknown}`; `evaluate_settled` returns an `Unknown` completion for any failure after its claim check, so `gate_unknown` reaches `gate_observed` through the producer only | §4, §9.2, §9.3 |
+| C1-L01 | A and B are each ≤4096 (the `< 4096` check runs before insertion), so N ≤ 8234; per-helper fence rechecks are ≤1401 (60 s collection plus ≤10 s reap); `retained_git` helpers use their own retained fence, not G1–G3 | §8.1, §12 |
+| C1-L02 | `Conflict` is defined as a deterministic refusal with no write possible: the pre-transaction selected-database refusal (no transaction constructed) or an in-transaction check before the first `execute` | §4, §5.4 |
+| C1-L03 | Implementation starts only from a separately composition-reviewed commit containing I (or a successor that satisfies the same condition) | §19 |
+
 ## 2. Verified source map
 
 | Item | Fact (V unless marked) |
@@ -153,9 +169,10 @@ enum BindingKind { Normal, Late }                       // private field of Mana
 pub(crate) fn plan_late_binding(owner: &RuntimeOwner, proof: Arc<NativePhaseBinding>)
     -> Result<ManagedBindingPlan>;                       // requires proof.settlement().is_some() (§5.1)
 pub(crate) struct BindingAcknowledgment { plan: Arc<ManagedBindingPlan> } // built only here
-// Conflict is raised ONLY by a typed refusal of an in-transaction check that ran
-// before the first execute of the Immediate (§5.4). BUSY, begin, execute-after-first-write
-// and commit errors are Err (uncertain) and go to confirmation.
+// Conflict is raised ONLY by a deterministic refusal with no write possible (§5.4): the
+// pre-transaction selected-database refusal (no transaction constructed) or a typed refusal of
+// an in-transaction check that ran before the first execute. BUSY, begin, execute-after-first-
+// write and commit errors are Err (uncertain) and go to confirmation.
 pub(crate) enum ManagedBindingWrite { Known(Arc<BindingAcknowledgment>), Conflict(anyhow::Error) } // Err = uncertain
 pub(crate) enum ManagedBindingConfirmation { Known(Arc<BindingAcknowledgment>), RolledBack }        // Err = Held
 impl Store {
@@ -306,10 +323,13 @@ impl ManagedWorkflowSources {
         -> Result<Arc<Frame>>;
     pub(crate) async fn retire_closed_handoff(&self, task: TaskId, ack: &ClosedPhaseAck) -> Result<()>;
 }
-pub(crate) struct SettledGateCompletion { outcome: GateOutcome, receipt: Option<Record>, claim: Arc<GateClaimAcknowledgment> }
+// C2, C1-M05: the producer seals an Unknown disposition; GateOutcome (I:workflow.rs:302–306)
+// has only Passed/Waiting/Failed. Built only inside evaluate_settled; no other constructor.
+pub(crate) enum SettledGateOutcome { Known(GateOutcome), Unknown }
+pub(crate) struct SettledGateCompletion { outcome: SettledGateOutcome, receipt: Option<Record>, claim: Arc<GateClaimAcknowledgment> }
 impl SettledGateCompletion {             // C1, SC-07; precedent InitialGateCompletion (I:workflow_gates.rs:20–35)
     pub(crate) fn belongs_to(&self, claim: &Arc<GateClaimAcknowledgment>) -> bool;   // Arc::ptr_eq
-    pub(crate) fn into_parts(self) -> (GateOutcome, Option<Record>, Arc<GateClaimAcknowledgment>);
+    pub(crate) fn into_parts(self) -> (SettledGateOutcome, Option<Record>, Arc<GateClaimAcknowledgment>);
 }
 // plan_settled_gate_observed checks belongs_to(claim) before into_parts.
 impl ManagedWorkflowGates {
@@ -344,12 +364,14 @@ impl InstalledDriverComposition {
     pub(crate) async fn admit_success(&self, lifetime: &WorkerLifetime) -> Result<SuccessAdmission>;
 }
 impl Runtime {
-    /// Root path: upgrade the service task's Weak<Runtime> (refuse if ended), then
-    /// control_admission.clone().lock_owned().await while holding that strong Arc (as CA does
-    /// across lock_owned, I:installation.rs:166–175), then ensure!(service_running() && !stopping).
+    /// Root path (C2, C1-M01): upgrade the service task's Weak<Runtime> (refuse if ended), then a
+    /// NON-BLOCKING control_admission.clone().try_lock_owned() while holding that strong Arc, then
+    /// ensure!(service_running() && !stopping). Ok(None) when the admission is busy: the action is
+    /// kept for a later turn and nothing is attempted. The Root never awaits control_admission,
+    /// because shutdown holds it while joining the service task (I:runtime/service.rs:125–143).
     /// Runtime::drop takes no admission (I:runtime/mod.rs:130–135); holding the strong Arc for
     /// the admitted segment is what prevents drop from running inside it.
-    pub(super) async fn admit_root_success(weak: &Weak<Runtime>) -> Result<SuccessAdmission>;
+    pub(super) fn try_admit_root_success(weak: &Weak<Runtime>) -> Result<Option<SuccessAdmission>>;
 }
 impl PhaseDispatcher {
     /// Root closure confirmation only (the Root never commits a new closure, §14): under the
@@ -370,8 +392,9 @@ impl PhaseDispatcher {
 impl PhaseJobs { pub(super) fn reconcile_success(&self, phases: &PhaseSupervisor, stopping: &AtomicBool) -> Result<SuccessSweep>; }
 //  (b) the returned SuccessSweep carries at most 8 admitted actions in total with (a)'s turns
 //      (closure confirmation, Driver publication retry). The service loop takes them with
-//      into_actions(); for each it calls Runtime::admit_root_success, runs the PhaseDispatcher turn,
-//      and drops the admission before the next action.
+//      into_actions(); for each it calls Runtime::try_admit_root_success; on Some it runs the
+//      PhaseDispatcher turn and drops the admission before the next action; on None it keeps the
+//      action (pending) and stops processing actions for this turn. No await occurs here.
 pub(super) struct SuccessSweep { actions: Vec<SuccessAction>, pending: bool }
 impl SuccessSweep { pub(super) fn into_actions(self) -> (Vec<SuccessAction>, bool); }
 
@@ -444,7 +467,7 @@ The late planner shares `projection` and the Workflow, Session and identity plan
 
 ### 5.2 Root reconciliation sweep (`PhaseJobs::reconcile_success`)
 
-The service loop calls the synchronous classification after RN's `reconcile_nonsuccess` (`I:runtime/service.rs:92`); its `pending` ORs into the loop's `pending`. It reuses RN's sweep discipline: it snapshots ≤128 entries under `entries`, classifies under `job.state` only, uses its own `success_cursor`, takes ≤8 turns per sweep, runs ≤1 query-only snapshot plus ≤1 Store-mutex transaction per turn, and backs off 100 ms → 5 s with its own `success_due`/`success_backoff` fields (RN's `closure_due` is untouched). Turns that need `control_admission` (closure confirmation, Driver publication retry) are returned as `SuccessAction`s; after the synchronous part returns, the service loop runs each under its own `Runtime::admit_root_success` admission through `PhaseDispatcher::{confirm_success, retry_success_publication}` (§4, SC-06). A returned action consumes its turn.
+The service loop calls the synchronous classification after RN's `reconcile_nonsuccess` (`I:runtime/service.rs:92`); its `pending` ORs into the loop's `pending`. It reuses RN's sweep discipline: it snapshots ≤128 entries under `entries`, classifies under `job.state` only, uses its own `success_cursor`, takes ≤8 turns per sweep, runs ≤1 query-only snapshot plus ≤1 Store-mutex transaction per turn, and backs off 100 ms → 5 s with its own `success_due`/`success_backoff` fields (RN's `closure_due` is untouched). Turns that need `control_admission` (closure confirmation, Driver publication retry) are returned as `SuccessAction`s; after the synchronous part returns, the service loop runs each under its own non-blocking `Runtime::try_admit_root_success` admission through `PhaseDispatcher::{confirm_success, retry_success_publication}` (§4, SC-06; C2, C1-M01). A returned action consumes its turn; a busy admission leaves the action retained and pending for a later turn, with no await.
 
 A job is **due** (C1, SC-01) when its `outcome` is `Ok(Launched)`, its `success_due` has passed, and one of these holds:
 - **(D1) Unbound.** Its binding is not yet acknowledged (no plan, an uncertain retained plan, or a definitive `Conflict` awaiting backoff).
@@ -497,7 +520,9 @@ The fresh-plan `AlreadyBound` path (`binding.rs:331–358`) is reached only when
 ### 5.4 Outcome classification of every new write (C1, SC-11)
 
 At I, the binding Immediate is begun with `transaction_with_behavior(Immediate)?` (`I:state/managed_binding/binding.rs:395–397`), so SQLITE_BUSY (the Store connection's `busy_timeout` is 5 s, `I:state/mod.rs:156`) propagates as a plain `Err`, and the start task records only Ok/Err (`I:runtime/phase_jobs.rs:789–797`). There is no typed refusal today. Every new write port (binding normal/late, claim, observed, closure) uses this classification:
-- **`Conflict` (definitive, typed)** only when an in-transaction check that runs **before the first `execute`** refuses: `validate_current_tx`, `validate_driver_live_tx`, the write-eligibility predicate, the exact owner/invocation/Session/sealed-image checks, the ledger/budget/effect predicates. The transaction is dropped without any write, so no commit is possible. The selected-database-path check before the transaction is also `Conflict`.
+- **`Conflict` (definitive, typed)** only for a deterministic refusal after which no write is possible (C2, C1-L02), exactly two kinds:
+  - the selected-database-path refusal before any transaction is constructed (`I:binding.rs:386–393`);
+  - a typed refusal of an in-transaction check that runs **before the first `execute`**: `validate_current_tx`, `validate_driver_live_tx`, the write-eligibility predicate, the exact owner/invocation/Session/sealed-image checks, the ledger/budget/effect predicates. The transaction is dropped without any write, so no commit is possible.
 - **`Err` (uncertain)** for begin errors (including BUSY), an error after the first `execute`, and commit errors. The SAME retained plan then goes to confirmation (§5.3, §11).
 - A planning error outside Store retains no plan and is a refusal of that turn (not a write outcome).
 
@@ -589,17 +614,17 @@ Counted at I. "A" is the number of `.gitattributes` files and "B" the number of 
 | Step | Commands (effect kind) | Cardinality and existing bound |
 | --- | --- | --- |
 | `frame()` HEAD | `rev-parse HEAD` (`git_helper`) | 1 (`I:workflow_source.rs:845–848`) |
-| Source corpus | `ls-tree` + one `cat-file` per ordinary blob ≤256 KiB (`git_helper`) | 1 + B; B ≤ 4095 (`entries.len() < 4096`, `I:workflow_source.rs:94`); summed blob bytes ≤16 MiB (`I:1242`); zero-size blobs do not consume the byte budget |
+| Source corpus | `ls-tree` + one `cat-file` per ordinary blob ≤256 KiB (`git_helper`) | 1 + B; B ≤ 4096 (the `entries.len() < 4096` check runs before each insertion, `I:workflow_source.rs:92–94`, so 4096 entries are admitted; C2, C1-L01); summed blob bytes ≤16 MiB (`I:1242`); zero-size blobs do not consume the byte budget |
 | Ownership | 8 commands (`git_helper`) | 8, fixed (`I:git_io.rs:249–306`) |
 | Capture checks | object format, `merge-base --is-ancestor`, `^{commit}` | 3 (`I:results.rs:235–265`) |
-| Content scans | `ls-tree -z`, LFS pattern scan, `ls-tree --name-only`, + one `show` per `.gitattributes` | 3 + A; A ≤ 4095 (same tree as the corpus) and each output ≤4 MiB (`I:process.rs:324`) (`I:results.rs:777–810`) |
+| Content scans | `ls-tree -z`, LFS pattern scan, `ls-tree --name-only`, + one `show` per `.gitattributes` | 3 + A; A ≤ 4096 (same tree as the corpus) and each output ≤4 MiB (`I:process.rs:324`) (`I:results.rs:777–810`) |
 | `results.git` | optional `init`, format, fetch, `fsck --full --strict`, two `rev-list --missing=error` | 5 or 6 (`I:results.rs:293–346`) |
 | Historical verify after capture | 5 (`retained_git`, recorded on the SAME Unit) | 5 (`I:results.rs:430–500`; `I:artifacts.rs:91–108`) |
 | Gate `verify` | 5 (`retained_git`) | 5 (`I:workflow_gates.rs:339`) |
 | Gate source recapture (`frame()` re-verify) | 5 (`retained_git`) | 5 (`I:workflow_source.rs:873`) |
 | `settled_publication` `verify_inner(Current)` | 5 (`git_helper`) | 5 |
 
-One successful Implement PR1 run therefore writes **N = 41 or 42 + A + B** `managed_effects` rows on the Unit (≤ 8232 at the existing corpus and tree bounds), each with one Pending insert and one reconcile transaction. Every helper has the existing 60 s timeout (`I:process.rs:329`) and reaches G1–G3 (§7); each fence tick is one exact recheck. `reserve_execution_helper_pinned` has no per-Unit row-count gate (`I:effects.rs:41–89`), and the native admission gate `count < 256` over `LIMIT 257` (`I:native_phase.rs:1346–1351`) counts every `managed_effects` row of the Unit but gates only Native effect admission, which is already closed for a settled Unit. PR1 adds **no new cap**: the existing corpus/tree bounds already bound N for one run, and PR1 never re-captures within a stage (a capture failure holds the stage). A repository whose catalogue exceeds an existing bound is refused by that existing bound and the stage is Held, truthfully; PR1 does not guarantee that every maximal repository closes.
+One successful Implement PR1 run therefore writes **N = 41 or 42 + A + B** `managed_effects` rows on the Unit (≤ 42 + 4096 + 4096 = **8234** at the existing corpus and tree bounds), each with one Pending insert and one reconcile transaction. Of these, the 15 `retained_git` rows are written by `RetainedGit`, which runs its own 50 ms retained fence (`I:execution/retained_io.rs:60–70, 153–160`) and is not routed through G1–G3. Every `git_helper` reaches G1–G3 (§7); each fence tick is one exact recheck. A fenced `git_helper` future lasts at most the 60 s collection timeout plus the ≤10 s `stop_and_reap` wait inside the same future (`I:process.rs:268–275, 329–341`), so it runs ≤ 1 + 70 s / 50 ms = **1401** fence rechecks. `reserve_execution_helper_pinned` has no per-Unit row-count gate (`I:effects.rs:41–89`), and the native admission gate `count < 256` over `LIMIT 257` (`I:native_phase.rs:1346–1351`) counts every `managed_effects` row of the Unit but gates only Native effect admission, which is already closed for a settled Unit. PR1 adds **no new cap**: the existing corpus/tree bounds already bound N for one run, and PR1 never re-captures within a stage (a capture failure holds the stage). A repository whose catalogue exceeds an existing bound is refused by that existing bound and the stage is Held, truthfully; PR1 does not guarantee that every maximal repository closes.
 
 ## 9. Gate claim, evaluation and observed (P)
 
@@ -617,11 +642,11 @@ It is `evaluate` with four substitutions (C1, SC-03 adds the fourth):
 1. The claim check is `Self::claim` (reads only).
 2. Implement uses `settled_terminal`, which applies the same predicates as `terminal` (`I:workflow_gates.rs:157–201`) from the SAME settlement: `attempt.execution`/`unit`/`agent`/`session_id`; Exited; Success; WorkKnown; finalization open; effects closed. Decoded values are compared with the `cleanup` overlay excluded, and the stored Unit row is compared exactly with `validate_terminal_unit_tx` (SC-13).
 3. The source recapture is `capture_settled` and must equal the invocation sources.
-4. The final Unit recheck after historical verification and source recapture (`I:workflow_gates.rs:364–370`, generic G7) becomes `validate_settled_tx` under the Store mutex, whose item 3 compares the stored Unit raw and index (`unit_index_matches`) with the sealed terminal raw, the same raw step 2 checked. Today's decoded serde comparison (`I:workflow_gates.rs:364–369`) is not reused, because the decoded value includes the `cleanup` overlay (`I:state/execution.rs:249–264`) and a cleanup observation arriving between steps 2 and 4 would otherwise produce a spurious mismatch. A mismatch is drift: the evaluation errors and the stage records `gate_unknown` Held through `gate_observed` (§9.3), never Passed.
+4. The final Unit recheck after historical verification and source recapture (`I:workflow_gates.rs:364–370`, generic G7) becomes `validate_settled_tx` under the Store mutex, whose item 3 compares the stored Unit raw and index (`unit_index_matches`) with the sealed terminal raw, the same raw step 2 checked. Today's decoded serde comparison (`I:workflow_gates.rs:364–369`) is not reused, because the decoded value includes the `cleanup` overlay (`I:state/execution.rs:249–264`) and a cleanup observation arriving between steps 2 and 4 would otherwise produce a spurious mismatch. A mismatch is drift: `evaluate_settled` returns a completion with `SettledGateOutcome::Unknown` and the stage records `gate_unknown` Held through `gate_observed` (§9.3), never Passed.
 
 Everything else is unchanged: the Ready artifact = the invocation artifact; `ResultStore::verify` (retained reader, no replacement needed); the exact claim recheck (`I:workflow_gates.rs:360–363`); the `Verification` receipt via `put_record`; `Evidence.session_id = settlement Session`. Requirements and every non-supported phase return the existing `Waiting`. No generic `validate_execution`, `validate_authority` or Driver `validate` call remains on the Implement settled path (§7 G6, G7).
 
-`SettledGateCompletion` is constructed only here. It is retained in the stage before any write.
+`SettledGateCompletion` is constructed only here. It is retained in the stage before any write. **Error transport (C2, C1-M05).** `evaluate_settled` first runs the claim check (step 1); a failure there returns `Err` and no completion, so the stage stays "evaluation started, no retained outcome" → Held (§6.2). Every failure after the claim check passed (terminal predicates, `verify`, source recapture, the final Unit recheck, the `Verification` receipt write) returns `Ok(SettledGateCompletion { outcome: SettledGateOutcome::Unknown, receipt: None, claim })`; the raw error goes only to bounded in-memory attention. A gate `Passed`/`Waiting`/`Failed` result returns `Known(outcome)`. `plan_settled_gate_observed` maps `Unknown` to the §9.3 `Err (unknown)` row; no caller outside the producer can construct either variant.
 
 ### 9.3 `gate_observed` (fused, one link)
 
@@ -632,7 +657,7 @@ Everything else is unchanged: the Ready artifact = the invocation artifact; `Res
   | Passed(evidence) | stays Evaluating | — | `passed`, gate receipt id, evidence SHA-256 |
   | Waiting(fixed string) | Waiting, `detail` = that compile-time string (≤128 B) | — | `waiting`, `evidence_integration_unavailable` |
   | Failed(_) | Waiting, `detail` = `"gate failed; bound non-success closure unavailable"` | `held_reason` = same constant | `held`, `gate_failed` |
-  | Err (unknown) | Waiting, `detail` = `"gate outcome unknown; explicit recovery required"`; `error` = that constant | `held_reason` = same | `held`, `gate_unknown` |
+  | `SettledGateOutcome::Unknown` (evaluation error after the claim check) | Waiting, `detail` = `"gate outcome unknown; explicit recovery required"`; `error` = that constant | `held_reason` = same | `held`, `gate_unknown` |
 
 - **No raw text.** Raw error and gate text never reach durable rows or payloads; they go only to bounded in-memory attention.
 - **No Task writes.** No Task `WaitingHuman` or blocker is written. Waiting and Held status are derived from the Workflow for the Driver, Goal and CLI through the consumer below.
@@ -643,10 +668,13 @@ Everything else is unchanged: the Ready artifact = the invocation artifact; `Res
 At I, Goal status counts and task pages derive Task state through `state/runtime/waiting.rs` (`observe`, `I:20–60`; `effective_state`, `I:132–145`), whose reader requires `native_effects_open=1`, a `driving` Driver and `start_ended=0 AND known_terminal=0`; after an owned success it returns generic Held, and `effective_state` maps only Quota/Capacity, otherwise returning stored Task state. `TaskFacts { scope, version, state, phase }` (`I:runtime/control.rs:158–165`, `deny_unknown_fields`) has no field for the Workflow attempt `detail` or `held_reason`, and the CLI prints only those fields (`I:cli/goal_facts.rs:174–197`). The Driver alone reports Workflow Waiting (`I:workflow/driven_initial.rs:194–207`).
 
 PR1 adds one bounded, read-only, nongrant consumer:
-- **Reader.** `waiting::workflow_wait(conn, task)` runs only for a Task whose managed operation is open (`phase_open=1`) or whose Driver is `driving` after a success closure. It reads the Task's single Workflow record row (`records … kind='workflow' LIMIT 2`, exactly one required) and extracts only the active attempt's `state`/`detail` and the Workflow-level `held_reason` with `json_extract`; it never decodes the whole body (observations can reach 64 KiB each).
-- **Mapping.** Exact matches against the fixed §9.3 constants and the §6.3 post-closure reason map to `WorkflowWaitKind::{EvidenceIntegrationUnavailable, GateFailed, GateUnknown, NextPhaseUnavailable}` with the constant as `detail`. Any other or oversized value maps to `Held` with the fixed detail `"workflow held"`. Raw text is never echoed.
+- **Reader.** `waiting::workflow_wait(conn, task)` reads the Task's single Workflow record row (`records … kind='workflow' LIMIT 2`, exactly one required) and extracts, with `json_extract` only (it never decodes the whole body; observations can reach 64 KiB each), the active attempt index, that attempt's `state`/`detail`, the Workflow-level `held_reason` and `finished`. Two exclusive branches:
+  - **Open phase** (the Task's latest managed operation has `phase_open=1`): report a wait only if the active attempt's state is `Waiting` or `held_reason` is set; Running, Evaluating or any other non-waiting state reports **no** wait (`None`), never `Held`.
+  - **Post-closure** (C2, C1-M02; the durable state §6.3 produces): the latest managed operation has `phase_open=0` and exactly one `phase_closed` link whose payload has `closure="success"`; the Workflow has `active=None` and `finished=false`; the Task's `phase` equals the Workflow's next phase; and the Task's Driver row is `driving` with `marker IS NULL`. Then report `NextPhaseUnavailable` with the fixed detail `"next phase typed Driver continuation unavailable (SC-N)"`. The in-memory `StepResult::Waiting` is not read; the status is derived only from these durable rows.
+  - Otherwise (no managed operation, or a state matching neither branch): `None`.
+- **Mapping.** In the open branch, exact matches against the fixed §9.3 constants map to `WorkflowWaitKind::{EvidenceIntegrationUnavailable, GateFailed, GateUnknown}` with the constant as `detail`; a `Waiting` state or `held_reason` with any other or oversized value maps to `Held` with the fixed detail `"workflow held"`. Raw text is never echoed.
 - **Wiring.** `runtime_goal_task_page` fills `TaskFacts.workflow_wait` (`I:state/runtime/goals.rs:574–581`); the CLI prints it after the state (`I:cli/goal_facts.rs:190`). `GoalFacts` counts keep using stored/effective state; no new count is added.
-- **Cost.** ≤128 Tasks per page (`I:goals.rs:529`) × (1 indexed query + 3 `json_extract`); ≤ about 200 additional wire bytes per Task, inside the existing 64 KiB page packing (`GOAL_TASK_PAGE_BYTES`, `I:state/runtime/recorded.rs:13`), which already pages on overflow.
+- **Cost.** ≤128 Tasks per page (`I:goals.rs:529`) × (1 indexed Workflow query with ≤5 `json_extract` + 1 indexed operation/link query + 1 indexed Driver row query); ≤ about 200 additional wire bytes per Task, inside the existing 64 KiB page packing (`GOAL_TASK_PAGE_BYTES`, `I:state/runtime/recorded.rs:13`), which already pages on overflow.
 - **Never.** It writes nothing, changes no Task state, grants nothing, and is not called by the Driver or any writer.
 
 ## 10. Successful `phase_closed` (P)
@@ -684,7 +712,7 @@ The plan retains compact digests and scalars, plus the Context raw (≤8 MiB, no
 
 **Admission (C1, SC-06).** `close_phase_success` itself is synchronous and never awaits. Its callers hold `control_admission` for the whole turn, through one of two Runtime-owned entry points (§4):
 - **Driver worker:** `InstalledDriverComposition::admit_success(lifetime)` returns a `SuccessAdmission` (owned admission guard plus strong `Arc<Runtime>`), exactly like CA's `admit_activation_inner` (`I:runtime/installation.rs:162–196`): Weak upgrade, cancel-biased `lock_owned`, `ensure!(service_running() && is_current())`, association checks. The worker then takes the synchronous SharedStore for one turn (`close_phase_success` or `confirm_phase_success`, then `publish_success_driver`), drops the Store guard, then explicitly drops the admission (CA caller pattern, `I:workflow.rs:1145–1165`).
-- **Root sweep:** `Runtime::admit_root_success(weak)` upgrades the service task's `Weak<Runtime>` and holds that strong Arc across `control_admission.clone().lock_owned().await` and the turn (as CA holds it across `lock_owned`, `I:runtime/installation.rs:166–175`), then checks `service_running` and `!stopping`. `PhaseDispatcher::confirm_success` runs only `confirm_phase_success` (and, if Known, `publish_success_driver`) in one synchronous turn; the admission is dropped before the next action, like `publish_planned_marker`'s single admitted segment (`I:runtime/phase_supervisor.rs:1067–1152`). The Root never commits a new closure (§14).
+- **Root sweep:** `Runtime::try_admit_root_success(weak)` upgrades the service task's `Weak<Runtime>` and, holding that strong Arc for the whole segment (as CA holds it across `lock_owned`, `I:runtime/installation.rs:166–175`), takes `control_admission.clone().try_lock_owned()` without awaiting (C2, C1-M01), then checks `service_running` and `!stopping`. If the admission is busy (for example, shutdown holds it while joining the service task, `I:runtime/service.rs:125–143`), nothing is attempted and the action stays pending. `PhaseDispatcher::confirm_success` runs only `confirm_phase_success` (and, if Known, `publish_success_driver`) in one synchronous turn; the admission is dropped before the next action, like `publish_planned_marker`'s single admitted segment (`I:runtime/phase_supervisor.rs:1067–1152`). The Root never commits a new closure (§14).
 
 Then one `Immediate`:
 1. The selected database path. `validate_settled_tx` against the planned endpoint (Workflow = the `gate_observed` postimage; ledger head = that link).
@@ -715,7 +743,7 @@ W5–W8 run inside ONE `with_exact_permit` window of four rows (≤128), followe
 
 Still holding the Store guard and the admission of the same turn, run `publish_success_driver`: an exact committed-row read, then the SAME association's `publish_exact`. It returns the `SuccessClosureAcknowledgment` with `driver_published` = the outcome.
 
-- **On failure:** the acknowledgment and the plan are retained. A later turn re-runs only `publish_success_driver` (idempotent per `publish_exact`), each attempt under a fresh admission: the SAME live worker through `admit_success`, or the Root sweep through `Runtime::admit_root_success` plus `PhaseDispatcher::retry_success_publication` (one admission, one Store turn, release; never held across a backoff, like the marker rollback's separate re-acquisition at `I:phase_supervisor.rs:1161`).
+- **On failure:** the acknowledgment and the plan are retained. A later turn re-runs only `publish_success_driver` (idempotent per `publish_exact`), each attempt under a fresh admission: the SAME live worker through `admit_success`, or the Root sweep through `Runtime::try_admit_root_success` plus `PhaseDispatcher::retry_success_publication` (one non-blocking admission, one Store turn, release; never held across a backoff, like the marker rollback's separate re-acquisition at `I:phase_supervisor.rs:1161`).
 - **After an actual worker exit:** Held. Nothing is revived, and no cache is published from rows.
 
 ### 10.5 Acknowledgment consumers
@@ -728,9 +756,22 @@ Order (all pointer-checked; removals are retried without a DB write):
 
 Until step 4 finishes, `ensure_*_shutdown_complete` keeps failing, as today. The Native registry phase Entry is **not** released (§18).
 
+### 10.6 Confirmation of claim, observed and closure (C2, C1-H01)
+
+`validate_settled_tx` (§7) checks an **open** phase at one expected endpoint. A committed write moves that endpoint (claim and observed advance the Workflow and ledger head; closure also closes the operation, advances Task, Context, Unit, artifact and Driver, and clears the marker). Confirmation therefore never applies `validate_settled_tx` alone. Each `confirm_*` runs one read-only Immediate (no write):
+
+1. **Common immutable authority (never relaxed).** The selected database path; exact Project and Goal rows (no PR1 write touches them); locks; the SAME live Driver association object (`same_association`, not the Driver row bytes); the original input, owner and epoch identities; the sealed terminal images of the settlement (§5.1). Any failure is Held.
+2. **Postimage branch (Known).**
+   - Claim / observed: the Workflow raw equals the plan's postimage; the ledger head is exactly the plan's link (kind, `at`, byte-equal data); the open-phase conjuncts of `validate_settled_tx` hold **at that post endpoint** (operation open, Task = marker `task_after`, latest Context = original, stored Unit = sealed terminal raw, frozen post-marker Driver row).
+   - Closure: every W1–W8 row equals the plan's postimage (Unit, artifact Published, Task, the new Context version, operation `phase_open=0` version 2, Workflow, the `phase_closed` link with the plan's `at`/data as the ledger head, the marker-free Driver row), using the plan's retained images, the same way RN classifies its closed image (`RN:state/execution/native_phase/nonsuccess.rs:194–206`, `PhaseImage::Closed`).
+3. **Preimage branch (RolledBack).** Every row equals the plan's preimage and the planned link is absent: for claim/observed, `validate_settled_tx` at the pre endpoint (prior Workflow and prior ledger head); for closure, `validate_settled_tx` at the `gate_observed` endpoint, the Ready artifact, the marker Task, no Context row at the next version, operation `phase_open=1`, and the frozen post-marker Driver row.
+4. **Anything else is Held**, including a mix of post- and preimages, a link without its postimages, or postimages without the link.
+
+SC4's after-commit variants (claim, observed, closure) and the Root closure confirmation (§5.2 D3) are verified against this contract.
+
 ## 11. Uncertain commits, repeated delivery, cancellation and stop (P)
 
-- **Uniform uncertainty rule.** Every new write (binding, claim, observed, closure) returns `Known`, typed `Conflict` or `Err` (uncertain), classified as in §5.4. After `Err`, only the SAME retained plan is confirmed (binding uses the lineage predicate of §5.3; claim, observed and closure confirm under `validate_settled_tx` plus the rules below):
+- **Uniform uncertainty rule.** Every new write (binding, claim, observed, closure) returns `Known`, typed `Conflict` or `Err` (uncertain), classified as in §5.4. After `Err`, only the SAME retained plan is confirmed. Binding uses the lineage predicate of §5.3; claim, observed and closure use the two-branch confirmation of §10.6 (C2, C1-H01), never the open-phase validator alone:
   - **Known** iff every postimage is exact and exactly one link with the plan's `at` and data exists;
   - **RolledBack** iff every preimage is exact and the link is absent;
   - **otherwise Held**, with a read-only re-probe every 5 s.
@@ -752,7 +793,7 @@ All figures are encoded lengths taken from existing bounds. They are not heap or
 | Transaction | Mandatory surfaces (each existing bound) |
 | --- | --- |
 | Late bind | The binder's surfaces (P/G/T ≤3×8 MiB, Workflow ≤8 MiB old/new, locks ≤256×16 KiB, Context ≤8 MiB stored-decoder bound — an admitted original Context's data is a ≤1 MiB payload in a ≤2 MiB frame, `I:execution/phase.rs:118, 206–232`, `I:execution/native.rs:305–306`, own Session ≤4 MiB, negative identities ≤4096×16 KiB, owner ≤32 KiB, invocation ≤`INVOCATION_BYTES` = 64 KiB) plus the sealed terminal images (invocation, receipt ≤`RECEIPT_BYTES`, Session ≤4 MiB, owner ≤32 KiB, admission ≤8192 B, readiness ≤4096 B); one link ≤4096 B |
-| Settled helper | Per helper: one exact recheck under the Store mutex before spawn (G1), one `managed_effects` insert ≤8 KiB with its recheck (G2), one recheck per 50 ms fence tick including the immediate first tick (G3, bounded by the 60 s helper timeout: ≤1201 ticks), and one reconcile transaction. Per PR1 run: N = 41 or 42 + A + B helpers (§8.1) |
+| Settled helper | Per helper: one exact recheck under the Store mutex before spawn (G1), one `managed_effects` insert ≤8 KiB with its recheck (G2), one recheck per 50 ms fence tick including the immediate first tick (G3, bounded by the 60 s collection timeout plus the ≤10 s reap: ≤1401 ticks), and one reconcile transaction. Per PR1 run: N = 41 or 42 + A + B effect rows, ≤8234 (§8.1); the 15 `retained_git` rows use the retained fence instead of G1–G3 |
 | `gate_claim` | Projection set + Workflow old/new ≤2×8 MiB + link + `charged_scope_bytes` aggregates |
 | `gate_observed` | as claim + observation ≤64 KiB |
 | Closure | Projection set; Workflow old/new ≤2×8 MiB; Task old/new ≤2×1 MiB; Context new ≤8 MiB; artifact ≤2×128 KiB; Unit ≤2×44 KiB; operation ≤2×4 MiB; Driver ≤2×128 KiB; one `NOT EXISTS` effect probe (no row images, §10.2); link ≤4096 B; four permit rows |
@@ -775,7 +816,7 @@ All figures are encoded lengths taken from existing bounds. They are not heap or
 | `job.state`, `SuccessContinuation.stage`, `success_cursor` | nothing (leaves) |
 | `PhaseHandoffs.entries` | `slot.handoff` → `assets` (existing order) |
 | Sources slot (tokio) | SharedStore briefly, never across an await (existing `frame()` discipline); Git awaits hold no Store |
-| `control_admission` (await; held only as a `SuccessAdmission` (worker `admit_success` or Root `admit_root_success`), never across a sleep, backoff, Git or gate await) | SharedStore (synchronous), then the permit manager, then the association `binding` mutex |
+| `control_admission` (held only as a `SuccessAdmission`: the worker's awaited, cancel-biased `admit_success` or the Root's non-blocking `try_admit_root_success`; never across a sleep, backoff, Git or gate await) | SharedStore (synchronous), then the permit manager, then the association `binding` mutex |
 | SharedStore | the permit manager leaf; custody and actor leaves only through existing pointer checks |
 
 - **Store calls.** No Root mutex is held across a Store call, and no await happens under SharedStore.
@@ -839,13 +880,13 @@ Ground rules:
 | --- | --- |
 | SC1 | Claude and Codex, QUICK Implement, commit mode. The stage sequence is held start → normal `Bound` → release `fixture-release` → owned success → capture → claim → Passed → observed → closure. Assertions: <br>• Task.version equal to the marker until closure, then +1 exactly once; <br>• links `[session_bound, gate_claim, gate_observed, phase_closed]`; <br>• artifact Published, with revision = fixture HEAD ≠ base and `results.git` refs and fsck; <br>• Unit finalization closed; <br>• exactly one new Context; <br>• the Driver row marker-free and the generic `validate` passing; <br>• the next step Waiting (`commit`), with the worker still driving. |
 | SC2 | Late. A cfg(test) seam delays `bind_returned` until the settlement exists. Normal refuses (`Conflict`); the Root sweep late-binds with `proof_source=closed_settlement` and `private_receipt_ref`; then SC1's assertions. Cleanup Unknown is present and binding still happens once. |
-| SC3 | Definitive normal `Conflict` and retry (C1, SC-11). While the owner is live and pre-terminal, the genuine Native owner advances its own Session record (Starting→Running, or PID/`native_ref`) after `plan_managed_binding` and before `bind_managed_phase` (a cfg(test) timing seam holds the start task between plan and write; the advance itself is the real owner's write). If the fixture peer's protocol produces no Session record advance after the start returns, the stimulus is instead a Task or Goal change through an existing legitimate writer during the same hold (refused by `validate_projection`); which stimulus was used is recorded, and a hold with neither stimulus is SETUP. Assertions: the write returns typed `Conflict` from the pre-write check, zero links, Workflow unchanged; the sweep's later `plan_managed_binding` retry binds `normal_return`; no `closed_settlement` link exists. A separate variant holds the SQLite writer lock with a second connection across the bind: the outcome is uncertain `Err` (not `Conflict`), followed by confirmation Known or RolledBack. |
+| SC3 | Definitive normal `Conflict` and retry (C1, SC-11). While the owner is live and pre-terminal, the genuine Native owner advances its own Session record (Starting→Running, or PID/`native_ref`) after `plan_managed_binding` and before `bind_managed_phase` (a cfg(test) timing seam holds the start task between plan and write; the advance itself is the real owner's write). Only a genuine Session record advance counts for this positive (C2, C1-M03): if the fixture peer's protocol produces none after the start returns, SC3 is SETUP. Assertions: the write returns typed `Conflict` from the pre-write Session check, zero links, Workflow unchanged; the sweep's later `plan_managed_binding` retry binds `normal_return`; no `closed_settlement` link exists. A separate variant holds the SQLite writer lock with a second connection across the bind: the outcome is uncertain `Err` (not `Conflict`), followed by confirmation Known or RolledBack. **SC3-P (separate negative):** a Task or Goal change through an existing legitimate writer during the same hold makes the write a typed `Conflict` and every later normal plan refuse on the original parent projection (`validate_projection`, `I:state/managed_binding/snapshot.rs:400–425`): zero links, Held, no frame refresh (MB2). |
 | SC4 | Uncertain commits. A failpoint returns `Err` after commit, and separately before commit, in each of: bind, claim, observed, closure. Assertions: the confirmation is Known or RolledBack; the SAME `at`/digests; exactly one link of each kind; L-x variants (a parent drift after commit) are Held. **SC4-N (C1, SC-04):** a normal binding whose commit is reported uncertain, followed by the genuine owned terminal before confirmation (the peer released by `fixture-release`): confirmation is Known (committed variant) or RolledBack (pre-commit variant) despite the advanced Unit/invocation/Session/readiness/admission rows; in the RolledBack variant the late plan then binds once with `closed_settlement`. |
 | SC5 | Lost notifications and later settlement (C1, SC-01). A seam suppresses job watch sends. (a) Binding still converges via the service timer within ⌈n/8⌉ sweeps plus backoff. (b) Normal `Bound` first, then the peer is released and settles: the D2 class discovers the settlement within ⌈n/8⌉ sweeps plus backoff and installs the continuation; no notification is used. (c) An `ordinary-failure` peer after `Bound`: no continuation is installed, the job is re-polled at most once per 5 s (observed through the cfg(test) turn counter), it consumes no Store transaction, and it reports the attention text. (d) A cfg(test) seam pauses `completed` between `revoke` and setting the settlement Weak while the sweep runs: the sweep records no conclusion, and after release the continuation is installed. |
 | SC6 | STANDARD Requirements. Bind → capture (Ready) → claim → observed Waiting (`evidence_integration_unavailable`). After ≥50 Driver polls: still one claim, no `phase_closed`, Task unchanged, Requirements not completed, artifact not Published. |
 | SC7 | Negatives after genuine setup: <br>• Goal or Task edited through an existing legitimate writer during the held start → Conflict/Held and zero links; <br>• `ordinary-failure` scenario → no settlement, Held "bound non-success closure unavailable"; <br>• peer killed before terminal → Unknown/Lost → no late bind; <br>• Runtime restart → Held and no reconstruction. |
 | SC8 | Graph integrity. Between capture and closure, a negative-only corruption of a `results.git` object → `settled_publication` refuses and closure is never committed. |
-| SC9 | Stop (C1, SC-06). (a) Shutdown while the worker awaits `admit_success` → the biased select returns cancelled, no commit. (b) Shutdown while the Root `admit_root_success` waits for admission → `service_running`/`stopping` refuses after acquisition, no confirmation write or publication; after the Runtime is dropped the Weak upgrade refuses. (c) Shutdown after commit with publication pending → Held, counted pending, no revival; `retry_success_publication` refuses once stopping. (d) Shutdown's 5 s admission acquisition cannot interleave inside an admitted closure turn (commit and publication observed together or not at all). |
+| SC9 | Stop (C1, SC-06). (a) Shutdown while the worker awaits `admit_success` → the biased select returns cancelled, no commit. (b) Shutdown acquires `control_admission` first and then joins the service task while the Root has a pending closure-confirmation or publication action: `try_admit_root_success` returns None without awaiting, the service loop observes `stopping` and exits, and shutdown completes within its join bound without relying on the 5 s timeout (C2, C1-M01); no confirmation write or publication occurs. After the Runtime is dropped the Weak upgrade refuses. (c) Shutdown after commit with publication pending → Held, counted pending, no revival; `retry_success_publication` refuses once stopping. (d) Shutdown's 5 s admission acquisition cannot interleave inside an admitted closure turn (commit and publication observed together or not at all). |
 | SC10 | Four Tasks in **four distinct Projects** (two Claude, two Codex; one active Task per Project, per Issue #43 / #81) in commit mode → four independent closures, with no cross-job acknowledgment or Driver publication. |
 | SC11 | Protected helper fence (C1, SC-02). A genuine protected Git helper in capture is held by a cfg(test) timing seam for ≥3 fence ticks: it completes and its effect is Confirmed (the fence ran `validate_settled_helper`, not the generic validator). Negative: a parent Goal edit through an existing legitimate writer while the helper is held → the next tick refuses, the group is signalled, the effect is `Unknown`, capture fails, the stage is Held, and closure never commits. |
 | SC12 | Status visibility (C1, SC-10). SC6's Requirements Waiting is reported by `GoalTasks` as `workflow_wait = {evidence_integration_unavailable, <constant>}` and printed by the CLI; SC1 after closure reports `next_phase_unavailable`; Task state and blockers are unchanged in both. |
@@ -868,11 +909,14 @@ Ground rules:
 | Settled fence removed entirely | SC11 negative: helper completes Confirmed after the parent edit |
 | `evaluate_settled` final recheck uses the generic `validate_execution` (C1, SC-03) | SC1: gate refuses ("marker-bound Driver…"), observed `gate_unknown`, no closure |
 | Closure without admission (C1, SC-06) | SC9(d): commit observed without publication across a shutdown boundary |
-| Closure effect probe accepts Unknown (C1, SC-08) | SC11 negative: closure commits with an `Unknown` helper effect |
+| Closure effect probe accepts Unknown (C1, SC-08) | **defense only** (C2, C1-M04): SC11's negative stops at the fence and capture, before any Passed observation, and no genuine producer leaves an `Unknown` effect on the Unit after a Passed observation while closure is still reachable (a `settled_publication` helper failure fails publication before closure). No consumer kill is claimed |
 | `workflow_wait` reader removed (C1, SC-10) | SC12: no `workflow_wait` in `GoalTasks` |
 | Confirm accepts a preimage as Known (any port) | SC4 pre-commit: acknowledgment while the link is absent |
 | Replan with a new `at` after uncertainty | SC4: link `at` or digest differs from the SAME plan |
 | Root `reconcile_success` call removed | SC2: no binding |
+| Root admission awaits `lock_owned` instead of `try_lock_owned` (C2, C1-M01) | SC9(b): shutdown join waits until its timeout |
+| Closure confirmation uses `validate_settled_tx` alone (C2, C1-H01) | SC4 closure after-commit variant: Held instead of Known |
+| `evaluate_settled` returns `Err` instead of an `Unknown` completion after the claim check (C2, C1-M05) | a cfg(test) fault in the gate's `verify` after the claim: no `gate_observed` with `gate_unknown` is written |
 | Capture uses the generic `validate_execution` | SC1: capture refusal ("marker-bound Driver…"), no Ready artifact |
 | Protected validator omits `validate_driver_live_tx` | SC9 variant: a helper intent row after revocation |
 | Gate Waiting rewrites Task WaitingHuman/blocker | SC6: Task changed |
@@ -917,7 +961,7 @@ Review checks (not mutants): no decode, hash or encode under the new Immediate p
 
 ## 19. Sequence and review
 
-1. After design approval, the implementer (assigned by the user; at C1 time the Claude Code development session on `feature/issue-43-native-nonsuccess-controls`) implements on the composed base I or its reviewed successor, committing each item:
+1. After design approval, the implementer (assigned by the user; at C1 time the Claude Code development session on `feature/issue-43-native-nonsuccess-controls`) implements on a composed commit that contains I and has passed its own separate composition review (§1 item 8), or on a successor that satisfies the same condition (C2, C1-L03). I itself is unreviewed and is not a starting point by ancestry alone. Each item is committed separately:
    - (a) binding write/confirm types (typed Conflict, lineage confirmation), sealed `SettledTerminalImages`, and the late planner;
    - (b) Root sweep (D1–D3 and the 5 s re-poll), `SettledPhase`, lookup and the admitted Root actions;
    - (c) protected currency, `HelperCurrency` fence, helpers and capture;
