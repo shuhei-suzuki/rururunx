@@ -18,6 +18,8 @@ pub(crate) const BIND: &str = "bind";
 pub(crate) const CLAIM: &str = "claim";
 pub(crate) const OBSERVED: &str = "observed";
 pub(crate) const CLOSURE: &str = "closure";
+/// The success Driver publication (a refused cache publication).
+pub(crate) const PUBLISH: &str = "publish";
 /// The observed planner (a refused plan, not a write).
 pub(crate) const OBSERVED_PLAN: &str = "observed plan";
 

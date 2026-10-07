@@ -597,6 +597,11 @@ impl Store {
         &mut self,
         ack: &Arc<SuccessClosureAcknowledgment>,
     ) -> Result<()> {
+        #[cfg(test)]
+        super::fault::before(super::fault::take(
+            ack.plan.currency.settled().marker().scope().task_id,
+            super::fault::PUBLISH,
+        ))?;
         self.publish_driver_closure(&ack.driver)
     }
 }

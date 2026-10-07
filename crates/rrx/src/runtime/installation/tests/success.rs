@@ -2124,3 +2124,70 @@ async fn sc7k_claude_killed_peer_never_late_binds() {
 async fn sc7k_codex_killed_peer_never_late_binds() {
     sc7_killed("codex").await;
 }
+
+/// SC9(c): the closure is committed and Known but its Driver publication keeps
+/// failing (fault-only); shutdown leaves it Held and counted pending (the job
+/// is retained) and nothing revives it: the Driver is never published.
+async fn sc9c(provider: &str) {
+    use crate::state::managed_binding::fault::{CommitFault, PUBLISH, arm_commit_fault};
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    for _ in 0..1000 {
+        arm_commit_fault(task.id, PUBLISH, CommitFault::BeforeCommit);
+    }
+    f.runtime.start().await.unwrap();
+    wait_normal_bound(&f, task).await;
+    release_completion(&f, task);
+    wait_for(
+        || links(&f, task).last().map(String::as_str) == Some("phase_closed"),
+        "SC9(c): closure did not commit",
+        90,
+    )
+    .await;
+    // Root publication retries keep failing before shutdown.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .validate_task_driver(task.id)
+            .is_err(),
+        "SETUP: publication must still be pending"
+    );
+    let shutdown = f.runtime.shutdown().await;
+    assert!(
+        shutdown
+            .as_ref()
+            .is_err_and(|e| e.to_string().contains("pending")),
+        "SC9(c) {provider}: shutdown counts the pending publication: {shutdown:?}"
+    );
+    assert!(
+        !f.runtime.phase_jobs.observed_jobs().is_empty(),
+        "SC9(c) {provider}: the job is retained, not released"
+    );
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .validate_task_driver(task.id)
+            .is_err(),
+        "SC9(c) {provider}: no revival after shutdown"
+    );
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc9c_claude_pending_publication_stays_held_after_shutdown() {
+    sc9c("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc9c_codex_pending_publication_stays_held_after_shutdown() {
+    sc9c("codex").await;
+}
