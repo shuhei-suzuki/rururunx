@@ -209,7 +209,20 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation, prepara
             writer.execute_batch("BEGIN IMMEDIATE").unwrap();
             let started = std::time::Instant::now();
             f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap();
+            // Probe the genuine per-job backoff at once, still under contention:
+            // every later assertion spends wall time from the 100 ms window.
+            let probe = std::time::Instant::now();
+            f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap();
             let uncertain = f.runtime.phase_jobs.observed_jobs();
+            assert!(
+                probe < uncertain[0].due,
+                "SETUP: backoff probe started after the window closed"
+            );
+            assert_eq!(
+                f.runtime.phase_jobs.observed_turns().len(),
+                1,
+                "P1 ignored actual backoff"
+            );
             assert!(
                 uncertain[0].preparation.closure && !uncertain[0].preparation.closed,
                 "P1 actual write contention did not retain U: {uncertain:?}"
@@ -225,13 +238,6 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation, prepara
             );
             assert_eq!(links(&f), 0);
             writer.execute_batch("ROLLBACK").unwrap();
-            // Deliver nothing before the genuine per-job backoff expires.
-            f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap();
-            assert_eq!(
-                f.runtime.phase_jobs.observed_turns().len(),
-                1,
-                "P1 ignored actual backoff"
-            );
             wait_for(
                 || std::time::Instant::now() >= f.runtime.phase_jobs.observed_jobs()[0].due,
                 "P1 actual backoff did not expire",
