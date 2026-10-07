@@ -2029,3 +2029,87 @@ async fn sc4c_claude_later_context_keeps_uncertain_closure_held() {
 async fn sc4c_codex_later_context_keeps_uncertain_closure_held() {
     sc4c("codex").await;
 }
+
+/// SC7 (peer killed): with the normal write held, the genuine fixture peer is
+/// killed before any terminal: the owner ends without an owned success
+/// settlement, the held normal write cannot bind an ended owner and no late
+/// binding exists without a settlement: zero links, no continuation.
+async fn sc7_killed(provider: &str) {
+    use crate::runtime::phase_jobs::NORMAL_WRITE;
+    let mut f = fixture_mode(provider, true, None, |_| {});
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let (_, tasks) = accept(&f, 1).await;
+    let task = &tasks[0];
+    let binding = held(task, NORMAL_WRITE);
+    f.runtime.start().await.unwrap();
+    wait_for(
+        || binding.0.reached(),
+        "SETUP: normal write not reached",
+        60,
+    )
+    .await;
+    // The genuine peer of THIS Unit: the process whose environment carries
+    // this Unit's own output directory (tests run in parallel).
+    let unit = f.runtime.phase_jobs.observed_jobs()[0].unit;
+    let unit = f.owner.store.lock().unwrap().execution_unit(unit).unwrap();
+    let output = crate::execution::resources::ResourceManager::new(f.owner.clone())
+        .profile(&unit)
+        .unwrap()
+        .output;
+    let needle = format!("RRX_OUTPUT_DIR={}", output.display());
+    let pid = std::fs::read_dir("/proc")
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
+        .find(|pid| {
+            std::fs::read(format!("/proc/{pid}/environ"))
+                .ok()
+                .is_some_and(|env| env.split(|b| *b == 0).any(|v| v == needle.as_bytes()))
+        })
+        .expect("SETUP: genuine peer process");
+    let killed = std::process::Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .status()
+        .unwrap();
+    assert!(killed.success(), "SETUP: kill the genuine peer");
+    wait_for(
+        || {
+            f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .any(|j| j.owner_live == Some(false))
+        },
+        "SETUP: owner did not end after the peer was killed",
+        60,
+    )
+    .await;
+    binding.0.release();
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(6) {
+        f.runtime.wake.notify_one();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let jobs = f.runtime.phase_jobs.observed_jobs();
+    assert!(
+        links(&f, task).is_empty(),
+        "SC7-K {provider}: no binding; jobs {jobs:?}"
+    );
+    assert!(
+        jobs.iter().all(|j| !j.success && j.settled != Some(true)),
+        "SC7-K {provider}: no settlement, no continuation; jobs {jobs:?}"
+    );
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc7k_claude_killed_peer_never_late_binds() {
+    sc7_killed("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc7k_codex_killed_peer_never_late_binds() {
+    sc7_killed("codex").await;
+}
