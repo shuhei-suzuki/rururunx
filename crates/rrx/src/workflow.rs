@@ -3129,17 +3129,14 @@ impl WorkflowEngine {
                         )
                         .await;
                 }
-                snapshot
-                    .task
-                    .artifacts
-                    .extend(evidence.artifacts.iter().cloned());
-                snapshot.workflow.completed.insert(phase, evidence);
-                let attempt = &mut snapshot.workflow.history[index];
-                attempt.state = AttemptState::Succeeded;
-                attempt.completed_at.get_or_insert_with(now_ms);
-                snapshot.workflow.active = None;
-                snapshot.workflow.sources = source.clone();
-                let next = next_phase(&snapshot.workflow);
+                let next = succeed_attempt(
+                    &mut snapshot.task,
+                    &mut snapshot.workflow,
+                    index,
+                    evidence,
+                    source.clone(),
+                    now_ms,
+                );
                 let context = if phase == Phase::Cleanup {
                     make_context(
                         &snapshot.task,
@@ -3161,16 +3158,13 @@ impl WorkflowEngine {
                     )
                     .await?
                 };
-                set_context(&mut snapshot, &context);
-                snapshot.task.phase = next.map(|p| p.key().into());
-                snapshot.task.state = phase.task_state();
-                snapshot.workflow.finished = next.is_none();
-                if phase == Phase::Pr {
-                    snapshot.task.state = TaskState::PrCreated;
-                }
-                if phase == Phase::Cleanup {
-                    snapshot.task.state = TaskState::Completed;
-                }
+                succeed_context(
+                    &mut snapshot.task,
+                    &mut snapshot.workflow,
+                    phase,
+                    next,
+                    &context,
+                );
                 if phase.actor() == Actor::Executor
                     && let Some(session) = snapshot.workflow.history[index].session_id
                 {
@@ -4032,11 +4026,54 @@ fn invalidate(workflow: &mut WorkflowSnapshot, source: &SourceSnapshot, cause: &
     Ok(())
 }
 fn set_context(snapshot: &mut Snapshot, context: &ContextVersion) {
-    snapshot.task.context_version = context.version;
-    snapshot.task.revision = Some(context.revision.clone());
-    snapshot.workflow.context_version = context.version;
-    snapshot.workflow.context_fresh = true;
-    snapshot.workflow.sources.payload = context.data["payload"].as_str().unwrap_or_default().into();
+    apply_context(&mut snapshot.task, &mut snapshot.workflow, context);
+}
+fn apply_context(task: &mut Task, workflow: &mut WorkflowSnapshot, context: &ContextVersion) {
+    task.context_version = context.version;
+    task.revision = Some(context.revision.clone());
+    workflow.context_version = context.version;
+    workflow.context_fresh = true;
+    workflow.sources.payload = context.data["payload"].as_str().unwrap_or_default().into();
+}
+/// The pure Passed transform shared by the generic Engine and the protected
+/// settled closure: evidence, attempt success, sources. Returns the next phase.
+pub(crate) fn succeed_attempt(
+    task: &mut Task,
+    workflow: &mut WorkflowSnapshot,
+    index: usize,
+    evidence: Evidence,
+    source: SourceSnapshot,
+    completed_at: impl FnOnce() -> i64,
+) -> Option<Phase> {
+    let phase = workflow.history[index].phase;
+    task.artifacts.extend(evidence.artifacts.iter().cloned());
+    workflow.completed.insert(phase, evidence);
+    let attempt = &mut workflow.history[index];
+    attempt.state = AttemptState::Succeeded;
+    attempt.completed_at.get_or_insert_with(completed_at);
+    workflow.active = None;
+    workflow.sources = source;
+    next_phase(workflow)
+}
+/// The pure Context/phase/state part of a success, after the Context Pack
+/// for `next` (or `phase`) is prepared.
+pub(crate) fn succeed_context(
+    task: &mut Task,
+    workflow: &mut WorkflowSnapshot,
+    phase: Phase,
+    next: Option<Phase>,
+    context: &ContextVersion,
+) {
+    apply_context(task, workflow, context);
+    task.phase = next.map(|p| p.key().into());
+    task.state = phase.task_state();
+    workflow.finished = next.is_none();
+    if phase == Phase::Pr {
+        task.state = TaskState::PrCreated;
+    }
+    if phase == Phase::Cleanup {
+        task.state = TaskState::Completed;
+    }
 }
 fn make_context(
     task: &Task,

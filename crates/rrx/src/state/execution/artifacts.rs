@@ -432,8 +432,48 @@ pub(in crate::state) fn publish_workflow_result_tx(
     previous_record: &Record,
     context: &ContextVersion,
 ) -> Result<()> {
-    use crate::workflow::{Actor, AttemptState, WorkflowSnapshot};
     let mut unit = validate_authority(tx, publication.authority(), false, true)?;
+    let mut artifact = self_artifact_tx(tx, publication.artifact().id)?;
+    ensure!(
+        serde_json::to_value(&artifact)? == serde_json::to_value(publication.artifact())?,
+        "verified publication artifact snapshot changed"
+    );
+    publish_result_core(
+        &unit,
+        &artifact,
+        task,
+        next_record,
+        previous_record,
+        context,
+    )?;
+    artifact.state = ArtifactState::Published;
+    let expected = artifact.version;
+    bump(&mut artifact.version)?;
+    ensure!(tx.execute("UPDATE result_artifacts SET state='published',version=?1,body=?2 WHERE id=?3 AND version=?4 AND state='ready'",params![artifact.version,serde_json::to_string(&artifact)?,artifact.id.to_string(),expected])?==1,"artifact publication CAS mismatch");
+    unit.result_finalization_open = false;
+    unit.artifact_id = Some(artifact.id);
+    write_unit(tx, &mut unit)?;
+    append_event(
+        tx,
+        &unit.scope,
+        "execution.result_published",
+        json!({"unit":unit.id,"artifact":artifact.id,"sha":artifact.revision,"workflow":next_record.id,"context_version":context.version}),
+    )?;
+    Ok(())
+}
+
+/// Field checks of a result publication, without any authority call. The
+/// generic path calls `validate_authority` first; the settled closure uses
+/// its protected reader and exact images instead.
+pub(in crate::state) fn publish_result_core(
+    unit: &ExecutionUnit,
+    artifact: &ResultArtifact,
+    task: &Task,
+    next_record: &Record,
+    previous_record: &Record,
+    context: &ContextVersion,
+) -> Result<()> {
+    use crate::workflow::{Actor, AttemptState, WorkflowSnapshot};
     ensure!(
         unit.kind == UnitKind::Executor
             && unit.work == Some(WorkOutcome::Success)
@@ -468,11 +508,6 @@ pub(in crate::state) fn publish_workflow_result_tx(
         .completed
         .get(&old.phase)
         .context("publication lacks passed phase evidence")?;
-    let mut artifact = self_artifact_tx(tx, publication.artifact().id)?;
-    ensure!(
-        serde_json::to_value(&artifact)? == serde_json::to_value(publication.artifact())?,
-        "verified publication artifact snapshot changed"
-    );
     ensure!(
         artifact.unit_id == unit.id
             && artifact.scope == unit.scope
@@ -499,19 +534,6 @@ pub(in crate::state) fn publish_workflow_result_tx(
             ),
         "publication dependency versions changed"
     );
-    artifact.state = ArtifactState::Published;
-    let expected = artifact.version;
-    bump(&mut artifact.version)?;
-    ensure!(tx.execute("UPDATE result_artifacts SET state='published',version=?1,body=?2 WHERE id=?3 AND version=?4 AND state='ready'",params![artifact.version,serde_json::to_string(&artifact)?,artifact.id.to_string(),expected])?==1,"artifact publication CAS mismatch");
-    unit.result_finalization_open = false;
-    unit.artifact_id = Some(artifact.id);
-    write_unit(tx, &mut unit)?;
-    append_event(
-        tx,
-        &unit.scope,
-        "execution.result_published",
-        json!({"unit":unit.id,"artifact":artifact.id,"sha":artifact.revision,"workflow":next_record.id,"context_version":context.version}),
-    )?;
     Ok(())
 }
 
