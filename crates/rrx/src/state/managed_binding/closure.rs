@@ -229,7 +229,7 @@ impl UnlinkedPhaseClosure {
     ) -> Result<PhaseClosureImages> {
         let (attempt, images) = material(marker, self.at)?;
         ensure!(
-            attempt == self.attempt
+            attempt == self.attempt()
                 && images.workflow_after.version == self.workflow_version_after
                 && workflow_digest(&images)? == self.workflow_after_sha256
                 && operation_digest(&images)? == self.operation_body_after_sha256,

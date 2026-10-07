@@ -240,8 +240,8 @@ mod primitives {
                 || predicate(mask == 0),
             );
             match mask {
-                15 => assert_eq!(result.unwrap(), true),
-                0 => assert_eq!(result.unwrap(), false),
+                15 => assert!(result.unwrap()),
+                0 => assert!(!result.unwrap()),
                 _ => assert!(result.is_err(), "accepted mixed image mask {mask}"),
             }
         }
