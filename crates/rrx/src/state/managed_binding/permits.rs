@@ -242,6 +242,8 @@ struct State {
 #[derive(Default)]
 pub(in crate::state) struct PrivatePermitManager {
     state: Mutex<State>,
+    #[cfg(test)]
+    consumed_observations: std::sync::atomic::AtomicU64,
 }
 struct Revoke<'a> {
     manager: &'a PrivatePermitManager,
@@ -309,7 +311,15 @@ impl PrivatePermitManager {
                 .is_some_and(|a| a.rows.iter().all(Option::is_none)),
             "exact mutation plan not consumed"
         );
+        #[cfg(test)]
+        self.consumed_observations
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(())
+    }
+    #[cfg(test)]
+    pub(in crate::state) fn consumed_observations(&self) -> u64 {
+        self.consumed_observations
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
     fn matches(&self, ctx: &rusqlite::functions::Context<'_>) -> bool {
         let Some(table) = ctx.get_raw(0).as_str().ok() else {

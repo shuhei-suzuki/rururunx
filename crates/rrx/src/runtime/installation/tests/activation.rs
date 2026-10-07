@@ -19,6 +19,10 @@ struct ObservedActivation {
     association: Arc<crate::runtime::driver::DriverAssociation>,
     expected: serde_json::Value,
 }
+struct InitialRecordObservation {
+    id: uuid::Uuid,
+    raw: String,
+}
 impl ObservedActivation {
     fn from_probe(probe: &crate::workflow::ActivationProbe<'_>) -> Self {
         Self {
@@ -276,13 +280,97 @@ async fn ca1_actual_activation_gates_marker_and_record_only_bound() {
         let arrived = Arc::new(AtomicBool::new(false));
         let capture = expected.clone();
         let signal = arrived.clone();
+        let initial = Arc::new(Mutex::new(None));
+        let original = initial.clone();
+        let reader = Mutex::new(
+            rusqlite::Connection::open_with_flags(
+                f.owner.state_path(),
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )
+            .unwrap(),
+        );
+        let atomic = Arc::new(AtomicBool::new(false));
+        let atomic_observed = atomic.clone();
+        let observed = initial.clone();
+        let seams = Arc::new(ActivationSeams {
+            published: Some(Arc::new(move || {
+                let original = observed.lock().unwrap();
+                let (record, binding, contract) = original.as_ref().unwrap();
+                let reader = reader.lock().unwrap();
+                let mut statement = reader.prepare("SELECT r.version,r.body,c.version,d.id,d.owner_epoch,d.version,d.body,v.owner_epoch,n.owner_epoch,n.origin,n.body FROM records r JOIN context_versions c ON c.project_id=r.project_id AND c.goal_id=r.goal_id AND c.task_id=r.task_id AND c.version=1 JOIN task_drivers d ON d.task_id=r.task_id JOIN workflow_verification_contracts v ON v.workflow_id=r.id AND v.project_id=r.project_id AND v.goal_id=r.goal_id AND v.task_id=r.task_id JOIN workflow_native_contracts n ON n.workflow_id=r.id AND n.project_id=r.project_id AND n.goal_id=r.goal_id AND n.task_id=r.task_id WHERE r.id=?1").unwrap();
+                let rows = statement
+                    .query_map([record.id.to_string()], |r| {
+                        Ok((
+                            r.get::<_, u64>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, u64>(2)?,
+                            r.get::<_, String>(3)?,
+                            r.get::<_, u64>(4)?,
+                            r.get::<_, u64>(5)?,
+                            r.get::<_, String>(6)?,
+                            r.get::<_, u64>(7)?,
+                            r.get::<_, u64>(8)?,
+                            r.get::<_, String>(9)?,
+                            r.get::<_, String>(10)?,
+                        ))
+                    })
+                    .unwrap()
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .unwrap();
+                assert_eq!(rows.len(), 1, "CA1 atomic activation five scoped rows");
+                let row = &rows[0];
+                assert_eq!(
+                    (row.0, row.1.as_str(), row.2),
+                    (1, record.raw.as_str(), 1),
+                    "CA1 original first Workflow and Context"
+                );
+                assert_eq!(
+                    (&row.3, row.4, row.5, &row.6),
+                    (&binding.0, binding.1, binding.2, &binding.3),
+                    "CA1 original exact committed Driver"
+                );
+                assert_eq!(
+                    (row.7, row.8),
+                    (binding.1, binding.1),
+                    "CA1 runtime epoch contracts"
+                );
+                assert_eq!(
+                    (&row.9, &row.10),
+                    (&contract.0, &contract.1),
+                    "CA1 original installation and contract"
+                );
+                atomic_observed.store(true, Ordering::SeqCst);
+            })),
+            ..Default::default()
+        });
         engine(&f).set_activation_hooks(
             Some(Arc::new(move |probe| {
-                *capture.lock().unwrap() = Some(expected_contract(&probe));
+                let expected = expected_contract(&probe);
+                let mut record = probe.record().clone();
+                record.version += 1;
+                record.updated_at = record.created_at;
+                let binding = probe.plan().planned_binding();
+                *original.lock().unwrap() = Some((
+                    InitialRecordObservation {
+                        id: record.id,
+                        raw: serde_json::to_string(&record).unwrap(),
+                    },
+                    (
+                        binding.0.to_string(),
+                        binding.1,
+                        binding.2,
+                        binding.3.to_owned(),
+                    ),
+                    (
+                        expected["origin"].as_str().unwrap().to_owned(),
+                        String::from_utf8(canonical(&expected)).unwrap(),
+                    ),
+                ));
+                *capture.lock().unwrap() = Some(expected);
                 signal.store(true, Ordering::SeqCst);
                 Box::pin(async {})
             })),
-            None,
+            Some(seams),
         );
         f.runtime.start().await.unwrap();
         wait_for(
@@ -307,6 +395,35 @@ async fn ca1_actual_activation_gates_marker_and_record_only_bound() {
             "CA1 members and exact activation image"
         );
         let (record, workflow) = wait_bound(&f, &tasks[0]).await;
+        assert!(
+            atomic.load(Ordering::SeqCst),
+            "CA1 atomic activation not observed"
+        );
+        let store = f.owner.store.lock().unwrap();
+        let windows = store.record_window_observations();
+        assert_eq!(
+            windows.len(),
+            4,
+            "CA1 Reserve/Claim/Complete/first-Executor windows"
+        );
+        for (index, &(id, old_version, planned_at, actual_version, actual_at, consumed)) in
+            windows.iter().enumerate()
+        {
+            assert_eq!(id, record.id);
+            assert_eq!(
+                old_version,
+                index as u64 + 1,
+                "CA1 original persisted previous version"
+            );
+            assert_eq!(
+                actual_version,
+                old_version + 1,
+                "CA1 consecutive Record version"
+            );
+            assert_eq!(actual_at, planned_at, "CA1 original planned timestamp");
+            assert_eq!(consumed, 1, "CA1 actual records ensure_consumed event");
+        }
+        drop(store);
         let stored = f
             .owner
             .store

@@ -173,6 +173,61 @@ async fn ca4a_stop_at_genuine_retained_pre_admission_rolls_back() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn ca4a_last_external_drop_at_s1_cancels_original_worker() {
+    let mut f = fixture("claude", true);
+    f.register_real_git_project();
+    accept(&f, 1).await;
+    let (observations, _release) = install_pause(&f, None);
+    f.runtime.start().await.unwrap();
+    wait_for(
+        || observations.lock().unwrap().len() == 1,
+        "SETUP: S1 absent",
+    )
+    .await;
+    let original = observations.lock().unwrap()[0].clone();
+    let drivers = f.runtime._drivers.clone();
+    let weak = Arc::downgrade(&f.runtime);
+    let reader = rusqlite::Connection::open_with_flags(
+        f.owner.state_path(),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    assert!(original.plan.is_retained().unwrap());
+    drop(f.runtime);
+    wait_for(
+        || weak.upgrade().is_none(),
+        "CA4a last external Runtime did not drop",
+    )
+    .await;
+    wait_for(
+        || drivers.observe_finished().unwrap() == 0,
+        "CA4a original S1 worker did not cancel",
+    )
+    .await;
+    assert!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .reconcile_driver_preparation(&original.plan)
+            .unwrap(),
+        "CA4a SAME original rollback not proved"
+    );
+    assert!(!original.plan.is_retained().unwrap());
+    assert_eq!(drivers.retained_preparations().unwrap(), 0);
+    for table in ["records", "workflow_native_contracts"] {
+        let rows: u64 = reader
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 0, "CA4a last external drop left {table}");
+    }
+    let claims: u64 = reader
+        .query_row("SELECT count(*) FROM task_drivers", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(claims, 1, "CA4a created a replacement plan/Driver");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca4c_precommit_failure_proves_same_plan_rollback() {
     let mut f = fixture("claude", true);
     f.register_real_git_project();
@@ -249,8 +304,11 @@ async fn ca4d_contained_fault_recovers_in_same_live_worker() {
         wait_for(|| park.parked(), "SETUP: service S5 absent").await;
         release.add_permits(1);
         wait_for(
-            || deferred.load(Ordering::SeqCst),
-            "CA4d failed to return Deferred",
+            || {
+                deferred.load(Ordering::SeqCst)
+                    || f.runtime._drivers.observe_finished().unwrap() == 0
+            },
+            "CA4d neither Deferred nor actual worker exit observed",
         )
         .await;
         assert!(f.owner.store.lock().is_ok(), "CA4d SharedStore poisoned");
@@ -258,6 +316,10 @@ async fn ca4d_contained_fault_recovers_in_same_live_worker() {
             f.runtime._drivers.observe_finished().unwrap(),
             1,
             "CA4d SAME worker exited"
+        );
+        assert!(
+            deferred.load(Ordering::SeqCst),
+            "CA4d failed to return Deferred"
         );
         assert!(f.runtime._drivers.pending_exits().unwrap().is_empty());
         assert!(

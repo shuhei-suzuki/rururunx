@@ -250,6 +250,18 @@ Workflow Engine decides whether to retry, choose a fallback agent, or escalate.
 
 ## 15. Implemented Rust baseline (Issue #4)
 
+Each managed registry installation has one original identity shared by its native
+ports, separate from each port's origin UUID and each allocation's profile digest.
+The installed Driver prefilter requires a declared native executor and one to
+eight distinct declared native reviewers in that same installation. Original
+composition identity, Task/executor/reviewer binding and the complete roster are
+retained before activation admission. Role, alias, provider, program, declaration
+digest and port origin determine each canonical roster member; the sorted members
+determine the immutable Workflow contract digest. Marker selection checks the
+selected allocation against that original roster without treating a per-Unit
+profile as the Workflow composition identity. Public native permission and
+prepared-input admission remain separate required boundaries.
+
 Native Grok Issue 7's scoped ACP file-executor and zero-tool decision modes are specified
 in [its design](../issue-7-grok-adapter.md) and [requirements](../../requirements/issue-7-requirements.md).
 The explicit GrokAdapter implements a private bounded ACP actor with two scoped file

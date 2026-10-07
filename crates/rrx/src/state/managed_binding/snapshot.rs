@@ -229,6 +229,10 @@ pub(in crate::state) fn read_scope(
 }
 
 impl ScopePlan {
+    #[cfg(test)]
+    pub(in crate::state) fn original_workflow_version(&self) -> Option<u64> {
+        self.workflow.as_ref().map(|body| body.parsed().version)
+    }
     pub(in crate::state) fn workflow_record_mutation(
         &self,
         record: &Record,

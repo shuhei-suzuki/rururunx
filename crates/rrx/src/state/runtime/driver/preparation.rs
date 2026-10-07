@@ -403,6 +403,15 @@ impl DriverPreparationAdvance {
             write()
         }
     }
+    #[cfg(test)]
+    pub(in crate::state) fn record_window_probe(&self) -> Option<(Uuid, u64, i64)> {
+        self.input.as_ref()?.records.as_ref()?;
+        Some((
+            self.input.as_ref()?.record.id,
+            self.ticket.scope.original_workflow_version()?,
+            self.input_timestamp(),
+        ))
+    }
     pub(in crate::state) fn begin_input(self: &Arc<Self>) -> Result<Applying<'_>> {
         ensure!(
             self.input.is_some() && self.is_retained()?,

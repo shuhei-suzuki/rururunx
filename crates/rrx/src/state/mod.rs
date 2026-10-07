@@ -89,6 +89,9 @@ pub struct Store {
     connection: Connection,
     #[allow(dead_code)] // Actual managed marker/binder is composed separately.
     binding_permits: std::sync::Arc<managed_binding::PrivatePermitManager>,
+    /// Finite read-only observations of real committed test-build windows.
+    #[cfg(test)]
+    record_window_observations: Vec<(Uuid, u64, i64, u64, i64, u64)>,
 }
 
 fn register_writer_contract(
@@ -272,7 +275,14 @@ impl Store {
         Ok(Self {
             connection,
             binding_permits,
+            #[cfg(test)]
+            record_window_observations: Vec::new(),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn record_window_observations(&self) -> &[(Uuid, u64, i64, u64, i64, u64)] {
+        &self.record_window_observations
     }
 
     pub fn schema_version(&self) -> Result<i64> {
@@ -1082,6 +1092,8 @@ impl Store {
                 }
             }
         }
+        #[cfg(test)]
+        let mut window_observation = None;
         let (next_task, next_workflow) = if let Some(plan) = driver_input {
             let next_task = put_task_tx_at_with_namespace(
                 &tx,
@@ -1089,7 +1101,20 @@ impl Store {
                 plan.input_timestamp(),
                 Some(plan.input_namespace()?),
             )?;
+            #[cfg(test)]
+            let consumed_before = self.binding_permits.consumed_observations();
             let next_workflow = plan.write_input_record_tx(&tx, &self.binding_permits, workflow)?;
+            #[cfg(test)]
+            if let Some((id, version, timestamp)) = plan.record_window_probe() {
+                window_observation = Some((
+                    id,
+                    version,
+                    timestamp,
+                    next_workflow.version,
+                    next_workflow.updated_at,
+                    self.binding_permits.consumed_observations() - consumed_before,
+                ));
+            }
             (next_task, next_workflow)
         } else {
             (put_task_tx(&tx, task)?, put_record_tx(&tx, workflow)?)
@@ -1114,6 +1139,12 @@ impl Store {
             plan.activation_precommit()?;
         }
         tx.commit()?;
+        #[cfg(test)]
+        if let Some(observation) = window_observation
+            && self.record_window_observations.len() < 64
+        {
+            self.record_window_observations.push(observation);
+        }
         let mut outcome = managed_binding::ActivationCommit::Published;
         if let Some(plan) = driver_input {
             if matches!(

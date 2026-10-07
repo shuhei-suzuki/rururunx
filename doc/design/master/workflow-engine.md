@@ -156,12 +156,23 @@ permissions stay unchanged. Missing lineage or CAS drift remains Held. Genuine
 marked lifecycle qualification remains unavailable; the Runtime-only installed
 composition is an unmerged source increment.
 
-The installed account-free control reaches the actual original first Executor
-reservation, then remains Held at `plan_marker_publication`'s exact composed
-Workflow contract read. Production code currently writes only legacy-held
-contracts, so the installed lane has not reached marker publication, Prepared,
-registration, transport or binding. Its composed activation producer requires a
-separate approved contract increment; public refusal predicates remain intact.
+The installed Driver lane produces one immutable composed Workflow contract in
+the original activation transaction with the first Workflow/Context, Driver and
+verification contract. It retains the original composition identity and the
+complete declared executor/reviewer roster before Store entry. Contracted gate
+and first-Executor updates use exact original Record permit windows. The marker
+checks installation identity and the allocation's role-specific roster member,
+separately from its per-Unit profile. Account-free accepted-ingress controls reach
+the original first-Executor marker, launch and Record-only Bound binding; this
+does not qualify official Native execution or a full Workflow.
+
+Only activation's postcommit cache publication has a contained Deferred boundary
+inside Store. The SAME live worker can recover with up to three newly admitted
+segments; actual exited or revoked workers remain Held. Service reconciliation
+visits at most 64 preparations per sweep and counts all retained preparations
+after Store guards drop, across the bounded registry. Same-Project concurrent
+initial preparation still exposes an original namespace snapshot currency
+conflict; isolated Projects do not resolve that full-MVP dependency.
 
 The incremental [production gate integration](../production-workflow-gates-design.md)
 adds a concrete library port for real initial preparation, Implement terminal/result
@@ -608,6 +619,7 @@ Ordinary legacy Session binding writes an unchanged Task via the coordinated
 transition and increments its raw version. Providers admitted under that Task
 version can then reject their own completion/approval. The implemented private
 Record-only binder writes Workflow plus its reserved factual audit, preserving
-Task bytes/version and exact owner/context/Session guards. Its genuine composed
-normal/late binding and terminal consumers remain unavailable; ordinary legacy
-binding is not a fallback for that protected route.
+Task bytes/version and exact owner/context/Session guards. The installed first
+Executor now reaches its genuine normal composed binding. Later-phase,
+late-binding, Reviewer and terminal consumers require their owning integrations;
+ordinary legacy binding is not a fallback for that protected route.
