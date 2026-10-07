@@ -75,6 +75,13 @@ impl WorkflowEngine {
             .or_else(|| next_phase(&snapshot.workflow))
             .context("driven phase missing")?;
         if !matches!(phase, Phase::Issue | Phase::Worktree) {
+            // After a successful first-Executor closure: read-only Waiting for
+            // the unavailable next lane (SC-N), after the Sources release.
+            if let Some(waiting) = self.post_success_closure(&snapshot) {
+                self.retire_settled_sources(task_id, composition, lifetime)
+                    .await?;
+                return Ok(waiting);
+            }
             if phase.actor() == Actor::Executor {
                 if let Some(index) = snapshot.workflow.active {
                     let attempt = &snapshot.workflow.history[index];
@@ -86,6 +93,33 @@ impl WorkflowEngine {
                     }
                 }
                 if snapshot.workflow.active.is_some() {
+                    let lookup = {
+                        let runtime = composition
+                            .runtime()
+                            .upgrade()
+                            .context("original Runtime ended")?;
+                        runtime.settled_phase(task_id, &lifetime.association()?)?
+                    };
+                    match lookup {
+                        crate::runtime::SettledLookup::Settled(success) => {
+                            return self
+                                .continue_settled_executor(
+                                    snapshot,
+                                    composition,
+                                    lifetime,
+                                    success,
+                                    phase,
+                                )
+                                .await;
+                        }
+                        crate::runtime::SettledLookup::Held(reason) => {
+                            return Ok(StepResult::Waiting {
+                                phase,
+                                reason: reason.into(),
+                            });
+                        }
+                        _ => {}
+                    }
                     return self
                         .offer_driven_first_executor(snapshot, composition, lifetime, phase)
                         .await;

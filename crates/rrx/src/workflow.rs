@@ -4133,6 +4133,7 @@ fn load_rules(
 
 #[path = "workflow/driven_initial.rs"]
 mod driven_initial;
+mod driven_settled;
 
 #[cfg(test)]
 #[path = "workflow/committed_source_tests.rs"]

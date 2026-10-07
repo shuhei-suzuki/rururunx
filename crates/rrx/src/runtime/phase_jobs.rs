@@ -22,7 +22,10 @@ use std::{
     time::{Duration, Instant},
 };
 pub(in crate::runtime) use success::SuccessSweep;
-pub(crate) use success::{ClosedPhaseAck, SettledLookup, SuccessContinuation};
+pub(crate) use success::{
+    ClosedPhaseAck, ClosureStage, ClosureState, Retained, SettledLookup, SuccessContinuation,
+    SuccessStage,
+};
 use tokio::{sync::watch, task::JoinHandle};
 
 const MAX_JOBS: usize = 128;

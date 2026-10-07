@@ -131,6 +131,7 @@ pub(crate) struct InstalledDriverComposition {
     phases: Weak<PhaseSupervisor>,
     original_task: Task,
     sources: Arc<ManagedWorkflowSources>,
+    gates: Arc<crate::execution::workflow_gates::ManagedWorkflowGates>,
     engine: Arc<WorkflowEngine>,
     selected: Arc<NativePhasePort>,
 }
@@ -284,6 +285,10 @@ impl InstalledDriverComposition {
     pub(crate) fn sources(&self) -> &Arc<ManagedWorkflowSources> {
         &self.sources
     }
+    /// The SAME installed gates the Engine holds, as their concrete type.
+    pub(crate) fn gates(&self) -> &Arc<crate::execution::workflow_gates::ManagedWorkflowGates> {
+        &self.gates
+    }
     pub(crate) fn engine(&self) -> &Arc<WorkflowEngine> {
         &self.engine
     }
@@ -313,6 +318,7 @@ impl InstalledDriverComposition {
 pub(super) struct InstalledNativeGraph {
     registry: Arc<crate::adapter::AgentRegistry>,
     sources: Arc<ManagedWorkflowSources>,
+    gates: Arc<crate::execution::workflow_gates::ManagedWorkflowGates>,
     engine: Arc<WorkflowEngine>,
 }
 /// Bounded static diagnostic only; no retry/availability flag or authority.
@@ -330,11 +336,13 @@ impl InstalledNativeGraph {
             ManagedWorkflowSources::new(owner.clone(), config.clone())
                 .map_err(|_| InstallationRefusal("managed Sources installation refused".into()))?,
         );
-        let gates = crate::execution::workflow_gates::ManagedWorkflowGates::new(
-            owner.clone(),
-            sources.clone(),
-        )
-        .map_err(|_| InstallationRefusal("managed Gates installation refused".into()))?;
+        let gates = Arc::new(
+            crate::execution::workflow_gates::ManagedWorkflowGates::new(
+                owner.clone(),
+                sources.clone(),
+            )
+            .map_err(|_| InstallationRefusal("managed Gates installation refused".into()))?,
+        );
         let verifier =
             crate::execution::verification::ManagedVerifier::new(owner.clone(), sources.clone())
                 .map_err(|_| InstallationRefusal("managed Verifier installation refused".into()))?;
@@ -343,13 +351,14 @@ impl InstalledNativeGraph {
             registry.clone(),
             config.clone(),
             sources.clone(),
-            Arc::new(gates),
+            gates.clone(),
         )
         .and_then(|engine| engine.with_verifier(Arc::new(verifier)))
         .map_err(|_| InstallationRefusal("managed Engine installation refused".into()))?;
         Ok(Self {
             registry,
             sources,
+            gates,
             engine: Arc::new(engine),
         })
     }
@@ -406,6 +415,7 @@ impl Runtime {
             phases: Arc::downgrade(&self.phases),
             original_task: task.clone(),
             sources: graph.sources.clone(),
+            gates: graph.gates.clone(),
             engine: graph.engine.clone(),
             selected,
         })
