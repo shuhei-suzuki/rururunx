@@ -282,7 +282,7 @@ async fn sc1_success_lane(provider: &str) {
         .handle_control(
             &f.socket,
             f.request(ControlAction::GoalTasks {
-                view: None,
+                view: Some(crate::runtime::control::GoalReadView::RecordedV1),
                 project: closed.project_id,
                 goal: closed.goal_id,
                 after: None,
@@ -291,6 +291,11 @@ async fn sc1_success_lane(provider: &str) {
         )
         .await
         .unwrap();
+    let printed = crate::cli::goal_facts::render(&response, false).unwrap();
+    assert!(
+        printed.contains("Workflow wait: \"next_phase_unavailable\""),
+        "SC12 {provider}: CLI prints the wait: {printed}"
+    );
     let ControlResponse::GoalTaskPage { tasks, .. } = response else {
         panic!("SC12 {provider}: GoalTaskPage")
     };
@@ -1046,7 +1051,7 @@ async fn sc6_requirements(provider: &str) {
         .handle_control(
             &f.socket,
             f.request(ControlAction::GoalTasks {
-                view: None,
+                view: Some(crate::runtime::control::GoalReadView::RecordedV1),
                 project: marked.project_id,
                 goal,
                 after: None,
@@ -1055,6 +1060,12 @@ async fn sc6_requirements(provider: &str) {
         )
         .await
         .unwrap();
+    // The CLI prints the same read-only wait.
+    let printed = crate::cli::goal_facts::render(&response, false).unwrap();
+    assert!(
+        printed.contains("Workflow wait: \"evidence_integration_unavailable\""),
+        "SC12 {provider}: CLI prints the wait: {printed}"
+    );
     let ControlResponse::GoalTaskPage { tasks: facts, .. } = response else {
         panic!("SC12 {provider}: GoalTaskPage")
     };
