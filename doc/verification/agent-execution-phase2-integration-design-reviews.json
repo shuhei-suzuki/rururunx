@@ -1,0 +1,954 @@
+{
+  "schema": "phase2_integration_design_reviews_v1",
+  "risk": "STRICT",
+  "scope": "Static component requirements/design approvals only. All new producers and operational Runtime/ReviewEngine remain implementation work.",
+  "independence": "Peer findings withheld until both independent reviewers completed each round; author excluded from own design approval.",
+  "components": [
+    {
+      "name": "runtime_scheduler",
+      "original_source": "3d01762ec6b4fef9256834e01c233c2f92d2471e",
+      "final_source": "d14e066033848f9aa1877d918360f8f5b1b35cd4",
+      "integrated_commit": "30fc71f8a31553d8f6c4bc9b6dda222ac8c5fb2a",
+      "reports": [
+        {
+          "path": "/private/tmp/rrx-runtime-scheduler-design-review-c.json",
+          "sha256": "13d50a28f158ec7606ac67a89e9f3003a53a507f348d9efa7fff36365bcdf61b",
+          "report": {
+            "reviewer": "workflow_source_review_c",
+            "source_commit": "3d01762ec6b4fef9256834e01c233c2f92d2471e",
+            "risk": "STRICT",
+            "verdict": "APPROVE",
+            "scope": "Independent requirements/design review only: proposed Runtime/global Scheduler integration, accepted Goal/readiness/evaluation authority, durable driver claims, capacity/fairness/events/recovery and CLI control ingress. No production implementation approval.",
+            "reviewed_documents": [
+              "doc/requirements/runtime-scheduler-integration-requirements.md",
+              "doc/design/runtime-scheduler-integration-design.md"
+            ],
+            "findings": [],
+            "confirmed_design_boundaries": [
+              "Ready observations cannot grant execution; claiming transaction must revalidate accepted Running Goal, exact scoped DAG/Task/Workflow and verified predecessor evidence.",
+              "#23 immutable accepted definition, typed evaluator and trusted lifecycle ingress remain authoritative; generic Goal flags, native JSON and Verification records cannot complete a Goal.",
+              "Driver claim is complementary to existing Workflow/unit/Context/epoch CAS, with no second native session semaphore or reconstructed prepared capability.",
+              "Initial source preparation occurs after durable driver claim and before Workflow initialization reads its Task; resulting Task projection/version is re-read explicitly.",
+              "Actual admission must compose Project distinct-Task union including preparation, provider alias-sharing, native lease-before-Session, reviewer/approval workers and parked/live-wait distinctions.",
+              "Persisted Project/Goal rotation and queue age must compose within actual quota waiter admission; document does not claim outer queue fairness proves inner grants.",
+              "Dirty-level event handling, observed driver completion and bounded housekeeping prevent missing hints from silently stranding ready work; deadlines remain checked hints.",
+              "Restart closes old epoch authority while preserving accepted artifacts and quarantined physical resources; rows cannot recreate live preparation/native handles or justify external replay.",
+              "CLI/TUI control endpoint is separate from TaskTool and does not enter a fresh owner epoch for each command; same-UID application trust limit is explicit.",
+              "Current effective cap6/provider defaults2-and3/executor4 are documented limitations rather than a config12 execution claim."
+            ],
+            "actual_source_alignment": [
+              {
+                "path": "crates/rrx/src/execution/native.rs",
+                "lines": [
+                  81,
+                  105,
+                  110,
+                  503
+                ],
+                "detail": "NativeLimits actual global cap min(config,6), strictest provider aliases, quota scheduler dimensions and real status watches align with proposal."
+              },
+              {
+                "path": "crates/rrx/src/state/execution/quotas.rs",
+                "lines": [
+                  271,
+                  278,
+                  524
+                ],
+                "detail": "Current inner waiter role/sequence ordering and Project count of active native Task leases explain required composed rank and preparation distinct-Task accounting changes; these changes remain implementation work."
+              },
+              {
+                "path": "crates/rrx/src/execution/owner.rs",
+                "lines": [
+                  116,
+                  164,
+                  175
+                ],
+                "detail": "Existing root lock and begin_execution_epoch define single owner startup, not a read command API."
+              },
+              {
+                "path": "crates/rrx/src/execution/workflow_source.rs",
+                "lines": [
+                  110,
+                  178,
+                  236
+                ],
+                "detail": "Registered preparation requires live capability and accepted source frame; recovery from ledger alone is currently unavailable and correctly not inferred."
+              }
+            ],
+            "acceptance_gaps": [
+              "Requirements must receive independent approval before design/source authorization sequence is completed; this report does not assert the other reviewer or any implementation gate has passed.",
+              "Goal accepted-definition/evaluator ports, task_drivers/scheduler/evaluation schema, controlled ingress, Runtime, scheduler and actual CLI do not exist at the baseline.",
+              "Pending #9/#10/#12/#13/#19/#20/#21 producers mean affected Workflow/Goal gates must remain explicit holds; final Goal completion is not supplied by this design.",
+              "Park/reactivate/recovery implementation must preserve exact driver identity and must never treat Parked/Held state or an expired timestamp as permission to steal a live driver.",
+              "Higher configurable caps, per-phase cohort admission and fair rank composition need actual consumer controls and bounded resource qualification.",
+              "RS-AC1 through RS-AC9, exact-head both-OS CI, real authenticated four-Task runs, final #16 dogfood and efficiency ON/OFF comparison remain required."
+            ],
+            "limitations": [
+              "Read-only independent source/document review; no edits, builds/tests, native CLI/authentication, credentials, network or OS probes.",
+              "No peer findings/review logs were read.",
+              "Component design approval only: no Phase2, full Issue #14/#23/#24/#27, native compatibility or MVP completion approval."
+            ]
+          }
+        },
+        {
+          "path": "/private/tmp/rrx-runtime-scheduler-design-review-b.json",
+          "sha256": "77b4d61ccf26d51018afef5e45c3663d1be99904589b634e15ec3e542561c348",
+          "report": {
+            "source_commit": "3d01762ec6b4fef9256834e01c233c2f92d2471e",
+            "actual_source_baseline": "ed3c1078a0f5a9646a8c4991881179887b57b28e",
+            "reviewer": "B",
+            "scope": "Independent STRICT static requirements/design review of Runtime/Scheduler integration, against pinned actual managed Sources/Workflow/quota/owner consumers and inherited Goal authority requirements. No implementation acceptance.",
+            "verdict": "REQUEST_CHANGES_DESIGN",
+            "requirements_verdict": "No independent requirements defect identified; design connection below is incomplete.",
+            "severity_counts": {
+              "C": 0,
+              "H": 0,
+              "M": 1,
+              "L": 0
+            },
+            "findings": [
+              {
+                "id": "RS-B-M1",
+                "severity": "M",
+                "title": "Specify how an existing durable Workflow obtains a genuine committed Sources frame after owner restart",
+                "locations": [
+                  {
+                    "file": "doc/design/runtime-scheduler-integration-design.md",
+                    "lines": "132-153; 248-260"
+                  },
+                  {
+                    "file": "doc/requirements/runtime-scheduler-integration-requirements.md",
+                    "lines": "132-139; 188"
+                  },
+                  {
+                    "file": "crates/rrx/src/execution/workflow_source.rs",
+                    "lines": "93-108; 112-128; 178-183; 310-339"
+                  },
+                  {
+                    "file": "crates/rrx/src/workflow.rs",
+                    "lines": "967-974; 2721-2782"
+                  }
+                ],
+                "evidence": "The only specified Sources wiring is prepare before initialize for a first drive. New ManagedWorkflowSources starts with no TaskSources; prepare refuses whenever a Workflow record already exists; both capture and committed_input require a pre-existing in-memory frame before they inspect any retained artifact. Workflow retry only clears the exact old reservation and then the next step calls these inputs again. Section8 classifies existing published artifacts and promises fresh retry/resumption but does not define a new retained-frame installation or pre-artifact restart preparation port/transaction. Current-epoch ResultStore.verify alone does not install a Sources frame. The inherited agent-execution design requires later source ports to consume retained objects and expressly forbids reconstructing old PreparedExecutor provenance, so neither reusing prepare nor calling initialize again provides this missing contract.",
+                "causal_trigger": "Restart after a genuine successful Implement publication while the nonterminal Workflow still has later phases. The new owner correctly fences old grants and verifies the durable artifact, but the fresh Sources map is empty. The next step fails committed-input preparation; calling prepare fails existing-Workflow rejection. The analogous crash after Workflow initialization and before first native adoption has no artifact and needs a genuine fresh preparation/Workflow recovery transition. These are explicitly required RS-R3/RS-AC7 recovery stages, not an absent optional gate.",
+                "impact": "Safe recoverable Tasks cannot reach the advertised resumed or explicitly fresh retry path with the proposed consumer wiring. An implementer must invent the missing authority boundary, and a naive workaround risks reconstructing the old live capability or replacing Workflow/history/Context authority. Unsupported holds are safe but do not fulfill the specified supported restart/recovery control.",
+                "requested_change": "Define distinct private typed recovery routes for an existing Workflow: verified current-epoch retained-artifact source-frame installation with exact artifact/dependencies/current accepted governing policy/Task/Workflow/generation/Context CAS, and a pre-artifact fresh preparation recovery route that journals a new unit/namespace before effects and atomically records the explicit recovery disposition/history. Name the actual Sources and Workflow consumers, cancellation/abandonment behavior, and classify unsupported cases visibly. Do not fabricate initial adoption capability or overwrite initialize/history. Preserve existing revoked grants and prerequisite artifact pins.",
+                "causal_controls_not_executed": [
+                  "Through genuine Store/Workflow/Sources producers, restart after published Implement; a new Sources instance must supply exact retained committed config/rules/corpus and advance a supported next phase while source worktree is changed or absent.",
+                  "Restart after initialize but before native adoption; explicit fresh recovery must use a new unit/generation/path, preserve original history and refuse old adoption, with cancel/CAS races having one winner.",
+                  "Mutate retained artifact/current governing policy or recovery Context/Workflow version before installation; actual committed_input/native input must refuse without implicit refreshed consent."
+                ]
+              }
+            ],
+            "confirmed_static_connections": [
+              "Driver Task slots and quota-native permits are separated; native permits remain owned by existing admission rather than a second global semaphore.",
+              "Current hard global6/provider defaults/headroom limits are acknowledged, requested/effective values must be shown, and arbitrary configured12 is not falsely qualified.",
+              "Inner provider ordering is explicitly identified as needing trusted persisted fairness composition; outer Project rotation alone is not claimed sufficient.",
+              "Schema proposal starts at actual5 with ordered migration and already-open old-writer fencing; generic display/evidence rows cannot mint authority.",
+              "Goal completion and hard-edge readiness require typed complete Workflow/retained evidence; diagnostics and native exit zero are insufficient.",
+              "Goal/Task observations do not routinely bump shared native-fenced authority; graph/context/lifecycle changes are explicit.",
+              "Actual control endpoint is distinct from TaskTool/Human-authority label input; help/read commands must not create owner epochs.",
+              "Best-effort cleanup and physical resource quarantine remain independent of known result acceptance."
+            ],
+            "limits": [
+              "Static immutable git object review only. No tests, builds, lints, accounts, native CLI, network, process signals, credentials or host configuration probes.",
+              "No peer reports, progress/evidence logs, aggregate findings or dirty/later source were inspected.",
+              "Requirements/designed typed Goal/Runtime/cohort/control APIs are future work; source correctness, scheduler fairness, actual native4Task and Linux/macOS compatibility remain unverified.",
+              "AGENTS.md is absent both in the requested pinned tree and repository root; no additional file instructions could be read.",
+              "Not final Phase2, Runtime shipping, native provider qualification, whole Issue acceptance or MVP approval."
+            ],
+            "live_handles": [],
+            "commands_closed": true
+          }
+        },
+        {
+          "path": "/private/tmp/rrx-runtime-scheduler-design-source2-review-c.json",
+          "sha256": "52ab64ab8a7665b996d91b2f21bd1d58c02db84b5772d0971128af6d0c964fd8",
+          "report": {
+            "reviewer": "workflow_source_review_c",
+            "source_commit": "d14e066033848f9aa1877d918360f8f5b1b35cd4",
+            "prior_source_commit": "3d01762ec6b4fef9256834e01c233c2f92d2471e",
+            "risk": "STRICT",
+            "verdict": "APPROVE",
+            "scope": "Independent documentation delta review: Runtime existing-Workflow Sources recovery sections 5.1/5.2 and associated requirements/acceptance updates.",
+            "findings": [],
+            "verified_delta": [
+              "Baseline empty ManagedWorkflowSources map and existing-Workflow ordinary prepare refusal are explicitly identified; artifact verify alone is not described as map recovery.",
+              "Retained recovery requires current-epoch private intent/proof, exact Published artifact/prerequisite/Context/Workflow/driver/P/G pins, registered finite tree/blob readers, sealed frame and final CAS before slot install.",
+              "Installed source cache has current recovery identity/epoch and atomically maintained consumer pins; crash after acceptance before install reconstructs genuinely rather than granting from row.",
+              "Pre-input no-artifact recovery has separate private producer, new namespace/unit-before-Git, explicit old history/fencing and accepted base/source reconstruction; no initialize replay or old PreparedExecutor reconstruction.",
+              "Recovery-aware first-adoption predicate excludes only proven fenced pre-input old generations, preserving current-generation prior-Executor and ambiguous native/external holds.",
+              "Ready-unpublished artifacts remain drafts/unknown without an independent qualified finalization reconciliation producer; no fake Published or old grant restoration.",
+              "Actual restart/source-install race/currency/mutation controls are required and source methods remain explicitly unimplemented."
+            ],
+            "limitations": [
+              "Read-only static design delta review; no implementation or test/native/network actions.",
+              "Other reviewers new findings/reports/logs were not consulted.",
+              "No Phase2, full Runtime/restart implementation, native/two-OS or MVP completion approval."
+            ]
+          }
+        },
+        {
+          "path": "/private/tmp/rrx-runtime-scheduler-design-source2-review-b.json",
+          "sha256": "952764111f880cb5f29d32b1a8bef1c6e176127b54f17a3be132bf7e5864e831",
+          "report": {
+            "source_commit": "d14e066033848f9aa1877d918360f8f5b1b35cd4",
+            "baseline": "3d01762ec6b4fef9256834e01c233c2f92d2471e",
+            "actual_source_baseline": "ed3c1078a0f5a9646a8c4991881179887b57b28e",
+            "reviewer": "B",
+            "scope": "Independent static requirements/design re-review; proposed recovery ports only, no source implementation approval.",
+            "verdict": "APPROVE_DESIGN_COMPONENT",
+            "severity_counts": {
+              "C": 0,
+              "H": 0,
+              "M": 0,
+              "L": 0
+            },
+            "findings": [],
+            "prior_own_dispositions": [
+              {
+                "id": "RS-B-M1",
+                "disposition": "CLOSED_IN_DESIGN",
+                "locations": [
+                  "doc/design/runtime-scheduler-integration-design.md:158-206",
+                  "doc/design/runtime-scheduler-integration-design.md:208-254",
+                  "doc/requirements/runtime-scheduler-integration-requirements.md:141-162"
+                ],
+                "evidence": "The former empty Sources map / existing Workflow refusal is now explicitly recognized. Proposed current-epoch RetainedFrameRecovery pins the exact Published artifact selected by current Workflow/evidence, registers helper intents, rebuilds the genuine committed frame, and accepts it under complete Store CAS while holding the source-slot mutex through installation. Actual capture/committed_input/phase-admission consumers revalidate installed recovery pins; installation cannot clear old active work or mint initial adoption. Separate FreshBootstrapRecovery journals fresh generation/unit/resources before Git for genuinely pre-input classified history, rebuilds the exact original committed source, appends recovery history/consecutive Contexts and uses a private recovery-aware adoption predicate. Old capabilities, ambiguous input, Ready/unpublished and forged rows cannot enter either supported route."
+              }
+            ],
+            "confirmed_boundaries": [
+              "Private recovery authority does not arise from a receipt, serialized row or latest artifact guess.",
+              "Both source-install routes preserve original full pins through asynchronous registered Git and final CAS; no SharedStore lock spans I/O.",
+              "Cancellation/epoch/drift revoke installed frames; crash after accept before assignment requires fresh genuine reconstruction.",
+              "Pre-input recovery retains historical attempts and approved policy/lineage, re-runs initial gates and narrowly scopes excluded old pre-input generations at adoption.",
+              "Consumed/ambiguous native or external effects and Ready drafts require explicit genuine retry/reconciliation or named attention; the draft is not retroactively published.",
+              "New source ports are explicitly unavailable until implementation and actual producer/consumer controls qualify them."
+            ],
+            "controls_not_executed": [
+              "RS-AC7.a actual Published Implement restart with changed/removed original worktree and exact retained input at supported next phase.",
+              "RS-AC7.b actual initialized pre-input restart with new unit/generation/path, old history retained and old capability rejected.",
+              "Concurrent install/cancel/epoch/Context/Workflow/artifact/governing races and accept-before-map-install crash.",
+              "Compiled causal mutations of recovery acceptance CAS, installed-frame currency and recovery-aware adoption."
+            ],
+            "limitations": [
+              "No tests/builds/native/accounts/network/signals/credentials or source edits. Only immutable git objects and this private report used.",
+              "No peer findings, progress/evidence logs or aggregate reports consulted.",
+              "Unknown consumed-input/Ready-draft reconciliation is explicitly unsupported without its separate producer; no broad recovery or native acceptance inferred.",
+              "Design approval does not establish current implementation, final Phase2, Runtime shipping, Linux/macOS native qualification, Issue completion or MVP acceptance."
+            ],
+            "live_handles": [],
+            "commands_closed": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "review_engine",
+      "original_source": "fbed30f2b5f6f6420da9a74287a6ddd60b755d10",
+      "final_source": "cb9dcef040da9bd726ffd72c3b358da0b95b964c",
+      "integrated_commit": "37c5cc434d8f9c46d4a0f5f86a0285421a773899",
+      "reports": [
+        {
+          "path": "/private/tmp/rrx-review-engine-design-review-c.json",
+          "sha256": "5aaeaca5f7eccb6d193ef6b9292848f49501cf6b2304b50f56c54b31ee450711",
+          "report": {
+            "reviewer": "workflow_source_review_c",
+            "source_commit": "fbed30f2b5f6f6420da9a74287a6ddd60b755d10",
+            "risk": "STRICT",
+            "verdict": "REQUEST_CHANGES",
+            "scope": "Independent pre-implementation requirements/design review for native ReviewEngine, N-member policy/floor/lineage, owned answer receipts, member authority/quotas/logical closure and atomic collective Workflow publication.",
+            "findings": [
+              {
+                "id": "C-R-M1",
+                "severity": "Medium",
+                "title": "Per-member permit serialization omits the inherited qualified admission schedule/cohort contract",
+                "evidence": [
+                  {
+                    "path": "doc/design/review-engine-integration-design.md",
+                    "line": 77,
+                    "detail": "Runtime permits may serialize members without changing policy or independence exclusions."
+                  },
+                  {
+                    "path": "doc/design/review-engine-integration-design.md",
+                    "line": 186,
+                    "detail": "Uses existing per-member caps/leases and due-worker rechecks without frozen native-channel schedule predicates or complete cohort admission."
+                  },
+                  {
+                    "path": "doc/requirements/review-engine-integration-requirements.md",
+                    "line": 27,
+                    "detail": "All other #9 independent-floor/public-evidence obligations remain after the expressly limited cleanup/death-proof override."
+                  },
+                  {
+                    "path": "doc/requirements/issue-9-requirements.md at 05144737514f30a90aa03a5d837554b34a4a7f49",
+                    "line": 2220,
+                    "detail": "I9-AC-8.k binds finite permitted admission envelope, per-queued-member pre-input elapsed schedule revalidation, and concurrent-only complete-cohort all-or-nothing permits with zero partial permits while waiting."
+                  }
+                ],
+                "actual_guard_condition": "Round/member profile eligibility and actual pre-input admission must verify the original qualified channel schedule; per-member quota leases alone are insufficient for a concurrent-only qualified profile.",
+                "acceptance_gap": "A formal profile qualified only for concurrent start could be silently serialized by this design, or a queued member could start outside its finite peer-free load/write envelope. This obligation is independent of the superseded process-death settlement language.",
+                "requested_change": "Explicitly freeze actual native channel qualification and its finite queue/start-skew/parallelism envelope in round policy. Revalidate original schedule predicates before every queued member input; mark whole round noncertifying on violation. Concurrent-only profiles require a new exact atomic full-cohort permit producer and retain zero partial permits while queued; hold unsupported cohorts before any input. Add the inherited finite-delay and competing cohort actual-consumer mutation controls."
+              },
+              {
+                "id": "C-R-M2",
+                "severity": "Medium",
+                "title": "Countable opinion predicate does not explicitly exclude native failure carrying well-formed APPROVE content",
+                "evidence": [
+                  {
+                    "path": "doc/requirements/review-engine-integration-requirements.md",
+                    "line": 126,
+                    "detail": "Only well-formed/current/logically closed APPROVE opinions count; native terminal success predicate is not stated here."
+                  },
+                  {
+                    "path": "doc/design/review-engine-integration-design.md",
+                    "line": 248,
+                    "detail": "Stores verdict or invalid status against terminal receipt, while failure-terminal acquired content is deliberately retained."
+                  },
+                  {
+                    "path": "doc/design/review-engine-integration-design.md",
+                    "line": 258,
+                    "detail": "Member closure also retains other terminal dispositions and their result content."
+                  },
+                  {
+                    "path": "doc/design/review-engine-integration-design.md",
+                    "line": 278,
+                    "detail": "Aggregate counts mode AND independent floor but does not explicitly require known successful native work and valid readonly completion for every counted opinion."
+                  },
+                  {
+                    "path": "doc/requirements/issue-9-requirements.md at 05144737514f30a90aa03a5d837554b34a4a7f49",
+                    "line": 205,
+                    "detail": "Slot outcome table requires native failures never count; diagnostic-only failures may merely be tolerated by quorum/any after inspection."
+                  }
+                ],
+                "actual_guard_condition": "Countable opinion = owned current successful native terminal AND validated exact readonly completion/receipt/envelope AND logical close AND APPROVE, with independent eligibility additionally required for floor.",
+                "acceptance_gap": "A failed native invocation may have an owned well-formed final APPROVE envelope. Retaining that content is necessary for findings/inspection, but the proposed aggregate language could treat it as countable after failure closure. Failure classification and content validity must stay separate.",
+                "requested_change": "State the count predicate explicitly in requirements and aggregate design. Well-formed APPROVE from Failure/Unknown/cancel/timeout contributes zero mode and floor approvals; preserve acquired findings and required inspection/veto obligations. Add an actual failure-terminal plus syntactically valid APPROVE control, along with a failure containing a potential blocker."
+              }
+            ],
+            "confirmed_boundaries": [
+              "Roster/mode/floor are frozen and author exclusions are cumulative; STRICT any still requires two eligible non-author approvals.",
+              "Private member authority reaches the public AgentAdapter vtable, NativeSessions, helper/Session/input admission and collective final SQL publication; current singular Workflow slot cannot substitute.",
+              "Owned answer extraction and durable pre-watch terminal receipt are explicitly new required production work; existing Codex turn object or Claude envelope is not a verdict.",
+              "Current source/artifact/Context/frame and actual input hashes bind member opinions; immutable result history and collective certificate are separate from generic Evidence JSON.",
+              "Latest result-protection request legitimately replaces death-proof/worktree-lock/custody-dependent settlement with logical grant closure and isolated retained snapshots, while physical resources stay quarantined.",
+              "Quota live retry preserves exact member input; terminal quota interruption cannot relaunch within the same round or weaken roster; mixed member waits retain separate Task projection.",
+              "Schema migration allocation is coordinated with other Phase2 migrations, and already-open old writers must fail."
+            ],
+            "limitations": [
+              "Documentation/source review only; no implementation edit, test run, actual native Agent/authentication, credential access, network or OS probe.",
+              "Pinned public Issue9 normative file read from local Git object; saved open-Issue9 inventory was read as context, not an assertion of live GitHub closure.",
+              "No peer reviewer findings/reports/logs were read.",
+              "REQUEST_CHANGES applies to design clarity/coverage before implementation; it does not assert existing production ReviewEngine defects because the engine is not implemented.",
+              "No Phase2, Issue9 closure, native read-only/channel qualification, full four-Task/two-OS or MVP approval."
+            ]
+          }
+        },
+        {
+          "path": "/private/tmp/rrx-review-engine-design-review-a.json",
+          "sha256": "1f2340586ff79d461b0334691ac425a887489cc4a51359a9cd18ca71bbff1f7a",
+          "report": {
+            "source_commit": "fbed30f2b5f6f6420da9a74287a6ddd60b755d10",
+            "baseline_commit": "ed3c1078a0f5a9646a8c4991881179887b57b28e",
+            "normative_issue9_commit": "05144737514f30a90aa03a5d837554b34a4a7f49",
+            "review_type": "Independent STRICT static requirements/design component review",
+            "verdict": "REQUEST_CHANGES",
+            "counts": {
+              "Critical": 0,
+              "High": 0,
+              "Medium": 1,
+              "Low": 0
+            },
+            "findings": [
+              {
+                "id": "RE-M1",
+                "severity": "Medium",
+                "title": "Per-member quota admission and unconditional serialization omit the required frozen channel/cohort admission contract",
+                "locations": [
+                  {
+                    "file": "doc/design/review-engine-integration-design.md",
+                    "lines": "72-78"
+                  },
+                  {
+                    "file": "doc/design/review-engine-integration-design.md",
+                    "lines": "118-124"
+                  },
+                  {
+                    "file": "doc/design/review-engine-integration-design.md",
+                    "lines": "139-154"
+                  },
+                  {
+                    "file": "doc/design/review-engine-integration-design.md",
+                    "lines": "186-195"
+                  },
+                  {
+                    "file": "doc/requirements/review-engine-integration-requirements.md",
+                    "lines": "51-54, 185-192"
+                  }
+                ],
+                "evidence": [
+                  "The proposed requirements explicitly preserve every Issue9 independent-input obligation except the named custody/death, live-worktree lock and cleanup-dependent release overrides (requirements lines20-29).",
+                  "Pinned Issue9 I9-AC-8.k (lines2220-2248) requires qualification of the actual frozen roster/source-key/timing/permit schedule, queued-member elapsed-envelope checks, and COMPLETE global/Project/provider permit acquisition all-or-nothing for concurrent-only cohorts; a waiting cohort holds zero partial permits.",
+                  "The design instead says Runtime permits may serialize members (lines77-78), reserves each queued worker independently (139-142), and directs every member to the existing NativeSessions/QuotaScheduler lease admission (186-189). No whole-cohort reservation, finite qualified admission envelope, queued-member timing revalidation, or distinction between serialized-capable and concurrent-only qualification appears in either new document.",
+                  "At the actual baseline, NativeSessions::start_inner calls QuotaScheduler::admission for one Unit (execution/native.rs312-329). Store::reserve_execution_quota_with_project_limit checks and inserts a single Unit lease in its transaction (state/execution/quotas.rs149-234,302-333). Thus the reused primitive does not already supply cohort atomicity."
+                ],
+                "causal_rationale": "A legitimate concurrent-only qualified two-member profile can start its first member after one per-Unit lease while its second member waits for capacity; or two competing cohorts can each retain one member permit. Serializing the rest or admitting outside the proven start window invalidates the profile evidence for current-peer input independence. The proposed aggregate compares current hashes and counts but has no durable qualified-schedule predicate to prevent certifying that round. This is independent of physical cleanup/death proof and is not superseded by the new result-protection profile.",
+                "minimal_correction": "Freeze the exact registered channel qualification and permitted schedule with the roster. Add a real cohort-level atomic global/Project/provider lease reservation for concurrent-only profiles (zero partial leases while waiting); constrain serialized admission to a proven serialized-capable envelope and recheck elapsed schedule/qualification at every member pre-input grant. Reject or make the entire round noncertifying on startup/envelope mismatch while preserving existing owners/results. Do not silently serialize a concurrent-only profile or qualify independence by provider-family labels.",
+                "proposed_causal_controls_not_executed": [
+                  "Two two-member concurrent-only cohorts compete for capacity three: exactly one acquires two leases; the other has zero leases and zero native input, then progresses after the first logically closes under the new profile.",
+                  "A serialized-capable profile starts member one, then healthy contention delays member two beyond its frozen qualification window: member-two input zero and certificate zero; member-one historical outcome remains retained.",
+                  "Compile omissions of all-or-nothing cohort admission and queued pre-input schedule validation; restored real consumers must pass and each omission must fail its intended assertion."
+                ]
+              }
+            ],
+            "reviewed_coverage": [
+              "Read both complete committed proposed documents; diff is exactly the two added documentation files.",
+              "Checked all/quorum/any AND Quick/Standard/Strict independent floors; author/self/alias exclusion, original-finding resolution and nonapproval preservation.",
+              "Checked immutable bundle/core, rules activation, member grant and public adapter/Session/input paths, result acquisition/strict decoder design, logical member closure and atomic collective publication.",
+              "Checked shared lineage reservation/retry/retention references and the exact pinned Issue9 lineage, attribution, delivery and schedule requirements.",
+              "Compared actual baseline NativeAdapter managed role/Workflow checks, NativeSessions quota and Session setup, Store per-Unit quota transaction, and Agent execution requirements/design/master result-protection and cleanup boundary."
+            ],
+            "limits": [
+              "Static proposed-component review only; no implementation, source acceptance, provider profile qualification, Phase2/native/account/MVP completion approval.",
+              "No test/build/native/model/account/auth/Docker/network/process/signal/credential/config or host operations were performed; causal controls above are proposals, not executed evidence.",
+              "Current public GitHub Issue state was not queried; authority comparison uses its explicitly pinned normative Git object.",
+              "No peer reports/findings, mutable working-tree source, or later revisions were read. Missing planned producer implementations alone were not counted as defects.",
+              "The same-user filesystem/native default visibility boundary and best-effort cleanup limits remain explicit; no universal blindness, containment, death or physical deadline claim is certified."
+            ],
+            "live_handles": [],
+            "command_closure": "All read-only git object command calls completed with terminal results; no owned background command/process handles remain.",
+            "writes": [
+              "/private/tmp/rrx-review-engine-design-review-a.json"
+            ]
+          }
+        },
+        {
+          "path": "/private/tmp/rrx-review-engine-design-source2-review-c.json",
+          "sha256": "aa50e1d0880257052baf095b5429c8d6100a7abe97fdd0bf9f2db49bee902b44",
+          "report": {
+            "reviewer": "workflow_source_review_c",
+            "source_commit": "cb9dcef040da9bd726ffd72c3b358da0b95b964c",
+            "prior_source_commit": "fbed30f2b5f6f6420da9a74287a6ddd60b755d10",
+            "risk": "STRICT",
+            "verdict": "APPROVE",
+            "scope": "Independent requirements/design re-review only: native ReviewEngine qualified N-member schedule/cohort admission, owned answer/member countability, inherited policy/floor/lineage, logical closure and collective certificate contract.",
+            "findings": [],
+            "prior_findings": [
+              {
+                "id": "C-R-M1",
+                "disposition": "design_verified_fixed",
+                "evidence": [
+                  "Requirements now freeze actual native-channel qualification and finite original source/key/load/write/queue/skew/parallelism envelope.",
+                  "Design permits serialization only with actual SERIALIZED_CAPABLE evidence, checks original elapsed schedule at actual adapter and input admission, and marks whole round noncertifying on expiry without dropping prior owned evidence.",
+                  "CONCURRENT_ONLY requires a real private atomic complete-cohort admission producer, zero partial permits while queued, linked member grants and no serialized fallback; absent qualification/producer refuses before effects.",
+                  "Requirements/design add finite-delay, competing two-member cohorts at capacity3, startup failure and causal actual-consumer mutation controls.",
+                  "Quota waiting cannot refresh the original qualified start/queue window."
+                ]
+              },
+              {
+                "id": "C-R-M2",
+                "disposition": "design_verified_fixed",
+                "evidence": [
+                  "Requirements define the exact count predicate: owned native Success, genuine readonly completion, validated current receipt/envelope, logical close, APPROVE; floor additionally requires eligible non-author identity.",
+                  "Design explicitly retains valid APPROVE content/findings from failed terminal without making it successful/countable.",
+                  "Aggregate and final SQL publication both require owned-success/readonly/valid-receipt/closed-success predicates; Failure/Unknown/cancel/timeout/Lost count zero.",
+                  "Failure containing potential Medium preserves inspection/veto, with native Failure/Unknown plus APPROVE negative controls and separate restored Success positive."
+                ]
+              }
+            ],
+            "regression_check": [
+              "Policy shapes and independent floor remain unchanged; STRICT any still needs two eligible approvals.",
+              "Latest approved result-protection logical settlement remains distinct from native work success, result validity and best-effort cleanup.",
+              "Per-member quota waiting and full-cohort concurrency are now explicitly separated rather than implying existing singular quota APIs provide cohort authority.",
+              "Exact public vtable/member Session/input/collective SQL boundaries and immutable source/result/Context/lineage contracts remain required.",
+              "New schedule/counted-result conditions do not declare profile qualification or implementation availability from docs."
+            ],
+            "limitations": [
+              "Static requirements/design re-review only; no production implementation exists for this ReviewEngine contract.",
+              "No source edits, tests/builds, authenticated native CLI, credentials, network or OS probes.",
+              "No peer new review findings/reports/logs were read.",
+              "Actual cohort-to-existing quota lease accounting, linked Unit/member grant producer, old-writer migration and failed terminal result retention/counting must be verified at fixed implementation source.",
+              "No full Phase2, Issue9 closure, native channel/read-only/profile qualification, four-Task/two-OS acceptance or MVP approval."
+            ]
+          }
+        },
+        {
+          "path": "/private/tmp/rrx-review-engine-design-source2-review-a.json",
+          "sha256": "0b3251a77d92ec4829bceb52c0f771441abcfa0de8c22f940c9b5b8ffd8fc648",
+          "report": {
+            "source_commit": "cb9dcef040da9bd726ffd72c3b358da0b95b964c",
+            "baseline_commit": "fbed30f2b5f6f6420da9a74287a6ddd60b755d10",
+            "implementation_baseline": "ed3c1078a0f5a9646a8c4991881179887b57b28e",
+            "normative_issue9_commit": "05144737514f30a90aa03a5d837554b34a4a7f49",
+            "review_type": "Independent STRICT static requirements/design component re-review",
+            "verdict": "APPROVE",
+            "counts": {
+              "Critical": 0,
+              "High": 0,
+              "Medium": 0,
+              "Low": 0
+            },
+            "findings": [],
+            "prior_own_findings": [
+              {
+                "id": "RE-M1",
+                "prior_severity": "Medium",
+                "disposition": "CLOSED in the proposed requirements/design contract; implementation and qualification remain pending",
+                "evidence": [
+                  "Requirements73-93 and design77-84 freeze genuine native-channel source/key/timing/queue/skew/permit qualification, distinguish SERIALIZED_CAPABLE and CONCURRENT_ONLY, and reject unqualified fallback.",
+                  "Design194-204 binds queued due and actual input checks to the original elapsed envelope and qualification, fences further input on failure, makes the entire round noncertifying, retains admitted results and requires existing genuine retry authority.",
+                  "Design206-222 requires a new genuine ReviewCohortAdmission transaction before member preparation/native effects: complete global/Project/provider leases all-or-nothing, zero partial permits while queued, no lock for wholly unadmitted Set, linked member grants only after complete reservation. The existing per-Unit quota lease primitive cannot mint cohort authority.",
+                  "Design181-184,341-349 and418-420 carry the schedule predicate to actual native input and final certificate SQL checks; quota parking cannot reset the qualified start window.",
+                  "Design447-458 and the required-controls table specify both legitimate causal schedules and the relevant omission controls; synthetic labels/clocks are explicitly not native qualification."
+                ]
+              }
+            ],
+            "additional_delta_assessment": [
+              "The exact immutable diff is two documentation paths only:122 insertions/11 deletions. No production implementation or existing guard is changed.",
+              "Requirements148-154 and design294-297,321-349 keep content acquisition separate from successful native/snapshot provenance: exact current WorkOutcome::Success/completed noncancelled disposition, genuine readonly completion, owned validated input/receipt, successful logical closure and APPROVE are conjunctive for both mode count and independent floor.",
+              "Failure/Unknown/cancelled/timeout/Lost with a valid echoed APPROVE contributes zero votes while its original findings and potential Medium veto survive. No successful JSON parse, Closed row label or cleanup observation supplies the missing authority.",
+              "This predicate agrees with baseline state/execution/artifacts.rs complete_workflow_readonly_tx, whose successful owner terminal check precedes readonly acceptance, and with pinned Issue9 native failure/partial-result distinctions at199-224.",
+              "The proposed aggregate still rechecks all scope, artifact, Context, generation/epoch, policy/roster/input, worker closure/result and clearance evidence in the single Workflow certificate publication transaction. The new predicate is expressly rechecked there rather than trusting caller counts.",
+              "No author-floor waiver, early-stop enablement, receipt self-assertion, replay permission, resource-death proof or credential/defaults modification is introduced. Known native/backend/Runtime/Grok/bundle/qualification dependencies remain explicit open implementation gates."
+            ],
+            "reviewed_coverage": [
+              "Read the complete immutable delta and reread the affected requirements/design surrounding policy, schema, reservation, public grants, quota, result acquisition, closure, aggregate and acceptance controls.",
+              "Compared the pinned Issue9 qualified-schedule/cohort condition8.k and counting semantics, approved Agent execution result-protection/cleanup boundary, and actual baseline NativeAdapter/NativeSessions/Store per-Unit quota and readonly acceptance consumers.",
+              "Prior own review remains applicable to unchanged documented sections; this approval is for proposed component requirements/design consistency only."
+            ],
+            "causal_controls_not_executed": [
+              "Two concurrent-only two-member cohorts compete for capacity3, one holds2 and the other0, then the queued cohort progresses on returned capacity.",
+              "Finite-window serialized-capable worker2 is delayed beyond the original envelope: no second input or certificate, first-owner evidence retained.",
+              "Native Failure/Unknown with exact valid APPROVE counts zero in both aggregate and final SQL; Failure with Medium remains a veto. Current Success plus genuine readonly completion is the distinct positive.",
+              "Compile omissions at actual cohort/schedule and native-success counting consumers as specified in the proposal."
+            ],
+            "limits": [
+              "Documentation component approval only, not source implementation approval, completed migration, ReviewEngine readiness, actual native-profile qualification, Phase2, Issue9 closure or MVP acceptance.",
+              "No tests/build/native/model/account/auth/Docker/network/process/signals/credentials/config/host operations. Causal controls are proposed only; no parent execution claims are inherited.",
+              "No current peer findings/reports, dirty or later source read. No source edits or external writes.",
+              "Public Issue state was not queried; comparison uses the exact normative Git object pinned by the documents.",
+              "Best-effort cleanup, same-user native visibility and unknown external effects remain explicit limitations; no physical settlement/death or universal input-blindness claim is certified."
+            ],
+            "live_handles": [],
+            "command_closure": "All read-only immutable-object commands completed; no owned background handles remain.",
+            "writes": [
+              "/private/tmp/rrx-review-engine-design-source2-review-a.json"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "native_results",
+      "original_source": null,
+      "final_source": "0ed72ab90c101bc7ad2beb0dca382c9adc465fa7",
+      "integrated_commit": "33cc1d015c91f5cb9c3a935725299f4e05522715",
+      "reports": [
+        {
+          "path": "/private/tmp/rrx-native-result-design-review-c.json",
+          "sha256": "f96cb033b1a4d19e5390a64351c504e8109063e0a8e2fc2443607a57fa000b5c",
+          "report": {
+            "reviewer": "workflow_source_review_c",
+            "source_commit": "0ed72ab90c101bc7ad2beb0dca382c9adc465fa7",
+            "risk": "STRICT",
+            "verdict": "APPROVE",
+            "scope": "Independent pre-implementation supplement review only: owned native answer acquisition, frozen invocation/native input identity, schema6 native_invocations/native_results, atomic terminal receipt and bounded historical drafts, durable watch projection.",
+            "findings": [],
+            "confirmed_contract": [
+              "Codex answer content requires actual acknowledged thread/turn and completed owned final_answer item; commentary/tool/foreign/null-phase/async cannot mint an answer. Duplicate or contradictory final candidates poison acquisition.",
+              "Claude extraction requires provider-owned RunState ordinary Session/origin/final-idle qualification; auth/error streams are not model answers and simultaneous nonempty text/structured representations are not silently selected.",
+              "Exact local generated schema/version is distinguished from authenticated protocol/model qualification and moving official documentation.",
+              "Acquisition content validity and authoritative native work/disposition remain independent; Failure plus valid APPROVE contributes no opinion authority, and Success with Missing/Unsupported acquisition is still known native work.",
+              "Invocation registration shares actual Session registration transaction before spawn, and actual native_input intent/frame hash is linked before write; turn acknowledgment precedes collector authority. Standalone input does not invent Workflow Context.",
+              "Private completion/draft proofs bind actual immutable invocation/input/Session/Unit/native identity; generic JSON, Task hints and echoed model identifiers cannot mint write/send authority.",
+              "Typed terminal receipt, Unit known work/native grant closure, exact Session terminal, quota release and cleanup intent share one Immediate transaction before authoritative watch terminal/result publication.",
+              "Cancellation/epoch/replacement loser writes only bounded immutable HistoricalDraft against original live producer proof; it cannot change newer Task/Workflow/work/artifact/lease or restore finalization.",
+              "Schema6 allocation is explicit and old-table connection writer guards must move together; old5 writers/open reject and migration rollback remains required.",
+              "Result body/source/decode/event/answer bounds and safe partial-prefix semantics are explicit; ordinary logs/status default to receipt reference/diagnostics rather than acquired content."
+            ],
+            "actual_consumer_alignment": [
+              {
+                "path": "crates/rrx/src/execution/native.rs",
+                "lines": [
+                  890,
+                  947,
+                  980,
+                  1149
+                ],
+                "detail": "Baseline Core separately writes work terminal/Session closure and Codex returns opaque turn object. Supplement identifies these real connection points and explicitly replaces them; no existing durable answer capability is assumed."
+              },
+              {
+                "path": "crates/rrx/src/state/execution/sessions.rs",
+                "lines": [
+                  5,
+                  13,
+                  44,
+                  60,
+                  89
+                ],
+                "detail": "Current actual Session registration/ack/closure provide exact Unit/session CAS, with old-epoch retirement kept separate. Proposed invocation metadata and completion TX need coordinated extension."
+              }
+            ],
+            "acceptance_gaps": [
+              "No native_result/state native_results collector/proof/SQL/watch implementation yet; approved document is not source availability.",
+              "Strict Review envelope parser, member authority, readonly completion, countability, qualified admission schedule and collective certificate remain independently required components.",
+              "Unknown-phase Codex model output is explicitly unsupported by initial exact acquisition profile; actual logged-in model/native conformance remains unverified.",
+              "Required actual wire/receipt/current-authority/atomic persistence/old-writer/mutation controls and both-OS source CI must be completed at fixed clean implementation source.",
+              "No authenticated settings/hooks/subscription, four-Task native operation or Phase2/MVP completion approval."
+            ],
+            "limitations": [
+              "Read-only static source/design review; no implementation edits, build/tests, native account/CLI, credential access, network or OS probes.",
+              "Exact schema/hash claims were reviewed as design evidence scope, not independently regenerated by this reviewer.",
+              "No peer reviewer findings/reports/logs were read."
+            ]
+          }
+        },
+        {
+          "path": "/private/tmp/rrx-native-result-design-review-a.json",
+          "sha256": "6d0ba5f7e2ee4882b37eb9abc9f6a929aae86fad0e765659715657f6c59133a8",
+          "report": {
+            "review_id": "native-result-design-a",
+            "source_commit": "0ed72ab90c101bc7ad2beb0dca382c9adc465fa7",
+            "source_baseline": "37c5cc434d8f9c46d4a0f5f86a0285421a773899",
+            "verdict": "APPROVE",
+            "counts": {
+              "Critical": 0,
+              "High": 0,
+              "Medium": 0,
+              "Low": 0
+            },
+            "findings": [],
+            "scope": "Independent static STRICT component DESIGN review of the 278-line native-result-receipts-design.md supplement and relevant immutable baseline producer/consumer code. Approval covers the proposed acquisition/receipt connection, not source implementation, native qualification, ReviewEngine counting or Phase2/MVP acceptance.",
+            "independence": {
+              "peer_findings_consulted": false,
+              "parent_test_results_inherited": false,
+              "self_authored_committed_index_reviewed_for_approval": false
+            },
+            "verified_mapping": [
+              {
+                "document": "doc/design/native-result-receipts-design.md:65-102",
+                "source": [
+                  "crates/rrx/src/execution/native.rs:1109-1183",
+                  "crates/rrx/src/codex/managed.rs"
+                ],
+                "assessment": "Baseline owns actual thread/start and turn/start acknowledgements and currently returns the turn/completed object. The supplement adds completed agentMessage acquisition bound to both acknowledged identities and registered input; it does not represent the current turn object as an acquired final answer. Idempotent exact redelivery, sticky conflicting candidates, unsupported missing phase, and known work versus acquisition separation are explicit."
+              },
+              {
+                "document": "doc/design/native-result-receipts-design.md:104-124",
+                "source": [
+                  "crates/rrx/src/execution/claude_wire.rs::RunState::observe",
+                  "crates/rrx/src/execution/claude_wire.rs::RunState::complete",
+                  "crates/rrx/src/execution/native.rs::Core::claude"
+                ],
+                "assessment": "The supplement preserves existing exact Session/init/origin and background/final-idle checks and requires provider-specific distinction between model content and auth/error diagnostics. Existing unsuccessful observation returns before successful result storage, so the proposed failure-content connection is a real required producer change. Mixed or changed representations never gain an implicit preferred approval."
+              },
+              {
+                "document": "doc/design/native-result-receipts-design.md:126-194",
+                "source": [
+                  "crates/rrx/src/execution/native.rs::Wire::line",
+                  "crates/rrx/src/execution/native.rs::Core::admit_native_frame",
+                  "crates/rrx/src/state/execution/sessions.rs::Store::register_execution_session",
+                  "crates/rrx/src/state/mod.rs::Store::initialize",
+                  "crates/rrx/src/state/execution.rs::install_writer_guards"
+                ],
+                "assessment": "Finite wire, decoded content, encoded receipt and invocation metadata bounds are distinct. Registration-before-spawn and native_input-before-wire provide concrete existing transaction insertion points. NotDispatched is explicitly non-answer authority. Schema6 coordinates fresh/ordered installation and replacement of all existing write guards, including pre-open schema5 writers; no existing ephemeral result is adopted."
+              },
+              {
+                "document": "doc/design/native-result-receipts-design.md:196-248",
+                "source": [
+                  "crates/rrx/src/execution/native.rs::Core::run",
+                  "crates/rrx/src/state/execution.rs::Store::finish_execution_with_failure",
+                  "crates/rrx/src/state/execution/sessions.rs::Store::close_execution_session",
+                  "crates/rrx/src/adapter/native.rs::converted",
+                  "crates/rrx/src/adapter/native.rs::NativeAdapter::transport_succeeded"
+                ],
+                "assessment": "Existing native work and Session terminal updates are separate. Proposed completion factors them into one Immediate transaction with an immutable receipt before watch publication and keeps hygiene afterward. Cancellation/epoch losers retain only historical draft under the original private invocation, without changing Unit outcome, reopening permissions or touching a newer attempt. Compatibility result is explicitly a saved receipt projection rather than an independent mutable truth."
+              },
+              {
+                "document": "doc/design/native-result-receipts-design.md:250-278",
+                "source": [
+                  "doc/requirements/review-engine-integration-requirements.md:R2-R7",
+                  "doc/design/review-engine-integration-design.md:246-297",
+                  "doc/requirements/agent-execution-requirements.md:R3,R7,R8"
+                ],
+                "assessment": "Required controls reach actual acquisition, wire, receipt and watch consumers. Failure plus valid APPROVE remains a non-countable failure; acquisition receipt does not certify readonly completion, member identity, certificate, artifact publication or a Workflow gate. Synthetic controls and later official-native qualification are kept separate."
+              }
+            ],
+            "causal_controls_not_executed": [
+              "Actual acknowledged Codex thread/turn: commentary then final agentMessage then terminal; foreign/missing identity, changed same-ID and extra final candidates must invalidate acquisition.",
+              "Actual Claude successful/failure result origin and final-idle path: supported model text retained, auth/error-only content excluded, injected/background/mixed representations cannot qualify.",
+              "Exact decoded/encoded byte and depth boundaries; overflow stops bounded collection and retains only truthful prefix/lower-bound evidence.",
+              "Cancel, generation and epoch races before terminal transaction: historical draft only, current/newer Unit/Session/Context and sibling leases unchanged.",
+              "Receipt rollback and watch ordering: no terminal result before committed receipt and no orphan receipt or half-closed Unit/Session.",
+              "Schema5 pre-open writer cached-read-to-write and INSERT/UPDATE/DELETE matrix, new-open rejection, ordered migration and rollback.",
+              "Countable review and snapshot/member authority remain later mandatory controls, not proved by acquiring valid APPROVE text."
+            ],
+            "limitations": [
+              "Read immutable git objects only; no tests, builds, real providers, authentication, network, Docker, process signals or host/configuration inspection.",
+              "The local generated-schema byte/version observations and external documentation claims in section2 were not independently rerun or fetched in this static review; they are explicitly not authenticated native conformance claims.",
+              "Collectors, receipt transactions and schema6 are proposed rather than implemented at this commit. Source-level closure, runtime races, binary compatibility, limits and actual two-OS native behavior require their own gates.",
+              "No universal same-user isolation, process death, memory-channel independence, native account readiness, four-Task scheduling or final Phase2/MVP approval is granted."
+            ],
+            "confidence": 0.91,
+            "live_handles": [],
+            "commands_closed": true,
+            "writes": [
+              "/private/tmp/rrx-native-result-design-review-a.json"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "published_frame_recovery_supplement",
+      "final_source": "730eb37c86a1365426a77b0e77c5de7484e3b9da",
+      "integrated_commit": "5ffaa79",
+      "reports": [
+        {
+          "path": "/private/tmp/rrx-retained-source-recovery-design-review-root.json",
+          "sha256": "f80401ecab34c49f03702756a841f785697dd24d744a69c185bdd6f96754b4ee",
+          "report": {
+            "reviewer": "Root",
+            "source_commit": "730eb37c86a1365426a77b0e77c5de7484e3b9da",
+            "verdict": "APPROVE_COMPONENT_DESIGN",
+            "risk": "STRICT",
+            "findings": [],
+            "scope": "Independent static supplement design only; no source, native qualification or Runtime/Phase2 completion approval.",
+            "confirmed": [
+              "Separate source-only current-owner private claim does not fabricate unavailable driver/native/PreparedExecutor authority. Published artifact selection is pinned to exact sole Workflow/current immutable Context, not latest artifact.",
+              "Immediate durable full-body/versions/generation/artifact/source currency binds claim, helper reserve/poll/receipt, final acceptance and all installed consumers; new source-only read binding supplements actual RetainedGit epoch/artifact-only guards.",
+              "Typed ordinary Workflow/Context/reservation hooks validate before original mutation and advance exact resulting pins; generic owner/record drift cannot be ratified. Cancellation invalidates without reopening old authority.",
+              "Complete canonical-body SQL read bounds, source metadata bounds, artifact indexed dependencies and ordered Native6 then Recovery7 old-writer fencing are explicit.",
+              "Sources slot is held through genuine complete corpus reconstruction, final accepted frame and map assignment; crash/restart/drop does not reconstruct old live capabilities.",
+              "First delivery intentionally excludes fresh preinput route, Runtime drivers and actual native operation; unsupported histories remain held."
+            ],
+            "actual_consumers_read": [
+              "execution/workflow_source.rs::prepare/frame/slot/InitialWorkflowExecutor",
+              "execution/retained_io.rs::RetainedGit::new/validate/run",
+              "state/mod.rs::put_workflow_transition_inner/observe_workflow_gate",
+              "state/execution.rs::checked_workflow_binding/validate_authority/reserve_execution_inner",
+              "execution/results.rs::verify/verify_inner"
+            ],
+            "implementation_seam": "Results verify must pass the source-only private binding through initial/final graph verification as well as corpus reads. Approved proposed wrapper, existing ordinary historical path unchanged.",
+            "limits": [
+              "Static design review only; no execution, tests, branch edits, network/native credentials or source implementation qualification.",
+              "Private source recovery has no driver claim until later Runtime producer binds it; no scheduling capability follows.",
+              "B independent report was not read or shared before its completion."
+            ]
+          }
+        },
+        {
+          "path": "/private/tmp/rrx-retained-source-recovery-design-review-b.json",
+          "sha256": "699b3ededd4ef954814d1be01976e8d39998e369548f0cbcbf44cc57edfa8a82",
+          "report": {
+            "source_commit": "730eb37c86a1365426a77b0e77c5de7484e3b9da",
+            "source_baseline": "a79a3051d41bc122e1e7e88cb7399c3cdfb83787",
+            "reviewer": "B",
+            "scope": "Independent static published committed-source recovery supplement review. Reviewer-authored Native receipt supplement/schema6 is excluded from independent approval.",
+            "verdict": "APPROVE_DESIGN_COMPONENT",
+            "severity_counts": {
+              "C": 0,
+              "H": 0,
+              "M": 0,
+              "L": 0
+            },
+            "findings": [],
+            "evidence": [
+              {
+                "location": "doc/design/retained-source-recovery-integration-design.md:13-38",
+                "observation": "Selection is the exact Published artifact in sole current Workflow/Context under genuine owner epoch, not latest/Ready/terminal labels. The source-only claim explicitly does not substitute the missing task-driver claim or clear native/Workflow ownership."
+              },
+              {
+                "location": "doc/design/retained-source-recovery-integration-design.md:49-71",
+                "observation": "Full canonical body/index/current-version pins have finite length-before-decoding limits, same-epoch preparing claims cannot be stolen by time, and non-Clone producer/Drop bookkeeping cannot recreate a persisted-row capability."
+              },
+              {
+                "location": "doc/design/retained-source-recovery-integration-design.md:75-107",
+                "observation": "Registered retained Git has source-aware pre-spawn, periodic and receipt fences; genuine Frame proof and final Store CAS precede source-slot assignment. Actual capture/input/grant consumers validate installed cache authority. No shared Store lock spans Git I/O."
+              },
+              {
+                "location": "doc/design/retained-source-recovery-integration-design.md:109-127",
+                "observation": "Existing typed Workflow/observation/Unit-binding writes are the only legitimate pin-advance producers, retaining full P/G, instructions/generation/artifact/source identity. Changed source or terminal lifecycle invalidates instead of ratifies. Stale-cache cancellation remains allowed to fence without regrant."
+              },
+              {
+                "location": "crates/rrx/src/state/execution/sessions.rs at fixed source; quota source at fixed source",
+                "observation": "Current Session registration/ack/close modify Session record/Unit rather than Task projection; no current Task writer from those paths is omitted by the proposed Task/WF/Context advancement hooks."
+              },
+              {
+                "location": "doc/design/retained-source-recovery-integration-design.md:40-47; 129-154",
+                "observation": "Schema7 composes actual Native6 first with ordered migration/all-table old-writer fencing; genuine reconstruction/typed transition/grant controls are required. Pre-artifact route and Runtime scheduling remain explicitly unsupported."
+              }
+            ],
+            "controls_not_executed": [
+              "Actual Published artifact reopen/new owner/new Sources reconstruction with changed/missing executor input; exact committed config/rules/corpus at capture and input.",
+              "Typed transitions and fresh phase reserve advance current pins; generic drift then typed writes cannot ratify stale authority.",
+              "Pre-spawn/helper-wait/final-accept/cancel/epoch/source drift races, Drop/competing preparing claims and crash-before-map-assignment.",
+              "Ordered6→7 rollback and pre-open6 cached writer/new-open6 refusal.",
+              "Compiled causal omissions of exact selection/full pins/helper fence/install CAS/generic drift refusal."
+            ],
+            "limits": [
+              "No tests/builds/native/accounts/network/signals/credentials or source edits; only immutable git objects and this private report.",
+              "No peer conclusions, merged/progress reports or dirty/later source consulted.",
+              "New private APIs and hooks are a plan; native receipt/schema6 correctness is not independently approved by its author here.",
+              "No full recovery, pre-artifact support, Runtime shipping, Phase2/native/OS/MVP acceptance."
+            ],
+            "live_handles": [],
+            "commands_closed": true
+          }
+        }
+      ],
+      "implementation_status": "Private source/collector/Workflow/SQL producers under development; no implementation qualification from design approval."
+    },
+    {
+      "name": "workflow_verification",
+      "final_source": "07023fa0dbed38f9561461f8b495682e53c25f82",
+      "integrated_commit": "0726f630e16f6073085ede356bd9df6f141d94e5",
+      "reports": [
+        {
+          "path": "/private/tmp/rrx-workflow-verification-design-review-root.json",
+          "sha256": "32309847b5a5121796d3859497e88a4d13f067094ce28c2e68c1c6cd68ee98a3",
+          "report": {
+            "reviewer": "Root",
+            "source_commit": "07023fa0dbed38f9561461f8b495682e53c25f82",
+            "verdict": "APPROVE_COMPONENT_DESIGN",
+            "risk": "STRICT",
+            "findings": [],
+            "scope": "Independent static Issue12 requirements/design supplement review against actual Evaluating EvidencePort, Session-based readonly acceptance and initial production gates. No source/OS/tool/Phase2 approval.",
+            "confirmed": [
+              "Public PhaseGates Passed cannot certify managed command verification: immutable activation marker and all actual Store success writers guard before any optional unit exists.",
+              "New private Evaluating claim command-only grant and exact authorized successor allow internal reservation bookkeeping without ignoring foreign version drift; actor/Session/native admission rejects command-only units.",
+              "Frozen separately activated executable catalog, required risk/applicability monotonic coverage and exact original base/Implement SHA prevent source changes, agent suggestions or false preset flags from weakening checks.",
+              "Real owned child/backend completion captures both streams under finite wall/drain/output/evidence budgets; known work, complete evidence and best-effort cleanup remain independent.",
+              "Fresh readonly exact retained artifacts and independently finalized evidence are inspected before private completion; full claim/Context/owners/source/receipts/artifact/dependencies CAS is atomic with accepted Workflow transition.",
+              "Mutation requires actual baseline/setup/assertion classifier and fresh original-SHA restored input; compile/setup/timeouts/unrelated failures never earn causal kill credit.",
+              "Deterministic headed CDP and explicit nonproduction staging target/actions use private launched/backend provenance and registered effects; unsupported external dependencies wait, unknown staging ack is not blind resend.",
+              "Recovery cannot invent lost child wait status, grants or old accepted authority from logs/rows; history refs require current retained-read authority."
+            ],
+            "actual_consumers_read": [
+              "workflow.rs::start/persist Evaluating EvidencePort/Reviewer-specific completion",
+              "execution/attempts.rs::prepare_snapshot/prepare_workflow_snapshot",
+              "state/execution/artifacts.rs::complete_workflow_readonly_tx",
+              "execution/workflow_gates.rs pending named verifier outcomes"
+            ],
+            "limits": [
+              "Static contract review only; new grants/planner/collectors/tables/Store success writers require fixed-source tests and independent source review.",
+              "Generic JSON receipt/native successful text is not retained readonly proof; native receipt/schema6 and Review/Runtime dependencies are not declared qualified.",
+              "Whole Issue12 requires actual deterministic headed/staging backend qualification where applicable; merely retaining Waiting preserves scope but does not complete acceptance.",
+              "No peer A report, model/account/auth/profile, OS backend execution or tests were inspected."
+            ]
+          }
+        },
+        {
+          "path": "/private/tmp/rrx-workflow-verification-design-review-a.json",
+          "sha256": "c7a5fda704c2ee76ed8c2595708e85622ef89684645d6deecf04eaf7b0c26159",
+          "report": {
+            "source_commit": "07023fa0dbed38f9561461f8b495682e53c25f82",
+            "source_baseline": "a79a3051d41bc122e1e7e88cb7399c3cdfb83787",
+            "verdict": "APPROVE_COMPONENT_REQUIREMENTS_AND_DESIGN",
+            "counts": {
+              "critical": 0,
+              "high": 0,
+              "medium": 0,
+              "low": 0
+            },
+            "findings": [],
+            "scope": [
+              "doc/requirements/workflow-verification-integration-requirements.md (complete, 156 lines)",
+              "doc/design/workflow-verification-integration-design.md (complete, 421 lines)",
+              "Relevant fixed-source Workflow/production gate/AttemptManager/Store execution grant consumers"
+            ],
+            "verified_consistency": [
+              {
+                "claim": "The existing EvidencePort is Session-free and does not possess the private native readonly completion or an Evaluating verifier reservation. The proposal explicitly supplies distinct command-only authority rather than relabeling the existing native path.",
+                "evidence": [
+                  "crates/rrx/src/workflow.rs:1088-1109,2691-2714",
+                  "crates/rrx/src/execution/attempts.rs:437-451",
+                  "crates/rrx/src/state/execution.rs:114-170",
+                  "design sections 1,4,8"
+                ]
+              },
+              {
+                "claim": "Current production gates validate complete invocation owners/Context/prerequisites and return Waiting for unavailable verification. The proposed reservation returns a private enumerated successor claim, including on Waiting/error, and guards public Passed before a unit exists; ordinary version drift is not excused.",
+                "evidence": [
+                  "crates/rrx/src/execution/workflow_gates.rs:38-90,259-263",
+                  "design section 4"
+                ]
+              },
+              {
+                "claim": "Actual retained graph, independent readonly namespaces, source routing, admitted tool profiles and separate immutable retained evidence cover ordinary survivor writes without asserting same-user security confinement. Source-writing required tools are explicitly incompatible.",
+                "evidence": [
+                  "requirements V1,V5,V11",
+                  "design sections 2,4,5,6,9"
+                ]
+              },
+              {
+                "claim": "Success requires actual closed command/backend receipts, complete plan coverage, inspected evidence and private readonly proof accepted atomically with current Workflow/Context/unit/source/epoch CAS. Cleanup remains a distinct axis; timeout/output loss cannot be reclassified as certifying success.",
+                "evidence": [
+                  "requirements V6,V10,V12",
+                  "design sections 5,8,9"
+                ]
+              },
+              {
+                "claim": "Impact freezes the implementation target and original initial baseline; source changes invalidate analysis and downstream results. Causal mutation requires build/setup success plus the declared behavioral assertion and a fresh restored control. Headed and staging claims require actual qualified backends, not public flags.",
+                "evidence": [
+                  "requirements V2,V3,V7,V8,V9",
+                  "design sections 3,6,7"
+                ]
+              }
+            ],
+            "proposed_causal_controls_not_executed": [
+              "Reservation-successor omission versus unrelated Workflow/Context/owner drift; forged Passed with no command unit",
+              "Session/native grant attempted on command-only unit",
+              "Evidence changed or symlinked before completion/acceptance; timeout, lost stderr and late zero exit cannot pass",
+              "Stale claim, old connection writer, foreign receipt and replay after acceptance",
+              "Mutation compilation error versus actual expected assertion failure and fresh restored baseline",
+              "Headless/foreign browser endpoint and unknown/non-idempotent staging acknowledgement"
+            ],
+            "limitations": [
+              "Static proposed-contract review only; no production implementation or migration was reviewed or accepted.",
+              "No tests/build/native accounts/process/network/OS/backend/auth probes were performed. No parent test claims or peer conclusions were used.",
+              "Finite proposed limits, browser/display support, staging authorization and Runtime recovery/scheduling feasibility require actual implementation and their stated controls; they are not measured guarantees.",
+              "Author-owned CommittedIndex and SourceRecovery implementation correctness excluded.",
+              "No Phase2/native/MVP acceptance and no completion claim for Issue12 dependencies."
+            ],
+            "live_handles": [],
+            "commands_closed": true,
+            "confidence": 0.92
+          }
+        }
+      ],
+      "implementation_status": "Private source/collector/Workflow/SQL producers under development; no implementation qualification from design approval."
+    }
+  ],
+  "parent_verified_findings": [
+    {
+      "finding_ids": [
+        "RS-B-M1"
+      ],
+      "disposition": "Verified missing real Sources recovery contract in initial design; revised private retained and preinput routes approved in design.",
+      "basis": "Baseline workflow_source map starts empty; prepare refuses existing Workflow; capture/committed_input require map. Proposed ports remain unavailable until implemented."
+    },
+    {
+      "finding_ids": [
+        "RE-M1",
+        "C-R-M1"
+      ],
+      "disposition": "Verified inherited channel scheduling/cohort admission requirement was omitted; approved corrected design.",
+      "basis": "Pinned Issue9 05144737514f30a90aa03a5d837554b34a4a7f49 requirement8.k and actual single-unit quota/native admission; existing single-unit leases do not provide cohort atomicity."
+    },
+    {
+      "finding_ids": [
+        "C-R-M2"
+      ],
+      "disposition": "Verified native-failure APPROVE counting ambiguity; corrected owned-Success + current readonly/input/receipt + logical closure predicate approved in design.",
+      "basis": "Pinned Issue9 native failure table and actual readonly acceptance consumer require successful work independently of acquired text."
+    }
+  ],
+  "migration_coordination": {
+    "current_implemented": 6,
+    "native_receipts_assigned": 6,
+    "published_source_recovery_assigned": 7,
+    "verifier_first_delivery_assigned": 8,
+    "review_round_candidate": 9,
+    "further_components": "Native6 is standalone ledger only; owned producers remain pending. Shared ordered migrations are edited only after previous fixed source milestone."
+  }
+}

@@ -1,0 +1,1203 @@
+{
+  "format": "rrx.phase0.surviving-process-invariant-inventory.v1",
+  "created_at": "2026-10-05T09:15:43.278472+00:00",
+  "scope": "Static Phase0 only; no implementation, runtime tests, native inference, host service/VM changes, auth/settings/environment-value scans.",
+  "head": "6146b1639bf03f244d1c5b716304dc1d20146194",
+  "repository_clean_before_and_after": true,
+  "authority": {
+    "replacement": "Latest user task replaces the prior custody/systemd/VM investigation for this Phase0.",
+    "2": "Review and verification consume commit SHA, not current worktree.",
+    "3": "Each retry uses a new never-reused attempt worktree. Failed cleanup recorded and collected later without blocking work merely for hygiene.",
+    "4": "Task port range/temp directory/Docker project labels passed in env; shared Gradle/Bazel/sccache and Git automatic gc/maintenance/fsmonitor disabled or Runtime-owned.",
+    "outcomes": "Best-effort cleanup is independent of work success/failure/unknown. Subscription quota exhaustion MUST wait; bounded Git worker-slot/resource capacity pressure has no blanket MUST WAIT mandate and remains a Phase1 policy choice.",
+    "stop_events": {
+      "single_task_cancel": "Other Task execution may continue; resource stop/release must stay Task-scoped.",
+      "runtime_sigkill": "This new task requires preservation of other Tasks existing commit/review results, not continued execution of those Tasks after Runtime SIGKILL. Preserve committed-result identity/availability separately from cleanup/recovery."
+    }
+  },
+  "superseded_prior_artifacts": [
+    "/private/tmp/rururunx-custody-phase0-linux.json",
+    "/private/tmp/rururunx-custody-phase0-linux.md",
+    "/private/tmp/rururunx-issue6-linux-container-feasibility.json",
+    "/private/tmp/rururunx-issue6-vm-admin-reassessment.json"
+  ],
+  "method": {
+    "observed": "Read current committed source and design/requirements contracts. Source implications and conditional counterexamples, not executed exploits or runtime reproductions. Negative searches scoped to listed production modules/config/domain; unmerged branches not implementation evidence.",
+    "not_claimed": [
+      "No code approval, implementation acceptance, native3/4Task readiness, complete recovery, performance improvement or root-cause conclusion.",
+      "No systemd/coalition/container/VM/confinement requirement imported from prior tasks.",
+      "Historical inspection/native failures remain unknown; no tests rerun or old failures reinterpreted."
+    ]
+  },
+  "decisions": {
+    "adopt_conditional": [
+      "Commit-derived review and verification input, with separately frozen noncommit dependencies.",
+      "Never-reused retry/attempt path plus durable identity and retained cleanup disposition.",
+      "Explicit cooperative Task resources plus tool-specific shared service policy."
+    ],
+    "reject_as_sufficient": [
+      "Current logical lock as physical readonly worktree.",
+      "Task CWD/environment or Compose names as enforcement for arbitrary child/daemon activity.",
+      "Commit SHA alone as availability protection for pruned common objects or pinning uncommitted/rule/service inputs.",
+      "Late CAS rejection as rollback of already-started side effects.",
+      "Cleanup unknown or pressure as automatic rewrite of known work outcome."
+    ],
+    "not_covered": [
+      "Shared Git refs/object DB/config and same-UID absolute/shared-path writes",
+      "External irreversible effects/unknown creator response",
+      "Credential/hook authority lifetime",
+      "Raw DB writes, effect/CAS gap and delayed callback authority",
+      "Whole Runtime death / untracked daemon survivor recovery",
+      "Output endpoint retention and mutable result artifacts"
+    ],
+    "technical_corrections": [
+      "A commit SHA is a source identifier, not an immutable live filesystem, object-retention lease or snapshot of dirty files/rules/external services.",
+      "New worktree paths isolate relative old-CWD writes but linked worktrees still share common Git metadata; absolute/shared-path writes remain possible.",
+      "Environment port/Docker/TMP names require cooperation and lifecycle accounting; passing names alone does not reserve ports or intercept raw daemon operations.",
+      "CAS rejects stale state publication, not side effects already authorized or started.",
+      "Runtime SIGKILL and individual Task cancel have different acceptance targets; no peer Task execution continuity is inferred for Runtime SIGKILL.",
+      "Subscription quota MUST WAIT must not be generalized to every bounded Git worker-slot/resource cap; cancellation-aware waiting or before-effects capacity refusal remains a separate Phase1 choice."
+    ]
+  },
+  "invariants": [
+    {
+      "id": "I01",
+      "area": "Review input",
+      "current_assumption": "A versioned ReviewBundle and clean locked worktree describe the target being reviewed.",
+      "actual_consumers": [
+        "Workflow::dispatch builds PreparedInput and passes the bound Task CWD to AgentAdapter::start",
+        "WorktreeManager::{lock_review,verify_review,unlock_review}"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 138,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L138"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1139,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1139"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1165,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1165"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 201,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L201"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 246,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L246"
+        }
+      ],
+      "existing_controls": "Exact Scope/revision/source_versions and explicit approved evidence are checked; review locking excludes runtime executor admission; verify_review rechecks clean status and HEAD.",
+      "surviving_process_failure": "A still-running writer can change live CWD files between observations or after bundle construction. A revision string is not an instruction that all reviewer reads come from that commit.",
+      "proposal_mapping": {
+        "2": "Covers the reviewed source identity ONLY if both review payload and any reread are materialized from the full pinned commit, not live checkout or a moving branch. Current generic contract does not implement that materialization.",
+        "3": "Reduces writes to the old attempt CWD only.",
+        "4": "Does not freeze source."
+      },
+      "phase0_disposition": "Adopt (2) as the proposed review-input invariant; record the current source-materialization gap. Do not credit existing logical review lock as filesystem immutability."
+    },
+    {
+      "id": "I02",
+      "area": "Verification input and evidence",
+      "current_assumption": "SourceSnapshot and returned Evidence revision/hash equality mean the tested target matches the accepted target.",
+      "actual_consumers": [
+        "Workflow::evaluate / apply_outcome / validate_evidence",
+        "WorkflowSources::capture and external WorkflowGates::complete ports"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1772,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1772"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1785,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1785"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1828,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1828"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1881,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1881"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 2146,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L2146"
+        }
+      ],
+      "existing_controls": "Recapture before invocation and after outcome, exact phase/attempt/session/context/dependency bindings, factual gate observation journaled before postgate drift checks.",
+      "surviving_process_failure": "A test tool using a live checkout can consume mutations during execution even if sampled sources later match. A port can attest metadata without actually loading that commit; static code cannot prove external port behavior.",
+      "proposal_mapping": {
+        "2": "Covers only a verification implementation that consumes the pinned commit and pins dependencies/tool inputs relevant to evidence. A commit SHA alone does not snapshot external services, environment, rules or test outputs.",
+        "3": "Helps the workspace mutation subset.",
+        "4": "Helps resource interference subset."
+      },
+      "phase0_disposition": "Adopt (2), preserve source/attempt-bound evidence and actual consumer verification. External effect and non-source dependency claims remain conditional."
+    },
+    {
+      "id": "I03",
+      "area": "Attempt worktree identity",
+      "current_assumption": "One Task owns one worktree/branch; retries and resumed sessions reuse that binding.",
+      "actual_consumers": [
+        "WorktreeManager::create",
+        "Store::put_task_tx",
+        "Workflow::retry / dispatch",
+        "Grok checkpoint/resume"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 98,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L98"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 108,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L108"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 1183,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L1183"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 1204,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L1204"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1151,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1151"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 2010,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L2010"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/mod.rs",
+          "line": 560,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs#L560"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/mod.rs",
+          "line": 673,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs#L673"
+        }
+      ],
+      "existing_controls": "Creation rejects existing binding/path/branch; assigned path/branch immutable; project-local path/branch uniqueness. Naming is issue-N or task-UUID, not attempt ID.",
+      "surviving_process_failure": "An old worker with its original CWD/path can contaminate a retry because the retry uses the same Task path. Issue-number naming can also physically collide after cleanup, though persistent Task uniqueness rejects known duplicate bindings.",
+      "proposal_mapping": {
+        "3": "Directly covers default-CWD/path contamination if each retry has a fresh never-reused physical path AND binding/artifacts record the attempt; not implemented at this head.",
+        "2": "Does not stop late writes.",
+        "4": "Does not change current Task path."
+      },
+      "phase0_disposition": "Adopt (3) as new design work, not current functionality. Reconcile immutable Task binding with per-attempt identity without erasing history. Explicit checkpoint/native-session resume semantics need separate mapping from retry."
+    },
+    {
+      "id": "I04",
+      "area": "Cross-workspace absolute writes",
+      "current_assumption": "CWD, environment selection and scoped protocol filesystem callbacks route supported operations to the owning Task.",
+      "actual_consumers": [
+        "Generic CLI child launch",
+        "Grok native launch and ScopedFiles",
+        "Context ScopedReader"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 630,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L630"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/mod.rs",
+          "line": 1174,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs#L1174"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/files.rs",
+          "line": 87,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/files.rs#L87"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/files.rs",
+          "line": 140,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/files.rs#L140"
+        },
+        {
+          "path": "crates/rrx/src/context.rs",
+          "line": 1025,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/context.rs#L1025"
+        }
+      ],
+      "existing_controls": "CWD is exact owned worktree; protocol readers use rooted descriptors / NOFOLLOW / protected files; Grok broker denies foreign/inactive callbacks.",
+      "surviving_process_failure": "A residual executable running as the same UID can use absolute paths, an already-open descriptor or inherited authority to write a new attempt or another Project. New CWD/env does not impose an OS filesystem restriction on that residual executable.",
+      "proposal_mapping": {
+        "2": "Does not protect live workspaces.",
+        "3": "Covers accidental relative writes into original CWD, not absolute or shared-path writes.",
+        "4": "Covers cooperating resource names only."
+      },
+      "phase0_disposition": "NOT covered generally by (2)-(4). Record the residual shared-path risk under the new accident model; no new confinement/backend requirement is silently imported from old F1."
+    },
+    {
+      "id": "I05",
+      "area": "Shared Git refs, objects and config",
+      "current_assumption": "Independent Task worktrees belong to the same verified source repository.",
+      "actual_consumers": [
+        "git::owned_status validates task_common == source_common",
+        "Task branch creation/deletion and review status",
+        "Adapter Git ownership preflight"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 413,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L413"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 492,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L492"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 499,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L499"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 167,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L167"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 339,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L339"
+        },
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 1197,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L1197"
+        }
+      ],
+      "existing_controls": "Canonical primary common-dir/root-commit identity, protected base branches, distinct Task branches, no namespace overlap with Git metadata.",
+      "surviving_process_failure": "All Task worktrees deliberately share the common Git repository. An old Git command can update common refs/config, prune objects, register/remove worktrees, or hold shared locks. Per-attempt paths and Task env names do not isolate these stores.",
+      "proposal_mapping": {
+        "2": "Pinned commit fixes selection but needs object retention/availability; a SHA does not prevent pruning/corruption or shared ref/config writes.",
+        "3": "No common-dir isolation.",
+        "4": "Disable/centralize automatic maintenance reduces automatic daemon cross-Task interference, not arbitrary Git operations."
+      },
+      "phase0_disposition": "NOT covered for shared refs/object/config writes. Decide explicit serialization/ownership/retention for shared Git effects in Phase1; preserve hooks/defaults and distinguish commit identity from object availability."
+    },
+    {
+      "id": "I06",
+      "area": "Review lock and mutation authority",
+      "current_assumption": "SQLite locks and executor reservations exclude concurrent runtime-controlled writes to one Task.",
+      "actual_consumers": [
+        "WorktreeManager::ensure_mutation_allowed / lock_review",
+        "Store::validate_worktree_exclusion / put_session_current"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 194,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L194"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 227,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L227"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 792,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L792"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 1472,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L1472"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 1515,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L1515"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 1560,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L1560"
+        }
+      ],
+      "existing_controls": "Immediate transaction excludes active WorktreeLock and Starting/Running/WaitingApproval/WaitingHuman/Lost executor; exact Task binding and lockset version CAS.",
+      "surviving_process_failure": "A stale process not going through these methods ignores the SQLite lock. Two Tasks with distinct Task-scoped locks still share common Git metadata. External mutation can occur after filesystem status and before action.",
+      "proposal_mapping": {
+        "2": "Makes review input independent of live mutation only when commit materialized.",
+        "3": "Reduces old-Task-relative mutation.",
+        "4": "No protection for direct writes to common repository."
+      },
+      "phase0_disposition": "Keep existing API fences as logical consistency controls, not signal/resource containment. NOT covered physical shared-write/TOCTOU subset."
+    },
+    {
+      "id": "I07",
+      "area": "Cleanup deletion while resources remain",
+      "current_assumption": "Clean merged status plus no reserved executor permits worktree and branch removal.",
+      "actual_consumers": [
+        "WorktreeManager::cleanup"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 282,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L282"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 285,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L285"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 332,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L332"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 339,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L339"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 359,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L359"
+        }
+      ],
+      "existing_controls": "No reserved/live Executor; clean including ignored files; merged revision check; native branch -d criteria; cleanup lock and audit intent. Binding remains historical provenance.",
+      "surviving_process_failure": "An untracked residual process, open directory/file descriptor or external service can still use a clean-looking path. Cleanup can remove its active workspace or old paths can later be recreated; an out-of-scope daemon is not represented by executor_reserved.",
+      "proposal_mapping": {
+        "3": "Never reuse failed-cleanup paths and retain attempt provenance to avoid contamination; failure should become cleanup disposition, not permission to erase retained resources.",
+        "2": "Does not protect resources using old checkout.",
+        "4": "Named resources help discover ownership, not prove release."
+      },
+      "phase0_disposition": "Future best-effort cleanup needs separate reclamation record and deferred collection. Do not remove known retained active assets merely because work outcome is terminal; no new proof of complete native death is claimed."
+    },
+    {
+      "id": "I08",
+      "area": "Work result versus cleanup result",
+      "current_assumption": "Successful native transport currently depends on successful cleanup/output/ownership reconciliation.",
+      "actual_consumers": [
+        "Generic supervise / transport_succeeded",
+        "Grok completed and Session terminal publication",
+        "Workflow::poll"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 214,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L214"
+        },
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 1529,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L1529"
+        },
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 1574,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L1574"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/mod.rs",
+          "line": 1363,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs#L1363"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/mod.rs",
+          "line": 1388,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs#L1388"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1298,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1298"
+        }
+      ],
+      "existing_controls": "Known outcome, cleanup failure and dispatch uncertainty are reflected in Session Failed/Lost and failure strings; Grok has separate native_outcome and cleanup receipt facts internally.",
+      "surviving_process_failure": "Even a known successful native outcome can become unsuccessful Workflow transport because cleanup or output observation failed. Session state alone is not a separate work-success versus reclamation disposition record.",
+      "proposal_mapping": {
+        "2": "No result-axis separation.",
+        "3": "Can permit a fresh attempt only after explicit outcome policy; cannot reinterpret original result.",
+        "4": "No result-axis separation."
+      },
+      "phase0_disposition": "Required new policy distinction: work success/failure/unknown and cleanup reclaimed/leak/unknown separately. Best-effort hygiene must not rewrite known work result; unknown dispatch must not be silently replayed. Current coupling is a migration/design question, not erased as a historical bug."
+    },
+    {
+      "id": "I09",
+      "area": "Retry/release after unknown dispatch",
+      "current_assumption": "A failed/interrupted phase may retry only after native/external uncertainty is resolved.",
+      "actual_consumers": [
+        "Workflow::retry / release_terminal_reservation",
+        "Store::put_workflow_transition active-attempt close"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1390,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1390"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 2025,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L2025"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 2040,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L2040"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 526,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L526"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 555,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L555"
+        }
+      ],
+      "existing_controls": "Unbound dispatch marker remains reserved; Lost and reserved executor records block close/retry; irreversible external phases cannot be retried as new attempts; unknown observations retained.",
+      "surviving_process_failure": "A new attempt worktree does not determine whether a prior commit/push/PR/deploy or model tool operation succeeded. Removing reservations to avoid cleanup blocking may duplicate effects.",
+      "proposal_mapping": {
+        "2": "No external outcome recovery.",
+        "3": "Prevents old-CWD contamination, not replay duplication.",
+        "4": "Names aid attribution but not idempotency/outcome proof."
+      },
+      "phase0_disposition": "NOT covered external outcome and replay safety. Future separation must allow cleanup best effort without falsely clearing unknown effect authority or losing factual history."
+    },
+    {
+      "id": "I10",
+      "area": "Late callback and stale Store writer",
+      "current_assumption": "An actor must still own exact Session and scoped snapshot when callback/effect publication occurs.",
+      "actual_consumers": [
+        "Grok Actor::owner / publish / callback",
+        "Store::put_session_with_environment_if_current / write_snapshot",
+        "Workflow transition epoch/attempt checks"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/adapter/grok/mod.rs",
+          "line": 803,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs#L803"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/mod.rs",
+          "line": 975,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs#L975"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/mod.rs",
+          "line": 1025,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs#L1025"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 698,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L698"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 735,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L735"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 792,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L792"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 1639,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L1639"
+        }
+      ],
+      "existing_controls": "Session identity/version, Project/Goal/Task versions, lockset and environment admission checked transactionally; inactive/foreign native callbacks rejected. FS workers are joined; effect_may_have_occurred audit exists.",
+      "surviving_process_failure": "A worker authorized before invalidation may still finish an already-started filesystem effect. CAS can reject its later snapshot update but cannot undo an external/file effect; a raw same-UID SQLite writer need not use Store guards.",
+      "proposal_mapping": {
+        "2": "No callback/effect fence.",
+        "3": "Routes attempt-relative late effects to old path only if all actors carry attempt-scoped bindings.",
+        "4": "Can isolate owned named resources, not undo external effects."
+      },
+      "phase0_disposition": "Keep CAS/private actor fencing as independent controls beyond (2)-(4). NOT covered authority-to-effect gap and raw shared-state writes; require actual Phase1 consumer mapping, not blanket assertion that CAS kills workers."
+    },
+    {
+      "id": "I11",
+      "area": "Persisted context versus live source reread",
+      "current_assumption": "Freshness checks tie source payloads to current HEAD, inventory, file identities, rules and contents.",
+      "actual_consumers": [
+        "RepositoryContext::{index,validate,select,expand}",
+        "ContextSlice::prepared_input",
+        "WorkflowSources::capture / Workflow::inputs"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/context.rs",
+          "line": 159,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/context.rs#L159"
+        },
+        {
+          "path": "crates/rrx/src/context.rs",
+          "line": 244,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/context.rs#L244"
+        },
+        {
+          "path": "crates/rrx/src/context.rs",
+          "line": 272,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/context.rs#L272"
+        },
+        {
+          "path": "crates/rrx/src/context.rs",
+          "line": 798,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/context.rs#L798"
+        },
+        {
+          "path": "crates/rrx/src/context.rs",
+          "line": 893,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/context.rs#L893"
+        },
+        {
+          "path": "crates/rrx/src/context.rs",
+          "line": 1075,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/context.rs#L1075"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 564,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L564"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 1342,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L1342"
+        }
+      ],
+      "existing_controls": "Double scans at indexing, rooted NOFOLLOW reads and source hashes, state recheck before audit; persisted ContextVersion appended consecutively and contains a serialized payload.",
+      "surviving_process_failure": "Persisted payload itself is a frozen value, but validate/index/recapture reread live working-tree and Project-rule files. A surviving writer can change later reads or create ABA between samples; a commit SHA does not include dirty/untracked/ignored files or primary-root rules.",
+      "proposal_mapping": {
+        "2": "Could cover committed repository source with commit-tree materialization; rules and permitted noncommit evidence require independent immutable digest/content snapshots.",
+        "3": "Helps Task checkout subset only.",
+        "4": "Does not freeze rules/config."
+      },
+      "phase0_disposition": "PARTIAL (2)/(3), remaining source reread/sampling race NOT covered. Do not claim persisted context contents are reread from Git blobs by the current implementation."
+    },
+    {
+      "id": "I12",
+      "area": "Port ranges / Docker names / temporary directories",
+      "current_assumption": "Launch environment is explicit or filtered, but no Task resource allocation record exists in the inspected Task/config schema.",
+      "actual_consumers": [
+        "LaunchRequest.environment",
+        "Generic env_clear + envs",
+        "Grok environment::select",
+        "Task/SchedulerConfig schemas"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 148,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L148"
+        },
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 633,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L633"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/mod.rs",
+          "line": 1174,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs#L1174"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/environment.rs",
+          "line": 26,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/environment.rs#L26"
+        },
+        {
+          "path": "crates/rrx/src/domain.rs",
+          "line": 284,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/domain.rs#L284"
+        },
+        {
+          "path": "crates/rrx/src/config.rs",
+          "line": 18,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/config.rs#L18"
+        }
+      ],
+      "existing_controls": "Project names-only environment reference authority, known-foreign reference rejection for Grok, intentional native baseline preserved. Current Grok additional ordinary values limited to locale/terminal/TZ.",
+      "surviving_process_failure": "Environment names are suggestions to cooperating tools: a tool can ignore a port range, TMPDIR, Compose project or labels; Docker daemon resources outlive local process and consume arbitrary daemon namespaces.",
+      "proposal_mapping": {
+        "4": "Covers cooperative tools only after actual allocation, exact injection and release APIs are implemented. Neither global port ownership nor Docker lifecycle follows from envs alone. Current native Grok whitelist also needs an explicit reviewed route for new resource variables.",
+        "2": "No runtime-resource boundary.",
+        "3": "No socket/daemon namespace boundary."
+      },
+      "phase0_disposition": "Adopt (4) as explicit new resource policy; no existing allocator/daemon broker or Docker stop-one/sibling-survival proof at this head. NOT covered raw daemon calls or collisions outside cooperative names."
+    },
+    {
+      "id": "I13",
+      "area": "Shared build and Git background services",
+      "current_assumption": "Native/Git defaults and ambient intentional configuration are preserved.",
+      "actual_consumers": [
+        "git::native_environment / command",
+        "Generic launch explicit environment",
+        "Grok native baseline/profile",
+        "Config schemas"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 548,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L548"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 565,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L565"
+        },
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 630,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L630"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/mod.rs",
+          "line": 157,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs#L157"
+        },
+        {
+          "path": "crates/rrx/src/config.rs",
+          "line": 54,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/config.rs#L54"
+        }
+      ],
+      "existing_controls": "Git routing env keys filtered; no global hooks/auth/config bypass. Inspected production source has no Gradle/Bazel/sccache per-Task policy or automatic Git gc/maintenance/fsmonitor disable/Runtime aggregation.",
+      "surviving_process_failure": "A shared daemon can hold caches/files/ports or execute later work for multiple Tasks; stopping a daemon from Task A can harm B. Background maintenance can mutate common Git storage after initiating process exits.",
+      "proposal_mapping": {
+        "4": "Directly addresses accidental shared-daemon interference ONLY with tool-specific disable/aggregate policy and actual lifecycle ownership; future policy must preserve native hooks/settings auth requirements.",
+        "2": "Does not retain Git objects against maintenance or snapshot daemon state.",
+        "3": "Does not isolate common caches/services."
+      },
+      "phase0_disposition": "Adopt (4) as proposed policy, current implementation gap. No assumption that env_clear automatically disables these services; concrete consumers and availability prerequisites remain Phase1 work."
+    },
+    {
+      "id": "I14",
+      "area": "Credentials, native hooks and intentional global authority",
+      "current_assumption": "Intentional native auth/settings/hooks stay active; environment filtering prevents registered-project value leakage on supported paths.",
+      "actual_consumers": [
+        "Grok environment selection + final Store admission",
+        "git native environment baseline",
+        "Issue4 launch contract"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/adapter/grok/environment.rs",
+          "line": 47,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/environment.rs#L47"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 708,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L708"
+        },
+        {
+          "path": "crates/rrx/src/git.rs",
+          "line": 548,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs#L548"
+        },
+        {
+          "path": "doc/design/issue-4-design.md",
+          "line": 76,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/design/issue-4-design.md#L76"
+        }
+      ],
+      "existing_controls": "Known foreign environment references are rejected; values remain memory-only; native settings/hooks not disabled.",
+      "surviving_process_failure": "A retained child can keep already-delivered credentials or hooks can create external processes/resources. Native global credentials or host-wide hook side effects are not made Task-local by new temp paths or env names.",
+      "proposal_mapping": {
+        "2": "No authority isolation.",
+        "3": "No credential revocation.",
+        "4": "Only explicitly owned/brokered resource subset."
+      },
+      "phase0_disposition": "NOT covered credential/hook/external-authority lifetime. New accident-model hygiene cannot silently disable hooks/defaults or copy/read secrets; record deliberate global authority and unsupported resource paths."
+    },
+    {
+      "id": "I15",
+      "area": "Output retention / native completion",
+      "current_assumption": "Bounded output and terminal Session describe observed transport, not every possible descendant effect.",
+      "actual_consumers": [
+        "Generic output tails / ProcessIo / release",
+        "Grok RPC/output drain and native completion receipt"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 1489,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L1489"
+        },
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 1504,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L1504"
+        },
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 1560,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L1560"
+        },
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 831,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L831"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/mod.rs",
+          "line": 1280,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs#L1280"
+        },
+        {
+          "path": "crates/rrx/src/adapter/grok/mod.rs",
+          "line": 1350,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs#L1350"
+        }
+      ],
+      "existing_controls": "Output tails bounded/truncation explicit; native response IDs validated; output EOF timeout feeds failure/uncertainty; terminal output release has exact Session scope/state guards.",
+      "surviving_process_failure": "A surviving process can retain pipe endpoints or emit late bytes, delaying output EOF. Releasing captured tails does not free daemon/native resources; exit0 and output EOF do not alone prove tool effect completion. A saved artifact path can be overwritten after evidence publication.",
+      "proposal_mapping": {
+        "2": "Pins source, not unrecorded mutable output paths; digest/content-addressed immutable result artifacts would be separate.",
+        "3": "Contains original path output only when attempt paths remain retained and never reused.",
+        "4": "Helps cooperating named output/resource subset."
+      },
+      "phase0_disposition": "PARTIAL attempt-local artifact isolation; late output, endpoint lifetime and independent work outcome remain separate invariants. No best-effort cleanup rewrite of known results."
+    },
+    {
+      "id": "I16",
+      "area": "Selected process group versus whole workload",
+      "current_assumption": "Current process cleanup observes/signals only the created owned process group and reaps its direct child.",
+      "actual_consumers": [
+        "ProcessGroup::{kill_group,reap}",
+        "macOS selected /bin/ps observer",
+        "Selected Git NativeAssets worker"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 379,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L379"
+        },
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 421,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L421"
+        },
+        {
+          "path": "crates/rrx/src/adapter/inspection.rs",
+          "line": 1,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/inspection.rs#L1"
+        },
+        {
+          "path": "crates/rrx/src/adapter/git_owner.rs",
+          "line": 1323,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/git_owner.rs#L1323"
+        },
+        {
+          "path": "doc/design/issue-4-design.md",
+          "line": 70,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/design/issue-4-design.md#L70"
+        }
+      ],
+      "existing_controls": "Actual unreaped child anchors numeric signal authority; selected-group Unknown remains sticky; direct-child reap distinct from group observation.",
+      "surviving_process_failure": "An accidental setsid/double-fork or daemon-owned remote job can leave the original process group. Membership observation does not inventory unrelated daemon descendants/resources; selected-process settlement is not whole workload reclamation.",
+      "proposal_mapping": {
+        "2": "No cleanup coverage.",
+        "3": "Prevents accidental old-relative-workspace contamination, not survival itself.",
+        "4": "Captures tracked owned names/services where actual resource lifecycle APIs exist."
+      },
+      "phase0_disposition": "NOT covered untracked survivor effects. Under the new tracking/best-effort policy this is a reported hygiene limit, not an automatic requirement to restore old F1 confinement before any work result can stand."
+    },
+    {
+      "id": "I17",
+      "area": "Caller cancellation and Runtime lifetime",
+      "current_assumption": "Selected Git jobs remain owned outside their waiting caller future; production pool is process-local.",
+      "actual_consumers": [
+        "GitPool::run / start / CallGuard / FrameGuard",
+        "Context/Grok/Generic selected Git preflight",
+        "Codex limited private custody component"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/adapter/git_owner.rs",
+          "line": 31,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/git_owner.rs#L31"
+        },
+        {
+          "path": "crates/rrx/src/adapter/git_owner.rs",
+          "line": 124,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/git_owner.rs#L124"
+        },
+        {
+          "path": "crates/rrx/src/adapter/git_owner.rs",
+          "line": 220,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/git_owner.rs#L220"
+        },
+        {
+          "path": "crates/rrx/src/adapter/git_owner.rs",
+          "line": 618,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/git_owner.rs#L618"
+        },
+        {
+          "path": "crates/rrx/src/adapter/git_owner.rs",
+          "line": 639,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/git_owner.rs#L639"
+        },
+        {
+          "path": "doc/design/issue-60-reader-design.md",
+          "line": 47,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/design/issue-60-reader-design.md#L47"
+        }
+      ],
+      "existing_controls": "Four work slots per operation reserved before spawn; actual child stored before binding; native worker/readers/runtime retained and joined before resource release; caller Drop sends cancellation. Component scope only.",
+      "surviving_process_failure": "A whole Runtime/process crash loses this in-memory owner and may leave native/daemon resources. Synchronous git.rs and non-Git native paths do not inherit this selected Git component qualification; None/EMPTY Codex has no ordinary producer.",
+      "proposal_mapping": {
+        "2": "No owner lifetime coverage.",
+        "3": "Prevents later checkout reuse if persisted attempts retained.",
+        "4": "Resource registry can aid later recovery but does not itself retain OS jobs across Runtime death."
+      },
+      "phase0_disposition": "Existing selected Git caller-drop control is independent of (2)-(4). No external custodian/systemd/VM design required in this Phase0; whole-process-death tracking/recovery remains explicitly NOT covered by current private pool."
+    },
+    {
+      "id": "I18",
+      "area": "Capacity pressure and waiting versus failure",
+      "current_assumption": "Selected Git waits for available slots only until the caller Git deadline; failure is returned as Timeout.",
+      "actual_consumers": [
+        "GitPool::run / admission_timeout",
+        "Generic launch failure mapping",
+        "Workflow::dispatch start Err -> fail"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/adapter/git_owner.rs",
+          "line": 55,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/git_owner.rs#L55"
+        },
+        {
+          "path": "crates/rrx/src/adapter/git_owner.rs",
+          "line": 89,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/git_owner.rs#L89"
+        },
+        {
+          "path": "crates/rrx/src/adapter/git_owner.rs",
+          "line": 195,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/git_owner.rs#L195"
+        },
+        {
+          "path": "crates/rrx/src/adapter.rs",
+          "line": 648,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs#L648"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1203,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1203"
+        }
+      ],
+      "existing_controls": "Finite64 work slots /16 operations; retained unresolved records continue consuming capacity; expiry before spawn creates no new process.",
+      "surviving_process_failure": "A retained old job can exhaust the process-local pool. The eventual capacity_unavailable Timeout currently flows into launch/phase failure rather than a durable scheduler waiting state.",
+      "proposal_mapping": {
+        "2": "No capacity handling.",
+        "3": "Does not free retained jobs; per-attempt creation can increase disk consumption.",
+        "4": "Requires capacity allocation and scheduler accounting, not just names."
+      },
+      "phase0_disposition": "Subscription quota exhaustion MUST wait under the new user requirement. Bounded Git worker-slot/resource pressure is a separate Phase1 design question: choose cancellation-aware waiting or before-effects capacity refusal with explicit disposition. Current Git capacity Timeout flowing to launch/phase failure is a consumer fact, not evidence of a blanket MUST WAIT violation. Do not extend deadlines or silently clear retained slots."
+    },
+    {
+      "id": "I19",
+      "area": "Project / Goal / Task and SQLite ownership",
+      "current_assumption": "Typed Store APIs preserve immutable scoped ownership and lifecycle/CAS authority.",
+      "actual_consumers": [
+        "Store::put_task_tx / guard_record_tx / write_snapshot",
+        "ProjectManager::reconcile",
+        "TaskDag::hard_order"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 1183,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L1183"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 1268,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L1268"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 1639,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L1639"
+        },
+        {
+          "path": "crates/rrx/src/project.rs",
+          "line": 149,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/project.rs#L149"
+        },
+        {
+          "path": "crates/rrx/src/goal.rs",
+          "line": 12,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/goal.rs#L12"
+        },
+        {
+          "path": "crates/rrx/src/state/mod.rs",
+          "line": 69,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs#L69"
+        }
+      ],
+      "existing_controls": "Canonical Project identity, blocked-project admission guards, exact parent/task bindings and transaction versions. DAG validation explicitly not readiness/native-resource authority.",
+      "surviving_process_failure": "A same-UID process with direct local database access can bypass typed API guards; legitimate stale API writers are fenced but their filesystem/external effects are not. A blocked Project due to live-source mutation affects multiple Goals, not just abandoned attempt.",
+      "proposal_mapping": {
+        "2": "Pins review source only.",
+        "3": "Prevents checkout overlap subset.",
+        "4": "Provides resource labels, not database writer authority."
+      },
+      "phase0_disposition": "Keep scoped CAS and guarded writes separately; NOT covered raw DB/common metadata writes or project-wide corruption. Do not infer a malicious threat model requirement from this residual; explicitly record assumption that owned Runtime paths are the authoritative DB writers."
+    },
+    {
+      "id": "I20",
+      "area": "External irreversible effects and cleanup brokers",
+      "current_assumption": "External gate outcomes must be recorded and reconciled before replay/completion decisions.",
+      "actual_consumers": [
+        "Workflow::evaluate / apply_outcome",
+        "Merge/Cleanup GateContext ports",
+        "release_terminal_reservation"
+      ],
+      "source_refs": [
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1828,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1828"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1843,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1843"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1890,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1890"
+        },
+        {
+          "path": "crates/rrx/src/workflow.rs",
+          "line": 1390,
+          "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs#L1390"
+        }
+      ],
+      "existing_controls": "Actual observed outcome journaled before postgate owner/source checks; unknown external error remains held; irreversible phases do not auto retry. Actual gates for push/PR/deploy/daemon operations are pending separate integration.",
+      "surviving_process_failure": "A surviving job can complete a remote push/deploy/container creation after cancellation. Local SHA, fresh checkout and Task label do not reveal whether creation succeeded when response is lost; a daemon shared service can act without a local child.",
+      "proposal_mapping": {
+        "2": "No external outcome or idempotency coverage.",
+        "3": "No remote-effect coverage.",
+        "4": "Can track brokered resources only with actual creator operation identity, durable intent/result and release acknowledgements."
+      },
+      "phase0_disposition": "NOT covered generic external effects. Work success/failure/unknown must stay factual and cleanup leak/unknown separate; default managed-route resource refusal cannot be assumed to intercept every raw daemon call."
+    }
+  ],
+  "source_manifest": [
+    {
+      "path": "crates/rrx/src/adapter.rs",
+      "git_blob": "5483f37fc457197086ccaf00f467d95a8959186a",
+      "sha256": "b922841d9dead5edde26441d569bc525d5a80f449d3e491a40a52f98315cedba",
+      "lines": 2181,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter.rs"
+    },
+    {
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "git_blob": "c11922dc249c01dc08a8b13c8fed9b59f41b8d2f",
+      "sha256": "6bdb5a041ba1ada547fce222ed0619c4edb6eb3a36b07c66906784901ad5c9ca",
+      "lines": 1510,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/git_owner.rs"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/environment.rs",
+      "git_blob": "1382f391407cb739a805f62b1f816845d0ae1c1d",
+      "sha256": "5b34b689c6d0f4a6b1a291d6355da233d8bcb95d683f0cf68bbc2fbfb5209995",
+      "lines": 81,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/environment.rs"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/files.rs",
+      "git_blob": "252b5b46abdbbb5f19308e1d6e76cc4459ff7b20",
+      "sha256": "71d7f96ffc1afa00402351cf9f9eeb9bd1de7a4f717ffc5ec06aea00b4695ee6",
+      "lines": 706,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/files.rs"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/mod.rs",
+      "git_blob": "840f049b1b5c1d57d0ed4f359a26fa3e2c92795e",
+      "sha256": "637b80baa61578b82470338001fc36c2a82849b1df5ebc42355721e9cadcb944",
+      "lines": 1929,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/grok/mod.rs"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection.rs",
+      "git_blob": "376b6556758129eaa7c585a452ebe1dd387c40e3",
+      "sha256": "5e655d8cff410b5533d17b0133285bfb67bf0569bb8042ee0cb30b91e9c33cd9",
+      "lines": 1257,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/adapter/inspection.rs"
+    },
+    {
+      "path": "crates/rrx/src/config.rs",
+      "git_blob": "fd167b8723654f3b096e27c5c99f903ec59bcd1d",
+      "sha256": "5c3d332128115a74dd55f20fb3bb1a6cb79eb28ca98967b188cd598150323e54",
+      "lines": 314,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/config.rs"
+    },
+    {
+      "path": "crates/rrx/src/context.rs",
+      "git_blob": "9dcc3e3f68fae2a96ca088e93ebb544e1c0bcfd9",
+      "sha256": "ebe963bc5425a741592c0370f1a949f61ebcb8bc39dc0583c695c80e16cb3450",
+      "lines": 1677,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/context.rs"
+    },
+    {
+      "path": "crates/rrx/src/domain.rs",
+      "git_blob": "f3f70b8667c1894afdf7c7425472f29eb5aeb3e5",
+      "sha256": "f8d1defcfe599d938d741491ce7865033a688eed65a669aa70de9dd04f79bc80",
+      "lines": 448,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/domain.rs"
+    },
+    {
+      "path": "crates/rrx/src/git.rs",
+      "git_blob": "ec5ca45bd0c4ed5b2edaada8bfe51f07a6ff3e2b",
+      "sha256": "d20a1d38ce57983e41d5b14ac4115478984a12c36a359417970406fe047e10f3",
+      "lines": 598,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/git.rs"
+    },
+    {
+      "path": "crates/rrx/src/goal.rs",
+      "git_blob": "3cc75b6b87d226cff5ec7254fab61ea1ece5268f",
+      "sha256": "4abed52f38e422a4908afa5c1793333098c4e318dea3e9547a6ca20607206908",
+      "lines": 64,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/goal.rs"
+    },
+    {
+      "path": "crates/rrx/src/project.rs",
+      "git_blob": "07a829bad7eb0394e616323e7e5887d56af8b873",
+      "sha256": "2118a0cb8b6ecf27f8ae7a1b571a52a24ac356ba3764c3318a36946e1bb5ead5",
+      "lines": 690,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/project.rs"
+    },
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "git_blob": "7af6f7603629f22a0c690a9b49bc498ee34467df",
+      "sha256": "b18514c5bd2d11acdd99e47307bf36deea7ccdcce615916200a32390bcbf3bbd",
+      "lines": 1678,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/state/mod.rs"
+    },
+    {
+      "path": "crates/rrx/src/workflow.rs",
+      "git_blob": "99139650e4a4f36b4213fe5020445a5e5589e620",
+      "sha256": "8d13a29894b3af812ae2136731fd814a6b6327515af26cc44de0f353f22be394",
+      "lines": 2746,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/crates/rrx/src/workflow.rs"
+    },
+    {
+      "path": "doc/design/issue-4-design.md",
+      "git_blob": "549f7136a9672eeaa8b10ae43106adda673dedf7",
+      "sha256": "606d213fd71bec6217f0e277710e65b8652ca5b9be8d88f4aa3a036af51974a4",
+      "lines": 104,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/design/issue-4-design.md"
+    },
+    {
+      "path": "doc/design/issue-46-design.md",
+      "git_blob": "17a0c06c1f0dbdb3fbd408eda45a48bec6746a32",
+      "sha256": "42eb4b6bd214f8e3ead1b94d1bd24cf776d5ebe43aa393274bec78ebb651f8c1",
+      "lines": 262,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/design/issue-46-design.md"
+    },
+    {
+      "path": "doc/design/issue-60-reader-design.md",
+      "git_blob": "da28fde6b678423025114c3dfffa71040d1b6d68",
+      "sha256": "74657ae034d29af43ef00e1bd5687bccd2a07b11ead275a37e94973cbef59cb1",
+      "lines": 488,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/design/issue-60-reader-design.md"
+    },
+    {
+      "path": "doc/design/master/agent-adapter.md",
+      "git_blob": "53b62d2fb62882fd14c63f539a7eefbe281f2a29",
+      "sha256": "ebcd9ad7d4959edca00205bec36ecfb9c5de5053b8f7988b6c10df2623c86c2b",
+      "lines": 570,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/design/master/agent-adapter.md"
+    },
+    {
+      "path": "doc/design/master/architecture.md",
+      "git_blob": "c9df53a75628c6e9aeee351b532ca4c1dc5035c5",
+      "sha256": "8c1fdf8b6feb7c1d6d42bc9cfd1ea31225332f5bec1f54e49f452b35865d9a84",
+      "lines": 490,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/design/master/architecture.md"
+    },
+    {
+      "path": "doc/design/master/context-efficiency.md",
+      "git_blob": "7d0d26269df71d1269689132b72202471c43988b",
+      "sha256": "0e834a5035bef1ce10a8197b180bcfb0954e89f4c4e73ba67db36d6cd7b62fbb",
+      "lines": 353,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/design/master/context-efficiency.md"
+    },
+    {
+      "path": "doc/design/master/goal-runtime.md",
+      "git_blob": "a73bee1d1077fd264cee453483570e044830b057",
+      "sha256": "286e5dfc69717d0c297f503974c060821b17c4549a9ab88c1b14b7a79061944c",
+      "lines": 321,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/design/master/goal-runtime.md"
+    },
+    {
+      "path": "doc/design/master/multi-project-runtime.md",
+      "git_blob": "71d860eab6d442606cafe7bdabf7ebe97f54c7b8",
+      "sha256": "5c5234bcfda77ebf30600cec7821b8d7f1cb63f126754cec522fdafee0d60edc",
+      "lines": 218,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/design/master/multi-project-runtime.md"
+    },
+    {
+      "path": "doc/requirements/issue-4-requirements.md",
+      "git_blob": "a1d22d7e67712c4c88dfe3003f9818fad0d905ac",
+      "sha256": "79ef0aa14fa9c2e5a29adeaabc957a5826e28d423d91308a3b0f8a6d60a8a5e3",
+      "lines": 43,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/requirements/issue-4-requirements.md"
+    },
+    {
+      "path": "doc/requirements/issue-46-requirements.md",
+      "git_blob": "978f754cb83d5108d1177bd89489f9c46c2e59b8",
+      "sha256": "89b5fa6e38050a60e6a52e32be70af9622541a0685c5eda0bd703704e563186b",
+      "lines": 116,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/requirements/issue-46-requirements.md"
+    },
+    {
+      "path": "doc/requirements/issue-60-reader-requirements.md",
+      "git_blob": "0d945391103af108432e08025b9816e0f89e4b20",
+      "sha256": "1a42f15d923e8d8f12fed2e0c1ba813f7bd1d63c023324c8a9d6b825e37a9a68",
+      "lines": 184,
+      "url": "https://github.com/shuhei-suzuki/rururunx/blob/6146b1639bf03f244d1c5b716304dc1d20146194/doc/requirements/issue-60-reader-requirements.md"
+    }
+  ],
+  "phase_end": "Return artifact to Root for Phase0 disposition/approval; do not begin detailed design or implementation."
+}

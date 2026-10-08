@@ -1,8 +1,15 @@
 //! Transactional SQLite snapshots + append-only logical events, scoped by Project.
 mod environment;
+pub(crate) mod managed_binding;
 #[cfg(test)]
 mod native_dispatch_tests;
+mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
+pub(crate) use runtime::driver::{
+    CandidateKey, CandidatePage, DriverExitPublication, DriverPreparationAdvance,
+    DriverPublication, DriverReadTicket, InitialDriverPlan, InitialGateEdge, PendingDriverClaim,
+    plan_initial_driver, read_driver_ticket,
+};
 use std::{path::Path, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
@@ -12,7 +19,28 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 10;
+pub(crate) use execution::source_recovery::SourceReadBinding;
+mod execution;
+pub(crate) use execution::QuotaAdmission;
+pub(crate) use execution::cleanup::CleanupClaim;
+#[cfg(test)]
+pub(crate) use execution::epoch_fence_fault;
+pub(crate) use execution::governing_digest as execution_governing_digest;
+#[cfg(test)]
+pub(crate) use execution::native_phase::RegistrationAckSource;
+pub(crate) use execution::native_phase::binding_advanced as native_binding_advanced;
+pub(crate) use execution::native_phase::{
+    KnownTransportRegistration, NativeDispatchCommit, NativeHelperHistoryCommit,
+    NativeHelperIntentCommit, NativeHelperSettlementCommit, NativeHelperSettlementPlan,
+    NativeParkedPhase, NativePreparationClosureCommit, NativePreparationCommit,
+    NativePreparationPlan, NativeQuotaAdmitted, NativeQuotaCaps, NativeQuotaClosureConfirmation,
+    NativeQuotaClosurePlan, NativeQuotaConfirmation, NativeQuotaOutcome, NativeQuotaPlan,
+    NativeQuotaWrite, NativeReadyLineage, NativeTerminalPlan, NativeTransportSettlementPlan,
+    NativeTransportStartPlan, NativeVersionClosurePlan, NativeVersionHelperPlan, RegistrationAck,
+    RegistrationProbe, SettledTerminalImages,
+};
+pub(crate) use execution::native_phase::{NativeLiveQuotaPlan, replan_shared_quota};
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
 /// Typed transactional guards let callers distinguish contention from storage failure.
@@ -63,8 +91,49 @@ pub(crate) enum WorkflowAccess {
 
 pub struct Store {
     connection: Connection,
+    binding_permits: std::sync::Arc<managed_binding::PrivatePermitManager>,
+    /// Finite read-only observations of real committed test-build windows.
+    #[cfg(test)]
+    record_window_observations: Vec<(RecordId, u64, i64, u64, i64, u64)>,
 }
 
+fn register_writer_contract(
+    connection: &Connection,
+) -> Result<std::sync::Arc<managed_binding::PrivatePermitManager>> {
+    let permits = std::sync::Arc::new(managed_binding::PrivatePermitManager::default());
+    managed_binding::register_permit_function(connection, permits.clone())?;
+    runtime::driver::register_liveness(connection, std::sync::Weak::new())?;
+    connection.create_scalar_function(
+        "rrx_writer_contract_version",
+        0,
+        rusqlite::functions::FunctionFlags::SQLITE_UTF8
+            | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC
+            | rusqlite::functions::FunctionFlags::SQLITE_INNOCUOUS,
+        |_| Ok(SCHEMA_VERSION),
+    )?;
+    Ok(permits)
+}
+
+/// Corruption fixtures model a current writer, rather than an incompatible
+/// legacy connection. Production callers must use Store's transactional API.
+#[cfg(test)]
+pub(crate) fn current_test_writer(path: &Path) -> Result<Connection> {
+    let connection = Connection::open(path)?;
+    register_writer_contract(&connection)?;
+    Ok(connection)
+}
+
+enum WorkflowCompletion<'a> {
+    Executor(&'a crate::execution::WorkflowPublication),
+    Readonly(&'a crate::execution::ReadonlyCompletion),
+    Verification(&'a crate::execution::verification::VerificationCompletion),
+    DriverGate(&'a std::sync::Arc<DriverPreparationAdvance>),
+    DriverFirstExecutor(&'a std::sync::Arc<DriverPreparationAdvance>),
+    Activation(
+        &'a crate::execution::verification::ManagedVerificationActivation,
+        Option<&'a std::sync::Arc<DriverPreparationAdvance>>,
+    ),
+}
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
         let connection = Connection::open(path)
@@ -76,13 +145,24 @@ impl Store {
         Self::initialize(Connection::open_in_memory()?)
     }
 
-    fn initialize(mut connection: Connection) -> Result<Self> {
+    fn initialize(connection: Connection) -> Result<Self> {
+        Self::initialize_observed(connection, |_| {})
+    }
+
+    // Private deterministic initialization observation seam. Production passes
+    // only a no-op; it cannot create an authority or change the observed version.
+    fn initialize_observed(
+        mut connection: Connection,
+        after_read: impl FnOnce(i64),
+    ) -> Result<Self> {
+        let binding_permits = register_writer_contract(&connection)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
         ensure!(
             (0..=SCHEMA_VERSION).contains(&version),
             "unsupported state schema {version}, supported {SCHEMA_VERSION}"
         );
+        after_read(version);
         let application: i64 =
             connection.pragma_query_value(None, "application_id", |row| row.get(0))?;
         ensure!(
@@ -95,7 +175,14 @@ impl Store {
             // Recheck under the write lock: another runtime may have initialized it.
             let locked_version: i64 =
                 tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
-            if locked_version == 0 {
+            if locked_version == SCHEMA_VERSION {
+                // A concurrent initializer completed while this connection waited
+                // for Immediate. Recheck its application, then do not reinstall
+                // or classify the already-complete current namespace as legacy.
+                let application: i64 =
+                    tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
+                ensure!(application == APPLICATION_ID, "not an rrx state database");
+            } else if locked_version == 0 {
                 let application: i64 =
                     tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
                 let objects: i64 = tx.query_row(
@@ -108,6 +195,9 @@ impl Store {
                     "refusing to initialize a nonempty or foreign database"
                 );
                 tx.execute_batch(include_str!("schema.sql"))?;
+                runtime::install_schema(&tx)?;
+                managed_binding::install_schema(&tx)?;
+                execution::install_schema(&tx)?;
                 tx.pragma_update(None, "application_id", APPLICATION_ID)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else {
@@ -118,16 +208,84 @@ impl Store {
                 let application: i64 =
                     tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
                 ensure!(application == APPLICATION_ID, "not an rrx state database");
+                managed_binding::validate_legacy_namespace(&tx)?;
+                managed_binding::install_schema(&tx)?;
                 // Ordered JSON-format migrations; SQL layout and ownership/audit stay intact.
                 // v2 adds Project blocked_reason; v3 adds authoritative Workflow records.
+                if locked_version < 6 {
+                    execution::native_results::validate_legacy_namespace(&tx)?;
+                }
+                if locked_version < 7 {
+                    execution::source_recovery::validate_legacy_namespace(&tx)?;
+                    execution::source_recovery::install_schema(&tx)?;
+                }
+                if locked_version < 8 {
+                    execution::verification::validate_legacy_namespace(&tx)?;
+                    execution::verification::install_schema(&tx)?;
+                }
+                if locked_version < 9 {
+                    runtime::validate_legacy_namespace(&tx)?;
+                    runtime::install_schema(&tx)?;
+                }
                 for next in (locked_version + 1)..=SCHEMA_VERSION {
+                    if next == 4 {
+                        execution::install_schema(&tx)?;
+                    }
+                    if next == 5 {
+                        // The ordered upgrade is one atomic transaction. Prepare
+                        // the new tables before installing this binary's guards;
+                        // no intermediate schema5+native layout is published.
+                        execution::native_results::install_schema(&tx)?;
+                        execution::install_writer_guards(&tx)?;
+                    }
+                    if next == 6 {
+                        execution::native_results::install_schema(&tx)?;
+                        execution::install_writer_guards(&tx)?;
+                    }
+                    if matches!(next, 7..=10) {
+                        execution::install_writer_guards(&tx)?;
+                    }
                     tx.pragma_update(None, "user_version", next)?;
                 }
             }
+            if locked_version < SCHEMA_VERSION {
+                managed_binding::install_retained_guards(&tx)?;
+            }
+            if locked_version > 0 && locked_version < 8 {
+                execution::verification::hold_existing_managed(&tx)?;
+            }
+            if locked_version > 0 && locked_version < 10 {
+                managed_binding::hold_existing_workflows(&tx, &binding_permits)?;
+            }
+            // Assert the complete installed/current protection contract before
+            // publishing a fresh/migrated schema. No selected-DB reinstallation.
+            managed_binding::validate_current_layout(&tx)?;
+            tx.commit()?;
+        } else {
+            // The initial version read is not a coherent current-schema proof.
+            // Recheck the exact version/application/layout before WAL or return.
+            let tx = connection.transaction()?;
+            let current: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            let application: i64 = tx.pragma_query_value(None, "application_id", |r| r.get(0))?;
+            ensure!(
+                current == SCHEMA_VERSION && application == APPLICATION_ID,
+                "current state version/application changed"
+            );
+            managed_binding::validate_current_layout(&tx)?;
             tx.commit()?;
         }
         connection.pragma_update(None, "journal_mode", "WAL")?;
-        Ok(Self { connection })
+        Ok(Self {
+            connection,
+            binding_permits,
+            #[cfg(test)]
+            record_window_observations: Vec::new(),
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn record_window_observations(&self) -> &[(RecordId, u64, i64, u64, i64, u64)] {
+        &self.record_window_observations
     }
 
     pub fn schema_version(&self) -> Result<i64> {
@@ -258,66 +416,34 @@ impl Store {
         Ok(())
     }
 
+    /// Generic Goal DTOs cannot create accepted definitions or change lifecycle.
+    /// Exact persisted replay is a no-op, without version/audit mutation.
     pub fn put_goal(&mut self, goal: &mut Goal) -> Result<()> {
+        let tx = self.connection.unchecked_transaction()?;
+        let size: usize = tx
+            .query_row(
+                "SELECT length(CAST(body AS BLOB)) FROM goals WHERE id=?1",
+                [goal.id.to_string()],
+                |r| r.get(0),
+            )
+            .optional()?
+            .context("Goal creation requires trusted control ingress")?;
+        ensure!(size <= 4 * 1024 * 1024, "Goal replay body exceeds bound");
+        let old: Goal = read_tx(&tx, "goals", &goal.id.to_string())?.context("unknown Goal")?;
+        let indexed: (String, u64) = tx.query_row(
+            "SELECT project_id,version FROM goals WHERE id=?1",
+            [goal.id.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
         ensure!(
-            !goal.objective.trim().is_empty() && !goal.completion_criteria.is_empty(),
-            "goal needs objective and explicit completion criteria"
+            indexed == (old.project_id.to_string(), old.version) && old.id == goal.id,
+            "Goal replay body/index differs"
         );
-        let tx = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if !goal_terminal(goal.state) {
-            let previous = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())?;
-            let safe_update = if let Some(old) = &previous {
-                let mut metadata = goal.clone();
-                metadata.state = old.state;
-                metadata.blockers = old.blockers.clone();
-                !goal_terminal(old.state)
-                    && (old.state == goal.state
-                        || matches!(
-                            goal.state,
-                            GoalState::Blocked | GoalState::WaitingHuman | GoalState::Paused
-                        ))
-                    && serde_json::to_value(metadata)? == serde_json::to_value(old)?
-            } else {
-                false
-            };
-            ensure_activity_write(&tx, goal.project_id, safe_update)?;
-        }
-        if let Some(previous) = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())? {
-            ensure!(
-                previous.project_id == goal.project_id,
-                "goal project binding is immutable"
-            );
-        }
-        validate_goal_references(&tx, goal)?;
-        let mut next = goal.clone();
-        bump(&mut next.version)?;
-        next.updated_at = now_ms();
-        let body = serde_json::to_string(&next)?;
-        write_snapshot(
-            &tx,
-            "goals",
-            &next.id.to_string(),
-            goal.version,
-            "INSERT INTO goals(id,project_id,version,body) VALUES(?1,?2,?3,?4)",
-            params![
-                next.id.to_string(),
-                next.project_id.to_string(),
-                next.version,
-                body
-            ],
-            &body,
-            next.version,
-        )?;
-        append_event(
-            &tx,
-            &next.scope(),
-            "goal.saved",
-            json!({"version":next.version,"state":next.state}),
-        )?;
+        ensure!(
+            serde_json::to_value(&old)? == serde_json::to_value(&*goal)?,
+            "Goal changes require trusted typed control ingress"
+        );
         tx.commit()?;
-        *goal = next;
         Ok(())
     }
 
@@ -325,6 +451,47 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let accepted: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM goal_authority WHERE goal_id=?1 AND project_id=?2)",
+            params![task.goal_id.to_string(), task.project_id.to_string()],
+            |r| r.get(0),
+        )?;
+        if accepted {
+            let bytes: usize = tx
+                .query_row(
+                    "SELECT length(CAST(body AS BLOB)) FROM tasks WHERE id=?1",
+                    [task.id.to_string()],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .context("managed Task creation requires trusted graph control")?;
+            ensure!(
+                bytes <= 1024 * 1024,
+                "managed Task replay body exceeds bound"
+            );
+            let old: Task = read_tx(&tx, "tasks", &task.id.to_string())?
+                .context("managed Task creation requires trusted graph control")?;
+            let indexed: (String, String, u64) = tx.query_row(
+                "SELECT project_id,goal_id,version FROM tasks WHERE id=?1",
+                [task.id.to_string()],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )?;
+            ensure!(
+                indexed
+                    == (
+                        old.project_id.to_string(),
+                        old.goal_id.to_string(),
+                        old.version
+                    ),
+                "managed Task replay body/index differs"
+            );
+            ensure!(
+                old.id == task.id && serde_json::to_value(&old)? == serde_json::to_value(&*task)?,
+                "managed Task changes require typed owned control/Workflow transaction"
+            );
+            tx.commit()?;
+            return Ok(());
+        }
         if owns_workflow(&tx, &task.scope())? {
             let old: Task = read_tx(&tx, "tasks", &task.id.to_string())?.context("unknown Task")?;
             ensure!(
@@ -368,17 +535,188 @@ impl Store {
         goal_version: u64,
         access: WorkflowAccess,
     ) -> Result<()> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            context,
+            project_version,
+            goal_version,
+            access,
+            None,
+        )
+        .and_then(managed_binding::ActivationCommit::require_published)
+    }
+    pub(crate) fn put_workflow_result_transition(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: &ContextVersion,
+        project_version: u64,
+        goal_version: u64,
+        publication: &crate::execution::WorkflowPublication,
+    ) -> Result<()> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            Some(context),
+            project_version,
+            goal_version,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::Executor(publication)),
+        )
+        .and_then(managed_binding::ActivationCommit::require_published)
+    }
+    pub(crate) fn put_workflow_readonly_transition(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: &ContextVersion,
+        project_version: u64,
+        goal_version: u64,
+        completion: &crate::execution::ReadonlyCompletion,
+    ) -> Result<()> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            Some(context),
+            project_version,
+            goal_version,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::Readonly(completion)),
+        )
+        .and_then(managed_binding::ActivationCommit::require_published)
+    }
+    pub(crate) fn put_workflow_verification_transition(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: &ContextVersion,
+        project_version: u64,
+        goal_version: u64,
+        completion: &crate::execution::verification::VerificationCompletion,
+    ) -> Result<()> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            Some(context),
+            project_version,
+            goal_version,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::Verification(completion)),
+        )
+        .and_then(managed_binding::ActivationCommit::require_published)
+    }
+    pub(crate) fn activate_managed_workflow(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: &ContextVersion,
+        project_version: u64,
+        goal_version: u64,
+        activation: &crate::execution::verification::ManagedVerificationActivation,
+    ) -> Result<()> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            Some(context),
+            project_version,
+            goal_version,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::Activation(activation, None)),
+        )
+        .and_then(managed_binding::ActivationCommit::require_published)
+    }
+    /// Same first-input plan retained by the real worker before this write.
+    #[allow(clippy::too_many_arguments)] // Exact owner CAS and private plan are independent inputs.
+    pub(crate) fn activate_driven_workflow(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: &ContextVersion,
+        project_version: u64,
+        goal_version: u64,
+        activation: &crate::execution::verification::ManagedVerificationActivation,
+        plan: &std::sync::Arc<DriverPreparationAdvance>,
+    ) -> Result<managed_binding::ActivationCommit> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            Some(context),
+            project_version,
+            goal_version,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::Activation(activation, Some(plan))),
+        )
+    }
+    pub(crate) fn apply_driven_initial_gate(
+        &mut self,
+        plan: &std::sync::Arc<DriverPreparationAdvance>,
+    ) -> Result<()> {
+        let (mut task, mut record, context, pv, gv) = plan.gate_write()?;
+        self.put_workflow_transition_inner(
+            &mut task,
+            &mut record,
+            context,
+            pv,
+            gv,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::DriverGate(plan)),
+        )
+        .and_then(managed_binding::ActivationCommit::require_published)
+    }
+    pub(crate) fn reserve_driven_first_executor(
+        &mut self,
+        plan: &std::sync::Arc<DriverPreparationAdvance>,
+    ) -> Result<()> {
+        let (mut task, mut record, context, pv, gv) = plan.executor_write()?;
+        self.put_workflow_transition_inner(
+            &mut task,
+            &mut record,
+            Some(context),
+            pv,
+            gv,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::DriverFirstExecutor(plan)),
+        )
+        .and_then(managed_binding::ActivationCommit::require_published)
+    }
+    // Exact owner CAS and optional completion proof are independent inputs.
+    #[allow(clippy::too_many_arguments)]
+    fn put_workflow_transition_inner(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: Option<&ContextVersion>,
+        project_version: u64,
+        goal_version: u64,
+        access: WorkflowAccess,
+        publication: Option<WorkflowCompletion<'_>>,
+    ) -> Result<managed_binding::ActivationCommit> {
         ensure!(
             workflow.kind == RecordKind::Workflow && workflow.scope == task.scope(),
             "workflow requires exact owning Task scope"
         );
+        let driver_input = match &publication {
+            Some(WorkflowCompletion::Activation(_, Some(plan)))
+            | Some(WorkflowCompletion::DriverGate(plan))
+            | Some(WorkflowCompletion::DriverFirstExecutor(plan)) => Some(*plan),
+            _ => None,
+        };
+        let _applying = driver_input.map(|p| p.begin_input()).transpose()?;
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(plan) = driver_input {
+            plan.validate_input_before_tx(&tx, task, workflow, context)?;
+        }
         let conservative = matches!(
             access,
             WorkflowAccess::TerminalDecision | WorkflowAccess::TerminalRecovery
         );
+        if !conservative {
+            runtime::driver::validate(&tx, task.id)?;
+        }
+        let source_advance = execution::source_recovery::before_write(&tx, task.id, conservative)?;
         if !conservative {
             ensure_project_registered(&tx, task.project_id)?;
         }
@@ -428,6 +766,9 @@ impl Store {
                 let record: Record = decode(body?)?;
                 if record.kind == RecordKind::Session {
                     let session: Session = serde_json::from_value(record.data)?;
+                    if execution::logically_retired_session(&tx, &session)? {
+                        continue;
+                    }
                     if crate::git::executor_reserved(&session)
                         || session.state == SessionState::Lost
                         || (access == WorkflowAccess::Mutating && !session_terminal(session.state))
@@ -517,7 +858,90 @@ impl Store {
                 "terminal operation may only change Task decision"
             );
         }
-        crate::workflow::validate_transition(task, workflow, previous_workflow.as_ref())?;
+        let observed_before = driver_input.and_then(|p| p.input_observed_before());
+        crate::workflow::validate_transition(
+            task,
+            workflow,
+            observed_before.or(previous_workflow.as_ref()),
+        )?;
+        let typed_workflow: crate::workflow::WorkflowSnapshot =
+            serde_json::from_value(workflow.data.clone())?;
+        if execution::verification::requires_verification(&tx, workflow.id)? {
+            let before = previous_workflow
+                .as_ref()
+                .map(|r| {
+                    serde_json::from_value::<crate::workflow::WorkflowSnapshot>(r.data.clone())
+                })
+                .transpose()?;
+            let old_tests = before
+                .as_ref()
+                .and_then(|w| w.completed.get(&crate::workflow::Phase::Tests));
+            let new_tests = typed_workflow.completed.get(&crate::workflow::Phase::Tests);
+            if new_tests.is_some()
+                && serde_json::to_value(old_tests)? != serde_json::to_value(new_tests)?
+            {
+                ensure!(
+                    matches!(publication, Some(WorkflowCompletion::Verification(_))),
+                    "managed Tests success requires actual private verification completion"
+                );
+            }
+            for phase in [
+                crate::workflow::Phase::ExpandedRegression,
+                crate::workflow::Phase::Mutation,
+                crate::workflow::Phase::Browser,
+                crate::workflow::Phase::Staging,
+            ] {
+                let old = before.as_ref().and_then(|w| w.completed.get(&phase));
+                let new = typed_workflow.completed.get(&phase);
+                ensure!(
+                    new.is_none() || serde_json::to_value(old)? == serde_json::to_value(new)?,
+                    "managed verification phase producer not implemented"
+                );
+            }
+            for (index, attempt) in typed_workflow.history.iter().enumerate() {
+                if attempt.phase == crate::workflow::Phase::Tests && attempt.unit.is_some() {
+                    let previous = before.as_ref().and_then(|w| w.history.get(index));
+                    ensure!(
+                        previous.is_some_and(|a| a.unit == attempt.unit),
+                        "managed Tests unit binding requires private verifier reservation"
+                    );
+                }
+            }
+        }
+        if let Some(plan) = driver_input {
+            // Old ticket/lifecycle checks ran before this prescribed Unit write.
+            // The new Workflow's identity is validated against the SAME post Unit.
+            plan.write_input_unit_tx(&tx)?;
+        }
+        for attempt in &typed_workflow.history {
+            if let Some(identity) = &attempt.unit {
+                let unit = execution::unit_tx(&tx, identity.unit)?;
+                ensure!(
+                    identity == &crate::execution::ManagedUnitRef::from(&unit)
+                        && unit.scope == task.scope()
+                        && unit.phase == attempt.phase.key(),
+                    "Workflow preparation unit identity mismatch"
+                );
+            }
+            if let Some(identity) = &attempt.execution {
+                let unit = execution::unit_tx(&tx, identity.unit)?;
+                ensure!(
+                    unit.scope == task.scope()
+                        && identity.scope == unit.scope
+                        && identity.generation == unit.generation
+                        && identity.epoch == unit.owner_epoch
+                        && attempt.session_id == Some(identity.session)
+                        && unit.session_id == Some(identity.session),
+                    "Workflow managed identity mismatch"
+                );
+                if let Some(preparation) = &attempt.unit {
+                    ensure!(
+                        preparation == &crate::execution::ManagedUnitRef::from(&unit),
+                        "Workflow Session differs from preparation unit"
+                    );
+                }
+            }
+        }
         if let Some(previous) = &previous_workflow {
             let before: crate::workflow::WorkflowSnapshot =
                 serde_json::from_value(previous.data.clone())?;
@@ -525,11 +949,23 @@ impl Store {
                 serde_json::from_value(workflow.data.clone())?;
             if before.active.is_some() && after.active != before.active {
                 let attempt = &before.history[before.active.unwrap()];
+                if attempt.unit.is_some()
+                    && after.history[before.active.unwrap()].state
+                        == crate::workflow::AttemptState::Interrupted
+                {
+                    ensure!(
+                        execution::managed_attempt_retired(&tx, &task.scope(), attempt)?,
+                        "managed reservation retirement requires closed exact authority"
+                    );
+                }
                 ensure!(
                     !(access != WorkflowAccess::TerminalRecovery
                         && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
                         && attempt.dispatch_started
-                        && attempt.session_id.is_none()),
+                        && attempt.session_id.is_none()
+                        && !(after.history[before.active.unwrap()].state
+                            == crate::workflow::AttemptState::Interrupted
+                            && execution::managed_attempt_retired(&tx, &task.scope(), attempt)?)),
                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
                 );
                 let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
@@ -551,6 +987,18 @@ impl Store {
                         .active
                         .and_then(|index| before.history[index].session_id)
                         == Some(session.id);
+                    let retired = execution::logically_retired_session(&tx, &session)?;
+                    if retired && !own {
+                        continue;
+                    }
+                    if retired
+                        && own
+                        && after.history[before.active.unwrap()].state
+                            == crate::workflow::AttemptState::Interrupted
+                    {
+                        own_found = true;
+                        continue;
+                    }
                     ensure!(
                         !crate::git::executor_reserved(&session)
                             && session.state != SessionState::Lost
@@ -603,12 +1051,139 @@ impl Store {
             )?;
             crate::workflow::validate_context(task, workflow, &decode(body)?)?;
         }
-        let next_task = put_task_tx(&tx, task)?;
-        let next_workflow = put_record_tx(&tx, workflow)?;
+        if let Some(WorkflowCompletion::Activation(activation, _)) = &publication {
+            ensure!(
+                previous_workflow.is_none()
+                    && workflow.version == 0
+                    && activation.record() == workflow.id
+                    && activation.scope() == &workflow.scope,
+                "managed verification contract requires exact initial activation"
+            );
+        } else if let Some(completion) = &publication
+            && !matches!(
+                completion,
+                WorkflowCompletion::DriverGate(_) | WorkflowCompletion::DriverFirstExecutor(_)
+            )
+        {
+            let previous = previous_workflow
+                .as_ref()
+                .context("completion requires a reserved Workflow")?;
+            let context = context.context("completion requires a new ContextVersion")?;
+            match completion {
+                WorkflowCompletion::Executor(publication) => execution::publish_workflow_result_tx(
+                    &tx,
+                    publication,
+                    task,
+                    workflow,
+                    previous,
+                    context,
+                )?,
+                WorkflowCompletion::Activation(_, _)
+                | WorkflowCompletion::DriverGate(_)
+                | WorkflowCompletion::DriverFirstExecutor(_) => {
+                    unreachable!("activation/Driver gate handled above")
+                }
+                WorkflowCompletion::Verification(completion) => {
+                    execution::verification::accept_tx(
+                        &tx, completion, task, workflow, previous, context,
+                    )?;
+                }
+                WorkflowCompletion::Readonly(completion) => {
+                    execution::complete_workflow_readonly_tx(
+                        &tx, completion, task, workflow, previous, context,
+                    )?
+                }
+            }
+        }
+        #[cfg(test)]
+        let mut window_observation = None;
+        let (next_task, next_workflow) = if let Some(plan) = driver_input {
+            let next_task = put_task_tx_at_with_namespace(
+                &tx,
+                task,
+                plan.input_timestamp(),
+                Some(plan.input_namespace()?),
+            )?;
+            #[cfg(test)]
+            let consumed_before = self.binding_permits.consumed_observations();
+            let next_workflow = plan.write_input_record_tx(&tx, &self.binding_permits, workflow)?;
+            #[cfg(test)]
+            if let Some((id, version, timestamp)) = plan.record_window_probe() {
+                window_observation = Some((
+                    id,
+                    version,
+                    timestamp,
+                    next_workflow.version,
+                    next_workflow.updated_at,
+                    self.binding_permits.consumed_observations() - consumed_before,
+                ));
+            }
+            (next_task, next_workflow)
+        } else {
+            (put_task_tx(&tx, task)?, put_record_tx(&tx, workflow)?)
+        };
+        if let Some(WorkflowCompletion::Activation(activation, _)) = &publication {
+            execution::verification::install_contract(&tx, activation, workflow, &next_task)?;
+        }
+        if let Some(WorkflowCompletion::Activation(_, Some(plan))) = &publication {
+            plan.write_native_activation_tx(&tx, &self.binding_permits)?;
+        }
+        execution::source_recovery::after_write(
+            &tx,
+            &self.binding_permits,
+            source_advance,
+            conservative,
+        )?;
+        if let Some(plan) = driver_input {
+            plan.finish_input_tx(&tx, &self.binding_permits, &next_task, &next_workflow)?;
+        }
+        #[cfg(test)]
+        if let Some(WorkflowCompletion::Activation(_, Some(plan))) = &publication {
+            plan.activation_precommit()?;
+        }
         tx.commit()?;
+        #[cfg(test)]
+        if let Some(observation) = window_observation
+            && self.record_window_observations.len() < 64
+        {
+            self.record_window_observations.push(observation);
+        }
+        let mut outcome = managed_binding::ActivationCommit::Published;
+        if let Some(plan) = driver_input {
+            if matches!(
+                &publication,
+                Some(WorkflowCompletion::Activation(_, Some(_)))
+            ) {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    #[cfg(test)]
+                    plan.activation_postcommit()?;
+                    self.publish_driver_preparation(plan)?;
+                    #[cfg(test)]
+                    plan.activation_observe_published();
+                    Ok(())
+                })) {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        if !self.connection.is_autocommit() {
+                            return Err(error);
+                        }
+                        outcome = managed_binding::ActivationCommit::Deferred;
+                    }
+                    Err(payload) => {
+                        if !self.connection.is_autocommit() {
+                            std::panic::resume_unwind(payload);
+                        }
+                        drop(payload);
+                        outcome = managed_binding::ActivationCommit::Deferred;
+                    }
+                }
+            } else {
+                self.publish_driver_preparation(plan)?;
+            }
+        }
         *task = next_task;
         *workflow = next_workflow;
-        Ok(())
+        Ok(outcome)
     }
 
     /// Conservative factual journal independent of owner activity. This never
@@ -634,6 +1209,11 @@ impl Store {
             latest.kind == RecordKind::Workflow && latest.scope == record.scope,
             "foreign workflow observation"
         );
+        let source_advance = execution::source_recovery::before_write(
+            &tx,
+            record.scope.task_id.context("Task required")?,
+            false,
+        )?;
         let mut workflow: crate::workflow::WorkflowSnapshot =
             serde_json::from_value(latest.data.clone())?;
         ensure!(
@@ -668,6 +1248,7 @@ impl Store {
         attempt.observations.push(observation.clone());
         latest.data = serde_json::to_value(workflow)?;
         let next = put_record_tx(&tx, &latest)?;
+        execution::source_recovery::after_write(&tx, &self.binding_permits, source_advance, false)?;
         append_event(
             &tx,
             &next.scope,
@@ -866,6 +1447,18 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let accepted: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM goal_authority WHERE goal_id=?1 AND project_id=?2)",
+            params![
+                str_id(context.scope.goal_id),
+                context.scope.project_id.to_string()
+            ],
+            |r| r.get(0),
+        )?;
+        ensure!(
+            !accepted,
+            "accepted Goal Context requires genuine owned publication"
+        );
         ensure!(
             !owns_workflow(&tx, &context.scope)?,
             "workflow-owned ContextVersion requires atomic transition"
@@ -1161,6 +1754,17 @@ fn owns_workflow(tx: &Transaction<'_>, scope: &Scope) -> Result<bool> {
     Ok(tx.query_row("SELECT EXISTS(SELECT 1 FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='workflow')", params![scope.project_id.to_string(), scope.goal_id.map(|id| id.to_string()), scope.task_id.map(|id| id.to_string())], |row| row.get(0))?)
 }
 fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
+    put_task_tx_at(tx, task, now_ms())
+}
+fn put_task_tx_at(tx: &Transaction<'_>, task: &Task, at: i64) -> Result<Task> {
+    put_task_tx_at_with_namespace(tx, task, at, None)
+}
+fn put_task_tx_at_with_namespace(
+    tx: &Transaction<'_>,
+    task: &Task,
+    at: i64,
+    namespace: Option<&runtime::driver::NamespaceSnapshot>,
+) -> Result<Task> {
     ensure!(
         !task.title.trim().is_empty() && !task.executor.trim().is_empty(),
         "task title/executor must be nonempty"
@@ -1185,15 +1789,20 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
             previous.project_id == task.project_id && previous.goal_id == task.goal_id,
             "task ownership is immutable"
         );
+        let admitted_rebind: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM task_execution a JOIN execution_units u ON u.id=a.active_unit WHERE a.task_id=?1 AND u.kind='executor' AND u.generation=a.generation AND u.worktree=?2 AND u.branch=?3 AND u.native_effects_open=1)",
+            params![task.id.to_string(),task.worktree.as_ref().map(|p|p.to_string_lossy().into_owned()),task.branch], |r|r.get(0),
+        )?;
         ensure!(
-            previous
-                .worktree
-                .as_ref()
-                .is_none_or(|path| task.worktree.as_ref() == Some(path))
-                && previous
-                    .branch
+            admitted_rebind
+                || (previous
+                    .worktree
                     .as_ref()
-                    .is_none_or(|branch| task.branch.as_ref() == Some(branch)),
+                    .is_none_or(|path| task.worktree.as_ref() == Some(path))
+                    && previous
+                        .branch
+                        .as_ref()
+                        .is_none_or(|branch| task.branch.as_ref() == Some(branch))),
             "assigned task worktree/branch binding is immutable"
         );
         ensure!(
@@ -1218,21 +1827,27 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
             "task path must be normal direct child of Project namespace"
         );
         ensure!(!branch.trim().is_empty(), "task branch must be nonempty");
-        let mut statement = tx.prepare("SELECT body FROM tasks WHERE project_id=?1 AND id<>?2")?;
-        for body in statement.query_map(
-            params![task.project_id.to_string(), task.id.to_string()],
-            |row| row.get::<_, String>(0),
-        )? {
-            let other: Task = decode(body?)?;
-            ensure!(
-                other.worktree.as_ref() != Some(path) && other.branch.as_ref() != Some(branch),
-                "task worktree/branch already owned"
-            );
+        if let Some(namespace) = namespace {
+            namespace.validate_current(tx)?;
+            namespace.check_collision(task)?;
+        } else {
+            let mut statement =
+                tx.prepare("SELECT body FROM tasks WHERE project_id=?1 AND id<>?2")?;
+            for body in statement.query_map(
+                params![task.project_id.to_string(), task.id.to_string()],
+                |row| row.get::<_, String>(0),
+            )? {
+                let other: Task = decode(body?)?;
+                ensure!(
+                    other.worktree.as_ref() != Some(path) && other.branch.as_ref() != Some(branch),
+                    "task worktree/branch already owned"
+                );
+            }
         }
     }
     let mut next = task.clone();
     bump(&mut next.version)?;
-    next.updated_at = now_ms();
+    next.updated_at = at;
     let body = serde_json::to_string(&next)?;
     write_snapshot(
         tx,
@@ -1252,6 +1867,9 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
         next.version,
     )?;
     // Issue is query metadata and may be linked after Task creation.
+    if task_terminal(next.state) {
+        execution::fence_task_tx(tx, &next.scope())?;
+    }
     tx.execute(
         "UPDATE tasks SET issue=?1 WHERE id=?2",
         params![next.issue, next.id.to_string()],
@@ -1268,6 +1886,15 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
 fn guard_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<()> {
     validate_scope(&record.scope)?;
     if record.kind == RecordKind::Session {
+        let managed: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM session_units WHERE session_id=?1)",
+            [record.id.to_string()],
+            |r| r.get(0),
+        )?;
+        ensure!(
+            !managed,
+            "managed Session writes require execution-unit authority"
+        );
         let session: Session =
             serde_json::from_value(record.data.clone()).context("invalid session payload")?;
         ensure!(
@@ -1303,15 +1930,35 @@ fn put_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
 }
 /// Private caller must have checked the original Record guards in this transaction.
 fn write_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
+    write_record_tx_at(tx, record, now_ms())
+}
+fn write_record_tx_at(tx: &Transaction<'_>, record: &Record, at: i64) -> Result<Record> {
+    let (next, body) = prepare_record_write(record, at)?;
+    apply_record_write(tx, record.version, &next, &body)?;
+    Ok(next)
+}
+/// The single prepared postimage of a generic Record write: version bumped
+/// exactly once, `updated_at = at`, body serialized once.
+fn prepare_record_write(record: &Record, at: i64) -> Result<(Record, String)> {
     let mut next = record.clone();
     bump(&mut next.version)?;
-    next.updated_at = now_ms();
+    next.updated_at = at;
     let body = serde_json::to_string(&next)?;
+    Ok((next, body))
+}
+/// Writes exactly the prepared `next`/`body` over `expected` and appends the
+/// generic `<kind>.saved` audit event.
+fn apply_record_write(
+    tx: &Transaction<'_>,
+    expected: u64,
+    next: &Record,
+    body: &str,
+) -> Result<()> {
     write_snapshot(
         tx,
         "records",
         &next.id.to_string(),
-        record.version,
+        expected,
         "INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,?2,?3,?4,?5,?6,?7)",
         params![
             next.id.to_string(),
@@ -1322,7 +1969,7 @@ fn write_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
             next.version,
             body
         ],
-        &body,
+        body,
         next.version,
     )?;
     append_event(
@@ -1336,7 +1983,7 @@ fn write_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
             _ => Value::Null,
         }}),
     )?;
-    Ok(next)
+    Ok(())
 }
 
 fn put_context_tx(tx: &Transaction<'_>, context: &ContextVersion) -> Result<()> {
@@ -1580,6 +2227,9 @@ fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<
             }
             RecordKind::Session if acquiring || executor => {
                 let session: Session = serde_json::from_value(other.data)?;
+                if execution::logically_retired_session(tx, &session)? {
+                    continue;
+                }
                 if executor_reserved(&session) {
                     bail!(StateGuardError::ExecutorReserved);
                 }
@@ -1614,7 +2264,7 @@ fn bump(version: &mut u64) -> Result<()> {
         .context("snapshot version overflow")?;
     Ok(())
 }
-fn read_tx<T: DeserializeOwned>(tx: &Transaction<'_>, table: &str, id: &str) -> Result<Option<T>> {
+fn read_tx<T: DeserializeOwned>(tx: &Connection, table: &str, id: &str) -> Result<Option<T>> {
     let body: Option<String> = tx
         .query_row(
             &format!("SELECT body FROM {table} WHERE id=?1"),
@@ -1670,9 +2320,17 @@ fn append_event(tx: &Transaction<'_>, scope: &Scope, kind: &str, data: Value) ->
 }
 
 fn reserved_audit_kind(kind: &str) -> bool {
-    kind.ends_with(".saved")
+    kind.starts_with("rrx.private.")
+        || kind.ends_with(".saved")
         || matches!(
             kind,
             "context.created" | "usage.recorded" | "workflow.gate_observed"
         )
 }
+
+pub(crate) use execution::native_phase::{
+    NativeNonSuccessClosurePlan, NativeNonSuccessConfirmation, NativeNonSuccessMaterial,
+    NativeNonSuccessWrite, NonSuccessReader, PhaseClosedAcknowledgment,
+};
+#[cfg(test)]
+pub(crate) use execution::native_phase::{PreparationFault, arm_preparation_fault};

@@ -1,6 +1,10 @@
 use rrx::{domain::*, state::Store};
 use serde_json::to_value;
 use uuid::Uuid;
+#[path = "support/current_writer.rs"]
+mod current_writer;
+#[path = "support/legacy.rs"]
+mod legacy;
 
 fn id(value: u128) -> TaskId {
     TaskId(Uuid::from_u128(value))
@@ -87,39 +91,81 @@ fn graph_bounds_have_valid_boundary_controls() {
     );
 }
 
+/// Legacy rows for `planned` Tasks on a fresh Project, through the public
+/// route (FM §8.1). Returns the open Store, the Goal and its Tasks.
+fn legacy_goal(
+    path: &std::path::Path,
+    root: &std::path::Path,
+    name: &str,
+    objective: &'static str,
+    keys: &[&'static str],
+) -> (Store, Goal, Vec<Task>) {
+    let mut project = Project::new(
+        name.into(),
+        root.to_owned(),
+        format!("repo:{name}"),
+        "main".into(),
+    );
+    Store::open(path)
+        .unwrap()
+        .put_project(&mut project)
+        .unwrap();
+    let (goal, tasks) = legacy::goals(
+        path,
+        vec![(
+            project.id,
+            objective,
+            keys.iter()
+                .map(|key| {
+                    (
+                        *key,
+                        "fake",
+                        rrx::config::WorkflowClass::Standard,
+                        RiskClass::R1,
+                        "verified work",
+                    )
+                })
+                .collect(),
+        )],
+    )
+    .remove(0);
+    (Store::open(path).unwrap(), goal, tasks)
+}
+
+fn refused(store: &mut Store, requested: &mut Goal) {
+    let input = to_value(&*requested).unwrap();
+    let error = store.put_goal(requested).unwrap_err().to_string();
+    assert!(
+        error.contains("Goal changes require trusted typed control ingress"),
+        "unexpected refusal: {error}"
+    );
+    assert_eq!(to_value(&*requested).unwrap(), input);
+}
+
+/// FM §8.3 S4-W. Every Goal change is refused by the generic Goal writer on
+/// any row before graph validation. The former proof — the writer's DAG
+/// validation (hard cycle, duplicate pair, self edge, undeclared endpoint,
+/// duplicate node) and its acceptance of an advisory back edge — has no
+/// legitimate producer now (Goal changes require typed control ingress), so
+/// it is LOST and recorded here. `TaskDag::hard_order` itself is still proved
+/// by the two graph tests above. Each attempt asserts the typed refusal, an
+/// unchanged Goal row and audit, and untouched Tasks across a restart.
 #[test]
 fn store_rejects_invalid_graph_changes_without_rows_versions_or_audit() {
     let temporary = tempfile::tempdir().unwrap();
     let path = temporary.path().join("state.db");
-    let mut store = Store::open(&path).unwrap();
-    let mut project = Project::new(
-        "graph".into(),
-        temporary.path().to_owned(),
-        "repo:graph".into(),
-        "main".into(),
+    let (mut store, goal, tasks) = legacy_goal(
+        &path,
+        temporary.path(),
+        "graph",
+        "all required work",
+        &["a", "b", "c", "d", "independent"],
     );
-    store.put_project(&mut project).unwrap();
-    let mut goal = Goal::new(
-        project.id,
-        "all required work".into(),
-        vec![CompletionCriterion {
-            id: "work".into(),
-            description: "verified work".into(),
-            evidence: None,
-            satisfied: false,
-        }],
-    );
-    store.put_goal(&mut goal).unwrap();
-    let mut tasks: Vec<_> = (1..=5)
-        .map(|n| {
-            let mut task = Task::new(project.id, goal.id, format!("task {n}"), "fake".into());
-            task.id = id(n);
-            store.put_task(&mut task).unwrap();
-            task
-        })
-        .collect();
-    let [a, b, c, d, independent] = [1, 2, 3, 4, 5].map(id);
-    goal.dag = TaskDag {
+    let baseline = to_value(store.goal(goal.id).unwrap().unwrap()).unwrap();
+    let audits = store.events(&goal.scope(), 0, 100).unwrap().len();
+    let [a, b, c, d, independent] = [0, 1, 2, 3, 4].map(|n| tasks[n].id);
+    let mut proposed = goal.clone();
+    proposed.dag = TaskDag {
         nodes: vec![independent, d, c, b, a],
         edges: vec![
             edge(a, b, true),
@@ -128,68 +174,36 @@ fn store_rejects_invalid_graph_changes_without_rows_versions_or_audit() {
             edge(c, d, true),
         ],
     };
-    store.put_goal(&mut goal).unwrap();
-    let baseline = to_value(&goal).unwrap();
-    let audits = store.events(&goal.scope(), 0, 100).unwrap().len();
-    for (change, expected_error) in [
-        (edge(d, a, true), "hard dependency cycle"),
-        (edge(a, b, false), "duplicate goal DAG edge pair"),
-        (edge(a, b, true), "duplicate goal DAG edge pair"),
-        (edge(a, a, true), "self edge"),
-        (edge(a, a, false), "self edge"),
-        (edge(a, id(999), true), "declared nodes"),
-        (edge(id(999), a, true), "declared nodes"),
-        (edge(id(999), a, false), "declared nodes"),
-        (edge(a, id(999), false), "declared nodes"),
+    for change in [
+        None,
+        Some(edge(d, a, true)),
+        Some(edge(a, b, false)),
+        Some(edge(a, a, true)),
+        Some(edge(a, id(999), true)),
+        Some(edge(id(999), a, false)),
+        // Formerly accepted: the same update with an advisory back edge.
+        Some(edge(d, a, false)),
     ] {
-        let mut rejected = goal.clone();
-        rejected.dag.edges.push(change);
-        let input = to_value(&rejected).unwrap();
-        let error = store.put_goal(&mut rejected).unwrap_err().to_string();
-        assert!(
-            error.contains(expected_error),
-            "unexpected refusal: {error}"
-        );
-        assert_eq!(to_value(&rejected).unwrap(), input);
+        let mut requested = proposed.clone();
+        requested.dag.edges.extend(change);
+        refused(&mut store, &mut requested);
         assert_eq!(
             to_value(store.goal(goal.id).unwrap().unwrap()).unwrap(),
             baseline
         );
         assert_eq!(store.events(&goal.scope(), 0, 100).unwrap().len(), audits);
     }
-    let mut duplicate = goal.clone();
+    let mut duplicate = proposed.clone();
     duplicate.dag.nodes.push(a);
-    assert!(
-        store
-            .put_goal(&mut duplicate)
-            .unwrap_err()
-            .to_string()
-            .contains("duplicate goal DAG nodes")
-    );
+    refused(&mut store, &mut duplicate);
+    drop(store);
+    let store = Store::open(&path).unwrap();
     assert_eq!(
         to_value(store.goal(goal.id).unwrap().unwrap()).unwrap(),
         baseline
     );
-    assert_eq!(store.events(&goal.scope(), 0, 100).unwrap().len(), audits);
-
-    // The same graph update is accepted when the back edge is advisory.
-    goal.dag.edges.push(edge(d, a, false));
-    store.put_goal(&mut goal).unwrap();
-    assert_eq!(goal.version, baseline["version"].as_u64().unwrap() + 1);
-    assert_eq!(
-        store.events(&goal.scope(), 0, 100).unwrap().len(),
-        audits + 1
-    );
-    drop(store);
-    let store = Store::open(&path).unwrap();
-    let restored = store.goal(goal.id).unwrap().unwrap();
-    assert_eq!(to_value(&restored).unwrap(), to_value(&goal).unwrap());
-    assert_eq!(
-        restored.dag.hard_order().unwrap(),
-        [a, b, c, d, independent]
-    );
-    // Task persistence is untouched by structural validation.
-    for task in tasks.drain(..) {
+    // Task persistence is untouched.
+    for task in tasks {
         assert_eq!(
             to_value(store.task(task.id).unwrap().unwrap()).unwrap(),
             to_value(task).unwrap()
@@ -197,102 +211,68 @@ fn store_rejects_invalid_graph_changes_without_rows_versions_or_audit() {
     }
 }
 
+/// FM §8.3 S4-W. The former proof — hold and terminal requests refused on a
+/// historically invalid graph seeded into the Goal row by SQL — is LOST and
+/// recorded here: FM adds no SQL-seeded path, and a legacy Goal cannot be
+/// changed through the generic writer at all. What remains is the generic
+/// writer refusal for every hold/terminal request, under a registered and a
+/// blocked Project, with the Goal row, audit and Tasks unchanged.
 #[test]
 fn legacy_invalid_graph_hold_and_terminal_refusals_preserve_original_history() {
     let temporary = tempfile::tempdir().unwrap();
     let path = temporary.path().join("state.db");
-    let mut store = Store::open(&path).unwrap();
-    let mut project = Project::new(
-        "legacy graph".into(),
-        temporary.path().to_owned(),
-        "repo:legacy-graph".into(),
-        "main".into(),
+    let (mut store, goal, tasks) = legacy_goal(
+        &path,
+        temporary.path(),
+        "legacy graph",
+        "preserve legacy history",
+        &["a", "b"],
     );
-    store.put_project(&mut project).unwrap();
-    let mut goal = Goal::new(
-        project.id,
-        "preserve legacy history".into(),
-        vec![CompletionCriterion {
-            id: "legacy".into(),
-            description: "requires future typed reconciliation".into(),
-            evidence: None,
-            satisfied: false,
-        }],
-    );
-    store.put_goal(&mut goal).unwrap();
-    let mut tasks = Vec::new();
-    for name in ["a", "b"] {
-        let mut task = Task::new(project.id, goal.id, name.into(), "fake".into());
-        store.put_task(&mut task).unwrap();
-        tasks.push(task);
-    }
-    let [a, b] = [tasks[0].id, tasks[1].id];
-    goal.dag = TaskDag {
-        nodes: vec![a, b],
-        edges: vec![edge(a, b, true)],
-    };
-    store.put_goal(&mut goal).unwrap();
-    let connection = rusqlite::Connection::open(&path).unwrap();
-    for (legacy_edge, expected_error) in [
-        (edge(b, a, true), "hard dependency cycle"),
-        (edge(a, a, false), "self edge"),
-        (edge(a, b, false), "duplicate goal DAG edge pair"),
-    ] {
-        // Seed bytes accepted by the old node/endpoint validator. This neither
-        // ratifies the graph nor constructs managed Goal authority.
-        let mut legacy = goal.clone();
-        legacy.dag.edges.push(legacy_edge);
-        let original = serde_json::to_string(&legacy).unwrap();
-        connection
-            .execute(
-                "UPDATE goals SET body=?1 WHERE id=?2",
-                rusqlite::params![original, goal.id.to_string()],
-            )
-            .unwrap();
-        for project_state in [ProjectState::Registered, ProjectState::Blocked] {
-            project.state = project_state;
-            project.blocked_reason =
-                (project_state == ProjectState::Blocked).then(|| "synthetic project hold".into());
-            store.put_project(&mut project).unwrap();
-            let events = store.events(&Scope::project(project.id), 0, 100).unwrap();
-            assert!(events.len() < 100);
-            let audits = to_value(events).unwrap();
-            for state in [
-                GoalState::Paused,
-                GoalState::Blocked,
-                GoalState::WaitingHuman,
-                GoalState::Cancelled,
-                GoalState::Failed,
-            ] {
-                let mut requested = legacy.clone();
-                requested.state = state;
-                requested.blockers = vec!["synthetic conservative decision".into()];
-                let input = to_value(&requested).unwrap();
-                let error = store.put_goal(&mut requested).unwrap_err().to_string();
-                assert!(
-                    error.contains(expected_error),
-                    "unexpected refusal: {error}"
-                );
-                assert_eq!(to_value(requested).unwrap(), input);
-                let (version, body): (u64, String) = connection
-                    .query_row(
-                        "SELECT version,body FROM goals WHERE id=?1",
-                        [goal.id.to_string()],
-                        |row| Ok((row.get(0)?, row.get(1)?)),
-                    )
-                    .unwrap();
-                assert_eq!(version, legacy.version);
-                assert_eq!(body, original);
+    let mut project = store.project(goal.project_id).unwrap().unwrap();
+    let connection = current_writer::open(&path).unwrap();
+    let original: (u64, String) = connection
+        .query_row(
+            "SELECT version,body FROM goals WHERE id=?1",
+            [goal.id.to_string()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    for project_state in [ProjectState::Registered, ProjectState::Blocked] {
+        project.state = project_state;
+        project.blocked_reason =
+            (project_state == ProjectState::Blocked).then(|| "synthetic project hold".into());
+        store.put_project(&mut project).unwrap();
+        let events = store.events(&Scope::project(project.id), 0, 100).unwrap();
+        assert!(events.len() < 100);
+        let audits = to_value(events).unwrap();
+        for state in [
+            GoalState::Paused,
+            GoalState::Blocked,
+            GoalState::WaitingHuman,
+            GoalState::Cancelled,
+            GoalState::Failed,
+        ] {
+            let mut requested = goal.clone();
+            requested.state = state;
+            requested.blockers = vec!["synthetic conservative decision".into()];
+            refused(&mut store, &mut requested);
+            let current: (u64, String) = connection
+                .query_row(
+                    "SELECT version,body FROM goals WHERE id=?1",
+                    [goal.id.to_string()],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(current, original);
+            assert_eq!(
+                to_value(store.events(&Scope::project(project.id), 0, 100).unwrap()).unwrap(),
+                audits
+            );
+            for task in &tasks {
                 assert_eq!(
-                    to_value(store.events(&Scope::project(project.id), 0, 100).unwrap()).unwrap(),
-                    audits
+                    to_value(store.task(task.id).unwrap().unwrap()).unwrap(),
+                    to_value(task).unwrap()
                 );
-                for task in &tasks {
-                    assert_eq!(
-                        to_value(store.task(task.id).unwrap().unwrap()).unwrap(),
-                        to_value(task).unwrap()
-                    );
-                }
             }
         }
     }

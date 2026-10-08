@@ -1,0 +1,122 @@
+{
+  "format": "rrx.phase2.preliminary-reviews.v1",
+  "round": 21,
+  "source_commit": "48ed158e824aeab749b5b121d78438e4fd506891",
+  "reviews": [
+    {
+      "reviewer": "/root/issue26_registry",
+      "original": {
+        "path": "/private/tmp/rururunx-agent-execution-phase2-preliminary21-a.json",
+        "bytes": 2753,
+        "sha256": "368965bee93cea7fa9b2ff810c4e749c4be2357b39b53af8a195718fcdf966b6"
+      },
+      "record": {
+        "review": "Independent preliminary STRICT component delta review round21 A",
+        "source_commit": "48ed158e824aeab749b5b121d78438e4fd506891",
+        "baseline_commit": "d30a9bec15fbe3b0943543a6766b1eba73f2f1a9",
+        "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+        "verdict": "APPROVE",
+        "counts": {
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0
+        },
+        "findings": [],
+        "scope": "One committed test-file lexical MutexGuard lifetime change; component static approval only.",
+        "evidence": [
+          {
+            "path": "crates/rrx/src/execution/native/tests.rs",
+            "lines": "1092-1133",
+            "detail": "The first Store guard and all initial wait/watch/ledger/no-probe/sibling/native-input assertions remain in one lexical block. Owned current and sibling_before DTOs leave that block; the guard cannot reach the following recovery await."
+          },
+          {
+            "path": "crates/rrx/src/execution/native/tests.rs",
+            "lines": "1134-1172",
+            "detail": "Preterminal accepted recovery assertions and the pending permission barrier remain unchanged. The recovery-local guard ends with its if block before the later terminal await."
+          },
+          {
+            "path": "crates/rrx/src/execution/native/tests.rs",
+            "lines": "1175-1202",
+            "detail": "Final sibling equality, single input and no-probe assertions retain their ordering. The second explicit block drops the guard before sibling cancel/terminal awaits."
+          },
+          {
+            "path": "git diff baseline-to-source",
+            "detail": "The complete diff changes only execution/native/tests.rs: 63 insertions and 60 deletions caused by two lexical blocks and indentation. Production, Workflow test, fixture, requirements and design bytes are unchanged."
+          }
+        ],
+        "own_prior_findings": [
+          {
+            "id": "S-M1",
+            "disposition": "Source closure from round20 maintained. Recovery producer, durable exact authority/active lease checks, watch publication and Workflow phase Task restoration are byte-identical; causal assertions are preserved."
+          }
+        ],
+        "additional_prior_correction": "Claude telemetry-only wait versus explicit Codex willRetry probe transition remains byte-identical to round20 and its no-probe test assertions remain intact.",
+        "limits": [
+          "Only immutable git show/diff objects were inspected; no dirty/later source, peer conclusions, logs or parent test outcomes were read.",
+          "No tests, builds, native/account/model, network, signals, OS actions or shared source edits were performed.",
+          "Compilation, Clippy closure and runtime behavior were not independently executed or certified.",
+          "No final Phase2, production/native conformance or MVP acceptance is granted."
+        ],
+        "live_handles": [],
+        "commands_closed": true
+      }
+    },
+    {
+      "reviewer": "/root/agent_execution_phase0_review_b",
+      "original": {
+        "path": "/private/tmp/rururunx-agent-execution-phase2-preliminary21-b.json",
+        "bytes": 3450,
+        "sha256": "5c30cad81908308b27de352d2b2de481a5f21e00228fe2e2a1872b28ab2e9a78"
+      },
+      "record": {
+        "reviewer": "B",
+        "round": 21,
+        "source_commit": "48ed158e824aeab749b5b121d78438e4fd506891",
+        "baseline_commit": "d30a9bec15fbe3b0943543a6766b1eba73f2f1a9",
+        "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+        "verdict": "APPROVE_COMPONENT_STATIC_DELTA_ONLY",
+        "severity_counts": {
+          "C": 0,
+          "H": 0,
+          "M": 0,
+          "L": 0
+        },
+        "findings": [],
+        "scope_verified": "The full immutable baseline-to-source diff changes only crates/rrx/src/execution/native/tests.rs. Production and documentation bytes are unchanged.",
+        "source_evidence": [
+          {
+            "location": "crates/rrx/src/execution/native/tests.rs:1092-1133",
+            "observation": "The first explicit drop(store) is replaced by a lexical block returning owned current and sibling_before ExecutionUnit values. The same watch/status/ledger waiting-state, authority, native/finalization permissions, unknown work, no telemetry-created probe, running sibling and one-input assertions remain inside the same lock acquisition. The guard is out of scope before the fixture-recovery release and subsequent await at 1135-1144. No fixture effect or assertion order is changed."
+          },
+          {
+            "location": "crates/rrx/src/execution/native/tests.rs:1134-1174",
+            "observation": "The intermediate held recovery barrier and checks remain unchanged: all accepted observations Available, watch/status/ledger cleared wait, Running on the same Session/generation/worktree, open permissions, unknown work, and matching authority. Terminal fixture release and expected work/disposition checks retain their prior order. The recovery-branch guard is enclosed in the existing conditional scope, ending before the terminal await."
+          },
+          {
+            "location": "crates/rrx/src/execution/native/tests.rs:1175-1201",
+            "observation": "The second explicit drop(store) is replaced by a lexical block retaining the identical full sibling-ledger equality, one native input and released-probe assertions. The guard's scope ends at 1197 before the sibling cancellation and terminal awaits at 1198-1200."
+          }
+        ],
+        "prior_own_findings": [
+          {
+            "id": "round19-M1",
+            "disposition": "CLOSURE_MAINTAINED",
+            "reason": "Round20's production separation of Claude telemetry waiting from recovery-probe authority is byte-identical in this source. The relevant no-probe and input/sibling controls retain the same assertions. No production behavior is weakened by lexical guard scopes."
+          }
+        ],
+        "proposed_causal_controls_not_executed": [
+          "Run the existing held Claude quota test matrix and Workflow recovery/cancel controls under the required test and lint checks; this review establishes only unchanged assertion/effect wiring and lexical guard lifetime."
+        ],
+        "limitations": [
+          "Independent immutable Git-object static delta review only; tests and Clippy were not run and no parent results were inherited.",
+          "No peer findings, aggregate reviews, logs, dirty/later source, native Agents, accounts, credentials, network or OS/process operations were inspected or invoked.",
+          "This approves the limited component source delta only, not Phase2 completion, native/MVP readiness, real subscription recovery or public guarantees."
+        ],
+        "live_handles": [],
+        "command_handles": "All owned read-only command calls completed with exit_code 0 and no session_id. No owned command/native process remains open. Writing this private report is the only filesystem mutation."
+      }
+    }
+  ],
+  "scope": "Independent immutable component static reviews; no final Phase2, native profile, quota account, both-OS or MVP acceptance."
+}

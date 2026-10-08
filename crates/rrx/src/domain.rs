@@ -86,6 +86,9 @@ states!(TaskState {
     Testing,
     WaitingApproval,
     WaitingReview,
+    WaitingQuota,
+    WaitingCapacity,
+    WaitingResource,
     Reviewing,
     Fixing,
     WaitingHuman,
@@ -193,11 +196,25 @@ impl Project {
     }
 }
 
+/// Canonical criterion semantics. Historical booleans never imply a verified evaluator.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CriterionEvaluator {
+    RequiredTasksVerified,
+    Human {
+        goal_pack_input: bool,
+    },
+    #[default]
+    Unverified,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CompletionCriterion {
     pub id: String,
     pub description: String,
+    #[serde(default)]
+    pub evaluator: CriterionEvaluator,
     /// A durable evidence reference, not an LLM's unsupported assertion.
     pub evidence: Option<String>,
     pub satisfied: bool,

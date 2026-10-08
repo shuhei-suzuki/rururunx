@@ -8,11 +8,16 @@ use std::{
     time::Duration,
 };
 use tempfile::TempDir;
+#[path = "support/legacy.rs"]
+mod legacy;
 
 struct Fixture {
     _temp: TempDir,
     request: LaunchRequest,
     store: SharedStore,
+    /// The Task's genuine branch (`WorktreeManager::create`), or the forged
+    /// one a negative variant binds.
+    branch: String,
 }
 fn git(cwd: &Path, args: &[&str]) {
     let output = Command::new("git")
@@ -30,9 +35,15 @@ fn git(cwd: &Path, args: &[&str]) {
 }
 impl Fixture {
     fn new() -> Self {
-        Self::configured("feature/task", false)
+        Self::configured(None, false)
     }
-    fn configured(branch: &str, foreign: bool) -> Self {
+    /// FM §8.1 L: Project and Goal rows from accepted ingress through the
+    /// public route, then migrated. `None`: the genuine
+    /// `WorktreeManager::create` worktree and branch. `Some(branch)` or
+    /// `foreign`: a negative variant whose forged binding (a protected branch,
+    /// or a foreign repository) is the refused stimulus; it is written on the
+    /// legacy row through the legacy writer, as before.
+    fn configured(forged: Option<&str>, foreign: bool) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("project");
         std::fs::create_dir(&root).unwrap();
@@ -50,53 +61,67 @@ impl Fixture {
                 "fixture",
             ],
         );
-        let worktree = root.join("worktree/task");
-        if foreign {
-            std::fs::create_dir_all(&worktree).unwrap();
-            git(&worktree, &["init", "-b", branch]);
-            git(
-                &worktree,
-                &[
-                    "-c",
-                    "user.name=Fixture",
-                    "-c",
-                    "user.email=fixture@example.invalid",
-                    "commit",
-                    "--allow-empty",
-                    "-m",
-                    "foreign",
-                ],
-            );
-        } else {
-            git(
-                &root,
-                &["worktree", "add", "-b", branch, worktree.to_str().unwrap()],
-            );
-        }
         let mut project = Project::new(
             "fixture".into(),
             root.canonicalize().unwrap(),
             rrx::git::repository_identity(&root.canonicalize().unwrap(), "main").unwrap(),
             "main".into(),
         );
-        let mut goal = Goal::new(
-            project.id,
-            "test".into(),
-            vec![CompletionCriterion {
-                id: "fixture".into(),
-                description: "fake agent exits".into(),
-                evidence: None,
-                satisfied: false,
-            }],
-        );
-        let mut task = Task::new(project.id, goal.id, "test".into(), "fake".into());
-        task.worktree = Some(worktree.canonicalize().unwrap());
-        task.branch = Some(branch.into());
+        let db = temp.path().join("state.sqlite3");
+        Store::open(&db).unwrap().put_project(&mut project).unwrap();
+        let (_, tasks) = legacy::goals(
+            &db,
+            vec![(
+                project.id,
+                "test",
+                vec![(
+                    "test",
+                    "fake",
+                    rrx::config::WorkflowClass::Standard,
+                    RiskClass::R1,
+                    "fake agent exits",
+                )],
+            )],
+        )
+        .remove(0);
+        let mut store = Store::open(&db).unwrap();
+        let mut task = tasks[0].clone();
+        let (worktree, branch) = if foreign || forged.is_some() {
+            let branch = forged.unwrap_or("feature/task");
+            let worktree = root.join("worktree/task");
+            if foreign {
+                std::fs::create_dir_all(&worktree).unwrap();
+                git(&worktree, &["init", "-b", branch]);
+                git(
+                    &worktree,
+                    &[
+                        "-c",
+                        "user.name=Fixture",
+                        "-c",
+                        "user.email=fixture@example.invalid",
+                        "commit",
+                        "--allow-empty",
+                        "-m",
+                        "foreign",
+                    ],
+                );
+            } else {
+                git(
+                    &root,
+                    &["worktree", "add", "-b", branch, worktree.to_str().unwrap()],
+                );
+            }
+            task.worktree = Some(worktree.canonicalize().unwrap());
+            task.branch = Some(branch.into());
+            store.put_task(&mut task).unwrap();
+            (worktree.canonicalize().unwrap(), branch.to_owned())
+        } else {
+            let status = rrx::git::WorktreeManager::create(&mut store, task.id).unwrap();
+            task = store.task(task.id).unwrap().unwrap();
+            (status.worktree, status.branch)
+        };
+        let project = store.project(project.id).unwrap().unwrap();
         let scope = task.scope();
-        let mut store = Store::open(&temp.path().join("state.sqlite3")).unwrap();
-        store.put_project(&mut project).unwrap();
-        store.put_goal(&mut goal).unwrap();
-        store.put_task(&mut task).unwrap();
         let request = LaunchRequest {
             project,
             scope: scope.clone(),
@@ -122,6 +147,7 @@ impl Fixture {
             _temp: temp,
             request,
             store: Arc::new(Mutex::new(store)),
+            branch,
         }
     }
     fn adapter(&self, script: &str) -> GenericCliAdapter {
@@ -401,7 +427,7 @@ async fn project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed() 
     let mut lock = Record::new(
         fixture.request.scope.clone(),
         RecordKind::WorktreeLock,
-        json!({"active":true,"revision":"fixture","worktree":fixture.request.worktree,"branch":"feature/task","reason":"review"}),
+        json!({"active":true,"revision":"fixture","worktree":fixture.request.worktree,"branch":fixture.branch,"reason":"review"}),
     );
     fixture.store.lock().unwrap().put_record(&mut lock).unwrap();
     assert!(adapter.start(fixture.request.clone()).await.is_err());
@@ -427,10 +453,11 @@ async fn project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed() 
         .data
         .clone();
     assert_eq!(session["state"], "FAILED");
-    git(&fixture.request.worktree, &["checkout", "feature/task"]);
+    git(&fixture.request.worktree, &["checkout", &fixture.branch]);
     let session = adapter.start(fixture.request.clone()).await.unwrap();
     finished(&adapter, &session).await;
     let reference = SessionRef {
+        execution: None,
         id: session.id,
         scope: other.request.scope,
     };
@@ -489,8 +516,8 @@ async fn foreign_git_repository_inside_namespace_detached_and_protected_branches
             .kind,
         ErrorKind::OwnershipMismatch
     );
-    git(&fixture.request.worktree, &["checkout", "feature/task"]);
-    let protected = Fixture::configured("master", false);
+    git(&fixture.request.worktree, &["checkout", &fixture.branch]);
+    let protected = Fixture::configured(Some("master"), false);
     assert_eq!(
         protected
             .adapter("/bin/cat")
@@ -500,7 +527,7 @@ async fn foreign_git_repository_inside_namespace_detached_and_protected_branches
             .kind,
         ErrorKind::OwnershipMismatch
     );
-    let foreign = Fixture::configured("feature/task", true);
+    let foreign = Fixture::configured(None, true);
     assert_eq!(
         foreign
             .adapter("/bin/cat")
@@ -684,14 +711,36 @@ async fn executable_symlink_keeps_configured_argv_zero_and_terminal_goal_cannot_
     let session = adapter.start(fixture.request.clone()).await.unwrap();
     let status = finished(&adapter, &session).await;
     assert!(String::from_utf8_lossy(&status.stdout).ends_with(alias.to_str().unwrap()));
+    // FM D5: a Goal pause is impossible on legacy rows (S4). Its half is the
+    // S4-W refusal with the Goal unchanged (§8.3); the inactive-parent launch
+    // refusal is kept through the legitimate Task-level change: the Task
+    // made terminal through the legacy writer.
     {
         let mut store = fixture.store.lock().unwrap();
-        let mut goal = store
+        let before = store
             .goal(fixture.request.scope.goal_id.unwrap())
             .unwrap()
             .unwrap();
+        let mut goal = before.clone();
         goal.state = GoalState::Paused;
-        store.put_goal(&mut goal).unwrap();
+        let refused = store.put_goal(&mut goal).unwrap_err();
+        assert!(
+            refused
+                .to_string()
+                .contains("Goal changes require trusted typed control ingress"),
+            "{refused:#}"
+        );
+        let after = store.goal(before.id).unwrap().unwrap();
+        assert_eq!(
+            serde_json::to_value(&after).unwrap(),
+            serde_json::to_value(&before).unwrap()
+        );
+        let mut task = store
+            .task(fixture.request.scope.task_id.unwrap())
+            .unwrap()
+            .unwrap();
+        task.state = TaskState::Cancelled;
+        store.put_task(&mut task).unwrap();
     }
     assert_eq!(
         adapter
@@ -763,7 +812,7 @@ async fn atomic_starting_reservation_excludes_duplicate_executor_and_review_acqu
     let mut lock = Record::new(
         fixture.request.scope.clone(),
         RecordKind::WorktreeLock,
-        json!({"active":true,"revision":"fixture","worktree":fixture.request.worktree.canonicalize().unwrap(),"branch":"feature/task","reason":"review race"}),
+        json!({"active":true,"revision":"fixture","worktree":fixture.request.worktree.canonicalize().unwrap(),"branch":fixture.branch,"reason":"review race"}),
     );
     assert!(fixture.store.lock().unwrap().put_record(&mut lock).is_err());
     adapter.stop((&session).into()).await.unwrap();
@@ -791,7 +840,7 @@ async fn lost_executor_keeps_worktree_reserved_until_explicit_verified_dead_reso
     let mut lock = Record::new(
         fixture.request.scope.clone(),
         RecordKind::WorktreeLock,
-        json!({"active":true,"revision":"fixture","worktree":fixture.request.worktree.canonicalize().unwrap(),"branch":"feature/task","reason":"uncertain process"}),
+        json!({"active":true,"revision":"fixture","worktree":fixture.request.worktree.canonicalize().unwrap(),"branch":fixture.branch,"reason":"uncertain process"}),
     );
     assert!(store.put_record(&mut lock).is_err());
     snapshot.state = SessionState::Stopped;

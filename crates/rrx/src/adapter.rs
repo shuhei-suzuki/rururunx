@@ -1,6 +1,9 @@
 //! Thin native process contracts. Context selection and workflow decisions belong upstream.
+#[cfg(test)]
+mod counting;
 mod git_owner;
 pub mod grok;
+pub(crate) mod native;
 #[cfg(test)]
 pub(crate) use git_owner::TestGitContext;
 #[cfg(target_os = "macos")]
@@ -62,6 +65,8 @@ pub enum Capability {
     UsageTelemetry,
     PromptCacheTelemetry,
     ContextCheckpoint,
+    /// Advertise only after the actual private prepared-input admission is wired.
+    PreparedInputAdmission,
     NativeGoal,
     NativeGoalStatus,
     NativeGoalResume,
@@ -163,12 +168,14 @@ pub struct LaunchRequest {
 pub struct SessionRef {
     pub id: SessionId,
     pub scope: Scope,
+    pub execution: Option<crate::execution::native::ManagedSessionRef>,
 }
 impl From<&Session> for SessionRef {
     fn from(session: &Session) -> Self {
         Self {
             id: session.id,
             scope: session.scope.clone(),
+            execution: None,
         }
     }
 }
@@ -189,6 +196,7 @@ pub struct SessionStatus {
     pub stdout_truncated: bool,
     pub stderr_truncated: bool,
     pub failure: Option<String>,
+    pub execution: Option<crate::execution::native::NativeStatus>,
 }
 impl SessionStatus {
     pub fn terminal(&self) -> bool {
@@ -207,6 +215,16 @@ pub trait AgentAdapter: Send + Sync {
     fn capabilities(&self) -> BTreeSet<Capability>;
     fn probe(&self) -> AdapterResult<AgentInfo>;
     fn start(&self, request: LaunchRequest) -> AdapterFuture<'_, Session>;
+    fn managed_provider(&self) -> Option<&str> {
+        None
+    }
+    fn start_managed(
+        &self,
+        _request: LaunchRequest,
+        _input: crate::execution::native::ManagedInput,
+    ) -> AdapterFuture<'_, crate::execution::native::NativeStart> {
+        Box::pin(async { Err(unsupported(Capability::Execute)) })
+    }
     /// Transport completion is distinct from evidence that a Task/gate passed.
     /// Providers with persistent native servers may override using their private
     /// owned completion journal after verified shutdown/terminal persistence.
@@ -265,6 +283,8 @@ pub trait AgentAdapter: Send + Sync {
 #[derive(Default)]
 pub struct AgentRegistry {
     adapters: BTreeMap<String, Arc<dyn AgentAdapter>>,
+    native_ports: BTreeMap<String, Arc<native::NativePhasePort>>,
+    managed_owner: Option<Arc<crate::execution::RuntimeOwner>>,
 }
 impl AgentRegistry {
     pub fn register(&mut self, name: String, adapter: Arc<dyn AgentAdapter>) -> AdapterResult<()> {
@@ -283,6 +303,12 @@ impl AgentRegistry {
             .map_err(|e| error(ErrorKind::InvalidConfiguration, e.to_string()))?;
         let mut registry = Self::default();
         for (name, agent) in &config.agents {
+            if agent.provider.is_some() {
+                return Err(error(
+                    ErrorKind::InvalidConfiguration,
+                    "native providers require the managed Runtime registry",
+                ));
+            }
             if agent.model.is_some() || agent.effort.is_some() {
                 return Err(error(
                     ErrorKind::InvalidConfiguration,
@@ -299,6 +325,121 @@ impl AgentRegistry {
             )?;
         }
         Ok(registry)
+    }
+    /// Construct official native adapters under one Runtime owner/tool server.
+    /// Call inside a Tokio Runtime. Configuration and executable resolution have
+    /// no native/account effects; version qualification occurs after admission.
+    pub fn from_managed_config(
+        config: &Config,
+        owner: Arc<crate::execution::RuntimeOwner>,
+    ) -> AdapterResult<Self> {
+        config
+            .validate()
+            .map_err(|e| error(ErrorKind::InvalidConfiguration, e.to_string()))?;
+        if tokio::runtime::Handle::try_current().is_err() {
+            return Err(error(
+                ErrorKind::InvalidConfiguration,
+                "managed registry requires a Tokio Runtime",
+            ));
+        }
+        let mut selected = Vec::new();
+        for (name, agent) in &config.agents {
+            let provider = agent.provider.as_deref().ok_or_else(|| {
+                error(
+                    ErrorKind::InvalidConfiguration,
+                    "managed agents require an explicit provider",
+                )
+            })?;
+            if agent.command.len() != 1 {
+                return Err(error(
+                    ErrorKind::InvalidConfiguration,
+                    "managed native command must contain exactly one executable",
+                ));
+            }
+            let path = Path::new(&agent.command[0]);
+            let program = if path.is_absolute() {
+                path.canonicalize().map_err(|_| {
+                    error(
+                        ErrorKind::ExecutableMissing,
+                        "native executable unavailable",
+                    )
+                })?
+            } else if path.components().count() == 1 {
+                crate::execution::resources::resolve_program(&agent.command[0]).map_err(|_| {
+                    error(
+                        ErrorKind::ExecutableMissing,
+                        "native executable unavailable",
+                    )
+                })?
+            } else {
+                return Err(error(
+                    ErrorKind::InvalidConfiguration,
+                    "native executable must be absolute or a PATH name",
+                ));
+            };
+            if !program.is_file() {
+                return Err(error(
+                    ErrorKind::ExecutableMissing,
+                    "native executable unavailable",
+                ));
+            }
+            let compatibility = agent
+                .compatibility
+                .as_ref()
+                .map(crate::execution::native::compat::NativeCompatDeclaration::installed)
+                .transpose()
+                .map_err(|_| {
+                    error(
+                        ErrorKind::InvalidConfiguration,
+                        "invalid native compatibility declaration",
+                    )
+                })?;
+            selected.push((name.clone(), provider.to_owned(), program, compatibility));
+        }
+        let sessions = Arc::new(
+            crate::execution::native::NativeSessions::with_limits(
+                owner.clone(),
+                crate::execution::native::NativeLimits::configured(config),
+            )
+            .map_err(|_| error(ErrorKind::StateFailure, "managed tool server unavailable"))?,
+        );
+        let mut registry = Self {
+            managed_owner: Some(owner.clone()),
+            ..Self::default()
+        };
+        let installation = uuid::Uuid::new_v4();
+        for (name, provider, program, compatibility) in selected {
+            let adapter = Arc::new(native::NativeAdapter {
+                owner: owner.clone(),
+                name: name.clone(),
+                provider,
+                program,
+                sessions: sessions.clone(),
+                compatibility,
+            });
+            registry.register(name.clone(), adapter.clone())?;
+            registry.native_ports.insert(
+                name,
+                Arc::new(native::NativePhasePort::installed(adapter, installation)),
+            );
+        }
+        Ok(registry)
+    }
+    pub(crate) fn managed_owner(&self) -> Option<Arc<crate::execution::RuntimeOwner>> {
+        self.managed_owner.clone()
+    }
+    /// A concrete installed Native vtable; public adapter registration cannot
+    /// create this selection. This is not composition/readiness admission.
+    pub(crate) fn native_phase_port(
+        &self,
+        name: &str,
+    ) -> AdapterResult<Arc<native::NativePhasePort>> {
+        self.native_ports.get(name).cloned().ok_or_else(|| {
+            error(
+                ErrorKind::UnsupportedCapability,
+                "selected native phase port unavailable",
+            )
+        })
     }
     pub fn get(&self, name: &str) -> AdapterResult<Arc<dyn AgentAdapter>> {
         self.adapters.get(name).cloned().ok_or_else(|| {
@@ -734,6 +875,7 @@ impl AgentAdapter for GenericCliAdapter {
             };
             reservation.session = Some((session.clone(), version));
             let initial = SessionStatus {
+                execution: None,
                 session: session.clone(),
                 exit_code: None,
                 stdout: vec![],
@@ -1767,7 +1909,7 @@ mod tests {
         plan.assert_diagnostics_transport(reason);
     }
     use super::*;
-    use crate::domain::{CompletionCriterion, Goal, Task};
+    use crate::domain::Task;
     use std::os::unix::fs::PermissionsExt;
 
     #[cfg(target_os = "macos")]
@@ -1793,60 +1935,45 @@ mod tests {
         assert!(resolve_macos_signal_result(Err(rustix::io::Errno::ACCESS), || Ok(true)).is_err());
     }
 
-    pub(super) fn preflight_fixture() -> (tempfile::TempDir, SharedStore, Project, Task, PathBuf) {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join("repo");
-        std::fs::create_dir(&root).unwrap();
-        let git = |args: &[&str]| {
-            let output = std::process::Command::new("git")
-                .args(args)
-                .current_dir(&root)
-                .output()
-                .unwrap();
-            assert!(
-                output.status.success(),
-                "{}",
-                String::from_utf8_lossy(&output.stderr)
-            );
+    /// Keeps the fixture directory and the legacy rows' only owner alive.
+    pub(super) struct PreflightHolder {
+        legacy: crate::runtime::LegacyFixture,
+        _owner: Arc<crate::execution::RuntimeOwner>,
+    }
+    impl PreflightHolder {
+        pub(super) fn path(&self) -> &std::path::Path {
+            self.legacy.path()
+        }
+    }
+    /// FM §8.1 L: a legacy Task (file-backed, migrated) with its genuine
+    /// `WorktreeManager::create` worktree on `repo/`.
+    pub(super) fn preflight_fixture() -> (PreflightHolder, SharedStore, Project, Task, PathBuf) {
+        let (legacy, owner) = crate::runtime::legacy_fixture_blocking(
+            crate::runtime::LegacyLayout::default(),
+            |_| {},
+            vec![crate::runtime::LegacyTask::standard("timeout", "fake")],
+        );
+        let store = owner.store();
+        let (project, task, worktree) = {
+            let mut state = store.lock().unwrap();
+            let task = legacy.task();
+            let project = state.project(task.project_id).unwrap().unwrap();
+            let worktree = crate::git::WorktreeManager::create(&mut state, task.id)
+                .unwrap()
+                .worktree;
+            let task = state.task(task.id).unwrap().unwrap();
+            (project, task, worktree)
         };
-        git(&["init", "-b", "main"]);
-        git(&[
-            "-c",
-            "user.name=Fixture",
-            "-c",
-            "user.email=fixture@example.invalid",
-            "commit",
-            "--allow-empty",
-            "-m",
-            "fixture",
-        ]);
-        let root = root.canonicalize().unwrap();
-        let mut project = Project::new(
-            "timeout fixture".into(),
-            root.clone(),
-            crate::git::repository_identity(&root, "main").unwrap(),
-            "main".into(),
-        );
-        let mut goal = Goal::new(
-            project.id,
-            "bounded preflight".into(),
-            vec![CompletionCriterion {
-                id: "bounded".into(),
-                description: "Git must terminate".into(),
-                evidence: None,
-                satisfied: false,
-            }],
-        );
-        let mut task = Task::new(project.id, goal.id, "timeout".into(), "fake".into());
-        let mut state = Store::memory().unwrap();
-        state.put_project(&mut project).unwrap();
-        state.put_goal(&mut goal).unwrap();
-        state.put_task(&mut task).unwrap();
-        let worktree = crate::git::WorktreeManager::create(&mut state, task.id)
-            .unwrap()
-            .worktree;
-        let store = Arc::new(Mutex::new(state));
-        (temp, store, project, task, worktree)
+        (
+            PreflightHolder {
+                legacy,
+                _owner: owner,
+            },
+            store,
+            project,
+            task,
+            worktree,
+        )
     }
 
     pub(super) fn fixture_request(
@@ -1946,6 +2073,11 @@ mod tests {
         );
     }
 
+    /// FM §8.4 S4 split. Former owner change: the Goal objective during the
+    /// gated Git preflight. That Goal change is refused on legacy rows
+    /// (S4-W); the owner change is kept as a Task-level change on the same
+    /// legacy row (S5), which the preflight detects as a `StateConflict`
+    /// before the executor spawns.
     #[tokio::test]
     async fn ownership_change_during_native_preflight_prevents_executor_launch() {
         let (temp, store, project, task, worktree) = preflight_fixture();
@@ -1992,7 +2124,10 @@ mod tests {
             let mut state = store.lock().unwrap();
             let mut goal = state.goal(scope.goal_id.unwrap()).unwrap().unwrap();
             goal.objective = "changed during preflight".into();
-            state.put_goal(&mut goal).unwrap();
+            crate::runtime::assert_goal_change_refused(&mut state, goal);
+            let mut task = state.task(scope.task_id.unwrap()).unwrap().unwrap();
+            task.title = "changed during preflight".into();
+            state.put_task(&mut task).unwrap();
         }
         std::fs::write(release, "ready").unwrap();
         let result = tokio::time::timeout(Duration::from_secs(5), launch)
@@ -2033,6 +2168,11 @@ mod tests {
         assert!(output.stdout.is_empty(), "inspector child must be reaped");
     }
 
+    /// FM §8.4 S4 split. Former lifecycle change: a Goal pause after the
+    /// persisted validation. The Goal pause is refused on legacy rows (S4-W);
+    /// the lifecycle change is kept as a Task-level change on the same legacy
+    /// row (S5, the Task moves to WaitingHuman), which the Git snapshot
+    /// detects from the original versions.
     #[tokio::test]
     async fn lifecycle_change_before_git_snapshot_is_detected_from_original_versions() {
         let (_temp, store, project, task, worktree) = preflight_fixture();
@@ -2042,7 +2182,10 @@ mod tests {
             let mut store = store.lock().unwrap();
             let mut goal = store.goal(task.goal_id).unwrap().unwrap();
             goal.state = crate::domain::GoalState::Paused;
-            store.put_goal(&mut goal).unwrap();
+            crate::runtime::assert_goal_change_refused(&mut store, goal);
+            let mut task = store.task(task.id).unwrap().unwrap();
+            task.state = crate::domain::TaskState::WaitingHuman;
+            store.put_task(&mut task).unwrap();
         }
         assert_eq!(
             validate_git(

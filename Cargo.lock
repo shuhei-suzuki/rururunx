@@ -542,6 +542,7 @@ dependencies = [
  "anyhow",
  "clap",
  "futures-util",
+ "rrx-process-tracker",
  "rusqlite",
  "rustix",
  "serde",
@@ -552,6 +553,15 @@ dependencies = [
  "tokio-tungstenite",
  "toml",
  "uuid",
+]
+
+[[package]]
+name = "rrx-process-tracker"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "rustix",
+ "tempfile",
 ]
 
 [[package]]

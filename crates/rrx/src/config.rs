@@ -52,10 +52,101 @@ impl Default for ContextConfig {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AgentConfig {
+    /// Explicit official native protocol. A configured alias is never a provider identity.
+    pub provider: Option<String>,
     pub command: Vec<String>,
     pub model: Option<String>,
     pub effort: Option<String>,
     pub max_concurrent: Option<usize>,
+    pub compatibility: Option<NativeCompatConfig>,
+}
+
+/// Cooperative, nonsecret declarations. They never change native permissions.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeCompatConfig {
+    pub profile: String,
+    pub cli_version: String,
+    pub settings: String,
+    #[serde(default)]
+    pub user_hooks: Vec<NativeUserHook>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeHookWrites {
+    Worktree,
+    None,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeUserHook {
+    pub label: String,
+    pub reference: String,
+    pub writes: NativeHookWrites,
+}
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct NativeProjectConfig {
+    pub required_hooks: Vec<NativeRequiredHook>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeRequiredHook {
+    pub path: String,
+    pub writes: NativeHookWrites,
+}
+
+fn hook_text(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 1024 && !s.chars().any(char::is_control)
+}
+impl NativeCompatConfig {
+    pub(crate) fn canonical(&self) -> Result<Vec<u8>> {
+        if self.user_hooks.len() > 16
+            || [&self.profile, &self.cli_version, &self.settings]
+                .iter()
+                .any(|s| !hook_text(s))
+        {
+            bail!("native compatibility declaration exceeds profile");
+        }
+        let mut labels = std::collections::BTreeSet::new();
+        for hook in &self.user_hooks {
+            if hook.label.is_empty()
+                || hook.label.len() > 64
+                || !hook
+                    .label
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+                || !labels.insert(&hook.label)
+                || !hook_text(&hook.reference)
+            {
+                bail!("invalid native user hook declaration");
+            }
+        }
+        let encoded = serde_json::to_vec(self)?;
+        if encoded.len() > 16 * 1024 {
+            bail!("native compatibility canonical encoding exceeds bound");
+        }
+        Ok(encoded)
+    }
+}
+impl NativeProjectConfig {
+    fn validate(&self) -> Result<()> {
+        if self.required_hooks.len() > 16 {
+            bail!("too many native required hooks");
+        }
+        let mut paths = std::collections::BTreeSet::new();
+        for hook in &self.required_hooks {
+            if !hook_text(&hook.path)
+                || hook.path.starts_with('/')
+                || hook.path.contains('\\')
+                || hook.path.split('/').any(|s| matches!(s, "" | "." | ".."))
+                || !paths.insert(&hook.path)
+            {
+                bail!("native required hook path must be unique and normalized");
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Phase policy is data. External evidence providers perform these gates.
@@ -100,6 +191,7 @@ pub struct Config {
     pub minimum_workflow: WorkflowClass,
     pub workflow: WorkflowConfig,
     pub agents: BTreeMap<String, AgentConfig>,
+    pub native: NativeProjectConfig,
 }
 
 /// Project inputs intentionally cannot alter runtime-wide slots or executables.
@@ -111,6 +203,7 @@ pub struct ProjectOverlay {
     pub scheduler: ProjectSchedulerOverlay,
     pub context: ContextOverlay,
     pub agents: BTreeMap<String, ProjectAgentOverlay>,
+    pub native: NativeProjectConfig,
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -149,6 +242,9 @@ impl Config {
             Some(path) => parse_file(path)?,
             None => Self::default(),
         };
+        if !result.native.required_hooks.is_empty() {
+            bail!("native required_hooks are project-only");
+        }
         result.validate().with_context(|| {
             format!(
                 "invalid runtime config {}",
@@ -179,6 +275,8 @@ impl Config {
     }
 
     fn apply_project(&mut self, project: ProjectOverlay) -> Result<()> {
+        project.native.validate()?;
+        self.native = project.native;
         if let Some(minimum) = project.minimum_workflow {
             self.minimum_workflow = self.minimum_workflow.max(minimum);
         }
@@ -235,6 +333,7 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<()> {
+        self.native.validate()?;
         if self.scheduler.global_max_sessions == 0 || self.scheduler.max_tasks_per_project == 0 {
             bail!("scheduler limits must be positive");
         }
@@ -256,6 +355,16 @@ impl Config {
             bail!("risk workflow mapping must be monotonic");
         }
         for (name, agent) in &self.agents {
+            if let Some(compatibility) = &agent.compatibility {
+                compatibility.canonical()?;
+            }
+            if agent
+                .provider
+                .as_deref()
+                .is_some_and(|p| !matches!(p, "claude" | "codex"))
+            {
+                bail!("agent {name} provider must be claude or codex");
+            }
             if name.trim().is_empty() || agent.max_concurrent == Some(0) {
                 bail!("agent {name:?} name and concurrency must be nonempty/positive");
             }
@@ -310,5 +419,59 @@ mod tests {
         ] {
             assert!(toml::from_str::<ProjectOverlay>(input).is_err(), "{input}");
         }
+    }
+    #[test]
+    fn nongrant_native_declaration_placement_closed_writes_and_canonical_bounds() {
+        for input in [
+            "[agents.a.compatibility]\nprofile='rrx-native-inherited-v1'\ncli_version='2.1.283'\nsettings='inherited'",
+            "[[native.required_hooks]]\npath='hook.sh'\nwrites='output_only'",
+            "[[native.required_hooks]]\npath='hook.sh'\nwrites='none'\nextra=true",
+        ] {
+            assert!(toml::from_str::<ProjectOverlay>(input).is_err(), "{input}");
+        }
+        let mut config = Config::default();
+        for path in ["/absolute", "../parent", "a/./b", "a//b", "a\\b", ""] {
+            assert!(
+                config
+                    .with_project_text(&format!(
+                        "[[native.required_hooks]]\npath='{path}'\nwrites='none'"
+                    ))
+                    .is_err(),
+                "{path}"
+            );
+        }
+        config = config
+            .with_project_text("[[native.required_hooks]]\npath='hooks/project.sh'\nwrites='none'")
+            .unwrap();
+        assert_eq!(config.native.required_hooks.len(), 1);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("runtime.toml");
+        std::fs::write(
+            &path,
+            "[[native.required_hooks]]\npath='hook.sh'\nwrites='none'",
+        )
+        .unwrap();
+        assert!(Config::load(Some(&path), None).is_err());
+        let raw = "profile='rrx-native-inherited-v1'\ncli_version='2.1.283'\nsettings='inherited'\n[[user_hooks]]\nlabel='ok'\nreference='opaque'\nwrites='none'";
+        let mut declaration: NativeCompatConfig = toml::from_str(raw).unwrap();
+        let bytes = declaration.canonical().unwrap();
+        assert_eq!(bytes, declaration.clone().canonical().unwrap());
+        declaration.user_hooks[0].reference = "x".repeat(1024);
+        assert!(declaration.canonical().is_ok());
+        declaration.user_hooks[0].reference.push('x');
+        assert!(declaration.canonical().is_err());
+        declaration.user_hooks[0].reference = "opaque".into();
+        declaration.user_hooks[0].label = "x".repeat(64);
+        assert!(declaration.canonical().is_ok());
+        declaration.user_hooks[0].label.push('x');
+        assert!(declaration.canonical().is_err());
+        for n in 0..16 {
+            declaration.user_hooks.push(NativeUserHook {
+                label: format!("hook{n}"),
+                reference: "opaque".into(),
+                writes: NativeHookWrites::None,
+            });
+        }
+        assert!(declaration.canonical().is_err());
     }
 }

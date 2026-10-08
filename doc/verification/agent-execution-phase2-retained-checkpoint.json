@@ -1,0 +1,254 @@
+{
+  "kind": "Phase2 preliminary retained-result inspection verification; not phase completion or native/OS conformance",
+  "approved_contract": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+  "final_component_source": "187cc63c216b359ac0b935fe100290ca53920338",
+  "production_source": "ccae04272f59c5db55e2476344f956e79ff85324",
+  "platform": "macOS aarch64, Git2.49.0 from explicit verification PATH, Rust1.91.1, offline local caches",
+  "full_workspace": {
+    "exit": 0,
+    "rrx_library_pass": 415,
+    "tracker_unit_pass": 4,
+    "rrx_primary_integration_pass": 113,
+    "tracker_primary_integration_pass": 1,
+    "rrx_doctest_pass": 2,
+    "total_primary_pass": 535,
+    "total_primary_ignored": 30,
+    "failures": 0,
+    "nested_witnesses_counted_again": false
+  },
+  "initial_results": {
+    "initial_source": "1ac77007f39986e1506ff01c1d5eb290922f78ac",
+    "results_controls": "10 pass/1 fail from a fixture assumption of loose-object storage; pack-independent fixture corrected at10e9abc",
+    "state_execution_controls": "20 pass",
+    "initial_clippy": "Failed after raw unregistered helpers became unreachable outside tests; cfg(test) closure and test-only import corrected",
+    "packing_fixed_source": "10e9abce4d40d5dfbb608a5e9a38c72be55f116b",
+    "packing_fixed_controls": "11 pass",
+    "reproduction_source": "85439748c9d3f4617fc129f7c1aa1bad1a3d5220",
+    "reproduction": "3 actual-public-path negative controls failed at their expected oracle before correction: ambient GIT_COMMON_DIR substitution, shallow-boundary ancestry truncation, physical info/grafts ancestry truncation",
+    "first_full_run": "At ccae042:414 library pass/1 fail/25 ignored; cleanup fixture passed an obsolete Ready DTO after publication. Its2-line test-only correction at187cc63 was targeted verified then the full workspace passed on that exact tree"
+  },
+  "lint": {
+    "workspace_all_targets_warnings_denied": "PASS at187cc63",
+    "format_diff_check": "PASS at187cc63"
+  },
+  "reviews": {
+    "round16": "Two independent fixed1ac7700 source reviews requested changes; original reports/severities preserved",
+    "round17": "Two independent fixedccae042 source component approvals, zero C/H/M/L",
+    "round18": "Two independent fixed187cc63 test-only delta approvals, zero C/H/M/L; production bytes unchanged",
+    "reviewers_executed_tests": false,
+    "final_coordinated_phase2_approval": false
+  },
+  "mutations": {
+    "baseline": "ccae04272f59c5db55e2476344f956e79ff85324",
+    "retained_ref": "refs/rrx/verification/agent-execution-phase2-retained/mutations",
+    "records": [
+      {
+        "name": "common",
+        "path": "crates/rrx/src/execution/results.rs",
+        "selector": "retained_inspection_ambient_common_directory_cannot_substitute_complete_backup",
+        "mutant_commit": "71016d4e1d27c400a2e04c81453aec74e1ecb26e",
+        "mutant_exit": 101,
+        "patch": "diff --git a/crates/rrx/src/execution/results.rs b/crates/rrx/src/execution/results.rs\nindex 3929119..aca7f47 100644\n--- a/crates/rrx/src/execution/results.rs\n+++ b/crates/rrx/src/execution/results.rs\n@@ -641,7 +641,6 @@ pub(crate) fn git_command_for(root: &Path, program: &Path) -> Result<Command> {\n         .env(\"GIT_NO_REPLACE_OBJECTS\", \"1\")\n         .env(\"GIT_NO_LAZY_FETCH\", \"1\")\n         .env_remove(\"GIT_DIR\")\n-        .env_remove(\"GIT_COMMON_DIR\")\n         .env_remove(\"GIT_WORK_TREE\")\n         .env_remove(\"GIT_INDEX_FILE\")\n         .env_remove(\"GIT_OBJECT_DIRECTORY\")",
+        "restore_commit": "edec5b41151ab029d565f9b838a3f362530305d0",
+        "restore_tree": "4b4893b72e113297d9214131ca101e15f5861b47",
+        "baseline_tree": "4b4893b72e113297d9214131ca101e15f5861b47",
+        "restore_exit": 0,
+        "patch_sha256": "77ca38e1c086a096abccaa8ab99db543be1a4df18ce8e74aaf5edb6acc4121f7"
+      },
+      {
+        "name": "shallow",
+        "path": "crates/rrx/src/execution/results.rs",
+        "selector": "retained_inspection_shallow_boundary_cannot_hide_missing_ancestors",
+        "mutant_commit": "4daed07755aa2fb72546b60cbdc2241e57880845",
+        "patch": "diff --git a/crates/rrx/src/execution/results.rs b/crates/rrx/src/execution/results.rs\nindex 3929119..6b97bc0 100644\n--- a/crates/rrx/src/execution/results.rs\n+++ b/crates/rrx/src/execution/results.rs\n@@ -660,7 +660,6 @@ fn retained_storage(repository: &Path) -> Result<()> {\n     for relative in [\n         \"commondir\",\n         \"objects/info/alternates\",\n-        \"shallow\",\n         \"info/grafts\",\n     ] {\n         match std::fs::symlink_metadata(repository.join(relative)) {",
+        "mutant_exit": 101,
+        "restore_commit": "33206714cd17a2dd56cf87e5db636c2b18c5bee8",
+        "restore_tree": "4b4893b72e113297d9214131ca101e15f5861b47",
+        "baseline_tree": "4b4893b72e113297d9214131ca101e15f5861b47",
+        "restore_exit": 0,
+        "patch_sha256": "5ff50ff86c6d8eaf110e6d3df83347629f2f282b5aca9d8e14722fa6a5b4ea0d"
+      },
+      {
+        "name": "graft",
+        "path": "crates/rrx/src/execution/results.rs",
+        "selector": "retained_inspection_graft_cannot_hide_missing_ancestors",
+        "mutant_commit": "4fcf637f7ebb61fd97093d015357d75b826738c3",
+        "patch": "diff --git a/crates/rrx/src/execution/results.rs b/crates/rrx/src/execution/results.rs\nindex 3929119..0c541c9 100644\n--- a/crates/rrx/src/execution/results.rs\n+++ b/crates/rrx/src/execution/results.rs\n@@ -661,7 +661,6 @@ fn retained_storage(repository: &Path) -> Result<()> {\n         \"commondir\",\n         \"objects/info/alternates\",\n         \"shallow\",\n-        \"info/grafts\",\n     ] {\n         match std::fs::symlink_metadata(repository.join(relative)) {\n             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}",
+        "mutant_exit": 101,
+        "restore_commit": "2c7d537cdd6ba6d17edcb1874b20a1ac9910486f",
+        "restore_tree": "4b4893b72e113297d9214131ca101e15f5861b47",
+        "baseline_tree": "4b4893b72e113297d9214131ca101e15f5861b47",
+        "restore_exit": 0,
+        "patch_sha256": "912fe75872eef61b47ca265e3ee4b0bfba526cd45a6367226d8f84ddcaecae87"
+      },
+      {
+        "name": "intent",
+        "path": "crates/rrx/src/execution/retained_io.rs",
+        "selector": "retained_inspection_has_pending_intent_and_distinct_cookie_before_child_exec",
+        "mutant_commit": "df0ebfeae004044fab362a11cf8639dc205e80f9",
+        "patch": "diff --git a/crates/rrx/src/execution/retained_io.rs b/crates/rrx/src/execution/retained_io.rs\nindex b49ed88..d2730b0 100644\n--- a/crates/rrx/src/execution/retained_io.rs\n+++ b/crates/rrx/src/execution/retained_io.rs\n@@ -73,12 +73,6 @@ impl RetainedGit {\n                 .store\n                 .lock()\n                 .map_err(|_| anyhow::anyhow!(\"state poisoned\"))?;\n-            store.reserve_retained_inspection(\n-                self.owner.epoch,\n-                &self.artifact,\n-                operation,\n-                action,\n-            )?;\n             // There is no await/unlocked gap between durable intent and spawn.\n             match process::OwnedProcess::spawn(&mut command) {\n                 Ok(child) => child,",
+        "mutant_exit": 101,
+        "restore_commit": "18f48f8f0dee445f8b7169b7552ad7592eff3c95",
+        "restore_tree": "4b4893b72e113297d9214131ca101e15f5861b47",
+        "baseline_tree": "4b4893b72e113297d9214131ca101e15f5861b47",
+        "restore_exit": 0,
+        "patch_sha256": "dc8085e26ae3d9ac77600054471303bbd1fd8c83eacb6ebf9374ada1fccc3a40"
+      },
+      {
+        "name": "artifact",
+        "path": "crates/rrx/src/state/execution/artifacts.rs",
+        "selector": "retained_inspection_rejects_forged_metadata_and_stale_epoch_before_spawn",
+        "mutant_commit": "5cc31ca40acb4e0d29eb22ad83ab12d26039e017",
+        "patch": "diff --git a/crates/rrx/src/state/execution/artifacts.rs b/crates/rrx/src/state/execution/artifacts.rs\nindex 401774f..9163e0e 100644\n--- a/crates/rrx/src/state/execution/artifacts.rs\n+++ b/crates/rrx/src/state/execution/artifacts.rs\n@@ -21,7 +21,7 @@ fn validate_retained_inspection(\n         matches!(\n             recorded.state,\n             ArtifactState::Ready | ArtifactState::Published\n-        ) && serde_json::to_value(&recorded)? == serde_json::to_value(artifact)?\n+        ) && true\n             && valid_oid(&recorded.revision)\n             && valid_oid(&recorded.base_sha)\n             && recorded.manifest_sha256.len() == 64",
+        "mutant_exit": 101,
+        "restore_commit": "480592a241dc42a702490eaba8aee8fceb606470",
+        "restore_tree": "4b4893b72e113297d9214131ca101e15f5861b47",
+        "baseline_tree": "4b4893b72e113297d9214131ca101e15f5861b47",
+        "restore_exit": 0,
+        "patch_sha256": "6d695ec860cac093016cf43b46ea5ba94ea6ceb50405faafe0c5767bc95c5d78"
+      },
+      {
+        "name": "publication",
+        "path": "crates/rrx/src/state/execution/artifacts.rs",
+        "selector": "new_generation_closes_old_reviewers_without_erasing_known_work_or_artifacts",
+        "mutant_commit": "a2124cac65f2ea76b027f5f84fd9a86dc211ef71",
+        "patch": "diff --git a/crates/rrx/src/state/execution/artifacts.rs b/crates/rrx/src/state/execution/artifacts.rs\nindex 401774f..c1ce56d 100644\n--- a/crates/rrx/src/state/execution/artifacts.rs\n+++ b/crates/rrx/src/state/execution/artifacts.rs\n@@ -256,8 +256,7 @@ impl Store {\n         ensure!(\n             artifact.unit_id == unit.id\n                 && artifact.scope == unit.scope\n-                && artifact.state == ArtifactState::Ready\n-                && serde_json::to_value(&artifact)? == serde_json::to_value(verified)?,\n+                && artifact.state == ArtifactState::Ready,\n             \"ready artifact binding mismatch\"\n         );\n         let mut task: Task = read_tx(&tx, \"tasks\", &unit.scope.task_id.unwrap().to_string())?",
+        "mutant_exit": 101,
+        "restore_commit": "9185ec4051f39bd571d219a9aca046652e24e746",
+        "restore_tree": "4b4893b72e113297d9214131ca101e15f5861b47",
+        "baseline_tree": "4b4893b72e113297d9214131ca101e15f5861b47",
+        "restore_exit": 0,
+        "patch_sha256": "52aec0376c23dcd2a1fb4475425092b1e71839cc9c8cb38ab8e85ddcb7ab5591"
+      }
+    ]
+  },
+  "limits": [
+    "Only owned temporary Git repositories/SQLite/child fixture processes; no actual authenticated Claude/Codex/Grok or Docker daemon used",
+    "Linux neither compiled nor executed for this checkpoint; no new source installation/crates.io or Linux distribution claim",
+    "Current Runtime canonical Git path is resolved; program_reference_sha256 hashes the path reference, not executable contents/version qualification",
+    "Historical reads never reopen old Task/generation/native/finalization permissions, change work/cleanup outcomes, or depend on disposed old profile/temp paths",
+    "Strict public verification requires the exact current Ready/Published indexed artifact DTO; stale pre-publication DTOs refuse",
+    "Direct GIT_SHALLOW_FILE/GIT_GRAFT_FILE environment exploits are unestablished for this tested Git version; actual physical shallow/graft metadata and GIT_COMMON_DIR are reproduced separately",
+    "No atomic filesystem freeze, adversarial sandbox, complete process collection, or host-loss result durability certificate",
+    "Runtime/CLI/production source/evidence integrations, remaining tool profiles, both-OS CI, coordinated Phase2 approval and later actual Phase3 acceptance remain pending",
+    "README Status and license files/descriptions unchanged",
+    "Default interactive shell reports Apple Git2.54.0, but explicit verification PATH selects Git2.49.0; only the latter is credited to these controls"
+  ],
+  "logs": [
+    {
+      "path": "/private/tmp/rrx-phase2-retained-controls.log",
+      "bytes": 2412,
+      "sha256": "458255b979268dccbc38b33d4150070907bb4ffc58feeffaeb7d89cc30733913"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-ledger.log",
+      "bytes": 2486,
+      "sha256": "8934f0dcbfb27691ac480c1fcbd1c4c8783ce4a05247486e8cd20da5586df37d"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-initial-clippy.log",
+      "bytes": 1198,
+      "sha256": "cfaa06a52f0bd8355eeb6196f9624d7ef5decc2a1a5745e39815e1abf326677b"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-controls2.log",
+      "bytes": 1819,
+      "sha256": "8ccf1b8748ac855978f8eaa3e4cd2f9f5a20a5686312f7ac1938ca2adeb7346a"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-clippy2.log",
+      "bytes": 591,
+      "sha256": "67617a66a5d4fa4217b41f85b4e7657cf302cede5eb8888187f95464164d8a22"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-reproduction.log",
+      "bytes": 2898,
+      "sha256": "574cf212c5f8bd3c9408522fe137fd8b2df1481dae8d5c3ca4ca9f830ca5a121"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-regression.log",
+      "bytes": 54037,
+      "sha256": "8e30dfbc0bfe3eb9616c57f2b1cd4707711846fc154f1d5c3e2bb3463cbb5944"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-final-clippy.log",
+      "bytes": 328,
+      "sha256": "34c07303c5ebf940ec9a836472247ccaeea2025a2905a90e4481a8eb32efcfd9"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-cleanup-consumer.log",
+      "bytes": 583,
+      "sha256": "a1f42dd1e56cf3f588a694e4bd24899a4acfac3fbbc53fd2a62fc532bebc6842"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-final-regression.log",
+      "bytes": 66967,
+      "sha256": "bda409f8947f7041ad55c04a5da436e74981930214ef32f8b6889b7e353a703f"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-current-clippy.log",
+      "bytes": 184,
+      "sha256": "68516af532a05c639965e3e599db82717728357b51cd2bf4e07195c75ddabdfe"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-common-mutation.log",
+      "bytes": 4374,
+      "sha256": "0be12918190f6fc73d47974b5ea77e6a3d378319080580fdeb46970e23e8535b"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-common-restored.log",
+      "bytes": 533,
+      "sha256": "8396e0cc2a59967927a93be8ec9dcfd74011af35ed2efdfa358deb536f00cfab"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-shallow-mutation.log",
+      "bytes": 1262,
+      "sha256": "6d843e40a46050aa4ba5025eaf3e1dc3ef3f24228357c4bf7f9e1dfba690480b"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-shallow-restored.log",
+      "bytes": 521,
+      "sha256": "db5dd6033d269609cb390bdfcea9bae24b715384c28a79788b649e2767c0c35f"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-graft-mutation.log",
+      "bytes": 1195,
+      "sha256": "10d7462c284df4904c4615b5e32ce9c31a456950be73e9a6452f5103b8c184d6"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-graft-restored.log",
+      "bytes": 509,
+      "sha256": "3854cf8b5702a3234371bb485a67e20aa612aeff5f547b610340527916f38b52"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-intent-mutation.log",
+      "bytes": 1591,
+      "sha256": "8007874cbbadd37483b2081d211cbf0b35df03e06722f99c52b6ded76b5443ef"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-intent-restored.log",
+      "bytes": 515,
+      "sha256": "88fecbb287a4f70d760a5abb997c7c819ed893f61c574445f87918a002f6b339"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-artifact-mutation.log",
+      "bytes": 1196,
+      "sha256": "5d274c2d84563acdacc152c39979b6621daa68098176f8c0bdab1a30b8aa734e"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-artifact-restored.log",
+      "bytes": 511,
+      "sha256": "83461386cbb8c459297e880ea029431cf1b4c3c7f1ad828e9b8d09639a59e982"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-publication-mutation.log",
+      "bytes": 1184,
+      "sha256": "6f4183f10bd4a524a6b0acbb8b99ceba568254808862d42f788aef2463c9cd9f"
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-retained-publication-restored.log",
+      "bytes": 496,
+      "sha256": "0e7fe18a4703e734adc82f97c058078fc0a722dd59d6c302d4736c91845e9d11"
+    }
+  ]
+}

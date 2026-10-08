@@ -41,6 +41,7 @@ const INTERRUPT_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_s
 
 fn empty_status(session: Session) -> SessionStatus {
     SessionStatus {
+        execution: None,
         session,
         exit_code: None,
         stdout: vec![],
@@ -1152,6 +1153,7 @@ impl CodexAdapter {
             .require()
             .map_err(|error| registered.refused_before_work(error))?;
         let session = SessionRef {
+            execution: None,
             id: registered.transition.id,
             scope: registered.request.scope.clone(),
         };
@@ -2909,6 +2911,7 @@ mod tests {
         );
         adapter.availability.set_git_input(git);
         let unknown = SessionRef {
+            execution: None,
             id: SessionId::new(),
             scope: owned.request.scope.clone(),
         };
@@ -4452,16 +4455,25 @@ mod tests {
         peer.abort();
     }
 
+    /// FM §8.4 S4 split. A changed durable owner, or an inactive lifecycle,
+    /// prevents the Native operation grant. The former Goal pause is not
+    /// expressible on legacy rows: the generic Goal writer refuses it (S4-W,
+    /// Goal unchanged). The inactive-lifecycle half is kept as a Task-level
+    /// change on the same legacy row (S5): the cancelled Task takes the same
+    /// non-fatal preflight refusal (`Ok(false)`) as the paused Goal did.
     #[tokio::test]
     async fn changed_durable_owner_or_paused_goal_prevents_native_operation_grant() {
-        for paused in [false, true] {
+        for inactive in [false, true] {
             let mut fixture = ApprovalFixture::new(true).await;
             {
                 let mut store = fixture.reservation.store.lock().unwrap();
-                if paused {
+                if inactive {
                     let mut goal = fixture.authority.snapshot.goal.clone().unwrap();
                     goal.state = crate::domain::GoalState::Paused;
-                    store.put_goal(&mut goal).unwrap();
+                    crate::runtime::assert_goal_change_refused(&mut store, goal);
+                    let mut task = fixture.authority.snapshot.task.clone().unwrap();
+                    task.state = crate::domain::TaskState::Cancelled;
+                    store.put_task(&mut task).unwrap();
                 } else {
                     let mut session = fixture.reservation.session.clone();
                     session.state = SessionState::Stopped;
@@ -4473,12 +4485,20 @@ mod tests {
             let (mut rpc, mut wire, peer) = rpc_peer().await;
             let (answer, result) = reply(OperationDecision::Approve, "turn");
             let outcome = fixture.answer(&mut rpc, answer).await;
-            if paused {
+            if inactive {
                 assert!(!outcome.unwrap());
             } else {
                 assert!(outcome.is_err());
             }
-            assert!(result.await.unwrap().is_err());
+            let refused = result.await.unwrap().unwrap_err();
+            if inactive {
+                assert!(
+                    refused
+                        .to_string()
+                        .contains("native Task lifecycle is inactive"),
+                    "{refused}"
+                );
+            }
             assert_eq!(fixture.intents(), 0);
             assert!(
                 !fixture
@@ -4688,6 +4708,7 @@ mod tests {
     }
     fn status() -> SessionStatus {
         SessionStatus {
+            execution: None,
             session: Session {
                 id: SessionId::new(),
                 scope: Scope::project(ProjectId::new()),
@@ -5551,13 +5572,20 @@ mod tests {
         }
     }
     fn journal(directory: &std::path::Path, value: &Value) {
-        use std::io::Write;
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(directory.join("journal"))
-            .unwrap();
-        writeln!(file, "{value}").unwrap();
+        // This fixture has one serial writer and live cross-process readers.
+        // Publish the whole snapshot atomically so a reader never parses a
+        // partially appended JSON line. Production protocol behavior is unchanged.
+        let journal = directory.join("journal");
+        let mut bytes = match std::fs::read(&journal) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(error) => panic!("cannot read fixture journal: {error}"),
+        };
+        bytes.extend(serde_json::to_vec(value).unwrap());
+        bytes.push(b'\n');
+        let pending = directory.join("journal.pending");
+        std::fs::write(&pending, bytes).unwrap();
+        std::fs::rename(pending, journal).unwrap();
     }
     fn journal_values(directory: &std::path::Path) -> Vec<Value> {
         let contents = std::fs::read_to_string(directory.join("journal")).unwrap_or_default();

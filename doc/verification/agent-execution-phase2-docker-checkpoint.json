@@ -1,0 +1,204 @@
+{
+  "kind": "Phase2 preliminary Docker component verification; not phase completion or native/OS conformance",
+  "approved_contract": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+  "final_component_source": "e0675783a7ad4bccbfd56ff502e98f5c2c0f07df",
+  "full_workspace_source": "cd7b6208fa9b91f59f3ce9ec2637646012cf4b6a",
+  "platform": "macOS aarch64, Rust 1.91.1, offline locked/local caches",
+  "full_workspace": {
+    "exit": 0,
+    "rrx_library_pass": 407,
+    "tracker_unit_pass": 4,
+    "rrx_primary_integration_pass": 113,
+    "tracker_primary_integration_pass": 1,
+    "rrx_doctest_pass": 2,
+    "total_primary_pass": 527,
+    "total_primary_ignored": 29,
+    "failures": 0,
+    "nested_witnesses_counted_again": false
+  },
+  "later_source_delta": "e067578 moves a test length assertion after actual persistence; production bytes match cd7b620. Targeted control passes, not a relabelled full tree run.",
+  "component_controls": {
+    "docker_protocol_controls_a3ee6fc": 11,
+    "actual_built_rrx_entry_primary": 1,
+    "entry_child_only_ignored": 1,
+    "current_persistence_control_e067578": 1
+  },
+  "lint": {
+    "full_workspace_all_targets_warnings_denied": "PASS at cd7b620",
+    "format_diff_check": "PASS; final verification metadata pending commit"
+  },
+  "installation": {
+    "command": "cargo install --path crates/rrx --locked --offline --root /private/tmp/rrx-phase2-docker-install",
+    "source": "e0675783a7ad4bccbfd56ff502e98f5c2c0f07df",
+    "exit": 0,
+    "release_binary": "one rrx",
+    "smoke": [
+      "--version",
+      "--help",
+      "config-check"
+    ],
+    "global_PATH_changed": false,
+    "crates_io_distribution_verified": false,
+    "native_run_commands_available": false
+  },
+  "mutations": [
+    {
+      "operator": "omit initial namespace labels",
+      "mutant_commit": "0a9ab5a9a8d290017f5c0334e9603b29d8e474cb",
+      "restored_commit": "1007f378d9321add5e1b7a282280c7363b187c0e",
+      "baseline_commit": "52b43e68722ad87f4faa40a85fca5d562062d861",
+      "selector": "docker_filter_and_operation_identity_are_independently_checked",
+      "failure_oracle": "Foreign action appears in actual returned typed action list",
+      "mutant_exit": 101,
+      "restored_exit": 0,
+      "patch_sha256": "c0c0dcba019aa8488708f6d8a76bc4996ff67ebdde210048bb8061a8c8214aff",
+      "patch": "diff --git a/crates/rrx/src/execution/docker.rs b/crates/rrx/src/execution/docker.rs\nindex dc69e84..a57ff68 100644\n--- a/crates/rrx/src/execution/docker.rs\n+++ b/crates/rrx/src/execution/docker.rs\n@@ -326,10 +326,7 @@ async fn cleanup_inner(\n         let own = creations.iter().any(|effect| {\n             effect.id.to_string() == selected.operation && effect.expected_target == selected.name\n         });\n-        if !profile\n-            .docker_labels\n-            .iter()\n-            .all(|(k, v)| selected.labels.get(k) == Some(v))\n+        if false\n         {\n             report.errors.push(\"docker_label_filter_mismatch\".into());\n             continue;\n",
+      "restored_tree_matches_baseline": true
+    },
+    {
+      "operator": "omit Runtime/caller Docker configuration binding",
+      "mutant_commit": "a87d607e3a6aef1e793eb48e5d7cb11e86b72d00",
+      "restored_commit": "5aa19e2d7cf59dacc303427db0c164c7ee75cf3b",
+      "baseline_commit": "cd7b6208fa9b91f59f3ce9ec2637646012cf4b6a",
+      "selector": "installed_docker_entry_binds_runtime_and_shim_configuration",
+      "failure_oracle": "Actual built rrx accepts differing synthetic Docker configuration instead of refusing",
+      "mutant_exit": 101,
+      "restored_exit": 0,
+      "patch_sha256": "db465c91dc3fb0fb00947729252df45314c8821716a7d01bd0b19b53e348ee95",
+      "patch": "diff --git a/crates/rrx/src/execution/docker.rs b/crates/rrx/src/execution/docker.rs\nindex 4ecbac1..371aa84 100644\n--- a/crates/rrx/src/execution/docker.rs\n+++ b/crates/rrx/src/execution/docker.rs\n@@ -163,10 +163,7 @@ pub(crate) async fn qualify_native(\n     unit: &ExecutionUnit,\n     caller: &DockerRouting,\n ) -> Result<DockerTarget> {\n-    ensure!(\n-        !caller.host_override && *caller == routing_environment()?,\n-        \"managed Docker routing differs from Runtime qualification\"\n-    );\n+    let _ = caller; // mutation: omit Runtime/caller routing binding\n     qualify_inner(owner, unit, None).await\n }\n async fn qualify_inner(\n",
+      "restored_tree_matches_baseline": true
+    },
+    {
+      "operator": "omit exact Docker kill intent target",
+      "mutant_commit": "7c2dd24de472b77cf23c22527cdb21e5b8456d0a",
+      "restored_commit": "c9254ed63e892b1e7313f5cd39c504c077ec1b7d",
+      "baseline_commit": "e0675783a7ad4bccbfd56ff502e98f5c2c0f07df",
+      "selector": "docker_mutation_ack_timeout_preserves_exact_durable_target_and_action",
+      "failure_oracle": "Unknown durable mutation lacks required exact container/engine target",
+      "mutant_exit": 101,
+      "restored_exit": 0,
+      "patch_sha256": "ddc53fd8507d76bee3c22996fec69c6d09a85cda9a7468dc68db106c6f0533e8",
+      "patch": "diff --git a/crates/rrx/src/execution/docker.rs b/crates/rrx/src/execution/docker.rs\nindex 4ecbac1..d7175e0 100644\n--- a/crates/rrx/src/execution/docker.rs\n+++ b/crates/rrx/src/execution/docker.rs\n@@ -436,7 +436,7 @@ async fn cleanup_inner(\n             });\n             let killed = io\n                 .run(\n-                    &format!(\"container-kill:{id}:{}\", target.engine),\n+                    \"container-kill\", // mutation: discard exact container/engine target\n                     &args(&target.context, &[\"container\", \"kill\", id]),\n                 )\n                 .await;\n",
+      "restored_tree_matches_baseline": true
+    },
+    {
+      "operator": "insufficient cookie/Docker receipt headroom",
+      "mutant_commit": "c00a5ed1164edf39622713875f1508c2034cbd52",
+      "restored_commit": "ee7ab756480425638232afa6d6155d3c7d04f5e2",
+      "baseline_commit": "c9254ed63e892b1e7313f5cd39c504c077ec1b7d",
+      "selector": "docker_changing_inventories_fit_the_actual_cookie_persistence_budget",
+      "failure_oracle": "Actual Store persistence returns invalid claimed cleanup observation for 1056 remaining identities",
+      "mutant_exit": 101,
+      "restored_exit": 0,
+      "patch_sha256": "38d697daeaf78586545f781578ee0f211ee664fa1c37267112cd5e4be1032c24",
+      "patch": "diff --git a/crates/rrx/src/execution/cleanup.rs b/crates/rrx/src/execution/cleanup.rs\nindex 24cd566..76ae7fd 100644\n--- a/crates/rrx/src/execution/cleanup.rs\n+++ b/crates/rrx/src/execution/cleanup.rs\n@@ -9,7 +9,7 @@ use std::{\n     time::{Duration, Instant},\n };\n \n-pub(crate) const MAX_COOKIE_MATCHES: usize = 1024 - super::docker::MAX_REMAINING;\n+pub(crate) const MAX_COOKIE_MATCHES: usize = 928; // mutation: insufficient Docker headroom\n \n /// The worker holds the owner only during a sweep. Dropping it aborts its\n /// scheduler; an OS worker carries neither the owner lock nor SQLite state.\n",
+      "restored_tree_matches_baseline": true
+    }
+  ],
+  "local_logs": [
+    {
+      "path": "/private/tmp/rrx-phase2-docker-controls.log",
+      "sha256": "7250553d6eeb62244ee3ce8a9eb46312a338a957f83be03b03e0a2f8a656920c",
+      "bytes": 3412
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-controls2.log",
+      "sha256": "39ceeee0b7a1b44a8547ca010fd1df720ae51de5d78886d3638b7fe08944d73e",
+      "bytes": 3451
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-regression.log",
+      "sha256": "e5b14a219110d9ce5e56273f5d4e5048eefa39a956f9734bcf2ea9d321e644ce",
+      "bytes": 64842
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-clippy.log",
+      "sha256": "a1274ac178331f8144deb5326d87c34ea704158647d38b7bb14333c2a33dc50b",
+      "bytes": 184
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-corrections.log",
+      "sha256": "7d82dc9afc0d57b9196b7b9aacf9463e40596b41be18821ddab286da4dc6fbf1",
+      "bytes": 1517
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-entry.log",
+      "sha256": "f796b7c7a2af7babe46daca261ad88f45108b39ebdb4523b9ce08aa16df7579d",
+      "bytes": 586
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-final-regression.log",
+      "sha256": "7b8ddcd0a52859821bc99bdb398d18441db5757b72c57e802c7589987320ea6f",
+      "bytes": 65603
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-final-clippy.log",
+      "sha256": "061f10eafb4dcb4c4c21cbdb23aef2087a98422166896eb9a1e510e8b07d12ae",
+      "bytes": 185
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-budget-current.log",
+      "sha256": "b78d884cb0656a03e457031c6d976212b3ce77d372ae74cb9b20c68d0769fbb9",
+      "bytes": 506
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-install.log",
+      "sha256": "afa8cb63b71e8ff0d4d0a136858cc9aa148575baa38c33dca3b783bbfaf907b5",
+      "bytes": 3686
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-installed-smoke.log",
+      "sha256": "3c3759bce6d97a99146eb136900e7a588c21954cf3a445dddb24714ee21de43a",
+      "bytes": 846
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-label-mutation.log",
+      "sha256": "bd1ee8c4c7452d0de1cd1c77b2ba18456a081aaa1f43fce93d74f08ca88ad653",
+      "bytes": 4097
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-label-restored.log",
+      "sha256": "4bead8acddf4e4b06107721df82df3d38ee04ff41d534850e32c54b129de91d6",
+      "bytes": 480
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-routing-mutation.log",
+      "sha256": "d87b20c77fb1b93e5d8c53fa33a470ee34b5ca85b165293a47f473ad2bc06df3",
+      "bytes": 1417
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-routing-restored.log",
+      "sha256": "2f2cf27d958eb4a6352d6474ee1c292ba9ea297c88ce44b24782a4c0de03c388",
+      "bytes": 567
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-intent-mutation.log",
+      "sha256": "084c3ce35972dbd381812dd59dbf18db401406850acb547200b385f6a2686cf6",
+      "bytes": 967
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-intent-restored.log",
+      "sha256": "010a3ce142d9a7e8baa778280057fe993e7a15d3d28e43da64d179bbc624858e",
+      "bytes": 488
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-budget-mutation.log",
+      "sha256": "29e81a8fb0ed0fb857e1474aad5ecbb6639b6496de7f64ce6f8f2e65de85173e",
+      "bytes": 1001
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-docker-budget-restored.log",
+      "sha256": "c5482eab65ae44171bd8519d5d06dc7f0d503e9e10f8ea80216e9495230eac1e",
+      "bytes": 486
+    }
+  ],
+  "limitations": [
+    "Account-free synthetic Docker CLI; no real Docker daemon or authentication files read/copied",
+    "Four simultaneously admitted unit records, not four genuine Agent runs",
+    "Changing-inventory bound control bypasses aggregate five-second timeout for all 128 Python helper startups; no timing or 896-real-process claim",
+    "No Linux build/run/install or both-OS CI qualification",
+    "No real native authentication/settings/hooks/subscription/cancel/crash acceptance",
+    "No operational Runtime Sources/Gates/CLI or complete tool/resource release qualification",
+    "Reviewed component only; Phase2 and full MVP remain incomplete"
+  ]
+}

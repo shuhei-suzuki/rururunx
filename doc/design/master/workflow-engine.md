@@ -1,7 +1,206 @@
 # Workflow Engine Design
 
+Proposed native-execution policy: see [result protection](agent-execution.md).
+It supersedes conflicting ownership/live-worktree prerequisites only when the
+new profile is implemented; historical/current implementation sections below
+remain baseline descriptions, not acceptance of that proposal.
+
 **Status:** Rust phase runner implemented (Issue #8); dependent integrations pending
 **Scope:** MVP workflow orchestration
+
+The [managed Session binding requirements](../../requirements/issue-43-managed-binding-requirements.md)
+are a STRICT proposal connecting Issue43 to the current managed profile. The
+private managed binder updates the Workflow record without changing Task
+version; its Runtime-only first Executor composition is unmerged and unqualified. Ordinary
+legacy binding remains a separate path. Native
+Driver readiness remains an open gate until the actual private producers and
+sole binding consumer compose and pass their integration controls.
+
+The [managed binding design](../issue-43-managed-binding-design.md) specifies the
+complete actual phase owner/input protocol, original marker, sole record-only
+binder and retained supervision. Its STRICT component design is independently
+approved; production availability remains unimplemented. Its migration order is
+Verifier8 → actual Runtime9 → Binding10 → ReviewRound11; genuine Driver and
+source-successor consumers remain delivery gates.
+
+The Runtime retains an independent Source handoff before transferring its original
+allocation and preparation guard to the phase queue. One private dispatcher shares
+the Runtime's original queue, Native jobs and stop admission. The pre-offer Driver
+reservation holds only its Weak reference. After transfer releases Source locks
+and admission, the handoff saves the original marker plan before publication
+awaits admission. Exact marker publication retains the original Native job and
+known marker before the once-only selected launch. Observations remain nongrant:
+the Runtime-only installed graph and preparation-to-transport connection are
+unmerged and unqualified, and this connection cannot complete a Task.
+The actual Source reservation saves a one-way accepted witness in its SAME slot
+and armed guard before Source acceptance. Accepted Unmarked custody remains
+charged through unpublished restoration, shutdown and final Drop without a Lost
+retirement from destruction alone. Publication retains an independent original
+plan, one-way attempt latch, actual fresh/reused job reservation and producer-owned
+transaction observations. Commit uncertainty remains held; only observed precommit
+paths may attempt the unchanged same-original unpublished proof. Both publication
+and exact confirmation save their first genuine marker Arc before fallible handoff
+lookup. Genuine producer controls, full regression and lint qualification remain
+open; these source mechanisms alone do not qualify Native execution.
+
+The selected Native preparation continuation retains its original readiness
+actor, exact known commit and finite original helper history independently of the
+caller future. The private existing10 intent and owned-observation settlement
+compare the complete original indexed Unit effect inventory; compatible journal
+writes cause Held conflicts and cannot issue observations or replay a child.
+Both inventory passes share a scoped SQLite VM budget, with a 256-row sentinel,
+8-KiB body bound and inclusive 2-MiB all-column framing bound. The raw child is
+adopted before identity or pipe qualification. Capture has an eager independent
+owner, a combined 64-KiB output budget and bounded execution/drain/stop attempts.
+The actual first Executor Source retains its validated immutable Context/template,
+encoded input, committed corpus bytes, complete physical tree inventory and mandatory
+config/rule pins. Its nongrant seal reaches Native through the same accepted
+Source/ticket/allocation origin. The selected continuation runs a fixed ordered
+13-action private readonly Git batch after the SAME qualified version settlement,
+before the private quota continuation. The batch captures source
+and Task namespace, original-revision roots, branch/HEAD, seven effective config
+keys, full index entries, index-tree equality, effective conversion attributes and
+empty Status. It uses the unchanged Git command prefix and original real tool,
+profile/environment and genuine Git lease. Config alone accepts exit 1 for absent
+keys. Status is not planned without an owned conversion-identity value from the
+SAME batch/Source seal, and complete observed correspondence retains that identity
+and every original observation. The value grants no prepared input or permission.
+
+Each Git intent has distinct native_phase_git kind, native-git key and a hashed
+original operation/pair/epoch/profile/revision/inventory/input/action target.
+Planning compares rows only to the retained SAME predecessor postimage; the
+14 version/Git acknowledgements form an immutable pointer-linked inventory chain.
+A settled prefix is memoized and never reconciled against later rows. Only the
+current tail is reconciled. New intents and capture fences conjoin an explicit
+runtime-epoch SQL check with the original current/Driver/Source/actor/Unit/owner/
+preparing-v2 and stop-admission checks in the same Immediate transaction.
+The first Git intent reserves all 13 maximal row images and inclusive 2 MiB
+complete all-column framing. Actions 1–9/11
+capture at most 64 KiB combined output; 10/12/13 capture at most 1 MiB. All 14
+helpers total at most 3,866,624 bytes, within the 8-MiB preparation budget, with a
+180-second batch deadline from the first known Git intent. Overflow and incomplete
+capture remain nongrant.
+
+The installed Native adapter retains an optional bounded nonsecret compatibility
+declaration. The selected continuation compares that SAME declaration with the
+retained Frame, the allocation role and committed required-hook inventory before
+running the version helper. Observed qualification retains the SAME closed version
+helper. The continuation builds and checks one nongrant transport command before
+quota planning, preserving inherited Native settings, authentication and hook
+roots. Hook compatibility is a cooperative declaration.
+
+The private pre-Session quota code retains the SAME actor, no-dispatch value,
+helpers and known readiness lineage. Its bounded snapshots count the union of
+marked and legacy active leases. Exact writes cover complete pool, lease and
+waiter images, the indexed Unit and permitted readiness transition. Parking keeps
+the Unit Preparing and advances only its wait reason/version and readiness;
+due-claim uses the own committed postimages. Task, Workflow, Context, Driver and
+Source versions remain unchanged. Root derives Waiting from the custody watch
+while the SAME start future remains retained. Nongrant revoked closure can compare
+the latest factual same-owner Unit, leaves that Unit untouched and releases only
+the own lease, waiter and probe. It cannot refresh a grant lineage.
+The private non-success Store port consumes a sealed ended-start custody proof
+and complete original marker images. It plans bounded turn material outside
+Store, then retires the exact open Unit, closes the operation, changes only the
+active Workflow attempt to Failed and inserts one private phase-closed link in
+one Immediate. Confirmation compares all saved preimages or all postimages
+with unchanged original currency. Task, Context and Session remain untouched;
+no retry or cleanup producer is supplied. Root runs one preparation or RN-1
+transaction per due turn, outside its registry, job and queue locks; turn material
+is freed after the Store guard. The retained acknowledgment releases the marked
+slot and finished job. The active Failed Executor branch reports its recorded
+failure before consulting the Source handoff. Driver and Source retirement are
+separate producers, so the Task remains occupied by its driving Driver. Genuine
+activation-dependent qualification remains incomplete.
+
+The private Prepared issuer retains all SAME custody conjuncts and checks a fixed
+provider/role budget before returning the original Prepared value. Version and
+Git planners check the same table before their intents; registration checks the
+same Prepared bound. Codex reserves transport, six setup effects and input within
+256 rows; Claude reserves transport, one setup effect and input within 255 rows.
+The actual producer chain and these journalled dispatches remain unqualified.
+The private quota planner builds complete own-head and other-head images before
+Store entry. Its Immediate selects a branch after exact inventory comparisons,
+evaluating only candidates before the own actual or virtual fair position. Only
+preceding Legacy candidates use the unchanged writer-connected validator, at
+most eight calls after bounded typed Project/Goal/Task structure checks. A
+malformed candidate or ninth required call aborts before any write, reports
+attention and replans cancellably. Known outcomes retain the selected branch;
+uncertain confirmation requires a unique exact committed branch. Public standalone
+registration, transport and composition remain unavailable. A separate bounded nongrant waiting reader joins
+open operation, Unit, readiness and waiter facts for Goal status counts and Task
+pages while preserving the existing wire shape and stored Task version. The
+Workflow waiting-observation accessor and retained Driver handoff reason use the
+same reader; the exact Workflow snapshot remains unchanged. Stale, malformed or
+ambiguous facts produce Held attention in this observation, without a resume
+grant or another Task's admission being stopped. Primitive
+parsing, policy and exact-image tests do not qualify these actor transactions.
+Reviewer artifact lease production and genuine actor-chain/both-OS/four-Task
+qualification remain unavailable. The Runtime-only installed source increment
+retains its merge and official qualification gates.
+
+The private physical transport entry point consumes the retained SAME Prepared
+command and registration acknowledgement. Preparation custody retains its child
+cell before spawn; that cell adopts the returned child before identity and pipe
+qualification, upgrades in place and transfers it to Core only while the original
+actor is live and custody has not been stopped. Core acknowledges the original offered handoff before protocol
+work. An unresolved handoff remains retained rather than becoming a terminal
+observation. Factual settlement compares the exact own transport effect and
+records its outcome without granting input authority. Preparation abandonment
+requests stop on its retained transport after releasing the preparation mutex;
+leader signalling and reap are best-effort hygiene, without a descendant-death
+claim. The Runtime-only source connects preparation to transport using the SAME retained
+Prepared Arc. Runtime stop callers remain absent. The installed Driver graph is
+unmerged and unqualified and gives no public standalone Native admission.
+
+Preparation and version transactions also conjoin the ordinary nongrant Unit
+identity/epoch/generation, parent activity, executor projection and governing
+context predicates with their original Source lineage, current successor,
+marker-bound Driver, selected Native actor and exact stage. The governing hash
+is fixed from the original marker parents before Store entry. Ordinary consumers
+retain their separate ordinary Driver/source checks, including marker refusal.
+Both normal observation completion and later reconciliation use the same
+nongrant closure writer, including after normal currency revocation. It retains
+the same original actor, Source ticket, helper
+settlement and latest bounded complete Unit preimage, then compares all Unit
+columns/body and the exact original effect inventory in one Immediate. Only the
+original effect is journaled or its exact postimage confirmed; flags and Native
+permissions stay unchanged. Missing lineage or CAS drift remains Held. Genuine
+marked lifecycle qualification remains unavailable; the Runtime-only installed
+composition is an unmerged source increment.
+
+The installed Driver lane produces one immutable composed Workflow contract in
+the original activation transaction with the first Workflow/Context, Driver and
+verification contract. It retains the original composition identity and the
+complete declared executor/reviewer roster before Store entry. Contracted gate
+and first-Executor updates use exact original Record permit windows. The marker
+checks installation identity and the allocation's role-specific roster member,
+separately from its per-Unit profile. Account-free accepted-ingress controls reach
+the original first-Executor marker, launch and Record-only Bound binding; this
+does not qualify official Native execution or a full Workflow.
+
+Only activation's postcommit cache publication has a contained Deferred boundary
+inside Store. The SAME live worker can recover with up to three newly admitted
+segments; actual exited or revoked workers remain Held. Service reconciliation
+visits at most 64 preparations per sweep and counts all retained preparations
+after Store guards drop, across the bounded registry. Same-Project concurrent
+initial preparation still exposes an original namespace snapshot currency
+conflict; isolated Projects do not resolve that full-MVP dependency.
+
+The incremental [production gate integration](../production-workflow-gates-design.md)
+adds a concrete library port for real initial preparation, Implement terminal/result
+and retained commit observations. Its receipts are diagnostic; existing Workflow
+CAS and private atomic publication remain acceptance authority. Requirements,
+Design, ImpactAnalysis and review/test/external phases explicitly wait for their
+qualified integrations. Runtime/CLI wiring and native qualification remain pending;
+this port alone cannot complete a Task.
+
+The independently reviewed [ReviewEngine integration](../review-engine-integration-design.md)
+defines N-member collective approval, qualified admission schedules and successful
+owned-result counting. Its [native result supplement](../native-result-receipts-design.md)
+defines durable acquisition before completion projection. These are implementation
+contracts; collective rounds, result receipts and verification gates are not
+available from these design approvals alone.
 
 ## 1. Goal
 
@@ -429,9 +628,28 @@ The earlier TerminalRecovery fence independently protects that access mode. The
 genuine original-attempt recovery producer and whole Issue #14 remain open; ordinary
 observation never replays.
 The native Session-binding integration gap remains explicit.
-The current successful native Session-binding publication writes an unchanged
-Task via the coordinated transition and increments its raw version. Providers
-admitted under that Task version can then reject their own completion/approval.
-A separate atomic Record-only binding contract (#43) must preserve exact owner/context/
-Session identity guards without incrementing unchanged Task fields; Issue #41
-does not introduce that shared integration API.
+Ordinary legacy Session binding writes an unchanged Task via the coordinated
+transition and increments its raw version. Providers admitted under that Task
+version can then reject their own completion/approval. The implemented private
+Record-only binder writes Workflow plus its reserved factual audit, preserving
+Task bytes/version and exact owner/context/Session guards. The installed first
+Executor now reaches its genuine normal composed binding. Later-phase,
+late-binding, Reviewer and terminal consumers require their owning integrations;
+ordinary legacy binding is not a fallback for that protected route.
+
+The approved success continuation design (`a40355d`, branch
+`docs/issue-43-native-success-continuation-design`) is implemented as an unqualified source increment on the #43 branch. A typed
+binding write returns Conflict only before its first write; other errors are
+confirmed by lineage. An owned success terminal seals its committed images. The
+Root sweep converges the binding, discovers the settlement and runs admitted
+claim, Passed/Waiting/Failed/Unknown observation and closure actions. Captures,
+helpers and publication use a protected settled currency instead of the generic
+authority. Closure appends `gate_claim`, `gate_observed` and `phase_closed`,
+bumps the Task once to the next phase and re-anchors the Driver marker-free.
+Status reports the read-only `workflow_wait`. A sealed Unknown observation is
+stored as an exact audited delta (Waiting, fixed detail and held_reason). The
+Native owner writers re-plan once after the SAME operation's first binding link,
+per the approved [binding-race HOW](../issue-43-native-writer-binding-race-design.md).
+On the account-free fixture lane (commit mode, Claude and Codex) the SC1, SC2,
+SC3-P, SC5(c), SC7, SC12 and SC-U controls and BR1-BR3 pass; this does not
+qualify official Native execution, the remaining SC controls or a full Workflow.

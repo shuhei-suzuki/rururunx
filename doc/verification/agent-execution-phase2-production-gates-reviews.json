@@ -1,0 +1,446 @@
+{
+  "schema": "phase2_component_reviews_v1",
+  "source": "b6e21db36310ebf233865b24e8aa7a24c6ef834f",
+  "scope": "Initial production Workflow gates; static component reviews only, not Phase2/native/MVP acceptance",
+  "reports": [
+    {
+      "file": "/private/tmp/rrx-phase2-production-gate-design-review-a.json",
+      "sha256": "94c2b72205a14322589f8f44fa4a82f6862cd83cd0f9931c35eda96434c566d2",
+      "report": {
+        "source_commit": "1c17f8470465a9ffacb6cb4aaefdfc3058b8f2bf",
+        "source_baseline": "ed3c1078a0f5a9646a8c4991881179887b57b28e",
+        "scope": "Independent static STRICT requirements/design component review of the two new Production Workflow gate documents and their actual existing Workflow/managed Sources/preparation/result/native consumers. No implementation approval.",
+        "verdict": "APPROVE",
+        "counts": {
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0
+        },
+        "findings": [],
+        "evidence": [
+          {
+            "contract": "G1/G2 real local specification and preparation capability",
+            "locations": [
+              "doc/requirements/production-workflow-gates-requirements.md:20-32",
+              "doc/design/production-workflow-gates-design.md:49-65"
+            ],
+            "source": "Existing ManagedWorkflowSources retains private PreparedExecutor in the Task slot until first adoption; PreparedExecutor::adopt already validates execution authority, registered namespace ownership, base HEAD and clean status through UnitGit. Proposed verify_initial borrows that same provenance and repeats physical checks without consuming, cloning or reconstructing it. Initial phase evidence need not fabricate Agent work/artifact or remote Issue synchronization."
+          },
+          {
+            "contract": "G3 evaluating claim and original launch Context versus observed result",
+            "locations": [
+              "doc/design/production-workflow-gates-design.md:27-45",
+              "crates/rrx/src/workflow.rs:2444-2458",
+              "crates/rrx/src/workflow.rs:2412-2413"
+            ],
+            "source": "The actual engine persists Evaluating and claimed_observations=observations.len() before constructing PhaseInvocation. The proposed exact record/version/index/generation/Task/Context comparison matches this consumer. Target-producing phases intentionally attest newly observed retained revision while the immutable Context records launch revision. Rechecking after off-lock I/O preserves current claim without inventing equality of these two SHAs."
+          },
+          {
+            "contract": "G4 terminal plus retained artifact and private publication",
+            "locations": [
+              "doc/design/production-workflow-gates-design.md:69-78",
+              "crates/rrx/src/execution/workflow_source.rs:242-266",
+              "crates/rrx/src/workflow.rs:2576-2594",
+              "crates/rrx/src/workflow.rs:2657-2688"
+            ],
+            "source": "Sources captures/graph-verifies the successful Executor's real retained artifact before evaluation. The engine independently validates managed unit/current finalization permission and calls private ResultStore::workflow_publication for exactly one artifact marker; publication occurs with Workflow/Task/Context acceptance. Proposed gate does not call generic publish or treat transport exit zero as verified tests/review. Unit version legitimately advances at terminal, so immutable unit identity plus current exact authority is the correct distinction."
+          },
+          {
+            "contract": "G5 artifact-only corresponding commit prerequisites",
+            "locations": [
+              "doc/requirements/production-workflow-gates-requirements.md:49-59",
+              "doc/design/production-workflow-gates-design.md:80-86"
+            ],
+            "source": "Require exact completed corresponding Executor evidence, current revision/dependencies and one Published artifact marker; do not resolve a later live branch HEAD or select another Task artifact. Requirements/Design content-policy producer remains explicitly pending, so their commit phases are not being advertised as a whole working STANDARD/STRICT path."
+          },
+          {
+            "contract": "Receipt is factual observation, not reusable grant",
+            "locations": [
+              "doc/requirements/production-workflow-gates-requirements.md:63-70",
+              "doc/design/production-workflow-gates-design.md:90-98",
+              "crates/rrx/src/workflow.rs:2458-2491",
+              "crates/rrx/src/workflow.rs:2493-2715"
+            ],
+            "source": "A bounded Verification record can use existing Store schema as a diagnostic. Actual audited observation and the engine's source/CAS/private publication remain acceptance authority. Crash between receipt and observation leaves a diagnostic, not a phase success; generic record readers/writers do not gain native or finalization permission."
+          },
+          {
+            "contract": "Unsupported phase boundary and actual acceptance controls",
+            "locations": [
+              "doc/design/production-workflow-gates-design.md:100-125",
+              "doc/requirements/production-workflow-gates-requirements.md:73-95"
+            ],
+            "source": "Explicit Waiting for unavailable milestone-content/test/review/PR/merge/cleanup policies preserves their separate obligations. Proposed negative controls target actual scoped claim, live capability, terminal/artifact ownership and corruption, and require real production gate consumer wiring rather than a fixture Passed shim. Those controls are future source acceptance and were not executed in this review."
+          }
+        ],
+        "limits": [
+          "Only immutable Git objects at fixed1c17f847 and its baseline were inspected; no dirty/later source, peer results, aggregate/progress documents or execution logs were read.",
+          "No tests/builds/native Agents/accounts/auth/network/signals/Docker/OS changes were performed. All command handles are closed.",
+          "Reviewer-authored context/committed.rs and its pure index tests are explicitly excluded from independent approval; only distinct-author producer/adoption and gate-consumer contracts were considered.",
+          "Proposed verify_initial/ManagedWorkflowGates and new controls are not yet implementation evidence. This review does not certify cross-connection runtime completion, actual native subscriptions/settings/hooks, four-Task scheduling, Runtime/CLI, milestone completeness, verifier/review or external operations.",
+          "This APPROVE is scoped to the two proposed documents and actual connection feasibility, not final Phase2/native/MVP acceptance or an independent implementation test result."
+        ],
+        "live_handles": [],
+        "commands_closed": true,
+        "output": "/private/tmp/rrx-phase2-production-gate-design-review-a.json"
+      }
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gate-design-review-c.json",
+      "sha256": "a1fb825ca0ec712f1f3c109916e77ef9f581059e572b98f7a1b8ef8d0c8d66bf",
+      "report": {
+        "reviewer": "workflow_source_review_c",
+        "source_commit": "1c17f8470465a9ffacb6cb4aaefdfc3058b8f2bf",
+        "risk": "STRICT",
+        "verdict": "APPROVE",
+        "scope": "Pre-implementation requirements/design only for initial production Workflow gates: Issue, Worktree, Implement and retained commit milestone checks. Component-only approval.",
+        "reviewed_documents": [
+          "doc/requirements/production-workflow-gates-requirements.md",
+          "doc/design/production-workflow-gates-design.md"
+        ],
+        "findings": [],
+        "source_consumer_checks": [
+          {
+            "path": "crates/rrx/src/workflow.rs",
+            "lines": [
+              279,
+              2444,
+              2458,
+              2675
+            ],
+            "check": "PhaseInvocation Context, source, prerequisites and prior observations; persisted Evaluating claim precedes gate, audited outcome observation precedes apply_outcome; exactly one retained artifact marker feeds private WorkflowPublication."
+          },
+          {
+            "path": "crates/rrx/src/execution/workflow_source.rs",
+            "lines": [
+              178,
+              236,
+              242,
+              267
+            ],
+            "check": "Managed producer retains private bootstrap capability before first adoption; governing instruction digest and genuine retained graph checks are required at source recapture. The new gate must retain capability while checking physical namespace rather than consume or reconstruct it."
+          },
+          {
+            "path": "crates/rrx/src/execution/attempts.rs",
+            "lines": [
+              43,
+              58,
+              65,
+              67,
+              69,
+              73
+            ],
+            "check": "Current adoption validates exact current authority and real leased UnitGit namespace/base/cleanliness. Design repeats this at initial gate without widening grant mode."
+          },
+          {
+            "path": "crates/rrx/src/state/execution/artifacts.rs",
+            "lines": [
+              351,
+              360,
+              381,
+              395,
+              401,
+              416,
+              426
+            ],
+            "check": "Actual result acceptance requires private verified publication, successful owning terminal, exact active Session/generation, Ready artifact snapshot and source/context/evidence bindings in one transaction. Proposed gate receipt does not replace acceptance."
+          }
+        ],
+        "acceptance_gaps": [
+          "Production ManagedWorkflowGates and verify_initial/namespace-check implementations do not exist yet; this approval is of their specified contract only.",
+          "Design explicitly leaves Requirements/Design/ImpactAnalysis content validation, review verdicts, verifier gates, remote publication/merge and cleanup Waiting. No Task/Phase2/MVP completion is implied.",
+          "Runtime/CLI wiring and restart source recovery remain required follow-up integrations.",
+          "Tests and compiled mutation evidence specified in requirements section 5 must be produced against fixed implementation commits.",
+          "Actual native CLI/authentication/hooks, Linux/native compatibility and four-Task concurrency are outside this design review."
+        ],
+        "review_limitations": [
+          "Read-only source/doc review; no source edits, test execution, authenticated CLI, credential access, network or OS probes.",
+          "No peer review findings/reports/logs were read.",
+          "Source checks demonstrate compatibility of the proposed boundaries with current consumers; they do not prove implementation completion."
+        ]
+      }
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-source-review-a.json",
+      "sha256": "338a4f3329f465648bb42906fd8f9c5da75fbebf31472023afb37c10c8ac9715",
+      "report": {
+        "source_commit": "85c13d27cc3f8c77037b74fb1f80d6b9fe5230ab",
+        "baseline": "1c17f8470465a9ffacb6cb4aaefdfc3058b8f2bf",
+        "verdict": "APPROVE",
+        "counts": {
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0
+        },
+        "findings": [],
+        "scope": "Independent static STRICT component source review: new ManagedWorkflowGates, PreparedExecutor::verify_namespace, ManagedWorkflowSources::verify_initial/belongs_to, new actual Workflow consumer controls and finite master note. Reviewer-authored CommittedIndex and Runtime design drafts are excluded.",
+        "evidence": [
+          {
+            "topic": "Same owner and exact Evaluating claim",
+            "locations": [
+              "execution/workflow_gates.rs:31-35",
+              "execution/workflow_gates.rs:38-91",
+              "execution/workflow_gates.rs:291-299",
+              "workflow.rs:2444-2458"
+            ],
+            "conclusion": "Arc identity prevents mixing Runtime Sources; complete current Task/Project, Goal ownership/activity, sole Workflow, phase/state/index/generation/record version/observation count, exact immutable Context and actual prerequisites/prior observations are checked. Recheck occurs after I/O; a stale receipt cannot grant or complete another evaluation."
+          },
+          {
+            "topic": "Non-consuming actual preparation and namespace/profile check",
+            "locations": [
+              "execution/workflow_source.rs:93-122",
+              "execution/attempts.rs:42-86",
+              "execution/git_io.rs:19-31"
+            ],
+            "conclusion": "verify_initial renders the exact scoped committed frame, borrows the live private prepared capability while holding its slot, requires no artifact and exact base/scope, and calls actual namespace verification. This verifies current authority/lifecycle, uses registered UnitGit whose constructor loads the real resource profile, holds existing common-Git lease and checks ownership/base HEAD/clean tracked+untracked status. It neither consumes/disarms/clones the capability nor manufactures Session/work/artifact."
+          },
+          {
+            "topic": "Owned terminal and retained artifact",
+            "locations": [
+              "execution/workflow_gates.rs:93-137",
+              "execution/workflow_gates.rs:198-222",
+              "execution/workflow_gates.rs:266-276",
+              "execution/workflow_gates.rs:300-312"
+            ],
+            "conclusion": "Implement requires genuine current persisted unit authority, WorkKnown successful Executor with native permission closed/finalization open, exact Workflow/native/Session identity/body/provider/path/actor and no failure. Requires that unit's Ready artifact plus exact observed scoped SHA/dependencies, actual retained verification and final unit/artifact snapshot recheck. Cleanup Unknown is not misclassified as work failure or ignored to mint death proof."
+          },
+          {
+            "topic": "Corresponding commit evidence",
+            "locations": [
+              "execution/workflow_gates.rs:224-257",
+              "execution/workflow_gates.rs:266-276"
+            ],
+            "conclusion": "The gate chooses the corresponding Requirements/Design/Implement completed evidence, one marker and Published artifact with exact source/dependency/scope binding. It does not pick arbitrary historical artifact or live branch HEAD."
+          },
+          {
+            "topic": "Factual receipt versus accepted publication",
+            "locations": [
+              "execution/workflow_gates.rs:314-345",
+              "workflow.rs:2458-2491",
+              "workflow.rs:2657-2715",
+              "state/execution/artifacts.rs:351 onward"
+            ],
+            "conclusion": "Receipt is capped at64KiB, stores scoped bounded identity/hash data rather than native transcript/credentials and is only a Verification record. Passed evidence still undergoes existing engine validation, audited actual observation, private ResultStore workflow_publication and coordinated SQL publication; no generic ResultStore.publish or new credential/permission constructor is introduced."
+          },
+          {
+            "topic": "Unavailable phase boundary",
+            "locations": [
+              "execution/workflow_gates.rs:259-264",
+              "doc/design/master/workflow-engine.md:new Phase2 note"
+            ],
+            "conclusion": "Every unimplemented test/review/content/external/cleanup phase waits explicitly. Initial local-spec observation does not certify remote Issue creation; native retained implementation result does not attest tests, independent review, acceptance criteria or MVP success."
+          }
+        ],
+        "controls_reviewed_not_executed": [
+          "production_gates_observe_real_preparation_native_result_and_commit_but_wait_for_tests: concrete shipped gate through actual source/Workflow/native protocol fixture/result publication; same Unit; Commit then Tests Waiting; three durable receipts; retained artifact survives survivor workspace change.",
+          "production_initial_gates_refuse_dirty_preparation_and_wait_for_missing_specification: actual dirty namespace refusal and missing Task criteria Waiting; no receipt/native result. STANDARD initial Issue/Worktree path uses actual gate.",
+          "production_gate_rejects_forged_success_and_corrupted_retained_manifest: altered managed terminal work and actual manifest corruption before gate; Implement not completed and artifact never Published."
+        ],
+        "limits": [
+          "No tests, builds, native Agent/account/auth/network/OS/signals or source edits executed. Parent checks/logs/peer findings were not inspected or inherited.",
+          "Only immutable target/baseline Git objects read; dirty/later source, peer reports, aggregate/progress documents and runtime evidence logs excluded.",
+          "The new test explicit MutexGuard drop before later await is not execution/lint proof; actual current Clippy/build results are outside this static review and may require a subsequent fixed commit.",
+          "Source tests show construction/oracles only; no independent passing-test or causal-mutation claim.",
+          "This component approval does not qualify current full-suite/CI, formal review/verifier policies, Runtime/global scheduling/CLI, registered official native versions/auth/hooks, resource death or cleanup completeness, final Phase2 or MVP.",
+          "The self-authored CommittedIndex and Runtime documentation are expressly not self-approved."
+        ],
+        "live_handles": [],
+        "commands_closed": true,
+        "report_path": "/private/tmp/rrx-phase2-production-gates-source-review-a.json"
+      }
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-source-review-b.json",
+      "sha256": "d01c666fb5d080329d626bcccb72ea253dff11db75855c7ea315360e83253acc",
+      "report": {
+        "source_commit": "85c13d27cc3f8c77037b74fb1f80d6b9fe5230ab",
+        "baseline_commit": "1c17f8470465a9ffacb6cb4aaefdfc3058b8f2bf",
+        "review_kind": "independent STRICT static production gate component review",
+        "verdict": "APPROVE_COMPONENT",
+        "counts": {
+          "C": 0,
+          "H": 0,
+          "M": 0,
+          "L": 0
+        },
+        "findings": [],
+        "reviewed_ranges": [
+          "execution/workflow_gates.rs:1-356 (entire new production component)",
+          "execution/attempts.rs:42-87 (new live preparation namespace verification)",
+          "execution/workflow_source.rs:93-122 (new owner identity and verify_initial)",
+          "execution/mod.rs workflow_gates declaration",
+          "workflow/committed_source_tests.rs new production_engine and ProductionControl/new production test additions only",
+          "doc/design/master/workflow-engine.md eight-line component status addition",
+          "Relevant unchanged registered Git/profile/lease, source capture, native Session/terminal, Workflow evidence and private publication consumers"
+        ],
+        "self_review_exclusion": "Reviewer B authored the older committed_source_tests.rs corpus in a4ac78e. Its pre-existing tests/helpers are not independently approved here. Unchanged helpers were consulted solely to understand the parent's new actual consumer controls.",
+        "contract": [
+          "doc/requirements/production-workflow-gates-requirements.md G1-G8 at the fixed source",
+          "doc/design/production-workflow-gates-design.md at the fixed source",
+          "Existing agent-execution result-protection and best-effort cleanup boundaries"
+        ],
+        "verified_source_evidence": [
+          {
+            "topic": "Exact gate claim and owner binding",
+            "locations": [
+              "execution/workflow_gates.rs:31-91,291-313",
+              "workflow.rs:2444-2457"
+            ],
+            "reasoning": "Construction requires the exact same RuntimeOwner Arc as the managed source port. Claim checks current full Task/Project DTOs, exact Task Scope, active Goal/Task lifecycle, sole Workflow record, Evaluating phase/index/generation, current launch Context in full, claimed observation count and prerequisites. The actual Workflow invocation supplies the same completed prerequisite collection. After I/O, Claim and full checked Unit/artifact snapshots are reloaded before recording a diagnostic receipt."
+          },
+          {
+            "topic": "Live initial capability, physical profile and common Git lease",
+            "locations": [
+              "execution/workflow_source.rs:93-122",
+              "execution/attempts.rs:42-87",
+              "execution/resources.rs:105-132,311-322",
+              "execution/git_io.rs:127-164",
+              "execution/owner.rs:211-240"
+            ],
+            "reasoning": "Issue/Worktree require the exact rendered committed input, absence of artifact, the real retained PreparedExecutor capability and matching scope/base. Namespace verification checks current bootstrap Preparing authority, absent work/Session/artifact, obtains the existing live Git lease, constructs UnitGit which validates the actual profile digest and canonical scoped paths, checks Project/Task Git ownership, base HEAD and clean tracked/untracked state, then revalidates authority. Git helpers persist intent before spawn and are scoped/fenced. The capability is borrowed rather than consumed; first native adoption repeats its physical checks."
+          },
+          {
+            "topic": "Exact successful native result and retained artifact",
+            "locations": [
+              "execution/workflow_gates.rs:93-137,198-223,266-289",
+              "execution/workflow_source.rs:273-300",
+              "execution/results.rs:200-218,246-265,320-368,371-421"
+            ],
+            "reasoning": "Implement cannot pass on exit zero or a fabricated artifact marker. It requires actual managed transport, matching persisted Session/native Session DTOs, exact Workflow Unit/Session/handle/provider/role/path identity, known successful WorkKnown Executor with native effects closed and finalization open, and that Executor's Ready artifact. Exact observed SHA/Scope/dependencies and full retained manifest/refs/graph are verified. Current source is recaptured; artifact and Unit snapshots are rechecked. Cleanup uncertainty is not used to overwrite known work or manufacture success."
+          },
+          {
+            "topic": "Diagnostic receipts versus atomic acceptance",
+            "locations": [
+              "execution/workflow_gates.rs:314-345",
+              "workflow.rs:2458-2491,2588-2595,2657-2688",
+              "state/execution/artifacts.rs:351-439"
+            ],
+            "reasoning": "Bounded scoped Verification records include claim, launch and observed revision, full Context data digest, source versions, checked Unit/profile and artifact/manifest identity. They are not reusable native or publication capabilities. Existing Workflow records its observation, validates exact evidence Context/Session/source, obtains a private verified WorkflowPublication, and atomically checks the full artifact snapshot and successful owning native terminal with Workflow/Task/Context pins before publication and finalization closure. A diagnostic left behind by a crash or cross-connection race cannot by itself complete a phase."
+          },
+          {
+            "topic": "Commit observations and explicitly unsupported phases",
+            "locations": [
+              "execution/workflow_gates.rs:224-264,266-276",
+              "doc/design/master/workflow-engine.md new component-status paragraph"
+            ],
+            "reasoning": "Commit gates require the corresponding completed Executor prerequisite, one retained artifact marker, Published artifact state, identical scope/revision/dependencies and current input artifact, then verify retained content. They do not commit a mutable live HEAD. Other phases return explicit Waiting; Requirements/Design/ImpactAnalysis completeness, review approval, tests, PR/merge/cleanup are not inferred from native success. The master addition states the port alone cannot complete a Task and does not claim Runtime/CLI/native readiness."
+          },
+          {
+            "topic": "New actual consumer control wiring",
+            "locations": [
+              "workflow/committed_source_tests.rs new production_engine, ProductionControl and three production_gates tests"
+            ],
+            "reasoning": "The newly added engine constructs the shipped ManagedWorkflowGates. Positive Claude/Codex protocol fixtures traverse preparation, same initial Unit, real fixture terminal, actual Ready capture/private Published transition, retained Commit observation and explicit Tests wait. Negative controls mutate preparation bytes, remove specification, corrupt the actual retained manifest or substitute non-success native work before the real gate; they assert no Implement completion/publication. The retained artifact is verified after the abandoned executor file is modified. These are source-wired protocol fixture controls, not empirical results of this static review."
+          }
+        ],
+        "controls_not_executed": [
+          "No tests, builds, lint, native/account/configuration/network probes, Docker operations or process signals were run",
+          "No causal mutation was compiled or executed by this reviewer",
+          "No parent test claims or peer review conclusions were inherited"
+        ],
+        "limitations": [
+          "Approval covers only this production gate component and its inspected source consumers; it does not approve B's old test corpus as an independent reviewer",
+          "The new controls inspect receipt retrieval through the existing Store connection; they do not by themselves demonstrate reopening/crash conformance, all stale/foreign/cancellation races or every requested causal mutation",
+          "Static review does not establish successful Clippy/build/test execution for the added fixture code",
+          "Physical preparation checks are cooperative point-in-time checks of tracked/untracked status, not a security sandbox or proof against external/same-user mutation; ignored content and native user settings remain separate profile boundaries",
+          "Diagnostic receipt insertion and Workflow acceptance are separate transactions as documented; only the existing private publication/CAS path is credited as acceptance authority",
+          "Runtime/CLI operational wiring, milestone content policies, ReviewEngine, verifier/external/reclamation phases and official Native qualification remain unfinished named integrations",
+          "No final Phase2, Goal, Linux/macOS conformance, four-Task official-native or MVP acceptance is granted"
+        ],
+        "live_handles": [],
+        "commands_closed": true,
+        "source_edits": false,
+        "peer_reports_read": false
+      }
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-source2-review-a.json",
+      "sha256": "5f0b3c0cfe071071e3e4f6f5d24452b7aaaba6e1c232f8ad9dae90ae836374ae",
+      "report": {
+        "source_commit": "b6e21db36310ebf233865b24e8aa7a24c6ef834f",
+        "baseline_commit": "85c13d27cc3f8c77037b74fb1f80d6b9fe5230ab",
+        "review_type": "Independent static QUICK component delta re-review",
+        "verdict": "APPROVE",
+        "counts": {
+          "Critical": 0,
+          "High": 0,
+          "Medium": 0,
+          "Low": 0
+        },
+        "findings": [],
+        "verified_delta": [
+          "The complete fixed delta is one test file: crates/rrx/src/workflow/committed_source_tests.rs, 28 insertions and17 deletions. Production, Cargo, docs and CI bytes are unchanged from the independently reviewed85c13d27 source.",
+          "The Store MutexGuard and all borrowed receipt operations are confined to the lexical block at lines376-394. Only the owned artifacts Vec leaves that block. The later awaited ResultStore.verify at lines406-409 therefore holds no Store MutexGuard.",
+          "The reopened Store at lines395-403 reads the same fixture state.db and exact Task scope, confirms three Verification records, and is explicitly dropped before asynchronous retained-artifact verification.",
+          "Actual Fixture::new initializes that same state.db; Store::open uses current-schema initialization and does not construct RuntimeOwner or advance its owner epoch merely by opening this already-current database.",
+          "The earlier same-connection schema/hash/data checks remain intact. The reopen assertion proves the three records are durable/readable, without claiming their count supplies gate acceptance authority.",
+          "Unchanged test still consumes both declared local provider protocol peers, real production early gates and Implement/Commit transitions, waits at unsupported Tests, verifies retained published artifacts after survivor workspace mutation, and cancels its fixture Task."
+        ],
+        "prior_own_review": {
+          "report": "/private/tmp/rrx-phase2-production-gates-source-review-a.json",
+          "verdict": "APPROVE",
+          "findings": 0,
+          "disposition": "Maintained for its exact production component scope; no production change or new grant path occurs in this delta."
+        },
+        "limits": [
+          "Static test delta/component approval only; no final Phase2, native account/profile/authentication, official provider compatibility, Runtime/ReviewEngine or MVP completion approval.",
+          "No tests/builds/native/accounts/network/signals/OS mutations/credentials/peer reports/parent logs or dirty/later source were accessed. Parent test success claims are not inherited as executed evidence.",
+          "The self-authored committed Index and Runtime documents are excluded from independent approval; planned unavailable review/verifier/external phase producers remain outside this delta."
+        ],
+        "live_handles": [],
+        "command_closure": "All read-only immutable git-object commands completed; no owned background handles remain.",
+        "writes": [
+          "/private/tmp/rrx-phase2-production-gates-source2-review-a.json"
+        ]
+      }
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-source2-review-b.json",
+      "sha256": "740663172c65a86c75bb8c80f7b0f61f082b6429a90fef53a22216b3ee4ac4e9",
+      "report": {
+        "source_commit": "b6e21db36310ebf233865b24e8aa7a24c6ef834f",
+        "baseline": "85c13d27cc3f8c77037b74fb1f80d6b9fe5230ab",
+        "reviewer": "B",
+        "scope": "Independent static component delta review; parent-added production gates controls only. Earlier self-authored source-wiring corpus is excluded from independent approval.",
+        "verdict": "APPROVE_COMPONENT_DELTA",
+        "severity_counts": {
+          "C": 0,
+          "H": 0,
+          "M": 0,
+          "L": 0
+        },
+        "findings": [],
+        "evidence": [
+          {
+            "location": "crates/rrx/src/workflow/committed_source_tests.rs:376-409",
+            "observation": "The Store MutexGuard is now confined to a lexical block returning owned artifact DTOs. No guard survives into the public async ResultStore.verify call. The original published-artifact and three receipt data assertions remain."
+          },
+          {
+            "location": "crates/rrx/src/workflow/committed_source_tests.rs:395-403; crates/rrx/src/execution/results/tests.rs:10-17",
+            "observation": "A separate Store::open uses the same fixture state.db path and reads exactly three persisted Verification rows before the abandoned worktree mutation and public verification. This checks reopened-connection persistence; it does not itself independently qualify receipt producer authority."
+          },
+          {
+            "location": "git diff baseline..source --stat and full delta",
+            "observation": "Only the specified test file changes (28 additions,17 deletions). Production and documentation bytes are unchanged; prior source1 component approval and no native/MVP acceptance limitations remain."
+          }
+        ],
+        "causal_controls_not_executed": [
+          "Existing positive fixture must still reach real managed terminal and publication before reread; loss of receipt persistence would make the reopened count fail.",
+          "Scoped guard removal should prevent await_holding_lock; no lint/build claim is made from static review."
+        ],
+        "prior_own_dispositions": {
+          "source1_findings": "No findings; component verdict maintained for byte-identical production."
+        },
+        "limitations": [
+          "No tests/builds/lints/native CLI/accounts/network/process signals were executed.",
+          "No peer reports, logs, dirty or later source inspected.",
+          "Separate Store connection reopen is not process restart or OS/native acceptance.",
+          "No final Phase2, Goal completion, OS qualification or MVP approval."
+        ],
+        "live_handles": [],
+        "commands_closed": true
+      }
+    }
+  ]
+}

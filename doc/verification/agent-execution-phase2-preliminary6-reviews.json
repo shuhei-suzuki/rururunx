@@ -1,0 +1,330 @@
+{
+  "review_kind": "STRICT preliminary component review; not final Phase2 acceptance",
+  "source_commit": "9a0c4768ff361aa142f26e9b8102b4871fb24e4c",
+  "independence": "Both initial reports completed independently. Root subsequently requested reviewer B to recheck the partial UNIQUE constraint; B withdrew the executor sequence and retained the distinct old readonly-unit finding.",
+  "reports": [
+    {
+      "review": "Independent STRICT Phase2 preliminary component review round6",
+      "reviewer": "/root/issue26_registry",
+      "source_commit": "9a0c4768ff361aa142f26e9b8102b4871fb24e4c",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "comparison_commit": "74f484844119b6d3adcc16366ebb71f7626fd7c0",
+      "verdict": "approve",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 1
+      },
+      "confidence": 0.92,
+      "scope": "Preliminary static component review of immutable changed source and existing consumers. Not final Phase2, whole source, authenticated native, Runtime/Workflow/CLI or deployment approval.",
+      "findings": [
+        {
+          "id": "F-L1",
+          "severity": "Low",
+          "title": "The competing-start control does not overlap the preparation window guarded by the new unit start mutex",
+          "locations": [
+            "crates/rrx/src/execution/native/tests.rs:330-362",
+            "crates/rrx/src/execution/native.rs:107-143"
+          ],
+          "evidence": "competing_native_start_cannot_retire_the_live_winner awaits the first start_inner through NativeStart::Launched before calling the second. By then Session registration has already changed the unit version and installed a Session. The second old input therefore fails the existing validate_execution/state/session admission checks before PreparationGuard is created. The test does not exercise two starts simultaneously while both would otherwise see Preparing/session=None, and does not causally cover the new per-unit start mutex. Source serialization is present; this finding is a test-oracle coverage limitation, not a reproduced production race or a new policy requirement.",
+          "impact": "This sequential test cannot be counted as sensitivity evidence for excluding duplicate version/preparation helpers or protecting a still-preparing winner from a concurrent loser's abandonment guard.",
+          "minimal_causal_controls": [
+            "Hold the first actual version helper at an owned fixture barrier before Session registration. Launch a second start for the same unit while the first remains held, and verify the second does not reserve/spawn a second native_version helper or change the first unit's work/disposition/permissions.",
+            "Release the first barrier, require exactly one launched Session/input and refusal of the competitor; optionally abort only the waiting competitor and prove the preparing winner remains admissible.",
+            "A compiled omission of the per-unit start gate should distinguish this overlapping helper window. Label any measured result separately from native-profile acceptance."
+          ],
+          "controls_executed": false,
+          "blocking": false
+        }
+      ],
+      "own_prior_findings_disposition": [
+        {
+          "id": "D-M1",
+          "status": "closed; correction retained",
+          "evidence": "The unchanged round5 owner-derived ResourceProfile namespace overlay still flows through Grant to shim execution before OwnedProcess spawn. Nothing in this delta restores caller-only temp/output/cache/port routing."
+        },
+        {
+          "id": "B-M2-remaining",
+          "status": "initial source preparation portion closed statically; retained raw helper integration remains explicitly unfinished",
+          "evidence": "AttemptManager::prepare now reserves the unit before base lookup/content qualification. Empty-base Executor reservations bind one exact OID through bind_execution_base after scoped Git resolution, before worktree creation or Session registration. All qualified_content and tracked_digest paths now require UnitGit, using the profile-pinned real Git executable. Retained ResultStore raw helper integration was explicitly outside this claimed milestone and remains unqualified."
+        },
+        {
+          "id": "B-H1 / B-M4",
+          "status": "selected preparation/drop correction verified statically",
+          "evidence": "PreparationGuard covers Executor preparation and native start after their valid identity checks. Its Drop matches unit/scope/generation/epoch/session and absence of work, then logically retires only that exact open unit as Lost, retaining paths and cleanup. HelperGuard reconciles abandoned waits as Unknown. It does not invent death or cleanup proof."
+        },
+        {
+          "id": "C-H1",
+          "status": "selected durable native dispatch correction retained",
+          "evidence": "The existing private native frame intent producer remains the dispatch winner and stores digests rather than replayable frames. Later cancellation cannot reopen native authority or replay an uncertain issued frame."
+        },
+        {
+          "id": "C-M1 / C-M3",
+          "status": "selected prior corrections retained",
+          "evidence": "Available quota buckets do not clear live correlated probe leases. Factual cleanup observations do not bump execution authority. This delta's capacity cooldown is a separate per-Task/provider Unknown terminal and does not fabricate shared subscription exhaustion."
+        }
+      ],
+      "checked_source_facts": [
+        {
+          "area": "Unit-before-source-Git ordering",
+          "locations": [
+            "execution/attempts.rs:31-175",
+            "state/execution.rs:451-564,605-635",
+            "state/execution/sessions.rs:13-18"
+          ],
+          "evidence": "Preparation drafts resources without executing Git, registers durable scoped unit/Task projection, materializes its profile, enters Preparing, acquires the common Git lease, then resolves/qualifies the source through admitted UnitGit helpers. OID binding is one-shot and Session registration rejects an unresolved base."
+        },
+        {
+          "area": "Helper admission and waiting fence",
+          "locations": [
+            "execution/git_io.rs:59-153",
+            "execution/process.rs:142-162",
+            "execution/owner.rs:82-112"
+          ],
+          "evidence": "Helpers use the profile's pinned real Git executable, profile environment and current scoped intent admission before spawn. capture_scoped repeatedly checks same unit/scope/generation/epoch/session plus current native/finalization permission during waits. Revocation or Future Drop ends local waiting and leaves an Unknown effect receipt, with child/group stop still best effort."
+        },
+        {
+          "area": "Preparation Future Drop",
+          "locations": [
+            "execution/owner.rs:34-79",
+            "execution/attempts.rs:94-179",
+            "execution/native.rs:143,214-277,342-422"
+          ],
+          "evidence": "Guards remain armed through async helper/preparation windows, update after exact unit transitions, and disarm only on returned Waiting or successful handoff. Spawned Core is registered before asynchronous execution is detached. Existing child RAII and guard closure are logical fencing, not a complete resource-settlement certificate."
+        },
+        {
+          "area": "Same-unit start serialization",
+          "locations": [
+            "execution/native.rs:75-143",
+            "execution/ipc.rs:115-132"
+          ],
+          "evidence": "NativeSessions serializes each unit's start through a live Weak/Arc gate before validating and creating a preparation guard. Separate units use distinct gates. The ToolServer binds the owner's sole socket, so source does not expose a second ordinary NativeSessions instance for the same owner with an independent live server. Already bound/stale inputs refuse before a guard can retire their winner."
+        },
+        {
+          "area": "Native auth/capacity classification",
+          "locations": [
+            "execution/claude_wire.rs:303-403,445-463",
+            "execution/native.rs:818-839,1074-1080,1126-1165",
+            "execution/quota.rs:154-170"
+          ],
+          "evidence": "AdapterError kinds now map into finite native categories. Claude recognizes owned main-turn assistant hints only as hints until a supported terminal, separates explicit auth from unclassified capacity, and keeps turn/budget/output caps as ordinary work failures. Codex explicit unauthorized is auth; finite rate/flex/overload or qualifying HTTP terminal forms become Unknown/CapacityInterrupted. Neither generic HTTP 429 nor textual hints prove subscription exhaustion. Successful native retry terminals remain Success."
+        },
+        {
+          "area": "Bounded fresh capacity recheck",
+          "locations": [
+            "state/execution.rs:653-690",
+            "state/execution/quotas.rs:202-289",
+            "state/execution/tests.rs:81-157"
+          ],
+          "evidence": "A capacity terminal closes native/finalization flags, persists Unknown work and a finite local retry deadline, and releases its quota lease. New same-Task/provider units consult strict indexed/body historical units and wait until the deadline; siblings do not inherit a fabricated account exhaustion. The committed Store control spans before/at deadline and sibling admission."
+        },
+        {
+          "area": "Committed controls",
+          "evidence": "Read new actual fixture helper-abort/retirement, preparation-abandonment, fresh-path/base-bound ordering, sequential duplicate-start, fifteen provider auth/capacity/normal-success cases and Store cooldown controls. Reading these tests does not establish execution success, mutation sensitivity or actual authenticated schema/hook behavior."
+        }
+      ],
+      "coverage": {
+        "full_source_delta_read": [
+          "crates/rrx/src/execution/attempts.rs",
+          "crates/rrx/src/execution/claude_wire.rs",
+          "crates/rrx/src/execution/git_io.rs",
+          "crates/rrx/src/execution/model.rs",
+          "crates/rrx/src/execution/native.rs",
+          "crates/rrx/src/execution/native/native_fixture.py",
+          "crates/rrx/src/execution/native/tests.rs",
+          "crates/rrx/src/execution/owner.rs",
+          "crates/rrx/src/execution/process.rs",
+          "crates/rrx/src/execution/quota.rs",
+          "crates/rrx/src/execution/results.rs",
+          "crates/rrx/src/execution/results/tests.rs",
+          "crates/rrx/src/state/execution.rs",
+          "crates/rrx/src/state/execution/quotas.rs",
+          "crates/rrx/src/state/execution/sessions.rs",
+          "crates/rrx/src/state/execution/tests.rs"
+        ],
+        "related_committed_consumers_read": [
+          "ResourceManager draft/profile/reserve",
+          "ToolServer ordinary bind/current checks",
+          "validate_authority/reserve/register/retire/finish helpers",
+          "scoped effect admission/reconciliation",
+          "quota admission/waiter/probe ownership"
+        ],
+        "baseline": "Own prior static reviews retained for unchanged ledger/resource/result/IPC/native-dispatch and epoch producers; this is not a fresh exhaustive whole-tree audit."
+      },
+      "independence": {
+        "peer_reports_read": false,
+        "merged_reviews_or_progress_read": false,
+        "dirty_or_later_source_read": false,
+        "worktree_edits": false,
+        "build_or_tests": false,
+        "native_accounts_auth_models": false,
+        "network": false,
+        "process_signals": false
+      },
+      "not_certified": [
+        "Final Phase2 / release readiness",
+        "Whole Runtime / Workflow / CLI integration",
+        "Reclaimer and external-resource backend reconciliation",
+        "Initial/retained raw-helper integration outside the implemented selected paths",
+        "Actual authenticated CLI schemas, auth, hooks, MCP and sandbox/read-only behavior",
+        "Native quota exhaustion/recovery or provider-default conformance",
+        "Actual tests, compiled mutants, lint/build or CI outcomes",
+        "Four-Task macOS/Linux representative acceptance",
+        "Universal same-user containment or complete workload death",
+        "Persisted Drop-reconciliation success under poisoned/unavailable storage"
+      ],
+      "command_closure": {
+        "all_read_commands_terminal": true,
+        "live_handles": [],
+        "report_only_write": "/private/tmp/rururunx-agent-execution-phase2-preliminary6-a.json",
+        "note": "All git show/tree/diff/rev-parse calls returned terminal results. No child test/native/tool owner or resource handle was launched, signaled or polled. Prohibited documents appeared only as names in diff --stat; their contents were not read."
+      }
+    },
+    {
+      "reviewer": "independent reviewer B",
+      "review_kind": "STRICT preliminary Phase2 component source review, round 6",
+      "source_commit": "9a0c4768ff361aa142f26e9b8102b4871fb24e4c",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "REQUEST_CHANGES",
+      "counts": {
+        "C": 0,
+        "H": 1,
+        "M": 0,
+        "L": 0
+      },
+      "findings": [
+        {
+          "id": "H2",
+          "severity": "H",
+          "title": "A fresh executor invalidates live snapshot reviewers/verifiers and strands their quota leases",
+          "locations": [
+            {
+              "file": "crates/rrx/src/state/execution.sql",
+              "lines": "22-23"
+            },
+            {
+              "file": "crates/rrx/src/state/execution/artifacts.rs",
+              "lines": "114-121"
+            },
+            {
+              "file": "crates/rrx/src/state/execution.rs",
+              "lines": "511-517,538-548"
+            },
+            {
+              "file": "crates/rrx/src/state/execution.rs",
+              "lines": "260-272,700-738"
+            },
+            {
+              "file": "crates/rrx/src/execution/native.rs",
+              "lines": "850-892"
+            }
+          ],
+          "evidence": "The uniqueness index correctly excludes replacement while an executor has an open permission. After known executor completion and publish_execution_result, both executor permissions are closed (artifacts.rs:117 closes finalization), so a new executor can be inserted even while an independent Reviewer or Verifier on the published artifact is running. Snapshot units inherit the current Task generation (execution.rs:516-517), and validate_authority requires every unit kind to match the latest Task generation (260-272). New executor admission advances that generation without retiring or releasing snapshot units. Their native authority fence consequently rejects them; Core::run then cannot persist a terminal or retire them because both operations apply the same generation predicate. close_execution_session also rejects an old snapshot unit whose native_effects_open flag was never closed (sessions.rs:102-106). The old quota lease remains active and is counted against provider/global capacity (quotas.rs:175-180).",
+          "causal_sequence": [
+            "Complete executor E, retain/capture its exact commit and publish artifact A; E has native_effects_open=false and result_finalization_open=false, freeing the executor uniqueness slot.",
+            "Reserve Reviewer R or Verifier V for published A using prepare_snapshot; it has the current Task generation g and its own immutable snapshot/resource namespace. Launch its held native fixture and admit its provider quota lease.",
+            "Prepare a fresh executor N for the same nonterminal Task. The executor-only index permits the insert; task_execution.generation commits as g+1.",
+            "The old snapshot native authority fails the global Task-generation check although its artifact remains published and source remains fixed. Terminal persistence and fallback retire_execution reject the same old generation; its durable work remains null/active, transport closure fails, and its lease stays active.",
+            "Repeating fresh accepted executor generations with live snapshot consumers can accumulate reviewer/verifier leases and prevent sibling Tasks from obtaining bounded provider/global capacity until epoch recovery or lower-level explicit release."
+          ],
+          "impact": "This contradicts the approved ability to review a previously accepted SHA while another executor uses another worktree, and can obstruct other Tasks through stale quota leases. It is a distinct reviewer/verifier path, not the withdrawn live-executor replacement claim, and not missing future Workflow integration.",
+          "contract_evidence": [
+            {
+              "file": "doc/design/agent-execution-design.md",
+              "commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+              "lines": "164-166",
+              "requirement": "Reviewer isolation permits reviewing a prior accepted SHA while another executor unit uses another worktree; Workflow acceptance separately checks artifact/dependency versions."
+            },
+            {
+              "file": "doc/design/agent-execution-design.md",
+              "commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+              "lines": "424-426",
+              "requirement": "When an operation is logically replaced/retired its permission flags must close before hygiene; leases cannot remain permanently active."
+            }
+          ],
+          "proposed_control": "Separate the continued authority of immutable snapshot consumers from the latest executor generation using their precise published artifact/unit/Session/epoch binding, while keeping current-generation checks for mutation and result publication and Task cancellation fences. If a policy intentionally retires a snapshot consumer, close its exact historical unit and release its lease atomically; do not leave it uncloseable. Do not simply remove generation checks globally or grant stale executor input/publication authority.",
+          "causal_controls_to_add": [
+            "Account-free ledger control: known executor success plus published artifact, then active reviewer/verifier quota lease, then new executor reservation. Verify the insert is allowed and either approved snapshot continuation remains valid or explicit retirement closes all flags/lease with a durable outcome.",
+            "Account-free native fixture: hold a reviewer against artifact A, prepare a new executor on a fresh worktree, let the reviewer complete. Confirm its exact SHA outcome remains available and no quota lease is stranded; repeat for verifier.",
+            "Run the sibling quota-admission control after repeated generations. Task cancellation must still stop all snapshot units, and late stale executor publication/input must remain rejected.",
+            "Keep a separate negative control for live executor A to B: assert the partial index rejects B and leaves A, generation, Task projection and quota lease unchanged."
+          ],
+          "verification": "Verified by pinned SQL inclusion, transaction order, unit-kind predicates and terminal-consumer flow only. No tests/build/real Agent/network/account/process signaling performed."
+        }
+      ],
+      "prior_own_round5_dispositions": [
+        {
+          "id": "M1",
+          "status": "CLOSED_BY_STATIC_SOURCE_REVIEW",
+          "title": "Claude recognized authentication failure became completed work failure",
+          "evidence": "native.rs:1152-1163 limits the normal work-failure fallback to ErrorKind::ProcessFailure; typed authentication/unsupported errors flow to Core::run, which maps AdapterError kinds into bounded NativeFailure at native.rs:818-842. Claude structured/top-level auth hints now produce AuthenticationUnavailable, and Codex unauthorized terminal has an explicit bounded category. The committed authentication_and_unclassified_capacity_terminals_have_distinct_outcomes fixture asserts auth and unsupported-control Refused/Unknown without raw audit payloads.",
+          "limits": "Committed fixture assertions were inspected, not run. No actual CLI/account/settings/hooks conformance was established."
+        },
+        {
+          "id": "M2",
+          "status": "CLOSED_BY_STATIC_SOURCE_REVIEW",
+          "title": "Unclassified terminal limits became ordinary work failure",
+          "evidence": "CapacityInterrupted is an explicit disposition. Claude accepts finite owned terminal capacity hints without claiming subscription exhaustion; Codex recognizes finite structured rate/flex/overload/HTTP capacity members separately from usageLimitExceeded. finish_execution_with_failure stores Unknown, closes both logical permissions, sets WaitReason::Capacity and capacity_retry_at=now+60s (state/execution.rs:655-679). Fresh quota admission reads validated same-Task/provider history and waits until that bound (state/execution/quotas.rs:202-235,266-288). Positive/negative fixture assertions distinguish work caps, background hints and successful native retries from capacity interruption.",
+          "limits": "This source-level closure does not establish observed quota behavior or automatic Workflow resume. Future scheduling integration is still unfinished."
+        }
+      ],
+      "positive_source_observations": [
+        "Default base SHA resolution and qualification now occur after execution/resource reservation through scoped UnitGit helpers; the base can bind once during Preparing before native Session registration (attempts.rs:88-149; state/execution.rs:604-632).",
+        "Scoped helper admission has no async gap before child spawn; capture_scoped checks semantic identity and active native/finalization permission every 50ms and drops owned handles on interruption. HelperGuard converts abandoned pending helper receipts to Unknown, without replay claims (git_io.rs:81-152; process.rs:142-162; owner.rs:82-112).",
+        "PreparationGuard is installed before asynchronous work, updated after base/Session binding and disarmed only for successful preparation/explicit quota wait/supervisor handoff. It does not adopt another Session or destroy old inputs.",
+        "Same-unit native start uses a per-unit weak mutex gate before input validation; stale/duplicate starts are rejected before constructing a preparation guard, preventing a losing duplicate from retiring the successful Session (native.rs:107-143,411-423).",
+        "New fixture assertions cover blocked version-helper abort/retirement, duplicate start winner preservation, authentication/capacity classification, fresh local capacity retry and sibling pool admission. They were read only."
+      ],
+      "causal_controls_inspected_not_executed": [
+        {
+          "file": "crates/rrx/src/execution/native/tests.rs",
+          "lines": "252-327",
+          "description": "Version helper abort and explicit retirement close authority and leave Unknown helper receipt before a fresh worktree retry."
+        },
+        {
+          "file": "crates/rrx/src/execution/native/tests.rs",
+          "lines": "330-362",
+          "description": "Duplicate same-unit start rejects the loser without retiring the live winner."
+        },
+        {
+          "file": "crates/rrx/src/execution/native/tests.rs",
+          "lines": "365-517",
+          "description": "Auth, unsupported-control and unclassified capacity outcomes with negative cap/background/success controls."
+        },
+        {
+          "file": "crates/rrx/src/state/execution/tests.rs",
+          "lines": "81-157",
+          "description": "Retired capacity terminal cannot restart; fresh attempt waits to local due time and sibling pool progresses."
+        }
+      ],
+      "scope_and_limits": [
+        "Preliminary component source review only; not final Phase2 approval, Phase3 native conformance or release readiness.",
+        "Only immutable git-show/tree/diff source up to the exact requested commit and the approved pinned contract were inspected. No dirty/later source, peer conclusions, merged review reports or progress.md was read.",
+        "No build/tests, actual Agent/account/auth/model operation, network access, credential read, Docker operation, process signal or worktree edit was performed.",
+        "Unconnected Workflow/Runtime/CLI paths and cleanup backends remain unfinished; their absence is not counted as a finding.",
+        "Hook/dependency qualification and initial/retained raw helper integration remain unfinished. Source predicates are not proof of native auth/settings/hooks compatibility or process reclamation.",
+        "Resource assignment and cleanup remain cooperative/best effort. No security sandbox or proof of escaped-process death is asserted.",
+        "No license file or description was touched."
+      ],
+      "owned_handles": {
+        "live": [],
+        "closed": "All exec_command calls completed synchronously without session_id. No server, Agent child, background command or account/session handle was created."
+      },
+      "withdrawn_findings": [
+        {
+          "id": "H1",
+          "status": "WITHDRAWN_FALSE_POSITIVE",
+          "title": "Reserving a replacement executor strands the previous generation's authority flags and quota leases",
+          "reason": "The original live executor A to replacement executor B causal sequence is prevented by the partial UNIQUE one_active_executor(task_id) index. execution.sql:22-23 includes every executor with either native or finalization permission open. install_schema executes this SQL transactionally at execution.rs:32-34. reserve_execution calls insert_unit at execution.rs:539 before task_execution generation update at 543-544; the failed insert propagates and rolls back the transaction. Thus the proposed live-executor replacement cannot strand an executor lease as claimed. The prior review omitted this schema constraint and incorrectly inferred that the generation update could commit."
+        }
+      ],
+      "causal_correction": {
+        "requested_by": "Parent source-reading question about execution.sql:22-23; no peer findings consulted",
+        "source_commit": "9a0c4768ff361aa142f26e9b8102b4871fb24e4c",
+        "original_live_executor_claim": "Withdrawn; partial UNIQUE index aborts before generation update",
+        "remaining_distinct_path": "Running reviewer/verifier on a published artifact, after the executor permissions are closed, followed by admitted fresh executor generation"
+      }
+    }
+  ]
+}

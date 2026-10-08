@@ -1,0 +1,545 @@
+{
+  "scope": "Registered preparation-only Workflow source component; not production WorkflowSources/Gates, CLI run, native acceptance or complete Phase2",
+  "baseline_commit": "e6665a69c3b7b6d0370e618d43be7adae4642240",
+  "approved_bootstrap_design": "9b4ad6a7ce61b428d3bade9d7a8a9bde292ae4e4",
+  "final_source_commit": "da85933a3d2c5c8c692d5f906f6fb2e00be63b7c",
+  "final_source_tree": "b7f107be1172497c205097f6514ce33795527021",
+  "schema_version": 5,
+  "host": {
+    "os": "macOS",
+    "version": "26.6.2",
+    "build": "25G83",
+    "architecture": "arm64",
+    "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+    "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+    "verification_git": "2.49.0",
+    "target": "aarch64-apple-darwin",
+    "offline": true
+  },
+  "executed": {
+    "source1_full_workspace": {
+      "source": "6be63c8167a09f27fe0abf9dd516a57d1f9aaaf3",
+      "exit_code": 0,
+      "primary_passed": 540,
+      "primary_failed": 0,
+      "primary_ignored": 30
+    },
+    "source1_clippy": {
+      "source": "6be63c8167a09f27fe0abf9dd516a57d1f9aaaf3",
+      "exit_code": 101,
+      "cause": "New async test explicitly drops a std MutexGuard; Clippy requires a lexical lifetime scope. Corrected in Source2, no lint bypass."
+    },
+    "source2_full_workspace": {
+      "source": "5efdc893610db065a45daa6bef23e795975bfb26",
+      "exit_code": 101,
+      "library_passed": 420,
+      "library_failed": 1,
+      "cause": "Unsupported committed symlink prevents the fixture from reaching ordinary reader controls; independently verified test defect, corrected in Source3 without loosening qualification."
+    },
+    "source3_full_workspace": {
+      "source": "da85933a3d2c5c8c692d5f906f6fb2e00be63b7c",
+      "exit_code": 0,
+      "primary_passed": 541,
+      "primary_failed": 0,
+      "primary_ignored": 30,
+      "rrx_library_passed": 421,
+      "rrx_primary_integration_passed": 113,
+      "tracker_library_passed": 4,
+      "tracker_discovery_passed": 1,
+      "rrx_doctests_passed": 2,
+      "nested_child_exclusions": "Do not count the internal 44-test library child or single filtered Codex child again."
+    },
+    "source3_clippy": {
+      "source": "da85933a3d2c5c8c692d5f906f6fb2e00be63b7c",
+      "exit_code": 0,
+      "command": "cargo clippy --offline --workspace --all-targets -- -D warnings"
+    },
+    "source3_build": {
+      "source": "da85933a3d2c5c8c692d5f906f6fb2e00be63b7c",
+      "exit_code": 0,
+      "command": "cargo build --offline -p rrx --bin rrx"
+    },
+    "final_restored_controls": {
+      "source_tree": "b7f107be1172497c205097f6514ce33795527021",
+      "passed": 4,
+      "exit_code": 0,
+      "interpretation": "Every mutation restoration tree equals Source3; execute the three Workflow-source tests and one schema5 control once on the final restored tree."
+    },
+    "fmt_and_diff_check": "PASS at clean Source3"
+  },
+  "schema5_old_binary_reopen": {
+    "source_commit": "da85933a3d2c5c8c692d5f906f6fb2e00be63b7c",
+    "current_program": "/private/tmp/rrx-phase2-target/debug/rrx",
+    "current_sha256": "02e188e26b38c91f458f22b5d1500878ec0a82c948bd2708f87b97343646394b",
+    "current_exit": 0,
+    "old_program": "/private/tmp/rrx-phase2-docker-install/bin/rrx",
+    "old_recorded_install_source": "e0675783a7ad4bccbfd56ff502e98f5c2c0f07df",
+    "old_sha256": "f96a8f445dc1b69b68bca9fb59b4a46c1da0f51559e12f0e23b7e512da255f26",
+    "old_exit": 1,
+    "old_stderr": "rrx: unsupported state schema 5, supported 4",
+    "schema5_unchanged": true,
+    "scope": "Owned empty SQLite fixture and project-list CLI only; no native/auth/hooks/installed-current-profile qualification",
+    "temporary_fixture_removed": true
+  },
+  "final_mutations": {
+    "source_commit": "da85933a3d2c5c8c692d5f906f6fb2e00be63b7c",
+    "baseline_tree": "b7f107be1172497c205097f6514ce33795527021",
+    "mutations": [
+      {
+        "name": "native_grant",
+        "test": "workflow_source_bootstrap_reads_commit_and_refuses_native_before_effects",
+        "mutant_commit": "c8ae7b327ae3e171dfb14a4483a7e6be0c6e4340",
+        "restore_commit": "271c87c69034b86fa90c505613179682146895fa",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-final-mutant-native_grant.log",
+        "sha256": "8718120885dcf9a170600485add7021654565a04a439ae7c77b64911b1941486",
+        "bytes": 1142
+      },
+      {
+        "name": "session_grant",
+        "test": "workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents",
+        "mutant_commit": "c7b131fccbf03e81a7490632c0e1db0a22fdcdfd",
+        "restore_commit": "a8ceca324f1edfaf7d5563ce6bee4a861b41e5df",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-final-mutant-session_grant.log",
+        "sha256": "cad73b8cc7dfe5f175c8b993a049811cf863ef7d63534c9cc412c1b5241be738",
+        "bytes": 1028
+      },
+      {
+        "name": "quota_grant",
+        "test": "workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents",
+        "mutant_commit": "894099405c679f058bca9052285651c7d1e9f05f",
+        "restore_commit": "4a742c47b80809987ce7d3883773e6910d734491",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-final-mutant-quota_grant.log",
+        "sha256": "ec7ab19e75f3f05723a81464c11f8a6c55dd470cc64941f1e86d774abdced947",
+        "bytes": 1055
+      },
+      {
+        "name": "helper_grant",
+        "test": "workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents",
+        "mutant_commit": "f530cbc974ba6468efc948f6d6cf39c0da1cf804",
+        "restore_commit": "2fa9166089efaf29127f9ae5e07aff23938b18be",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-final-mutant-helper_grant.log",
+        "sha256": "f733624425c996a6976d46cab74a82d113f929ff68dcaef251ec109400e9c97f",
+        "bytes": 1066
+      },
+      {
+        "name": "delegated_grant",
+        "test": "workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents",
+        "mutant_commit": "1366f0a29aae2a6c345c7a5e19b79a5095284407",
+        "restore_commit": "204253f8dfd612ba7e32c767fac2f6dc8df8626e",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-final-mutant-delegated_grant.log",
+        "sha256": "70df5e5e052795ed42a6729303ab5b2d87694f8ddee06a4048db0df45727da0f",
+        "bytes": 1017
+      },
+      {
+        "name": "commit_origin",
+        "test": "workflow_source_bootstrap_reads_commit_and_refuses_native_before_effects",
+        "mutant_commit": "bfc8d1b886261dda72118fa14f55057a7e8b97e5",
+        "restore_commit": "35629ff66df2dcaf54040a24eee0757850cab150",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-final-mutant-commit_origin.log",
+        "sha256": "a2df23fe560f546fc8850f7576842e1a295ff2a08d9bcc731bf03dbd4f1a69c5",
+        "bytes": 1044
+      },
+      {
+        "name": "abandonment_guard",
+        "test": "workflow_source_bootstrap_reads_commit_and_refuses_native_before_effects",
+        "mutant_commit": "cd6c63a9e8450f403f42c9656605a8bb485038c7",
+        "restore_commit": "4b6d548b9be8939798de70e8dc09a06caca37e33",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-final-mutant-abandonment_guard.log",
+        "sha256": "c62984f909a4446fc3b7680baa06d1fd6ef6ade2dc8fba6047accde3fb41cc94",
+        "bytes": 1027
+      },
+      {
+        "name": "contract4_fence",
+        "test": "schema5_replaces_contract4_guards_and_fences_already_open_writer",
+        "mutant_commit": "cdb85586c348bc287e0de560cbf0eb7266b68b18",
+        "restore_commit": "5c2866fd72db2eaebed4c9062c2ba811bba3210e",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-final-mutant-contract4_fence.log",
+        "sha256": "dff2fc1383f9bbf638e76cfbbe3e36640060ef8e80f38e1645a0884cb6a9e25b",
+        "bytes": 961
+      },
+      {
+        "name": "snapshot_phase_entry",
+        "test": "workflow_source_bootstrap_reads_commit_and_refuses_native_before_effects",
+        "mutant_commit": "03d270453bd210cfa6ad674ab60538700bcf6aed",
+        "restore_commit": "7b79210f17e163f69369a2a2eeab5caabdebc6b8",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-final-mutant-snapshot_phase_entry.log",
+        "sha256": "c536f0a25609993067f86b434e2e9531e3314fce74ab19488c70c80ec86772ad",
+        "bytes": 1026
+      },
+      {
+        "name": "blob_size_bound",
+        "test": "workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_size",
+        "mutant_commit": "e96da94777d4342574ef6e1e07e183e33a266380",
+        "restore_commit": "e3321f5c1f5e649ffa1708a9e793fe6f5d98d41c",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-final-mutant-blob_size_bound.log",
+        "sha256": "ef574d8b758c2dd79e2d69c5e58ef5350b6693a4274375583e852f348956915e",
+        "bytes": 991
+      },
+      {
+        "name": "blob_file_type",
+        "test": "workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_size",
+        "mutant_commit": "e0d4ceedc72e6fbeb35259852b3a5ca8fa218cc5",
+        "restore_commit": "f107e3d32608a18898cdf84ea449ee3c73d290dc",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-final-mutant-blob_file_type.log",
+        "sha256": "6b7fe6e9aed4ffdf6c0ea6219ef0dc3e9bd5e8aafa1f6c2791e864704eee6745",
+        "bytes": 1021
+      },
+      {
+        "name": "literal_path",
+        "test": "workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_size",
+        "mutant_commit": "026b0bd42700c19055ed7329a0f97c52f55f8c81",
+        "restore_commit": "09fa8842311cb613313d4e16952af412fc49e1d9",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-final-mutant-literal_path.log",
+        "sha256": "ec39df41050a3823d3903b21d5619868721de2cb75394cf3b4c24be6d237022d",
+        "bytes": 1025
+      }
+    ]
+  },
+  "prior_source1_mutations": {
+    "source_commit": "6be63c8167a09f27fe0abf9dd516a57d1f9aaaf3",
+    "baseline_tree": "5c771d54a20b870334c1636e39ad96249857f43c",
+    "mutations": [
+      {
+        "name": "native_grant",
+        "test": "workflow_source_bootstrap_reads_commit_and_refuses_native_before_effects",
+        "mutant_commit": "6dbcd7e9651392dd7720a1c9173288f9a72cd7ba",
+        "restore_commit": "a3c1ee49880081b575459427931d318393858b23",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-mutant-native_grant.log",
+        "sha256": "577483a71d44288b352f2b621ef9b9e3732e72d4480b59e174e6c0f923784733",
+        "bytes": 1130
+      },
+      {
+        "name": "session_grant",
+        "test": "workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents",
+        "mutant_commit": "1a69da3c67f89101baca47d781a9ece836609d54",
+        "restore_commit": "7794034d4b385686c5791e0491ee623ed945f78c",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-mutant-session_grant.log",
+        "sha256": "d5e620fec8a2437f5466eee0e240e82e831cfd2ecc846bf4cecf5fe4630fe411",
+        "bytes": 1022
+      },
+      {
+        "name": "quota_grant",
+        "test": "workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents",
+        "mutant_commit": "9a80db17ef46e222f5dc602a4138601cf7148613",
+        "restore_commit": "440d4d5382c0144f40870425fa5be24601bca64a",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-mutant-quota_grant.log",
+        "sha256": "a05a53a84e0add1a7f11ff86e9fe2b83854e6861097359e86a0aab1faf7c53bf",
+        "bytes": 1049
+      },
+      {
+        "name": "helper_grant",
+        "test": "workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents",
+        "mutant_commit": "4c1de6c8ad916fb1b27d90b566fcc1c47604602a",
+        "restore_commit": "0588ed310e52d1b04bab65967d0a447220f807d1",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-mutant-helper_grant.log",
+        "sha256": "8578779dea547c08d58117235c2f68fcabae2de14a53deb3e0594ab486901049",
+        "bytes": 1060
+      },
+      {
+        "name": "delegated_grant",
+        "test": "workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents",
+        "mutant_commit": "5b9d7625b6ec0b29057271fb0ee89e8b32aa8bda",
+        "restore_commit": "e1c474d59229dab7fbf884a5dd756fc76c71b0bc",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-mutant-delegated_grant.log",
+        "sha256": "744e68fafc85e9ab1927385f7214416cd79cc4e8ce9a77de055a12e9af5e575b",
+        "bytes": 1011
+      },
+      {
+        "name": "commit_origin",
+        "test": "workflow_source_bootstrap_reads_commit_and_refuses_native_before_effects",
+        "mutant_commit": "6eb36d1be20b47acab015c4f86484ad031bf8476",
+        "restore_commit": "35ef233a534033f853e013aa8789f1473b7f8d36",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-mutant-commit_origin.log",
+        "sha256": "1dda1eb7ffdc6f2dc5da637385e3500131f54496b771d5b399c505962a2876b7",
+        "bytes": 1038
+      },
+      {
+        "name": "abandonment_guard",
+        "test": "workflow_source_bootstrap_reads_commit_and_refuses_native_before_effects",
+        "mutant_commit": "88b1cd885a9c3a1b03e8d4fc205b41314edd4424",
+        "restore_commit": "a842dcf2756a9d2f78e8e3d56dbf14611390ab30",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-mutant-abandonment_guard.log",
+        "sha256": "69db0e25671383ade784ca8465a4711cc11bb232b774f26645dc755d2e7ad71a",
+        "bytes": 1021
+      },
+      {
+        "name": "contract4_fence",
+        "test": "schema5_replaces_contract4_guards_and_fences_already_open_writer",
+        "mutant_commit": "13c94fbb8f4fc73bf75b1f3906c16bca74298026",
+        "restore_commit": "8e3f304087f9511cc3e827bbf25c32fef973d9dd",
+        "exit_code": 101,
+        "compiled_assertion_failure": true,
+        "log": "/private/tmp/rrx-phase2-bootstrap-mutant-contract4_fence.log",
+        "sha256": "6755bee1de29fef045f41c49f8a51c9f3f93c1b026b29403cbb34f0fc01877d1",
+        "bytes": 955
+      }
+    ]
+  },
+  "retained_refs": {
+    "source1": "refs/rrx/verification/agent-execution-phase2-workflow-bootstrap/source1-mutations",
+    "final": "refs/rrx/verification/agent-execution-phase2-workflow-bootstrap/final-mutations"
+  },
+  "logs": [
+    {
+      "path": "/private/tmp/rrx-phase2-workflow-bootstrap-source1-regression.log",
+      "sha256": "e384c4ae6944392c9a8df534395c45d4c12300fea2af5ad66eaef03b46e83d58",
+      "bytes": 67366
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-workflow-bootstrap-source1-clippy.log",
+      "sha256": "1a076e26fb5a46a23be5d229631827254294d6c1c6f3cfce16f61ffe8b966afb",
+      "bytes": 946
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-workflow-bootstrap-source2-regression.log",
+      "sha256": "0041483607ba22e5e265686793641075444e8f473b100b2bcfa0ec2f13053258",
+      "bytes": 54600
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-workflow-bootstrap-source3-regression.log",
+      "sha256": "9331c07a0ab25411048472c58cb1fefb88b1812fc6cfb391a175984d5d0daf90",
+      "bytes": 67478
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-workflow-bootstrap-source3-clippy.log",
+      "sha256": "ab33620e01603ddea6acfd73b951fd7ecf63bf6812b15d2742527624f2eeb8ee",
+      "bytes": 184
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-workflow-bootstrap-source3-build.log",
+      "sha256": "870678018d7b6c72df92287854d68221c36462cfb038301c3025a9b828022d32",
+      "bytes": 126
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-workflow-bootstrap-final-restored-controls.log",
+      "sha256": "a06f0934445e771a62afb09213eeb9a567695f206270c1d79fd50015e5b6a4ad",
+      "bytes": 1129
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-workflow-bootstrap-schema5-reopen.json",
+      "sha256": "c941a3305855266b68f4f68472f5497cce9bc3a4d8771909043644e5277e70e6",
+      "bytes": 744
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-mutant-native_grant.log",
+      "sha256": "577483a71d44288b352f2b621ef9b9e3732e72d4480b59e174e6c0f923784733",
+      "bytes": 1130
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-mutant-session_grant.log",
+      "sha256": "d5e620fec8a2437f5466eee0e240e82e831cfd2ecc846bf4cecf5fe4630fe411",
+      "bytes": 1022
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-mutant-quota_grant.log",
+      "sha256": "a05a53a84e0add1a7f11ff86e9fe2b83854e6861097359e86a0aab1faf7c53bf",
+      "bytes": 1049
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-mutant-helper_grant.log",
+      "sha256": "8578779dea547c08d58117235c2f68fcabae2de14a53deb3e0594ab486901049",
+      "bytes": 1060
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-mutant-delegated_grant.log",
+      "sha256": "744e68fafc85e9ab1927385f7214416cd79cc4e8ce9a77de055a12e9af5e575b",
+      "bytes": 1011
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-mutant-commit_origin.log",
+      "sha256": "1dda1eb7ffdc6f2dc5da637385e3500131f54496b771d5b399c505962a2876b7",
+      "bytes": 1038
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-mutant-abandonment_guard.log",
+      "sha256": "69db0e25671383ade784ca8465a4711cc11bb232b774f26645dc755d2e7ad71a",
+      "bytes": 1021
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-mutant-contract4_fence.log",
+      "sha256": "6755bee1de29fef045f41c49f8a51c9f3f93c1b026b29403cbb34f0fc01877d1",
+      "bytes": 955
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-final-mutant-native_grant.log",
+      "sha256": "8718120885dcf9a170600485add7021654565a04a439ae7c77b64911b1941486",
+      "bytes": 1142
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-final-mutant-session_grant.log",
+      "sha256": "cad73b8cc7dfe5f175c8b993a049811cf863ef7d63534c9cc412c1b5241be738",
+      "bytes": 1028
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-final-mutant-quota_grant.log",
+      "sha256": "ec7ab19e75f3f05723a81464c11f8a6c55dd470cc64941f1e86d774abdced947",
+      "bytes": 1055
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-final-mutant-helper_grant.log",
+      "sha256": "f733624425c996a6976d46cab74a82d113f929ff68dcaef251ec109400e9c97f",
+      "bytes": 1066
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-final-mutant-delegated_grant.log",
+      "sha256": "70df5e5e052795ed42a6729303ab5b2d87694f8ddee06a4048db0df45727da0f",
+      "bytes": 1017
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-final-mutant-commit_origin.log",
+      "sha256": "a2df23fe560f546fc8850f7576842e1a295ff2a08d9bcc731bf03dbd4f1a69c5",
+      "bytes": 1044
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-final-mutant-abandonment_guard.log",
+      "sha256": "c62984f909a4446fc3b7680baa06d1fd6ef6ade2dc8fba6047accde3fb41cc94",
+      "bytes": 1027
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-final-mutant-contract4_fence.log",
+      "sha256": "dff2fc1383f9bbf638e76cfbbe3e36640060ef8e80f38e1645a0884cb6a9e25b",
+      "bytes": 961
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-final-mutant-snapshot_phase_entry.log",
+      "sha256": "c536f0a25609993067f86b434e2e9531e3314fce74ab19488c70c80ec86772ad",
+      "bytes": 1026
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-final-mutant-blob_size_bound.log",
+      "sha256": "ef574d8b758c2dd79e2d69c5e58ef5350b6693a4274375583e852f348956915e",
+      "bytes": 991
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-final-mutant-blob_file_type.log",
+      "sha256": "6b7fe6e9aed4ffdf6c0ea6219ef0dc3e9bd5e8aafa1f6c2791e864704eee6745",
+      "bytes": 1021
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-bootstrap-final-mutant-literal_path.log",
+      "sha256": "ec39df41050a3823d3903b21d5619868721de2cb75394cf3b4c24be6d237022d",
+      "bytes": 1025
+    }
+  ],
+  "source_files": [
+    {
+      "path": "crates/rrx/src/execution/attempts.rs",
+      "sha256": "fc2af1304732a20088a580600106be3a934cceed9cbb900cfc3a4ba2d935baf8",
+      "bytes": 15689
+    },
+    {
+      "path": "crates/rrx/src/execution/model.rs",
+      "sha256": "215b705d927c4450e7ff533ea31f414f3570b1c446380c3951ea15c078420c18",
+      "bytes": 9492
+    },
+    {
+      "path": "crates/rrx/src/execution/native.rs",
+      "sha256": "5ee41f25bc9fa810636abf97b0e6eaa1ef3ee47cc16a2ac69a7699872395d9ae",
+      "bytes": 58122
+    },
+    {
+      "path": "crates/rrx/src/execution/native/tests.rs",
+      "sha256": "afaaa7b681d9d9783c5945778b75a5edbd8e55c5ccb9943139c79c3b0270eba1",
+      "bytes": 56836
+    },
+    {
+      "path": "crates/rrx/src/state/execution.rs",
+      "sha256": "60ee24937cd466a22e6431b931608873ca9bff9bef9086327923e8f3cabd1147",
+      "bytes": 45536
+    },
+    {
+      "path": "crates/rrx/src/state/execution/effects.rs",
+      "sha256": "4c1bb0e6e20ecadded535871d02a142b1af2597c0aecf8426e43e22436093964",
+      "bytes": 9112
+    },
+    {
+      "path": "crates/rrx/src/state/execution/quotas.rs",
+      "sha256": "92921e2e4cd8ed1b2baadec414c7bc5b04612f05ab360cac4c3121573462df9d",
+      "bytes": 23220
+    },
+    {
+      "path": "crates/rrx/src/state/execution/sessions.rs",
+      "sha256": "b66bdc3d15964bdadb436589c9ff389b519fed0d2781eab547c45a3e047a8310",
+      "bytes": 9514
+    },
+    {
+      "path": "crates/rrx/src/state/execution/tests.rs",
+      "sha256": "528e033a3c56420acd119023927e81122c7d18267e2902c02bab1ea787c8ec59",
+      "bytes": 52411
+    },
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "sha256": "d78c44e5b73a79da5c4c797c3926b1e907ae0c5dd63d117d3a2d9aa83c184a63",
+      "bytes": 75202
+    },
+    {
+      "path": "doc/design/agent-execution-design.md",
+      "sha256": "2fd526ba5a6ab0d32b8801a963b74edab1bb03100a295349130dcea35aa2a875",
+      "bytes": 56781
+    },
+    {
+      "path": "doc/design/master/agent-execution.md",
+      "sha256": "a9ab75abd449e7a0a248854805cb7ad40db8001942282d69cb23b6ea0d17f0e6",
+      "bytes": 10225
+    },
+    {
+      "path": "doc/requirements/agent-execution-requirements.md",
+      "sha256": "ebef99183ca99ed1bfe04dc1194a7029823ab0a06b37c709b0cd074c003dff0f",
+      "bytes": 18114
+    }
+  ],
+  "review_ledger": "agent-execution-phase2-bootstrap-reviews.json",
+  "temporary_worktrees_removed": [
+    "/private/tmp/rrx-phase2-bootstrap-mutations",
+    "/private/tmp/rrx-phase2-bootstrap-followup",
+    "/private/tmp/rrx-phase2-bootstrap-final-mutations"
+  ],
+  "live_handles": [],
+  "limits": [
+    "Production Workflow has no same-Unit bootstrap adoption or committed rule/config frame connection yet. initialize/inputs still use the legacy live rule path until that integration is completed.",
+    "This API reads bounded ordinary files, not a complete committed RepositoryMap/Context Index; full source inventory/selection/progressive expansion and subsequent retained-artifact source ports remain pending.",
+    "Preparation has no native Session/work success/artifact. Drop retires logical authority and leaves paths/resources for existing best-effort cleanup; it does not attest workload death or successful physical disposal.",
+    "The previously recorded e067578 macOS installation is used only as an old schema4 reopen-negative binary. Current-source build is not cargo-install/crates.io or Linux installation qualification.",
+    "No Linux build/run, both-OS CI, actual logged-in Claude/Codex/Grok, auth/settings/hooks, quota-account recovery, four native Tasks, Runtime SIGKILL or complete cleanup guarantee was exercised by these controls.",
+    "No outer sandbox, credential inspection/duplication/transfer, README Status or license changes. Existing #46/#60 ps observation was not extended.",
+    "Phase2 remains active; no final coordinated Phase2/native/MVP approval or Phase3 authorization is asserted."
+  ]
+}

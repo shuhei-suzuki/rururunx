@@ -1,0 +1,359 @@
+{
+  "status": "preliminary component review; Phase2 remains incomplete",
+  "reviews": [
+    {
+      "review": "Phase2 preliminary round3 independent STRICT component source review",
+      "reviewer": "/root/issue26_registry",
+      "source_sha": "07bb9cd1e1dd772f9ba5847eef32d3054089f64a",
+      "approved_contract_sha": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "request_changes",
+      "counts": {
+        "Critical": 0,
+        "High": 1,
+        "Medium": 5,
+        "Low": 0
+      },
+      "confidence": 0.94,
+      "scope": "Immutable committed source only. Preliminary component review, not Phase2/native/Workflow/MVP approval.",
+      "independence": {
+        "peer_findings_read": false,
+        "native_or_account_calls": false,
+        "tests_run": false,
+        "worktree_edits": false
+      },
+      "findings": [
+        {
+          "id": "C-H1",
+          "severity": "High",
+          "title": "Native input and ALLOW writes have no transactional dispatch winner against retirement",
+          "locations": [
+            "crates/rrx/src/execution/native.rs:705-706",
+            "crates/rrx/src/execution/native.rs:784-785",
+            "crates/rrx/src/execution/native.rs:753-757",
+            "crates/rrx/src/execution/native.rs:820-827",
+            "crates/rrx/src/execution/native.rs:424-432"
+          ],
+          "evidence": "The inference paths call authority() then release Store and await Lines::call/send. Both ALLOW paths similarly only validate_execution, construct/consume the in-memory pending reply and await send. None records an input/permission effect intent or commits a scoped unit CAS for this dispatch. Session registration precedes process spawn; acknowledgement is recorded for thread/system initialization, not these subsequent input/permission writes. A concurrent retire_execution can therefore commit after the unlocked validation and before the first writable pipe byte, while the old Core still writes the model input or ALLOW. Lines::send neither consults cancellation nor revalidates the unit.",
+          "contract": "R3 requires attempt/generation/Session/record CAS on grants and approvals and one transactional cancellation winner. Design sections 2/6 retain atomic unit admission and exact permission framing. This concerns new effects not yet admitted; it does not demand revoking bytes already genuinely admitted/sent or proving native death.",
+          "minimal_control": "Use a controlled non-authenticated native transport/write barrier before any first input/ALLOW byte. Let retirement commit while the dispatch has only performed its unlocked validation; then release the barrier. Assert no model input or ALLOW is delivered and no fresh effect is accepted. Complement with actual durable dispatch-intent-first winner, preserving exact unit/session/operation/frame pins, where later cancellation treats it as an already-issued uncertain effect. Cover both providers and distinguish safe DENY.",
+          "fix_direction": "Give input and permission publication a dedicated scoped transactional admission/intent boundary and a private writer tied to that admission; do not substitute a later wire ACK or public recovery JSON. Preserve issued-uncertain effects without replay.",
+          "control_executed": false
+        },
+        {
+          "id": "B-M2-remaining",
+          "severity": "Medium",
+          "title": "Created qualification and snapshot helpers still bypass unit helper admission/profile",
+          "locations": [
+            "crates/rrx/src/execution/results.rs:152",
+            "crates/rrx/src/execution/results.rs:476-482",
+            "crates/rrx/src/execution/results.rs:544-589",
+            "crates/rrx/src/execution/results.rs:ResultSnapshot::verify",
+            "crates/rrx/src/execution/results.rs:ResultStore::verify",
+            "crates/rrx/src/execution/native.rs:154-159"
+          ],
+          "evidence": "UnitGit now journals, validates current authority and propagates the unit profile before spawn, but capture/snapshot qualification, retained-result verification and tracked_digest invoke the raw git()/capture_observed path instead. These launches have no reserve_execution_helper, current unit fence, cookie/profile/TMPDIR overlay or helper receipt in the ledger. The native --version helper propagates environment but likewise launches through raw capture after only an earlier unit validation. This is observable existing execution, not just an absent future Workflow port.",
+          "contract": "R1 explicitly requires preparation/reviewer/verifier helpers to have recorded execution identity and resource namespace; design section 6 assigns the same unit profile to preparation helpers. Best-effort cleanup does not waive logical admission/resource attribution.",
+          "minimal_control": "Use an isolated benign Git/native-version fixture recording only unit ID, cookie presence and TMPDIR. Run actual capture/snapshot consumers and assert every invoked helper has the expected unit profile and journal intent. Insert a cancellation barrier immediately before an otherwise raw qualification/version spawn; cancellation-first must suppress it. Cover finalization helpers with native_effects_open=false/result_finalization_open=true to avoid accidentally forbidding valid Runtime capture.",
+          "fix_direction": "Route unit-bound qualification/verification/version calls through appropriate native or finalization helper admission. Initial pre-unit source inspection needs its actual scoped preparation identity; do not mint a native owner from a generic Git utility.",
+          "control_executed": false
+        },
+        {
+          "id": "C-M1",
+          "severity": "Medium",
+          "title": "One Available quota bucket clears the pool probe and breaks subsequent correlated window updates",
+          "locations": [
+            "crates/rrx/src/state/execution/quotas.rs:106-107",
+            "crates/rrx/src/state/execution/quotas.rs:57-68",
+            "crates/rrx/src/execution/native.rs:664-680",
+            "crates/rrx/src/state/execution/quotas.rs:reserve_execution_quota"
+          ],
+          "evidence": "observe_quota_inner unconditionally clears quota_pools.probe_unit for any Available observation. During a Codex recovery probe the local probe flag is captured once and every Available primary/secondary observation calls observe_probe. The first Available clears ownership, so the second fails the admitted-probe check and the native Core records unknown. With another exhausted bucket retained, repeated probes can fail the same way. Conversely one unrelated Available bucket can erase the live probe while another bucket remains exhausted, allowing another probe after next_probe_at even though the first lease is live.",
+          "contract": "Design section 8 requires one probe lease per provider/account pool and correlated bounded recovery, not independent bucket calls that erase pool ownership.",
+          "minimal_control": "Persist exhausted primary+secondary windows, admit one probe, deliver a correlated two-Available-window metadata response through the existing Store/native loop; both must be accepted without losing proof mid-response. Also deliver Available primary while secondary stays exhausted, advance cooldown while the first lease remains live, and assert another unit cannot acquire a second probe. Release/terminal remains the ownership retirement boundary.",
+          "fix_direction": "Separate per-bucket status recovery from the pool-wide live probe lease. Preserve correlated ownership for the whole bounded refresh and until actual lease release; only derive pool reopening from the complete affected window set.",
+          "control_executed": false
+        },
+        {
+          "id": "C-M2",
+          "severity": "Medium",
+          "title": "Managed Git branch flags and OID-shaped names can mutate a foreign shared ref",
+          "locations": [
+            "crates/rrx/src/execution/tools.rs:148-157",
+            "crates/rrx/src/execution/ipc.rs:serve"
+          ],
+          "evidence": "The branch/switch/checkout check permits every flag and every non-option valid_oid or HEAD. Thus branch -m OWN_BRANCH <40-hex-name> (or HEAD) passes, and branch -c OWN_BRANCH <40-hex-name> passes: for git branch the destination is a ref name, not an object expression. checkout --orphan <40-hex-name> is likewise accepted. These managed IPC commands can create/rename refs outside the unit.branch namespace even though the comment promises only the owned mutable ref. The shared mutex serializes the violation but does not authorize it.",
+          "contract": "R4 prohibits another Task/shared resource mutation; the managed finite Git policy must not label an arbitrary ref-creating command as an owned invocation. Raw bypass remains separately uncovered.",
+          "minimal_control": "Use two fixture Tasks sharing a common Git directory. Pass branch -m/-c with the owned source and a valid-OID-shaped destination, plus checkout --orphan with that destination, through actual IPC. Assert refusal before an effect intent/spawn and unchanged common refs; retain a positive exact-owned update-ref and allowed read-object expressions.",
+          "fix_direction": "Parse subcommand-specific option/operand forms and ref destinations. Do not treat an OID-valid string as permission to use it as a branch name.",
+          "control_executed": false
+        },
+        {
+          "id": "C-M3",
+          "severity": "Medium",
+          "title": "Non-destructive cleanup observation invalidates an in-flight capture authority",
+          "locations": [
+            "crates/rrx/src/state/execution.rs:695-710",
+            "crates/rrx/src/execution/results.rs:ResultStore::capture",
+            "crates/rrx/src/execution/results.rs:178-182",
+            "crates/rrx/src/state/execution/artifacts.rs:stage_result",
+            "crates/rrx/src/state/execution/tests.rs:63-105"
+          ],
+          "evidence": "record_execution_cleanup calls write_unit and increments the authority record version even when it changes only cleanup facts. capture validates its passed authority once, awaits several helpers and the result gate, then stages with that original authority. UnitGit internally refreshes current version, but stage_result compares the original full authority. A normal concurrent cleanup observation therefore makes capture fail although generation, governing instructions and result_finalization_open remain unchanged. The existing janitor test explicitly fetches a new authority only after cleanup and does not exercise this in-flight consumer race.",
+          "contract": "The approved natural-terminal/concurrent-janitor control requires result publication to succeed unless cancellation/replacement wins, while process cleanup proceeds independently. The separate finalization flag alone does not satisfy this CAS interleaving.",
+          "minimal_control": "Pause an actual successful capture between initial validation and stage_result, append a cleanup-only observation, then resume. Capture/publication must converge for the same still-current semantic unit; a complementary cancellation/replacement at the same barrier must reject and retain a draft. Do not weaken generation/source/Task publication CAS.",
+          "fix_direction": "Provide bounded fresh authority/CAS reconciliation for factual-only cleanup successors or separate their CAS authority, preserving the original capture identity and full cancellation/governing fences.",
+          "control_executed": false
+        },
+        {
+          "id": "C-M4",
+          "severity": "Medium",
+          "title": "Claude reviewer launch omits the required native read-only capability",
+          "locations": [
+            "crates/rrx/src/execution/native.rs:132-147",
+            "crates/rrx/src/execution/native.rs:210-234",
+            "crates/rrx/src/execution/native.rs:823"
+          ],
+          "evidence": "Reviewer and Executor Claude command arguments are identical; the only reviewer preparation checks filesystem permissions/HEAD/status. Rejecting ALLOW in the runtime handles only permission requests actually forwarded to that handler, and does not constrain tools already permitted by retained native configuration. Codex explicitly requests sandbox=read-only, but the Claude path explicitly retains normal tools and requests no supported native read-only reviewer capability. NativeSessions::start accepts the Reviewer unit rather than returning Unsupported for this missing role capability.",
+          "contract": "Approved design section 4 requires native reviewers additionally to use their supported read-only review capability, independent of cooperative chmod protection. This finding does not demand an OS sandbox or suppression of auth/hooks, and does not turn known raw bypass into a universal confinement requirement.",
+          "minimal_control": "Inspect the actual built Claude Reviewer command/profile in an account-free transport fixture, contrasting Executor. A normal configured tool that needs no new permission response must not gain reviewer mutation authority; exact supported read-only capability or explicit Unsupported must precede spawn. Genuine hook/profile conformance remains a later required gate.",
+          "fix_direction": "Require the actual supported reviewer capability/profile before dispatch; if this native version/profile cannot provide it while preserving required settings/hooks, explicitly refuse that role instead of relying on the permission-response handler alone.",
+          "control_executed": false
+        }
+      ],
+      "prior_round2_dispositions": [
+        {
+          "id": "A-M2",
+          "status": "closed in selected source",
+          "evidence": "quota windows now SELECT bucket,observed_at,body and compare body to the selected row; dedicated a/b swapped-body negative test added."
+        },
+        {
+          "id": "B-H1",
+          "status": "selected worktree-add/snapshot clone fix verified; raw helper remainder stays open under B-M2-remaining",
+          "evidence": "UnitGit::run refreshes the exact unit identity and validates/journals before spawn; no await between Store validation and that owned spawn."
+        },
+        {
+          "id": "B-H2",
+          "status": "original synchronous WorktreeManager Git-wait under Store lock removed in selected consumers",
+          "evidence": "UnitGit::ownership gathers Git facts asynchronously and applies pure ownership validation. No claim that synchronous filesystem/spawn operations are universally bounded or that all future consumers are qualified."
+        },
+        {
+          "id": "B-H3",
+          "status": "selected Project/Goal semantic instruction fix verified",
+          "evidence": "execution_context governing_digest is captured during reservation and compared during native/finalization validation; excludes factual scheduling fields, includes Goal definitions and Project source reference identities. Tests cover factual blockers versus constraint/rule-reference change. Full physical rule/dependency/source qualification remains explicitly incomplete, not certified."
+        },
+        {
+          "id": "B-M1",
+          "status": "closed in selected source",
+          "evidence": "qualified_content scans ordinary blobs for LFS pointers and distinguishes exit 1 no-match from errors through capture_observed; required LFS/submodule/symlink content refuses."
+        },
+        {
+          "id": "B-M2",
+          "status": "partially fixed; remaining actual raw helper consumers reported above",
+          "evidence": "UnitGit applies namespace/journal; results::git, qualification/digest/verify and native version still bypass it."
+        },
+        {
+          "id": "B-M3",
+          "status": "closed in selected source",
+          "evidence": "ResourceProfile::environment parses bounded inherited GIT_CONFIG_COUNT and appends three entries after it instead of overwriting inherited required hook entries."
+        },
+        {
+          "id": "B-M4",
+          "status": "selected explicit-error closure fixed",
+          "evidence": "AttemptManager prepared errors and ResultStore snapshot errors retire current flags while preserving paths/leases/unknown effects. Future-drop/crash/controller/reclaimer integration is not qualified."
+        }
+      ],
+      "coverage": {
+        "read_complete": [
+          "execution/native.rs",
+          "execution/ipc.rs",
+          "execution/git_io.rs",
+          "execution/quota.rs",
+          "execution/attempts.rs",
+          "execution/resources.rs",
+          "execution/results.rs",
+          "execution/tools.rs",
+          "execution/process.rs",
+          "execution/owner.rs",
+          "codex/managed.rs",
+          "state/execution/quotas.rs",
+          "state/execution/sessions.rs",
+          "state/execution/artifacts.rs",
+          "state/execution/effects.rs",
+          "state/execution/migration.rs"
+        ],
+        "read_targeted": [
+          "state/execution.rs authority/reservation/terminal/resource/readers",
+          "state/mod.rs Task/Session execution fences",
+          "domain.rs governing model",
+          "execution/model.rs identity/authority models",
+          "execution/claude_wire.rs framing/permission and metrics paths",
+          "state/execution/tests.rs causal controls",
+          "execution/native/tests.rs fixture consumer inventory",
+          "approved requirements/design relevant sections"
+        ]
+      },
+      "not_certified": [
+        "Full Phase2 or complete branch review",
+        "Workflow/CLI wiring",
+        "reclaimer/cookie/systemd/Docker reconciliation",
+        "required hooks/dependency/profile qualification",
+        "actual authenticated native/account/subscription behavior",
+        "macOS/Linux four-Task matrix",
+        "all tests/mutations/CI",
+        "universal same-user isolation or whole-workload death",
+        "whole Claude wire/protocol and full unchanged legacy adapter semantic audit"
+      ],
+      "command_closure": "All review read-only exec_command calls returned terminally; no running process/session/tool-owner handle was created or polled. Report file is the only write."
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "review_kind": "independent STRICT preliminary component source review, round 3",
+      "source_commit": "07bb9cd1e1dd772f9ba5847eef32d3054089f64a",
+      "approved_design_commit": "9a11d03",
+      "verdict": "REQUEST_CHANGES",
+      "counts": {
+        "C": 0,
+        "H": 4,
+        "M": 1,
+        "L": 0
+      },
+      "method": "git show による固定コミットの静的な制御・データフロー確認。dirty source、他 reviewer の結論、実 Agent、アカウント、認証、Docker、kill、テスト実行は使用していない。以下の causal controls は提案であり実行結果ではない。",
+      "findings": [
+        {
+          "id": "H1",
+          "severity": "H",
+          "title": "Available 1 件で pool の recovery probe を解除し、複数 window の回復が途中で失敗する",
+          "locations": [
+            "crates/rrx/src/state/execution/quotas.rs:69-71",
+            "crates/rrx/src/state/execution/quotas.rs:106-107",
+            "crates/rrx/src/execution/native.rs:670-678"
+          ],
+          "evidence": "observe_quota_from_probe は各 observation ごとに probe_unit と active lease を要求する。一方 Available の保存はその bucket 以外の Exhausted が残っていても無条件で probe_unit=NULL にする。Codex bootstrap は probe=true を一度取得し、複数 bucket/window に順番に observe_probe を呼ぶ。このため最初の Available が成功すると 2 件目は own=false で失敗し、Core::run は作業を Unknown/Lost として終了する。最初が以前から Available の別 bucket でも同じ。",
+          "impact": "正常な複数 window の quota metadata で回復プローブが実 Agent turn を開始できず、残った exhausted bucket により待機・プローブ失敗を繰り返す。単一 pool-wide probe の保持条件も崩れる。",
+          "requirements": [
+            "R5",
+            "design §8: all relevant known buckets, one pool-wide probe"
+          ],
+          "proposed_control": "primary/secondary の 2 window を Exhausted にして reset 後の 1 probe を admit。両方 Available の snapshot を順に処理して両方保存・turn dispatch まで進むことを確認。Available の無関係 bucket + Exhausted bucket の組み合わせでは probe 所有が維持されることも確認。snapshot を 1 transaction で適用し、pool 全体の barrier と probe lifecycle をまとめて判断する。"
+        },
+        {
+          "id": "H2",
+          "severity": "H",
+          "title": "managed Git の共通 gate を hooks の完了まで保持するため、許可済み hooks の再入が deadlock する",
+          "locations": [
+            "crates/rrx/src/execution/ipc.rs:135-191",
+            "crates/rrx/src/execution/tools.rs:101-115,196-197",
+            "crates/rrx/src/execution/attempts.rs:121-134"
+          ],
+          "evidence": "Git write の serve は owner.git_gate を取得し、native Git の子プロセスと hooks、stdio 交換・reap・Exit 送信の終了まで保持する。hooks の PATH にも同じ managed entry が設定される。hook が own worktree に対する許可済み git add/update-ref 等を呼ぶと、nested request は同じ非再入 gate を待つ。outer Git は hook を待つ。prepare の worktree add も gate を保持して post-checkout hook を実行する。",
+          "impact": "通常の hooks が完了せず、仲介経路の 1800 秒 timeout（prepare は helper timeout）まで待つ。同じ Runtime の Task B 以降の common Git operation も止まる。これは未実装の hook qualification の欠如だけではなく、現在存在する仲介経路の待機循環。",
+          "requirements": [
+            "R1: required hooks",
+            "R4: resource independence",
+            "design §7 common Git serialization"
+          ],
+          "proposed_control": "managed commit の post-commit hook、または worktree add の post-checkout hook に、許可済み own namespace の managed Git write を 1 件入れる。outer と nested が bounded time で完了し Task B の Git operation が進むことを確認。nested operation の ownership/authority を保持した再入設計、またはその hook profile を effect 前に明示拒否する設計が必要。単に hooks を無効化して回避しない。"
+        },
+        {
+          "id": "H3",
+          "severity": "H",
+          "title": "Codex terminal の構造化 subscription error を読まず、quota exhaustion を作業失敗として確定する",
+          "locations": [
+            "crates/rrx/src/execution/native.rs:710,726-747",
+            "crates/rrx/src/execution/quota.rs:146-148",
+            "crates/rrx/src/codex/session.rs:2748-2749"
+          ],
+          "evidence": "新 driver は別の error notification の willRetry=false だけで quota_ended を true にする。turn/completed は turn.error を確認しない。exact thread/turn の failed terminal に error.codexErrorInfo=usageLimitExceeded があっても、それだけでは WorkOutcome::Failure/Disposition::Completed になる。先行 error が willRetry=true の場合も terminal が quota failure で終わると同じ。既存 pinned parser は terminal 内の turn.error を読む経路を持つ。",
+          "impact": "利用枠切れを待機へ送るべき Task が definitive work failure として保存される。枠切れの synthetic pool observation も先行 error がなければ保存されない。",
+          "requirements": [
+            "R5: confirmed exhaustion is waiting, not failure",
+            "design §6/8 native terminal normalization"
+          ],
+          "proposed_control": "turn/start ack 後、先行 error notification なしで exact turn/completed(status=failed,error.codexErrorInfo=usageLimitExceeded) を送る protocol fixture と、willRetry=true の quota error 後に同じ failed terminal を送る fixture を追加。どちらも quota-interrupted/work unknown と pool exhaustion になり、一般 native failure は Failure のままになることを確認。実 CLI がこの順序を送ることは未検証。"
+        },
+        {
+          "id": "H4",
+          "severity": "H",
+          "title": "Claude の quota 判定が最後の observation 1 件で上書きされ、保存済み Exhausted と異なる作業結果を作る",
+          "locations": [
+            "crates/rrx/src/execution/native.rs:788,793-807",
+            "crates/rrx/src/state/execution/quotas.rs:84-95",
+            "crates/rrx/src/execution/quota.rs:159-172"
+          ],
+          "evidence": "quota_exhausted は bucket/window に関係なく直近 observation の status で代入され、Store がその Available を拒否して Ok を返した場合も false になる。five_hour rejected の後に別 seven_day allowed、または reset 前の非 probe same-bucket allowed を受けると、台帳の exhausted barrier は残るが quota_exhausted=false。続く owned error_during_execution terminal は Failure/Completed へ分岐する。",
+          "impact": "既知の subscription barrier を持つ Task が待機ではなく失敗扱いになり、pool と Task/work outcome が食い違う。複数 bucket と stale/非回復 observation の扱いが正規化されていない。",
+          "requirements": [
+            "R5",
+            "design §8: bucket normalization and out-of-order observations"
+          ],
+          "proposed_control": "init→five_hour rejected(reset future)→seven_day allowed→quota に伴う owned error terminal、および rejected→reset 前 same-bucket allowed→error terminal を fixture で確認。driver は受理済みの有効な window 状態と terminal の分類根拠を用いる。既知の unrelated max-turn/budget failure や successful completion を quota telemetry だけで上書きしない negative control も必要。実 CLI の複数 event 順序は未検証。"
+        },
+        {
+          "id": "M1",
+          "severity": "M",
+          "title": "双方向 tool IPC が select branch 内の write_all を待ち、stdin と stdout/stderr で相互待ちになる",
+          "locations": [
+            "crates/rrx/src/execution/ipc.rs:157-178",
+            "crates/rrx/src/execution/ipc.rs:243-265"
+          ],
+          "evidence": "pumping の Input branch は child stdin.write_all 完了まで、Stdout/Stderr branch は client socket write_frame 完了まで、他の方向を poll しない。子が stdin を読む前に pipe capacity 以上の stdout/stderr を出し、client が capacity 以上の input を送る通常の duplex pattern で、server は詰まった stdin の write を待ち、子は server が drain しない stdout を待つ。chunk と frame 上限はこの循環を解消しない。",
+          "impact": "正常な仲介 compile/ssh 等が 1800 秒 timeout まで止まり、Unknown receipt/125 で終わる。生存・キャンセルの fencing は外側にあるので取消不能とは評価しない。",
+          "requirements": [
+            "R1 bounded functioning execution",
+            "R4 managed invocation policy"
+          ],
+          "proposed_control": "許可済み sccache compiler-bypass fixture で、子が pipe capacity 超の stdout と stderr を先に出してから、client の pipe capacity 超の stdin を読む。短い期限で全 bytes と正常 exit を確認。bounded channel を持つ独立 input writer と stdout/stderr drains を使用し、全方向の backpressure と cancellation を同時に poll する。"
+        }
+      ],
+      "previous_round2_dispositions": [
+        {
+          "finding": "H1 required content checked after worktree preparation",
+          "status": "SOURCE_CLOSED",
+          "evidence": "execution/attempts.rs:65 qualified_content precedes unit/resource materialization and worktree add; runtime tests not run"
+        },
+        {
+          "finding": "H2 managed Git --output writes outside namespace",
+          "status": "SOURCE_CLOSED_FOR_REPORTED_FORM",
+          "evidence": "execution/tools.rs:94-99 rejects --out prefix and ext-diff/textconv forms; this disposition does not certify every possible future Git option"
+        },
+        {
+          "finding": "M1 exhausted reset=None has no qualified recovery",
+          "status": "SOURCE_CLOSED_AT_LEDGER_API",
+          "evidence": "state/execution/quotas.rs:62-71,90-92 accepts a fresh admitted probe without old reset; native multi-window composition has new H1"
+        },
+        {
+          "finding": "M2 inherited GIT_CONFIG_COUNT hook entries overwritten",
+          "status": "SOURCE_CLOSED",
+          "evidence": "execution/resources.rs:75-93 appends three entries after inherited count; required native/hook compatibility unverified"
+        },
+        {
+          "finding": "M3 unresolved publish/merge/deploy blocks fresh local attempt",
+          "status": "SOURCE_CLOSED",
+          "evidence": "state/execution.rs:416-529 no blanket managed_effect exclusion; state/execution/effects.rs:54-59 gates only same kind/target dependent phase"
+        },
+        {
+          "finding": "M4 LFS grep failures treated as absence",
+          "status": "SOURCE_CLOSED",
+          "evidence": "execution/results.rs:567-571 propagates capture errors and only accepts exit1 or success with empty stdout"
+        }
+      ],
+      "positive_source_observations": [
+        "Session handles bind scope/unit/generation/epoch/session; public approve also checks matching unit/scope/session before enqueue.",
+        "Helper/managed tool producers reserve intents, then revalidate generation/epoch/session under Store lock immediately before spawn; cancellation is checked during tool exchange.",
+        "Native known work is persisted before best-effort process hygiene. Cleanup is explicitly Unknown rather than a descendant-death claim.",
+        "Legacy Codex adapter availability is not broadened by codex/managed.rs. The new fixture invokes absolute Git and explicitly disclaims installed-shim/native acceptance."
+      ],
+      "limitations": [
+        "Preliminary component review only; not Phase2 approval or public readiness.",
+        "Workflow/CLI runtime integration, cookie/systemd/Docker reclaimer/reconcile, required hooks/dependency qualification remain WIP and were not treated as findings solely for being absent.",
+        "No production or fixture tests executed by this reviewer; parent-reported passes and newly started tests are not independently certified.",
+        "Real Claude/Codex authentication, native settings/hooks/sandbox compatibility, subscription exhaustion/recovery, four Task macOS/Linux acceptance and cargo install are unverified.",
+        "Repository and worktree have no AGENTS.md at the requested root paths; committed requirements/design were used. No repository edits were made."
+      ],
+      "owned_handles": {
+        "live": [],
+        "closed": "All read-only exec_command calls completed; no native child, account connection, background test, server, Docker resource or other owned live handle created."
+      }
+    }
+  ]
+}

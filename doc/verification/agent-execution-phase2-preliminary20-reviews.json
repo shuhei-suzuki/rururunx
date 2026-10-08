@@ -1,0 +1,205 @@
+{
+  "format": "rrx.phase2.preliminary-reviews.v1",
+  "round": 20,
+  "source_commit": "d30a9bec15fbe3b0943543a6766b1eba73f2f1a9",
+  "reviews": [
+    {
+      "reviewer": "/root/issue26_registry",
+      "original": {
+        "path": "/private/tmp/rururunx-agent-execution-phase2-preliminary20-a.json",
+        "bytes": 7678,
+        "sha256": "11ba2cae0009082e334f093dc60b270362e89a3c86400da64bc97e97c1f66a9a"
+      },
+      "record": {
+        "review": "Independent preliminary STRICT component re-review round20 A",
+        "source_commit": "d30a9bec15fbe3b0943543a6766b1eba73f2f1a9",
+        "baseline_commit": "f63048ab19b486fb5ae2d157dcbba6704418e60a",
+        "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+        "verdict": "APPROVE",
+        "approval_scope": "Static component delta and its existing quota/watch/Workflow consumers only; not final Phase2, native conformance, or MVP acceptance.",
+        "counts": {
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0
+        },
+        "findings": [],
+        "own_prior_findings": [
+          {
+            "id": "S-M1",
+            "severity": "Medium",
+            "disposition": "Closed by committed source and causal consumer assertions; execution not independently verified.",
+            "original_defect": "An accepted live Available observation could update quota windows while the same Unit/watch remained WaitingQuota and Workflow never restored its phase Task state before terminal.",
+            "evidence": [
+              {
+                "path": "crates/rrx/src/state/execution/quotas.rs",
+                "lines": "439-481",
+                "detail": "Private Immediate transaction validates exact current execution authority and active same-provider/owner-epoch lease, derives the lease account, requires accepted Available for every participating bucket, and changes only the same live quota-waiting Unit to Running with no wait reason. Input, worktree, native/finalization flags and lease/probe ownership are retained."
+              },
+              {
+                "path": "crates/rrx/src/execution/native.rs",
+                "lines": "1217-1249",
+                "detail": "Owned Claude observations accumulate finite participating buckets. Available invokes durable recovery and publishes the returned Unit authority/wait reason to the same watch, clearing the quota diagnostic when recovered."
+              },
+              {
+                "path": "crates/rrx/src/workflow.rs",
+                "lines": "1720-1742,1797-1809",
+                "detail": "After existing identity/persisted-status validation, live quota state waits. A nonterminal same managed status with no wait reason restores a WaitingQuota Task to phase.task_state and returns Running without adding/replacing an attempt."
+              },
+              {
+                "path": "crates/rrx/src/execution/native/tests.rs",
+                "lines": "1132-1187",
+                "detail": "Preterminal recovery barrier checks accepted windows, watch/status/ledger wait removal, Running, unchanged Session/generation/worktree, open native/finalization flags, no work result and exactly one native_input; sibling ledger equality is checked after terminal."
+              },
+              {
+                "path": "crates/rrx/src/workflow/managed_tests.rs",
+                "lines": "219-396",
+                "detail": "Actual registry/adapter/Engine consumer fixture first verifies retained quota wait and one input, then releases the fresh-window recovery barrier and checks nonterminal Running/Implementing with identical execution identity, active index and history length; cancellation remains independently asserted."
+              }
+            ]
+          }
+        ],
+        "additional_verified_correction": {
+          "description": "Claude telemetry-only quota waiting no longer creates recovery-probe authority; explicit owned Codex willRetry remains a separate transition.",
+          "evidence": [
+            {
+              "path": "crates/rrx/src/state/execution/quotas.rs",
+              "lines": "384-436",
+              "detail": "mark_execution_quota_wait selects native_retry=false. Only the true branch may assign probe_unit, and that branch rejects non-Codex providers. Both retain the same live turn and current authority."
+            },
+            {
+              "path": "crates/rrx/src/execution/native.rs",
+              "lines": "1134-1146,1224-1245",
+              "detail": "Codex retry transition requires exact owned thread/turn structured subscription error with willRetry=true. Claude owned recognized telemetry calls the non-probe wait transition. Foreign Claude session events are ignored before pool mutation."
+            },
+            {
+              "path": "crates/rrx/src/state/execution/quotas.rs",
+              "lines": "63-97",
+              "detail": "Existing accepted-window policy still rejects an unsolicited same-window Available while previous exhaustion is unexpired; recovery needs an actual admitted probe or a distinct window after the old reset. No new wait-derived probe bypass remains."
+            },
+            {
+              "path": "crates/rrx/src/execution/native/tests.rs",
+              "lines": "164-249,1009-1200",
+              "detail": "Committed controls cover rejected same-window Available, unrelated bucket, foreign/unknown events, work failure versus quota interruption, success despite exhausted telemetry, no telemetry-created probe, sibling continuity and no resent input. These assertions were read, not executed."
+            }
+          ]
+        },
+        "contract_consistency": "R5 requires recognized subscription exhaustion to wait without work failure, continuation of the same retrying turn, reported reset/fresh metadata or bounded recovery, unrelated progress and cancellability. The fixed flow retains work/cleanup independence and does not fabricate subscription balance or new input admission.",
+        "causal_controls": [
+          {
+            "control": "Omit resume_execution_quota_wait or watch publication",
+            "expected_sensitivity": "The preterminal recovery fixture fails ledger/watch/status assertions before a native terminal could hide S-M1.",
+            "executed_by_reviewer": false
+          },
+          {
+            "control": "Omit Workflow WaitingQuota-to-phase Task restoration",
+            "expected_sensitivity": "The Engine consumer fixture still gets native recovery but fails TaskState::Implementing at the same active identity.",
+            "executed_by_reviewer": false
+          },
+          {
+            "control": "Route Claude telemetry through native_retry=true / reintroduce probe minting",
+            "expected_sensitivity": "The direct live fixture fails the no-probe assertion; rejected same-window Available classification also becomes incorrectly reopenable.",
+            "executed_by_reviewer": false
+          },
+          {
+            "control": "Clear wait on any unrelated/stale/foreign observation or resend input",
+            "expected_sensitivity": "Accepted all-participating-window checks and existing scoped negative/input-count assertions must continue to hold; multi-participating exhausted-window runtime sensitivity was not executed or independently established.",
+            "executed_by_reviewer": false
+          }
+        ],
+        "review_method": "Immutable git show/diff at the specified source and baseline; read relevant unchanged Store observation/admission, owned native identity, status/watch, Workflow poll/cancellation/terminal consumers and fixed requirements/design. No mutable source or peer reports were read.",
+        "limitations": [
+          "No builds, tests, mutations, logs, native processes/accounts/models, network, signals or OS behavior were executed or inferred from parent claims.",
+          "Synthetic fixture assertions qualify source wiring only; actual installed-provider event timing, quotas/reset behavior, native authentication/hook compatibility and production profiles remain unverified.",
+          "Unfinished Production Sources/Gates, Runtime/CLI and recovery/cleanup integrations are outside this component verdict and are not counted as new defects or implicitly accepted.",
+          "Accepted window recovery uses the existing account-pool model and wall-clock reset policy. This review does not certify provider balances or physical cleanup.",
+          "No final Phase2/native/MVP readiness or broader source approval is granted."
+        ],
+        "live_handles": [],
+        "commands_closed": true,
+        "writes": [
+          "/private/tmp/rururunx-agent-execution-phase2-preliminary20-a.json"
+        ]
+      }
+    },
+    {
+      "reviewer": "/root/agent_execution_phase0_review_b",
+      "original": {
+        "path": "/private/tmp/rururunx-agent-execution-phase2-preliminary20-b.json",
+        "bytes": 7225,
+        "sha256": "271198a0b35a41d3dfffbd7f5c03acd1a342c76d744c27979024be6d57d0569a"
+      },
+      "record": {
+        "reviewer": "B",
+        "round": 20,
+        "source_commit": "d30a9bec15fbe3b0943543a6766b1eba73f2f1a9",
+        "baseline_commit": "f63048ab19b486fb5ae2d157dcbba6704418e60a",
+        "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+        "verdict": "APPROVE_COMPONENT_SOURCE_ONLY",
+        "severity_counts": {
+          "C": 0,
+          "H": 0,
+          "M": 0,
+          "L": 0
+        },
+        "findings": [],
+        "prior_own_findings": [
+          {
+            "id": "round19-M1",
+            "disposition": "CLOSED_BY_STATIC_SOURCE_REVIEW",
+            "original_problem": "Claude exhaustion telemetry granted a running Session recovery-probe authority, allowing later unsolicited same-window Available telemetry to clear exhaustion before the reported reset.",
+            "evidence": [
+              "crates/rrx/src/state/execution/quotas.rs:384-395 separates explicit native retry from telemetry-only waiting.",
+              "crates/rrx/src/state/execution/quotas.rs:405-424 validates current execution authority and active lease, restricts native_retry to Codex, and updates probe_unit only when native_retry is true. The Claude wait path leaves an already admitted scheduler probe intact without minting one.",
+              "crates/rrx/src/execution/native.rs:1232-1241 routes Claude accepted exhaustion through mark_execution_quota_wait; the only production mark_execution_quota_retry caller is the owned Codex willRetry=true branch at 1138-1144.",
+              "crates/rrx/src/state/execution/quotas.rs:84-96 continues to reject ordinary Available telemetry reopening exhaustion unless the reported old reset has passed and the window identifier changed, or a separately qualified probe supplies fresh evidence. The faulty Claude wait no longer creates that qualification.",
+              "crates/rrx/src/execution/native/tests.rs:1109-1114 asserts that held Claude telemetry does not mint probe authority. Existing stale-available classification controls remain source-wired; no test execution is credited here."
+            ]
+          }
+        ],
+        "verified_source_properties": [
+          {
+            "property": "Accepted live recovery is fenced and updates the existing execution rather than starting a replacement attempt.",
+            "evidence": [
+              "crates/rrx/src/state/execution/quotas.rs:439-481 uses an immediate transaction, current execution authority, Claude provider identity and an active same-owner-epoch quota lease. Every participating finite plan bucket must have accepted Available state before WaitingQuota transitions to Running with wait_reason cleared.",
+              "crates/rrx/src/execution/native.rs:1225-1249 excludes foreign Session rate-limit events, collects only decoded buckets, observes into the accepted pool before recovery, and propagates the resulting authority/wait state to the watch channel. It does not resend native input or replace Session/worktree/lease.",
+              "crates/rrx/src/workflow.rs:1720-1742 validates persisted native status and records a live quota wait without ending the active attempt. At 1797-1809 a nonterminal execution whose quota wait has cleared restores the current phase Task state through the existing owner-refresh/publication path, retaining the same active attempt.",
+              "crates/rrx/src/execution/native/tests.rs:1132-1187 contains a held preterminal recovery control checking accepted bucket state, watch/status/ledger agreement, unchanged Session/generation/worktree, open native/finalization permissions, unknown work before completion, one native input and unchanged sibling ledger.",
+              "crates/rrx/src/workflow/managed_tests.rs:219-400 adds source-wired held native wait/recovery/cancel controls for the actual managed Workflow path. These are fixture controls, not observed native subscription behavior."
+            ]
+          },
+          {
+            "property": "Recovery and cleanup state remain separate from known work results.",
+            "evidence": [
+              "crates/rrx/src/execution/native.rs:1257-1274 consults accepted participating exhaustion only when classifying unsuccessful terminals; a reliable successful terminal still returns Success/Completed independently of quota wait.",
+              "The delta changes waiting/recovery state only. Existing exact-authority cancel, persisted terminal projection, lease release and supervisor Drop paths remain in place; no new result-finalization reopening, shared sibling execution mutation or cleanup-to-work overwrite was found in this component delta."
+            ]
+          },
+          {
+            "property": "The changed behavior follows the approved R5 distinction between subscription waiting and failed work.",
+            "evidence": [
+              "doc/requirements/agent-execution-requirements.md at approved contract commit, R5 lines 134-149, requires confirmed subscription waiting, preserving a supported live turn, fresh attempts after terminal interruption, and recovery from reset/fresh metadata or bounded qualified retry.",
+              "The changed design/master text distinguishes telemetry waiting from recovery-probe qualification and describes accepted all-participating-window recovery of the same live turn. No actual native recovery guarantee is established by this static review."
+            ]
+          }
+        ],
+        "proposed_causal_controls_not_executed": [
+          "Keep a non-probe Claude Session held after confirmed exhaustion, delay a same-window Available event beyond a local clock tick but before the reported reset, and assert the pool, execution watch/status and Workflow remain waiting with one native input.",
+          "Hold two participating exhausted buckets; recover one with accepted fresh evidence and assert no resume, then recover the second and assert same-Session Running and current phase Task state before any terminal result.",
+          "Start a legitimately scheduler-admitted recovery probe and assert telemetry waiting preserves its lease/probe identity while ordinary Sessions cannot acquire that identity through wait display.",
+          "Race accepted recovery against cancellation or Runtime epoch replacement and assert the transaction cannot reopen retired permissions or publish stale Workflow state; inspect active lease/probe release separately from known work.",
+          "Exercise reliable success while the scheduling pool remains exhausted and verify Success stays fixed while subsequent scheduling continues to wait."
+        ],
+        "limitations": [
+          "Immutable Git object static review only. No tests, builds, native Agents, credentials, account probes, network calls, Docker operations, process signals or host configuration changes were performed.",
+          "No parent test claims, logs, peer findings, aggregate reviews, progress/evidence documents, dirty files or later commits were used as evidence.",
+          "Fixture source wiring is not proof of official Claude/Codex authentication, hooks, real quota recovery, four-Task independence, OS cleanup or Linux/macOS runtime conformance.",
+          "No currently defective producer/consumer path was established within this delta. This approval is limited to the reviewed component source and does not approve Phase2 completion, native/MVP readiness or public guarantees."
+        ],
+        "live_handles": [],
+        "command_handles": "All owned read-only command calls completed with exit_code 0 and no session_id. No owned command/native process remains open. Report writing is the only filesystem mutation."
+      }
+    }
+  ],
+  "scope": "Independent immutable component static reviews; no final Phase2, native profile, quota account, both-OS or MVP acceptance."
+}

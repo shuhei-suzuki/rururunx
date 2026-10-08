@@ -1,0 +1,142 @@
+{
+  "head": "2ca8bfc14760bfbd7ba50e2c2b7f7adee902ccc6",
+  "clean_before": true,
+  "rust_source_equal_to": "802764f03893d0ee8e08ee19045ccb333387ad9b",
+  "command": [
+    "cargo",
+    "test",
+    "--workspace",
+    "--all-targets",
+    "--offline",
+    "--target-dir",
+    "/private/tmp/rrx-verifier-target"
+  ],
+  "test_threads": "libtest default; RUST_TEST_THREADS absent",
+  "environment": "account-free macOS host fixtures; no real subscriptions, no native qualification",
+  "started_utc": "2026-10-06T01:51:30.997496+00:00",
+  "exit_code": 101,
+  "seconds": 202.24639149999712,
+  "log": "/private/tmp/rrx-integration-default-concurrency/regression.log",
+  "log_sha256": "85795fdb389c4abffa231c39b11e3dfdd7b8f6e7d232e650816fff91352ceba0",
+  "head_after": "2ca8bfc14760bfbd7ba50e2c2b7f7adee902ccc6",
+  "status_after": "",
+  "finished_utc": "2026-10-06T01:54:53.339201+00:00",
+  "result_lines": [
+    "test result: ok. 44 passed; 0 failed; 1 ignored; 0 measured; 476 filtered out; finished in 5.93s",
+    "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 520 filtered out; finished in 10.01s",
+    "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 520 filtered out; finished in 10.08s",
+    "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 520 filtered out; finished in 11.86s",
+    "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 520 filtered out; finished in 15.64s",
+    "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 520 filtered out; finished in 16.64s",
+    "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 520 filtered out; finished in 16.76s",
+    "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 520 filtered out; finished in 17.38s",
+    "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 520 filtered out; finished in 13.53s",
+    "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 520 filtered out; finished in 13.65s",
+    "test result: FAILED. 483 passed; 13 failed; 25 ignored; 0 measured; 0 filtered out; finished in 201.11s"
+  ],
+  "primary_rrx_library": {
+    "passed": 483,
+    "failed": 13,
+    "ignored": 25
+  },
+  "full_workspace_completed": false,
+  "nested_results_not_added": true,
+  "failures": [
+    {
+      "test": "adapter::grok::environment_tests::absent_native_baseline_cannot_be_introduced_by_declared_caller",
+      "classification": "原因不明",
+      "observation": "thread 'adapter::grok::environment_tests::absent_native_baseline_cannot_be_introduced_by_declared_caller' (259461338) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:47:5:\nthread 'adapter::grok::environment_tests::absent_baseline_child' (259461366) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:413:5:\nassertion failed: adapter.transport_succeeded(&status)",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    },
+    {
+      "test": "adapter::grok::environment_tests::actual_stop_after_admission_never_spawns_and_keeps_snapshots_coherent",
+      "classification": "原因不明",
+      "observation": "thread 'adapter::grok::environment_tests::actual_stop_after_admission_never_spawns_and_keeps_snapshots_coherent' (259461346) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:47:5:\nthread 'adapter::grok::environment_tests::stop_admission_child' (259461402) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:848:5:\n  left: Failed\n right: Stopped",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    },
+    {
+      "test": "adapter::grok::environment_tests::initial_and_resume_selection_keep_invalid_and_live_ownership_guards",
+      "classification": "原因不明",
+      "observation": "thread 'adapter::grok::environment_tests::initial_and_resume_selection_keep_invalid_and_live_ownership_guards' (259461367) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:47:5:\nsynthetic environment child failed; observation=watchdog_expired; observation_elapsed_ms=60001; reaped_exit=signal: 9 (SIGKILL); ",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    },
+    {
+      "test": "adapter::grok::environment_tests::live_reference_change_rejects_actual_resume_before_spawn",
+      "classification": "原因不明",
+      "observation": "thread 'adapter::grok::environment_tests::live_reference_change_rejects_actual_resume_before_spawn' (259461396) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:47:5:\nthread 'adapter::grok::environment_tests::resume_admission_child' (259461436) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:786:5:\nSome(\"Timeout: Git ownership preflight timed out\"); cleanup_receipt={\"cleanup_ok\":true,\"cleanup_state\":\"not_attempted\",\"dispatched\":false,\"native_outcome\":false,\"output_verified\":true,\"owned_process_group_created\":false,\"ownership_uncertain\":false,\"reap_io_kind\":null,\"stderr_drain_state\":\"not_started\",\"stderr_read_error\":\"unavailable\",\"uncertainty_by_stage\":{\"in_session_binding\":false,\"native_child\":false,\"pre_spawn\":false,\"reconciliation\":false}}",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    },
+    {
+      "test": "adapter::grok::environment_tests::owning_reference_refresh_and_existing_consultant_reservation_guards_remain_required",
+      "classification": "原因不明",
+      "observation": "thread 'adapter::grok::environment_tests::owning_reference_refresh_and_existing_consultant_reservation_guards_remain_required' (259461752) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:47:5:\nthread 'adapter::grok::environment_tests::ownership_child' (259461776) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:104:5:",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    },
+    {
+      "test": "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint",
+      "classification": "原因不明",
+      "observation": "thread 'adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint' (259462284) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:47:5:\nthread 'adapter::grok::environment_tests::irrelevant_checkpoint_child' (259462293) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:1073:9:\nirrelevant start rejected kind0; Some(\"Timeout: Git ownership preflight timed out\"); cleanup_receipt={\"cleanup_ok\":true,\"cleanup_state\":\"not_attempted\",\"dispatched\":false,\"native_outcome\":false,\"output_verified\":true,\"owned_process_group_created\":false,\"ownership_uncertain\":false,\"reap_io_kind\":null,\"stderr_drain_state\":\"not_started\",\"stderr_read_error\":\"unavailable\",\"uncertainty_by_stage\":{\"in_session_binding\":false,\"native_child\":false,\"pre_spawn\":false,\"reconciliation\":false}}",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    },
+    {
+      "test": "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume",
+      "classification": "原因不明",
+      "observation": "thread 'adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume' (259462980) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:47:5:\nthread 'adapter::grok::environment_tests::irrelevant_resume_child' (259463017) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:1073:9:\nirrelevant start rejected kind0; Some(\"Timeout: Git ownership preflight timed out\"); cleanup_receipt={\"cleanup_ok\":true,\"cleanup_state\":\"not_attempted\",\"dispatched\":false,\"native_outcome\":false,\"output_verified\":true,\"owned_process_group_created\":false,\"ownership_uncertain\":false,\"reap_io_kind\":null,\"stderr_drain_state\":\"not_started\",\"stderr_read_error\":\"unavailable\",\"uncertainty_by_stage\":{\"in_session_binding\":false,\"native_child\":false,\"pre_spawn\":false,\"reconciliation\":false}}",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    },
+    {
+      "test": "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_start",
+      "classification": "原因不明",
+      "observation": "thread 'adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_start' (259463106) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:47:5:\nthread 'adapter::grok::environment_tests::irrelevant_start_child' (259463131) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:1073:9:\nirrelevant start rejected kind0; Some(\"Timeout: Git ownership preflight timed out\"); cleanup_receipt={\"cleanup_ok\":true,\"cleanup_state\":\"not_attempted\",\"dispatched\":false,\"native_outcome\":false,\"output_verified\":true,\"owned_process_group_created\":false,\"ownership_uncertain\":false,\"reap_io_kind\":null,\"stderr_drain_state\":\"not_started\",\"stderr_read_error\":\"unavailable\",\"uncertainty_by_stage\":{\"in_session_binding\":false,\"native_child\":false,\"pre_spawn\":false,\"reconciliation\":false}}",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    },
+    {
+      "test": "adapter::grok::receipt_tests::before_spawn_stop_receipt_has_only_preflight_creation_trace",
+      "classification": "原因不明",
+      "observation": "thread 'adapter::grok::receipt_tests::before_spawn_stop_receipt_has_only_preflight_creation_trace' (259467543) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:\nthread 'adapter::grok::receipt_tests::before_spawn_stop_child' (259467548) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:410:56:\ncalled `Result::unwrap()` on an `Err` value: AdapterError { kind: Timeout, message: \"owned native stop not yet verified\" }",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    },
+    {
+      "test": "adapter::grok::receipt_tests::completed_resume_receipts_keep_exact_attempt_windows_and_trace",
+      "classification": "原因不明",
+      "observation": "thread 'adapter::grok::receipt_tests::completed_resume_receipts_keep_exact_attempt_windows_and_trace' (259467736) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:\nthread 'adapter::grok::receipt_tests::completed_resume_child' (259467739) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:370:5:\n  left: Failed\n right: Exited",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    },
+    {
+      "test": "execution::docker::tests::docker_filter_and_operation_identity_are_independently_checked",
+      "classification": "原因不明",
+      "observation": "thread 'execution::docker::tests::docker_filter_and_operation_identity_are_independently_checked' (259489115) panicked at crates/rrx/src/execution/docker/tests.rs:230:5:\nassertion failed: report.errors.iter().any(|e| e == \"docker_label_filter_mismatch\")",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    },
+    {
+      "test": "execution::docker::tests::docker_mutation_ack_timeout_preserves_exact_durable_target_and_action",
+      "classification": "原因不明",
+      "observation": "thread 'execution::docker::tests::docker_mutation_ack_timeout_preserves_exact_durable_target_and_action' (259489138) panicked at crates/rrx/src/execution/docker/tests.rs:390:14:",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    },
+    {
+      "test": "execution::docker::tests::registered_docker_cleanup_preserves_three_sibling_units_and_known_work",
+      "classification": "原因不明",
+      "observation": "thread 'execution::docker::tests::registered_docker_cleanup_preserves_three_sibling_units_and_known_work' (259490190) panicked at crates/rrx/src/execution/docker/tests.rs:175:5:",
+      "limits": "Observed timeout/unknown/lifecycle/assertion only; high-load observation and passing bounded/focused runs do not prove causality or flakiness."
+    }
+  ],
+  "host_observation": {
+    "observed_epoch_seconds": 1791251620.331336,
+    "logical_cpu_count": 18,
+    "load_average": [
+      71.875,
+      43.01318359375,
+      27.578125
+    ],
+    "scope": "Host observation only; does not prove causal load or test race diagnosis"
+  },
+  "qualification": "FAIL; default-concurrency full workspace gate remains open",
+  "limits": [
+    "Same committed clean source2ca before/after and same Rust as802; no source/test/assertion/deadline/capability changes.",
+    "Earlier802 test-threads4 full614/0/30 and fmt/Clippy/build remain true only for their recorded command/source.",
+    "No official Agent/authentication/hooks/settings/native four-Task or Linux/macOS CI execution.",
+    "No test failures classified as flaky, intentional or safe-to-ignore.",
+    "Runtime9 candidate79bb compilation101 is a separate different-source failure, not this regression."
+  ]
+}

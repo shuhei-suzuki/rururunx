@@ -1,7 +1,23 @@
 # Agent Adapter Design
 
+Proposed native-execution policy: see [result protection](agent-execution.md).
+It supersedes conflicting ownership/live-worktree prerequisites only when the
+new profile is implemented; historical/current implementation sections below
+remain baseline descriptions, not acceptance of that proposal.
+
 **Status:** Draft
 **Scope:** MVP adapter contract
+
+The independently reviewed [native result supplement](../native-result-receipts-design.md)
+specifies acknowledged-input/Session-bound final answer acquisition and atomic
+receipt-before-watch publication. Its actual managed Core collectors and receipt
+transaction are integrated at `5d16952cfed3bfd74dd859a47647e2630a48ffff`
+under schema7; see the [qualified component checkpoint](../../verification/agent-execution-phase2-native-consumer-checkpoint.json).
+Bounded account-free controls and regression passed; receipt content does not
+certify Review verdicts, authenticated providers, current installation, both-OS
+four-Task operation or complete Phase2. Runtime/CLI and Review consumers remain
+separate implementation work; historical baseline sections below retain their
+original scope.
 
 ## 1. Goal
 
@@ -233,6 +249,18 @@ Adapters must return explicit failure categories such as:
 Workflow Engine decides whether to retry, choose a fallback agent, or escalate.
 
 ## 15. Implemented Rust baseline (Issue #4)
+
+Each managed registry installation has one original identity shared by its native
+ports, separate from each port's origin UUID and each allocation's profile digest.
+The installed Driver prefilter requires a declared native executor and one to
+eight distinct declared native reviewers in that same installation. Original
+composition identity, Task/executor/reviewer binding and the complete roster are
+retained before activation admission. Role, alias, provider, program, declaration
+digest and port origin determine each canonical roster member; the sorted members
+determine the immutable Workflow contract digest. Marker selection checks the
+selected allocation against that original roster without treating a per-Unit
+profile as the Workflow composition identity. Public native permission and
+prepared-input admission remain separate required boundaries.
 
 Native Grok Issue 7's scoped ACP file-executor and zero-tool decision modes are specified
 in [its design](../issue-7-grok-adapter.md) and [requirements](../../requirements/issue-7-requirements.md).

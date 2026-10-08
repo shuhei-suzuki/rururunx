@@ -86,6 +86,7 @@ async fn ordinary_empty_library_child() {
         .with_runtime_broker(),
     );
     let unknown = SessionRef {
+        execution: None,
         id: SessionId::new(),
         scope: scope.clone(),
     };
@@ -174,6 +175,7 @@ async fn ordinary_empty_library_child() {
         ErrorKind::SessionLost
     );
     let status = SessionStatus {
+        execution: None,
         session: Session {
             id: unknown.id,
             scope: scope.clone(),

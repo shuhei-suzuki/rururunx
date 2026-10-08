@@ -33,7 +33,7 @@ pub(super) fn verify_native_version(version: &str) -> AdapterResult<()> {
     Ok(())
 }
 
-fn verify_initialize(response: &Value) -> AdapterResult<()> {
+pub(super) fn verify_initialize(response: &Value) -> AdapterResult<()> {
     let text = |key: &str, bound: usize| {
         response[key]
             .as_str()
@@ -103,7 +103,7 @@ pub(super) enum Event {
 }
 
 impl Event {
-    fn parse(bytes: &[u8]) -> AdapterResult<Self> {
+    pub(super) fn parse(bytes: &[u8]) -> AdapterResult<Self> {
         let value: Value = serde_json::from_slice(bytes)
             .map_err(|_| failure(ErrorKind::ParseFailure, "invalid native JSON-RPC"))?;
         let object = value

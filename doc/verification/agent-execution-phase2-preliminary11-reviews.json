@@ -1,0 +1,255 @@
+{
+  "source_commit": "68596610c55a9f6f6c9fb3d6b0df097ebdc9f3e9",
+  "review_kind": "Independent preliminary component reviews; not Phase2 acceptance",
+  "reports": [
+    {
+      "review": "Independent STRICT preliminary component source review, round 11",
+      "source_commit": "68596610c55a9f6f6c9fb3d6b0df097ebdc9f3e9",
+      "baseline_commit": "f567756d8f5fe63438645e281801af815c10e4c4",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "request_changes",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 1,
+        "Low": 0
+      },
+      "findings": [
+        {
+          "id": "K-M1",
+          "severity": "Medium",
+          "title": "Historical cookie cleanup discards action and exit-observation failure categories",
+          "locations": [
+            {
+              "path": "crates/rrx/src/execution/cleanup.rs",
+              "lines": [
+                142,
+                162
+              ]
+            },
+            {
+              "path": "crates/rrx/src/execution/cleanup.rs",
+              "lines": [
+                87,
+                101
+              ]
+            },
+            {
+              "path": "crates/rrx-process-tracker/src/linux.rs",
+              "lines": [
+                13,
+                35
+              ]
+            }
+          ],
+          "evidence": "The existing service calls terminate() but retains its category only in local `sent`. Denied, Unsupported and Unknown all become the same remaining PID/birth string; no attempted action/result is recorded. After Sent, `process.exited().ok().flatten()` similarly discards a failed readiness observation and distinguishes neither an unavailable observation nor a successful observation of a surviving process. Each of these paths can persist outcome Leftovers with an empty errors vector and identical cookie_scan/cookie_actions coverage. The current tracker explicitly returns these distinct categories, so this is a producer-to-consumer information loss in an implemented path, not a request to implement Docker or another pending cleanup backend.",
+          "impact": "Historical cleanup cannot explain whether a signal was unsupported, permission-denied, ambiguous, or accepted with unavailable exit observation. A caller/operator cannot distinguish observed remaining processes from last-seen candidates whose post-action status is unknown. The aggregate may remain conservative Leftovers, but required per-resource action/uncertainty information is lost. Work/artifact/Task authority is not falsely advanced by this defect.",
+          "contract": [
+            {
+              "path": "doc/requirements/agent-execution-requirements.md",
+              "lines": [
+                174,
+                180
+              ],
+              "text": "Resource observations record coverage, timestamp, attempted action, remaining IDs and bounded errors; unavailable observations are unknown."
+            },
+            {
+              "path": "doc/design/agent-execution-design.md",
+              "lines": [
+                475,
+                478
+              ],
+              "text": "Keep per-resource coverage so leftover plus unknown is not hidden by the aggregate."
+            }
+          ],
+          "minimal_fix": "Persist bounded safe action/result and observation categories for the handled matches, including unsupported/denied/unknown signal and unavailable exit observation. Use enum-derived categories/counts or bounded per-identity records without raw error strings/environment/cookies. Preserve Unknown for unavailable status and do not describe a last-seen match as a proven post-signal survivor. Keep historical lease quarantine, no full-membership/death claim, and independent work/evidence unchanged.",
+          "causal_controls": [
+            "Exercise the real sweep observation-building consumer through a narrow private controlled process-action seam: Sent plus exit-observation error, Sent plus observed false/true, Denied, Unsupported, Unknown, and AlreadyExited must retain distinguishable safe categories.",
+            "Assert Sent plus readiness error retains unknown coverage rather than only a generic remaining ID with empty errors. Aggregation of a genuine survivor plus unavailable status must preserve both facts.",
+            "An omission of action-category or exit-error recording must fail the actual persisted CleanupObservation oracle; check sibling leases and known work/artifact/Task data remain unchanged."
+          ],
+          "controls_executed": false,
+          "confidence": 0.93
+        }
+      ],
+      "prior_own_findings": [
+        {
+          "id": "J-M1",
+          "round": 10,
+          "disposition": "Closed in immutable source; OS execution not qualified",
+          "evidence": "linux.rs:53-106 reads bounded /proc/<pid>/status and parses the effective (second) Uid field. Discovery still compares before/after Identity including that effective UID. Metadata observation failure increments identity_unavailable; an inaccessible environment increments environment_unavailable. The added owned nondumpable-child and bounded parsing controls were read, not run."
+        },
+        {
+          "id": "J-L1",
+          "round": 10,
+          "disposition": "Closed in immutable source; source-level cleanup only",
+          "evidence": "lib.rs:169-208 introduces EnvironmentBuffer Drop. read_environment owns the buffer before read_to_end, so partial-read error and size refusal both drop through explicit fill(0). Linux success/nonmatch also drops it; macOS uses the same guard including syscall error. The wording explicitly disclaims secure compiler-proof memory erasure. PartialError and normal/oversize controls were read, not run."
+        }
+      ],
+      "reviewed_guarantees": [
+        "due/claim require both native_effects_open and result_finalization_open closed. Claim commits its exact job version and retry deadline before asynchronous discovery; finalization is not retired just to permit a scan.",
+        "Historical finish uses one Immediate transaction to revalidate current runtime epoch, exact job version and scoped unit identity/cookie/generation/original owner epoch/unit version, then appends observation and quarantines only that unit's still-held leases. Stale claims do not persist receipts; sibling authority and Task/artifact data are not rewritten.",
+        "CleanupService processes at most four claims per sweep, defaults to bounded tracker discovery, and attempts at most 1024 matched identities under an explicitly between-call 500ms action/poll budget. This is not a hard deadline for blocking OS calls.",
+        "Discovery worker gets only the cookie and limits; no SharedStore mutex/RuntimeOwner/native authority travels into spawn_blocking. Signals are performed from private retained TrackedProcess handles, not stored PID strings.",
+        "Worker uses a Weak RuntimeOwner while idle, upgrades it during a sweep, and aborts its scheduler on Drop/shutdown. Abandoned claims remain due after their bounded retry interval; OS discovery cannot perform signals after its async receiver is dropped.",
+        "Linux pidfd is acquired before cookie reading and association is rechecked after matching; absent handles cannot signal or fabricate exit. Exit now uses zero-time pidfd poll, permitting exit readiness before parent reap rather than waiting for fdinfo PID disappearance.",
+        "macOS continues to return Unsupported for discovered PID signaling and None for exit, with public SDK FFI confined to its tracker module. No raw PID fallback was introduced.",
+        "The current service deliberately cannot return Reclaimed because Docker/path/port reconciliation is pending; known work/retained evidence remains separate from cleanup.",
+        "NativeSessions now owns a cleanup worker. Core Drop durable projection is unchanged from reviewed baseline; no new native terminal authority is created by the worker."
+      ],
+      "coverage": [
+        "Read complete fixed new execution/cleanup.rs and state/execution/cleanup.rs, tracker Linux/lib changes and new tests; read macOS guard delta and tracker discovery tests.",
+        "Inspected model CleanupObservation/ExecutionUnit/ResourceLease types, execution schema, unit/lease readers, finish/retire/epoch and cleanup producers, RuntimeOwner lifetime and NativeSessions/Core consumers at the fixed target.",
+        "Read approved requirements and relevant complete design sections for authority/schema/cleanup; no peer or aggregate review/progress files were opened."
+      ],
+      "limitations": [
+        "Static fixed-source component review only, not final Phase2/native/Runtime/MVP approval.",
+        "No tests/builds, actual Agent/model/account/auth/network operation, signal, host-policy mutation or WT source edit. Parent test claims are not inherited.",
+        "No Linux/macOS runtime conformance or actual cleanup execution was performed. pidfd/SDK/buffer source correctness is distinct from OS qualification.",
+        "No dirty/later source, peer findings, aggregate review JSON or progress.md was read.",
+        "Docker/scope/path-release/production Sources/Gates/Runtime CLI remain announced pending; their absence is not counted as a defect.",
+        "Cookies remain cooperative provenance; coverage is not full Task membership, a same-user sandbox, or complete resource-death proof."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "round": 11,
+      "source_commit": "68596610c55a9f6f6c9fb3d6b0df097ebdc9f3e9",
+      "baseline_commit": "f567756d8f5fe63438645e281801af815c10e4c4",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "review_kind": "Independent read-only preliminary STRICT component source review",
+      "verdict": "REQUEST_CHANGES",
+      "severity_counts": {
+        "C": 0,
+        "H": 0,
+        "M": 1,
+        "L": 0
+      },
+      "findings": [
+        {
+          "id": "M1",
+          "severity": "M",
+          "title": "Cleanup observations discard actual signaling outcomes and exit-observation errors",
+          "primary_location": {
+            "file": "crates/rrx/src/execution/cleanup.rs",
+            "start_line": 142,
+            "end_line": 158
+          },
+          "related_locations": [
+            {
+              "file": "crates/rrx/src/execution/cleanup.rs",
+              "start_line": 125,
+              "end_line": 131
+            },
+            {
+              "file": "crates/rrx-process-tracker/src/lib.rs",
+              "start_line": 109,
+              "end_line": 116
+            },
+            {
+              "file": "crates/rrx-process-tracker/src/macos.rs",
+              "start_line": 12,
+              "end_line": 22
+            },
+            {
+              "file": "crates/rrx-process-tracker/src/linux.rs",
+              "start_line": 13,
+              "end_line": 35
+            },
+            {
+              "file": "doc/requirements/agent-execution-requirements.md",
+              "commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+              "start_line": 164,
+              "end_line": 180
+            }
+          ],
+          "evidence": "The worker receives typed Sent/AlreadyExited/Unsupported/Denied/Unknown results from terminate(), but only distinguishes AlreadyExited and Sent for control flow. Unsupported, Denied and Unknown are discarded without a named coverage result or error. A failed exited() call is similarly erased by .ok().flatten(). The persisted cookie_actions field describes only match count, cap and polling budget. An unsupported macOS action, a denied Linux action, an unknown signal failure, an unavailable exit observation and a process still running after a successful signal all reduce to a remaining PID with no reason. The implemented R6 contract explicitly requires attempted actions and bounded errors to be recorded; this is a defect in the present reporting path, not a request to implement a pending backend.",
+          "causal_sequence": [
+            "Claim an eligible closed historical unit and discover one exact-cookie process on macOS.",
+            "TrackedProcess::terminate returns Unsupported and no raw-PID signal is sent, as intended.",
+            "CleanupService appends the process identity to remaining and sets Leftovers, but persists no Unsupported/atomic-signal-unavailable action result; errors remains empty.",
+            "The same path discards Denied/Unknown results on Linux. After Sent, an exit-readiness error is converted to absence of a true value and eventually becomes the same unexplained remaining identity."
+          ],
+          "impact": "The historical report cannot explain whether stopping was attempted and failed, intentionally unsupported, or sent successfully with confirmation unavailable. This obscures the conservative macOS limitation and Linux failure reasons needed for operator reconciliation. The worker does not claim Reclaimed and does not mutate Task work/artifacts, so this finding does not assert incorrect accepted results, sibling signaling, or complete cleanup failure.",
+          "recommended_change": "Persist bounded aggregate action counters or structured finite categories for attempted/sent/already-exited/unsupported/denied/unknown/budget-skipped and exit-observation-unavailable outcomes. Keep remaining identity observations separate from failure categories and distinguish confirmation failure from an observed still-live process. Do not retain raw OS/environment errors; named nonsecret categories and counts suffice and avoid an unbounded per-process error list.",
+          "proposed_causal_controls_not_executed": [
+            "Extend the owned macOS cookie cleanup control to assert that Unsupported/atomic-handle-unavailable is present in the persisted observation while the known matching child remains alive and the sibling is unaffected.",
+            "Use an internal injectable process-action control to return Denied, Unknown and an exit-readiness error after Sent; assert distinct finite persisted outcomes, unchanged work/artifact/Task facts and a bounded error/count representation.",
+            "Keep controls for Sent plus verified exit, AlreadyExited, and action/poll budget exhaustion so these are not conflated with denied or unsupported operations."
+          ],
+          "confidence": "Verified from typed tracker returns through the worker and durable observation write; no causal control was executed."
+        }
+      ],
+      "prior_own_findings_disposition": [
+        {
+          "round": 10,
+          "id": "M1",
+          "disposition": "CLOSED_STATIC",
+          "evidence": "crates/rrx-process-tracker/src/linux.rs:24-35 now observes nonblocking pidfd IN/HUP readiness, treats ERR/NVAL as unavailable, and returns None without a handle. The pinned discovery.rs:92-106 fixture checks exit readiness before parent wait and checks the unreaped child's Z state. Its source was inspected, not executed."
+        },
+        {
+          "round": 10,
+          "id": "L1",
+          "disposition": "CLOSED_STATIC",
+          "evidence": "The private EnvironmentBuffer Drop cleanup now covers normal completion, over-limit refusal and read_to_end partial-error unwinding. Linux moves the buffer through read_environment; macOS wraps its sysctl buffer in the same guard. The code explicitly narrows the cleanup statement to exclude compiler-proof secure erasure. The injected partial-read/error/bound test source was inspected, not executed."
+        },
+        {
+          "round": 9,
+          "id": "M1",
+          "disposition": "REMAINS_CLOSED_STATIC",
+          "evidence": "The fixed source preserves the prior abnormal Drop change: persist Lost for abandoned live supervision and project committed unit/Session facts into its terminal watch state."
+        },
+        {
+          "round": 7,
+          "id": "H1",
+          "disposition": "REMAINS_CLOSED_STATIC",
+          "evidence": "Readonly permission/waiter/lease closure remains before executor generation advancement in the actual retirement producer."
+        },
+        {
+          "round": 6,
+          "id": "H1_original_withdrawn",
+          "disposition": "REMAINS_WITHDRAWN",
+          "evidence": "The original live-executor replacement sequence was blocked by the partial UNIQUE active-executor constraint and transaction ordering; it remains excluded from counts."
+        }
+      ],
+      "additional_verified_source_observations": [
+        {
+          "subject": "Historical claim and publication",
+          "evidence": "state/execution/cleanup.rs:10-57 filters/claims only units with both native and finalization permissions closed and atomically advances the job version/deadline. finish_execution_cleanup validates current Runtime epoch, exact unit scope/cookie/generation/owner epoch/version and job version, appends an immutable observation, quarantines only that unit's leases and queues bounded retry in the same transaction. It does not advance a Task, change known work, close finalization to make cleanup eligible or mutate an accepted artifact."
+        },
+        {
+          "subject": "No reclamation proof or premature resource release",
+          "evidence": "execution/cleanup.rs retains Unknown when a bounded cookie scan is empty and leaves Docker/paths/ports explicitly pending or quarantined. Finding a match can produce Leftovers but the worker never claims Reclaimed merely from an empty scan or successful signal. resource_leases' live-identity and port-overlap constraints still include quarantined leases."
+        },
+        {
+          "subject": "Runtime/OS worker ownership",
+          "evidence": "CleanupWorker keeps only a Weak owner while idle, upgrades it for a sweep, and aborts scheduling on Drop/shutdown. Its spawn_blocking discovery closure receives only the cookie; it carries no owner/SQLite lock and performs discovery rather than signaling. The actual action loop retains the owning service until completion/cancellation. No SQL transaction crosses an async OS call."
+        },
+        {
+          "subject": "Tracker UID and handles",
+          "evidence": "Linux identity now reads bounded /proc status and uses the effective UID field rather than procfs inode ownership, so nondumpable same-user processes can be classified as inaccessible instead of silently foreign. Stat birth identity and pidfd binding are rechecked; retained pidfds remain the sole discovered-process signaling authority. macOS signaling remains Unsupported."
+        },
+        {
+          "subject": "Existing controls inspected only",
+          "evidence": "Committed source contains old-claim/epoch refusal, duplicate-claim exclusion, finalization gating, historical artifact/known-work/sibling preservation, quarantined lease checks and idle worker ownership controls. No parent execution/test claims are inherited by this report."
+        }
+      ],
+      "limits": [
+        "Review used only immutable objects at the stated source/baseline/contract commits. Dirty/later source, peer reports, aggregate reviews and progress documents were not read.",
+        "No tests, builds, native agents, accounts, authentication/settings/credential probes, network calls, process signals or host changes were performed. All causal controls are proposed or source-inspected, never reported as observed passes.",
+        "Actual Linux pidfd/UID behavior, macOS API/runtime behavior, worker cancellation timing and native cleanup compatibility remain unexecuted by this reviewer.",
+        "Docker, optional user-scope cleanup, path/port release, production Sources/Gates and Runtime CLI are explicitly pending. Their absence alone is not counted as a current defect or false acceptance claim.",
+        "Late historical cleanup is projected through the durable unit/observation reads; this source review does not qualify every UI/subscription/report consumer or Task-level aggregation.",
+        "Cookie observations are bounded, non-atomic and incomplete; macOS discovered-PID kill remains disabled. No complete membership, scope-empty, complete-death or security-sandbox guarantee is established.",
+        "Native four-Task concurrency, cancel-one isolation, Runtime SIGKILL/restart, authenticated provider settings/hooks/sandboxes, quota recovery and cargo-install qualification on both OSes remain outstanding. This is not final Phase2 approval."
+      ],
+      "owned_handles": {
+        "live_command_sessions": [],
+        "native_processes_started": [],
+        "tool_status": "All read-only shell commands completed without session_id; no owned command, Agent, discovered process or worker handle remains."
+      }
+    }
+  ]
+}

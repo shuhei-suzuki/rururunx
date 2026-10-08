@@ -1,0 +1,388 @@
+{
+  "format": "rrx.phase1.review-exit.v1",
+  "requirements_commit": "1eccba7b4ea24566c1299d66b9ef5e8ee379dc74",
+  "requirements_reviews": [
+    {
+      "reviewer": "/root/issue26_registry",
+      "record": {
+        "review": "Independent static Phase1 REQUIREMENTS review A",
+        "verdict": "approve",
+        "reviewed_commit": "1eccba7b4ea24566c1299d66b9ef5e8ee379dc74",
+        "document": "doc/requirements/agent-execution-requirements.md",
+        "document_sha256": "c19251e68f3077ab1a8d3a484f448c8f30b18eeb687497eab0235e2173118173",
+        "confidence": 0.94,
+        "finding_counts": {
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0
+        },
+        "findings": [],
+        "scope": "Requirements only. Design has not begun and implementation/native acceptance is not qualified. Human phase boundary remains required.",
+        "evidence": [
+          {
+            "sections": "Authority/R1/R9",
+            "assessment": "Explicit cooperative model and preservation of native host auth/settings/hooks replace whole-custody prerequisites only for the implemented new profile; actual native launch/admission remains required. No mandatory root/container/systemd or silently disabled defaults."
+          },
+          {
+            "sections": "R2/R8",
+            "assessment": "Independent retained commit graph without executor hardlinks/alternates addresses Phase0 common-Git availability gap. New SHA-derived reviewer/verifier snapshots, rule/config/dependency provenance, exact artifact/evidence binding, expected-old-target publication, and transactional cancel/publication distinguish accepted output from mutable executor state. Cross-file/SQLite/native atomicity is not falsely asserted; explicit reconciliation is required."
+          },
+          {
+            "sections": "R3/R4",
+            "assessment": "Immutable attempts/current projection/history, fresh retry worktrees and unit namespaces directly address main6146 WorktreeManager::create and put_task_tx immutable Task binding plus Engine::retry reuse. Existing old-attempt authority/CAS is preserved; common Git, absolute paths/raw daemon calls and unknown external effects are explicitly residuals, not made safe by environment variables."
+          },
+          {
+            "sections": "R5",
+            "assessment": "Subscription exhaustion waits separately from work/review failure; official structured observations and version pinning distinguish Unknown/transient/auth/429 from confirmed exhaustion. Bounded unknown-capacity scheduling, reset/backoff, cancellation and account-pool fairness avoid both invented balance and blanket indefinite refusal. No promise of exact remaining Claude headless subscription allowance."
+          },
+          {
+            "sections": "R6/R7/R9",
+            "assessment": "Known work and accepted evidence survive cleanup uncertainty; cleanup observations do not claim complete descendants. Safe own-child identity, bounded resource bookkeeping and legacy unknown facts remain; old PID/token/label data cannot mint signal or success authority. Unknown external outcomes retain reconciliation while cleanup-only Task gates are replaced."
+          },
+          {
+            "sections": "Acceptance and phase gates",
+            "assessment": "Actual four overlapping Claude/Codex Tasks on both OSes, cancel/SIGKILL/source mutation/result retention/resource/quotas/crash/install cases are specified and distinct from hosted fixtures. Unavailable tool/native observations remain named unverified/unsupported; Phase1 static approval does not fill them."
+          }
+        ],
+        "actual_source_checked": {
+          "baseline_main": "6146b1639bf03f244d1c5b716304dc1d20146194",
+          "unmerged_claude": "f9b671fc110bcabce66d9d4d9c01e098d69d8076",
+          "phase0_documents": "Full fixed b513f42 Phase0 documents and 52 manifests independently read/verified in the preceding closed Phase0 review; no other reviewer conclusions used.",
+          "targeted_consumers": [
+            "Codex Availability::require",
+            "Codex ScopeSnapshot::recheck/recheck_scope",
+            "Codex Reservation::terminal and native_turn_error",
+            "Generic supervise/transport_succeeded",
+            "ContextSlice::prepared_input/RepositoryContext::index",
+            "Store workflow close/session-terminal/Task binding/Project-idle",
+            "WorktreeManager::create and Engine::retry/dispatch",
+            "Claude f9 native terminal result/currency and rate_limit_event parser"
+          ]
+        },
+        "not_certified": [
+          "Any production source correctness/positive launch migration",
+          "Implementation feasibility of exact storage/transaction/durability algorithms; design must specify bounds, recovery and real consumer controls",
+          "Installed quota payloads or actual account exhaustion/reset behavior",
+          "Native auth/hooks/settings/permission compatibility, four-Task performance or cancellation/crash correctness",
+          "Actual Docker/systemd/tool control availability, detached cleanup or safe identity signaling",
+          "Whole MVP/native backend readiness or Phase2 authorization"
+        ],
+        "independence": "No other reviewer findings or verdicts read for this requirement round.",
+        "commands_closed": true,
+        "native_calls_or_tests": false,
+        "production_edits": false,
+        "worktree_clean_after": true
+      }
+    },
+    {
+      "reviewer": "/root/agent_execution_phase0_review_b",
+      "record_source": "reviewer final response",
+      "reviewed_commit": "1eccba7b4ea24566c1299d66b9ef5e8ee379dc74",
+      "verdict": "approve",
+      "finding_counts": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "findings": [],
+      "limitations": [
+        "Static requirements only",
+        "No design implementation native quota auth hooks four-Task or both-OS acceptance"
+      ]
+    }
+  ],
+  "design_rounds": [
+    {
+      "commit": "245c64b898fab65abfac3ff6a5630688c0693a5b",
+      "reviews": [
+        {
+          "reviewer": "/root/agent_execution_phase0_review_b",
+          "verdict": "request_changes",
+          "finding_counts": {
+            "critical": 0,
+            "high": 1,
+            "medium": 1,
+            "low": 0
+          },
+          "findings": [
+            {
+              "id": "B-H1",
+              "severity": "high",
+              "section": "4 / 5 / 9",
+              "summary": "Natural completion starts cleanup, whose unconditional authority retirement prevents active-authority result publication. Separate native-effect and result-finalization authority; preserve capture dependencies."
+            },
+            {
+              "id": "B-M1",
+              "severity": "medium",
+              "section": "3",
+              "summary": "Schema3 Store checks version only on initialize. Already-open old connections need database-enforced write rejection or a verifiable migration exclusion condition."
+            }
+          ]
+        },
+        {
+          "reviewer": "/root/issue26_registry",
+          "original_record_sha256": "cca8fbf0759979758f994a21a61d2a1d1aca8524849c8e7eba9e1c42193fe3ff",
+          "record": {
+            "reviewer": "/root/issue26_registry",
+            "kind": "independent static Phase1 DESIGN review",
+            "head": "245c64b898fab65abfac3ff6a5630688c0693a5b",
+            "requirements_head": "1eccba7b4ea24566c1299d66b9ef5e8ee379dc74",
+            "baseline_head": "6146b1639bf03f244d1c5b716304dc1d20146194",
+            "verdict": "request_changes",
+            "counts": {
+              "Critical": 0,
+              "High": 0,
+              "Medium": 2,
+              "Low": 0
+            },
+            "confidence": 0.93,
+            "findings": [
+              {
+                "id": "A-M1",
+                "severity": "Medium",
+                "location": "doc/design/agent-execution-design.md:197-207 (section 5 review/test snapshots)",
+                "title": "Pre/post source equality does not establish the actual input of the review/test",
+                "evidence": "The selected procedure checks materialized HEAD and tracked-source manifest before and after execution, rejecting dirty tracked sources. Both samples can match the artifact when a build task, supported hook or generator changes a tracked source, the verifier consumes the changed bytes, and the task restores the original bytes before the final sample. Separate repositories prevent executor/sibling dependence but do not prevent this unit-local mutate-and-restore case. Native read-only capability is only used where supported, and there is explicitly no enforcing outer sandbox.",
+                "requirement": "Approved R2 lines 63-70 requires actual materialized SHA/source versions and states that the reviewer's/verifier's own test/build writes must not select a different reviewed revision. This is an own-unit write case, rather than the explicitly excluded arbitrary external same-user mutation case.",
+                "impact": "The design currently permits evidence to be associated with an artifact SHA even though the actual reviewed/tested tracked input differed during execution.",
+                "requested_change": "Specify the supported unit-local source-write/input policy and its real prevention, detection or before-effects refusal mechanism. If a supported tool requires changed tracked input, distinguish that input/result from exact-artifact verification. Add a mutate-consume-restore control in addition to persistent-dirty checks. No universal same-user filesystem sandbox or arbitrary external-writer attribution is requested.",
+                "verification": "Static reasoning from the selected procedure; no native/test execution or reproduced production failure claimed."
+              },
+              {
+                "id": "A-M2",
+                "severity": "Medium",
+                "location": "doc/design/agent-execution-design.md:63-71,106-116 (owner lock and v3-to-v4 migration)",
+                "title": "The migration does not specify a fence for already-open schema 3 Store writers",
+                "evidence": "Baseline Store::initialize checks user_version only when opening the connection (crates/rrx/src/state/mod.rs:79-85). Its generic write_snapshot performs versioned UPDATE of retained tables without rechecking schema or owner epoch (lines 1629-1655), and append_event similarly writes without an epoch check (1657 onward). The proposed v4 retains those tables. An old connection opened before migration can therefore continue a legacy write after user_version is advanced. The new state-root file lock/owner IPC is not implemented by that old binary, so it does not itself fence the old connection.",
+                "requirement": "Approved R8 lines 203-210 requires authoritative transition fencing and that old readers reject the newer schema rather than silently write it.",
+                "impact": "A normal overlapping legacy client/runtime can write old-format authority into retained tables after the new runtime begins schema 4 scheduling. Reopen refusal alone does not satisfy the selected single-owner/migration contract.",
+                "requested_change": "Define how migration fences incompatible already-open legacy readers/writers, or define the concrete quiescence/drain prerequisite and refusal path before committing the upgrade. Cover an old Store connection opened before migration and a post-upgrade legacy write, not only old-binary reopen. This does not require proving native process death or resisting raw same-user database tampering.",
+                "verification": "Baseline Git source and design inspected read-only; no migration or production test run."
+              }
+            ],
+            "coverage": {
+              "complete_reads": [
+                "doc/design/agent-execution-design.md (524 lines)",
+                "doc/design/master/agent-execution.md (76 lines)",
+                "all seven changed master top notes and their exact diffs",
+                "approved doc/requirements/agent-execution-requirements.md"
+              ],
+              "baseline_source": [
+                "state initialization/schema-version handling",
+                "generic snapshot and audit writes",
+                "existing schema constraints",
+                "relevant Task/Workflow/source version consumers inspected for integration boundaries"
+              ],
+              "checked": [
+                "exact design SHA and clean worktree",
+                "requirements unchanged from approved commit",
+                "nine changed paths, documentation only, 635 insertions",
+                "result capture file/SQLite crash ordering and publication/cancel CAS design",
+                "attempt/session/generation and unknown external effect distinctions",
+                "quota unknown versus confirmed exhaustion and native retry/terminal distinctions",
+                "cooperative resource/tool mediation and auth/default-hook preservation boundaries",
+                "numeric discovered-PID signalling disabled when atomic identity is unavailable",
+                "best-effort tracked cleanup is distinct from whole-workload death and work outcome",
+                "conditional replacement/Phase2 and Phase3 acceptance boundaries"
+              ]
+            },
+            "not_certified": [
+              "implementation, compiled schema or native protocol behavior",
+              "actual filesystem/Git durability, installed native quotas or authenticated account behavior",
+              "real four-Task overlap, cancellation, Runtime-SIGKILL or cleanup",
+              "OS containment, universal same-user enforcement, all-descendant death or hostile raw API protection",
+              "default hook/auth integration or optional Docker/systemd/build-tool conformance",
+              "whole existing drafts, legacy source readiness or MVP completion"
+            ],
+            "independence": "No other reviewer's conclusions were consulted. Parent factual inventory/check status did not substitute for this review.",
+            "operations": "Read-only Git source/diff/status inspection only; no native CLI, model/account probe, Docker, kill, production tests or worktree edits. Only this private review report was written. All invoked commands completed; no owned operation remains."
+          }
+        }
+      ]
+    },
+    {
+      "commit": "548ff698a66c8552736c7028f1a37d75223e18c8",
+      "reviews": [
+        {
+          "reviewer": "/root/issue26_registry",
+          "original_record_sha256": "e2cd212eb8104ef79f062c5b8b1677dfacb49e30eefdf57dc7babf84ae0b1e57",
+          "record": {
+            "reviewer": "/root/issue26_registry",
+            "kind": "independent static Phase1 DESIGN re-review",
+            "head": "548ff698a66c8552736c7028f1a37d75223e18c8",
+            "previous_design_head": "245c64b898fab65abfac3ff6a5630688c0693a5b",
+            "requirements_head": "1eccba7b4ea24566c1299d66b9ef5e8ee379dc74",
+            "verdict": "APPROVE",
+            "counts": {
+              "Critical": 0,
+              "High": 0,
+              "Medium": 0,
+              "Low": 0
+            },
+            "confidence": 0.94,
+            "findings": [],
+            "prior_dispositions": [
+              {
+                "id": "A-M1",
+                "status": "closed at design scope",
+                "evidence": "Section 5 lines 223-252 explicitly says pre/post hashes are diagnostics, not transient-mutation proof. SnapshotManager makes tracked source directories/files and pinned Git input read-only before dispatch, with separate output paths and no writable fallback. Native reviewers require the supported read-only capability; verifiers require qualified output profiles. Mixed source/output, aliases and incompatible hooks refuse the profile; derived-output profiles must record/validate actual inputs/tools/digests. The ordinary mutate-consume-restore control must fail at its first source write. chmod/raw bypass is explicitly uncovered and cannot qualify R2. This addresses ordinary supported own-tool mutation without asserting universal same-user enforcement. Actual permission/profile and mutate-consume-restore controls are Phase2/3 gates, not observed passes."
+              },
+              {
+                "id": "A-M2",
+                "status": "closed at design scope",
+                "evidence": "Section 3 lines 124-140 separately handles pre-open schema 3 writers: BEFORE INSERT/UPDATE/DELETE guards cover every existing/new mutable application table and call the per-connection zero-argument version function. New writers register the safe innocuous trigger-usable function; old connections lack it. The selected tests cover cached/fresh writes, REPLACE, old read-to-write snapshots, missing-function refusal and positive new-writer behavior. Guard registration/coverage failure refuses migration. The design does not mistake DB fencing for terminating old native effects. SQLite primary contracts support connection-local registration, schema-change recompilation and write/snapshot isolation; actual bundled rusqlite behavior remains explicitly unverified until Phase2."
+              }
+            ],
+            "regression_assessment": {
+              "natural_terminal_and_cleanup": "Section 2 lines 63-70, state-machine terminal row, capture publication protocol and section 9 lines 424-430 distinguish native_effects_open from result_finalization_open. Reliable natural terminal closes native input/tool/grant authority while retaining Runtime-only capture authority. Cancellation/replacement/epoch fencing close both. Publish closes finalization; capture failure requires durable draft/unresolved disposition. Janitor process observations may run, but destructive input/worktree/branch disposal and dependent path release await finalization closure and retention. The new concurrent-janitor control explicitly checks this race. No new native turn, remote grant or known-work-to-Lost inference is permitted by finalization.",
+              "semantic_authority": "Fresh Task write CAS during status/wait updates remains combined with unit/generation/phase authority; source freshness, P/G activity/version, Workflow reservations and permission policy remain required. This design clarification is not a general stale-unit bypass.",
+              "best_effort_boundary": "Cookie-discovered numeric PID signalling remains disabled when atomic identity cannot be maintained. Selected safe owned-child/group cleanup is not all-descendant death. Unknown resources/remote effects retain scoped reconciliation. Same-user permission/raw path bypass and host/storage failure remain explicit limits."
+            },
+            "coverage": {
+              "complete_reads": [
+                "complete fixed doc/design/agent-execution-design.md",
+                "complete fixed doc/design/master/agent-execution.md",
+                "full previous-to-current two-document diff",
+                "approved requirements previously read in full; exact unchanged requirements verified",
+                "seven master top notes previously read and unchanged at this fix"
+              ],
+              "git_checks": "Exact HEAD verified, worktree clean; fix is two documentation paths, 80 insertions and 16 deletions. Requirements unchanged. No production changes in the reviewed fix.",
+              "primary_references_checked": [
+                "https://www.sqlite.org/c3ref/create_function.html",
+                "https://www.sqlite.org/c3ref/prepare.html",
+                "https://www.sqlite.org/c3ref/step.html",
+                "https://sqlite.org/isolation.html"
+              ]
+            },
+            "not_certified": [
+              "production implementation, schema trigger coverage or actual bundled rusqlite old-writer controls",
+              "OS read-only enforcement, native read-only capability/profile compatibility or actual mutate-consume-restore outcomes",
+              "filesystem/Git capture durability, cancellation/crash/concurrent-janitor behavior",
+              "actual native authentication/default-hook compatibility, quota exhaustion or four-Task both-OS acceptance",
+              "Docker, systemd, build-tool or process-tracker conformance",
+              "universal same-user isolation, complete workload death, whole existing drafts or MVP completion"
+            ],
+            "independence": "No other current-round reviewer conclusions consulted. Parent described the committed corrections and one prior closed-round finding only; the verdict follows independent source/document inspection.",
+            "operations": "Read-only committed Git/doc inspection and public SQLite primary documentation reads. No native Agent CLI/model/account/Docker/kill/probe/production tests or worktree edits. Only this private report was written. All commands completed; no running owned operation remains. Approval is Phase1 design only and does not authorize beginning Phase2 without the required Human phase-boundary approval."
+          }
+        },
+        {
+          "reviewer": "/root/agent_execution_phase0_review_b",
+          "record_source": "reviewer final response",
+          "reviewed_commit": "548ff698a66c8552736c7028f1a37d75223e18c8",
+          "verdict": "approve",
+          "finding_counts": {
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0
+          },
+          "findings": [],
+          "closed": [
+            "B-H1: native-effect and Runtime-finalization permissions separated; destructive cleanup waits for finalization and retention",
+            "B-M1: pre-open legacy writer DB guard and concrete cached/read-to-write/new-writer tests specified"
+          ],
+          "additional_checked": [
+            "Source read-only/output profiles and transient/permission-bypass limitations",
+            "Approved requirements unchanged"
+          ],
+          "limits": [
+            "Actual migration and input enforcement untested",
+            "Native both-OS quotas auth hooks and four-Task acceptance untested"
+          ],
+          "commands_closed": true,
+          "native_calls_or_tests": false
+        }
+      ]
+    }
+  ],
+  "scope": "Independent static requirements/design reviews only; no production/native/MVP acceptance or Phase2 authorization.",
+  "phase1_status": "Requirements and design approved after independent re-review; stop for human Phase2 approval.",
+  "finding_dispositions": [
+    {
+      "ids": [
+        "A-M1"
+      ],
+      "severity": "medium",
+      "verified": "Pre/post samples allow mutate-consume-restore by static reasoning; independent writable snapshots alone do not pin actual input.",
+      "fix_commit": "548ff698a66c8552736c7028f1a37d75223e18c8",
+      "resolution": "Read-only source and Git copy, qualified output profiles/native review capability, negative source-write control, explicit bypass limitation.",
+      "status": "closed by independent re-review"
+    },
+    {
+      "ids": [
+        "A-M2",
+        "B-M1"
+      ],
+      "severity": "medium",
+      "verified": "Baseline Store::initialize checks user_version only on open; write_snapshot/append_event have no schema guard.",
+      "fix_commit": "548ff698a66c8552736c7028f1a37d75223e18c8",
+      "resolution": "Connection-local schema contract function and all-table DB triggers reject pre-open legacy writers; bundled behavior must pass Phase2 controls.",
+      "status": "closed by independent re-review"
+    },
+    {
+      "ids": [
+        "B-H1"
+      ],
+      "severity": "high",
+      "verified": "Original design normal terminal queued janitor which unconditionally retired authority required by publish_result.",
+      "fix_commit": "548ff698a66c8552736c7028f1a37d75223e18c8",
+      "resolution": "Persist separate native effect/finalization rights; process cleanup may proceed, destructive input disposal depends on resolved finalization/retention.",
+      "status": "closed by independent re-review"
+    }
+  ],
+  "reviewed_files": {
+    "doc/design/agent-execution-design.md": {
+      "git_blob": "5020ae6ef428c28bb93d83472497ade0a0a2d601",
+      "sha256": "299999005acbaa23be89342e54453051a1f1e73771237bf5b42764476fdc7325"
+    },
+    "doc/design/master/agent-adapter.md": {
+      "git_blob": "557d416e311c66485d1a7138a3ec5ed827c29c5c",
+      "sha256": "640dcef154ccf28eb26313767fed776fe35729c6e89c1a75275a745ceb0186d5"
+    },
+    "doc/design/master/agent-execution.md": {
+      "git_blob": "068ad474f2d43ef34edc645bbca21e7dd7dc6419",
+      "sha256": "4060cc16de7e51d08202eaec2984015c9ca201e913c59563fe4f065af22237c4"
+    },
+    "doc/design/master/approval-broker.md": {
+      "git_blob": "ba287ccee047992b2312c08ed60f14a9a438f4d1",
+      "sha256": "d9a4101e87bc86b7fec1653fc56fada363c2aa5ca4ee789a452558a3301e0657"
+    },
+    "doc/design/master/architecture.md": {
+      "git_blob": "54cd7b0eb25837f52858b6405955c14efa112c1a",
+      "sha256": "c8d0e95d39a7569a5b3d7fa15b59e4e6cc921f5b658aa9e2975183929c79eb6a"
+    },
+    "doc/design/master/context-efficiency.md": {
+      "git_blob": "ed978d30286a8de1917074b2381ccfcecd3f725e",
+      "sha256": "a3d9d49241893de2a905695841e930b896810eeaf93e4afdc776f3a90634fa3a"
+    },
+    "doc/design/master/goal-runtime.md": {
+      "git_blob": "8ce6fe482ef73816a0ffa21a51b07464124e6646",
+      "sha256": "ebae57115602839dfa5a68ad03aeba6487ec09e479e438d58aec631144c28c18"
+    },
+    "doc/design/master/multi-project-runtime.md": {
+      "git_blob": "9f73f218c3b4ecb38ff1f9fac9f0305af7ab08af",
+      "sha256": "ecfc071c6c9ccc08c57edf1dddfabb10e3ec143e75a7a5c68934c3a7e946ddee"
+    },
+    "doc/design/master/workflow-engine.md": {
+      "git_blob": "318cd5d91358ee42318b7718b918949e5fefdfb2",
+      "sha256": "1167c78b6c0f8cbc9bebf9dcbb686d42d673d6176311f7160126d88f3f71b1bb"
+    },
+    "doc/requirements/agent-execution-requirements.md": {
+      "git_blob": "15c528eecd9d39a899facaa58baa5d7d024a1ead",
+      "sha256": "c19251e68f3077ab1a8d3a484f448c8f30b18eeb687497eab0235e2173118173"
+    }
+  },
+  "root_checks": {
+    "requirements_unchanged_since_review": true,
+    "documentation_only": true,
+    "local_markdown_links": "valid",
+    "git_diff_check": "passed",
+    "seven_master_historical_bodies": "unchanged except added precedence note",
+    "production_tests_or_native_calls": "not run",
+    "credentials_license_readme_production_changes": false,
+    "phase2": "awaiting human approval"
+  }
+}

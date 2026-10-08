@@ -1,0 +1,263 @@
+{
+  "review_kind": "STRICT preliminary component review; not final Phase2 acceptance",
+  "source_commit": "74f484844119b6d3adcc16366ebb71f7626fd7c0",
+  "independence": "Both reviewers examined immutable source separately; no peer findings supplied before completion.",
+  "reports": [
+    {
+      "review": "Phase2 preliminary round5 independent STRICT component re-review",
+      "reviewer": "/root/issue26_registry",
+      "source_commit": "74f484844119b6d3adcc16366ebb71f7626fd7c0",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "comparison_commit": "061c7914f8b21bc54f58b429a7d6fbe1104e5d8a",
+      "verdict": "approve",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "confidence": 0.92,
+      "scope": "Preliminary static component review only: own round4 correction, existing native failure-category producers/consumers, epoch fencing/recovery consumers, and their committed controls. Not final Phase2 or whole-source approval.",
+      "findings": [],
+      "prior_own_findings_disposition": [
+        {
+          "id": "D-M1",
+          "severity": "Medium",
+          "status": "closed in selected source by static producer-to-consumer verification",
+          "locations": [
+            "crates/rrx/src/execution/resources.rs: ResourceProfile::namespace_environment / environment",
+            "crates/rrx/src/execution/ipc.rs: Granted, serve, execute",
+            "crates/rrx/tests/managed_tools.rs"
+          ],
+          "evidence": "serve constructs the nonsecret reserved resource overlay from the validated owner's ResourceProfile, composes the ToolPlan environment and live Git token, and sends the exact owner tool-bin path. execute reconstructs the shim PATH from that owner path plus inherited native PATH, removes foreign Git routing variables, then applies the granted environment before OwnedProcess::spawn. TMPDIR, output, cache, port and compose/cookie namespace values therefore no longer come solely from a mutable caller environment. Authentication/native settings are not copied into the IPC DTO.",
+          "controls_read_not_run": "The new actual built-rrx shim subprocess fixture deliberately overrides TMPDIR and CARGO_TARGET_DIR with sibling paths, observes a pre-commit helper's final temp/cache environment, uses real nested shim Git reentry, and verifies sibling namespaces/HEAD remain unchanged. This source inspection is not independent execution or mutation credit."
+        }
+      ],
+      "checked_source_facts": [
+        {
+          "area": "Git index/reentry composition",
+          "evidence": "The server admits a candidate index only for Git with a live parent lease, resolves the canonical exact own Git admin parent and finite index/index.lock/next-index-N forms, then restores that validated GIT_INDEX_FILE after shim routing removal. Candidate-index hook reentry uses the same live owned lease. Detached checkout is now rejected in the finite managed form parser. This is a cooperative shim policy, not enforcement against raw absolute commands or hostile same-user actions."
+        },
+        {
+          "area": "Native failure categories",
+          "evidence": "Core::run retains only finite nonsecret NativeFailure categories; bootstrap auth/capability/metadata/protocol/transport conditions carry explicit categories, errors produce Unknown work rather than native success, and current terminal publication records the category. Cancellation wins without a late known outcome reopening its generation. Newly read fixtures cover seven Codex bootstrap categories and verify no native_input intent/raw fixture error retention. They were not executed."
+        },
+        {
+          "area": "Outcome versus cleanup",
+          "evidence": "Work is persisted before stop_and_reap hygiene. Group signaling errors are separate cleanup diagnostics; cleanup is still Unknown with explicit escaped-process and Docker reconciliation gaps. Session terminal labels and owned-process receipts are not a whole-workload death or resource-release certificate. No descendant-death or universal same-user isolation guarantee is inferred."
+        },
+        {
+          "area": "Epoch unit recovery",
+          "evidence": "begin_execution_epoch loads open units through strict indexed/body unit_tx validation, fences both native-effects and result-finalization permissions, preserves already known Success/Failure, converts genuinely unobserved work to Unknown, schedules cleanup and invalidates active executor generation projection atomically."
+        },
+        {
+          "area": "Epoch session recovery",
+          "evidence": "fence_epoch_sessions checks managed mapping, exact Record/body scope/id/provider/worktree agreement, leaves existing terminal observations unchanged, and converts other managed Sessions to Lost with unknown dispatch state. It does not adopt stored PID signaling authority or invent a native completion."
+        },
+        {
+          "area": "Epoch effect and quota recovery",
+          "evidence": "fence_epoch_effects validates pending effect identity/scope and CASes Pending to Unknown with a finite runtime_epoch_lost receipt. It preserves previously settled states. The epoch transaction clears old quota active/probe/waiter scheduling projections. No pending effect is replayed or marked confirmed merely by restart."
+        },
+        {
+          "area": "Recovery controls",
+          "evidence": "Committed tests exercise known-success preservation, live and previously logically retired Session/effect fencing, old-authority rejection, fresh generation/path admission, quota waiter/lease reset, and body/index corruption causing epoch transaction rollback. They were read, not executed."
+        },
+        {
+          "area": "Quota value bounds",
+          "evidence": "Codex usedPercent remains conservatively decoded: negative/unavailable estimates are Unknown, values at/above 100 indicate exhaustion without fabricated remaining capacity, and out-of-normal percentages do not become valid estimates. This source behavior is not actual provider conformance."
+        },
+        {
+          "area": "Writer and migration test plumbing",
+          "evidence": "The writer-function registration was extracted without adding a production public bypass; current-writer corruption helpers are cfg(test)/test support. Historical-schema controls reconstruct old schemas rather than falsely relabel a schema4 database as schema3. The current source guards remain connection-local writer-contract fences."
+        }
+      ],
+      "coverage": {
+        "full_committed_delta_read": "061c7914f8b21bc54f58b429a7d6fbe1104e5d8a -> 74f484844119b6d3adcc16366ebb71f7626fd7c0, excluding prohibited peer/merged-disposition documents",
+        "relevant_production_and_controls": [
+          "crates/rrx/src/execution/ipc.rs",
+          "crates/rrx/src/execution/resources.rs",
+          "crates/rrx/src/execution/native.rs",
+          "crates/rrx/src/execution/native/native_fixture.py",
+          "crates/rrx/src/execution/native/tests.rs",
+          "crates/rrx/src/execution/process.rs",
+          "crates/rrx/src/execution/model.rs",
+          "crates/rrx/src/execution/quota.rs",
+          "crates/rrx/src/execution/tools.rs",
+          "crates/rrx/src/state/execution.rs",
+          "crates/rrx/src/state/execution/sessions.rs",
+          "crates/rrx/src/state/execution/effects.rs",
+          "crates/rrx/src/state/execution/tests.rs",
+          "crates/rrx/src/state/mod.rs",
+          "crates/rrx/tests/managed_tools.rs",
+          "changed committed legacy migration/corruption test consumers"
+        ],
+        "baseline": "Previous own static reviews retained for unchanged producers; this is not a newly complete whole-tree audit."
+      },
+      "independence": {
+        "peer_reports_read": false,
+        "prohibited_reviews_json_or_progress_read": false,
+        "dirty_or_later_source_read": false,
+        "tests_executed": false,
+        "native_account_model_calls": false,
+        "docker_or_process_kills": false,
+        "worktree_edits": false,
+        "credentials_read": false
+      },
+      "not_certified": [
+        "Final Phase2 or whole repository source",
+        "Unconnected Runtime/Workflow/CLI integration",
+        "Reclaimer/cookie/systemd/Docker reconciliation",
+        "Initial and retained raw helper integration",
+        "Required hooks/dependency qualification",
+        "Actual native auth/settings/hooks/MCP/read-only capability",
+        "Native cancellation/wire-backpressure real interleavings",
+        "Authenticated quota exhaustion and recovery",
+        "Current test, mutation, lint/build or CI outcomes",
+        "Four-Task acceptance on macOS and Linux",
+        "Legacy adapter whole-source audit",
+        "Universal same-user isolation or complete descendant/resource death"
+      ],
+      "command_closure": {
+        "live_handles": [],
+        "all_exec_commands_terminal": true,
+        "report_only_write": "/private/tmp/rururunx-agent-execution-phase2-preliminary5-a.json",
+        "note": "All static git-show/read commands returned terminal results; no native process/test handles were launched or polled. One mistyped nonexistent crates/rrx-core path returned Git exit128 and was corrected to the committed crates/rrx path; it did not read mutable source."
+      }
+    },
+    {
+      "reviewer": "independent reviewer B",
+      "review_kind": "STRICT preliminary Phase2 component source review, round 5",
+      "source_commit": "74f484844119b6d3adcc16366ebb71f7626fd7c0",
+      "approved_contract_commit": "9a11d03",
+      "verdict": "REQUEST_CHANGES",
+      "counts": {
+        "C": 0,
+        "H": 0,
+        "M": 2,
+        "L": 0
+      },
+      "findings": [
+        {
+          "id": "M1",
+          "severity": "M",
+          "title": "Claude's recognized authentication failure is converted into completed work failure",
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/native.rs",
+              "lines": "1098-1107"
+            },
+            {
+              "file": "crates/rrx/src/execution/claude_wire.rs",
+              "lines": "327-345"
+            },
+            {
+              "file": "crates/rrx/src/execution/native.rs",
+              "lines": "786-804"
+            },
+            {
+              "file": "crates/rrx/src/state/execution.rs",
+              "lines": "611-646"
+            }
+          ],
+          "evidence": "RunState::observe explicitly returns AdapterError(AuthenticationUnavailable) for an owned unsuccessful result containing 'not logged in', 'authentication failed', or 'invalid api key'. Core::claude then checks only seen.is_err(), owned result identity, is_error and a recognized terminal subtype. For an initialized error_during_execution result it returns Ok(Failure, Completed, frame) unless a recognized exhausted bucket exists, swallowing that typed authentication error. Core::run treats every Ok tuple as failure=None, and finish_execution_with_failure persists work=failure, disposition=completed, native_failure=null. Even outside this catch-all terminal path, AdapterError kinds are not mapped by Core::run's NativeFailure-only downcast, so Claude UnsupportedCapability becomes ProtocolFailure.",
+          "impact": "The new named failure API is accurate for the Codex bootstrap fixtures but not for the Claude producer. Consumers cannot distinguish a login/capability prerequisite failure from unsuccessful Task work, or supply the named reason promised by the design; the failed-work finalization permission is also left open.",
+          "contract_evidence": {
+            "file": "doc/design/agent-execution-design.md",
+            "commit": "9a11d03",
+            "lines": "416-420",
+            "requirement": "Authentication errors and unsupported metadata remain named; definitive unrelated native work failures remain failures."
+          },
+          "proposed_control": "Inspect the Claude AdapterError kind before the generic unsuccessful-work fallback, translate finite AuthenticationUnavailable/UnsupportedCapability/ownership-or-protocol categories into the bounded NativeFailure taxonomy, and retain only the finite category in status/audit. Preserve genuine ProcessFailure work terminals separately. Do not retain raw authentication text.",
+          "causal_controls_to_add": [
+            "Account-free owned Claude fixture: successful initialization, own system/init, then error_during_execution + is_error=true + result='Not logged in'. Assert named AuthenticationUnavailable, a non-completed disposition, native_failure audit category and no retained raw text.",
+            "Account-free unsupported Claude control request fixture: assert UnsupportedCapability rather than ProtocolFailure.",
+            "Negative control: ordinary initialized non-auth work error remains known Failure, Completed."
+          ],
+          "verification": "Verified by immutable-source control flow only; no tests or native account runs performed.",
+          "prior_finding_relation": "Round4 M2 is partially fixed: named Codex bootstrap failures and persisted finite categories are added, but the Claude path remains incomplete."
+        },
+        {
+          "id": "M2",
+          "severity": "M",
+          "title": "Unclassified terminal limit errors are irreversibly recorded as normal work failure",
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/native.rs",
+              "lines": "1099-1105"
+            },
+            {
+              "file": "crates/rrx/src/execution/native.rs",
+              "lines": "1012-1031"
+            },
+            {
+              "file": "crates/rrx/src/execution/quota.rs",
+              "lines": "150-177"
+            },
+            {
+              "file": "crates/rrx/src/state/execution.rs",
+              "lines": "623-637"
+            }
+          ],
+          "evidence": "Claude's error_during_execution terminal is QuotaInterrupted only when an accepted Exhausted bucket has also been observed during this run; otherwise the catch-all returns Failure/Completed. Unknown or omitted Claude rate-limit type/status returns no observation, and no separate terminal limit-like classification exists. Codex similarly records every failed terminal other than the exact usageLimitExceeded discriminator as Failure/Completed. Therefore an owned terminal indicating a transient/unknown limit, without confirmed subscription metadata, is not represented as Unknown with bounded capacity recheck. finish_execution_with_failure commits known work failure and wait_reason=None, so a future scheduler cannot simply resume a waiting unit from that producer result.",
+          "impact": "A missing/new quota shape or non-subscription transient terminal limit can fail Task work instead of waiting for bounded capacity recheck. This is a defect in the existing terminal producer, independent of the still-unconnected Workflow/CLI scheduling integration. Text or HTTP 429 still must not be asserted as confirmed subscription exhaustion.",
+          "contract_evidence": {
+            "file": "doc/design/agent-execution-design.md",
+            "commit": "9a11d03",
+            "lines": "418-420",
+            "requirement": "Unclassified terminal limit-like errors record work unknown and WaitingCapacity with bounded diagnostic/recheck; they are not labelled confirmed subscription exhaustion or successful work."
+          },
+          "proposed_control": "Add a finite unclassified-capacity terminal outcome, separate from confirmed subscription exhaustion and definitive work errors. Persist Unknown plus the explicit capacity wait/recheck reason before native retirement; keep confirmed_subscription false and ensure fresh-attempt recovery cannot blindly replay old native input. Do not make every failed terminal or arbitrary 429 a confirmed quota event.",
+          "causal_controls_to_add": [
+            "Account-free Claude fixture: initialized owned error_during_execution with a terminal limit indication and no recognized rate_limit_event; assert Unknown + unclassified capacity wait, not known Failure and not confirmed subscription exhaustion.",
+            "Repeat with an unknown rateLimitType and with an unknown structured Codex terminal limit discriminator; assert bounded wait/recheck and no fabricated quota balance.",
+            "Negative controls: known max-turn/budget caps and definitive ordinary work errors remain failures; auth failures keep their named prerequisite category; confirmed quota errors still use WaitingQuota."
+          ],
+          "verification": "Verified by immutable-source exhaustiveness of terminal branches. No claim that any particular real CLI version emits the suggested synthetic fixture; native observation/qualification remains unverified.",
+          "prior_finding_relation": "New finding on an existing terminal producer; not absence of future Workflow integration."
+        }
+      ],
+      "prior_own_round4_dispositions": [
+        {
+          "id": "H1",
+          "status": "CLOSED_BY_STATIC_SOURCE_REVIEW",
+          "subject": "Git hooks observed the ordinary index instead of native candidate index",
+          "evidence": "ipc.rs:185-196 requires the owned live reentrant Git hook chain, validates candidate index in the owned administration directory and places it in the grant environment. tool_entry captures native GIT_INDEX_FILE at ipc.rs:268-270; execute removes inherited Git namespace overrides and then applies the admitted grant environment. Read-only committed managed_tools fixture covers commit -a and partial commit candidate checks; not run in this review.",
+          "residual_limit": "No native account/hook compatibility or OS conformance was established. Qualified hook/dependency integration is still WIP."
+        },
+        {
+          "id": "M1",
+          "status": "CLOSED_BY_STATIC_SOURCE_REVIEW",
+          "subject": "Executor detach admitted but ownership/capture required the owned branch",
+          "evidence": "tools.rs:322-355 finite owned_branch_form no longer admits checkout/switch --detach. Reviewer snapshot creation remains a distinct Runtime-controlled path; the managed executor request is refused before effect intent and child Git."
+        },
+        {
+          "id": "M2",
+          "status": "PARTIALLY_FIXED",
+          "subject": "Bootstrap diagnostics were erased as Unknown/Lost",
+          "evidence": "native.rs:786-804 classifies bounded NativeFailure categories, 816-820 persists the category and state/execution.rs:645-646 audits it. Codex bootstrap explicitly labels auth/capability/metadata failures. New Claude bootstrap loop observes cancellation/authority before input dispatch. Residual typed Claude error conversion and terminal authentication fallback are recorded as current M1.",
+          "verification": "Source and committed fixture assertions inspected only; tests not executed."
+        }
+      ],
+      "positive_source_observations": [
+        "begin_execution_epoch uses one Immediate transaction; open native/finalization authorities are closed, known work/disposition are retained, unknown work is marked lost, matching active executor projections are generation-fenced, and cleanup jobs are queued (state/execution.rs:362-422).",
+        "Epoch recovery reconciles managed Session bindings even for already-retired units, preserving historical PID as diagnostic rather than signal authority (state/execution/sessions.rs:190-229).",
+        "Pending effects become Unknown with a bounded runtime_epoch_lost receipt and version change; confirmed history is not blindly replayed (state/execution/effects.rs:1-28).",
+        "Quota leases/probe pointers/waiters are cleared at the epoch boundary; existing resource namespaces stay retained rather than being recycled.",
+        "The added epoch tests assert known-result preservation, cancellation disposition preservation, stale authority rejection, fresh namespace/generation and transaction rollback on indexed/body mismatch. These assertions were read, not run.",
+        "Grant namespace_environment is enforced by the actual child grant; Task tool_bin is prepended without transporting native stdio/authentication through Runtime."
+      ],
+      "scope_and_limits": [
+        "This is a preliminary component source review, not final Phase2 approval, Phase3 conformance, native readiness or acceptance.",
+        "Read only pinned git-show/tree/diff source and the approved pinned contract. No later commit/dirty worktree source, peer report, merged review JSON or agent-execution-phase2-progress.md was consulted.",
+        "No tests, build, actual Claude/Codex Agent, account/model/authentication probe, credentials, Docker command, process signaling or worktree edit was performed.",
+        "Runtime/Workflow/CLI integration, reclaimer/systemd/Docker reconciliation, initial/retained raw helper integration and hook/dependency qualification are unfinished and not counted as missing-component findings.",
+        "Best-effort cleanup and cooperative resource policies are not a security sandbox or proof of process death. Same-user/raw bypasses and native sandbox/auth/settings/hooks behavior remain unverified.",
+        "No changed unsafe boundary or license files were part of this review."
+      ],
+      "owned_handles": {
+        "live": [],
+        "closed": "Every exec_command completed without a session_id. No Agent subprocess, server, subscription/account session or background tool handle was created."
+      }
+    }
+  ]
+}

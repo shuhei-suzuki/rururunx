@@ -1,7 +1,18 @@
 # Goal Runtime Design
 
+Proposed native-execution policy: see [result protection](agent-execution.md).
+It supersedes conflicting ownership/live-worktree prerequisites only when the
+new profile is implemented; historical/current implementation sections below
+remain baseline descriptions, not acceptance of that proposal.
+
 **Status:** Draft
 **Scope:** MVP first-class Goal orchestration
+
+The independently reviewed [Runtime/Scheduler integration](../runtime-scheduler-integration-design.md)
+defines typed accepted Goal authority, actual prerequisite evidence, fair driver
+claims and private retained/pre-input source recovery. These ports and the
+complete operational CLI remain implementation work; structural DAG support alone does
+not execute or complete a Goal.
 
 ## 1. Goal
 
@@ -317,5 +328,73 @@ TaskDag::hard_order validates finite node/edge bounds, declared unique nodes,
 non-self unique ordered edge pairs and hard dependency cycles. Store::put_goal
 uses it before publishing the Goal and its audit; soft advisory cycles are allowed.
 The deterministic order includes all declared nodes and grants no readiness or
-dispatch authority. Managed definitions, lifecycle, verified completion, controller
-loop and CLI remain pending in #23/#24 with #19/#43 producer integration.
+dispatch authority. The Runtime control foundation includes typed Goal creation,
+scoped status and bounded Task reads. The compiled foreground `rrx serve`
+and `rrx goal status/tasks` now consume the actual private Unix endpoint with
+Project routing and current-owner authentication. Task pages carry a Goal version
+and individual Task versions, with a scope-checked bare cursor; separate pages
+remain independent observations. A final page does not assert a complete snapshot.
+
+These read clients do not construct owners or write rows, versions, epochs,
+acknowledgements, audits or attention. Native dispatch is explicitly unavailable.
+Goal status and Task reads explicitly request the strict `recorded_v1` view.
+Omitted/null view requests retain legacy wire output. Status projects exact
+recorded criteria and DAG counts from the validated Goal; Task pages pair the
+original effective state with exact stored state/version and incoming hard/soft
+endpoint identities, versions and stored states from the same validated inventory.
+Recorded flags/evidence are not verified completion; criterion evaluation remains
+unavailable and runnable admission unknown. Evidence stays opaque, without reads.
+The complete recorded status/proposal response is capped at 128 KiB, preserving
+every existing valid 16 KiB proposal objective including JSON escape expansion.
+Task pages retain 64 KiB and incoming detail is capped at 8 KiB. Whole criteria or
+incoming sets that exceed their budget are explicitly unavailable with exact
+recorded counts; page packing preserves matched Task/node pairs and bare cursor
+membership/order. Transport and strict output profiles retain their existing limits.
+Plain formatting escapes every user-controlled Unicode control character including
+DEL/C1; JSON preserves exact decoded stored strings. Both formats label independent,
+incomplete observations and never infer combined completeness, evaluation or capacity.
+Inline and bounded UTF-8 file objectives now persist through actual Human ingress
+as inert Analyzing proposals. They have no criteria, Tasks, accepted GoalAuthority
+or scheduler entries. Existing protected Goal observation rows pin nongrant
+proposal provenance and the exact proposed Goal version independently of their
+own observation revision; they grant no acceptance. Status distinguishes an inert
+proposal from an accepted definition. Explicit bounded TOML plans include Project
+selection, expected Project version and the typed definition/graph; validation and
+acceptance remain service-owned. Prose is never promoted into that path implicitly.
+
+Goal pause/resume/cancel CLI requires explicit expected Goal version and reason.
+CAS and scope failures surface without current-row refresh/retry. Resume retains
+the existing accepted-policy and genuinely never-prepared-history checks and
+cannot revive a prior Unit/Session/grant. Typed additive followups, Task stop/retry,
+logs/actual attach, verified continuous Goal execution and the TUI remain pending
+with native producer integration. This partial source does not satisfy full Goal
+or MVP acceptance.
+
+### Published source reconstruction component checkpoint
+
+The private Published committed-source route is implemented and qualified at
+`5c070d4aa4502e9ef737fe5960e74fbd03cdb92b`; see the
+[source recovery checkpoint](../../verification/agent-execution-phase2-source-recovery-checkpoint.json).
+It reconstructs source bytes through registered retained reads and exact current
+pins, installs no old Unit/Session/native permission, and supports legitimate typed
+Workflow bookkeeping. It does not construct a Runtime Driver or make restart
+scheduling available. Fresh pre-artifact recovery and full operational Goal/CLI
+construction remain required.
+
+
+The unmerged Runtime source constructs one managed Registry/Sources/Gates/Verifier/
+Engine graph once. Installation refusal retains usable Goal controls. A synchronous
+try-lock sweep evaluates at most 32 bounded Task bodies, retains a finite-pass
+cursor and rereads current ranks and distinct-Task capacity after each claim.
+Only a genuine claim clears the exact native binding hold in its transaction;
+reconcile preserves driving attention and restores the hold after closure or an
+epoch change. Goal facts name native_continuation_unavailable for a current driving
+Task with cleared attention, while dispatch_available remains false. These display
+facts grant nothing. The original first Executor lane remains unmerged and
+unqualified; continuation, Root stop integration and full Native acceptance are open.
+
+Scoped installed-graph, paired undeclared CLI, bounded Task read/reread, shutdown
+admission and finite-pass controls pass, along with the six existing compiled Goal
+CLI controls. These are account-free wiring/admission controls. The genuine Source
+lane remains Held before its Native marker because a composed Workflow activation
+producer is absent; no Native execution or full Goal completion is established.

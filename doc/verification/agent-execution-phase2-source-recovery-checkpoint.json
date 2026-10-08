@@ -1,0 +1,503 @@
+{
+  "scope": "Published committed-source recovery component; not Runtime scheduling or complete Phase2",
+  "integrated_source": "5c070d4aa4502e9ef737fe5960e74fbd03cdb92b",
+  "schema_version": 7,
+  "author_original_source": "993d1322b2386acb5b1f1f6da3f1a490a38623a1",
+  "author_fixture_correction": "0cd0b98cb4afa02255cb5db62364325ffdaf14fe",
+  "author_extra_controls": "dc546d8c8786cb3bcb96c5c60210f4827b5ec692",
+  "reviews": [
+    {
+      "path": "/private/tmp/rrx-retained-source-recovery-source-review-root.json",
+      "sha256": "06e99f4250fe9b1e4030592b917c1343ffba10c613690492b506c57c32c5cf94",
+      "raw": {
+        "reviewer": "root",
+        "source": "993d1322b2386acb5b1f1f6da3f1a490a38623a1",
+        "base": "54835f6",
+        "verdict": "APPROVE",
+        "findings": [],
+        "method": "Independent static review of fixed committed recovery source, consumer seam, SQL and test wiring; no peer findings or execution result used as source correctness evidence.",
+        "assessment": [
+          "Source-only claim is private, non-Clone and epoch-bound. Begin snapshot verifies whole bounded indexed Project/Goal/Task/Workflow/current Context and exact Published artifact/source dependencies. It cannot recover PreparedExecutor/native/session/Runtime driver permission.",
+          "Actual RetainedGit source-bound reservation, periodic wait validation and finish receipt use the same current binding. Graph verification brackets corpus reconstruction and acceptance uses Immediate recheck before process-local slot installation.",
+          "Typed bookkeeping advances pins from a validated pre-write snapshot only within original Workflow/observation/reservation transactions. Governing owners, instruction digest, generation and exact artifact remain fixed; generic writes cannot ratify stale input and terminal decisions invalidate conservatively.",
+          "prepare_pack uses exact durable current Task for recovered source rendering while checking scope/version/instruction digest and retaining projected Task context, risk checks, same_sources and final typed CAS.",
+          "Ordered schema7 installs source table and replaces all writer-version guards, preserving Native6 correction. SQL prevents identity/version replacement bypass. The actual fixture wires publication, new owner epoch, input reconstruction and actual Commit gate before generic drift refusal."
+        ],
+        "limits": [
+          "This is source correctness review, not execution qualification. Root has not executed candidate controls/full regression/mutations at this source.",
+          "Only two recovery and two migration controls are currently present. The full approved negative matrix, current-writer binary matrix and causal mutation qualification remain pending.",
+          "No Runtime driver, pre-artifact recovery, authenticated Native CLI, four-Task/two-OS acceptance or complete Phase2/MVP completion is approved."
+        ],
+        "notes": [
+          "Supplement allocation text still says ReviewRound8; coordinated current ledger assigns command-only verifier8 then future ReviewRound9. Correct that documentary pointer when integrating without claiming either implemented."
+        ],
+        "post_review_verification": {
+          "source": "993d1322b2386acb5b1f1f6da3f1a490a38623a1",
+          "verified_fixture_defect": "state/execution/tests.rs:216 searches trigger SQL <>6 while this source installs schema7 guards. Source inspection agrees with reported 0 vs75 guard count. Prior old4 cached/fresh refusal assertions pass, so failure does not demonstrate missing guards. Formal state result remains 27 PASS /1 FAIL; qualification requires a fixed clean SCHEMA_VERSION-derived assertion and rerun."
+        }
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-retained-source-recovery-source-review-c.json",
+      "sha256": "67df7c63fbe75d4d482f63b35fd038abd2e268462df1d9a68fe2a495405b3073",
+      "raw": {
+        "reviewer": "workflow_source_review_c",
+        "review_kind": "independent STRICT static component source review",
+        "source_commit": "993d1322b2386acb5b1f1f6da3f1a490a38623a1",
+        "base_commit": "730eb37",
+        "verdict": "APPROVE_COMPONENT_SOURCE",
+        "findings": [],
+        "severity_counts": {
+          "Critical": 0,
+          "High": 0,
+          "Medium": 0
+        },
+        "scope": [
+          "Recovery7 private source claim / complete bounded authority snapshot / exact Published retained source reconstruction",
+          "Source-bound RetainedGit admission, periodic currency validation and terminal receipt transaction",
+          "Typed prewrite SourceAdvance and postwrite pin advancement or invalidation",
+          "Workflow prepare_pack durable Task seam with projected Context rendering",
+          "Fresh and ordered Schema7 installation, reserved namespace collision refusal, all mutable table old-writer fencing",
+          "Static inspection of recovery consumer and schema control source after independent production assessment"
+        ],
+        "inherited_exclusions": [
+          "Native6 previously independently reviewed at cc5e5cc588142f5100fa1c95e6e05b7f03a4de04; not requalified here",
+          "Original design authorship and other reviewers findings or execution logs"
+        ],
+        "evidence": [
+          {
+            "path": "crates/rrx/src/state/execution/source_recovery.rs",
+            "actual_guard_condition": "Bounded full serialized Project/Goal/Task/sole Workflow/latest immutable Context pins plus exact Published artifact DTO and indexed dependencies; current owner epoch and genuine private claim identity. No latest artifact, Ready promotion or persisted grant reconstruction."
+          },
+          {
+            "path": "crates/rrx/src/execution/workflow_source.rs",
+            "actual_guard_condition": "Task slot remains locked through claim, verified complete retained corpus/rule/config reconstruction, second verification, exact transactional acceptance and installed cache. ReconstructedFrame has private fields; recovered source never holds initial PreparedExecutor capability."
+          },
+          {
+            "path": "crates/rrx/src/execution/retained_io.rs; crates/rrx/src/state/execution/artifacts.rs",
+            "actual_guard_condition": "Bound reader owns exact artifact; source full snapshot and artifact/epoch checks are repeated inside immediate reservation and terminal transactions; durable intent precedes spawn without await/unlocked gap; periodic validation rejects drift during capture."
+          },
+          {
+            "path": "crates/rrx/src/state/mod.rs; crates/rrx/src/state/execution.rs",
+            "actual_guard_condition": "Only typed transitions/observations/reservations create SourceAdvance after validating current full pins. Postwrite accepts stable Project/Goal, generation, Workflow identity, full artifact, governing digest and instruction digest; source/generation/terminal drift invalidates. Generic Store writes do not advance pins; cancellation conservatively invalidates."
+          },
+          {
+            "path": "crates/rrx/src/workflow.rs",
+            "actual_guard_condition": "Recovered durable Task is loaded under coherent validated source read; projected Task must match scope/version/task instruction digest and expected instruction source digest. Inputs use durable DTO, make_context retains projected Task, existing final CAS remains."
+          },
+          {
+            "path": "crates/rrx/src/state/mod.rs; crates/rrx/src/state/execution/source_recovery.sql",
+            "actual_guard_condition": "Schema7 and native6/recovery7 tables compose atomically before guards. Old6 cached writers/new old opens are fenced by current version guards. Recovery row identity/version transitions forbid replace/delete and preserve history."
+          },
+          {
+            "path": "crates/rrx/src/execution/workflow_source/recovery_tests.rs",
+            "actual_guard_condition": "Static source controls use actual source preparation, fixture native terminal, Workflow publication, owner reopen, retained recovery, ordinary Commit gate and subsequent capture; negatives exercise competing preparing claim, whole Task drift, before-intent refusal, absent initial adoption and conservative cancel."
+          }
+        ],
+        "limitations": [
+          "Static source review only; this reviewer did not execute tests, compiled mutations, macOS/Linux matrix or real authenticated official CLI. Test source inspection is not test execution evidence.",
+          "Runtime driver / CLI readiness and Runtime design section 5.2 fresh bootstrap remain unimplemented and unapproved.",
+          "No Native6 Core producer qualification, review-round authority or whole Phase2 approval follows from this verdict.",
+          "The recovery mechanism protects immutable result authority in the accident model; it is not a same-user security sandbox or proof of process collection."
+        ]
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-retained-source-recovery-controls-source-review-root.json",
+      "sha256": "de98b9bf0b935a2b911d8a7b344f5312be3c159d059552e3788b438c92b9d182",
+      "raw": {
+        "reviewer": "root",
+        "source": "dc546d8c8786cb3bcb96c5c60210f4827b5ec692",
+        "baseline": "0cd0b98cb4afa02255cb5db62364325ffdaf14fe",
+        "verdict": "APPROVE_COMPONENT_SOURCE",
+        "findings": [],
+        "method": "Independent static committed delta review: 2 files,330 added lines; no peer finding used.",
+        "assessment": [
+          "The recover_retained public behavior is factored to one private inner method. Optional cfg(test)-only pauses are inserted after claim and after full reconstruction; ordinary build carries no pause fields/arguments and production still uses the same guarded body.",
+          "Actual Future abort retains RecoveryGuard through its paused wait; next genuine reconstruction checks abandonment without fabricated capability. Finalaccept race tests alter actual Task instructions or durable epoch after complete reads and assert refusal plus no cache/effect/artifact mutation.",
+          "Corrupt manifest and complete caller DTO cases keep strict validation and before-helper refusal. The in-flight helper test substitutes a closed bounded local Python program through existing cfg(test) with_program; actual retained intent, drift validation, HelperGuard Unknown receipt and cancellation paths are exercised. It claims Unknown, not workload death.",
+          "Old guard/schema fix reads current SCHEMA_VERSION rather than reducing expected all-table guard count. Existing parse/assertion and same-session input conditions remain unchanged."
+        ],
+        "limits": [
+          "Static review only; formal six source controls and28 State controls were reported by author at exactdc; Root has not rerun combined six controls yet.",
+          "Ready-source selection, complete graph corruption, fresh new Unit admission and the entire approved negative matrix are not covered by this delta.",
+          "No native account/RuntimeSIGKILL/driver scheduling/ReviewRound/Phase2/MVP approval."
+        ]
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-codex-fixture-journal-source-review-c.json",
+      "sha256": "03351c8f5259f71e3bba83b1ea19a6ccba9cd13580dca57d1e277bcc69824fe7",
+      "raw": {
+        "reviewer": "workflow_source_review_c",
+        "review_kind": "independent static fixture-only source delta review",
+        "source_commit": "d4c8dcc791edfad1e4dd85e8a535c5551184c950",
+        "base_commit": "d45f6ab2f2cd61d70de9356b7932701d37159be2",
+        "verdict": "APPROVE_COMPONENT_SOURCE",
+        "findings": [],
+        "scope": [
+          "crates/rrx/src/codex/session.rs cfg(test) journal helper delta and local writer/reader callers"
+        ],
+        "evidence": [
+          {
+            "path": "crates/rrx/src/codex/session.rs",
+            "lines": [
+              5557,
+              5573,
+              5655
+            ],
+            "actual_guard_condition": "The synthetic child serially records complete Value frames. Each write copies the prior complete journal, adds one serialized Value plus newline, then renames a completed same-directory pending file over journal. Live readers open either the old complete inode or new complete inode. JSON parsing and existing assertions remain strict; no line filtering, validation bypass or production protocol changes."
+          }
+        ],
+        "limitations": [
+          "Static review only; no execution logs, parent findings or peer review results consulted.",
+          "Atomic visibility for this single-writer fixture is qualified by source; this does not claim crash-durable publication, multiwriter safety, real CLI authentication or production journal semantics.",
+          "No whole Phase2 or Native producer approval."
+        ]
+      }
+    }
+  ],
+  "formal_checks": {
+    "source": "5c070d4aa4502e9ef737fe5960e74fbd03cdb92b",
+    "host": "macOS arm64",
+    "test_threads": 4,
+    "checks": [
+      {
+        "name": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target",
+          "--workspace",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-recovery7-clippy2.log",
+        "bytes": 291,
+        "sha256": "a67f48d9df0df77cdf036e44b5a9ccd11507de5d91691f1fd9369fefa9a8a57d"
+      },
+      {
+        "name": "build",
+        "command": [
+          "cargo",
+          "build",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target",
+          "-p",
+          "rrx",
+          "--bin",
+          "rrx"
+        ],
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-recovery7-build2.log",
+        "bytes": 392,
+        "sha256": "575451d75658c6eb51a21b8cebb96a4602c556fe7823055da34b01349a8a61b0"
+      },
+      {
+        "name": "fmt",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-recovery7-fmt2.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "regression",
+        "command": [
+          "cargo",
+          "test",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target",
+          "--workspace"
+        ],
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-recovery7-regression2.log",
+        "bytes": 71953,
+        "sha256": "5643e6d564d56febb6361b26876358ba9a64fb3ce98c107183e9ad5ffcacfeed"
+      }
+    ]
+  },
+  "primary_summary": {
+    "passed": 579,
+    "failed": 0,
+    "ignored": 30,
+    "raw_log_passed": 624,
+    "nested_excluded_passed": 45,
+    "nested_excluded_ignored": 1,
+    "explanation": "Exclude nested44 library canary and nested1 Codex child; both already represented by primary parent cases."
+  },
+  "prior_failures": [
+    {
+      "source": "993d1322b2386acb5b1f1f6da3f1a490a38623a1",
+      "reported_state_passed": 27,
+      "reported_state_failed": 1,
+      "verified_cause": "Old fixture searches <>6 trigger text although source installs7. Corrected using SCHEMA_VERSION-derived pattern, same all-table count and cached old writer assertions."
+    },
+    {
+      "source": "d45f6ab2f2cd61d70de9356b7932701d37159be2",
+      "formal_checks": {
+        "source": "d45f6ab2f2cd61d70de9356b7932701d37159be2",
+        "host": "macOS arm64",
+        "test_threads": 4,
+        "checks": [
+          {
+            "name": "clippy",
+            "command": [
+              "cargo",
+              "clippy",
+              "--offline",
+              "--target-dir",
+              "/private/tmp/rrx-phase2-target",
+              "--workspace",
+              "--all-targets",
+              "--",
+              "-D",
+              "warnings"
+            ],
+            "exit_code": 0,
+            "log": "/private/tmp/rrx-phase2-recovery7-clippy.log",
+            "bytes": 291,
+            "sha256": "b045e9837141ef72266d59fd550ef375b46d086cb9ec19e6f464b54902ef5c61"
+          },
+          {
+            "name": "build",
+            "command": [
+              "cargo",
+              "build",
+              "--offline",
+              "--target-dir",
+              "/private/tmp/rrx-phase2-target",
+              "-p",
+              "rrx",
+              "--bin",
+              "rrx"
+            ],
+            "exit_code": 0,
+            "log": "/private/tmp/rrx-phase2-recovery7-build.log",
+            "bytes": 340,
+            "sha256": "831f586a54424b149464b2e183633489c0f95165e30be66b10c9f964b883483c"
+          },
+          {
+            "name": "fmt",
+            "command": [
+              "cargo",
+              "fmt",
+              "--all",
+              "--",
+              "--check"
+            ],
+            "exit_code": 0,
+            "log": "/private/tmp/rrx-phase2-recovery7-fmt.log",
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "name": "regression",
+            "command": [
+              "cargo",
+              "test",
+              "--offline",
+              "--target-dir",
+              "/private/tmp/rrx-phase2-target",
+              "--workspace"
+            ],
+            "exit_code": 101,
+            "log": "/private/tmp/rrx-phase2-recovery7-regression.log",
+            "bytes": 58583,
+            "sha256": "bbdbcfed3a48fee9cbb91aba3d2776739a73a37451f82a2fe691c7077bb72935"
+          }
+        ]
+      },
+      "verified_cause": "cfg(test) single-writer NDJSON journal appended concurrently with strict reader; partial line causes EOF parse at session.rs5570. Atomic snapshot publication fix d4c8dcc independently reviewed and exact failing test reran PASS; parser and production protocol unchanged."
+    }
+  ],
+  "source_controls": {
+    "count_at_integrated_source": 6,
+    "observations": [
+      "Actual account-free native fixture+Workflow publication, owner reopen, exact committed rules/config/artifact source, actual subsequent Commit gate and typed pin advancement.",
+      "Complete generic Task drift, competing Preparing claim and before-effect source refusal.",
+      "Actual Future abort before helper invalidates only its claim; subsequent genuine reconstruction succeeds.",
+      "Task instruction and epoch races after complete graph/corpus reads refuse final install.",
+      "Corrupt manifest and full caller Task/Project DTO drift refuse input reconstruction.",
+      "Bounded closed fixture retained helper exercises Task/epoch drift and Future drop; registered effect becomes Unknown."
+    ],
+    "does_not_attest": "Authenticated provider fidelity, workload death, abrupt Runtime SIGKILL, source-only claim as driver/native authority."
+  },
+  "root_mutation": {
+    "baseline": {
+      "source": "993d1322b2386acb5b1f1f6da3f1a490a38623a1",
+      "kind": "control-before",
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "-p",
+        "rrx",
+        "--lib",
+        "--target-dir",
+        "/private/tmp/rrx-phase2-retained-mutation-target",
+        "source_claim_checks_helper_admission_competition_and_full_dto_currency",
+        "--nocapture"
+      ],
+      "exit_code": 1,
+      "log": "/private/tmp/rrx-phase2-source-recovery-pin-baseline.log",
+      "sha256": "8ed742241f970557ee1db28ed400185f42525dff99f8cf7472fb80c1980cd662",
+      "bytes": 321
+    },
+    "baseline-corrected": {
+      "source": "993d1322b2386acb5b1f1f6da3f1a490a38623a1",
+      "kind": "control-before",
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "-p",
+        "rrx",
+        "--lib",
+        "--target-dir",
+        "/private/tmp/rrx-phase2-retained-mutation-target",
+        "source_claim_checks_helper_admission_competition_and_full_dto_currency",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "log": "/private/tmp/rrx-phase2-source-recovery-pin-baseline-corrected.log",
+      "sha256": "a97149a684ebaa3e9cbab74b3181fea80570922d102949bcc68f25c89ca7a759",
+      "bytes": 644
+    },
+    "mutant": {
+      "source": "4bf4bd5236c8ec4a577947c16f49f668261421c6",
+      "kind": "mutant",
+      "operator": "omit current full source authority pins in validate_binding",
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "-p",
+        "rrx",
+        "--lib",
+        "--target-dir",
+        "/private/tmp/rrx-phase2-retained-mutation-target",
+        "source_claim_checks_helper_admission_competition_and_full_dto_currency",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 101,
+      "log": "/private/tmp/rrx-phase2-source-recovery-pin-mutant.log",
+      "sha256": "dcb30b882959d5efcda3fc06a4f0f49b959db1cd2d844e8c73e0b462f07a5682",
+      "bytes": 1101
+    },
+    "restored": {
+      "source": "80b0df6262f2cf265adb2cbdc1674d7d3dbad921",
+      "tree": "2d0f0ff5e66ebba38bb42fb3b67ab2c8478fe801",
+      "kind": "restored",
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "-p",
+        "rrx",
+        "--lib",
+        "--target-dir",
+        "/private/tmp/rrx-phase2-retained-mutation-target",
+        "workflow_source::recovery_tests",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "log": "/private/tmp/rrx-phase2-source-recovery-pin-restored.log",
+      "sha256": "280b5083070af860dabe16bb8ddf6dd578507f6c6b2be5656ca933240634e362",
+      "bytes": 655
+    },
+    "assessment": "Original cargo argv setup error is retained, not a mutation kill. Corrected baseline PASS; single validate_binding full pin omission compiles and reaches intended stale actual fsck admission assertion failure101; exact restored tree equals993 and both original controls pass.",
+    "retained_branch": "test/agent-execution-source-recovery-pin-mutation",
+    "temporary_worktree_removed": true
+  },
+  "author_mutations": [
+    {
+      "label": "baseline",
+      "head": "dc546d8c8786cb3bcb96c5c60210f4827b5ec692",
+      "tree": "9b3df280af3a339d623903b3a77f4d6bd9366f1e",
+      "exit": 0,
+      "log": "/private/tmp/rrx-source-recovery-mutation-baseline.txt",
+      "log_sha256": "ed3c08850e2e72319c5769ec417cd1c10d1125f5c8ea26249be947f1b3aa18ac",
+      "compiled": true,
+      "dirty": ""
+    },
+    {
+      "label": "helper-admission-patch",
+      "sha256": "0b851950bd1cb1d71de7d12b8b26576186f121a8897891b139e2fa4d29f87829"
+    },
+    {
+      "label": "helper-admission",
+      "head": "318361461dea6985662adb63b1aa89dc0f47b925",
+      "tree": "5b9f21531e5eb27aacb5ce1160c99cd29f308644",
+      "exit": 101,
+      "log": "/private/tmp/rrx-source-recovery-mutation-helper-admission.txt",
+      "log_sha256": "213155e9e66adeb98d29746351212e84f482bad678068f6d5e8aba00871edd16",
+      "compiled": true,
+      "dirty": ""
+    },
+    {
+      "label": "caller-dto-patch",
+      "sha256": "7eed990c8e1b1317ea3771de215f4aaae75caa378a11cf65245cb60663b97f0f"
+    },
+    {
+      "label": "caller-dto",
+      "head": "ee48a7c70d64fb897e1d47e9e3ad11fe79046a71",
+      "tree": "e3f524cbb91c01228439116912f3ac13ef73f8b8",
+      "exit": 101,
+      "log": "/private/tmp/rrx-source-recovery-mutation-caller-dto.txt",
+      "log_sha256": "1be5503ec790b947ba75751d0dbd554440c441a79b1c098ee4a551a6fd8f7ed9",
+      "compiled": true,
+      "dirty": ""
+    },
+    {
+      "label": "abandonment-patch",
+      "sha256": "2c42d8b0622019ff50ea7ee12b8382280d451470ac15c60656ec221e1e77aec5"
+    },
+    {
+      "label": "abandonment",
+      "head": "407f553b2d677e1394cab2e128c3c607e3555305",
+      "tree": "08748fc80951922bcdb5d246db820770a30f5b43",
+      "exit": 101,
+      "log": "/private/tmp/rrx-source-recovery-mutation-abandonment.txt",
+      "log_sha256": "f4b3b76f701c434b47c4a0ef18b43c8a3e2fe07d570e8a8f10b95a0366a1f03a",
+      "compiled": true,
+      "dirty": ""
+    },
+    {
+      "label": "restored",
+      "head": "f1264281dec34ae6ab9a5d2bc1439806548ab5ba",
+      "tree": "9b3df280af3a339d623903b3a77f4d6bd9366f1e",
+      "exit": 0,
+      "log": "/private/tmp/rrx-source-recovery-mutation-restored.txt",
+      "log_sha256": "bd0c853804fd482dc7e7f9982597758601c14cd9a9ce065d6e37c9c49a4ad710",
+      "compiled": true,
+      "dirty": ""
+    }
+  ],
+  "limits": [
+    "Source recovery port is private and reconstructs only the sole Workflow exact Published frame, not an old PreparedExecutor/Session/native handle/driver. Runtime consumer still pending.",
+    "Fresh pre-artifact recovery section5.2 remains Unsupported. Ready/unpublished draft cannot be selected as current source.",
+    "Partial negative matrix only; all whole P/G/Workflow/Context permutations, complete graph corruption and fresh native Unit recovery require further qualification.",
+    "Additional genuine Ready control at author846 and Release controls are not part of integrated5c formal run; do not count as that source tests.",
+    "Native receipt consumer580 has verified four Medium issues plus release regression and is unmerged pending correction/re-review/fullchecks.",
+    "Verifier8 command collector and Runtime/Goal9 are separate source work; future ReviewRound allocation moves10 only through its coordinated design update.",
+    "No actual native accounts/auth/settings/hooks, Linux or both-OS CI, four Native Tasks, installed-current distribution, cleanup guarantee, whole Phase2 or MVP acceptance.",
+    "Main/README Status/license untouched; #46/#60 process observation was not extended."
+  ]
+}

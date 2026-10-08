@@ -1,0 +1,238 @@
+{
+  "source_commit": "1ac77007f39986e1506ff01c1d5eb290922f78ac",
+  "review_kind": "Independent preliminary component static reviews; not Phase2/native/MVP acceptance",
+  "reports": [
+    {
+      "review": "Independent preliminary STRICT component review, round 16",
+      "source_commit": "1ac77007f39986e1506ff01c1d5eb290922f78ac",
+      "baseline_commit": "a875c96a2d4f5422fba9e6a16615707add8e3655",
+      "approved_contract": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "REQUEST_CHANGES",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 1,
+        "Low": 0
+      },
+      "findings": [
+        {
+          "id": "P-M1",
+          "severity": "Medium",
+          "title": "Historical verification can honor a shallow boundary and accept an incomplete retained ancestor graph",
+          "locations": [
+            "crates/rrx/src/execution/retained_io.rs:55-66",
+            "crates/rrx/src/execution/results.rs:468-499",
+            "crates/rrx/src/execution/results.rs:634-649"
+          ],
+          "contract": "Approved requirements R2 requires the complete commit and base object graphs, and approved design section 5 capture steps 2 and 5 requires refusal of shallow dependencies/missing required parents and missing or corrupt published content.",
+          "source_evidence": "The new historical reader inherits the command environment except five repository-routing variables removed by git_command_for and four rrx grant variables. It sets GIT_NO_LAZY_FETCH and GIT_NO_REPLACE_OBJECTS but neither removes/refuses GIT_SHALLOW_FILE nor rejects the retained repository shallow metadata. verify_inner only excludes objects/info/alternates, then relies on rev-list --objects --missing=error and fsck --full --strict. Git uses shallow boundary metadata to omit commit parent traversal; these options do not mean ignore shallow boundaries.",
+          "legitimate_trigger": "A retained artifact has a non-root base/revision. A missing ancestor is masked by retained repository shallow metadata declaring the base/revision as boundaries, or by an inherited GIT_SHALLOW_FILE reference containing those boundaries. The indexed artifact, manifest and exact refs still match. The public historical verify path can then traverse only the remaining shallow graph instead of the required complete ancestry. This concerns integrity inspection of damaged/incomplete retained storage or an ambient Git routing setting, not an assertion of resisting arbitrary same-UID takeover.",
+          "impact": "ResultStore::verify can report valid retained content even though required ancestor objects are unavailable. Public publish now correctly CAS-checks the full verified DTO, but that check cannot repair an incomplete physical graph verification.",
+          "minimal_fix": "Make historical complete-graph inspection explicitly reject shallow metadata and inherited shallow-file overrides or use a separately qualified graph reader that cannot truncate ancestry. Do not disable required hooks or alter global user configuration. Ensure capture/current verification uses the same complete-graph invariant where necessary.",
+          "causal_controls_not_executed": [
+            "In an isolated two-or-more-ancestor fixture, capture a complete artifact, then remove an ancestor strictly older than the base; verification must fail. Add a shallow boundary at the base (and revision when different), without changing refs or manifest; it must still fail. Restore all objects and remove the boundary; normal verification must succeed.",
+            "Exercise the actual public verify consumer with an owned GIT_SHALLOW_FILE override containing the boundary; require pre-effect refusal or demonstrated full traversal, not merely successful exit under the boundary.",
+            "An omission mutant of the selected shallow guard should fail the complete-graph oracle; do not count a missing-blob test alone as an ancestor-boundary control."
+          ],
+          "verification_status": "Static source finding and Git shallow traversal semantics; no control, Git corruption experiment or platform execution was run."
+        }
+      ],
+      "verified_component_properties": [
+        {
+          "locations": "retained_io.rs:12-24,70-96; state/execution/artifacts.rs:5-39,50-94",
+          "assessment": "Construction rejects stale/manufactured complete DTOs before native effects. Per-command intent is committed under an Immediate transaction with current positive epoch, full indexed artifact comparison and same-scope executor origin; unique operation cookie is separate from the original unit cookie. No old Task generation/native/finalization permission is reopened."
+        },
+        {
+          "locations": "retained_io.rs:38-54,97-126; process.rs:112-139; owner.rs:82-112",
+          "assessment": "Finite exact refs/OIDs/readonly argument allowlist, bounded capture and 50ms validation. HelperGuard is installed before the first async suspension. Fence failure or wait/drop error retains Unknown; actual child remains owned for best-effort group/direct-child handling. No universal descendant cleanup claim inferred."
+        },
+        {
+          "locations": "state/execution/artifacts.rs:95-139,231-284; results.rs:503-514",
+          "assessment": "Helper receipt confirms only after same epoch and full artifact revalidation plus exact pending intent version/scope/unit. Exit and group-cleanup uncertainty are retained separately. Public publication rechecks the full physically verified artifact DTO in its existing finalization/Task lifecycle transaction, not just artifact ID."
+        },
+        {
+          "locations": "results.rs:433-467; state/execution.rs:1024-1040; state/execution/cleanup.rs:88-127",
+          "assessment": "Canonical expected storage strings and bounded 128KiB+sentinel manifest digest/identity check remain. Artifact scope/state/version/unit indexed body consistency is validated. Historical unique-cookie inspection does not alter cleanup disposition or reuse original cleanup cookie."
+        }
+      ],
+      "fixture_source_review": {
+        "file": "crates/rrx/src/execution/results/tests/retained_tests.rs",
+        "assessments": [
+          "Actual public publish and verify path registers five commands; retirement, old unit directory disposal and Runtime restart are inspected for preserved Task/unit/artifact state.",
+          "Forged complete metadata and stale epoch reservations refuse before child effects.",
+          "Owned observer wrapper checks its actual pending SQLite intent, distinct cookie, removed grants and no-lazy/no-replace flags before executing actual Git.",
+          "Inflight artifact invalidation and worker abort expect Unknown effects; unsupported update-ref refuses.",
+          "Reference deletion, missing blob and oversize manifest negatives are meaningful but do not cover shallow ancestor truncation.",
+          "State publication test now directly rejects a mismatched verified artifact dependency map before the genuine publication control."
+        ],
+        "execution": "Not executed; no parent pass claims inherited."
+      },
+      "prior_own_findings_disposition": [
+        {
+          "id": "M-M1/M-M2/M-M3",
+          "assessment": "Previous Docker routing, pre-await exact action/target and 128+896 receipt-bound fixes are outside this delta; no regression found in changed consumers. This review does not requalify Docker behavior."
+        }
+      ],
+      "limitations": [
+        "Only immutable Git objects at the specified source/baseline/approved contract were read. No dirty/later source, peer reports, aggregate review JSON, progress documents or test/evidence logs inspected.",
+        "No tests, builds, native/model/account/auth/network/Docker probes, credentials/settings reads, process signals or host changes performed.",
+        "This is component-only preliminary review. Planned Runtime/CLI/production Sources/Gates and cleanup/backend integrations were not counted as defects solely for their absence and are not approved.",
+        "Static source correctness and proposed causal controls do not constitute final Phase2/native/profile/MVP acceptance."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "round": 16,
+      "source_commit": "1ac77007f39986e1506ff01c1d5eb290922f78ac",
+      "baseline_commit": "a875c96a2d4f5422fba9e6a16615707add8e3655",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "review_kind": "Independent immutable-source preliminary STRICT component review",
+      "verdict": "REQUEST_CHANGES",
+      "severity_counts": {
+        "C": 0,
+        "H": 1,
+        "M": 0,
+        "L": 0
+      },
+      "findings": [
+        {
+          "id": "H1",
+          "severity": "H",
+          "title": "Historical retained verification inherits GIT_COMMON_DIR and can verify a different common repository",
+          "primary_location": {
+            "file": "crates/rrx/src/execution/retained_io.rs",
+            "start_line": 56,
+            "end_line": 69
+          },
+          "related_locations": [
+            {
+              "file": "crates/rrx/src/execution/results.rs",
+              "lines": "373-377, 433-448, 468-500, 634-650"
+            },
+            {
+              "file": "crates/rrx/src/execution/ipc.rs",
+              "lines": "372-380"
+            },
+            {
+              "file": "crates/rrx/src/execution/results/tests/retained_tests.rs",
+              "lines": "151-177, 298-333"
+            }
+          ],
+          "evidence": "The new RetainedGit public verification route builds commands with git_command_for and retains ordinary Command environment inheritance. That constructor removes GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY and GIT_ALTERNATE_OBJECT_DIRECTORIES, but neither it nor RetainedGit removes GIT_COMMON_DIR. Git's common-directory override directs the shared refs/object store away from the -C repository. verify_inner compares the artifact.repository path and tests alternates at that path, while its exact ref, graph and fsck commands may operate on the overridden common directory. Epoch, indexed metadata and full artifact SQL equality do not bind the native repository actually read. The installed native tool path already removes GIT_COMMON_DIR, demonstrating this namespace override is recognized elsewhere in the same immutable source.",
+          "legitimate_trigger": "A user restarts the Runtime for historical result inspection from a development wrapper/environment carrying an absolute GIT_COMMON_DIR for another legitimate bare repository or complete backup. That other directory contains the historical refs and complete same-SHA objects. A missing/corrupt object in the actual retained result repository must be detected by R2, independently of that ambient Git namespace.",
+          "causal_sequence": [
+            "Create and publish a complete retained artifact under the normal environment, then maintain a separate complete copy of its bare Git common storage including its private artifact refs.",
+            "Remove one required blob from the actual artifact.repository (ordinary storage corruption or an owned negative control); retain unchanged ledger and manifest.",
+            "Restart/open the Runtime with GIT_COMMON_DIR pointing to the complete copy, and call actual ResultStore::verify on the exact recorded Published artifact.",
+            "RetainedReader still validates the indexed artifact/current epoch. rev-parse, rev-list and fsck inspect the other common storage; the expected refs and graph can pass while the independently retained repository is incomplete. The final SQL artifact validation cannot detect this filesystem routing error."
+          ],
+          "impact": "Historical verification can report an unusable retained object graph as valid by silently substituting a different mutable object/ref store. This violates R2 and the design requirement that missing/corrupt retained content invalidates affected evidence, while preserving the same SHA is insufficient. It does not assert that the new path reopens an old Task or that a historical artifact alone can be republished after epoch fencing.",
+          "recommended_change": "Bind Runtime-owned retained Git inspection to its actual recorded repository rather than ambient namespace overrides. Remove/reject GIT_COMMON_DIR on this helper path and audit other location/graph overrides such as GIT_NAMESPACE and GIT_SHALLOW_FILE; use an explicit verified Git administration/common directory and refuse unsupported shallow/alternate inputs as appropriate. Preserve native Agent authentication/settings inheritance; this is hardening for internal retained Git reads, not permission to modify user or provider configuration. Add an actual public-path causal control, not only observer assertions for RRX variables.",
+          "proposed_causal_controls_not_executed": [
+            "Use an isolated child test process with GIT_COMMON_DIR pointing to a complete fixture copy, corrupt the original retained repository and call actual public verify after Runtime restart. Verification must fail by reading the recorded storage, or refuse the ambient override before Git effects; it must never pass using the copy.",
+            "In the owned observer wrapper assert GIT_COMMON_DIR is absent/fixed to the validated repository. Retain pending intent/distinct-cookie/epoch checks and inspect the exact public helper path.",
+            "Audit inherited graph-interpretation overrides with separate isolated controls, including GIT_SHALLOW_FILE; do not treat no-lazy-fetch/no-replace flags as a complete namespace sanitization policy."
+          ],
+          "confidence": "Verified fixed-source environment inheritance and native-command/verification wiring; the Git causal fixture was not executed under the required static-only review. No external configuration or credentials were inspected."
+        }
+      ],
+      "verified_source_observations": [
+        {
+          "locations": [
+            {
+              "file": "crates/rrx/src/state/execution/artifacts.rs",
+              "lines": "5-39, 50-92, 94-146"
+            },
+            {
+              "file": "crates/rrx/src/state/execution.rs",
+              "lines": "1024-1040"
+            }
+          ],
+          "evidence": "Historical read authority uses current nonzero Runtime epoch, full Ready/Published indexed/body artifact equality, valid OIDs/digest and matching historical executor Scope. It intentionally does not require old generation/Session/profile paths or reopen native/finalization authority. Registration and receipt each run inside IMMEDIATE transactions; each finite action has durable scoped intent before spawn."
+        },
+        {
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/retained_io.rs",
+              "lines": "38-54, 60-66, 70-125"
+            },
+            {
+              "file": "crates/rrx/src/execution/owner.rs",
+              "lines": "82-111"
+            },
+            {
+              "file": "crates/rrx/src/execution/process.rs",
+              "lines": "27-83, 112-139"
+            }
+          ],
+          "evidence": "Finite exact refs/OIDs and fsck restrict command forms. A distinct operation cookie omits native IPC/profile grants; lazy fetch and replacement objects are disabled. The ledger mutex has no await across registration/spawn, and the SQL transaction commits before spawn. Captured output/wait are bounded; 50 ms periodic checks and receipt transaction revalidate epoch/artifact. Async drop or failed fence leaves an Unknown helper via HelperGuard and owned-child hygiene. Nonzero exit may have a Confirmed exit observation but verify rejects it; it does not become successful work."
+        },
+        {
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/results.rs",
+              "lines": "450-466, 503-514"
+            },
+            {
+              "file": "crates/rrx/src/state/execution/artifacts.rs",
+              "lines": "231-283"
+            }
+          ],
+          "evidence": "Manifest read is bounded at 128 KiB plus sentinel and checked against the exact recorded hash/identity. Public publication now passes the full verified artifact and checks full equality in the same authority/Task CAS transaction before publication/finalization closure. SQL equality fixes stale metadata publication; it does not close H1's native repository routing."
+        }
+      ],
+      "controls_inspected_but_not_executed": [
+        {
+          "file": "crates/rrx/src/execution/results/tests/retained_tests.rs",
+          "lines": "47-333",
+          "purpose": "Actual public verify/publish -> retained helper counts, profile disposal/restart and preserved Task/unit/artifact state; forged metadata/stale epoch pre-spawn; child-side intent/distinct cookie/no lazy fetch/replacement; in-flight invalidation and async abandonment Unknown; retained refs/blob/manifest corruption. These controls do not inject inherited GIT_COMMON_DIR."
+        },
+        {
+          "file": "crates/rrx/src/state/execution/tests.rs",
+          "lines": "116-132",
+          "purpose": "Modified verified dependency snapshot is rejected before ready artifact publication. Source inspected, not execution evidence."
+        }
+      ],
+      "prior_own_findings_disposition": [
+        {
+          "id": "round13-H1 and M1",
+          "disposition": "NOT_REOPENED_BY_THIS_DELTA",
+          "evidence": "The exact baseline-to-source diff changes retained result reads/publication and associated tests/design only, not Docker routing or pre-await destructive action records."
+        },
+        {
+          "id": "round15 cookie-bound review",
+          "disposition": "UNCHANGED_IN_SCOPE",
+          "evidence": "No cleanup producer/report-bound change exists in this fixed delta. This new H1 concerns retained Git read identity."
+        }
+      ],
+      "limits": [
+        "Only immutable git objects at the stated source/baseline/approved contract were read. No dirty/later source, peer reports, aggregate review documents, progress/evidence/test logs or credentials were inspected.",
+        "No tests/builds/native Agents/Docker/network/configuration/OS/process operations were run. Proposed causal controls were not executed and no parent test claims are inherited. Only this authorized private report was written.",
+        "Static review does not qualify actual Git version/template/OS semantics, native authentication/settings/hooks, complete retained-reader portability, or live cleanup/cancellation behavior.",
+        "Pending Runtime/Workflow/Gates/CLI and actual native/install qualification are not counted as missing components here. This verdict is preliminary component source review, not final Phase2/native/MVP acceptance.",
+        "The independent read capability and SQL fences protect metadata/authority; filesystem graphs and configuration must also bind correctly. No security sandbox or arbitrary host/configuration mutation containment is claimed."
+      ],
+      "owned_handles": {
+        "live_command_sessions": [],
+        "native_processes_started": [],
+        "tool_status": "All immutable-object read commands returned exit codes without session_id; no command, Agent, Docker, worker, tracker or child handle remains owned."
+      }
+    }
+  ],
+  "parent_verification": {
+    "reproduction_commit": "85439748c9d3f4617fc129f7c1aa1bad1a3d5220",
+    "log": "/private/tmp/rrx-phase2-retained-reproduction.log",
+    "primary_result": "0 passed, 3 failed, 1 nested worker ignored; exit101 expected for the defect reproduction",
+    "verified_defects": [
+      "Actual public verification can read complete backup through inherited GIT_COMMON_DIR despite missing original objects",
+      "Actual public verification accepts missing ancestor commits under retained shallow boundary",
+      "Additional parent audit: actual public verification accepts missing ancestor commits under retained info/grafts"
+    ],
+    "limitations": [
+      "No direct GIT_SHALLOW_FILE/GIT_GRAFT_FILE environment exploit established for tested Apple Git2.54; only physical ancestry metadata reproduced",
+      "Controlled owned temporary repositories and child test process, not actual native-provider or Linux acceptance"
+    ]
+  }
+}

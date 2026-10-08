@@ -1,0 +1,221 @@
+{
+  "source_commit": "6350c9f7ddf3808bd38247689b358975a7282fdf",
+  "review_kind": "Independent preliminary component reviews; not Phase2 acceptance",
+  "reports": [
+    {
+      "review": "Independent STRICT preliminary component source review, round 12",
+      "source_commit": "6350c9f7ddf3808bd38247689b358975a7282fdf",
+      "baseline_commit": "68596610c55a9f6f6c9fb3d6b0df097ebdc9f3e9",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "approve",
+      "approval_scope": "Static preliminary component review of the fixed typed-cleanup receipt/history delta; not final Phase2 approval.",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "findings": [],
+      "prior_own_findings": [
+        {
+          "id": "K-M1",
+          "round": 11,
+          "disposition": "Closed in fixed source; execution/conformance not certified",
+          "evidence": [
+            "execution/cleanup.rs:152-175 retains the exact Termination category and an independent CleanupConfirmation. AlreadyExited is explicit; all other outcomes observe exit through exit_confirmation rather than .ok().flatten().",
+            "cleanup.rs:194-240 maps Sent/AlreadyExited/Unsupported/Denied/Unknown and distinguishes Exited/StillObserved/Unavailable/Error. Unsupported, denied, unknown, skipped and exit-unavailable/error categories are deduplicated into safe persisted errors. Unconfirmed targets remain with their actual confirmation, so last-seen candidates are distinguishable from positively observed survivors.",
+            "model.rs:289-331 adds typed action/outcome/confirmation and a defaulted actions field. Both existing cleanup write paths serialize the complete CleanupObservation after validating action bounds; the public history accessor decodes that same persisted body.",
+            "state/execution/cleanup.rs:10-33 checks unit identity, indexed timestamp and action bounds for each bounded returned row.",
+            "The actual cookie service persistence control compares complete stored observation to its returned receipt and retains sibling/known work/artifact/Task invariants; the private actual consumer helper control covers safe errors and legacy JSON default. These controls were read, not executed."
+          ]
+        }
+      ],
+      "source_observations": [
+        {
+          "path": "crates/rrx/src/execution/cleanup.rs",
+          "lines": [
+            121,
+            179
+          ],
+          "assessment": "At most 960 matched process actions are recorded, preserving headroom below the 1024 writer bound. Budget skips receive explicit Skipped/NotAttempted receipts rather than a silent omitted action. Above-cap discoveries retain an action-limit error/count. No claim of complete process membership or hard blocking-call deadline was introduced."
+        },
+        {
+          "path": "crates/rrx/src/execution/cleanup.rs",
+          "lines": [
+            152,
+            175
+          ],
+          "assessment": "Signal delivery remains separate from exit confirmation. Sent may poll only while StillObserved; unavailable/error confirmation is preserved rather than converted to successful exit. Existing unresolved Docker/path/port coverage keeps aggregate cleanup conservative; the service still never returns Reclaimed."
+        },
+        {
+          "path": "crates/rrx/src/state/execution/cleanup.rs",
+          "lines": [
+            84,
+            181
+          ],
+          "assessment": "Typed actions pass through the same epoch/job/scoped-unit CAS as the historical receipt. Lease quarantine remains limited to the claimed unit. Work, artifact, Task and newer-unit authority are not changed by receipt publication."
+        },
+        {
+          "path": "crates/rrx/src/state/execution/cleanup.rs",
+          "lines": [
+            10,
+            33
+          ],
+          "assessment": "History uses an explicit 1..32 count limit and descending sequence, a SQL unit filter, and body/unit/timestamp agreement checks. It returns factual receipts rather than constructing native permission or signal handles."
+        },
+        {
+          "path": "crates/rrx/src/state/execution/cleanup.rs",
+          "lines": [
+            146,
+            155
+          ],
+          "assessment": "Actions are bounded to 1024; target strings must be nonempty, at most 256 bytes and use the declared safe ASCII alphabet. This is a bounded identity string policy, not proof of OS ownership. Current process targets come from private tracker Identity values."
+        },
+        {
+          "path": "crates/rrx/src/execution/model.rs",
+          "lines": [
+            321,
+            331
+          ],
+          "assessment": "Missing legacy actions deserialize as an empty list. Strict unknown-field handling and enum decoding remain; absence of historical action metadata does not become a fabricated confirmed action."
+        },
+        {
+          "path": "crates/rrx/src/execution/native.rs",
+          "assessment": "Only the actions-empty initializer was added to the existing owned-group observation. Its existing coverage/error metadata and durable work/finalization projection were not altered."
+        }
+      ],
+      "proposed_causal_controls_not_executed": [
+        "Use the actual receipt-building helper and persistence consumer to cover Sent+exit error separately from Unknown+error, plus Sent+StillObserved/Exited, Denied, Unsupported, AlreadyExited, and Skipped/NotAttempted. Omitting confirmation/error retention must fail the persisted typed-receipt oracle.",
+        "Exercise history limit 0/33 refusal, 1/32 success, multiple units and descending sequence, and mismatched body unit/timestamp or invalid action targets/counts via isolated synthetic DB fixtures. These are proposed controls, not inherited parent results.",
+        "Reopen existing legacy cleanup bodies lacking actions and verify empty actions without changing known work, artifacts or historical Unit/Task authority.",
+        "Preserve actual OS-specific tracker controls as separate execution gates; static enum mapping and persisted synthetic receipts do not establish Linux pidfd or macOS process conformance."
+      ],
+      "coverage": [
+        "Read fixed crate-only delta, full cleanup service and its tests, complete cleanup Store module and typed model additions.",
+        "Read both cleanup writers and current Unit cleanup projection, plus approved R6/R7/R8 and design section 9.",
+        "Reviewed existing claim/finalization/lease guards from the fixed baseline context. Tracker source itself is unchanged in this round; prior own source closure remains scoped.",
+        "No peer/aggregate report, progress document, dirty or later source was read."
+      ],
+      "limitations": [
+        "Fixed-source static component review only; not final Phase2, native, Runtime, full cleanup or MVP acceptance.",
+        "No tests/builds, OS/native/model/account/auth/network operation, signals or host changes. No parent test result was inherited.",
+        "Only this private report was written; the shared worktree was not edited.",
+        "Count and per-action limits are not a global persistent-history retention policy or universal physical memory/real-time bound.",
+        "Announced future Docker/scope/path-release/ProductionSources/Gates/CLI work remains pending and was not counted as a current false-acceptance defect.",
+        "Cookies remain cooperative provenance, and cleanup observations cannot certify complete workload death or grant new native authority."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "round": 12,
+      "source_commit": "6350c9f7ddf3808bd38247689b358975a7282fdf",
+      "baseline_commit": "68596610c55a9f6f6c9fb3d6b0df097ebdc9f3e9",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "review_kind": "Independent read-only preliminary STRICT component source review",
+      "verdict": "APPROVE",
+      "approval_scope": "Only the pinned typed-cleanup-action/history component changes; not final Phase2 acceptance or native qualification",
+      "severity_counts": {
+        "C": 0,
+        "H": 0,
+        "M": 0,
+        "L": 0
+      },
+      "findings": [],
+      "prior_own_findings_disposition": [
+        {
+          "round": 11,
+          "id": "M1",
+          "disposition": "CLOSED_STATIC",
+          "evidence": [
+            "crates/rrx/src/execution/model.rs:289-331 introduces separate typed action outcome and confirmation fields in CleanupObservation.actions.",
+            "crates/rrx/src/execution/cleanup.rs:152-175 records the actual termination outcome independently of the exit confirmation, rather than discarding Unsupported/Denied/Unknown or converting exit errors to absent booleans.",
+            "crates/rrx/src/execution/cleanup.rs:194-240 preserves finite categories for unsupported, denied, unknown, skipped, unavailable and confirmation error outcomes, deduplicates error categories, and retains only resource identities in actions/remaining.",
+            "The committed macOS owned-child control checks Unsupported plus Unavailable and their persisted categories. The pure receipt control exercises distinct finite outcomes and rejects raw diagnostic retention. Both control bodies were inspected but not executed."
+          ],
+          "qualification": "Closure is source-level. It does not establish that any OS cleanup action actually succeeded or that native workloads are fully reclaimed."
+        },
+        {
+          "round": 10,
+          "id": "M1",
+          "disposition": "REMAINS_CLOSED_STATIC",
+          "evidence": "The unchanged tracker retains nonblocking pidfd exit readiness rather than PID-removal checks; this review does not inherit Linux execution claims."
+        },
+        {
+          "round": 10,
+          "id": "L1",
+          "disposition": "REMAINS_CLOSED_STATIC",
+          "evidence": "The unchanged EnvironmentBuffer Drop guard still covers partial-read/error cleanup and explicitly excludes secure-erasure guarantees."
+        },
+        {
+          "round": 9,
+          "id": "M1",
+          "disposition": "REMAINS_CLOSED_STATIC",
+          "evidence": "No change in this commit reintroduces the previously fixed Drop producer disagreement between durable work/disposition/wait reason and watch projection."
+        },
+        {
+          "round": 6,
+          "id": "H1_original_withdrawn",
+          "disposition": "REMAINS_WITHDRAWN",
+          "evidence": "The original live-executor replacement sequence was blocked by the active-executor UNIQUE constraint and transaction ordering; it remains excluded from counts."
+        }
+      ],
+      "verified_source_observations": [
+        {
+          "subject": "Action and confirmation semantics",
+          "locations": [
+            "crates/rrx/src/execution/cleanup.rs:134-178",
+            "crates/rrx/src/execution/cleanup.rs:194-240"
+          ],
+          "evidence": "Sent/AlreadyExited/Unsupported/Denied/Unknown signaling outcomes are mapped explicitly. Confirmation separately records Exited/StillObserved/Unavailable/Error, while budget-skipped entries use Skipped/NotAttempted. Exited/Absent confirmations are omitted from remaining; all other confirmations retain their safe target identity. Raw OS errors are not serialized. Overall empty/uncertain coverage still does not imply Reclaimed."
+        },
+        {
+          "subject": "Bounded current producers and state validation",
+          "locations": [
+            "crates/rrx/src/execution/cleanup.rs:121-140",
+            "crates/rrx/src/state/execution/cleanup.rs:89-95",
+            "crates/rrx/src/state/execution/cleanup.rs:146-156",
+            "crates/rrx/src/state/execution.rs:944-949"
+          ],
+          "evidence": "Current cookie actions are limited to 960; state writers accept at most 1024 actions and validate each nonempty target's length and safe character set. Current action errors deduplicate a small fixed set rather than adding an error per process. Exceeded match/action budgets remain named and do not produce an empty-scope claim. Native terminal observations initialize actions explicitly."
+        },
+        {
+          "subject": "History API and compatibility",
+          "locations": [
+            "crates/rrx/src/state/execution/cleanup.rs:10-33",
+            "crates/rrx/src/execution/model.rs:321-331"
+          ],
+          "evidence": "execution_cleanup_observations requires an existing exact UnitId, accepts only 1..=32 rows, orders by append sequence descending, and checks unit/time indexed identity plus action validation. CleanupObservation.actions uses serde(default), so old stored observation JSON without actions remains readable as an empty list; other unknown fields remain rejected. The committed receipt test includes that old-JSON case."
+        },
+        {
+          "subject": "Historical write isolation remains intact",
+          "locations": [
+            "crates/rrx/src/state/execution/cleanup.rs:97-143",
+            "crates/rrx/src/state/execution/cleanup.rs:157-182"
+          ],
+          "evidence": "Typed action additions preserve the epoch/job/exact-unit CAS before observation append and lease quarantine. History reads do not change Task/Workflow/Context, known work, native authority or accepted artifacts. A claim does not close finalization merely to enable cleanup."
+        }
+      ],
+      "proposed_causal_controls_not_executed": [
+        "Run the committed finite receipt mapping control for Sent/Denied/Unsupported/Unknown and confirmation errors; include AlreadyExited and budget-skipped cases, and assert exact typed round trips with no raw diagnostic retention.",
+        "Run the owned macOS unsupported-action and Linux pidfd termination controls, preserving a live sibling and immutable historical work/artifact facts. Compare the persisted history observation with the returned sweep observation.",
+        "Exercise history limits 0, 1, 32 and 33, newest-first ordering, unknown UnitId, more than 1024 actions and invalid targets. Include legacy stored JSON without actions, not only direct deserialization.",
+        "Retain stale-claim/epoch rejection and finalization-gating controls so adding receipt fields cannot cause historical cleanup to mutate the current Task or accepted result."
+      ],
+      "limits": [
+        "Only immutable git objects at the stated source/baseline/contract were reviewed; dirty/later Docker work, peer reports, aggregate reviews and progress documents were not consulted.",
+        "No tests, builds, OS/native execution, accounts, credentials, network calls, process signals or host changes were performed. Source-inspected controls and proposed controls are not observed passing tests; parent test claims are not inherited.",
+        "The verdict is limited to this preliminary component review. Runtime CLI, production Sources/Gates, Docker/optional-scope cleanup and path/port release remain explicitly pending and are not missing-feature findings here.",
+        "Actual authenticated Claude/Codex concurrency, cancel-one and crash isolation, settings/hooks/sandbox compatibility, quota recovery, installation and OS cleanup behavior remain unqualified by this reviewer.",
+        "Cookie scan and signaling observations remain bounded and non-atomic; macOS discovered-PID signaling is intentionally unsupported. Typed receipt storage does not establish complete Task membership, complete process death or a security sandbox.",
+        "The history API bounds row/action counts; this review does not claim an independent arbitrary-corrupt-database byte budget or complete Task-level report/UI/subscription integration."
+      ],
+      "owned_handles": {
+        "live_command_sessions": [],
+        "native_processes_started": [],
+        "tool_status": "All read-only shell commands completed without session_id; no owned command, Agent, discovered process or cleanup worker handle remains."
+      }
+    }
+  ]
+}

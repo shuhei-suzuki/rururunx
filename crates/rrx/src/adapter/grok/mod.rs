@@ -9,6 +9,65 @@ mod files;
 #[cfg(test)]
 #[path = "../../../tests/support/grok_fixture.rs"]
 mod fixture_support;
+/// FM §8.1 L rows for the shared Grok fixture (the integration crate provides
+/// the same API through the public route, `tests/support/legacy.rs`).
+#[cfg(test)]
+mod legacy_support {
+    use crate::{
+        adapter::SharedStore,
+        config::WorkflowClass,
+        domain::{RiskClass, Task},
+        execution::RuntimeOwner,
+        runtime::{LegacyFixture, LegacyLayout, LegacyTask},
+    };
+    use std::{path::Path, sync::Arc};
+    pub(super) struct Holder {
+        legacy: LegacyFixture,
+        _owner: Arc<RuntimeOwner>,
+    }
+    impl Holder {
+        pub(super) fn path(&self) -> &Path {
+            self.legacy.path()
+        }
+    }
+    pub(super) type Planned = (
+        &'static str,
+        &'static str,
+        WorkflowClass,
+        RiskClass,
+        &'static str,
+    );
+    pub(super) fn blocking(
+        root: &'static str,
+        state: &'static str,
+        seed: impl FnOnce(&Path) + Send + 'static,
+        tasks: Vec<Planned>,
+    ) -> (Holder, SharedStore, Vec<Task>) {
+        let (legacy, owner) = crate::runtime::legacy_fixture_blocking(
+            LegacyLayout { root, state },
+            seed,
+            tasks
+                .into_iter()
+                .map(|(key, executor, workflow, risk, _)| LegacyTask {
+                    key,
+                    executor,
+                    workflow,
+                    risk,
+                    reviewers: &[],
+                })
+                .collect(),
+        );
+        let (store, tasks) = (owner.store(), legacy.tasks.clone());
+        (
+            Holder {
+                legacy,
+                _owner: owner,
+            },
+            store,
+            tasks,
+        )
+    }
+}
 mod ownership;
 mod protocol;
 #[cfg(test)]
@@ -21,7 +80,7 @@ mod receipt_tests;
 #[cfg(test)]
 use crate::{
     config::WorkflowClass,
-    domain::{CompletionCriterion, Goal, Task},
+    domain::{RiskClass, Task},
     git as fixture_git,
 };
 #[cfg(test)]
@@ -278,6 +337,7 @@ impl GrokAdapter {
             started_at: now_ms(),
         };
         let initial = SessionStatus {
+            execution: None,
             session: session.clone(),
             exit_code: None,
             stdout: vec![],
@@ -1649,29 +1709,28 @@ mod registry_tests {
     use super::*;
     #[tokio::test]
     async fn actor_journals_failed_write_effect_and_denies_completion() {
-        use crate::domain::{CompletionCriterion, Goal, Task};
-        let directory = tempfile::tempdir().unwrap();
-        let root = directory.path().canonicalize().unwrap();
-        let worktree = root.join("worktree/task");
-        std::fs::create_dir_all(&worktree).unwrap();
-        let mut store = crate::state::Store::open(&root.join("state.db")).unwrap();
-        let mut project = Project::new("fixture".into(), root, "fixture".into(), "main".into());
-        store.put_project(&mut project).unwrap();
-        let mut goal = Goal::new(
-            project.id,
-            "fixture".into(),
-            vec![CompletionCriterion {
-                id: "effect".into(),
-                description: "observe actual failed write".into(),
-                satisfied: false,
-                evidence: None,
-            }],
+        // FM §8.1 L: legacy rows; the worktree is the genuine legacy one.
+        let (_directory, store, tasks) = legacy_support::blocking(
+            "project",
+            "state.db",
+            |_| {},
+            vec![(
+                "fixture",
+                "grok",
+                WorkflowClass::Standard,
+                RiskClass::R1,
+                "verified result",
+            )],
         );
-        store.put_goal(&mut goal).unwrap();
-        let mut task = Task::new(project.id, goal.id, "fixture".into(), "grok".into());
-        task.worktree = Some(worktree.clone());
-        task.branch = Some("feature/task".into());
-        store.put_task(&mut task).unwrap();
+        let (project, task, worktree) = {
+            let mut store = store.lock().unwrap();
+            let project = store.project(tasks[0].project_id).unwrap().unwrap();
+            let worktree = fixture_git::WorktreeManager::create(&mut store, tasks[0].id)
+                .unwrap()
+                .worktree;
+            let task = store.task(tasks[0].id).unwrap().unwrap();
+            (project, task, worktree)
+        };
         let request = LaunchRequest {
             project,
             scope: task.scope(),
@@ -1690,7 +1749,6 @@ mod registry_tests {
             model: None,
             effort: None,
         };
-        let store = Arc::new(Mutex::new(store));
         let snapshot = ScopeSnapshot::capture(&store, &request, "grok").unwrap();
         let session = Session {
             id: SessionId::new(),
@@ -1709,6 +1767,7 @@ mod registry_tests {
         };
         let version = store.lock().unwrap().put_session(&session, 0).unwrap();
         let (events, status) = watch::channel(SessionStatus {
+            execution: None,
             session: session.clone(),
             exit_code: None,
             stdout: vec![],
@@ -1844,6 +1903,7 @@ mod registry_tests {
         };
         store.lock().unwrap().put_session(&session, 0).unwrap();
         let (events, status) = watch::channel(SessionStatus {
+            execution: None,
             session: session.clone(),
             exit_code: None,
             stdout: vec![],

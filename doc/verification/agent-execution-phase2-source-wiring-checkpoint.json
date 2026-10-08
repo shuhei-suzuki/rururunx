@@ -1,0 +1,829 @@
+{
+  "component": "Registered committed Workflow inputs and same-unit first native adoption",
+  "risk": "STRICT",
+  "status": "Phase2 in progress; dependency-ready component integration verified",
+  "baseline": "f459fe98618460971b0bf6d0fe36189cf71352eb",
+  "source_commit": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+  "source_tree": "ba75d650c87a34119576b5937666a62a76c71d33",
+  "main_unchanged": "6146b1639bf03f244d1c5b716304dc1d20146194",
+  "host": {
+    "os": "macOS",
+    "version": "26.6.2",
+    "build": "25G83",
+    "arch": "arm64",
+    "rust": "1.91.1",
+    "cargo": "1.91.1",
+    "verification_git": "2.49.0"
+  },
+  "changes": [
+    {
+      "path": "crates/rrx/src/context.rs",
+      "sha256": "e55c1b1172bc85928a3d08613ebcc73a9dccb564d154aa9a74625159181a320c"
+    },
+    {
+      "path": "crates/rrx/src/context/committed.rs",
+      "sha256": "ef2c44dec371b3de1918dcbd93e51ee5ae18758c677b27aefd6d6eb1cc8d2d22"
+    },
+    {
+      "path": "crates/rrx/src/execution/attempts.rs",
+      "sha256": "7501887f1e3ad9aaaf91659a53f354b7e27fedd5738142f11c3610917d28ab88"
+    },
+    {
+      "path": "crates/rrx/src/execution/mod.rs",
+      "sha256": "40ffef53a603b9c357bdd28865e6a08b08cc264d31bb80eb10d088737984c263"
+    },
+    {
+      "path": "crates/rrx/src/execution/retained_io.rs",
+      "sha256": "0de0d1e077d9a8b6b289887e2c403877f99197bfb755167448fcaf96bc981be1"
+    },
+    {
+      "path": "crates/rrx/src/execution/workflow_source.rs",
+      "sha256": "bcc43aac7240111166d03c83e7bb89aca7f7ef17f3307b2d0666b1332bd58ee8"
+    },
+    {
+      "path": "crates/rrx/src/execution/workflow_source/tests.rs",
+      "sha256": "3e468440f615eafe6554381ee18b393776578311213a6e90cd8e772a17f890dd"
+    },
+    {
+      "path": "crates/rrx/src/state/execution.rs",
+      "sha256": "e72691434f614b9dbb9260be3191327e56282f46d37271416ce02643c25b8459"
+    },
+    {
+      "path": "crates/rrx/src/state/execution/artifacts.rs",
+      "sha256": "79a1b6ee822ccefb709aa22f54b66aa04ddf72843d3f351237c6966b271b72bf"
+    },
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "sha256": "c8a2058e5d277b3525b9d134be61719bbd861dfa04c6ca8bb28d0da66b8fbb03"
+    },
+    {
+      "path": "crates/rrx/src/workflow.rs",
+      "sha256": "f09aac1b19dee1766ce8807a10c80f7c0fb4b05e259a766197295cf07c75d56e"
+    },
+    {
+      "path": "crates/rrx/src/workflow/committed_source_tests.rs",
+      "sha256": "2bb1381d24167fd83fa6310121b22f6a7d780626866ed3efff94dec41556368d"
+    },
+    {
+      "path": "doc/design/agent-execution-design.md",
+      "sha256": "87921bbb0ca47a8e7f5f62c2a8e89c739aa4c8c211ef15f284a338f3a9b79cda"
+    },
+    {
+      "path": "doc/design/master/agent-execution.md",
+      "sha256": "411a1ba299ba7f4761cbd5b59ac277002685be909df3e27ca3ff95e7cc0e5e11"
+    }
+  ],
+  "final_checks": {
+    "source_commit": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+    "environment": {
+      "RUST_TEST_THREADS": "4"
+    },
+    "checks": [
+      {
+        "name": "regression",
+        "command": [
+          "cargo",
+          "test",
+          "--offline",
+          "--workspace",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target"
+        ],
+        "source_commit": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-source-wiring-final-bounded-regression.log",
+        "log_sha256": "c215208a6eb008059bab1487970d93cf3d64b978a036f44a3a80ec81ec01d46b"
+      },
+      {
+        "name": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--offline",
+          "--workspace",
+          "--all-targets",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "source_commit": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-source-wiring-final-bounded-clippy.log",
+        "log_sha256": "120cc54b27671d53fd8acdc0d5fed490fcb344bcf496710e1dbd15f14da46dfa"
+      },
+      {
+        "name": "build",
+        "command": [
+          "cargo",
+          "build",
+          "--offline",
+          "--workspace",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target"
+        ],
+        "source_commit": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-source-wiring-final-bounded-build.log",
+        "log_sha256": "299f16a2c523be18fef769975d2df00e0505521db047540feea3a74b94666887"
+      },
+      {
+        "name": "fmt",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--check"
+        ],
+        "source_commit": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+        "exit_code": 0,
+        "log": "/private/tmp/rrx-phase2-source-wiring-final-bounded-fmt.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "primary_regression": {
+    "passed": 554,
+    "failed": 0,
+    "ignored": 30,
+    "rrx_library_passed": 434,
+    "primary_integration_passed": 113,
+    "process_tracker_library_passed": 4,
+    "process_tracker_discovery_passed": 1,
+    "rrx_doc_passed": 2,
+    "excluded_nested_duplicate_passes": 45,
+    "raw_summaries": [
+      {
+        "line": 91,
+        "passed": 44,
+        "failed": 0,
+        "ignored": 1,
+        "filtered": 414,
+        "text": "test result: ok. 44 passed; 0 failed; 1 ignored; 0 measured; 414 filtered out; finished in 3.08s"
+      },
+      {
+        "line": 517,
+        "passed": 434,
+        "failed": 0,
+        "ignored": 25,
+        "filtered": 0,
+        "text": "test result: ok. 434 passed; 0 failed; 25 ignored; 0 measured; 0 filtered out; finished in 148.54s"
+      },
+      {
+        "line": 523,
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 548,
+        "passed": 19,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.20s"
+      },
+      {
+        "line": 559,
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s"
+      },
+      {
+        "line": 569,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 1,
+        "text": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.01s"
+      },
+      {
+        "line": 573,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 1,
+        "filtered": 0,
+        "text": "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.34s"
+      },
+      {
+        "line": 595,
+        "passed": 16,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.15s"
+      },
+      {
+        "line": 619,
+        "passed": 18,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.32s"
+      },
+      {
+        "line": 629,
+        "passed": 4,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+      },
+      {
+        "line": 652,
+        "passed": 15,
+        "failed": 0,
+        "ignored": 2,
+        "filtered": 0,
+        "text": "test result: ok. 15 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 20.76s"
+      },
+      {
+        "line": 660,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 1,
+        "filtered": 0,
+        "text": "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.07s"
+      },
+      {
+        "line": 667,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.92s"
+      },
+      {
+        "line": 689,
+        "passed": 16,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.60s"
+      },
+      {
+        "line": 712,
+        "passed": 17,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s"
+      },
+      {
+        "line": 722,
+        "passed": 4,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 730,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 1,
+        "filtered": 0,
+        "text": "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+      },
+      {
+        "line": 737,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 743,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s"
+      },
+      {
+        "line": 750,
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "text": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      }
+    ],
+    "RUST_TEST_THREADS": 4
+  },
+  "default_parallel_attempt": {
+    "source_commit": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+    "exit_code": 101,
+    "library_passed": 431,
+    "library_failed": 3,
+    "ignored": 25,
+    "failures": [
+      {
+        "name": "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint",
+        "observation": "owned synthetic child watchdog expired after 60001 ms"
+      },
+      {
+        "name": "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume",
+        "observation": "owned synthetic child watchdog expired after 60000 ms"
+      },
+      {
+        "name": "execution::docker::tests::docker_filter_and_operation_identity_are_independently_checked",
+        "observation": "expected unregistered own volume absent from report.remaining, tests.rs:247"
+      }
+    ],
+    "following_checks_not_run_in_that_attempt": [
+      "clippy",
+      "build",
+      "fmt"
+    ],
+    "interpretation": "Subsequent same-source RUST_TEST_THREADS=4 full run passed; sensitivity to test scheduling/load is inferred, exact cause and unrestricted-parallel repeatability are unestablished. No production/test deadlines were changed."
+  },
+  "earlier_exploratory_checks": {
+    "check_source": "99de44a",
+    "check_alltargets": 0,
+    "clippy_source1": 101,
+    "clippy_findings": "two needless borrows in extracted checked_workflow_binding, corrected at 664016d",
+    "negative_source_c2b9acf": {
+      "passed": 1,
+      "failed": 1,
+      "cause": "fixture tried to downgrade an already persisted Standard Task to Quick before intended guard; corrected using fresh Task at f429d16"
+    },
+    "f429d16_workspace": {
+      "exit_code": 0,
+      "primary_passed": 550,
+      "ignored": 30
+    },
+    "agent_B_controls_before_owned_commit": "Exploratory author observations only; qualification is the parent clean immutable source32 full run."
+  },
+  "workflow_fixture_matrix": [
+    {
+      "provider": "claude",
+      "workflow": "QUICK",
+      "environment": "local account-free protocol fixture on macOS",
+      "initial_preparation": true,
+      "same_unit_generation_namespace_profile": true,
+      "actual_native_wire_fixed_context": true,
+      "successful_fixture_terminal": true,
+      "actual_committed_result_published_and_verified": true,
+      "authenticated_official_cli": false
+    },
+    {
+      "provider": "claude",
+      "workflow": "STANDARD",
+      "environment": "local account-free protocol fixture on macOS",
+      "initial_preparation": true,
+      "same_unit_generation_namespace_profile": true,
+      "actual_native_wire_fixed_context": true,
+      "successful_fixture_terminal": true,
+      "actual_committed_result_published_and_verified": true,
+      "authenticated_official_cli": false
+    },
+    {
+      "provider": "claude",
+      "workflow": "STRICT",
+      "environment": "local account-free protocol fixture on macOS",
+      "initial_preparation": true,
+      "same_unit_generation_namespace_profile": true,
+      "actual_native_wire_fixed_context": true,
+      "successful_fixture_terminal": true,
+      "actual_committed_result_published_and_verified": true,
+      "authenticated_official_cli": false
+    },
+    {
+      "provider": "codex",
+      "workflow": "QUICK",
+      "environment": "local account-free protocol fixture on macOS",
+      "initial_preparation": true,
+      "same_unit_generation_namespace_profile": true,
+      "actual_native_wire_fixed_context": true,
+      "successful_fixture_terminal": true,
+      "actual_committed_result_published_and_verified": true,
+      "authenticated_official_cli": false
+    },
+    {
+      "provider": "codex",
+      "workflow": "STANDARD",
+      "environment": "local account-free protocol fixture on macOS",
+      "initial_preparation": true,
+      "same_unit_generation_namespace_profile": true,
+      "actual_native_wire_fixed_context": true,
+      "successful_fixture_terminal": true,
+      "actual_committed_result_published_and_verified": true,
+      "authenticated_official_cli": false
+    },
+    {
+      "provider": "codex",
+      "workflow": "STRICT",
+      "environment": "local account-free protocol fixture on macOS",
+      "initial_preparation": true,
+      "same_unit_generation_namespace_profile": true,
+      "actual_native_wire_fixed_context": true,
+      "successful_fixture_terminal": true,
+      "actual_committed_result_published_and_verified": true,
+      "authenticated_official_cli": false
+    }
+  ],
+  "consumer_checks": [
+    "prepare before initialize and exact Scope",
+    "tracked config/rules committed A vs live B through inputs, prepare_pack and actual outgoing envelope",
+    "same initial unit/generation/path/branch/profile for first native phase",
+    "genuine complete commit graph/result capture/publication verification",
+    "cached published artifact plus changed Goal.objective or Project.rule_refs refuses before new native input",
+    "injected public payload, corrupted stored Context and stale Task CAS refusal",
+    "altered envelope generation rejected atomically in actual Store",
+    "pending registered helper blocks adoption atomically",
+    "initial cancel/fail/last-source owner Drop closes preparation without claiming process recovery",
+    "retained corpus reads after retirement/missing old profile and live-worktree edits; unrelated old blob refuses"
+  ],
+  "mutations": {
+    "parent_actual_assertion_kills": 6,
+    "source1_chain": {
+      "baseline": "f429d16a743f38bcda8bac74889960948f82bbf9",
+      "baseline_tree": "4ae740baf13f1821b2c95dd36f6a36b9568d17a3",
+      "mutations": [
+        {
+          "name": "context_envelope",
+          "source_commit": "0317c899d17d12bdbcd10562437de0108a272ed1",
+          "exit_code": 101,
+          "actual_assertion_kill": true,
+          "log": "/private/tmp/rrx-phase2-source-wiring-mutation-context_envelope.log",
+          "log_sha256": "c16e5128ed7b6eee799ac44b8c3fb73e74764a057784cfa777ffc7add5fa9074"
+        },
+        {
+          "name": "task_cas",
+          "source_commit": "76ad264e9ef5542ab9b4493f7d176916b5fc556a",
+          "exit_code": 101,
+          "actual_assertion_kill": true,
+          "log": "/private/tmp/rrx-phase2-source-wiring-mutation-task_cas.log",
+          "log_sha256": "7fbe66a82f05b6baad01c0aacbad91e9b1260334232a190bf3e5b806133af956"
+        },
+        {
+          "name": "unsettled_helper",
+          "source_commit": "daf6f06a52d2130e6abef7593dc6bb42a1791b22",
+          "exit_code": 101,
+          "actual_assertion_kill": true,
+          "log": "/private/tmp/rrx-phase2-source-wiring-mutation-unsettled_helper.log",
+          "log_sha256": "8dafbec9f9487980c86f2eafd3570e42a234a9da240ff5d657408c5fd2382426"
+        },
+        {
+          "name": "retained_blob_membership",
+          "source_commit": "1c49431e618438f6165b5d78134f9ab67406468d",
+          "exit_code": 101,
+          "actual_assertion_kill": true,
+          "log": "/private/tmp/rrx-phase2-source-wiring-mutation-retained_blob_membership.log",
+          "log_sha256": "6039b75c3ad657c7ff07dc21cd515374ac3b5f133e032917130241cd9497cb02"
+        }
+      ],
+      "restored_commit": "3d85bd614dfd03e133c3fda243e5bee139ea7d48",
+      "restored_controls_log": "/private/tmp/rrx-phase2-source-wiring-mutations-restored.log",
+      "restored_controls_sha256": "edb5c5101d21f51dd0f2f59b4339589038aa0257107a98e5476ba9730f441baf",
+      "restored_controls_exit": 0
+    },
+    "source2_chain": {
+      "baseline": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+      "baseline_tree": "ba75d650c87a34119576b5937666a62a76c71d33",
+      "mutations": [
+        {
+          "name": "workflow_committed_input",
+          "source_commit": "42d1a6a1a07e4ccbb3e16446ac818fdf949ef9b0",
+          "exit_code": 101,
+          "actual_assertion_kill": true,
+          "log": "/private/tmp/rrx-phase2-source-wiring-mutation-workflow_committed_input.log",
+          "log_sha256": "9f5de020fc8b541a41b0ce682168eda99f4fe310ad2f1020d04db35b58596104"
+        },
+        {
+          "name": "cached_instructions",
+          "source_commit": "1bbd647fc17a39888f008c72474b00695669847c",
+          "exit_code": 101,
+          "actual_assertion_kill": true,
+          "log": "/private/tmp/rrx-phase2-source-wiring-mutation-cached_instructions.log",
+          "log_sha256": "c67bacab750b683562f55faebdcf256d614f890d9e57ab31291e089ddf3a5a53"
+        }
+      ],
+      "restored_commit": "7c70b2a00d9f9f412b56e36e8a1367898d6c85a6",
+      "restored_controls_log": "/private/tmp/rrx-phase2-source-wiring-consumer-restored.log",
+      "restored_controls_sha256": "858f9f6b907b8d2eee3e287deebbe6e384125223a0cf11d532e708d98d6b791c",
+      "restored_controls_exit": 0
+    },
+    "refs": [
+      "refs/rrx/verification/agent-execution-phase2-source-wiring/mutations",
+      "refs/rrx/verification/agent-execution-phase2-source-wiring/consumer-mutations"
+    ],
+    "restored_controls": "2 root negative/reader controls at f429 tree; 4 actual Workflow controls at source32 tree; each final restored tree matches its baseline. Not tested after every restore.",
+    "owned_temporary_worktree_removed": true
+  },
+  "delegated_index_evidence": {
+    "component": "Immutable committed corpus lexical index/selection/expansion",
+    "source_commit": "3ef4a35a21ff0cce22b3a5237c9707785d77978c",
+    "baseline": "f459fe98618460971b0bf6d0fe36189cf71352eb",
+    "branch": "feat/agent-execution-committed-context",
+    "worktree": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/agent-execution-committed-context",
+    "clean": true,
+    "changed_paths": [
+      {
+        "path": "crates/rrx/src/context.rs",
+        "sha256": "e55c1b1172bc85928a3d08613ebcc73a9dccb564d154aa9a74625159181a320c"
+      },
+      {
+        "path": "crates/rrx/src/context/committed.rs",
+        "sha256": "7d18d3482255aa70a08599032c8bc595e77ed5e5414247055d95f17cf106f1b4"
+      }
+    ],
+    "api": {
+      "input": "CommittedFile { pub path: String, pub oid: String, pub bytes: Option<Vec<u8>>, pub skipped: Option<String> }",
+      "constructor": "pub(crate) CommittedIndex::build(scope: Scope, revision: String, source_versions: BTreeMap<String,String>, files: Vec<CommittedFile>) -> Result<Self>",
+      "select": "pub fn select(&self, scope: &Scope, request: &SelectionRequest, mandatory: &BTreeMap<String,String>, budget: Budget) -> Result<CommittedOutcome>",
+      "expand": "pub fn expand(&self, scope: &Scope, request: &SelectionRequest, expansion: &Expansion, mandatory: &BTreeMap<String,String>, budget: Budget) -> Result<CommittedOutcome>",
+      "outcome": "CommittedOutcome::Ready { slice: Box<CommittedSlice> } | NeedsBudget { evidence: SelectionEvidence }",
+      "slice_getters": [
+        "scope",
+        "revision",
+        "source_versions",
+        "payload",
+        "evidence"
+      ],
+      "index_getters": [
+        "scope",
+        "revision",
+        "source_versions",
+        "inventory",
+        "files",
+        "skipped"
+      ]
+    },
+    "behavior": [
+      "Pure no-IO corpus validation, exact normalized paths, lowercase OID shape, duplicate refusal,4096files/256KiB per read blob/16MiB read corpus and metadata bounds.",
+      "Complete inventory stored immutably with OID/content SHA256/explicit skip metadata and hash/count; no full path dump in mandatory prompt.",
+      "Lexical symbols/imports/references reuse existing bounded helpers and graph; changed/text ranking plus neighboring files, deterministic tie ordering, finite128-file expansion.",
+      "Explicit mandatory sections/evidence and complete expanded source precede optional maps; streamed encoded-byte accounting returns NeedsBudget without a partial payload.",
+      "Exact full Scope equality for both actual select/expand consumers; nullable measured provider tokens, labeled utf8-byte packing estimates.",
+      "Skipped requested/mandatory content explicitly refuses; selected skipped entries carry reasons."
+    ],
+    "checks": {
+      "source_commit": "3ef4a35a21ff0cce22b3a5237c9707785d77978c",
+      "scope": "Pure component targeted tests plus standard quality/builds, not native/full Phase2",
+      "checks": [
+        {
+          "name": "debug",
+          "command": [
+            "cargo",
+            "test",
+            "--offline",
+            "-p",
+            "rrx",
+            "--lib",
+            "context::committed::tests"
+          ],
+          "cwd": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/agent-execution-committed-context",
+          "target": "/private/tmp/rururunx-committed-context-target",
+          "exit_code": 0,
+          "log": "/private/tmp/rururunx-committed-context-current-debug.txt",
+          "log_sha256": "cb67d63548fcc231dcd4c7e9b50f8290d2a31b02691cd97afcf14f9b48d0bb25"
+        },
+        {
+          "name": "fmt",
+          "command": [
+            "cargo",
+            "fmt",
+            "--all",
+            "--check"
+          ],
+          "cwd": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/agent-execution-committed-context",
+          "target": "/private/tmp/rururunx-committed-context-target",
+          "exit_code": 0,
+          "log": "/private/tmp/rururunx-committed-context-current-fmt.txt",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "clippy",
+          "command": [
+            "cargo",
+            "clippy",
+            "--offline",
+            "-p",
+            "rrx",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "cwd": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/agent-execution-committed-context",
+          "target": "/private/tmp/rururunx-committed-context-target",
+          "exit_code": 0,
+          "log": "/private/tmp/rururunx-committed-context-current-clippy.txt",
+          "log_sha256": "6b1462bd9ee7684cd8003ee6b2780220af9b7061bf2aac396c3c04d241d926b4"
+        },
+        {
+          "name": "build_debug",
+          "command": [
+            "cargo",
+            "build",
+            "--offline",
+            "-p",
+            "rrx"
+          ],
+          "cwd": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/agent-execution-committed-context",
+          "target": "/private/tmp/rururunx-committed-context-target",
+          "exit_code": 0,
+          "log": "/private/tmp/rururunx-committed-context-current-build_debug.txt",
+          "log_sha256": "de62623fb242fe3d69f9b5510576224252f3614c028552c297ccb41007b41548"
+        },
+        {
+          "name": "release",
+          "command": [
+            "cargo",
+            "test",
+            "--offline",
+            "--release",
+            "-p",
+            "rrx",
+            "--lib",
+            "context::committed::tests"
+          ],
+          "cwd": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/agent-execution-committed-context",
+          "target": "/private/tmp/rururunx-committed-context-release",
+          "exit_code": 0,
+          "log": "/private/tmp/rururunx-committed-context-current-release.txt",
+          "log_sha256": "54ab97eda951f171dda6a63b19fee8b54a96dca4aa691cf86105807411476454"
+        },
+        {
+          "name": "build_release",
+          "command": [
+            "cargo",
+            "build",
+            "--offline",
+            "--release",
+            "-p",
+            "rrx"
+          ],
+          "cwd": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/agent-execution-committed-context",
+          "target": "/private/tmp/rururunx-committed-context-release",
+          "exit_code": 0,
+          "log": "/private/tmp/rururunx-committed-context-current-build_release.txt",
+          "log_sha256": "6ab254ae8cb625a20608ebd12f75d55165875330702e51ae00378d59cb16d3da"
+        }
+      ]
+    },
+    "mutations": {
+      "ledger": "/private/tmp/rururunx-committed-context-mutations.json",
+      "compiled_actual_consumer_kills": 10,
+      "operators": [
+        "scope",
+        "mandatory_budget",
+        "mandatory_body",
+        "inventory_bytes_digest",
+        "expansion_limit",
+        "duplicate_path",
+        "per_file_limit",
+        "corpus_limit",
+        "inventory_limit",
+        "path_normalization"
+      ],
+      "restored_controls": "7passed/0failed",
+      "owned_detached_worktree_removed": true
+    },
+    "limitations": [
+      "Independent code reviews have not yet run; this implementation report is not self-review approval.",
+      "Constructor requires the parent registered Git reader to attest complete inventory and actual OID-to-bytes relationship. OID syntax and SHA256 metadata are checked, no mathematical Git SHA1 recomputation or finalization proof.",
+      "Explicit mandatory frame text and authoritative dependency origins/currentness belong to the parent producer; this pure core preserves/hashes supplied text but grants no trusted rule/native authority.",
+      "Budget is a complete rendered core-frame hard cap; Workflow discretionary accounting must separately preserve mandatory overhead at its caller.",
+      "Lexical graph is heuristic and bounded, not AST/callsite completeness.",
+      "No legacy live reader/ps/Git/Store/native execution was invoked by these pure controls. Parent Sources integration, same-Unit adoption, rule frame, Gates/CLI, native/Phase2/MVP acceptance remain pending.",
+      "The crate-private constructor has a narrow dead_code allowance until its parent production consumer is connected."
+    ],
+    "live_handles": [],
+    "commands_closed": true,
+    "implementation_worktree_retained": true,
+    "other_sources_modified": false
+  },
+  "debug_rrx_binary": {
+    "path": "/private/tmp/rrx-phase2-target/debug/rrx",
+    "sha256": "f8efd39b00de29b02b1bcae48355b50dfd482165f37deebc80cfea23e6826b0d",
+    "built_source": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+    "cargo_install_current_source": false
+  },
+  "logs": [
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-check.log",
+      "sha256": "8fae1988b192438ce4505c676c71f102653aacb451be5253782359ac3578eadf",
+      "bytes": 184
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-clippy1.log",
+      "sha256": "db084d3cae1bffea74680cf6cb9295d3985fb561ff5269fa12d8eee267a186ea",
+      "bytes": 1302
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-clippy2.log",
+      "sha256": "57fe59a00faeda84aa76ba4c227edac1082a8842b09fe8cb5059e1265b4451bf",
+      "bytes": 184
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-consumer-restored.log",
+      "sha256": "858f9f6b907b8d2eee3e287deebbe6e384125223a0cf11d532e708d98d6b791c",
+      "bytes": 877
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-final-bounded-build.log",
+      "sha256": "299f16a2c523be18fef769975d2df00e0505521db047540feea3a74b94666887",
+      "bytes": 72
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-final-bounded-clippy.log",
+      "sha256": "120cc54b27671d53fd8acdc0d5fed490fcb344bcf496710e1dbd15f14da46dfa",
+      "bytes": 184
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-final-bounded-fmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-final-bounded-regression.log",
+      "sha256": "c215208a6eb008059bab1487970d93cf3d64b978a036f44a3a80ec81ec01d46b",
+      "bytes": 68828
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-final-regression.log",
+      "sha256": "995224665eb3554950bb67b0f7fe3d6e07687aef071a7f0dad254d8284bd972a",
+      "bytes": 64588
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-mutation-cached_instructions.log",
+      "sha256": "c67bacab750b683562f55faebdcf256d614f890d9e57ab31291e089ddf3a5a53",
+      "bytes": 1666
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-mutation-context_envelope.log",
+      "sha256": "c16e5128ed7b6eee799ac44b8c3fb73e74764a057784cfa777ffc7add5fa9074",
+      "bytes": 2000
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-mutation-retained_blob_membership.log",
+      "sha256": "6039b75c3ad657c7ff07dc21cd515374ac3b5f133e032917130241cd9497cb02",
+      "bytes": 1229
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-mutation-task_cas.log",
+      "sha256": "7fbe66a82f05b6baad01c0aacbad91e9b1260334232a190bf3e5b806133af956",
+      "bytes": 1537
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-mutation-unsettled_helper.log",
+      "sha256": "8dafbec9f9487980c86f2eafd3570e42a234a9da240ff5d657408c5fd2382426",
+      "bytes": 1641
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-mutation-workflow_committed_input.log",
+      "sha256": "9f5de020fc8b541a41b0ce682168eda99f4fe310ad2f1020d04db35b58596104",
+      "bytes": 1202
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-mutations-restored.log",
+      "sha256": "edb5c5101d21f51dd0f2f59b4339589038aa0257107a98e5476ba9730f441baf",
+      "bytes": 651
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-negative1.log",
+      "sha256": "730880a0218b54a542776e3f068106d594f0bdd685931dfb41bcd2513f7ec66c",
+      "bytes": 1358
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-negative2.log",
+      "sha256": "b528b0f0775bddd9effc0c98a964aa5eba5ec199e2ce9f5d4c8cfaba56549d3b",
+      "bytes": 660
+    },
+    {
+      "path": "/private/tmp/rrx-phase2-source-wiring-regression1.log",
+      "sha256": "e1c9dedc1d77fd53f88ef405de8d22ea054676dc14d141df5b0cb918c5933772",
+      "bytes": 68453
+    }
+  ],
+  "known_limits": [
+    "No authenticated Claude/Codex/Grok execution, native configuration/hooks qualification, Linux build/run or OS CI was performed.",
+    "Protocol peers and early evidence gates are fixtures; six provider/class cases are sequential, not four-Task acceptance.",
+    "Runtime orchestration/operational CLI and production reviewer/verifier/evidence gates remain unfinished.",
+    "Existing Workflow source recovery/changed governing-frame recovery needs explicit fresh provenance; ledger rows do not mint initial ownership.",
+    "Unsupported external/untracked mandatory inputs refuse; symlinks/submodules/LFS qualification remains conservative.",
+    "Complete index has 4096-file/256KiB per blob/16MiB corpus limits; compact dependencies must fit retained 128-key contract.",
+    "Byte estimates are not provider tokens; actual serialized Native input has its independent cap. Larger ContextEfficiency-disabled workloads beyond 128 mandatory files refuse.",
+    "Finite retained reader membership is from actual Git tree/OID/blob, no mathematical SHA1 recomputation or arbitrary object read grant.",
+    "Cleanup remains best effort; no process-death/security-sandbox guarantee.",
+    "Default-parallel full run failed three existing fixtures; only bounded-parallel fixed-source full success is credited.",
+    "README Status/licenses/main unchanged; no push/PR/merge/current-source installation.",
+    "This checkpoint is not whole Phase2 completion, Phase3 authorization or MVP completion."
+  ],
+  "next_dependency_ready": [
+    "production initial/verification/review gate consumers and Runtime/CLI owner wiring",
+    "recovery and remaining resource/build/hook profiles",
+    "Linux/installation/CI/coordinated final STRICT reviews"
+  ],
+  "phase3_approval_gate_retained": true,
+  "live_handles": []
+}

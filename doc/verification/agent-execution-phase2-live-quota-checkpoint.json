@@ -1,0 +1,266 @@
+{
+  "format": "rrx.phase2.live-quota-checkpoint.v1",
+  "baseline": "6691bdfb81027aa24a46d0fa9af30540c03439da",
+  "current_source": "48ed158e824aeab749b5b121d78438e4fd506891",
+  "production_source": "d30a9bec15fbe3b0943543a6766b1eba73f2f1a9",
+  "host": {
+    "os": "macOS 26.6.2",
+    "build": "25G83",
+    "arch": "aarch64",
+    "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+    "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+    "git": "2.49.0 via explicit verification PATH"
+  },
+  "checks": {
+    "full_workspace": {
+      "source": "d30a9bec15fbe3b0943543a6766b1eba73f2f1a9",
+      "primary_passed": 537,
+      "failed": 0,
+      "primary_ignored": 30,
+      "rrx_library": 417,
+      "rrx_integrations": 113,
+      "tracker_unit": 4,
+      "tracker_discovery": 1,
+      "rrx_doctests": 2,
+      "nested_child_entries_not_double_counted": true
+    },
+    "current_controls": {
+      "source": "48ed158e824aeab749b5b121d78438e4fd506891",
+      "passed": 24,
+      "failed": 0,
+      "production_equal_to_full_regression_source": true,
+      "change": "Only test MutexGuard lexical scopes after full regression"
+    },
+    "current_clippy": "workspace/all-targets -D warnings passed",
+    "fmt": "passed",
+    "git_diff_check": "passed",
+    "review_round21": "Two independent component approvals, no C/H/M/L findings"
+  },
+  "logs": [
+    {
+      "name": "reproduction",
+      "source_commit": "904b037533e96604e6ad7d2d76aed01fe2d5129e",
+      "exit_code": 101,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-reproduction.log",
+      "bytes": 1168,
+      "sha256": "8c2b6afb1080807dcbdb51f82d39a8bbff999ab848b74ec1094f647613921433"
+    },
+    {
+      "name": "initial-correction",
+      "source_commit": "f63048ab19b486fb5ae2d157dcbba6704418e60a",
+      "exit_code": 0,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-corrected.log",
+      "bytes": 511,
+      "sha256": "2f3e507a18e983710f8865ed968e1383292c3d28771cc43b298288eb1fb522d4"
+    },
+    {
+      "name": "initial-full-regression",
+      "source_commit": "f63048ab19b486fb5ae2d157dcbba6704418e60a",
+      "exit_code": 101,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-regression.log",
+      "bytes": 68089,
+      "sha256": "5133cb56055eb7d95bc11963f4860e959f95044795499a7393ac3aa9715b8a84"
+    },
+    {
+      "name": "separate-wait-probe-controls",
+      "source_commit": "a75629ee7e5df1547502dd67dd7b027067275dba",
+      "exit_code": 0,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-followup-controls.log",
+      "bytes": 1132,
+      "sha256": "b091eb717039feb7c9c71e99bacc24477df7f836360f1bd02adc1329595537b6"
+    },
+    {
+      "name": "live-recovery-reproduction",
+      "source_commit": "5a89957d0263ece8bd22f5b383c190cb1847885e",
+      "exit_code": 101,
+      "path": "/private/tmp/rrx-phase2-claude-live-recovery-reproduction.log",
+      "bytes": 1175,
+      "sha256": "7ae66ee6c611b99028dd2cec31a83b23f4d73b3e0196f41d88571304e0f2a3ea"
+    },
+    {
+      "name": "full-regression",
+      "source_commit": "d30a9bec15fbe3b0943543a6766b1eba73f2f1a9",
+      "exit_code": 0,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-final-regression.log",
+      "bytes": 67044,
+      "sha256": "f812dd1ffdb3993a8cb01ea3d8b9871c3acdc55ac0d71423b8b6c3cc9b61784a"
+    },
+    {
+      "name": "test-lock-clippy",
+      "source_commit": "d30a9bec15fbe3b0943543a6766b1eba73f2f1a9",
+      "exit_code": 101,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-clippy.log",
+      "bytes": 2218,
+      "sha256": "379d7dda1ee4eee314db11991437054176b466f5903101b36a036edd8602b657"
+    },
+    {
+      "name": "current-clippy",
+      "source_commit": "48ed158e824aeab749b5b121d78438e4fd506891",
+      "exit_code": 0,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-final-clippy.log",
+      "bytes": 184,
+      "sha256": "252532c48e67b8e9cc89c2fe83f5a65315c0efc4f1457fae6dd5fd4cecc000fd"
+    },
+    {
+      "name": "current-consumer-controls",
+      "source_commit": "48ed158e824aeab749b5b121d78438e4fd506891",
+      "exit_code": 0,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-current-controls.log",
+      "bytes": 2991,
+      "sha256": "2972d4895f0798ae3e2ed982207a8057ea5f97275b3afb7ad2d3f3869816b2dd"
+    },
+    {
+      "name": "early-wait-mutation",
+      "source_commit": "8b29e340bbd9fc087b235977757a8467914337ce",
+      "exit_code": 101,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-mutation.log",
+      "bytes": 1273,
+      "sha256": "821956e63c45a64a6c65931dc91fdf70fd62a6f5d7ec7fcff910324766ac203d"
+    },
+    {
+      "name": "early-wait-restoration",
+      "source_commit": "ba06d73be8dd8fa13401729b9c2b180c3fa6198d",
+      "exit_code": 0,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-restored.log",
+      "bytes": 500,
+      "sha256": "627c3eeba8d494bba2974297b63fa8e620381038bb109f2068f648414a51d3df"
+    },
+    {
+      "name": "final-wait-mutation",
+      "source_commit": "a89b2a6789b5fa2aa5739bb8218f80ae67ea00ad",
+      "exit_code": 101,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-final-wait-mutation.log",
+      "bytes": 1705,
+      "sha256": "34e10619e1d3f86436dd83970e3fd2d0848b5796e233832b17d69800bef95198"
+    },
+    {
+      "name": "final-probe-mutation",
+      "source_commit": "da3ec78d28f429014c1671b9950e0aab5fc4551f",
+      "exit_code": 101,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-final-probe-mutation.log",
+      "bytes": 1140,
+      "sha256": "4e5e701b8f92c9ac37c3b3790106bba35ca1b34935d3abf813e34369029eaf74"
+    },
+    {
+      "name": "final-recovery-mutation",
+      "source_commit": "02697d7684eddd7b99c6305e9d11971f27b74051",
+      "exit_code": 101,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-final-recovery-mutation.log",
+      "bytes": 1595,
+      "sha256": "ac2f8538dcf6bf27c16bc20145d1c6192f9060e174b851a9a8f42dcee3374b12"
+    },
+    {
+      "name": "final-workflow-mutation",
+      "source_commit": "76bae6b96176297cc45446783b454bdfc2a8e431",
+      "exit_code": 101,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-final-workflow-mutation.log",
+      "bytes": 1136,
+      "sha256": "6d7a71d0848dab3e44e6dfd3987dd32c4f0884f25bb3e316b1219ca1dd9ef5a7"
+    },
+    {
+      "name": "final-restored-consumer-controls",
+      "source_commit": "88b743c68eacc7ae693b458e4a97127cc1325084",
+      "exit_code": 0,
+      "path": "/private/tmp/rrx-phase2-claude-live-quota-final-restored-controls.log",
+      "bytes": 2987,
+      "sha256": "f6f6244d90bf2f919c7c86c58696b51c19e0f039512faa02a7ddf4976935b6ac"
+    }
+  ],
+  "source_files": {
+    "crates/rrx/src/execution/native.rs": {
+      "git_blob": "d5dc2be24eb332ecaa0f7ff69d000ab29e0dfeff",
+      "sha256": "a3afd7df270d75c7ad954101feb34dd4ebcf043dfe2754838bed10ab564c742c",
+      "bytes": 58063
+    },
+    "crates/rrx/src/execution/native/native_fixture.py": {
+      "git_blob": "6adf9e9524ff1e47b642f9fcc359148fc0d76e70",
+      "sha256": "8f683847aef536472ffd9e0e1c518352a6ae3dd7f4a1d3d9aef174501ef37483",
+      "bytes": 11079
+    },
+    "crates/rrx/src/execution/native/tests.rs": {
+      "git_blob": "25bdc77726d900bcb821c7e71bec34def90a0101",
+      "sha256": "fac37e9740c7eb10da07d7f4fcb3a944aae3bd40d7408b8fb6bc104ab49b8535",
+      "bytes": 47941
+    },
+    "crates/rrx/src/state/execution/quotas.rs": {
+      "git_blob": "da8dd0107b2ec3acb8a9ecf180d976ca3261fcc9",
+      "sha256": "8bd48b5ccb50d544000b5f65e37868e621b9850fe3616a1cf2c55acd85d17cd2",
+      "bytes": 23075
+    },
+    "crates/rrx/src/workflow.rs": {
+      "git_blob": "a00c3dc7934100c5d492d599f22b5455fc8763ee",
+      "sha256": "1522004a3389c626269df19dceca4221e03e0a2e5aa57e8dea57895528f838f6",
+      "bytes": 138313
+    },
+    "crates/rrx/src/workflow/managed_tests.rs": {
+      "git_blob": "163a96272ec412edd0410d59a49e83e16cbffbfa",
+      "sha256": "4ce913a03d710b0b44a1bc07784d733069a1190948db37dcc0aee13bdc093bbb",
+      "bytes": 41814
+    },
+    "doc/design/agent-execution-design.md": {
+      "git_blob": "23ace496c563a731c891130dec538072bbba54c0",
+      "sha256": "d0be6a778833c1c4b2d53800f52c8f28d3bda5108516d3f14ad88fb709bfaeb5",
+      "bytes": 51628
+    },
+    "doc/design/master/agent-execution.md": {
+      "git_blob": "7ca527f1a0f2e302210b7002c8536c9c096ad038",
+      "sha256": "a016b12b9429ed2936675bc6a8ebd218f9ea70540e5383e8d7059bb4c8cec02e",
+      "bytes": 9257
+    }
+  },
+  "mutations": [
+    {
+      "name": "omit Claude live wait producer",
+      "commit": "a89b2a6789b5fa2aa5739bb8218f80ae67ea00ad",
+      "restore": "03f68605ecf97af87fb73e96958a028487cd415f",
+      "oracle": "Actual preterminal watch None instead of Quota",
+      "compiled": true,
+      "failure": "runtime assertion, not compiler rejection",
+      "exit_code": 101,
+      "restored_tree": "96010253900de61a4bab2e6e2e2997e7a88f5b28"
+    },
+    {
+      "name": "let telemetry waiting mint a probe",
+      "commit": "da3ec78d28f429014c1671b9950e0aab5fc4551f",
+      "restore": "da27626483ae61202dd96f9548dfdf0fd8a64d53",
+      "oracle": "Actual live unit unexpectedly becomes a recovery probe",
+      "compiled": true,
+      "failure": "runtime assertion, not compiler rejection",
+      "exit_code": 101,
+      "restored_tree": "96010253900de61a4bab2e6e2e2997e7a88f5b28"
+    },
+    {
+      "name": "omit accepted recovery dispatch",
+      "commit": "02697d7684eddd7b99c6305e9d11971f27b74051",
+      "restore": "a426686fad2d0432321511e9ee07d8f947416a9e",
+      "oracle": "Accepted pool Available but preterminal watch still Quota",
+      "compiled": true,
+      "failure": "runtime assertion, not compiler rejection",
+      "exit_code": 101,
+      "restored_tree": "96010253900de61a4bab2e6e2e2997e7a88f5b28"
+    },
+    {
+      "name": "omit Workflow recovered Task projection",
+      "commit": "76bae6b96176297cc45446783b454bdfc2a8e431",
+      "restore": "88b743c68eacc7ae693b458e4a97127cc1325084",
+      "oracle": "Actual Workflow Task WaitingQuota instead of Implementing",
+      "compiled": true,
+      "failure": "runtime assertion, not compiler rejection",
+      "exit_code": 101,
+      "restored_tree": "96010253900de61a4bab2e6e2e2997e7a88f5b28"
+    }
+  ],
+  "mutation_ref": "refs/rrx/verification/agent-execution-phase2-claude-live-quota/final-mutations",
+  "restored_positive": {
+    "commit": "88b743c68eacc7ae693b458e4a97127cc1325084",
+    "passed": 24,
+    "failed": 0,
+    "tree": "96010253900de61a4bab2e6e2e2997e7a88f5b28"
+  },
+  "limits": [
+    "Account-free local protocol peers and owned temporary Git repositories only; not actual quota exhaustion/recovery.",
+    "Workflow Sources/Gates here remain fixture ports. Operational Runtime/CLI orchestration, production source/evidence integrations and coordinated Phase2 acceptance remain outstanding.",
+    "No actual authenticated Claude/Codex/Grok, 4+ native Task matrix, Linux build/run, Docker engine, installed current binary or native auth/settings/hooks qualification.",
+    "No final Phase2/Phase3/MVP or release acceptance; main, README Status and license files unchanged."
+  ]
+}

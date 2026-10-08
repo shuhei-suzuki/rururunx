@@ -1,0 +1,433 @@
+{
+  "component": "Committed Workflow source and same-unit adoption, STRICT independent static reviews",
+  "reviewed_final_source": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+  "phase2_complete": false,
+  "reports": [
+    {
+      "round": "source1",
+      "original_report_path": "/private/tmp/rururunx-agent-execution-committed-producer-source1-a.json",
+      "original_report_sha256": "0ea97b6b251187a6cdae4bbcb8796326905421d4f8137374e4ac055ddbda369f",
+      "report": {
+        "review": "Independent STRICT committed Workflow producer/adoption component review A",
+        "source_commit": "99de44ab44d07d0dbe081bd78aa8dd189d8ab637",
+        "baseline_commit": "3498c06",
+        "approved_bootstrap_design": "9b4ad6a7ce61b428d3bade9d7a8a9bde292ae4e4, agent-execution-design.md section10.1",
+        "verdict": "REQUEST_CHANGES",
+        "counts": {
+          "Critical": 0,
+          "High": 0,
+          "Medium": 2,
+          "Low": 0
+        },
+        "findings": [
+          {
+            "id": "CP-M1",
+            "severity": "Medium",
+            "title": "Initial adoption compares the serialized Context envelope to the unwrapped source payload and always rejects the ordinary Workflow consumer",
+            "locations": [
+              "crates/rrx/src/execution/workflow_source.rs:65-76",
+              "crates/rrx/src/execution/workflow_source.rs:350-360",
+              "crates/rrx/src/workflow.rs:1295-1311",
+              "crates/rrx/src/workflow.rs:1439-1458",
+              "crates/rrx/src/workflow.rs:3518-3538",
+              "crates/rrx/src/state/execution.rs:655-670"
+            ],
+            "evidence": "take_initial_executor renders expected as SourceSnapshot whose payload is the raw rules plus selected committed-context lines. The real Workflow prepare_agent instead constructs PreparedInput.payload by serde_json::to_string(&context.data). make_context wraps source.payload inside an object containing phase/workflow/generation/budget/payload. InitialWorkflowExecutor.adopt compares these different representations directly. The ordinary producer payload ends with the selected JSON-line newline, while serialized context.data is an outer JSON object without that trailing newline, so equality cannot hold even when every scope/revision/dependency is current. The failure consumes/drops the genuine preparation capability and occurs before the atomic adoption call.",
+            "causal_rationale": "The newly connected first-native consumer cannot adopt the real prepared namespace for Quick or Standard/Strict. This is a concrete current producer/consumer format mismatch, not missing future Sources/Gates/CLI implementation.",
+            "minimal_fix": "Define one canonical authoritative input representation across make_context, prepare_agent, the private initial producer and the Store proof. Compare the actual serialized envelope and its immutable phase/class/generation/budget/payload fields rather than weakening equality or replacing this gate with caller metadata. The Store comparison currently hashes context.data.payload, so coordinate that comparison with the chosen exact PreparedInput representation as well. Account for the complete rendered envelope at the existing1MiB input cap before adoption/dispatch, not just the inner source string.",
+            "causal_controls_not_executed": [
+              "Use actual ManagedWorkflowSources.prepare then WorkflowEngine.initialize and the real first Executor preparation consumer with valid registered config. Verify same Unit/generation/path atomically adopted and the exact actual context envelope accepted before native input.",
+              "Mutate the inner payload, outer phase/generation/budget or persisted Context while preserving scope/revision: adoption must refuse atomically.",
+              "Use escaped UTF8/quote-heavy required content near the native input bound; measure actual serialized PreparedInput envelope and verify refusal before adoption/dispatch on overflow."
+            ]
+          },
+          {
+            "id": "CP-M2",
+            "severity": "Medium",
+            "title": "Adoption treats the intentionally successful no-LFS grep exit1 as unresolved preparation, permanently blocking valid prepared units",
+            "locations": [
+              "crates/rrx/src/state/execution.rs:625-629",
+              "crates/rrx/src/execution/attempts.rs:325",
+              "crates/rrx/src/execution/results.rs:779-793",
+              "crates/rrx/src/execution/git_io.rs:164-199"
+            ],
+            "evidence": "The adoption unsettled query rejects every helper whose receipt.exit is not string0, even when its state is confirmed/resolved. Every ordinary preparation invokes qualified_content_scoped. Its registered git grep -l LFS-pointer check intentionally accepts status1 for no matches, the usual valid repository case. UnitGit records the observed exit as string1 and marks the helper Confirmed when capture succeeds. That genuine helper row persists on the prepared unit, so the adoption query necessarily reports unsettled and refuses it. The earlier CP-M1 currently masks this independent failure on the complete consumer path.",
+            "causal_rationale": "Even after the payload representation is corrected, the normal healthy no-LFS preparation cannot be adopted. Known helper completion and semantic acceptance cannot be represented by a universal exit0 rule; observed source-check exit1 is not an unknown/native effect.",
+            "minimal_fix": "Retain conservative refusal for Pending/Unknown helpers and non-Git/native/quota effects, but use actual private producer semantic acceptance of preparation checks or an appropriate typed accepted-helper receipt. Do not globally bless arbitrary nonzero helper exits; distinguish the deliberately accepted no-match scan from rejected/unknown commands.",
+            "causal_controls_not_executed": [
+              "Prepare a normal committed repository with no LFS pointer; retain the actual confirmed exit1 LFS scan row and verify the real atomic first-phase adoption succeeds once its input is valid.",
+              "Pending/Unknown helper, genuine failed mandatory source check, non-Git effect, quota lease/wait and stale authority must still reject without unit/Workflow partial mutation.",
+              "A receipt-selection omission mutant must be killed by the actual no-LFS positive and genuine unresolved negative controls separately; CP-M1 must not mask the query test."
+            ]
+          }
+        ],
+        "verified_other_boundaries": [
+          "Committed rule/config bytes are obtained from the actual registered tree/blob corpus at the prepared full base revision. Frame::build resolves declared tracked references within the registered Project path, hashes/parses those bytes, rejects missing/skipped/external unsupported origins, and pins Runtime native command/provider identity.",
+          "ManagedWorkflowSources.committed_input returns a private config/source/budget frame, and Workflow.inputs returns it before the legacy live load_rules fallback. The actual new ManagedWorkflowSources implementation always returns Some or errors; its error does not turn into a legacy live fallback.",
+          "The private PreparedExecutor/PreparedAdoption provenance is not deserializable. Physical namespace/clean HEAD checks precede the Immediate adoption transaction; the transaction uses exact unit authority plus Task/Project/Goal/Workflow/Context ownership and CAS and changes only unit phase/version, Workflow unit binding/version and factual audit.",
+          "First Executor phase and prior-history checks prevent later-phase reuse. Preparation abandonment remains distinct from Agent work success/artifacts. Workflow cancellation removes the retained initial source capability after actual terminal decision publication.",
+          "The retained reader source_blob command is allowed only for bounded ordinary blob OIDs returned by its exact artifact-revision tree enumeration; every helper remains journaled and epoch/artifact fenced without reopening old Task native/finalization permission.",
+          "Parent frame packing separates mandatory overhead from discretionary repo-map selection and preserves the existing hard native input cap at its downstream native consumer. The representation/cap accounting must be aligned as noted in CP-M1."
+        ],
+        "excluded_self_authored_code": {
+          "paths": [
+            "crates/rrx/src/context/committed.rs"
+          ],
+          "exclusion": "Reviewer authored the index at original a313aa1/3ef4a35. This review evaluates only the distinct parent-authored producer/adoption and consumer integration, including use of the agreed index API. It provides no independent approval of index implementation, lexical helpers or its prior tests/mutations. The target index delta only removes the temporary dead_code allowance."
+        },
+        "limits": [
+          "Immutable Git-object static review only; no tests/build, native/accounts/auth/network, process signals or OS probes. Parent check/test/log claims are not inherited.",
+          "No peer reports, test author findings, aggregate/progress/checkpoint reports, logs, dirty source or later commits read.",
+          "The proposed causal controls were not executed.",
+          "Runtime/operational CLI, full production Gate providers and hook/native conformance remain announced pending work and were not counted merely for being unfinished.",
+          "No complete descendant cleanup or universal same-user filesystem protection claim is certified.",
+          "Verdict applies only to this component integration source and does not certify final Phase2, native compatibility or MVP."
+        ],
+        "live_handles": [],
+        "commands_closed": true,
+        "source_modified": false,
+        "report_is_only_write": true
+      }
+    },
+    {
+      "round": "source1",
+      "original_report_path": "/private/tmp/rrx-phase2-workflow-source-review-c-99de44a.json",
+      "original_report_sha256": "440ea91efc0da1fbf741b6637991862af799973301be14ffd55bad965121a682",
+      "report": {
+        "reviewer": "workflow_source_review_c",
+        "source_commit": "99de44ab44d07d0dbe081bd78aa8dd189d8ab637",
+        "baseline_commit": "f459fe98618460971b0bf6d0fe36189cf71352eb",
+        "risk": "STRICT",
+        "verdict": "REQUEST_CHANGES",
+        "scope": "component only: committed Workflow source/rule ingress, initial native same-unit adoption, retained corpus reader and committed index connection",
+        "findings": [
+          {
+            "id": "C-H1",
+            "severity": "High",
+            "title": "First native adoption compares serialized Context envelope with raw source text",
+            "evidence": [
+              {
+                "path": "crates/rrx/src/workflow.rs",
+                "line": 1305,
+                "detail": "PreparedInput.payload is serde_json::to_string(&context.data), including phase/workflow/generation/budget/payload."
+              },
+              {
+                "path": "crates/rrx/src/execution/workflow_source.rs",
+                "line": 75,
+                "detail": "InitialWorkflowExecutor::adopt requires input.payload == expected.payload, the raw Frame::render text."
+              },
+              {
+                "path": "crates/rrx/src/state/execution.rs",
+                "line": 661,
+                "detail": "Adoption proof hashes the supplied input payload, then compares with Context.data[payload] raw text."
+              }
+            ],
+            "actual_guard_condition": "InitialWorkflowExecutor::adopt input.payload == self.expected.payload and Store adoption payload digest compare",
+            "impact": "The actual Workflow prepare_agent consumer always rejects the ordinary first native Executor before native launch, then dropping its consumed capability retires the bootstrap. Compilation alone does not expose this mismatch.",
+            "verification": "Confirmed by immutable source producer/consumer inspection. No runtime test executed by reviewer.",
+            "requested_change": "Define the Context envelope and raw committed payload separately; validate the real PreparedInput metadata and its Context envelope, then bind proof to exact stored Context raw payload. Add an actual Workflow initialize/Worktree/first-native success control and guard-removal mutation."
+          },
+          {
+            "id": "C-H2",
+            "severity": "High",
+            "title": "Cached retained frame silently reuses stale governing Project/Goal instructions",
+            "evidence": [
+              {
+                "path": "crates/rrx/src/execution/workflow_source.rs",
+                "line": 263,
+                "detail": "Retained cache rebuild is controlled only by artifact identity and revision; cached branch compares old Frame versions with artifact dependencies."
+              },
+              {
+                "path": "crates/rrx/src/execution/workflow_source.rs",
+                "line": 293,
+                "detail": "Governing execution validation runs only while prepared capability remains; after adoption it is absent."
+              },
+              {
+                "path": "crates/rrx/src/execution/workflow_source.rs",
+                "line": 428,
+                "detail": "Frame::build captures Project mandatory rule refs/config and Goal instructions into static fields."
+              },
+              {
+                "path": "crates/rrx/src/execution/workflow_source.rs",
+                "line": 539,
+                "detail": "Frame::render refreshes Task digest but retains Goal/config/rule versions and payload."
+              }
+            ],
+            "actual_guard_condition": "frame.artifact/revision cache identity and frame.versions == artifact.dependencies do not validate current Project/Goal semantic instruction frame",
+            "impact": "After first artifact publication, changing Goal objective/source refs or Project rule/config refs does not change source_versions/payload. Workflow source drift checks may accept it; a later fresh Executor reserves under the changed governing_digest but receives the old mandatory instructions. A changed Project rule ref can select another already-committed rule at the same SHA without being reflected.",
+            "verification": "Confirmed by immutable control-flow/data-flow inspection. No runtime test executed by reviewer.",
+            "requested_change": "Store and compare a current Project/Goal semantic instruction identity for cached frames and ensure current instruction changes produce explicit refusal or deliberate Context invalidation/reconstruction. Preserve artifact captured dependency evidence separately from current governing instructions. Add actual later-phase drift controls for Goal and Project rule/config refs."
+          }
+        ],
+        "confirmed_components": [
+          "Preparation capability is non-Clone/non-serializable with abandonment guard.",
+          "Committed source reader resolves exact OID tree/blob objects with finite file/corpus bounds and explicit skipped entries.",
+          "Adoption shares full Workflow binding checks and registers unit/record changes in one Immediate transaction.",
+          "Retained source reader admits only artifact revision tree and blob OIDs proven by that tree; existing epoch/artifact intent-before-spawn checks remain."
+        ],
+        "limitations": [
+          "Static component review only; reviewer executed no tests, native Agents, authenticated sessions, network or OS probes.",
+          "No Phase2, Phase3, Linux/macOS native acceptance, release, full Workflow gates or MVP approval.",
+          "Other reviewers findings/reports/logs were not read or supplied.",
+          "Current committed reader rejects required external rule/config references; this is an explicit limitation, not qualified external-origin support."
+        ]
+      }
+    },
+    {
+      "round": "source2",
+      "original_report_path": "/private/tmp/rururunx-agent-execution-committed-producer-source2-a.json",
+      "original_report_sha256": "8f40cd02aeca25e51d6c1f62b39240d9fc8fdc3351a308dcb4e9f2efbf090203",
+      "report": {
+        "source_commit": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+        "baseline": "99de44ab44d07d0dbe081bd78aa8dd189d8ab637",
+        "reviewer": "/root/issue26_registry",
+        "verdict": "APPROVE",
+        "scope": "Independent static component re-review of distinct-author managed committed Workflow source producer, first prepared-unit adoption, exact Context envelope authority, registered/retained Git readers and associated consumer tests/design 10.2. Self-authored context/committed.rs and its pure-core tests are excluded from independent approval.",
+        "counts": {
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0
+        },
+        "findings": [],
+        "own_prior_findings": [
+          {
+            "id": "CP-M1",
+            "severity": "Medium",
+            "disposition": "Closed by source inspection",
+            "evidence": [
+              "execution/workflow_source.rs:70-79 parses actual outgoing Context envelope and compares its inner payload to the private rendered source snapshot, retaining scope/revision/non-Workflow dependency equality.",
+              "execution/workflow_source.rs:82-90 passes the entire actual input.payload to PreparedExecutor.adopt.",
+              "execution/attempts.rs:81-97 binds that complete serialized envelope digest to non-serializable PreparedAdoption.",
+              "state/execution.rs:646-668 retrieves the immutable scoped Context in the same Immediate adoption transaction and compares its complete serialized data digest and non-Workflow source versions.",
+              "workflow.rs:1295-1305 supplies the identical serde_json::to_string(context.data) representation."
+            ],
+            "controls_reviewed_not_executed": [
+              "execution/workflow_source/tests.rs:76-121 preserves raw inner payload but alters envelope generation; the actual adoption must reject in Store.",
+              "workflow/committed_source_tests.rs:331-538 exercises real managed source/Workflow/native protocol fixture consumers for Claude and Codex across three classes, checks same allocated unit and full outgoing serialized Context bytes, then real artifact capture/publication/verification.",
+              "workflow/committed_source_tests.rs:670-718 independently targets injected payload, Task CAS and stored Context corruption before native input."
+            ]
+          },
+          {
+            "id": "CP-M2",
+            "severity": "Medium",
+            "disposition": "Closed by source inspection",
+            "evidence": [
+              "state/execution.rs:625-629 rejects non-Git effects or effects outside confirmed/resolved states without incorrectly requiring every observed Git exit to be zero.",
+              "execution/results.rs:779-793 still explicitly accepts only the semantic no-LFS grep result (exit 1 or success with empty output), while fatal qualification failures prevent producer completion.",
+              "execution/git_io.rs:164-199 persists actual observed exit and confirms observed helper completion; it does not invent successful qualification.",
+              "execution/attempts.rs:65-79 still revalidates actual namespace, base HEAD and clean worktree before the atomic adoption."
+            ],
+            "controls_reviewed_not_executed": [
+              "execution/workflow_source/tests.rs:134-148,155-236 injects genuinely pending registered helper and checks transaction refusal, logical preparation retirement and no native/Session/artifact.",
+              "workflow/committed_source_tests.rs:331-538 exercises the normal no-LFS repository through actual first native adoption."
+            ]
+          }
+        ],
+        "additional_checks": [
+          {
+            "topic": "Cached governing instruction drift",
+            "evidence": "execution/workflow_source.rs:233-240 compares captured governing digest before retained capture/reuse. The digest is shared with Store's existing admitted authority check (state/execution.rs:421-451). Real Workflow callers supply their scoped Project snapshot; subsequent write/admission CAS remains authoritative. workflow/committed_source_tests.rs:494-535 targets actual changed Goal objective and Project rule-reference set after capability consumption and verifies no additional native input/artifact rewrite."
+          },
+          {
+            "topic": "Tracked rule/config consumer and legacy fallback",
+            "evidence": "Frame::build reads only exact committed corpus bytes for mandatory tracked refs, fixes parsed policy/provider command identity, and rejects unsupported origins. ManagedWorkflowSources::committed_input returns Some or error; Workflow.inputs consumes this branch. Source errors do not fall back to the live load_rules path. Account-free tests distinguish committed A from live B in actual Context, budget/policy and outgoing payload."
+          },
+          {
+            "topic": "Retained Git authority",
+            "evidence": "RetainedGit retains exact artifact/current epoch validation, journals finite source_tree/source_blob actions before spawn, authorizes blob OIDs only after successful bounded exact artifact tree read, and periodically fences capture before durable receipt. execution/workflow_source/tests.rs:239-335 removes old unit profile files and alters surviving worktree bytes, targets genuine retained artifact reads, and rejects an unrelated old blob without reopening native/finalization permission."
+          },
+          {
+            "topic": "Atomic scope and abandonment",
+            "evidence": "Store adoption keeps current P/G versions/governing instructions, Task CAS/lifecycle/projection, sole Workflow record/version/active index/generation, absent Session/native input/quota and immutable Context/base checks in one Immediate transaction. Prepared guard disarms only after commit. Initial retire removes slot access; bounded in-flight holders retain their actual guard. workflow/committed_source_tests.rs:541-585 covers cancellation/failure/last-owner drop without claiming successful work or resource death."
+          },
+          {
+            "topic": "Budget accounting scope",
+            "evidence": "Mandatory Goal/Task text and rule bytes remain separate from discretionary selection; errors preserve mandatory input rather than dropping it. The core and frame caps are encoded-byte bounds/estimates, not provider measurements. The raw source-frame cap is not a proof that every escaped outer Context envelope fits NativeSessions' independent actual-input limit; no such readiness credit is given by this review."
+          }
+        ],
+        "limits": [
+          "No tests, builds, authenticated/native Agent calls, accounts, network, OS signals or source edits were performed.",
+          "Parent-reported passing tests/mutations and logs were not inspected or inherited as independently verified execution evidence. Only committed test construction/oracles were reviewed.",
+          "Pure CommittedIndex implementation and its own tests are reviewer-authored and explicitly excluded from approval.",
+          "This approval is scoped to this producer/adoption component and fixed committed source; it is not approval of final Phase2, Runtime/CLI, production Sources/Gates policy, native provider conformance, full-suite/CI results, cleanup completeness, external origins, resource death or MVP completion.",
+          "Unsupported automatic changed-instruction recovery and larger baseline workloads remain explicit refusals/pending integration, not newly asserted available producer paths."
+        ],
+        "independence": "No peer reports, aggregate/progress documents, dirty/later source or execution logs were read. Only immutable Git objects at the target/baseline and the reviewer's prior own finding descriptions were used.",
+        "live_handles": [],
+        "commands_closed": true,
+        "writes": [
+          "/private/tmp/rururunx-agent-execution-committed-producer-source2-a.json"
+        ]
+      }
+    },
+    {
+      "round": "source2",
+      "original_report_path": "/private/tmp/rrx-phase2-workflow-source-review-c-32e0ca1.json",
+      "original_report_sha256": "9d52ae14f713242cf57aab5f4968f451142f67ef39c0a2d28f5ed0a248f7d495",
+      "report": {
+        "reviewer": "workflow_source_review_c",
+        "source_commit": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+        "prior_source_commit": "99de44ab44d07d0dbe081bd78aa8dd189d8ab637",
+        "risk": "STRICT",
+        "verdict": "APPROVE",
+        "scope": "component only: pure committed index connection, registered ManagedWorkflowSources, actual Workflow inputs/prepare_pack/adoption/terminal retirement, Store adoption and finite RetainedGit corpus ingress, new source controls and design 10.2",
+        "findings": [],
+        "prior_findings": [
+          {
+            "id": "C-H1",
+            "disposition": "source_verified_fixed",
+            "evidence": [
+              "InitialWorkflowExecutor.adopt decodes the actual native envelope and compares its payload field with private expected raw source text.",
+              "PreparedAdoption retains the entire native payload digest; Store compares it with serialization of exact Context.data in the transaction.",
+              "actual_workflow_uses_committed_rules_policy_and_adopts_same_initial_unit exercises the real outgoing wire payload for Claude/Codex and Quick/Standard/Strict; envelope-generation alteration negative and stored-Context corruption controls exercise the actual refusal boundaries."
+            ]
+          },
+          {
+            "id": "C-H2",
+            "disposition": "source_verified_fixed",
+            "evidence": [
+              "Frame now retains execution_governing_digest(Project,Goal).",
+              "frame compares the supplied Project/current Goal semantic frame before capture, retained rebuild or cached reuse, including after prepared capability consumption.",
+              "Actual workflow test completes and publishes a genuine artifact then changes Goal.objective or Project.rule_refs; engine.step must refuse without a second native input or artifact mutation."
+            ]
+          }
+        ],
+        "confirmed_components": [
+          "No serialized row or public SourceSnapshot can construct a PreparedExecutor/InitialWorkflowExecutor capability.",
+          "Initial source resolution and corpus helpers use pre-registered UnitGit, and adoption only disarms guard after committed Store transaction.",
+          "Adoption retains exact unit/gen/profile/namespace and full Workflow/Context/Task/P/G checks; unresolved and non-Git managed effects reject while resolved qualification no-match observations remain permissible.",
+          "Mandatory rule/config ingress reaches actual Workflow.inputs and prepare_pack through one committed frame; unmanaged sources retain explicitly separated legacy fallback.",
+          "Corpus tree/blob reads use exact full commit, finite bounds, complete inventory digest and explicit skips; mandatory unsupported rule/config origins refuse.",
+          "Retained reader command admission is finite exact-artifact tree plus only bounded ordinary blob OIDs proven by that tree; historical grants stay closed.",
+          "Terminal cancel/fail removes initial source access; abandonment guard retires exact preparation.",
+          "New tests inspect actual Session/native input bytes, exact ID/gen/path, retained publication and Store boundary refusals rather than substituting DTO-only assertions."
+        ],
+        "limitations": [
+          "Independent static source review only; reviewer did not execute tests, build, native CLI, authenticated sessions, network or OS probes.",
+          "Parent-supplied green/mutation results are not independently reproduced by this reviewer.",
+          "No full Phase2 approval, Phase3 native compatibility, four-Task concurrency, Linux qualification, shipped Runtime/CLI, external-origin support or MVP completion is implied.",
+          "Early evidence gates and provider protocol peers in the new tests are explicitly fixtures.",
+          "No peer reviewer findings/reports/logs were read.",
+          "Automatic governing-frame recovery, executable Runtime/CLI producer construction and production review/verifier gates remain separate integration work as documented."
+        ]
+      }
+    },
+    {
+      "round": "source2",
+      "original_report_path": "/private/tmp/rururunx-agent-execution-committed-index-review-b.json",
+      "original_report_sha256": "ae3ebce664beba447f1768fc50358cb11c51a596bd20f79c9a6b50dcc635a143",
+      "report": {
+        "source_commit": "32e0ca18f76ee2932b30b93a36a945775f009c24",
+        "reviewer": "B",
+        "review_kind": "independent STRICT static component review",
+        "verdict": "APPROVE_COMPONENT",
+        "counts": {
+          "C": 0,
+          "H": 0,
+          "M": 0,
+          "L": 0
+        },
+        "findings": [],
+        "scope": [
+          "crates/rrx/src/context/committed.rs",
+          "crates/rrx/src/context.rs committed module declaration and shared lexical/path/budget helpers",
+          "Registered object producer contracts required by CommittedIndex, including execution/workflow_source.rs read_corpus and Frame construction, UnitGit and RetainedGit bounded read authority"
+        ],
+        "self_review_exclusions": [
+          "workflow/committed_source_tests.rs and its workflow.rs test-module declaration are authored by this reviewer and are excluded from this approval",
+          "This is not a whole ManagedWorkflowSources/Workflow implementation approval"
+        ],
+        "verified_source_reasoning": [
+          {
+            "topic": "Constructor provenance and scope",
+            "locations": [
+              "context/committed.rs:34-43,114-132,382-391",
+              "execution/workflow_source.rs:130-146,401-406,464-469"
+            ],
+            "evidence": "CommittedIndex has private state, no Deserialize authority constructor, a crate-private build function, exact OID checks, and exact Task Scope checks during both selection and expansion. The production caller obtains base/revision from the registered unit or indexed retained artifact, passes that same Task scope, and does not use a live filesystem inventory as an object corpus."
+          },
+          {
+            "topic": "Complete inventory and compact retained dependencies",
+            "locations": [
+              "context/committed.rs:139-213",
+              "execution/workflow_source.rs:593-648,464-479,289-298"
+            ],
+            "evidence": "read_corpus uses full recursive NUL-delimited exact-commit ls-tree and exact tree-returned cat-file blob OIDs. Every entry becomes a CommittedFile; excessive inventories or failed/truncated command reads refuse. Ordinary blobs are bounded individually and in aggregate; other types and oversized files remain explicit skipped entries. The index hashes every path's OID, digest/byte count when read, and skip status into the complete sorted inventory. The producer intentionally carries that complete inventory digest, exact code SHA, rule/config digests and instruction digests into its bounded compact dependency frame rather than dropping omitted files from freshness. Retained rebuilds compare the complete compact frame against artifact dependencies."
+          },
+          {
+            "topic": "Normalized paths, missing content and mandatory rules",
+            "locations": [
+              "context.rs:998-1018",
+              "context/committed.rs:140-147,154-184,428-445",
+              "execution/workflow_source.rs:410-441"
+            ],
+            "evidence": "Index construction independently rejects non-normalized paths, traversal, Git metadata and duplicate exact paths; it does not follow filesystem aliases or perform I/O. Mandatory content and expansions must be present in readable contents and otherwise refuse with the indexed skip reason. Rule/config ingress resolves exact committed inventory entries, requires actual bytes and valid text, and rejects external or untracked origins; it does not fall back to live rule files. Distinct Git object names are lexical entries rather than claims about macOS materialized filesystem aliases."
+          },
+          {
+            "topic": "Complete encoded mandatory budget",
+            "locations": [
+              "context/committed.rs:403-464,466-494,499-532",
+              "context.rs:89-105",
+              "execution/workflow_source.rs:493-551"
+            ],
+            "evidence": "The Frame writer counts the full serde JSON encoding including escaped text, metadata and newline bytes, with checked arithmetic, even after a budget miss; it retains no over-limit tail. Required header/mandatory/source records are counted before discretionary maps. An over-limit required frame returns NeedsBudget with no Ready slice. Optional maps are appended only if their complete encoded length fits the remaining allowance. Budget limits refer honestly to UTF-8 byte estimates, not measured provider tokens. The producer retains Goal/Task records and raw mandatory rules outside discretionary repository allocation, subtracts raw rule length plus the separating newline from its payload bound, and refuses when the complete required selected frame cannot fit. This does not qualify an entire native protocol envelope as provider-token-budgeted."
+          },
+          {
+            "topic": "Actual registered bounded read authority",
+            "locations": [
+              "execution/git_io.rs:127-163,184-198",
+              "execution/retained_io.rs:20-32,52-75,91-141,147-175",
+              "execution/process.rs:85-92,113-160"
+            ],
+            "evidence": "Prepared/current reads validate exact unit scope, epoch, generation and Session identity and persist a helper intent before synchronous spawn. Capture is output/time bounded and periodically fenced. Retained reads separately validate the indexed historical artifact and current reader epoch, allow exact artifact tree reads, and permit only tree-returned ordinary bounded blob OIDs; receipt completion revalidates the artifact/epoch. The Index does not mint native, Session, delegated or result-finalization authority."
+          }
+        ],
+        "causal_controls_reviewed_as_source_not_executed": [
+          "Index required-frame exact encoded boundary and one-byte-short controls include quote, backslash, newline and Japanese text; Ready payload parses as complete JSON records",
+          "An omitted quiet file changes both inventory-bound payload header and source_versions; conflicting predeclared committed digests refuse",
+          "Foreign Project/Goal/Task scopes fail both select and expand",
+          "Binary, oversized and unavailable inventory entries remain recorded; requests making them required refuse",
+          "Duplicate/ambiguous paths, invalid OIDs, excessive files/bytes and expansion over 128 files refuse"
+        ],
+        "limitations": [
+          "No tests, builds, OS probes, native Agents, accounts, network operations or process signals were executed during this review",
+          "No peer findings, aggregate review documents, progress logs or dirty/later source were read",
+          "The reviewer previously executed their own isolated workflow fixture tests as an author; those observations are not independent approval of those tests and are not used to claim full native acceptance",
+          "Lexical ranking/graph selection is approximate, explicitly bounded and reports lexical limit flags; it does not prove semantic caller/callee completeness",
+          "The index trusts the registered Git producer for actual object provenance and complete inventory; it is not a security sandbox or an independent Git object verifier",
+          "No authenticated official CLI compatibility, four-Task conformance, two-OS runtime behavior or final Phase2/MVP readiness is approved",
+          "The fixed source has no tracked AGENTS.md; supplied session development constraints were followed"
+        ],
+        "live_handles": [],
+        "commands_closed": true,
+        "source_edits": false
+      }
+    }
+  ],
+  "verified_findings": [
+    {
+      "ids": [
+        "CP-M1",
+        "C-H1"
+      ],
+      "verification": "Actual Workflow uses serialized Context.data, while original adoption expected its inner text; exploratory normal path refused. Fixed-source six-case actual consumer and complete-envelope mutation prove the correction.",
+      "fix_commit": "664016d"
+    },
+    {
+      "ids": [
+        "CP-M2"
+      ],
+      "verification": "qualified_content_inner explicitly accepts observed grep exit 1 for no LFS. Original adoption rejected it. Fixed six-case actual native fixture path passes without changing qualification; pending-helper mutation still fails.",
+      "fix_commit": "f429d16"
+    },
+    {
+      "ids": [
+        "C-H2"
+      ],
+      "verification": "Original cached retained path lacked current P/G semantic comparison. Actual published-artifact subsequent step refuses Goal/Project drift; removing the comparison kills the same actual consumer.",
+      "fix_commit": "664016d"
+    }
+  ],
+  "independence": "C independently covers whole component; A independently covers producer/adoption/Workflow/readers and tests, excluding self-authored Index; B independently covers Index/registered-producer contract, excluding self-authored Workflow consumer tests. Reports are static, not native or phase acceptance."
+}

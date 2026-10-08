@@ -1,7 +1,18 @@
 # Multi-Project Runtime Design
 
+Proposed native-execution policy: see [result protection](agent-execution.md).
+It supersedes conflicting ownership/live-worktree prerequisites only when the
+new profile is implemented; historical/current implementation sections below
+remain baseline descriptions, not acceptance of that proposal.
+
 **Status:** Draft
 **Scope:** MVP multi-project orchestration
+
+The independently reviewed [Runtime/Scheduler integration](../runtime-scheduler-integration-design.md)
+composes Project/Goal driver fairness with actual native quota admission and
+separates preparation Task capacity from native permits. Implementation and
+qualification remain pending; the current effective global cap is6, and a requested
+configuration of12 is not an established execution capability.
 
 ## 1. Goal
 
@@ -131,6 +142,20 @@ MVP fairness may be implemented with a simple bounded round-robin / weighted-rea
 ## 8. Global status/TUI
 
 Runtime-wide status groups work by Project, then Goal.
+
+The current compiled `rrx status [--all]` consumes real Runtime metadata through
+the private control endpoint and explicitly reports an incomplete observation.
+Grouped hierarchy, attention/wait detail and requested-versus-effective capacity
+remain unavailable. `rrx goal status/tasks --project` resolves the Project through
+the service and rejects foreign Goal/Task/cursor scope. These new Runtime reads
+never open a Store or owner, start a service, advance an epoch or acknowledge
+controls; absent discovery requires explicit `rrx serve`. The existing legacy
+Project registry commands retain their reconciliation behavior described below.
+
+Goal proposals and explicit typed plan acceptance use the same exact service
+Project routing. Plans bind a supplied expected Project version; Goal lifecycle
+controls bind a supplied expected Goal version. Conflicts never trigger an
+automatic refresh into a different scoped or current decision.
 
 Example:
 

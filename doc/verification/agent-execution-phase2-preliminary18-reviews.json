@@ -1,0 +1,118 @@
+{
+  "source_commit": "187cc63c216b359ac0b935fe100290ca53920338",
+  "baseline_commit": "ccae04272f59c5db55e2476344f956e79ff85324",
+  "review_kind": "Independent preliminary component static reviews; not Phase2/native/MVP acceptance",
+  "reports": [
+    {
+      "review": "Independent preliminary STRICT component delta review, round 18",
+      "source_commit": "187cc63c216b359ac0b935fe100290ca53920338",
+      "baseline_commit": "ccae04272f59c5db55e2476344f956e79ff85324",
+      "approved_contract": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "APPROVE",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "findings": [],
+      "scope": "Exactly two changed lines inside the cfg(test) cleanup consumer: a borrow in DTO equality, and the public verify argument. No production bytes changed.",
+      "evidence": [
+        {
+          "location": "crates/rrx/src/execution/cleanup.rs:345-348,402-406,431",
+          "assessment": "The test obtains the actual Published DTO from ResultStore::publish, verifies its persisted full body, and now borrows it in equality so it remains usable in subsequent public verification. It passes that same Published DTO to verify instead of the pre-publication Ready snapshot."
+        },
+        {
+          "location": "crates/rrx/src/state/execution/artifacts.rs:19-32,269-284; crates/rrx/src/execution/results.rs:371-375",
+          "assessment": "Publication updates artifact state and version and returns the updated DTO. Historical verification intentionally compares the full supplied snapshot to indexed current storage. Thus stale Ready verification is correctly rejected; switching the positive cleanup-survival control to the actual current Published DTO matches the authoritative consumer contract rather than weakening it."
+        }
+      ],
+      "own_prior_dispositions": [
+        {
+          "id": "P-M1",
+          "status": "Maintained source-closed",
+          "evidence": "All production graph/routing/storage predicates are byte-unchanged from approved round17."
+        }
+      ],
+      "causal_controls_not_executed": [
+        "The retained cleanup-survival test must succeed using the actual Published DTO while the existing forged/stale Ready controls continue to reject mismatched full artifact snapshots. The two edits alone do not demonstrate OS cleanup conformance."
+      ],
+      "limitations": [
+        "Read only immutable Git objects and the exact diff; no dirty/later source, peer/aggregate/progress/log artifacts read.",
+        "No tests/build/native/OS/network/accounts/configuration or signals executed; no parent pass claims inherited.",
+        "Component test delta only, not final Phase2/native/MVP acceptance."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "round": 18,
+      "source_commit": "187cc63c216b359ac0b935fe100290ca53920338",
+      "baseline_commit": "ccae04272f59c5db55e2476344f956e79ff85324",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "review_kind": "Independent preliminary STRICT immutable-source test-only component delta review",
+      "verdict": "APPROVE_COMPONENT_STATIC_DELTA_ONLY",
+      "severity_counts": {
+        "C": 0,
+        "H": 0,
+        "M": 0,
+        "L": 0
+      },
+      "findings": [],
+      "verified_source_observations": [
+        {
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/cleanup.rs",
+              "lines": "345-348, 403-405, 431"
+            },
+            {
+              "file": "crates/rrx/src/execution/results.rs",
+              "lines": "371-375, 498-509"
+            },
+            {
+              "file": "crates/rrx/src/state/execution/artifacts.rs",
+              "lines": "19-32, 254-284"
+            }
+          ],
+          "evidence": "The cleanup fixture publishes the captured Ready artifact and stores the returned Published DTO. Publication changes artifact state and increments version, and public historical verification now intentionally requires exact indexed/body equality. The updated equality borrows Published rather than moving it, then actual public verify consumes that same Published snapshot after cleanup. The stale pre-publication Ready DTO would correctly fail current full metadata validation; the change fixes the test's caller without weakening that producer or authority check."
+        },
+        {
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/cleanup.rs",
+              "lines": "393-432"
+            }
+          ],
+          "evidence": "The existing post-cleanup assertions still check known work, exact cleanup history, full Published metadata, unchanged Task state, live sibling authority and separate quarantined/reserved leases before public retained verification. The fixed baseline-to-source diff consists of these two test-line edits in the cfg(test) module. Production bytes are unchanged."
+        }
+      ],
+      "prior_own_findings_disposition": [
+        {
+          "id": "round16-H1",
+          "disposition": "REMAINS_CLOSED_STATIC",
+          "evidence": "Round17 shared internal Git routing removal and retained-storage checks remain unchanged by this exact test-only delta."
+        },
+        {
+          "id": "round17 component review",
+          "disposition": "APPROVAL_MAINTAINED_WITHIN_SCOPE",
+          "evidence": "No production reader, artifact, capture, cleanup, SQL or native invocation behavior changed. Passing native/OS test evidence is not inferred."
+        }
+      ],
+      "controls_inspected_not_executed": [
+        "The historical cleanup fixture now invokes actual ResultStore::verify with the exact Published DTO after its state/evidence/sibling assertions. This is a source wiring observation only; no cookie scan/process stop/Git helper/test was executed."
+      ],
+      "limits": [
+        "Only immutable source/baseline git objects and relevant unchanged public verify/artifact consumers were read. No peer/aggregate/progress/log, dirty or later source was inspected.",
+        "No tests/builds/native Agent/Docker/network/OS/process/authentication/credential actions were performed. Only this authorized private report was written.",
+        "This approves the tiny test-only static component delta and maintains own prior closure; it is not final Phase2/native/MVP/install/operational acceptance or evidence of passing OS cleanup controls."
+      ],
+      "owned_handles": {
+        "live_command_sessions": [],
+        "native_processes_started": [],
+        "tool_status": "All immutable-object read commands completed with exit codes and no session_id. No owned command, Agent, Docker, child, tracker or worker handle remains."
+      }
+    }
+  ]
+}

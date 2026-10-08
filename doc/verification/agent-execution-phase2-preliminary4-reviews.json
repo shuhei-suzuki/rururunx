@@ -1,0 +1,348 @@
+{
+  "status": "preliminary, not final Phase2 approval",
+  "source_commit": "061c7914f8b21bc54f58b429a7d6fbe1104e5d8a",
+  "reviews": [
+    {
+      "review": "Phase2 preliminary round4 independent STRICT component re-review",
+      "reviewer": "/root/issue26_registry",
+      "source_sha": "061c7914f8b21bc54f58b429a7d6fbe1104e5d8a",
+      "approved_contract_sha": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "comparison_sha": "07bb9cd1e1dd772f9ba5847eef32d3054089f64a",
+      "verdict": "request_changes",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 1,
+        "Low": 0
+      },
+      "confidence": 0.94,
+      "scope": "Independent preliminary static review of immutable existing component producers and their changed consumers. Not final Phase2, native-profile, Workflow, CLI or MVP approval.",
+      "independence": {
+        "peer_reports_read": false,
+        "prohibited_preliminary3_reviews_or_progress_docs_read": false,
+        "tests_executed": false,
+        "native_account_model_calls": false,
+        "worktree_edits": false,
+        "resource_kills": false,
+        "credentials_read": false
+      },
+      "findings": [
+        {
+          "id": "D-M1",
+          "severity": "Medium",
+          "title": "Shim-side execution no longer restores or validates the admitted unit resource environment",
+          "locations": [
+            "crates/rrx/src/execution/ipc.rs:167-195",
+            "crates/rrx/src/execution/ipc.rs:252-268",
+            "crates/rrx/src/execution/ipc.rs:315-334",
+            "crates/rrx/src/execution/resources.rs:43-74"
+          ],
+          "evidence": "serve loads and validates the current ResourceProfile, but Granted includes only plan.environment. For ordinary Git this contains only the optional reentry token; for other tools it generally contains no temp/output/cache/port namespace overlay. execute then inherits the shim caller environment and applies only that small map. tool_entry verifies neither TMPDIR nor the other reserved resource variables against the unit profile. A normal managed tool-name invocation such as TMPDIR=/other/unit/tmp git ... therefore passes the same current cookie/CWD/unit checks and executes the admitted real program with the foreign temp namespace. This is a regression from the previous Runtime-side command builder, which applied profile.environment before spawn. Explicit argument normalization for some tools does not repair generic temporary files or environment-using helpers/hooks.",
+          "contract": "Approved design section 6 requires Runtime routing/resource overlays not to be set by caller-provided arbitrary environment, rejects conflicting reserved keys, and propagates the same per-unit profile to helpers. R4 requires declared temp/output/cache and persistent-tool namespaces before managed effects. This is a managed shim-path obligation, not a claim of an OS sandbox or enforcement against raw absolute execution/chmod bypass.",
+          "impact": "The ledger attributes a supported managed invocation to one unit while its real process can use another unit/shared temp or output namespace. Scope/CWD checks alone do not establish those resource routes, undermining Task resource independence and cleanup attribution.",
+          "minimal_causal_controls": [
+            "Use an isolated account-free actual shim/IPC subprocess with genuine prepared unit/profile. Override only TMPDIR or RRX_OUTPUT_DIR to another fixture unit while retaining its legitimate cookie, tool name and allowed CWD. An admitted real helper must either receive the exact owner-derived namespace or be refused before effect; a valid unchanged environment must still run.",
+            "Observe the final real subprocess environment, not just the server plan. Cover temp/output/cache/port routing keys relevant to supported tools and keep required native authentication/settings/hooks inherited without copying full environment or credentials over IPC.",
+            "Compiled omission of the owner resource-overlay/validation step must restore this foreign-namespace behavior. Include hook reentry so the token composition remains intact."
+          ],
+          "controls_executed": false,
+          "fix_direction": "Send/reconstruct a bounded owner-derived nonsecret reserved-resource overlay or validate and refuse conflicting reserved values in the actual shim execution path. Compose it with ToolPlan.environment and the live Git token; preserve inherited auth and native sandbox execution."
+        }
+      ],
+      "prior_own_round3_dispositions": [
+        {
+          "id": "C-H1",
+          "status": "selected producer correction verified statically",
+          "evidence": "admit_native_frame computes the exact bounded outgoing frame digest and commits reserve_managed_effect with current scoped authority. send_effect and boot_call use it for native_input/native_permission/native_setup. Cancellation-first refuses; admitted-intent-first is retained as issued/unknown rather than replayed. Existing register/spawn admission remains. The added control directly exercises the private admission producer, not actual blocked wire scheduling/native permission conformance; those broader controls are not certified by this review."
+        },
+        {
+          "id": "B-M2-remaining",
+          "status": "partially closed; explicitly unfinished integration remains not certified, no additional finding solely for that announced absence",
+          "evidence": "capture and snapshot qualification/digest plus ResultSnapshot::verify now use scoped UnitGit. Native --version has a current helper intent and profile before owned spawn. Initial pre-unit preparation and retained ResultStore::verify raw helpers remain as the root explicitly reported; these are not complete Phase2 readiness."
+        },
+        {
+          "id": "C-M1",
+          "status": "selected correction verified statically",
+          "evidence": "Available observations no longer clear a live probe_unit; backoff resets only after all accepted buckets cease exhaustion. Probe retirement remains release/terminal. Added Store control spans primary recovery, still-exhausted sibling, cooldown and secondary recovery, plus native fixture two-window path."
+        },
+        {
+          "id": "C-M2",
+          "status": "selected correction verified statically",
+          "evidence": "owned_branch_form parses finite subcommand-specific patterns. branch rename/copy and checkout orphan are no longer admitted; OIDs serve only as start points, not permitted foreign ref destinations. Actual IPC test inventories foreign-ref refusal and unchanged effect count."
+        },
+        {
+          "id": "C-M3",
+          "status": "selected correction verified statically",
+          "evidence": "record_execution_cleanup appends factual cleanup without write_unit/version bump. unit_tx overlays the validated latest cleanup observation. ResultStore actual capture gate control appends cleanup between capture validation and staging and preserves authority; cancellation/generation/finalization fences remain."
+        },
+        {
+          "id": "C-M4",
+          "status": "selected launch-policy correction present; actual native capability conformance remains unverified",
+          "evidence": "Non-Executor Claude command now requests --permission-mode plan; Codex retains read-only sandbox. Fixture checks the selected argument/profile, and ALLOW remains denied outside Executor. Static flag presence is not proof of real native settings/hooks/MCP behavior; actual supported profile/default compatibility must be qualified before readiness."
+        }
+      ],
+      "additional_checked_source_facts": [
+        "New IPC no longer runs real tools in Runtime host context; the shim executes them in its inherited execution context with inherited stdio, avoiding a Runtime-side native-sandbox bypass. Receipt/end-state does not certify whole-workload death; Docker stays Unknown pending label reconciliation.",
+        "Decoder preserves partial header/body across select cancellation; bounded frame size and write timeout remain.",
+        "GitLease reentry is keyed by a live Weak/Arc lease and exact UnitId; retired/foreign lease lookup refuses. Child reentries retain the owned root guard. Fresh root admission still awaits the shared gate outside Store.",
+        "Native bootstrap cancellation/authority observation uses a fixed interval and owned control channel. New turn/permission dispatch effects retain digests rather than input/permission arguments.",
+        "Cleanup factual projection checks observation unit/at against indexed values; it does not relax native/finalization authority flags, owner epoch or generation.",
+        "New quota terminal handling recognizes Codex terminal usageLimitExceeded, scopes Claude rate-limit events to native UUID, retains bucket state and separates explicit native budget/turn/output caps from quota interruption. No actual subscription/provider conformance was executed."
+      ],
+      "coverage": {
+        "read_full_diff": [
+          "execution/attempts.rs",
+          "execution/git_io.rs",
+          "execution/ipc.rs",
+          "execution/native.rs",
+          "execution/owner.rs",
+          "execution/results.rs",
+          "execution/tools.rs",
+          "state/execution.rs",
+          "state/execution/effects.rs",
+          "state/execution/quotas.rs",
+          "state/execution/tests.rs",
+          "execution/results/tests.rs"
+        ],
+        "read_complete_current_or_relevant_committed_sections": [
+          "execution/ipc.rs production",
+          "execution/owner.rs lease producer",
+          "execution/native.rs dispatch and bootstrap/terminal/permission changes",
+          "execution/git_io.rs scoped helper and ownership facts",
+          "execution/resources.rs environment/profile",
+          "execution/tools.rs finite Git forms",
+          "execution/native/tests.rs new recovery/read-only/dispatch controls"
+        ],
+        "baseline_retained": "Prior immutable round3 source review of ledger/session/migration/result/process producers; unchanged components were not re-executed or fully re-reviewed as a separate final acceptance gate."
+      },
+      "not_certified": [
+        "Whole Phase2 source",
+        "Workflow/CLI integration",
+        "reclaimer/cookie/systemd/Docker reconciliation",
+        "initial/retained raw helper integration",
+        "required hooks/dependency qualification",
+        "real Claude plan-mode or Codex read-only conformance",
+        "actual authenticated native/account/model/quota behavior",
+        "current tests/mutations/CI outcomes",
+        "native permission/backpressure transport interleaving controls",
+        "four-Task macOS/Linux acceptance",
+        "whole legacy adapter audit",
+        "universal same-user isolation or full descendant death"
+      ],
+      "command_closure": "All read-only exec_command calls returned terminal results; no running handles were created/polled. The report JSON is the only write. No peer reports or prohibited merged-disposition documents were accessed."
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "review_kind": "Independent STRICT preliminary component source re-review, round 4",
+      "source_commit": "061c7914f8b21bc54f58b429a7d6fbe1104e5d8a",
+      "approved_contract_commit": "9a11d03",
+      "verdict": "REQUEST_CHANGES",
+      "counts": {
+        "C": 0,
+        "H": 1,
+        "M": 2,
+        "L": 0
+      },
+      "methodology": {
+        "source": "Immutable git show and source diffs only; no dirty source or later commits.",
+        "independence": "No peer reports, merged dispositions, doc/verification/agent-execution-phase2-preliminary3-reviews.json, or agent-execution-phase2-progress.md were read.",
+        "executions": "No tests, native Agent/account/model runs, credential reads, Docker operations, or resource kills.",
+        "documentation": "Primary Git documentation and versioned Git v2.50.0 source were consulted to confirm native commit-hook index semantics. Installed Git/native compatibility was not tested."
+      },
+      "findings": [
+        {
+          "id": "H1",
+          "severity": "H",
+          "title": "Managed Git removes the native candidate index from commit hooks, allowing checks to validate different content from the resulting commit",
+          "locations": [
+            {
+              "path": "crates/rrx/src/execution/ipc.rs",
+              "lines": "315-333",
+              "detail": "The local shim inherits native environment but explicitly removes GIT_INDEX_FILE before executing every granted command."
+            },
+            {
+              "path": "crates/rrx/src/execution/tools.rs",
+              "lines": "101-118,188-189",
+              "detail": "Managed commit is admitted; -a and path commits are not excluded."
+            },
+            {
+              "path": "crates/rrx/src/execution/ipc.rs",
+              "lines": "171-183",
+              "detail": "Nested read-only Git is admitted from the current executor worktree; reentry locking does not restore its native index."
+            }
+          ],
+          "evidence": "Git passes the candidate index path to commit hooks through GIT_INDEX_FILE. A commit -a operates on a locked candidate index; partial commits use a temporary candidate index. A hook calling the installed managed git diff --cached loses that index at execute(), so it inspects the ordinary worktree index instead. Removing namespace overrides is appropriate for arbitrary input, but blindly removing an index created by the admitted parent Git changes required hook semantics. This is an existing consumer inconsistency, not merely an absent future hook qualification step.",
+          "impact": "A mandatory pre-commit check can pass while failing to inspect the content that is actually committed. A hook's managed git add can also update the wrong index or collide with the parent's ordinary index lock. Retaining a commit SHA does not repair this false check.",
+          "contract": [
+            "R1: preserve required hooks",
+            "R2: validation must consume its declared input",
+            "design §5/6: preserve mandatory Git/native hook behavior, or refuse an incompatible profile"
+          ],
+          "causal_control": {
+            "proposed_not_executed": true,
+            "setup": "Create an executor with a tracked SAFE file in HEAD/index. Change only its worktree copy to FORBIDDEN. Install a pre-commit hook that uses managed git diff --cached and rejects FORBIDDEN.",
+            "trigger": "Invoke managed git commit -a -m candidate. Native Git supplies the updated locked candidate index to the hook.",
+            "current_source_prediction": "The nested shim removes GIT_INDEX_FILE; its diff sees the old SAFE ordinary index, so the hook can pass and commit FORBIDDEN.",
+            "expected": "The managed hook sees the same candidate index as native Git and refuses the commit, or this commit/hook profile is explicitly rejected before commit effects.",
+            "recommendation": "Validate and preserve an own-worktree candidate-index context tied to the live admitted Git chain; do not accept arbitrary sibling index routing. Alternatively narrow supported commit forms before effects until this native context is qualified."
+          },
+          "primary_sources": [
+            {
+              "url": "https://git-scm.com/docs/githooks",
+              "support": "DESCRIPTION documents Git's repository environment exported to hooks."
+            },
+            {
+              "url": "https://raw.githubusercontent.com/git/git/v2.50.0/builtin/commit.c",
+              "support": "prepare_index selects a locked index for -a and a temporary false index for partial commits; hooks use that candidate."
+            },
+            {
+              "url": "https://raw.githubusercontent.com/git/git/v2.50.0/commit.c",
+              "support": "run_commit_hook sets GIT_INDEX_FILE to the supplied candidate index."
+            }
+          ]
+        },
+        {
+          "id": "M1",
+          "severity": "M",
+          "title": "An admitted executor detached checkout permanently fails its own managed Git and result-capture provenance checks",
+          "locations": [
+            {
+              "path": "crates/rrx/src/execution/tools.rs",
+              "lines": "322-336",
+              "detail": "owned_branch_form explicitly admits checkout/switch --detach with HEAD or a full-looking OID."
+            },
+            {
+              "path": "crates/rrx/src/execution/ipc.rs",
+              "lines": "171-176",
+              "detail": "Every subsequent executor Git request first requires UnitGit::ownership."
+            },
+            {
+              "path": "crates/rrx/src/execution/git_io.rs",
+              "lines": "194-196",
+              "detail": "Ownership requires successful symbolic-ref --quiet --short HEAD."
+            },
+            {
+              "path": "crates/rrx/src/execution/results.rs",
+              "lines": "155-156",
+              "detail": "Commit capture also requires the same branch-based ownership proof."
+            }
+          ],
+          "evidence": "The first detached checkout is checked while the worktree remains on the owned branch, so the policy grants it and native Git can complete successfully. Task.branch and unit.branch still name the original owned branch. Once HEAD is detached, the required symbolic-ref helper exits nonzero; even git status or switching back to the owned branch is refused before tool execution. ResultStore::capture cannot capture the unit's otherwise valid explicit commit either.",
+          "impact": "A command explicitly declared supported by the producer leaves its live attempt unusable through that same managed API. The Agent must fail/retry or use an uncovered absolute Git bypass to repair the state.",
+          "contract": [
+            "R1: functioning native execution",
+            "R3: consistent fresh worktree/branch binding",
+            "R4: real finite supported invocation policy"
+          ],
+          "causal_control": {
+            "proposed_not_executed": true,
+            "trigger": "Prepare an executor and invoke managed git checkout --detach <unit.base_sha>; then invoke managed git status and managed git switch <unit.branch>.",
+            "current_source_prediction": "Detached checkout returns exit 0; both later requests are refused by symbolic-ref ownership inspection. Result capture after a natural success also fails.",
+            "expected": "Reject executor detach before effects, or implement an explicit owned detached-state binding with a safe reattach and capture policy. Runtime-owned detached reviewer snapshots are a separate already-supported provenance path."
+          }
+        },
+        {
+          "id": "M2",
+          "severity": "M",
+          "title": "Native supervisors discard classified bootstrap failures and report transport Lost with no cause",
+          "locations": [
+            {
+              "path": "crates/rrx/src/execution/native.rs",
+              "lines": "884-893,904",
+              "detail": "Subscription authentication absence, unsupported local environment, and malformed quota metadata have identifiable bootstrap failure causes."
+            },
+            {
+              "path": "crates/rrx/src/execution/native.rs",
+              "lines": "780-782",
+              "detail": "Every returned Err is erased and converted to WorkOutcome::Unknown / Disposition::Lost."
+            },
+            {
+              "path": "crates/rrx/src/execution/native.rs",
+              "lines": "859-865",
+              "detail": "Final diagnostic is assigned only persistence/group-hygiene errors, otherwise None; bootstrap reason is not retained."
+            }
+          ],
+          "evidence": "For example a successful account/read response with account=null or a non-chatgpt account triggers the authentication-unavailable ensure. Core::run discards that error. If cleanup and persistence succeed, status exposes Unknown/Lost with diagnostic=None. A quota metadata schema failure or explicit unsupported RPC is indistinguishable from transport disappearance. This is already observable through NativeSessions::status/subscribe without future Workflow or CLI integration.",
+          "impact": "Consumers cannot identify authentication/capability remediation or distinguish a failed metadata/probe capability from an unknown transport loss. A later scheduler cannot apply the required named recovery/refusal policy using this status. No actual account behavior was probed.",
+          "contract": [
+            "R1: report unsupported native capabilities honestly",
+            "R5 / design §8: auth errors, unsupported metadata, and failed probes remain named",
+            "design §4/10: Lost describes genuinely missing transport, not other refusals"
+          ],
+          "causal_control": {
+            "proposed_not_executed": true,
+            "trigger": "Use account-free protocol fixtures returning account=null, environment status unsupported, malformed quota metadata, and a disconnected pipe as separate cases.",
+            "current_source_prediction": "All reach Unknown/Lost and normally diagnostic=None.",
+            "expected": "Persist/expose bounded nonsecret failure categories for auth_unavailable, unsupported_capability/metadata, protocol_failure and transport_lost; preserve the work/cleanup axes and do not serialize raw errors, credentials, or native output."
+          }
+        }
+      ],
+      "prior_own_round3_dispositions": [
+        {
+          "prior": "H1: Available cleared the pool probe midway through multiple-window recovery",
+          "disposition": "SOURCE_CLOSED",
+          "evidence": "state/execution/quotas.rs:106-118 no longer clears probe_unit on an Available observation; it resets backoff only when the pool has no Exhausted windows. release/terminal retains responsibility for probe removal.",
+          "controls_read_not_run": [
+            "state/execution/tests.rs::multi_window_recovery_preserves_one_probe_until_its_actual_release",
+            "execution/native/tests.rs::codex_two_window_recovery_refresh_keeps_correlated_probe_through_turn_dispatch"
+          ]
+        },
+        {
+          "prior": "H2: native Git hooks deadlocked on the nonreentrant common Git gate",
+          "disposition": "SOURCE_CLOSED_FOR_REPORTED_REENTRY_DEADLOCK",
+          "evidence": "owner.rs:153-182 provides a same-unit live Arc<GitLease> token, retaining the root owned guard. ipc.rs:182-183 propagates that token to nested commands; attempts.rs:121-122 and git_io.rs:70-73 propagate a preparation lease to hooks. New H1 describes a separate native hook index inconsistency.",
+          "controls_read_not_run": [
+            "execution/ipc.rs::managed_post_commit_hook_can_reenter_without_blocking_sibling_git"
+          ],
+          "limit": "The fixture uses an account-free manually implemented IPC peer and absolute native Git; it does not establish installed shim or mandatory native Agent hook compatibility."
+        },
+        {
+          "prior": "H3: Codex terminal subscription errors were classified as work failures",
+          "disposition": "SOURCE_CLOSED_FOR_REPORTED_STRUCTURED_TERMINAL_CASES",
+          "evidence": "execution/native.rs:975-993 checks failed turn.error.codexErrorInfo with codex_subscription_error, records exhaustion, and returns quota-interrupted/unknown even without an earlier terminal error notification or after willRetry=true.",
+          "controls_read_not_run": [
+            "execution/native/tests.rs::structured_quota_terminals_wait_without_converting_ordinary_failures"
+          ]
+        },
+        {
+          "prior": "H4: Claude last-observation flag erased effective bucket exhaustion",
+          "disposition": "SOURCE_CLOSED_FOR_REPORTED_MULTI_BUCKET_AND_REJECTED_UPDATE_CASES",
+          "evidence": "execution/native.rs:1041-1046 filters foreign Session quota observations and tracks bucket identities; 1054-1060 consults accepted ledger state instead of the last frame. Explicit max-turn/budget/output-cap terminals remain failures and successful completion remains success.",
+          "controls_read_not_run": [
+            "execution/native/tests.rs::structured_quota_terminals_wait_without_converting_ordinary_failures"
+          ]
+        },
+        {
+          "prior": "M1: tool IPC stdin/stdout pumps could deadlock under bidirectional backpressure",
+          "disposition": "SOURCE_CLOSED_BY_PRODUCTION_TRANSPORT_REPLACEMENT",
+          "evidence": "execution/ipc.rs:294-322 runs the actual granted tool in the shim's inherited stdin/stdout/stderr. Runtime IPC now carries lifecycle frames, not tool stdio, so the reported server-side pumping cycle no longer exists.",
+          "limit": "Native sandbox compatibility and installed binary stdio behavior were not executed. Test-only piped output has a separate 4096-byte bounded reader."
+        }
+      ],
+      "positive_source_observations": [
+        "Native input/setup/permission dispatch now has a private hashed durable intent via admit_native_frame; no replayable payload is stored. Admission and retirement compete through the existing transactional authority validation.",
+        "The native --version helper now has an execution-scoped intent and immediate pre-spawn authority validation.",
+        "Codex bootstrap uses a persistent fencing interval and cancellation control polling around RPC waits. Ongoing driver loops use intervals rather than resetting sleep on every frame.",
+        "Cleanup observations no longer bump semantic unit versions; unit_tx projects the cleanup axis independently. This avoids revoking capture authority merely because janitor observations arrive.",
+        "ResultSnapshot now carries its owner/scope/generation/epoch and verifies through finalization-authorized UnitGit helpers rather than an unscoped snapshot helper."
+      ],
+      "known_unfinished_excluded_from_findings": [
+        "Workflow/CLI Runtime integration",
+        "Reclaimer, cookie/systemd integration and Docker reconciliation",
+        "Required hook/dependency qualification",
+        "Initial and retained raw helper integration"
+      ],
+      "limitations": [
+        "This is not final Phase2 approval or a native/public-readiness assessment.",
+        "No local or other-side tests were run. Reading committed test controls does not certify that they pass.",
+        "Actual authenticated Claude/Codex behavior, native permissions/sandboxes/settings/hooks, real quota exhaustion/resume, four concurrent Tasks on macOS/Linux, and cargo install remain unverified.",
+        "Known unfinished integrations above are not counted as findings merely for being absent.",
+        "Primary Git sources establish general candidate-index hook semantics; the proposed installed-shim causal controls remain unexecuted."
+      ],
+      "owned_handles": {
+        "live": [],
+        "closed": "Every read-only exec_command completed without a session ID. No native child, background test, server, Docker resource, or account connection was created by this reviewer."
+      }
+    }
+  ]
+}

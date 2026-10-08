@@ -1,0 +1,2320 @@
+{
+  "schema": "phase2_runtime9_controller_checkpoint_v1",
+  "status": "DEVELOPMENT_BRANCH_COMPONENT_CHECKPOINT_FULL_REGRESSION_RED",
+  "source_commit": "d87da70750274417851756496178d0b8ac5b2b68",
+  "source_tree": "d400505cbfbe26f1ed0dda854b8561ef15b88cd6",
+  "baseline": "b1417e025cc99c0de7c11f8450d092dfcbc4f9ee",
+  "operational_design": "93062bfba7bcd283c95a92003aaf85243ec17c79",
+  "scope": "Actual trusted local controller, accepted Goal/status/lifecycle facts, schema9 and unavailable Driver fences; Source3 static approval covers the exact bounded Task snapshot correction and downstream legacy worktree consumers. This is not the complete operational Runtime design.",
+  "source_hashes": [
+    {
+      "file": "crates/rrx/src/git.rs",
+      "sha256": "9919799cd057949addc2af6ed3c0291c73d9bd1f234910cfe55e0e5bfb76bae3",
+      "bytes": 21732
+    },
+    {
+      "file": "crates/rrx/src/runtime/tests.rs",
+      "sha256": "dc77a2e1806609aa2917f41eaa338acce4481cc239714439c8b707b5bb027ce6",
+      "bytes": 41562
+    },
+    {
+      "file": "crates/rrx/src/state/runtime/driver.rs",
+      "sha256": "c980fc5aaf32b34f2076f3d9940223fb23aac074473fd99a7cb287d816736821",
+      "bytes": 13603
+    },
+    {
+      "file": "doc/design/runtime-operational-integration-design.md",
+      "sha256": "784453194126009bcc377233569e91d953fd6ca114b492fe9ea0845fc544f7a6",
+      "bytes": 29661
+    }
+  ],
+  "source3_reviews": [
+    {
+      "path": "/private/tmp/rrx-runtime9-controller-source3-review-root.json",
+      "sha256": "b44d39d2d0d8e0aacba0975bcfd8a8ae494437b49644be4eff3b377100c23c5e",
+      "bytes": 2163,
+      "report": {
+        "reviewer": "Root",
+        "round": 3,
+        "source_commit": "d87da70750274417851756496178d0b8ac5b2b68",
+        "baseline": "b1417e025cc99c0de7c11f8450d092dfcbc4f9ee",
+        "closed": true,
+        "closed_utc": "2026-10-06T02:40:04.751919+00:00",
+        "verdict": "APPROVE_COMPONENT_SOURCE",
+        "counts": {
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0
+        },
+        "findings": [],
+        "scope": "Source3 exact Task snapshot correction and actual helper consumers; static delta/component review, not whole Runtime or native qualification",
+        "independence": {
+          "current_peer_verdict_received_before_close": true,
+          "current_peer_findings_or_raw_read_before_close": false,
+          "candidate_authored_by_reviewer": false,
+          "note": "C zero-count closure notification arrived, but its current round raw findings/body was not read. Root reviewed actual source and fixture independently."
+        },
+        "checked": [
+          "Single bounded SQLite statement reads requested Task id, indexed P/G/version/body and accepted classification; exact body/index identity checked before helper effects; missing/malformed/oversize refuse.",
+          "create/status/mutation/lock_review/verify/unlock/cleanup use validated returned Task; no unchecked Task body read after separate classification. Intentional legacy create later status call revalidates rather than using unchecked task.",
+          "Actual Unix trusted ingress creates accepted prerequisite; historical legacy Goal fixture does not mint private Driver/binding/owner; canonical public legacy Git path first has actual helpers, seven corrupt body variants plus missing record then have zero helpers and no namespace/all-table writes.",
+          "Existing old standalone helpers and inherited Project/Goal validation are not new current managed Driver issuers."
+        ],
+        "qualification_limits": [
+          "Full default Debug253/373/30 remains RED, not all failure causes attributed.",
+          "Actual Driver issuance, Binding10 and genuine prepared-input/native protocol absent.",
+          "No accounts, hooks, four-Task qualification, Ubuntu/macOS CI or full Release claim.",
+          "This review grants no main/PR merge, Phase2 acceptance or full MVP completion."
+        ]
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-runtime9-controller-source3-review-c.json",
+      "sha256": "4e39852ee6d86b912fee11e94753b4857130885ee7f48f9bff32c5fbe3d22861",
+      "bytes": 5027,
+      "report": {
+        "reviewer": "workflow_source_review_c",
+        "review_kind": "independent STRICT static source correction review",
+        "source_commit": "d87da70750274417851756496178d0b8ac5b2b68",
+        "baseline_commit": "b1417e025cc99c0de7c11f8450d092dfcbc4f9ee",
+        "status": "CLOSED",
+        "verdict": "APPROVE_COMPONENT_SOURCE",
+        "scope": "Runtime9 source3 same-row legacy worktree Task admission correction and all WorktreeManager downstream Task consumers; static source and controls review only",
+        "findings": [],
+        "finding_counts": {
+          "Critical": 0,
+          "High": 0,
+          "Medium": 0,
+          "Low": 0
+        },
+        "independence": {
+          "candidate_edited": false,
+          "current_peer_reports_read": false,
+          "preliminary_findings_shared": false,
+          "tests_executed": false,
+          "accounts_or_native_agents_used": false
+        },
+        "verified": [
+          {
+            "subject": "prior closed body/index split correction",
+            "evidence": [
+              "crates/rrx/src/state/runtime/driver.rs:325-347"
+            ],
+            "actual_guard_condition": "One SELECT obtains requested row ID, indexed Project/Goal/version, bounded complete Task body, and indexed accepted-Goal classification together. Missing row, over-1MiB body, decoding error, or requested/index/body identity disagreement returns Err. Accepted classification from the same row returns Err. The exact decoded Task is returned only after both checks."
+          },
+          {
+            "subject": "all Task-ID helper routes use admitted Task",
+            "evidence": [
+              "crates/rrx/src/git.rs:98-101",
+              "crates/rrx/src/git.rs:188-199",
+              "crates/rrx/src/git.rs:202-231",
+              "crates/rrx/src/git.rs:276-281"
+            ],
+            "actual_guard_condition": "create/status/mutation/lock_review/cleanup first call legacy_worktree_task, then pass that Task to project and owned_status. The former unchecked Store.task helper is removed. Subsequent status/lock verification calls re-enter the same validated admission rather than an unchecked Task reader."
+          },
+          {
+            "subject": "record-based review verification and unlock",
+            "evidence": [
+              "crates/rrx/src/git.rs:248-272",
+              "crates/rrx/src/git.rs:346-367"
+            ],
+            "actual_guard_condition": "verify_review and unlock_review read the Task through legacy_worktree_task using the lock scope Task ID. Full record scope must equal the admitted Task scope before Git verification. unlock passes that same admitted Task to verify_review_snapshot, avoiding the previous callback reread. Active lock, kind, worktree, branch, revision and cleanliness guards remain."
+          },
+          {
+            "subject": "actual control construction and negative matrix",
+            "evidence": [
+              "crates/rrx/src/runtime/tests.rs:383-433",
+              "crates/rrx/src/runtime/tests.rs:966-1024",
+              "crates/rrx/src/runtime/tests.rs:1066-1205"
+            ],
+            "actual_guard_condition": "Controls register a real isolated Git repository and create accepted Goal A through the genuine controller. Historical unaccepted Goal L is explicitly a test-only legacy fixture with no Driver issuance. Valid legacy create actually reaches Git and creates a worktree. Negative cases replace L body with A, wrong ID/Project/Goal/version, malformed and oversized bodies; create/status/mutation/lock/cleanup must reject with unchanged native output counter and complete fixture table rows. Missing Task create also must reject."
+          },
+          {
+            "subject": "documentation qualification boundary",
+            "evidence": [
+              "doc/design/runtime-operational-integration-design.md:405-413"
+            ],
+            "actual_guard_condition": "The added note describes bounded same-Task admission and distinguishes historical legacy helper compatibility from genuine accepted-Goal refusal. It does not confer Driver, binding or Native execution authority."
+          }
+        ],
+        "acceptance_limits": [
+          "Static source review only: reported author 18-control PASS is not an independently executed result of this reviewer.",
+          "New corruption matrix directly covers create/status/mutation/lock_review/cleanup and missing-row create. verify_review/unlock_review are checked statically; this delta adds no dedicated record-based corruption control for those routes.",
+          "This correction validates Task row identity and bounds, not a general requalification of legacy Project/Goal/Record public DTO readers or arbitrary external database mutation.",
+          "Same-row admission is not a lifetime lock against external database mutation after admission; no security sandbox or process containment guarantee is inferred.",
+          "Runtime9 whole-source full regression RED remains an open qualification gate. Earlier unqualified source2 artifacts are not promoted by this review.",
+          "Actual managed Runtime Native Driver/binding issuer remains unavailable; no operational readiness, native-account execution, authenticated compatibility, Issue completion, whole MVP or Phase2 approval.",
+          "Inherited Verifier8 was authored by this reviewer and is explicitly excluded from independent requalification."
+        ]
+      }
+    }
+  ],
+  "review_independence_note": "Raw reports preserve actual independence scope. Root received C zero-count closure notification before Root closure but read no current peer finding/body; no mutual current findings were supplied before both closed. No reviewer executed these author checks.",
+  "checks": {
+    "environment": {
+      "CARGO_HOME": "/private/tmp/rururunx-cargo",
+      "RUSTUP_HOME": "/private/tmp/rururunx-rustup",
+      "CARGO_TARGET_DIR": "/private/tmp/rrx-runtime9-79bb-target",
+      "PATH_prefix": "/private/tmp/rururunx-cargo/bin"
+    },
+    "debug_controls": {
+      "command": "cargo test -p rrx --lib runtime::tests:: --offline",
+      "exit_code": 0,
+      "passed": 18,
+      "log": "/private/tmp/rrx-runtime9-snapshot-controls.txt",
+      "sha256": "819a48a68a5a1e144241b8622c76fc8ad1e56da7dd525f308afc350f359c8122",
+      "handle": 38616,
+      "closed": true
+    },
+    "steps": [
+      {
+        "name": "fmt",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--check"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.723,
+        "log": "/private/tmp/rrx-runtime9-d87-fmt.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--offline",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 11.528,
+        "log": "/private/tmp/rrx-runtime9-d87-clippy.txt",
+        "sha256": "fd4e60e36632a88f6feb017f1d629d5d303b4c6223c577d4de81e4e32ae2fd36"
+      },
+      {
+        "name": "build",
+        "command": [
+          "cargo",
+          "build",
+          "--workspace",
+          "--all-targets",
+          "--offline"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 7.512,
+        "log": "/private/tmp/rrx-runtime9-d87-build.txt",
+        "sha256": "7bddc4b7be927100cf301f101947929a8073157b2f65a3b7719e20eab92df8e5"
+      },
+      {
+        "name": "controls-release",
+        "command": [
+          "cargo",
+          "test",
+          "-p",
+          "rrx",
+          "--lib",
+          "runtime::tests::",
+          "--release",
+          "--offline"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 117.798,
+        "log": "/private/tmp/rrx-runtime9-d87-controls-release.txt",
+        "sha256": "e970392aa435f7c359e13f61e19f062cfad1cb40153cb86671e8bbc70771d3f7"
+      },
+      {
+        "name": "doc",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--doc",
+          "--offline"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 4.928,
+        "log": "/private/tmp/rrx-runtime9-d87-doc.txt",
+        "sha256": "bf0d052943179223eecc407d0803cbcd9a2352c4c6a127cdcfe11c699bc76785"
+      },
+      {
+        "name": "full-debug",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--all-targets",
+          "--no-fail-fast",
+          "--offline"
+        ],
+        "exit_code": 101,
+        "elapsed_seconds": 101.021,
+        "log": "/private/tmp/rrx-runtime9-d87-full-debug.txt",
+        "sha256": "ba1657639f451e1a970b9b76ed7f6320ca72b1b92cdc9f9b4ae0e3a29567906b"
+      }
+    ],
+    "counts": {
+      "debug_controls": 18,
+      "release_controls": 18,
+      "schema_cases_in_each_filtered_run": 2,
+      "doctests": 2
+    },
+    "accounting": "18D and18R each include2state::runtime cases; same cases/modes not36 distinct controls. New snapshot test contains7 corrupted body variants+missingRow and real canonical legacy/accepted-Goal prerequisites.",
+    "default_parallelism_and_deadlines_unchanged": true,
+    "full_release": "NOT_RUN"
+  },
+  "full_debug": {
+    "command": "cargo test --workspace --all-targets --no-fail-fast --offline",
+    "exit_code": 101,
+    "outer_totals": {
+      "passed": 253,
+      "failed": 373,
+      "ignored": 30
+    },
+    "lib": {
+      "passed": 222,
+      "failed": 286,
+      "ignored": 25
+    },
+    "target_count": 18,
+    "primary_failure_count": 373,
+    "primary_failure_observation_counts": {
+      "direct_setup": 349,
+      "other_or_wrapper": 24,
+      "missing": 0
+    },
+    "targets": [
+      {
+        "target": "unittests src/lib.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/rrx-2a4538ad00dcecac)",
+        "outer_result": {
+          "passed": 222,
+          "failed": 286,
+          "ignored": 25
+        },
+        "primary_failures": [
+          {
+            "name": "adapter::git_owner::tests::actual_generic_launch_drop_distinguishes_admitted_from_live_git",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::git_owner::tests::actual_generic_output_open_original_kind_remains_lost_after_late_release",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::git_owner::tests::destructive_private_controls_leave_fresh_production_pool_unchanged",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::git_owner::tests::four_actual_git_operations_have_independent_native_and_reader_lanes",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::git_owner::tests::generic_live_launch_error_uses_actual_git_flag_without_retyping_error",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::grok::environment_tests::absent_native_baseline_cannot_be_introduced_by_declared_caller",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::actual_stop_after_admission_never_spawns_and_keeps_snapshots_coherent",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::environment_initial_selection_drives_real_canary_and_rejection_consumers",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::initial_and_resume_selection_keep_invalid_and_live_ownership_guards",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::live_reference_change_rejects_actual_resume_before_spawn",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::live_reference_change_rejects_actual_start_before_spawn",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::native_constructor_enforces_actual_baseline_count_and_name_bounds",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::native_references_and_ordinary_callers_keep_exact_scoped_alternatives",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::owning_reference_change_after_snapshot_rejects_resume",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::owning_reference_change_after_snapshot_rejects_start",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::owning_reference_refresh_and_existing_consultant_reservation_guards_remain_required",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_start",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::environment_workflow_tests::reachable_workflow_native_phase_rejects_generic_map_and_binds_own_map",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::fixture_support::synthetic_sidecar_stays_complete_for_actual_concurrent_reader",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::grok::reader_tests::actual_binding_refresh_git_unknown_prevents_prompt_and_preserves_reservation",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::grok::reader_tests::actual_checkpoint_git_unknown_keeps_original_error_and_does_not_publish_input",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::grok::reader_tests::actual_index_git_unknown_reaches_pre_spawn_and_reconciliation_receipts",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::grok::reader_tests::actual_late_git_reap_keeps_grok_lost_receipt_and_reservation_after_slot_release",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::grok::reader_tests::actual_pre_spawn_git_unknown_reaches_receipt_and_session_reservation",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::grok::receipt_support::tests::complete_paging_honors_closed_upper_window",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::grok::receipt_tests::before_spawn_stop_receipt_has_only_preflight_creation_trace",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::receipt_tests::completed_resume_receipts_keep_exact_attempt_windows_and_trace",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::receipt_tests::completed_turn_unknown_cleanup_transports_inspector_facts_without_changing_receipt",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::receipt_tests::dispatched_clean_receipt_reaches_actual_supervise_stages",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::receipt_tests::earlier_state_assertion_exposes_bounded_unclean_receipt",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::grok::registry_tests::actor_journals_failed_write_effect_and_denies_completion",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::grok::registry_tests::sanitized_native_process_unknown_cleanup_reaches_grok_durable_reservation",
+            "classification": "wrapper_or_other_unclassified"
+          },
+          {
+            "name": "adapter::native::tests::managed_adapter_cancel_closes_only_its_exact_session",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::native::tests::managed_adapter_routes_aliases_and_observes_work_independently_of_cleanup",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::tests::generic_post_spawn_failure_audit_preserves_inspector_facts_and_lost_reservation",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::tests::generic_real_native_unknown_observation_keeps_durable_executor_reserved",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::tests::hanging_git_preflight_times_out_without_holding_shared_store",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::tests::lifecycle_change_before_git_snapshot_is_detected_from_original_versions",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::tests::ownership_change_during_native_preflight_prevents_executor_launch",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "adapter::tests::running_write_failure_cleans_confirmed_groups_and_reserves_uncertain_groups_with_audit",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::ownership::tests::a_valid_same_head_worktree_replacement_cannot_reuse_the_initial_binding",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::ownership::tests::immutable_review_rejects_untracked_and_ignored_changes_and_unlock_relock_aba",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::ownership::tests::persisted_authority_and_native_inputs_cannot_be_forged_or_silently_reused",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::ownership::tests::task_branch_common_directory_and_exact_prepared_head_are_required",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::abandoned_resume_after_inference_or_uncertain_cleanup_publishes_its_real_outcome",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::abnormal_supervisor_drop_clears_the_installed_live_approval_journal",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::actual_admission_cas_holds_cancellation_order_through_a_second_sqlite_writer",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::actual_checkpoint_stop_has_both_linear_orders_and_finished_window_is_idle",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::actual_consumed_rpc_timeout_after_caller_drop_keeps_owned_task_and_lost_completion",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::actual_failed_admission_cas_latches_cause_before_cleanup_and_survives_stop_caller_drop",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::actual_registered_fresh_bootstrap_stop_or_caller_drop_verifies_cleanup_before_failed",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::actual_registered_resume_cancel_before_starting_restores_exact_snapshot_and_idle_stop",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::actual_registered_review_git_cancel_reaps_owned_hook_before_failed_without_native_spawn",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::actual_resume_pre_admission_cancel_has_zero_new_wire_and_restores_prior_turn_output",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::actual_supervisor_drains_stop_cancel_and_declines_without_inventing_terminal_proof",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::actual_turn_wire_is_fenced_after_preflight_and_consumption_precedes_delivery",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::any_uncertain_owned_group_retains_lost_reservation_and_scoped_diagnostic",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::cancel_before_initial_resume_or_checkpoint_write_needs_no_restore_cas_or_audit",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::cancelled_or_previous_turn_replies_cannot_claim_a_pending_native_request",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::captured_stop_a_cannot_cancel_later_resume_b_or_adopt_its_status",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::changed_durable_owner_or_paused_goal_prevents_native_operation_grant",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::checkpoint_and_resume_publish_fresh_input_before_reserving_and_restore_consumed_history",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::checkpoint_rejects_stale_or_regressed_input_without_destroying_resume_state",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::checkpoint_restore_cas_failure_is_unpublished_and_cannot_adopt_another_writer",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::claimed_transition_excludes_release_resume_and_eviction_without_poisoning_registry",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::custody_mechanics::checkpoint_err_worker_restores_only_genuine_previous_control_after_join",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::custody_mechanics::queued_metadata_after_revoked_checkpoint_restores_exact_previous_without_job_refund",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::empty_approval_decisions_preserve_actual_consumed_fixture",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::empty_route_guards_preserve_real_started_terminal_and_live_pending_owners",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::empty_scope_and_operation_helpers_preserve_store_ledger_and_native_frames",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::failed_grant_preflight_keeps_the_native_request_pending_and_deniable",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::failed_intent_audit_prevents_delivery_of_native_acceptance",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::failed_pre_inference_resume_restores_the_owned_terminal_record_and_watch",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::native_human_route_can_be_denied_but_cannot_be_silently_granted_by_broker",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::native_input_admission_is_atomic_with_scope_versions_and_durable_consumption",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::native_patch_grant_rejects_symlink_and_hard_link_targets_outside_the_task",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::native_reply_is_correlated_one_time_and_audited_before_real_wire_delivery",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::native_resolution_retires_the_pending_operation_without_sending_a_runtime_reply",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::observations_reject_transition_and_stale_turn_instead_of_mixing_telemetry",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::oversized_encoded_input_is_rejected_before_consumption_or_native_wire",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::post_consumption_caller_drop_keeps_the_registered_stop_channel_idle",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::preparation_cleanup_uncertainty_returns_lost_and_retains_first_cause_and_detail",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::registered_consumption_queues_stop_through_ack_and_native_missing_ack_stays_lost",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::registered_start_caller_drop_before_starting_does_not_write_or_spawn",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::resume_never_replays_cached_prompt_and_checkpoint_refreshes_only_own_metadata",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::resumed_supervised_transition_allows_actual_approval_usage_and_exact_one_reply",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::selected_component_terminal_never_proves_whole_workload_completion",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::server_exit_zero_does_not_fabricate_a_stopped_or_failed_turn_success",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::source_consultation_dispatch_ignores_descendant_task_review_locks",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::terminal_publication_must_finish_before_next_attempt_and_has_no_late_watch_write",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::unobserved_native_input_stays_reserved_after_transport_loss_or_stop_with_dead_processes",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::unrelated_project_registration_does_not_invalidate_an_owned_native_approval",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "codex::session::tests::wrong_operation_digest_cannot_claim_the_native_request",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::cleanup::tests::historical_cookie_sweep_preserves_retained_result_and_live_sibling",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::docker::tests::docker_changing_inventories_fit_the_actual_cookie_persistence_budget",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::docker::tests::docker_engine_change_refuses_cleanup_and_native_requalification",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::docker::tests::docker_filter_and_operation_identity_are_independently_checked",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::docker::tests::docker_mutation_ack_timeout_preserves_exact_durable_target_and_action",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::docker::tests::docker_remote_transport_is_rejected_before_daemon_probe",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::docker::tests::docker_stale_cleanup_claim_never_launches_a_probe",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::docker::tests::docker_timeout_retains_partial_kill_and_uncertain_helper_receipt",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::docker::tests::registered_docker_cleanup_preserves_three_sibling_units_and_known_work",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::ipc::tests::actual_tool_ipc_executes_current_scope_and_refuses_foreign_or_retired_cookie",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::ipc::tests::managed_post_commit_hook_can_reenter_without_blocking_sibling_git",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::ipc::tests::oid_shaped_branch_names_cannot_authorize_foreign_ref_mutation",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::authentication_and_unclassified_capacity_terminals_have_distinct_outcomes",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::bootstrap_failure_categories_survive_without_retaining_native_error_payloads",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::cancellation_during_bootstrap_closes_the_session_without_waiting_for_rpc_deadline",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::claude_live_quota_wait_is_scoped_preserves_input_and_keeps_sibling_running",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::codex_two_window_recovery_refresh_keeps_correlated_probe_through_turn_dispatch",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::competing_native_start_cannot_retire_the_live_winner",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::configured_global_provider_alias_and_project_caps_wait_before_native_spawn",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::dropped_executor_runtime_preserves_durable_lost_subscription_and_session",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::four_protocol_fixture_sessions_keep_sibling_work_when_one_is_cancelled",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::native_answers_are_owned_durable_and_failure_text_is_not_approval",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::native_claude_running_hold_does_not_replace_original_answer_with_later_result",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::native_collector_overflow_stops_a_peer_that_never_sends_a_terminal",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::native_concurrent_terminal_retry_survives_supervisor_watch_publication",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::native_dispatch_admission_has_a_durable_winner_against_retirement",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::native_invocation_binds_actual_durable_context_and_refuses_altered_input_before_spawn",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::native_late_draft_preserves_cancellation_and_epoch_fences",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::native_preinput_context_supersession_refuses_before_input_effect",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::native_raw_duplicate_and_depth_frames_cannot_mint_complete_content",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::native_subscription_wait_reason_matches_status_during_retry_and_terminal",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::native_transient_receipt_failure_retains_frozen_success_and_reconciles_watch",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::readonly_review_profile_is_selected_in_the_actual_fixture_launch",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::structured_quota_terminals_wait_without_converting_ordinary_failures",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::version_preparation_abort_and_retirement_do_not_leave_launch_authority",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_size",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::native::tests::workflow_source_bootstrap_reads_commit_and_refuses_native_before_effects",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::abandoned_preparation_closes_its_exact_unit_and_a_retry_uses_fresh_names",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::cancellation_while_waiting_for_common_git_prevents_preparation_spawn",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::cancellation_wins_publication_without_losing_captured_draft",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::captured_graph_survives_executor_changes_and_review_source_is_readonly",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::cleanup_receipt_during_capture_does_not_revoke_successful_finalization",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::preparation_failure_closes_authority_and_keeps_fresh_retry_admissible",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::retained_tests::retained_inspection_detects_reference_graph_and_manifest_corruption",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::retained_tests::retained_inspection_has_pending_intent_and_distinct_cookie_before_child_exec",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::retained_tests::retained_inspection_inflight_artifact_fence_and_abandonment_remain_unknown",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::retained_tests::retained_inspection_rejects_forged_metadata_and_stale_epoch_before_spawn",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::retained_tests::retained_inspection_survives_retirement_disposal_and_runtime_restart",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::retained_tests::routing_tests::retained_inspection_ambient_common_directory_cannot_substitute_complete_backup",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::retained_tests::routing_tests::retained_inspection_graft_cannot_hide_missing_ancestors",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::results::tests::retained_tests::routing_tests::retained_inspection_shallow_boundary_cannot_hide_missing_ancestors",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::workflow_source::recovery_tests::actual_recovery_future_drop_invalidates_only_its_uninstalled_claim",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::workflow_source::recovery_tests::final_recovery_acceptance_refuses_instruction_and_epoch_races",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::workflow_source::recovery_tests::published_recovery_reopens_exact_frame_and_advances_only_typed_workflow_pins",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::workflow_source::recovery_tests::recovery_rejects_bad_manifest_and_complete_caller_dto_drift",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::workflow_source::recovery_tests::source_bound_inflight_helper_rejects_drift_epoch_and_future_drop",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::workflow_source::recovery_tests::source_claim_checks_helper_admission_competition_and_full_dto_currency",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::workflow_source::recovery_tests::unpublished_ready_and_foreign_retained_dtos_never_select_recovery",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::workflow_source::tests::first_adoption_refuses_changed_envelope_task_cas_and_unsettled_helper_atomically",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "execution::workflow_source::tests::retained_corpus_reads_exact_tree_blobs_after_retirement_and_refuses_unrelated_objects",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::native_results_tests::populated_native_reader_accepts_text_and_bounded_partial_prefix",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::native_results_tests::populated_native_reader_refuses_unqualified_structured_and_inconsistent_prefix",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::a_live_executor_cannot_be_replaced_or_leak_its_capacity_through_failed_reservation",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::ambiguous_quota_updates_cannot_clear_exhaustion_and_terminal_probe_is_released",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::body_corruption_cannot_redirect_unit_or_lease_authority",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::cleanup_backlog_fences_expired_claims_and_old_runtime_epochs",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::cleanup_claim_waits_for_finalization_and_preserves_known_work_and_sibling",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::epoch_recovery_preserves_known_work_and_fences_live_and_already_retired_transports",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::epoch_recovery_rolls_back_if_a_body_redirects_an_indexed_unit",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::exhaustion_without_reset_recovers_only_through_the_current_pool_probe",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::governing_instruction_change_fences_effects_but_preserves_historical_retirement",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::multi_window_recovery_preserves_one_probe_until_its_actual_release",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::new_generation_closes_old_reviewers_without_erasing_known_work_or_artifacts",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::normal_terminal_cleanup_keeps_finalization_and_result_publication_races_cancel",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::quota_bucket_body_cannot_impersonate_another_indexed_row",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::retirement_is_allowed_after_goal_pause_but_resume_cannot_revive_unit",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::stale_callbacks_and_generic_task_cancellation_cannot_reopen_authority",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::two_tasks_keep_independent_authority_and_orphan_port_leases",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::unclassified_capacity_waits_for_a_fresh_attempt_without_closing_a_sibling_pool",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::unknown_remote_effect_gates_its_target_phase_without_blocking_local_retry",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::execution::tests::workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::native_dispatch_tests::environment_admission_preserves_session_and_parent_guard_precedence",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::native_dispatch_tests::environment_admission_rechecks_live_names_without_foreign_version_tokens",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::native_dispatch_tests::environment_policy_keeps_blocked_lock_and_lost_guard_precedence",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::native_dispatch_tests::environment_projection_streams_all_names_and_ignores_unrelated_foreign_metadata",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::native_dispatch_tests::environment_transaction_rejects_invalid_own_names_independently_of_caller_subset",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::native_dispatch_tests::native_dispatch_checks_each_owner_version_across_independent_connections",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::native_dispatch_tests::native_dispatch_fences_lock_version_aba_and_session_cas",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::native_dispatch_tests::native_dispatch_supports_optional_consultation_and_rejects_inactive_owner",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state::native_dispatch_tests::own_environment_projection_rejects_invalid_authority_without_changing_native_precedence",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::actual_first_adoption_refuses_payload_drift_and_stale_task_cas_before_native",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::actual_workflow_uses_committed_rules_policy_and_adopts_same_initial_unit",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::committed_sources_require_prepare_before_initialize_and_refuse_foreign_scope",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::initial_sources_retire_on_cancel_failure_and_last_owner_drop_before_native",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::production_gate_claim_inputs_refuse_before_helpers_receipts_or_native_effects",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::production_gate_closed_claim_cannot_be_replayed_into_another_receipt",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::production_gate_rejects_forged_success_and_corrupted_retained_manifest",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::production_gates_observe_real_preparation_native_result_and_commit_but_wait_for_tests",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::production_initial_gates_refuse_dirty_preparation_and_wait_for_missing_specification",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::verification_tests::accepted_raw_stream_retrieval_rejects_tampering_and_short_budget_after_reopen",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::verification_tests::activated_tests_contract_refuses_generic_passed_even_with_no_unit",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::verification_tests::actual_collected_known_exit_survives_retention_io_failure_without_acceptance",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::verification_tests::actual_command_cancel_retains_observed_receipt_without_accepting_tests",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::verification_tests::actual_command_failure_overflow_timeout_and_source_drift_never_certify_tests",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::verification_tests::actual_command_grant_rejects_native_session_helper_delegation_and_terminal_writers",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::verification_tests::actual_command_preparation_then_owner_drift_refuses_before_command_intent",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::verification_tests::actual_completion_handoff_abort_preserves_known_success_without_tests_acceptance",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::verification_tests::actual_resource_admission_waiter_drop_and_task_cancel_create_no_unit_or_command",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::verification_tests::actual_tests_commands_complete_on_retained_commit_without_agent_sessions",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::verification_tests::actual_workflow_future_abort_fences_command_unit_and_quarantines_unknown_work",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::committed_source_tests::verification_tests::four_actual_command_tasks_cancel_one_preserving_sibling_artifacts_and_receipts",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::managed_tests::concurrent_due_wait_claim_preserves_the_native_launch_or_wait_owner",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::managed_tests::managed_registry_workflow_qualifies_real_retained_content_before_atomic_publication",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::managed_tests::managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_input",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::managed_tests::workflow_live_subscription_wait_retains_the_same_attempt_until_cancelled",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::managed_tests::workflow_native_capacity_terminal_waits_with_fresh_resources_instead_of_failing",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::all_presets_drive_real_adapter_calls_and_persist_phase_context_history",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::all_public_audit_entrypoints_reject_reserved_gate_journal_kinds",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::atomic_authority_rejects_invented_initial_history_completion_and_finished_flags",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::atomic_context_pointer_rejects_wrong_revision_phase_or_source_versions",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::blocked_project_and_paused_goal_cannot_progress_or_publish_context",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::cancelled_unknown_gate_keeps_project_reserved_after_goal_terminal",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::changed_approved_artifact_invalidates_formal_reviews_and_known_drift_never_calls_gate",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::commit_publishes_new_head_before_tests_review_and_pr_without_restart",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::completed_attempt_rewrite_and_atomic_owner_version_or_activity_changes_are_rejected",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::concurrent_metadata_before_gate_claim_or_native_dispatch_preserves_progress",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::concurrent_native_polls_claim_evidence_evaluation_before_calling_external_gate",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::default_is_fallback_not_a_floor_and_finished_workflow_cannot_reopen",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::equal_class_escalation_cannot_rebind_unverified_head_or_raw_authority",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::escalation_restarts_mandatory_prerequisites_without_erasing_history_or_downgrading",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::existing_live_executor_and_review_lock_reject_mutating_phase_before_evidence_port",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::exit_zero_without_review_approval_cannot_satisfy_review_gate",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::explicit_stricter_selection_and_unsupported_review_capability_are_honest",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::final_claim_cas_loss_recovers_only_proven_undispatched_reservations",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::foreign_stale_unbound_or_empty_gate_evidence_never_advances_review",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::gate_owner_updates_preserve_issue_binding_goal_metadata_and_task_blockers",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::generic_completion_default_requires_real_zero_exit_and_no_failure",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::inactive_owners_allow_cancel_but_terminal_release_requires_verified_session",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::known_irreversible_drift_holds_single_operation_and_cleanup_reuses_frozen_authority",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::live_consultant_does_not_strand_readonly_review_but_mutating_gate_remains_fenced",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::lost_native_executor_fences_explicit_retry_and_other_phase_dispatch",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::lost_reviewer_also_requires_verified_recovery_before_retry",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::native_gate_requires_persisted_owned_status_and_sessionless_completion_is_rejected",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::native_git_commit_port_freezes_owning_worktree_head_for_review_and_pr",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::native_turn_completion_preserves_real_exit_and_still_requires_gate_evidence",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::observed_gate_outcome_survives_paused_blocked_or_missing_postgate_sources",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::ordinary_store_cannot_override_workflow_fields_or_context_and_retry_preserves_other_blockers",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::persisted_status_mismatch_is_durable_waiting_without_gate_or_rebinding",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_actor_override_uses_new_claim_before_launch_and_binding_is_immutable",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_capture_errors_release_only_current_owned_claim_and_preserve_metadata",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_definitive_fail_and_both_invalidation_publication_conflicts_retain",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_dispatched_observation_and_direct_store_terminal_fence",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_dropped_owner_is_not_released_by_a_fresh_engine",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_explicit_retry_refuses_unbound_dispatch_without_recovery_proof",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_invalidation_internal_errors_release_before_publication_only",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_lifecycle_aba_before_refresh_starts_same_claim_after_refresh_retains",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_observers_preserve_both_capture_awaits_and_owned_single_launch",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_parent_metadata_and_record_replacement_remain_reserved",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_pause_cancel_and_terminal_recovery_keep_owner_fenced",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_post_dispatch_binding_cas_conflict_preserves_factual_session_and_claim",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_post_refresh_record_replacement_rejects_release_after_typed_task_marker_error",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_release_cas_and_executor_lost_fences_do_not_retry",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_reserve_loser_cannot_release_identical_winner_claim",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_unbound_to_bound_before_refresh_releases_for_new_reservation",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::preparation_untyped_marker_failure_keeps_claim_even_when_start_never_called",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::project_minimum_and_rule_refresh_override_defaults_and_force_new_generation",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::quick_requires_actual_merge_cleanup_before_terminal_and_cancel_never_implies_native_death",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::record_cas_failure_rolls_back_context_task_and_all_transition_audit",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::rejected_review_cancel_releases_only_verified_terminal_attempt_and_project",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::restarted_native_attempt_reports_durable_recovery_without_rebinding_or_launching",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_cancel",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::revision_changes_during_review_gate_preserve_reservation_and_never_accept_stale_verdict",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::running_attempt_preserves_native_actor_when_task_reviewer_choice_changes",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::second_engine_cannot_dispatch_duplicate_phase_and_interrupt_does_not_auto_retry",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::source_scope_and_concurrent_task_changes_fail_closed_without_orphan_context",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::stale_revision_invalidates_evidence_and_waiting_requires_explicit_retry",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::unbound_retry::identical_raw_retry_builder_commits_on_pre_marker_bound_and_port_outcomes",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::unbound_retry::marked_running_raw_closures_refuse_but_original_owner_can_bind_or_fail",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::unbound_retry::marked_running_terminal_decision_retains_original_attempt",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::unbound_retry::matching_terminal_row_does_not_resolve_unknown_start",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::unbound_retry::pre_marker_public_retry_repairs_configuration_and_launches_once",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::unbound_retry::pre_marker_raw_retry_and_generation_commit_and_stale_owners_do_nothing",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::unbound_retry::public_retry_keeps_bound_and_port_outcomes_available",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::unbound_retry::public_unknown_start_refuses_both_actors_without_replay",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::unknown_gate_generation_cannot_be_released_by_raw_transition",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::waiting_gate_reuses_native_session_and_unknown_outcome_stays_reserved",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::waiting_irreversible_hold_then_resume_does_not_orphan_owned_blocker",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::workflow_authority_and_decision_history_require_atomic_monotonic_updates",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "workflow::tests::workflow_result_cannot_publish_ledger_only_ready_metadata",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          }
+        ]
+      },
+      {
+        "target": "unittests src/main.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/rrx-1f06ff8f27f3a6e5)",
+        "outer_result": {
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        },
+        "primary_failures": []
+      },
+      {
+        "target": "tests/adapter.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/adapter-bbd155a9006cf63d)",
+        "outer_result": {
+          "passed": 0,
+          "failed": 19,
+          "ignored": 0
+        },
+        "primary_failures": [
+          {
+            "name": "agent_git_configuration_does_not_override_runtime_ownership_preflight",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "atomic_starting_reservation_excludes_duplicate_executor_and_review_acquisition",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "blocked_project_rejects_new_launch_and_allows_owned_native_stop",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "concurrent_snapshot_updates_are_not_overwritten_and_identity_survives_reopen",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "configured_command_receives_only_prepared_context_explicit_environment_and_task_cwd",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "executable_symlink_keeps_configured_argv_zero_and_terminal_goal_cannot_launch",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "explicit_unsupported_operations_and_registry_preserve_provider_independence",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "failed_launch_nonzero_exit_and_bounded_output_are_observable",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "foreign_git_repository_inside_namespace_detached_and_protected_branches_are_rejected",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "generic_terminal_status_matches_persisted_owned_session_before_return",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "immediate_stop_and_adapter_drop_do_not_leave_running_children",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "large_unread_stdin_is_failed",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "lost_executor_keeps_worktree_reserved_until_explicit_verified_dead_resolution",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "natural_exit_cleans_redirected_background_descendants_before_terminal_persistence",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "runtime_shutdown_terminates_native_group_and_preserves_uncertain_reservation",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "separate_projects_run_concurrently_without_environment_or_context_reuse",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "stop_reaps_child_and_descendants_and_is_idempotent",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "terminal_retention_is_bounded_and_output_can_be_released",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          }
+        ]
+      },
+      {
+        "target": "tests/cli.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/cli-c618fc88d3dbb941)",
+        "outer_result": {
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0
+        },
+        "primary_failures": []
+      },
+      {
+        "target": "tests/codex_unavailable.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/codex_unavailable-7ec6a48e551b708c)",
+        "outer_result": {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 1
+        },
+        "primary_failures": []
+      },
+      {
+        "target": "tests/context.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/context-6c18ebf2c456b446)",
+        "outer_result": {
+          "passed": 0,
+          "failed": 16,
+          "ignored": 0
+        },
+        "primary_failures": [
+          {
+            "name": "binary_bounded_inputs_and_ignored_path_admission_are_explicit",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "budget_counts_actual_rendered_wrapper_and_optional_omissions",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "concurrent_native_context_scans_do_not_share_live_cleanup_flags",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "dirty_sources_added_deleted_and_head_changes_invalidate",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "explicit_file_symbol_callers_and_callees_are_scoped",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "framing_and_budget_audit_cannot_forge_authoritative_sections",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "ignored_and_primary_rules_configs_have_independent_hash_freshness",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "in_flight_index_releases_store_and_rejects_concurrent_state_mutation",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "local_map_selection_graph_and_observable_estimates",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "mandatory_rules_evidence_and_expansion_never_silently_drop",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "missing_moved_or_replaced_source_root_cannot_rebind",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "root_directory_identity_and_hard_links_cannot_reuse_sources",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "same_issue_number_foreign_scope_and_project_state_cannot_reuse_context",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "state_version_recheck_rejects_changed_task_goal_and_worktree_branch",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "symlink_nested_repo_metadata_namespace_and_special_files_fail_closed",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "whitespace_head_paths_staged_deletions_and_path_aliases_are_explicit",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          }
+        ]
+      },
+      {
+        "target": "tests/git.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/git-7db62ccb1a79d7ae)",
+        "outer_result": {
+          "passed": 0,
+          "failed": 18,
+          "ignored": 0
+        },
+        "primary_failures": [
+          {
+            "name": "aliased_worktree_bindings_and_goal_scoped_executors_are_rejected",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "cleanup_after_upstream_tracking_ref_is_pruned",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "cleanup_checks_native_branch_delete_predicate_before_removal",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "cleanup_rejects_unmerged_then_removes_only_owned_merged_tree",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "concurrent_duplicate_issue_creation_has_one_durable_owner",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "dirty_tracked_untracked_and_ignored_files_block_review_cleanup",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "duplicate_executors_and_malformed_locks_fail_closed",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "immutable_review_detects_clean_head_change",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "independent_tasks_and_project_local_issue_numbers",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "linked_and_wrong_identity_project_roots_are_rejected",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "protected_base_and_git_metadata_namespace_are_rejected",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "qualified_base_ref_wins_over_same_named_tag_and_replacement_is_blocked",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "rejects_foreign_repository_and_existing_path_or_branch",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "rejects_main_master_detached_and_mismatched_branch",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "reservations_and_locks_serialize_across_connections",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "review_locks_block_executor_and_detect_external_changes",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "separate_git_metadata_namespace_is_rejected_before_binding_or_native_creation",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "symlinks_and_native_hook_failures_are_not_bypassed",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          }
+        ]
+      },
+      {
+        "target": "tests/goal_graph.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/goal_graph-70d198b01076d677)",
+        "outer_result": {
+          "passed": 2,
+          "failed": 2,
+          "ignored": 0
+        },
+        "primary_failures": [
+          {
+            "name": "legacy_invalid_graph_hold_and_terminal_refusals_preserve_original_history",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "store_rejects_invalid_graph_changes_without_rows_versions_or_audit",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          }
+        ]
+      },
+      {
+        "target": "tests/grok.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/grok-3249564fb744af84)",
+        "outer_result": {
+          "passed": 3,
+          "failed": 12,
+          "ignored": 2
+        },
+        "primary_failures": [
+          {
+            "name": "concurrent_native_reviewers_share_exact_lock_and_validate_structured_verdict",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "fixture_support::synthetic_sidecar_stays_complete_for_actual_concurrent_reader",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "native_auth_inventory_config_parser_and_tool_evidence_fail_closed",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "native_execute_edits_only_owned_files_and_preserves_actual_exit",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "native_resume_requires_fresh_checkpoint_preserves_uuid_and_discards_replay",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "native_stop_permissions_foreign_refs_and_environment_guards_are_explicit",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "native_structured_consumer_rejects_each_schema_violation_and_live_decision_tools",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "parent_replacement_after_native_preflight_never_reaches_prompt_wire",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "receipt_support::tests::complete_paging_honors_closed_upper_window",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "stop_after_dispatch_preserves_unknown_outcome_until_explicit_recovery",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "structured_schema_rejection_precedes_all_session_and_spawn_effects",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "unknown_native_dispatch_keeps_clean_dead_executor_reserved",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          }
+        ]
+      },
+      {
+        "target": "tests/managed_docker.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/managed_docker-a75bb4e962b3f1ce)",
+        "outer_result": {
+          "passed": 0,
+          "failed": 1,
+          "ignored": 1
+        },
+        "primary_failures": [
+          {
+            "name": "installed_docker_entry_binds_runtime_and_shim_configuration",
+            "classification": "wrapper_or_other_unclassified"
+          }
+        ]
+      },
+      {
+        "target": "tests/managed_tools.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/managed_tools-8be58b3018271e3b)",
+        "outer_result": {
+          "passed": 0,
+          "failed": 1,
+          "ignored": 0
+        },
+        "primary_failures": [
+          {
+            "name": "installed_entry_preserves_native_candidate_index_and_owner_resources",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          }
+        ]
+      },
+      {
+        "target": "tests/project.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/project-ad76bcad98a586f4)",
+        "outer_result": {
+          "passed": 12,
+          "failed": 4,
+          "ignored": 0
+        },
+        "primary_failures": [
+          {
+            "name": "blocked_projects_accept_lost_and_blocker_updates_without_starting_new_work",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "blocked_work_cannot_resurrect_terminal_rows_or_rewrite_goal_and_task_metadata",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "removal_checks_live_goals_tasks_sessions_and_locks_under_store_transaction",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "two_project_issue42_worktrees_context_and_goals_are_isolated",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          }
+        ]
+      },
+      {
+        "target": "tests/state.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/state-f89757e8b3b02270)",
+        "outer_result": {
+          "passed": 3,
+          "failed": 14,
+          "ignored": 0
+        },
+        "primary_failures": [
+          {
+            "name": "append_only_audit_and_failed_journal_write_roll_back_snapshot",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "changing_decisions_preserves_previous_round_evidence_in_journal",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "context_versions_are_immutable_consecutive_and_scoped",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "context_versions_reject_sql_update_delete_and_replace",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "current_scope_audit_rechecks_versions_and_activity_across_connections",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "dag_and_followup_references_cannot_cross_project_or_goal_boundaries",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "legacy_usage_query_preserves_null_scopes_and_refuses_null_column_wildcards",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "legacy_usage_query_redacts_malformed_body_decode_chain_without_writes",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "project_identity_prevents_issue_collisions_and_rejects_cross_project_children",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "restart_preserves_hierarchy_decisions_dag_sessions_context_and_nullable_usage",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "stale_writers_do_not_overwrite_state_or_append_events",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "usage_integer_overflow_cannot_publish_rows_or_audit_or_change_owners",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          },
+          {
+            "name": "usage_missing_is_explicit_and_session_ownership_is_enforced",
+            "classification": "observed_trusted_ingress_fixture_setup_refusal"
+          }
+        ]
+      },
+      {
+        "target": "unittests examples/native_codex_protocol.rs (/private/tmp/rrx-runtime9-79bb-target/debug/examples/native_codex_protocol-5982441938a7a2bc)",
+        "outer_result": {
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        },
+        "primary_failures": []
+      },
+      {
+        "target": "unittests examples/native_codex_session.rs (/private/tmp/rrx-runtime9-79bb-target/debug/examples/native_codex_session-2f2fe41e8fd4333f)",
+        "outer_result": {
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        },
+        "primary_failures": []
+      },
+      {
+        "target": "unittests examples/repository-context.rs (/private/tmp/rrx-runtime9-79bb-target/debug/examples/repository_context-a8a69e08d597a9de)",
+        "outer_result": {
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        },
+        "primary_failures": []
+      },
+      {
+        "target": "unittests src/lib.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/rrx_process_tracker-662e1ba8b83c3899)",
+        "outer_result": {
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0
+        },
+        "primary_failures": []
+      },
+      {
+        "target": "tests/discovery.rs (/private/tmp/rrx-runtime9-79bb-target/debug/deps/discovery-9fa2d018b22542e1)",
+        "outer_result": {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 1
+        },
+        "primary_failures": []
+      }
+    ],
+    "raw_log": {
+      "path": "/private/tmp/rrx-runtime9-d87-full-debug.txt",
+      "sha256": "ba1657639f451e1a970b9b76ed7f6320ca72b1b92cdc9f9b4ae0e3a29567906b",
+      "bytes": 272090
+    },
+    "raw_inventory": {
+      "path": "/private/tmp/rrx-runtime9-d87-full-debug.json",
+      "sha256": "12aa29f69af0420462dd9550ca1e87bb9b4193713d6b6bb8c9244aab37daf262",
+      "bytes": 212220
+    },
+    "classification_limit": "349 primary failures have a direct observed trusted-ingress fixture setup refusal; these fixtures require actual ingress migration. The remaining24 have wrapper/other observations and their underlying causes are unclassified. Nested panic/audit outputs do not increase primary counts. No assertion that all373 are fixture-only causes."
+  },
+  "causal_mutations": {
+    "source_commit": "d87da70750274417851756496178d0b8ac5b2b68",
+    "source_tree": "d400505cbfbe26f1ed0dda854b8561ef15b88cd6",
+    "exclusive_target": "/private/tmp/rrx-runtime9-d87-causal-target",
+    "baseline_log": "/private/tmp/rrx-runtime9-d87-causal-baseline.txt",
+    "operators": [
+      {
+        "operator": "worktree",
+        "mutant_commit": "53cf85ca68f017ca9b5c91daa5065ad926dbb565",
+        "path": "crates/rrx/src/git.rs",
+        "patch_sha256": "1fe78ce9aeff49523aeac84772378be16d108055efd54b9df8f9d732f5df6214",
+        "intended_assertion": "accepted public worktree route reached native Git helper",
+        "mutant": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "runtime::tests::actual_accepted_worktree_routes_refuse_before_valid_native_git_helpers",
+            "--offline"
+          ],
+          "exit_code": 101,
+          "log": "/private/tmp/rrx-runtime9-d87-causal-worktree-mutant.txt",
+          "sha256": "45b2e81f8cb2cf8faa6626531119f6f216b53db61bffa87e49838d96117b6d38",
+          "elapsed_seconds": 13.214,
+          "compiled": true,
+          "executed_binary": "/private/tmp/rrx-runtime9-d87-causal-target/debug/deps/rrx-2a4538ad00dcecac",
+          "executed_binary_sha256": "53413a95597705dd3534fb5abc8f0557c3a4539f21cdccfefa23a48f0186341d"
+        },
+        "kill_qualified": true,
+        "restoration_commit": "836e7fe839dca9a71f868d7dbca8ddd73ca47b7f",
+        "restoration_tree": "d400505cbfbe26f1ed0dda854b8561ef15b88cd6",
+        "restored": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "runtime::tests::actual_accepted_worktree_routes_refuse_before_valid_native_git_helpers",
+            "--offline"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-runtime9-d87-causal-worktree-restored.txt",
+          "sha256": "566b7ba4ed9f6ac9655757547e9c9215fc3dd5add4a824dbee49025f8e5b65a4",
+          "elapsed_seconds": 15.725,
+          "compiled": true,
+          "executed_binary": "/private/tmp/rrx-runtime9-d87-causal-target/debug/deps/rrx-2a4538ad00dcecac",
+          "executed_binary_sha256": "9f1925a660e19717e9453b56f90e2aab16682f8f2dd4b02166891ce2435aed8f"
+        },
+        "restored_pass": true
+      },
+      {
+        "operator": "context",
+        "mutant_commit": "e2168f82753b87815f4809eef1d5d785bb59e0e2",
+        "path": "crates/rrx/src/state/runtime/goals.rs",
+        "patch_sha256": "bbeb254c9560979399972eecd754a695935d874fa16a2023d65af751fda5bb8d",
+        "intended_assertion": "FreshBootstrapRecoveryUnavailable",
+        "mutant": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "runtime::tests::actual_indexed_context_history_cannot_resume_by_malformed_body_scope",
+            "--offline"
+          ],
+          "exit_code": 101,
+          "log": "/private/tmp/rrx-runtime9-d87-causal-context-mutant.txt",
+          "sha256": "d99b7c08918725fc65ef6f19f6c612bf9504b90db3fc3a9ef31ae70288f97919",
+          "elapsed_seconds": 28.153,
+          "compiled": true,
+          "executed_binary": "/private/tmp/rrx-runtime9-d87-causal-target/debug/deps/rrx-2a4538ad00dcecac",
+          "executed_binary_sha256": "9ab8950c30e3f3066a6c5be9d9e4c60feb1ebfc6eaf35fec2d2d63fe033e0fa1"
+        },
+        "kill_qualified": true,
+        "restoration_commit": "7e8045f2ffc3e10118577dcebdf1fc848c53b99a",
+        "restoration_tree": "d400505cbfbe26f1ed0dda854b8561ef15b88cd6",
+        "restored": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "runtime::tests::actual_indexed_context_history_cannot_resume_by_malformed_body_scope",
+            "--offline"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-runtime9-d87-causal-context-restored.txt",
+          "sha256": "d1e089e8fccb4e5e62ed537c55eb43ff894d929eef1f968c0dc484ac297a1c96",
+          "elapsed_seconds": 12.738,
+          "compiled": true,
+          "executed_binary": "/private/tmp/rrx-runtime9-d87-causal-target/debug/deps/rrx-2a4538ad00dcecac",
+          "executed_binary_sha256": "8b174e12520d8fb1f0f948b71752fe205ec05866d1102b74aa3b988010cf4d57"
+        },
+        "restored_pass": true
+      },
+      {
+        "operator": "admission",
+        "mutant_commit": "f0890547b1f9ac369aeeb57400cf14f62bb543ee",
+        "path": "crates/rrx/src/runtime/control.rs",
+        "patch_sha256": "729f4db232552f8b8d027dfc471863477176b3f6be3e02a44fc749336320d94e",
+        "intended_assertion": "Stop acknowledged before its admitted Goal publication finished",
+        "mutant": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "runtime::tests::actual_goal_acceptance_and_stop_share_publication_linearization",
+            "--offline"
+          ],
+          "exit_code": 101,
+          "log": "/private/tmp/rrx-runtime9-d87-causal-admission-mutant.txt",
+          "sha256": "11d23a30486c9da31132b2738263d66df675834e4b26675cfc996e162c4acfb9",
+          "elapsed_seconds": 24.076,
+          "compiled": true,
+          "executed_binary": "/private/tmp/rrx-runtime9-d87-causal-target/debug/deps/rrx-2a4538ad00dcecac",
+          "executed_binary_sha256": "488cf6d889c49d8a0692a22c89c1163e350dec7bef573e7408b4213d85b9ba2c"
+        },
+        "kill_qualified": true,
+        "restoration_commit": "0dc348124b2b4dd38ec292b7f4fd63a01a466bf4",
+        "restoration_tree": "d400505cbfbe26f1ed0dda854b8561ef15b88cd6",
+        "restored": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "runtime::tests::actual_goal_acceptance_and_stop_share_publication_linearization",
+            "--offline"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-runtime9-d87-causal-admission-restored.txt",
+          "sha256": "77efcf75ff66c33401577fbfc213be740990c9b71c82d3344de2c7440a36feb6",
+          "elapsed_seconds": 20.117,
+          "compiled": true,
+          "executed_binary": "/private/tmp/rrx-runtime9-d87-causal-target/debug/deps/rrx-2a4538ad00dcecac",
+          "executed_binary_sha256": "c902094f088098f034741991a98491e01dfeb25be496dd3d854013819886bb65"
+        },
+        "restored_pass": true
+      },
+      {
+        "operator": "retirement",
+        "mutant_commit": "e8120489fc7cceab59ba219791be1114d475d6fa",
+        "path": "crates/rrx/src/runtime/service.rs",
+        "patch_sha256": "a80fd239f29d50137707423aa0452bc23e91bc86cafd319eef5d2196694dff80",
+        "intended_assertion": "completed Err must not leave an already-polled handle",
+        "mutant": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "runtime::tests::actual_control_loop_error_retires_join_result_before_repeated_shutdown",
+            "--offline"
+          ],
+          "exit_code": 101,
+          "log": "/private/tmp/rrx-runtime9-d87-causal-retirement-mutant.txt",
+          "sha256": "2b51875ba819922804138bcc6186f9bca082b74e78a1a29e4e9bf5884da66892",
+          "elapsed_seconds": 20.2,
+          "compiled": true,
+          "executed_binary": "/private/tmp/rrx-runtime9-d87-causal-target/debug/deps/rrx-2a4538ad00dcecac",
+          "executed_binary_sha256": "07b1a78db633abaff551a8a032c89165b00e17f4b063be4408d64917daffec3a"
+        },
+        "kill_qualified": true,
+        "restoration_commit": "39727f9b5a2520f265f6f00a9b5113acc48f60fd",
+        "restoration_tree": "d400505cbfbe26f1ed0dda854b8561ef15b88cd6",
+        "restored": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "runtime::tests::actual_control_loop_error_retires_join_result_before_repeated_shutdown",
+            "--offline"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-runtime9-d87-causal-retirement-restored.txt",
+          "sha256": "b27580bd20cdb891a587614a1f5fb6bb52f74b08c48ef9c02a7916b7296224fe",
+          "elapsed_seconds": 18.157,
+          "compiled": true,
+          "executed_binary": "/private/tmp/rrx-runtime9-d87-causal-target/debug/deps/rrx-2a4538ad00dcecac",
+          "executed_binary_sha256": "2066f255afb53defc73e4a5711ef10d43d4401b56c437587e095cb7aa13c4eff"
+        },
+        "restored_pass": true
+      },
+      {
+        "operator": "task-identity",
+        "mutant_commit": "c7f1594ae14a87c7e267712af38334f6af010613",
+        "path": "crates/rrx/src/state/runtime/driver.rs",
+        "patch_sha256": "aea5209ba89c442dbf733dd123cbdd2d5d13225e6eac09e97a6a0c1effbb0ed9",
+        "intended_assertion": "malformed Task body/index reached actual Git helpers",
+        "mutant": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "runtime::tests::actual_worktree_snapshot_identity_precedes_legacy_scope_and_git",
+            "--offline"
+          ],
+          "exit_code": 101,
+          "log": "/private/tmp/rrx-runtime9-d87-causal-task-identity-mutant.txt",
+          "sha256": "c83906b74186de06425c5bea69588ef763c07f1362a4cb83d6c14af23c681011",
+          "elapsed_seconds": 10.026,
+          "compiled": true,
+          "executed_binary": "/private/tmp/rrx-runtime9-d87-causal-target/debug/deps/rrx-2a4538ad00dcecac",
+          "executed_binary_sha256": "136e46613b7ceac7a598df33a869185dad4560345df2bec38499678de04bde57"
+        },
+        "kill_qualified": true,
+        "restoration_commit": "ac564fc0e6e10f12585ca381250200661c8b65e9",
+        "restoration_tree": "d400505cbfbe26f1ed0dda854b8561ef15b88cd6",
+        "restored": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "runtime::tests::actual_worktree_snapshot_identity_precedes_legacy_scope_and_git",
+            "--offline"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-runtime9-d87-causal-task-identity-restored.txt",
+          "sha256": "e1e47906c352c91677904e2fd2ef967c17f29ba765b612613141f4b937d31390",
+          "elapsed_seconds": 8.187,
+          "compiled": true,
+          "executed_binary": "/private/tmp/rrx-runtime9-d87-causal-target/debug/deps/rrx-2a4538ad00dcecac",
+          "executed_binary_sha256": "0a3c85e77b1f93653e57743cae2bc6f4687d3b4ee7c065db9a457125e8fd6e2b"
+        },
+        "restored_pass": true
+      }
+    ],
+    "final_restored": {
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "runtime::tests::",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "log": "/private/tmp/rrx-runtime9-d87-causal-final-restored.txt",
+      "sha256": "fbdbb93c219993bef2431a9a05884467862f1c31bd1fcba7aae6f256c20e1378",
+      "elapsed_seconds": 2.304,
+      "compiled": true,
+      "executed_binary": "/private/tmp/rrx-runtime9-d87-causal-target/debug/deps/rrx-2a4538ad00dcecac",
+      "executed_binary_sha256": "0a3c85e77b1f93653e57743cae2bc6f4687d3b4ee7c065db9a457125e8fd6e2b"
+    },
+    "final_restored_commit": "ac564fc0e6e10f12585ca381250200661c8b65e9",
+    "driver_finished": true,
+    "all_owned_children_waited": true,
+    "limits": [
+      "Account-free controller/mechanical boundaries only; no native Driver/binding or full Runtime qualification.",
+      "Original full regression RED retained; no changed legacy positive expectations.",
+      "Production candidate untouched; all restored source trees equal exact d87."
+    ],
+    "baseline": {
+      "exit_code": 0,
+      "passed": 18,
+      "log": "/private/tmp/rrx-runtime9-d87-causal-baseline.txt",
+      "sha256": "025556023be5b5ab73c7611713da058fd06c2d5bb400882d16e5226224575efa"
+    },
+    "owned_handles": [
+      {
+        "session_id": 62359,
+        "closed": true,
+        "exit_code": 0
+      },
+      {
+        "session_id": 23853,
+        "closed": true,
+        "exit_code": 0
+      }
+    ],
+    "final_restored_tree": "d400505cbfbe26f1ed0dda854b8561ef15b88cd6"
+  },
+  "prior_failed_candidates": {
+    "logs": [
+      {
+        "path": "/private/tmp/rrx-runtime9-79bb-build.txt",
+        "sha256": "30c5822bb8f908f5be6b77d02d14b0f7167dfbbd3567a9c925bbf33b95fa70a0",
+        "bytes": 5477
+      },
+      {
+        "path": "/private/tmp/rrx-runtime9-cd271-build.txt",
+        "sha256": "b73a5aeb38481a52f5fdfa46877e6a2ea0205a967a59ec1419d4a7208a0f0a2c",
+        "bytes": 675
+      },
+      {
+        "path": "/private/tmp/rrx-runtime9-c0add-full-debug.txt",
+        "sha256": "a64373c7c684209ce30cb4f68670a54bf62d374904fec7bd28da337407d796f0",
+        "bytes": 272715
+      },
+      {
+        "path": "/private/tmp/rrx-runtime9-c0add-clippy.txt",
+        "sha256": "a2d65e19d51b32c6b5d633806cfeea23a8cafb3773f60810b45e2f71ab1e1f48",
+        "bytes": 3439
+      },
+      {
+        "path": "/private/tmp/rrx-runtime9-c0add-controls.txt",
+        "sha256": "90d8baca770ee41bd9b5b89d28bc72f21b28b4ff7cb76b86e62fdb2227bc1da5",
+        "bytes": 2415
+      },
+      {
+        "path": "/private/tmp/rrx-runtime9-b141-full-debug.txt",
+        "sha256": "db20479d59521a8b66e0b62f1357805b0ac97da30d125b31deebdf041f035523",
+        "bytes": 271998
+      }
+    ],
+    "note": "79bb compilation errors, cd test compilation error, c0 controls15PASS1FAIL/schema2PASS/Clippy101/full249PASS375FAIL30ignored, and b141 full252PASS373FAIL30ignored remain historical failed or incomplete gates. Corrections do not excuse these runs or qualify old native positives.",
+    "c0_full_inventory": {
+      "path": "/private/tmp/rrx-runtime9-c0add-full-debug.json",
+      "sha256": "df21f778d6002b3bd10e75a6af694e4655a5d6c67d159a51790968b80192ea75",
+      "bytes": 191030
+    },
+    "b141_full_inventory": {
+      "path": "/private/tmp/rrx-runtime9-b141-full-debug.json",
+      "sha256": "d5695922167ef551534b2056b570f972e0ee83f336d4dc395d4846bf9f0b22a8",
+      "bytes": 212519
+    },
+    "b141_mutations": {
+      "path": "/private/tmp/rrx-runtime9-b141-causal-mutations.json",
+      "sha256": "a1c003271ea9b8e9a611639d1de834b3bb438a467843dd173f0097b7a213f9d4",
+      "bytes": 5813
+    }
+  },
+  "pending_acceptance_gates": [
+    "Migrate349 directly observed old Goal setup failures through genuine Unix trusted ingress/production ports without disabling or converting native-positive expectations into expected refusals. The24 wrapper/other failures still need exact underlying classification.",
+    "Actual nonClone retained Driver issuance/registration, NativeBinding10 genuine private producer and record-only Session binding, canonical original frame and same-operation bookkeeping remain unavailable. EMPTY registry and operational:false are unchanged; no JSON/SQL row is live Driver or allocation proof.",
+    "Complete fair global/project/provider admission, event-driven Sources/Engine dispatch, recovery driver binding, fresh pre-artifact recovery, accepted evidence/criterion evaluation,4-Task/2-Project configured concurrency and native CLI integration remain open.",
+    "Future coordinated order is actual8\u2192Runtime9\u2192Binding10\u2192ReviewRound11; no Binding10 or empty future migration is supplied by this checkpoint.",
+    "No full Release regression, both-OS CI, authenticated native/hook/subscription/resource qualification, full Runtime/Phase2/MVP or main/PR merge approval."
+  ],
+  "cleanup": {
+    "owned_commands_closed": true,
+    "source_worktree": "Retained clean source milestone during reviews; docs-only checkpoint follows after both closed.",
+    "mutation_worktrees": "Both owned clean mutation worktrees normally removed after actual commands closed and exact source restoration; test branch history and private raw logs retained."
+  }
+}

@@ -1,0 +1,280 @@
+{
+  "format": "rrx.phase2.preliminary-reviews.v1",
+  "round": 19,
+  "source_commit": "f63048ab19b486fb5ae2d157dcbba6704418e60a",
+  "reviews": [
+    {
+      "reviewer": "/root/issue26_registry",
+      "original": {
+        "path": "/private/tmp/rururunx-agent-execution-phase2-preliminary19-a.json",
+        "bytes": 9066,
+        "sha256": "2f0c32c0c99ef7cb55c8f0b3f9a18873cc839d53fd7f179cf7a277153d9d2ea1"
+      },
+      "record": {
+        "review": "Independent preliminary STRICT component review, round 19",
+        "source_commit": "f63048ab19b486fb5ae2d157dcbba6704418e60a",
+        "baseline_commit": "6691bdfb81027aa24a46d0fa9af30540c03439da",
+        "approved_contract": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+        "verdict": "REQUEST_CHANGES",
+        "counts": {
+          "Critical": 0,
+          "High": 0,
+          "Medium": 1,
+          "Low": 0
+        },
+        "findings": [
+          {
+            "id": "S-M1",
+            "severity": "Medium",
+            "title": "Accepted live quota recovery never retires the same turn's WaitingQuota projection",
+            "locations": [
+              "crates/rrx/src/execution/native.rs:1229-1243",
+              "crates/rrx/src/state/execution/quotas.rs:79-120,384-412",
+              "crates/rrx/src/workflow.rs:1733-1742,1797-1798"
+            ],
+            "contract": "Approved R5 requires recovery through reported reset/fresh official metadata while preserving a still-retrying native turn and its input/lease. The design distinguishes live quota retry from terminal quota interruption. The added paragraph also distinguishes unrelated allowed buckets from the affected bucket.",
+            "legitimate_trigger": "A Running owned Claude Session receives a recognized rejected five_hour event and becomes WaitingQuota/probe. Later, while the SAME turn remains live, a fresh owned allowed event for that SAME bucket is accepted by observe_quota_from_probe (observed_at greater than the exhausted observation), leaving no exhausted accepted pool window. The native Session continues normal assistant/permission events before its terminal result. This is a valid existing decoder/Store path, not a fabricated account balance or an unconnected planned backend.",
+            "source_evidence": "mark_execution_quota_retry durably sets Unit.state WaitingQuota and wait_reason Quota. Claude handles Available only through scheduler.observe_probe/observe; that transaction changes quota_windows/pool backoff, never this Unit or its watch. The sole new status update is inside status==Exhausted. Normal subsequent stream events do not clear the wait. NativeSessions.status overlays the same durable stale wait_reason. Workflow.poll therefore keeps taking the WaitingQuota branch and persisting Task WaitingQuota even after accepted recovery. The normal nonterminal Running branch does not restore the previously WaitingQuota Task projection either.",
+            "impact": "Actual capacity recovery and native continuation are presented as subscription waiting until terminal, potentially indefinitely for a long-lived turn; the Task/status consumer cannot reflect recovery. Input is not resent, and reliable terminal success still succeeds, so this is an availability/status-state defect rather than duplicate inference or false success.",
+            "minimal_fix": "Add a narrow exact-current same-turn live recovery transition driven by accepted scoped pool state: when the relevant exhaustion is genuinely cleared under existing probe/freshness rules and no remaining accepted exhaustion applies, restore the Unit live state/wait reason and publish its updated authority to the watch without releasing the existing lease or sending input. Have the Workflow consumer restore its corresponding live Task projection from the genuine current status. Do not let an unrelated bucket, ignored stale Available, foreign event or public enum mint recovery.",
+            "causal_controls_not_executed": [
+              "Extend the owned held quota fixture with an ordered post-rejection recovery phase: after an actual boundary, send a fresh same-bucket allowed observation and hold a second permission/normal-event barrier before terminal. Require accepted pool Available, durable Unit Running/no Quota wait, watch/status same authority, and actual Workflow.step Running plus appropriate live Task state. Assert the exact existing native_input count remains one, same Session/unit/lease remains owned, and sibling state remains unchanged.",
+              "Retain an otherwise identical unrelated-bucket Allowed control: it must remain WaitingQuota. Also keep stale/ignored recovery, foreign Session and unknown-window negatives.",
+              "An omission mutant of the selected live recovery consumer must fail the preterminal recovered-status/Workflow assertions. A terminal success alone cannot kill this omission because finish_execution clears wait_reason at terminal already."
+            ],
+            "verification_status": "Static producer-to-consumer path inspected; no test or mutation executed."
+          }
+        ],
+        "verified_properties": [
+          {
+            "locations": "native.rs:1224-1243; quota.rs:175-229",
+            "assessment": "Foreign rate_limit_event Session IDs are ignored before pool mutation. Only finite known plan buckets and statuses classify confirmed subscription exhaustion; unrecognized rejected windows remain unclassified capacity, not confirmed WaitingQuota. No raw HTTP/text inference added."
+          },
+          {
+            "locations": "native.rs:1235-1241,734-752; state/execution/quotas.rs:384-412",
+            "assessment": "The selected live wait obtains current same unit/generation/epoch/Session authority and Store revalidates it transactionally. An active quota lease is required, retained rather than released. Waiting advances only this Unit body/version and pool probe nomination, not a sibling Unit. No new native_input dispatch is added."
+          },
+          {
+            "locations": "native.rs:1250-1267,937-1037; state/execution.rs:788-835",
+            "assessment": "Reliable successful native terminal goes through successful work regardless of exhausted pool telemetry, clears Unit.wait_reason through finish_execution, and releases its quota lease. Budget/max-turn failures remain failures rather than quota interruptions. Work and cleanup remain distinct. These were inspected, not executed."
+          },
+          {
+            "locations": "native.rs:545-559,1270-1282; state/execution.rs:844-891",
+            "assessment": "Cancel retires current authority before native stop, releases quota/probe and removes waiters; cancelled work is not fabricated failure. Siblings are not retired. There is an inherited stale wait_reason field on retirement from WaitingQuota, so this review does not claim the status field becomes None on cancellation; cancellation disposition and authority closure remain explicit."
+          },
+          {
+            "locations": "native.rs:505-518; adapter/native.rs:38-47,232-254,288-297; workflow.rs:1720-1773,1824-1848",
+            "assessment": "Actual adapter status includes NativeStatus, bound Session identity is checked against persisted state, and live/terminal quota waits have distinct consumers. Watch and synchronous status use the same Unit authority and wait reason for the new rejection transition. Terminal quota/capacity interruption records interrupted attempt and fresh-resource waiting instead of failing a review gate."
+          }
+        ],
+        "stale_window_assessment": "The new rejection branch reads accepted pool state after observe; it checks bucket+Exhausted, not exact observation/window identity. If a stale event is ignored but a newer accepted same-account bucket remains exhausted, this implementation still reports conservative pool exhaustion. I did not count that alone as a separate verified unsafe grant defect. Stale Available cannot erase an exhausted old bucket without the existing fresh-window or genuine probe predicate. Tests called quota-stale-available are same-window recovery refusal, not general reordered rejected-window proof.",
+        "test_source_assessment": {
+          "files": [
+            "crates/rrx/src/execution/native/tests.rs:1008-1159",
+            "crates/rrx/src/execution/native/native_fixture.py:129-143",
+            "crates/rrx/src/workflow/managed_tests.rs:218-326"
+          ],
+          "observations": [
+            "New four-case consumer control uses an ordinary pending permission as a FIFO telemetry boundary, then checks watch, status, durable Unit, native permission openness, probe state, sibling state and input-count one. This meaningfully distinguishes live rejection from inspecting only terminal quota interruption.",
+            "Successful terminal after quota rejection, foreign Session and unknown window have distinct expected outcomes. The sibling is cancelled through the real consumer at the end.",
+            "The new test does not recover the same live bucket or cancel the actually quota-waiting Unit, and it does not invoke Workflow.step during the live wait. Existing managed Workflow quota control checks terminal interruption/fresh attempts. These do not establish live recovery or kill S-M1."
+          ],
+          "execution": "Not executed; no parent logs, pass claims or mutation results read/inherited."
+        },
+        "limits": [
+          "Immutable source/baseline/approved contract only; no dirty/later code, peer findings, aggregate/progress/evidence logs read.",
+          "No tests/builds/real Agents/accounts/auth/network/OS/process signals or credential/configuration probes executed.",
+          "Component scope only; no final Phase2/native quota recovery/profile/MVP acceptance. Planned missing integrations are not findings solely for their absence."
+        ],
+        "live_handles": [],
+        "commands_closed": true
+      }
+    },
+    {
+      "reviewer": "/root/agent_execution_phase0_review_b",
+      "original": {
+        "path": "/private/tmp/rururunx-agent-execution-phase2-preliminary19-b.json",
+        "bytes": 12553,
+        "sha256": "69b7134407dc74660aba5afc21f68bb39f80e9db4047007513d94a75be1430db"
+      },
+      "record": {
+        "reviewer": "agent_execution_phase0_review_b",
+        "round": 19,
+        "source_commit": "f63048ab19b486fb5ae2d157dcbba6704418e60a",
+        "baseline_commit": "6691bdfb81027aa24a46d0fa9af30540c03439da",
+        "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+        "review_kind": "Independent STRICT immutable-source preliminary Claude live quota component review",
+        "verdict": "REQUEST_CHANGES",
+        "severity_counts": {
+          "C": 0,
+          "H": 0,
+          "M": 1,
+          "L": 0
+        },
+        "findings": [
+          {
+            "id": "M1",
+            "severity": "M",
+            "title": "Live waiting also promotes the current Claude turn into a recovery probe, bypassing the existing stale-available protection",
+            "primary_location": {
+              "file": "crates/rrx/src/execution/native.rs",
+              "start_line": 1234,
+              "end_line": 1241
+            },
+            "related_locations": [
+              {
+                "file": "crates/rrx/src/execution/native.rs",
+                "lines": "1231-1233, 1254-1258"
+              },
+              {
+                "file": "crates/rrx/src/state/execution/quotas.rs",
+                "lines": "20-27, 63-95, 376-412"
+              },
+              {
+                "file": "crates/rrx/src/execution/quota.rs",
+                "lines": "222-227"
+              },
+              {
+                "file": "crates/rrx/src/execution/native/native_fixture.py",
+                "lines": "130-143"
+              },
+              {
+                "file": "crates/rrx/src/execution/native/tests.rs",
+                "lines": "194-199, 1010-1035"
+              }
+            ],
+            "evidence": "The new rejected-window branch calls mark_execution_quota_retry. That Store method both writes the unit's wait and assigns quota_pools.probe_unit to it whenever the pool has no existing probe, even though this was an already-running turn, not a newly admitted post-reset/cooldown probe or correlated metadata request. The next recognized allowed frame from this same Claude connection therefore takes observe_probe. Store's fresh_probe condition requires only that eligible lease and a later local observed_at, so it clears a same-window Exhausted observation before its future reset. claude_window timestamps reception with now_ms rather than a source event sequence/freshness proof. The existing committed quota-stale-available fixture sends rejected then allowed for five_hour with the same future reset, and its existing terminal control still expects quota interruption and an exhausted pool. That protection depended on the current live turn not being a recovery probe; this delta changes it. The new held controls use allowed seven_day, so they do not exercise this same-bucket regression.",
+            "legitimate_trigger": "An owned Claude native stream delivers a queued/ambiguous same-window allowed notification after a rejected notification, before the reset or an explicitly qualified recovery response. Such telemetry must not become proof of recovery merely because reading it takes more than one millisecond; no foreign Session, malicious escape or external account access is needed.",
+            "causal_sequence": [
+              "A normal admitted Claude turn is Running with its current quota lease and no pool recovery probe.",
+              "Its owned five_hour rejected frame is observed at t and recorded Exhausted with reset r > t. The new branch marks WaitingQuota and also sets that running unit as probe_unit.",
+              "A same-session, same-window five_hour allowed frame is read at t+delta where delta > 0 and t+delta < r. execution_is_quota_probe is now true, so native.rs routes this unsolicited frame through observe_probe.",
+              "The fresh_probe branch accepts it based on later local receipt time, overwrites Exhausted with Available and can reopen sibling admission. If the next ordinary unsuccessful terminal is the committed quota-stale-available error_during_execution frame, quota_exhausted is now false and no capacity evidence is present, so the affected turn becomes WorkOutcome::Failure/Completed rather than Unknown/QuotaInterrupted."
+            ],
+            "impact": "A display/wait wiring change silently changes recovery authority and can erase confirmed subscription waiting, reopen the shared pool too early and misclassify a quota interruption as work failure. The outcome depends on frame processing spanning different milliseconds. This is a scheduling/classification defect rather than accepted SHA corruption or direct sibling cancellation.",
+            "contract_difference": "Approved design section 8 requires source sequence/window/reset validation for ambiguous notifications and a qualified bounded recovery attempt after reset/cooldown; R5 keeps confirmed exhaustion waiting rather than failure. A live retry lease must be preserved, but that preservation is not itself fresh recovery evidence. The new staged documentation does not authorize same-window ambiguous available telemetry to bypass these safeguards.",
+            "recommended_change": "Separate marking/publishing a live unit's quota wait from granting recovery-probe authority. Preserve the existing current lease/input without promoting it into the post-cooldown probe role solely for a rejected event, or add explicit native recovery correlation/freshness state that distinguishes a recovery result from queued availability. Use ordinary observation rules for unqualified same-window allowed frames. Keep reliable successful work successful and clear its live wait at terminal, independently of pool recovery proof.",
+            "proposed_causal_controls_not_executed": [
+              "Use an ordered synthetic stream/barrier and a controlled delay >1 ms between same-window rejected and allowed frames before a future reset. Through actual native Session watch/status/Store paths assert that the pool remains Exhausted, the live wait is retained and the existing unsuccessful terminal remains Unknown/QuotaInterrupted, with no duplicate native_input.",
+              "Keep a sibling admitted before exhaustion and a new pending Task. Verify the sibling ledger stays unchanged and pending admission cannot reopen based on ambiguous same-window telemetry.",
+              "Separately exercise an explicitly admitted post-cooldown recovery probe and a reliable successful native retry, verifying the accepted recovery policy and successful work without treating stale notifications as correlated metadata."
+            ],
+            "confidence": "The changed call, probe mutation and later receipt-time recovery branch are directly traced from immutable source. This control was not executed; no real Claude event ordering or account recovery is claimed."
+          }
+        ],
+        "verified_source_observations": [
+          {
+            "topic": "Current authority and scoped wait",
+            "locations": [
+              {
+                "file": "crates/rrx/src/execution/native.rs",
+                "lines": "734-769, 1224-1242"
+              },
+              {
+                "file": "crates/rrx/src/state/execution/quotas.rs",
+                "lines": "384-412"
+              }
+            ],
+            "evidence": "The incoming event must match the current native Session before its pool handling. Recognized bucket exhaustion still present in accepted pool state triggers current semantic identity validation followed by transactional exact-authority CAS and an active provider quota lease check. mark_execution_quota_retry writes only that unit, preserves both logical permissions and known work, and retains the native input/lease. Updated authority/wait reason is published through the watch. The wait write itself is correctly scoped; its additional probe side effect is M1."
+          },
+          {
+            "topic": "Watch/status and Workflow propagation",
+            "locations": [
+              {
+                "file": "crates/rrx/src/execution/native.rs",
+                "lines": "502-518, 1240-1241"
+              },
+              {
+                "file": "crates/rrx/src/workflow.rs",
+                "lines": "1720-1773"
+              }
+            ],
+            "evidence": "Polling overlays durable unit fields; the added watch update projects the corresponding new authority and wait reason. Workflow's existing nonterminal wait branch persists Task WaitingQuota and retains the active native attempt instead of resending input. Terminal QuotaInterrupted/CapacityInterrupted records interruption and next fresh-resource admission. Watch/status source wiring is present; no actual Workflow control was run."
+          },
+          {
+            "topic": "Foreign and unknown notifications",
+            "locations": [
+              {
+                "file": "crates/rrx/src/execution/native.rs",
+                "lines": "1224-1229, 1254-1258"
+              },
+              {
+                "file": "crates/rrx/src/execution/quota.rs",
+                "lines": "174-229"
+              }
+            ],
+            "evidence": "Foreign native Session rate-limit events are skipped before pool mutation. Only the finite recognized plan-window/status profile creates subscription observations; unknown rejected buckets set a local unclassified signal and do not mint WaitingQuota. Unknown capacity stays a distinct terminal interruption where supported. Generic HTTP 429 is not subscription proof."
+          },
+          {
+            "topic": "Success, cancellation and Drop",
+            "locations": [
+              {
+                "file": "crates/rrx/src/execution/native.rs",
+                "lines": "545-559, 937-1037, 1260-1282, 1287-1349"
+              },
+              {
+                "file": "crates/rrx/src/state/execution.rs",
+                "lines": "788-835, 844-885"
+              },
+              {
+                "file": "crates/rrx/src/state/execution/quotas.rs",
+                "lines": "442-448"
+              }
+            ],
+            "evidence": "Reliable successful RunState completion returns Success/Completed even with pool exhaustion. Its terminal Store producer clears live wait, records work once and releases the quota/probe lease; hygiene does not overwrite work. Cancellation retires logical authority before signaling the supervisor; later wait/permission writes must pass CAS and cannot revive it. Abandoned Core retirement releases its lease/probe and projects durable work/disposition through watch. Existing historical wait_reason may remain on Cancelled/Lost DTOs, but terminal disposition/work and Workflow branches distinguish them; no new independent accepted-result defect is asserted here."
+          }
+        ],
+        "controls_inspected_not_executed": [
+          {
+            "file": "crates/rrx/src/execution/native/tests.rs",
+            "lines": "1008-1157",
+            "purpose": "Held owned/foreign/unknown/known-success cases use ordered permission barrier and compare watch, status, unit authority, lease/probe state, one native_input and unchanged live sibling ledger. These controls are source wiring only and omit same-bucket stale available."
+          },
+          {
+            "file": "crates/rrx/src/execution/native/tests.rs",
+            "lines": "163-215",
+            "purpose": "Existing ordinary/quota terminal classification control includes quota-stale-available expecting exhaustion to survive. A delay/barrier is needed to make the newly introduced receipt-time regression deterministic rather than millisecond-dependent."
+          }
+        ],
+        "prior_own_findings_disposition": [
+          {
+            "id": "round16-H1 / round17 closure",
+            "disposition": "UNCHANGED_BY_CURRENT_DELTA",
+            "evidence": "This baseline-to-source delta changes Claude native waiting and its fixture/design; no retained Git routing or storage/publication producer change exists."
+          }
+        ],
+        "limits": [
+          "Only immutable git source/baseline and relevant approved contract objects were inspected. No reviewer A/peer findings, aggregate/progress/evidence/log document, dirty/later source or credentials were read.",
+          "No tests/builds/native Agents/authentication/process signals/network/OS/Docker or account/configuration operations were performed. Only this authorized private report was written. Parent test claims are not inherited.",
+          "Fixture source does not establish actual Claude retry/event order, authentication/settings/hooks or subscription reset/recovery on either OS. Proposed causal controls are not observed passing or failing tests.",
+          "The component is not final Phase2/native/MVP acceptance. Pending operational integrations and complete four-Task/authenticated compatibility acceptance are outside this scoped review.",
+          "This review recognizes the correctly scoped wait and reliable success paths while identifying the coupled recovery authority regression; it does not claim complete host/resource isolation or process-death guarantees."
+        ],
+        "owned_handles": {
+          "live_command_sessions": [],
+          "native_processes_started": [],
+          "tool_status": "All immutable-object read command calls completed with exit codes and no session_id. No owned command, child, native Agent, worker, tracker or Docker handle remains."
+        }
+      }
+    }
+  ],
+  "scope": "Independent immutable component static reviews; no final Phase2, native profile, quota account, both-OS or MVP acceptance.",
+  "verified_dispositions": [
+    {
+      "reviewer": "A",
+      "finding": "S-M1",
+      "severity": "Medium",
+      "verification": "5a89957 public owned held producer accepts fresh-window Available, then its watch assertion fails before terminal.",
+      "fix_commit": "d30a9bec15fbe3b0943543a6766b1eba73f2f1a9",
+      "closure": "Both round20 reviews approve the fixed source."
+    },
+    {
+      "reviewer": "B",
+      "finding": "M1",
+      "severity": "Medium",
+      "verification": "f63048a full regression fails both same-window exhaustion terminal and Workflow wait; waiting had minted a recovery probe.",
+      "fix_commit": "a75629ee7e5df1547502dd67dd7b027067275dba",
+      "closure": "Both round20 reviews approve the fixed source."
+    }
+  ]
+}

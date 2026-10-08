@@ -1,0 +1,185 @@
+{
+  "round": 2,
+  "candidate": "7e47421a24225583795245b307e574fb3156dd7e",
+  "risk": "STRICT",
+  "scope": "Managed Session binding supplemental requirements only",
+  "reviews_independent_and_closed_before_sharing": true,
+  "raw_reviews": {
+    "b": {
+      "review_kind": "Independent STRICT requirements re-review round2; no source/design acceptance",
+      "source_commit": "7e47421a24225583795245b307e574fb3156dd7e",
+      "baseline": "1222472f4b153e1807fd22647f231925710bcace",
+      "source_baseline": "5b6e8a8152926b643c6926b87e853de12b9319fc",
+      "legacy_contract_commit": "b191b466d5dea303585cfaf6968c6fb178be79cd",
+      "verdict": "APPROVE_REQUIREMENTS",
+      "severity_counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "findings": [],
+      "own_prior_dispositions": [
+        {
+          "id": "MB-B-M1",
+          "severity": "Medium",
+          "status": "CLOSED_IN_REQUIREMENTS",
+          "evidence": [
+            "doc/requirements/issue-43-managed-binding-requirements.md:117-130",
+            "doc/requirements/issue-43-managed-binding-requirements.md:168"
+          ],
+          "reason": "Managed late success-settlement explicitly requires the genuine private phase owner/prepared/admitted/actually consumed input and exact current owned successful Native terminal/logical settlement under the original marker/instance. It explicitly supersedes only the legacy physical full cleanup/unknown-cleanup predicate for this profile, keeps cleanup Unknown/Leftovers nonauthorizing and nonblocking by themselves, retains actual unknown work/current proof/HistoryDraft/stale/external ambiguity holds, and leaves result publication/phase success separate. An actual consumer acceptance row tests both positive cleanup uncertainty and negative logical/input/current proof."
+        },
+        {
+          "id": "MB-B-L1",
+          "severity": "Low",
+          "status": "CLOSED_IN_REQUIREMENTS",
+          "evidence": [
+            "doc/requirements/issue-43-managed-binding-requirements.md:60-74",
+            "doc/requirements/issue-43-managed-binding-requirements.md:168"
+          ],
+          "reason": "Normal factual binding explicitly permits the genuine validated/prepared allocation in pre-input/pre-ACK state with no delivered/consumed/ACK assertion. That NotDispatched state explicitly cannot authorize late successful binding; the latter requires correlated consumed input and known current owned terminal."
+        }
+      ],
+      "verified_contract_points": [
+        {
+          "evidence": [
+            "doc/requirements/issue-43-managed-binding-requirements.md:38-46,89-96"
+          ],
+          "assessment": "Record-only first binding has exact absent session_id and redundant managed execution companion, Workflow version/updated_at and one reserved audit only. No Task/P/G/Session/Context/lock write, completion/outcome authority or generic reusable access mode is permitted. Sole-writer guards apply across ordinary supported mutation/recovery paths."
+        },
+        {
+          "evidence": [
+            "doc/requirements/issue-43-managed-binding-requirements.md:48-58"
+          ],
+          "assessment": "Original frame now includes actual state-root instance/epoch and exact Unit/execution generation as well as P/G/T/W/body/active phase/context/source/full locks. Current refresh/read cannot replace it; first binding requires original marker with no unrelated factual successor."
+        },
+        {
+          "evidence": [
+            "doc/requirements/issue-43-managed-binding-requirements.md:60-87,182-188"
+          ],
+          "assessment": "Genuine private #19 prepared-owner/input producer or explicitly reviewed full protocol through real managed adapter/all protected writers remains required; existing Unit/Invocation/receipt/public IDs/capability metadata are not renamed into authority. Reviewer path is actual prepared readonly namespace, Executor path actual Task projection; latest durable startup lifecycle is identity-checked without Session rewrite."
+        },
+        {
+          "evidence": [
+            "doc/requirements/issue-43-managed-binding-requirements.md:98-139"
+          ],
+          "assessment": "Before-composition refusal remains before fresh phase effects. Normal/late failure preserves actual invocation/claim; typed deferred same-frame binding has durable independent Driver readiness/lost wake/restart fencing. Passive observers do not bind. Latest best-effort cleanup policy is now explicitly scoped rather than silently asserting old physical settlement."
+        },
+        {
+          "evidence": [
+            "doc/requirements/issue-43-managed-binding-requirements.md:141-158",
+            "crates/rrx/src/state/execution/source_recovery.rs:274-369 at source5b",
+            "crates/rrx/src/workflow.rs:1612-1629,1798-1820,1823-1864 at source5b"
+          ],
+          "assessment": "Genuine SourceRecovery7/future Driver factual successor recognition must remain anchored without binder changing authority rows/generic after_write refresh. Native live quota/status/pre-Session waits are explicitly inventoried as separate typed state-changing ports, not incorrectly widened detail-only diagnostic authorization. Feasible plan requires new actual successor consumers/wait protocols in the later design; requirements do not pretend those producers already exist."
+        },
+        {
+          "evidence": [
+            "doc/requirements/issue-43-managed-binding-requirements.md:141-188",
+            "doc/design/master/workflow-engine.md:11-17"
+          ],
+          "assessment": "Reserved-key/immutable chain/finite per-class and mandatory closure allowances remain; outside-lock planning and finite transaction cost requirements are retained. Source composition, migrations, writer matrices, fixed immutable independent reviews, meaningful compiled actual-consumer controls and two-OS/native limitations remain explicit open gates. Master remains a proposal/readiness hold."
+        }
+      ],
+      "limits": [
+        "Read-only complete corrected requirements plus delta and unchanged master proposal reference reviewed through fixed Git objects; no dirty/later source or peer/current-round findings consulted.",
+        "Only requirements approval. No binding design/API implementation, private #19 producer, schema migration, Driver/native readiness, release/PR/issue closure, CI/native/MVP or final Phase2 approval.",
+        "Actual source-producer/new successor/write inventory, typed error/readiness protocols and fixed composed migrations remain required later design/source work; no absent producer is inferred from requirement approval.",
+        "Prior own findings were read; aggregate round1 evidence and other reviewers' reports were not read.",
+        "No tests/build/Agent/account/auth/network/signals/config/state DB changes; candidate/shared files untouched.",
+        "Actual consumer and mutation controls remain unexecuted by this review. The reviewer previously authored Native6 source; references here check requirements feasibility and do not independently approve that own source."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    "c": {
+      "reviewer": "C",
+      "risk": "STRICT",
+      "round": 2,
+      "source_commit": "7e47421a24225583795245b307e574fb3156dd7e",
+      "prior_reviewed_source": "1222472f4b153e1807fd22647f231925710bcace",
+      "implementation_baseline": "5b6e8a8152926b643c6926b87e853de12b9319fc",
+      "verdict": "APPROVE_COMPONENT_REQUIREMENTS",
+      "findings": [],
+      "severity_counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "scope": [
+        "doc/requirements/issue-43-managed-binding-requirements.md",
+        "doc/design/master/workflow-engine.md"
+      ],
+      "requirements_bytes": 14467,
+      "requirements_sha256": "e3978bfc7d377c109a885d9e04cc09dd73850c203160603b18b8c1cf99c5144d",
+      "review_mode": "independent read-only immutable git-object full corrected requirements and delta review; no candidate edits or peer/current-round findings read",
+      "reviewed_dependencies": [
+        "b191b466d5dea303585cfaf6968c6fb178be79cd Requirements9/Design10",
+        "5b6e8a8152926b643c6926b87e853de12b9319fc actual Workflow prepare_managed/poll, Store ordinary Task-writing transition, private native Session/input/terminal transaction and SourceRecovery7 validation/advance seams",
+        "Runtime own module: no implemented schema9 Driver at baseline"
+      ],
+      "basis": [
+        {
+          "id": "C-MB2-B1",
+          "requirement": "MB2",
+          "conclusion": "Marker includes Runtime state-root instance/epoch and Unit execution identity/generation, in addition to full original owner/Workflow/input/context/source/lock frame. No current read/Driver/retry replaces the original post-marker frame, and first bind cannot consume intervening bookkeeping links."
+        },
+        {
+          "id": "C-MB2-B2",
+          "requirement": "MB3 + MB-AC4.a",
+          "conclusion": "Normal returned pre-input/pre-ACK binding requires genuine validated allocated/prepared owner/pair, yet neither demands nor fabricates dispatch/consumption/ACK. The exact same NotDispatched preparation explicitly cannot late-bind. Positive and negative actual-consumer controls are required."
+        },
+        {
+          "id": "C-MB2-B3",
+          "requirement": "MB7 managed success-settlement definition + MB-AC4.a",
+          "conclusion": "Late proof requires actual private allocated owner, admitted and actually consumed correlated input, current owned known-success native terminal under original marker/instance and logical terminal/input settlement. Current private proof remains mandatory; public receipt and Unit DTO still cannot mint it."
+        },
+        {
+          "id": "C-MB2-B4",
+          "requirement": "MB6/MB7",
+          "conclusion": "Only the managed profile supersedes legacy late physical full-cleanup and Unknown-cleanup refusal. Cleanup Unknown/Leftovers neither grants authority nor blocks otherwise eligible factual binding. Unknown work, HistoricalDraft, absent/ambiguous input/current proof, stale/restored authority and irreversible external-operation ambiguity retain holds. Native permissions remain closed; open Runtime result-finalization permits separate genuine capture only, never new native input or Workflow success."
+        },
+        {
+          "id": "C-MB2-B5",
+          "requirement": "MB9 additions",
+          "conclusion": "SourceRecovery7 and future Driver recognize only genuine permitted successors anchored at existing immutable authority, without authority-row updates/generic after_write or current-pin recapture. Actual live quota/pre-Session Waiting arms must be individually inventoried with exact typed state-change contracts, not reclassified automatically as detail-only diagnostics."
+        },
+        {
+          "id": "C-MB2-B6",
+          "requirement": "unchanged MB1/4/5/8/9 and Delivery",
+          "conclusion": "Exact record-only two-field binder/one audit, unchanged parent/Session/Context/full-lock bytes and versions, latest Session immutable identity/UUID ambiguity, sole-writer fencing, deferred retained invocation, durable Driver readiness/fair fallback/restart authenticity, reserved immutable bounded ledger and outside-lock body planning remain mandatory. Proposal does not claim implementation/readiness/equivalence."
+        }
+      ],
+      "design_source_acceptance_gaps": [
+        "Actual private allocation/prepared/admitted/consumed protocol and current owned terminal proof issuer must be composed through the real registered adapter/Store; source baseline still lacks this #19 composition.",
+        "Exact managed normal/late proof/state enums, OriginalMarker frame production, sole writer/all raw/recovery fences, Session negative identity indices and cost manifests remain design/source work.",
+        "Current SourceRecovery7/Driver original pins and all live wait/status/gate/closure consumers require genuine successor integration; no broad record-only/current-pin refresh escape hatch.",
+        "Schema8/9 and reserved Review migration ordering must be coordinated; no number allocated by these requirements.",
+        "Required actual positive/negative/mutation/deferred/drop/lost notification/Driver/restart/CI and authenticated CLI/hook/four-Task controls remain unverified."
+      ],
+      "limitations": [
+        "component requirements approval only; not design/source or whole Issue43/Phase2/MVP approval",
+        "no current-round B/parent findings or archived round1 peer report were read",
+        "no tests/native execution/auth/network/credentials used in this static review",
+        "no candidate/source/shared-worktree files changed",
+        "cleanup best effort; no process-death or security-sandbox guarantee"
+      ],
+      "created_utc": "2026-10-06T01:39:14.101593+00:00"
+    }
+  },
+  "author_disposition": {
+    "requirements": "APPROVED",
+    "previous_findings": "Verified Medium cleanup-settlement ambiguity and Low normal pre-input clarification closed by both corrected requirement reviews.",
+    "next": "Complete managed binding design and independent fixed-commit design reviews before source changes.",
+    "not_approved": [
+      "binding design or implementation",
+      "private allocation/input protocol producer",
+      "schema migration or Driver native readiness",
+      "Issue43/PR52 merge",
+      "whole Phase2/MVP completion",
+      "authenticated native CLI/hooks or two-OS acceptance"
+    ]
+  }
+}
