@@ -138,6 +138,20 @@ impl Root {
         entries
     }
 }
+impl Drop for Root {
+    /// A failing control never leaks a detached service: open any exec gate,
+    /// then stop through the endpoint (never a signal).
+    fn drop(&mut self) {
+        let _ = std::fs::write(self.base().join("gate"), "");
+        let _ = std::process::Command::new(rrx())
+            .arg("--state")
+            .arg(&self.state)
+            .args(["daemon", "stop"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+}
 fn direct() -> Launch {
     Launch::new(rrx(), Vec::new())
 }
