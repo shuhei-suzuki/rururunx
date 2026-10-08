@@ -5,14 +5,14 @@ use super::*;
 
 const LINKS: &str = "SELECT kind FROM audit WHERE kind LIKE 'rrx.private.workflow.%' AND task_id=?1 ORDER BY sequence";
 
-async fn wait_for(mut condition: impl FnMut() -> bool, label: &str, seconds: u64) {
+pub(super) async fn wait_for(mut condition: impl FnMut() -> bool, label: &str, seconds: u64) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(seconds);
     while !condition() {
         assert!(tokio::time::Instant::now() < deadline, "{label}");
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }
-fn links(f: &ControlFixture, task: &Task) -> Vec<String> {
+pub(super) fn links(f: &ControlFixture, task: &Task) -> Vec<String> {
     let raw = raw(f);
     let mut statement = raw.prepare(LINKS).unwrap();
     statement
@@ -25,7 +25,7 @@ fn links(f: &ControlFixture, task: &Task) -> Vec<String> {
         })
         .collect()
 }
-fn workflow(
+pub(super) fn workflow(
     f: &ControlFixture,
     task: &Task,
 ) -> (crate::domain::Record, crate::workflow::WorkflowSnapshot) {
@@ -40,7 +40,7 @@ fn workflow(
     let snapshot = serde_json::from_value(record.data.clone()).unwrap();
     (record, snapshot)
 }
-fn stored_task(f: &ControlFixture, task: &Task) -> Task {
+pub(super) fn stored_task(f: &ControlFixture, task: &Task) -> Task {
     f.owner
         .store
         .lock()
@@ -49,7 +49,7 @@ fn stored_task(f: &ControlFixture, task: &Task) -> Task {
         .unwrap()
         .unwrap()
 }
-fn bound_unit(f: &ControlFixture, task: &Task) -> crate::execution::ExecutionUnit {
+pub(super) fn bound_unit(f: &ControlFixture, task: &Task) -> crate::execution::ExecutionUnit {
     let (_, snapshot) = workflow(f, task);
     let reference = snapshot
         .history
@@ -65,17 +65,17 @@ fn bound_unit(f: &ControlFixture, task: &Task) -> crate::execution::ExecutionUni
         .unwrap()
 }
 /// The fixture's bootstrap hold, then its commit-mode completion.
-fn release_completion(f: &ControlFixture, task: &Task) {
+pub(super) fn release_completion(f: &ControlFixture, task: &Task) {
     release_unit(f, &bound_unit(f, task));
 }
-fn release_unit(f: &ControlFixture, unit: &crate::execution::ExecutionUnit) {
+pub(super) fn release_unit(f: &ControlFixture, unit: &crate::execution::ExecutionUnit) {
     let profile = crate::execution::resources::ResourceManager::new(f.owner.clone())
         .profile(unit)
         .unwrap();
     std::fs::write(profile.output.join("fixture-bootstrap-release"), "release").unwrap();
     std::fs::write(profile.output.join("fixture-release"), "release").unwrap();
 }
-async fn wait_normal_bound(f: &ControlFixture, task: &Task) {
+pub(super) async fn wait_normal_bound(f: &ControlFixture, task: &Task) {
     wait_for(
         || links(f, task).first().map(String::as_str) == Some("session_bound"),
         "SETUP: normal Bound absent",

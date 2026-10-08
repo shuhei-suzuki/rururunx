@@ -6,7 +6,6 @@ use sha2::{Digest, Sha256};
 use std::{path::Path, time::Duration};
 
 const RULE_A: &str = "MANDATORY_COMMITTED_RULE_A: preserve the answer.\n";
-const RULE_B: &str = "MANDATORY_LIVE_RULE_B: different instructions.\n";
 
 struct InitialEvidence {
     owner: Arc<execution::RuntimeOwner>,
@@ -70,8 +69,6 @@ struct Fixture {
     config: Config,
     registry: Arc<AgentRegistry>,
     sources: Arc<ManagedWorkflowSources>,
-    config_a: String,
-    project_root: std::path::PathBuf,
 }
 impl Fixture {
     fn production_engine(&self, control: &'static str) -> WorkflowEngine {
@@ -92,7 +89,6 @@ impl Fixture {
                     self.sources.clone(),
                 )
                 .unwrap(),
-                owner: self.owner.clone(),
                 control,
             }),
         )
@@ -185,8 +181,6 @@ impl Fixture {
             config,
             registry,
             sources,
-            config_a,
-            project_root: root,
         }
     }
     fn engine(&self, sources: Arc<dyn WorkflowSources>) -> WorkflowEngine {
@@ -201,37 +195,42 @@ impl Fixture {
         )
         .unwrap()
     }
-    fn live_b(&self) {
-        std::fs::write(
-            self.project_root.join("workflow.toml"),
-            "minimum_workflow = \"STRICT\"\n[context]\nrepo_map_tokens = 777\n",
-        )
-        .unwrap();
-        std::fs::write(self.project_root.join("rules.md"), RULE_B).unwrap();
+    /// FM §8.3 F2 observation: Task body, Workflow record, audit, every Unit
+    /// with its managed effects, Sessions and completed Git outputs.
+    fn preimage(&self) -> serde_json::Value {
+        let store = self.owner.store.lock().unwrap();
+        let scope = self.task.scope();
+        let units = store.execution_units(Some(&scope)).unwrap();
+        let effects = units
+            .iter()
+            .map(|u| store.managed_effects(u.id).unwrap())
+            .collect::<Vec<_>>();
+        serde_json::json!({
+            "task": store.task(self.task.id).unwrap(),
+            "workflow": store.records(&scope, RecordKind::Workflow).unwrap(),
+            "events": store.events(&scope, 0, 1000).unwrap().len(),
+            "units": units,
+            "effects": effects,
+            "sessions": store.records(&scope, RecordKind::Session).unwrap(),
+            "git": crate::git::observed_git_outputs(),
+        })
     }
-    fn assert_context_a(&self, version: u64, base: &str) -> ContextVersion {
-        let context = self
-            .owner
-            .store
-            .lock()
-            .unwrap()
-            .context(&self.task.scope(), Some(version))
-            .unwrap()
-            .unwrap();
-        assert_eq!(context.revision, base);
-        assert_eq!(
-            context.source_hashes["rules:config"],
-            format!("{:x}", Sha256::digest(self.config_a.as_bytes()))
+    /// FM §8.3 F2: the legacy Engine's step into the Native phase is refused
+    /// before source capture with `ManagedBindingUnavailable`, preimage intact.
+    async fn f2_refused(&self, engine: &WorkflowEngine) {
+        let before = self.preimage();
+        let error = engine
+            .step(self.task.id, BTreeMap::new())
+            .await
+            .expect_err("FM F2: the legacy Native step must be refused");
+        assert!(
+            matches!(
+                error.downcast_ref::<NativePreflightRefusal>(),
+                Some(NativePreflightRefusal::ManagedBindingUnavailable)
+            ),
+            "FM F2: typed refusal: {error:#}"
         );
-        assert_eq!(
-            context.source_hashes["rules:rules.md"],
-            format!("{:x}", Sha256::digest(RULE_A.as_bytes()))
-        );
-        assert_eq!(context.data["budget"]["discretionary_tokens"], 321);
-        let payload = context.data["payload"].as_str().unwrap();
-        assert!(payload.contains(RULE_A.trim()));
-        assert!(!payload.contains(RULE_B.trim()));
-        context
+        assert_eq!(self.preimage(), before, "FM F2: preimage unchanged");
     }
     fn assert_no_native(&self, id: execution::UnitId) {
         let store = self.owner.store.lock().unwrap();
@@ -267,7 +266,6 @@ impl Fixture {
 
 struct ProductionControl {
     gate: execution::workflow_gates::ManagedWorkflowGates,
-    owner: Arc<execution::RuntimeOwner>,
     control: &'static str,
 }
 impl PhaseGates for ProductionControl {
@@ -277,137 +275,12 @@ impl PhaseGates for ProductionControl {
         mut transport: Option<SessionStatus>,
     ) -> WorkflowFuture<'_, GateOutcome> {
         Box::pin(async move {
-            if invocation.phase == Phase::Implement {
-                if self.control == "terminal" {
-                    transport.as_mut().unwrap().execution.as_mut().unwrap().work =
-                        Some(WorkOutcome::Failure);
-                }
-                if self.control == "manifest" {
-                    let artifact = self
-                        .owner
-                        .store
-                        .lock()
-                        .unwrap()
-                        .result_artifact(invocation.sources.artifact.unwrap())
-                        .unwrap();
-                    std::fs::write(artifact.manifest, "corrupt").unwrap();
-                }
+            if invocation.phase == Phase::Implement && self.control == "terminal" {
+                transport.as_mut().unwrap().execution.as_mut().unwrap().work =
+                    Some(WorkOutcome::Failure);
             }
             self.gate.complete(invocation, transport).await
         })
-    }
-}
-
-#[tokio::test]
-async fn production_gates_observe_real_preparation_native_result_and_commit_but_wait_for_tests() {
-    for provider in ["claude", "codex"] {
-        let f = Fixture::new(provider, WorkflowClass::Quick).await;
-        let engine = f.production_engine("pass");
-        let prepared = f.sources.prepare(f.task.id, provider).await.unwrap();
-        engine.initialize(f.task.id, None).await.unwrap();
-        early_phases(&engine, f.task.id, WorkflowClass::Quick).await;
-        f.assert_no_native(prepared.id);
-        assert!(matches!(
-            engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
-            StepResult::Started {
-                phase: Phase::Implement,
-                session: Some(_)
-            }
-        ));
-        let snapshot = engine.snapshot(f.task.id).unwrap();
-        let identity = snapshot.history[snapshot.active.unwrap()]
-            .execution
-            .as_ref()
-            .unwrap()
-            .clone();
-        assert_eq!(identity.unit, prepared.id);
-        let current = f
-            .owner
-            .store
-            .lock()
-            .unwrap()
-            .execution_unit(identity.unit)
-            .unwrap();
-        let output = execution::resources::ResourceManager::new(f.owner.clone())
-            .profile(&current)
-            .unwrap()
-            .output;
-        wait_file(&output.join("fixture-ready")).await;
-        std::fs::write(output.join("fixture-release"), "done").unwrap();
-        let adapter = f.registry.get("native-alias").unwrap();
-        tokio::time::timeout(Duration::from_secs(15), async {
-            loop {
-                if adapter
-                    .status(SessionRef {
-                        id: identity.session,
-                        scope: identity.scope.clone(),
-                        execution: Some(identity.clone()),
-                    })
-                    .await
-                    .unwrap()
-                    .terminal()
-                {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
-        })
-        .await
-        .unwrap();
-        assert!(matches!(
-            engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
-            StepResult::Completed {
-                phase: Phase::Implement
-            }
-        ));
-        assert!(matches!(
-            engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
-            StepResult::Completed {
-                phase: Phase::Commit
-            }
-        ));
-        assert!(matches!(
-            engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
-            StepResult::Waiting {
-                phase: Phase::Tests,
-                ..
-            }
-        ));
-        let artifacts = {
-            let store = f.owner.store.lock().unwrap();
-            let artifacts = store.result_artifacts(&f.task.scope()).unwrap();
-            assert_eq!(artifacts.len(), 1);
-            assert_eq!(artifacts[0].state, execution::ArtifactState::Published);
-            let receipts = store
-                .records(&f.task.scope(), RecordKind::Verification)
-                .unwrap();
-            assert_eq!(receipts.len(), 3);
-            for record in receipts {
-                assert_eq!(record.data["schema"], "managed_workflow_gate_v1");
-                assert_eq!(
-                    record.data["context_data_sha256"].as_str().unwrap().len(),
-                    64
-                );
-                assert_eq!(store.record(record.id).unwrap().unwrap().data, record.data);
-            }
-            artifacts
-        };
-        let reopened = Store::open(&f._dir.path().join("state.db")).unwrap();
-        assert_eq!(
-            reopened
-                .records(&f.task.scope(), RecordKind::Verification)
-                .unwrap()
-                .len(),
-            3
-        );
-        drop(reopened);
-        // A survivor can alter its abandoned workspace; commit evidence stays pinned.
-        std::fs::write(prepared.worktree.join("answer.txt"), "survivor\n").unwrap();
-        results::ResultStore::new(f.owner.clone())
-            .verify(&artifacts[0])
-            .await
-            .unwrap();
-        engine.cancel(f.task.id, "fixture complete".into()).unwrap();
     }
 }
 
@@ -467,79 +340,21 @@ async fn production_initial_gates_refuse_dirty_preparation_and_wait_for_missing_
     }
 }
 
+/// FM §8.3 F2 (R), §9 `:470`. [terminal] The forged transport `work` was
+/// injected by the legacy Engine's gate after its Native Implement; that
+/// step is now refused before source capture, so the subject has no
+/// legitimate producer (retired path; SC7 covers the genuine non-success).
+/// [manifest] moved to the installed lane:
+/// `fm_d2_committed_source_470_corrupted_manifest_is_never_published`.
 #[tokio::test]
 async fn production_gate_rejects_forged_success_and_corrupted_retained_manifest() {
-    for control in ["terminal", "manifest"] {
-        let f = Fixture::new("codex", WorkflowClass::Quick).await;
-        let engine = f.production_engine(control);
-        let prepared = f.sources.prepare(f.task.id, "codex").await.unwrap();
-        engine.initialize(f.task.id, None).await.unwrap();
-        early_phases(&engine, f.task.id, WorkflowClass::Quick).await;
-        engine.step(f.task.id, BTreeMap::new()).await.unwrap();
-        let snapshot = engine.snapshot(f.task.id).unwrap();
-        let identity = snapshot.history[snapshot.active.unwrap()]
-            .execution
-            .as_ref()
-            .unwrap()
-            .clone();
-        let current = f
-            .owner
-            .store
-            .lock()
-            .unwrap()
-            .execution_unit(prepared.id)
-            .unwrap();
-        let output = execution::resources::ResourceManager::new(f.owner.clone())
-            .profile(&current)
-            .unwrap()
-            .output;
-        wait_file(&output.join("fixture-ready")).await;
-        std::fs::write(output.join("fixture-release"), "done").unwrap();
-        let adapter = f.registry.get("native-alias").unwrap();
-        tokio::time::timeout(Duration::from_secs(15), async {
-            loop {
-                if adapter
-                    .status(SessionRef {
-                        id: identity.session,
-                        scope: identity.scope.clone(),
-                        execution: Some(identity.clone()),
-                    })
-                    .await
-                    .unwrap()
-                    .terminal()
-                {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
-        })
-        .await
-        .unwrap();
-        let result = engine.step(f.task.id, BTreeMap::new()).await.unwrap();
-        assert!(
-            matches!(
-                result,
-                StepResult::Waiting {
-                    phase: Phase::Implement,
-                    ..
-                }
-            ),
-            "{control}: {result:?}"
-        );
-        let snapshot = engine.snapshot(f.task.id).unwrap();
-        assert!(!snapshot.completed.contains_key(&Phase::Implement));
-        assert!(
-            f.owner
-                .store
-                .lock()
-                .unwrap()
-                .result_artifacts(&f.task.scope())
-                .unwrap()
-                .iter()
-                .all(|a| a.state != execution::ArtifactState::Published)
-        );
-        engine.cancel(f.task.id, "fixture complete".into()).unwrap();
-    }
+    let f = Fixture::new("codex", WorkflowClass::Quick).await;
+    let engine = f.production_engine("terminal");
+    let prepared = f.sources.prepare(f.task.id, "codex").await.unwrap();
+    engine.initialize(f.task.id, None).await.unwrap();
+    early_phases(&engine, f.task.id, WorkflowClass::Quick).await;
+    f.f2_refused(&engine).await;
+    f.assert_no_native(prepared.id);
 }
 
 async fn wait_file(path: &Path) {
@@ -629,217 +444,6 @@ async fn committed_sources_require_prepare_before_initialize_and_refuse_foreign_
 }
 
 #[tokio::test]
-async fn actual_workflow_uses_committed_rules_policy_and_adopts_same_initial_unit() {
-    for provider in ["claude", "codex"] {
-        for class in [
-            WorkflowClass::Quick,
-            WorkflowClass::Standard,
-            WorkflowClass::Strict,
-        ] {
-            let f = Fixture::new(provider, class).await;
-            // B exists even before preparation: the registered Git producer must consume A.
-            f.live_b();
-            let prepared = f.sources.prepare(f.task.id, provider).await.unwrap();
-            let engine = f.engine(f.sources.clone());
-            let initialized = engine.initialize(f.task.id, None).await.unwrap();
-            assert_eq!(
-                initialized.workflow, class,
-                "live B must not change selected policy"
-            );
-            f.assert_context_a(initialized.context_version, &prepared.base_sha);
-            f.assert_no_native(prepared.id);
-            early_phases(&engine, f.task.id, class).await;
-            f.assert_no_native(prepared.id);
-            let started = engine.step(f.task.id, BTreeMap::new()).await;
-            assert!(
-                matches!(
-                    started,
-                    Ok(StepResult::Started {
-                        session: Some(_),
-                        ..
-                    })
-                ),
-                "{provider}/{class:?}: {started:?}; helpers: {:?}",
-                f.owner
-                    .store
-                    .lock()
-                    .unwrap()
-                    .managed_effects(prepared.id)
-                    .unwrap()
-                    .iter()
-                    .map(|e| (&e.kind, &e.state, &e.receipt))
-                    .collect::<Vec<_>>()
-            );
-            let snapshot = engine.snapshot(f.task.id).unwrap();
-            let attempt = &snapshot.history[snapshot.active.unwrap()];
-            let identity = attempt.execution.as_ref().unwrap();
-            assert_eq!(
-                attempt.phase,
-                if class == WorkflowClass::Quick {
-                    Phase::Implement
-                } else {
-                    Phase::Requirements
-                }
-            );
-            assert_eq!(identity.unit, prepared.id);
-            assert_eq!(identity.generation, prepared.generation);
-            let current = f
-                .owner
-                .store
-                .lock()
-                .unwrap()
-                .execution_unit(identity.unit)
-                .unwrap();
-            assert_eq!(current.worktree, prepared.worktree);
-            assert_eq!(current.branch, prepared.branch);
-            assert_eq!(current.profile_digest, prepared.profile_digest);
-            assert_eq!(
-                f.owner
-                    .store
-                    .lock()
-                    .unwrap()
-                    .execution_units(Some(&f.task.scope()))
-                    .unwrap()
-                    .len(),
-                1
-            );
-            let context = f.assert_context_a(attempt.context_version, &prepared.base_sha);
-            let output = execution::resources::ResourceManager::new(f.owner.clone())
-                .profile(&current)
-                .unwrap()
-                .output;
-            wait_file(&output.join("fixture-ready")).await;
-            let wire: serde_json::Value = serde_json::from_slice(
-                &std::fs::read(output.join("fixture-native-input.json")).unwrap(),
-            )
-            .unwrap();
-            let payload = if provider == "codex" {
-                wire["params"]["input"][0]["text"].as_str().unwrap()
-            } else {
-                wire["message"]["content"].as_str().unwrap()
-            };
-            assert_eq!(payload, serde_json::to_string(&context.data).unwrap());
-            assert!(payload.contains(RULE_A.trim()) && !payload.contains(RULE_B.trim()));
-            assert_eq!(
-                f.owner
-                    .store
-                    .lock()
-                    .unwrap()
-                    .managed_effects(current.id)
-                    .unwrap()
-                    .iter()
-                    .filter(|e| e.kind == "native_input")
-                    .count(),
-                1
-            );
-            std::fs::write(output.join("fixture-release"), "complete").unwrap();
-            let adapter = f.registry.get("native-alias").unwrap();
-            tokio::time::timeout(Duration::from_secs(15), async {
-                loop {
-                    if adapter
-                        .status(SessionRef {
-                            id: identity.session,
-                            scope: identity.scope.clone(),
-                            execution: Some(identity.clone()),
-                        })
-                        .await
-                        .unwrap()
-                        .terminal()
-                    {
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(20)).await;
-                }
-            })
-            .await
-            .unwrap();
-            assert!(
-                matches!(engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
-                StepResult::Completed { phase } if phase == attempt.phase)
-            );
-            let published = f
-                .owner
-                .store
-                .lock()
-                .unwrap()
-                .result_artifacts(&f.task.scope())
-                .unwrap();
-            assert_eq!(published.len(), 1);
-            let artifact = &published[0];
-            assert_eq!(artifact.state, execution::ArtifactState::Published);
-            assert_eq!(artifact.unit_id, prepared.id);
-            assert_ne!(artifact.revision, prepared.base_sha);
-            results::ResultStore::new(f.owner.clone())
-                .verify(artifact)
-                .await
-                .unwrap();
-            let done = f
-                .owner
-                .store
-                .lock()
-                .unwrap()
-                .execution_unit(prepared.id)
-                .unwrap();
-            assert_eq!(done.work, Some(WorkOutcome::Success));
-            assert!(!done.native_effects_open && !done.result_finalization_open);
-            assert_eq!(
-                f.owner
-                    .store
-                    .lock()
-                    .unwrap()
-                    .execution_units(Some(&f.task.scope()))
-                    .unwrap()
-                    .len(),
-                1
-            );
-            if class == WorkflowClass::Quick {
-                {
-                    let mut store = f.owner.store.lock().unwrap();
-                    if provider == "claude" {
-                        let mut goal = store.goal(f.task.goal_id).unwrap().unwrap();
-                        goal.objective
-                            .push_str(" fixture changed accepted instruction");
-                        store.put_goal(&mut goal).unwrap();
-                    } else {
-                        let mut project = store.project(f.task.project_id).unwrap().unwrap();
-                        project.rule_refs.clear();
-                        store.put_project(&mut project).unwrap();
-                    }
-                }
-                let error = engine.step(f.task.id, BTreeMap::new()).await.unwrap_err();
-                assert!(
-                    format!("{error:#}").contains("instructions changed"),
-                    "{error:#}"
-                );
-                let unchanged = f
-                    .owner
-                    .store
-                    .lock()
-                    .unwrap()
-                    .result_artifact(artifact.id)
-                    .unwrap();
-                assert_eq!(
-                    serde_json::to_value(&unchanged).unwrap(),
-                    serde_json::to_value(artifact).unwrap()
-                );
-                assert_eq!(
-                    f.owner
-                        .store
-                        .lock()
-                        .unwrap()
-                        .managed_effects(prepared.id)
-                        .unwrap()
-                        .iter()
-                        .filter(|e| e.kind == "native_input")
-                        .count(),
-                    1
-                );
-            }
-        }
-    }
-}
-
-#[tokio::test]
 async fn initial_sources_retire_on_cancel_failure_and_last_owner_drop_before_native() {
     for outcome in ["cancel", "fail", "drop"] {
         let f = Fixture::new("codex", WorkflowClass::Standard).await;
@@ -897,6 +501,7 @@ struct DriftingSources {
     owner: Arc<execution::RuntimeOwner>,
     database: std::path::PathBuf,
     drift: Drift,
+    adopted: std::sync::atomic::AtomicBool,
 }
 impl WorkflowSources for DriftingSources {
     fn committed_input(
@@ -942,6 +547,8 @@ impl WorkflowSources for DriftingSources {
         let t = t.clone();
         let b = b.clone();
         Box::pin(async move {
+            self.adopted
+                .store(true, std::sync::atomic::Ordering::SeqCst);
             let prepared = self.inner.take_initial_executor(&p, &t, phase, &b).await?;
             if matches!(self.drift, Drift::TaskCas) {
                 let mut store = self.owner.store.lock().unwrap();
@@ -967,34 +574,31 @@ impl WorkflowSources for DriftingSources {
     }
 }
 
+/// FM §8.3 F2 (R), §9 first adoption (Payload, TaskCas, StoredContext):
+/// the consumer `adopt_prepared_workflow_execution` is reachable only through
+/// the legacy `prepare_agent` behind F2, so the first-adoption drift refusals
+/// are LOST (retired path, nothing deferred). The legacy step is refused
+/// before source capture; the armed drift is never reached, and the prepared
+/// bootstrap Unit stays the only, untouched Unit.
 #[tokio::test]
 async fn actual_first_adoption_refuses_payload_drift_and_stale_task_cas_before_native() {
     for drift in [Drift::Payload, Drift::TaskCas, Drift::StoredContext] {
         let f = Fixture::new("codex", WorkflowClass::Quick).await;
         let prepared = f.sources.prepare(f.task.id, "codex").await.unwrap();
-        let expected = match drift {
-            Drift::Payload => "first native input differs from prepared committed frame",
-            Drift::TaskCas => "prepared Task CAS changed",
-            Drift::StoredContext => "prepared source/rule frame differs from Context",
-        };
         let sources = Arc::new(DriftingSources {
             inner: f.sources.clone(),
             owner: f.owner.clone(),
             database: f._dir.path().join("state.db"),
             drift,
+            adopted: std::sync::atomic::AtomicBool::new(false),
         });
-        let engine = f.engine(sources);
+        let engine = f.engine(sources.clone());
         engine.initialize(f.task.id, None).await.unwrap();
         early_phases(&engine, f.task.id, WorkflowClass::Quick).await;
-        let error = engine.step(f.task.id, BTreeMap::new()).await.unwrap_err();
-        assert!(format!("{error:#}").contains(expected), "{error:#}");
-        let snapshot = engine.snapshot(f.task.id).unwrap();
-        let attempt = &snapshot.history[snapshot.active.unwrap()];
+        f.f2_refused(&engine).await;
         assert!(
-            attempt.unit.is_none()
-                && attempt.execution.is_none()
-                && attempt.session_id.is_none()
-                && !attempt.dispatch_started
+            !sources.adopted.load(std::sync::atomic::Ordering::SeqCst),
+            "first adoption is never reached"
         );
         let current = f
             .owner
@@ -1004,18 +608,7 @@ async fn actual_first_adoption_refuses_payload_drift_and_stale_task_cas_before_n
             .execution_unit(prepared.id)
             .unwrap();
         assert_eq!(current.phase, execution::model::WORKFLOW_SOURCE_BOOTSTRAP);
-        assert!(!current.native_effects_open && !current.result_finalization_open);
         f.assert_no_native(prepared.id);
-        assert_eq!(
-            f.owner
-                .store
-                .lock()
-                .unwrap()
-                .execution_units(Some(&f.task.scope()))
-                .unwrap()
-                .len(),
-            1
-        );
     }
 }
 

@@ -69,6 +69,11 @@ pub(crate) struct SourceNativePreparationSeal {
     pair: uuid::Uuid,
     input_bytes: Vec<u8>,
 }
+/// The committed inventory's own digest format (`CommittedIndex::build`
+/// records `sha256:<hex>`); `digest`/`rules:` versions are bare hex.
+fn inventory_sha256(hex: &str) -> String {
+    format!("sha256:{hex}")
+}
 fn validate_seal_identity(
     actual: (OperationId, uuid::Uuid, &[u8]),
     original: (OperationId, uuid::Uuid, &[u8]),
@@ -136,9 +141,8 @@ impl SourceNativePreparationSeal {
                 && path != "config"
             {
                 ensure!(
-                    inventory
-                        .get(path)
-                        .is_some_and(|e| e.skipped.is_none() && e.sha256.as_ref() == Some(value)),
+                    inventory.get(path).is_some_and(|e| e.skipped.is_none()
+                        && e.sha256.as_deref() == Some(inventory_sha256(value).as_str())),
                     "original rule digest differs"
                 );
             }
@@ -149,8 +153,12 @@ impl SourceNativePreparationSeal {
                 .to_str()
                 .context("original config path not UTF8")?;
             ensure!(
-                inventory.get(path).is_some_and(|e| e.skipped.is_none()
-                    && e.sha256.as_ref() == self.frame.versions.get("rules:config")),
+                inventory.get(path).is_some_and(|e| {
+                    e.skipped.is_none()
+                        && self.frame.versions.get("rules:config").is_some_and(|v| {
+                            e.sha256.as_deref() == Some(inventory_sha256(v).as_str())
+                        })
+                }),
                 "original config digest differs"
             );
         } else {
@@ -175,7 +183,7 @@ impl SourceNativePreparationSeal {
                 .get(path)
                 .context("original mandatory actual bytes absent")?;
             ensure!(
-                entry.sha256.as_deref() == Some(digest(original_bytes).as_str())
+                entry.sha256.as_deref() == Some(inventory_sha256(&digest(original_bytes)).as_str())
                     && self
                         .frame
                         .native_tree
@@ -216,7 +224,8 @@ fn qualify_git_corpus(
                 .get(path)
                 .context("original Source bytes absent")?;
             ensure!(
-                bytes.len() == size && entry.sha256.as_deref() == Some(digest(bytes).as_str()),
+                bytes.len() == size
+                    && entry.sha256.as_deref() == Some(inventory_sha256(&digest(bytes)).as_str()),
                 "original Source bytes/hash/size differs"
             );
         }
@@ -618,6 +627,39 @@ impl ManagedWorkflowSources {
 #[cfg(test)]
 mod seal_identity_tests {
     use super::*;
+    /// The producer's real inventory (`CommittedIndex::build`, not a
+    /// synthetic entry) is accepted by the corpus check for the same bytes,
+    /// and refused for different bytes.
+    #[test]
+    fn producer_inventory_format_qualifies_its_own_bytes() {
+        use crate::context::committed::{CommittedFile, CommittedIndex};
+        let r = "a".repeat(40);
+        let scope = crate::domain::Scope::task(
+            crate::domain::ProjectId::new(),
+            crate::domain::GoalId::new(),
+            crate::domain::TaskId::new(),
+        );
+        let index = CommittedIndex::build(
+            scope,
+            r.clone(),
+            BTreeMap::from([("code".into(), r.clone())]),
+            vec![CommittedFile {
+                path: "file.txt".into(),
+                oid: "b".repeat(40),
+                bytes: Some(b"abc".to_vec()),
+                skipped: None,
+            }],
+        )
+        .unwrap();
+        let tree = parse_committed_tree(
+            format!("100644 blob {} 3\tfile.txt\0", "b".repeat(40)).as_bytes(),
+        )
+        .unwrap();
+        let bytes = BTreeMap::from([("file.txt".into(), b"abc".to_vec())]);
+        qualify_git_corpus(&r, index.inventory(), &tree, &bytes).unwrap();
+        let other = BTreeMap::from([("file.txt".into(), b"abd".to_vec())]);
+        assert!(qualify_git_corpus(&r, index.inventory(), &tree, &other).is_err());
+    }
     #[test]
     fn nongrant_original_corpus_checks_bytes_hash_tree_type_oid_path_and_size() {
         use crate::context::committed::InventoryEntry;
@@ -630,7 +672,7 @@ mod seal_identity_tests {
             "file.txt".into(),
             InventoryEntry {
                 oid: "b".repeat(40),
-                sha256: Some(digest(b"abc")),
+                sha256: Some(inventory_sha256(&digest(b"abc"))),
                 bytes: Some(3),
                 skipped: None,
             },
@@ -660,7 +702,7 @@ mod seal_identity_tests {
         changed_bytes.insert("file.txt".into(), b"abcd".to_vec());
         assert!(qualify_git_corpus(&r, &index, &tree, &changed_bytes).is_err());
         let mut changed = index.clone();
-        changed.get_mut("file.txt").unwrap().sha256 = Some("c".repeat(64));
+        changed.get_mut("file.txt").unwrap().sha256 = Some(inventory_sha256(&"c".repeat(64)));
         assert!(qualify_git_corpus(&r, &changed, &tree, &bytes).is_err());
         let mut large = index.clone();
         let entry = large.get_mut("file.txt").unwrap();

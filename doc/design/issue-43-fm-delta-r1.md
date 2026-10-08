@@ -1,6 +1,6 @@
 # Issue 43: FM implementation delta R1 — Native handoff digest defect, D2 lane, managed_* class
 
-- **Status:** R1, for review. Nothing in §1 is committed; the fix and its controls exist as a local patch only.
+- **Status:** R1, approved by Sol (6051372522). §1 and §2 are committed together with the `committed_source_tests` reclassification; §3 is approved and not yet applied.
 - **Base:** `777c132` (FM L in-crate, L integration and goal_graph R are committed).
 - **Why now:** the first D2 analogs of `workflow::committed_source_tests` (FM HOW R3 §9) fail on the installed lane for a reason in production code, not in the fixture.
 - **Constraints (STRICT, unchanged):**
@@ -24,7 +24,7 @@
   | `:178` | "original mandatory bytes/OID correspondence differs" | `digest(original_bytes)` |
   | `:219` | "original Source bytes/hash/size differs" (`qualify_git_corpus`) | `digest(bytes)` |
 
-- These checks can therefore never pass for a Project with **any committed file**:
+- These checks can therefore never pass for a Project with **any committed entry that has materialized bytes**:
   - with `rule_refs` or `config_ref`, the rule or config check fails first;
   - otherwise every inventory file fails in `qualify_git_corpus`.
 - **Why nothing caught it:**
@@ -52,11 +52,18 @@ Rejected alternatives:
 | Existing corpus and seal unit tests | 2/2 pass. |
 | §2's 9 D2 tests | 9/9 pass with the fix. Without it they never bind (the refusal above). |
 
-Further mutants for review:
-- revert each of the four sites separately; the D2 lane (rule/config/mandatory) or the unit control (corpus) must fail;
-- change one inventory byte; the refusal must remain.
+Per-site revert mutants (run on the submitted source, non-root, then restored with an empty diff):
 
-## 2. FM D2 lane (HOW R3 §9) — implemented, uncommitted until §1 is approved
+| Reverted site | Killed by |
+| --- | --- |
+| rule `:141` | `fm_d2_committed_source_631_codex_quick_front` ("normal Bound absent") |
+| config `:153` | same |
+| mandatory `:178` | same |
+| corpus `:219` | `producer_inventory_format_qualifies_its_own_bytes` ("original Source bytes/hash/size differs") |
+
+The negative half of the producer control (`b"abd"` refused) covers a changed inventory byte.
+
+## 2. FM D2 lane (HOW R3 §9)
 
 New module `runtime/installation/tests/fm_d2.rs`.
 - **Fixture:** the installed protocol fixture in commit mode, plus a recording of the outgoing Native input.
@@ -86,7 +93,7 @@ When §1 lands, the legacy tests these replace move to their §9 classes in the 
   - `managed_tools` passes 1/1, with all its candidate-index, hook and owner-resource assertions unchanged.
 - **D2 would need:** a configured compat agent that performs the commits inside the Native phase. The tests' assertions (the Unit's `ResourceProfile`, cookie and hook context) would also have to be re-derived from internal objects.
 - **Proposal:** classify both as L. What L does not prove: accepted Source/marker/Native eligibility; that remains SC1/SC-N.
-- **No silent fallback:** this is not applied until reviewed.
+- **Approved** (6051372522). With it the §9 D2 count is 9 (the `fm_d2` tests), down from 11.
 
 ## 4. Flag already reported (`e593698`)
 

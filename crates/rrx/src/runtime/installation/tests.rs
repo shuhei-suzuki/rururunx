@@ -13,6 +13,7 @@ use std::{os::unix::fs::PermissionsExt, time::Duration};
 
 mod activation;
 mod epoch_fence;
+mod fm_d2;
 mod nonsuccess;
 mod preparation;
 mod success;
