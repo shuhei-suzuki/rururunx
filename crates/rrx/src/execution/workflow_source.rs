@@ -271,60 +271,6 @@ impl InitialInputFrame {
             .publish_driven_adoption(&self.unit, adopted, plan)
     }
 }
-/// Only the complete corpus/rule/config producer below creates this proof.
-/// The producer stays test-only until Runtime restart scheduling (#14) adds
-/// its driver-claim consumer under its own review.
-#[cfg(test)]
-pub(crate) struct ReconstructedFrame {
-    frame: Arc<Frame>,
-    digest: String,
-}
-#[cfg(test)]
-impl ReconstructedFrame {
-    pub(crate) fn scope(&self) -> &Scope {
-        &self.frame.scope
-    }
-    pub(crate) fn revision(&self) -> &str {
-        &self.frame.revision
-    }
-    pub(crate) fn artifact(&self) -> ArtifactId {
-        self.frame
-            .artifact
-            .expect("reconstructed retained artifact")
-    }
-    pub(crate) fn versions(&self) -> &BTreeMap<String, String> {
-        &self.frame.versions
-    }
-    pub(crate) fn governing(&self) -> &str {
-        &self.frame.governing_digest
-    }
-    pub(crate) fn digest(&self) -> &str {
-        &self.digest
-    }
-}
-#[cfg(test)]
-struct RecoveryPause {
-    after_verify: bool,
-    reached: tokio::sync::oneshot::Sender<()>,
-    release: tokio::sync::oneshot::Receiver<()>,
-}
-#[cfg(test)]
-struct RecoveryGuard {
-    owner: Arc<RuntimeOwner>,
-    binding: Option<crate::state::SourceReadBinding>,
-}
-#[cfg(test)]
-impl Drop for RecoveryGuard {
-    fn drop(&mut self) {
-        if let Some(binding) = self.binding.take()
-            && let Ok(mut store) = self.owner.store.lock()
-        {
-            // An error retains Preparing and requires explicit epoch fencing.
-            // Dropping cannot install a cache or overwrite helper observations.
-            let _ = store.abandon_retained_source_recovery(&binding);
-        }
-    }
-}
 /// Single-use private provenance for the actual first native phase.
 pub struct InitialWorkflowExecutor {
     prepared: PreparedExecutor,
@@ -664,95 +610,6 @@ impl ManagedWorkflowSources {
         });
         Ok(unit)
     }
-    /// Rebuild only the sole Workflow's exact Published frame under a genuine
-    /// current-owner source claim. This does not reconstruct a Runtime driver.
-    // The Runtime driver is a subsequent consumer; this private source port is
-    // exercised through real retained producers below, never a persisted grant.
-    #[cfg(test)]
-    pub(crate) async fn recover_retained(&self, task: TaskId) -> Result<()> {
-        self.recover_retained_inner(
-            task,
-            #[cfg(test)]
-            None,
-        )
-        .await
-    }
-    #[cfg(test)]
-    async fn recover_retained_inner(
-        &self,
-        task: TaskId,
-        #[cfg(test)] mut pause: Option<RecoveryPause>,
-    ) -> Result<()> {
-        let slot = self.slot(task)?;
-        let mut state = slot.lock().await;
-        ensure!(state.is_none(), "Workflow source already installed");
-        let claim = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .begin_retained_source_recovery(task, self.owner.epoch)?;
-        let binding = claim.binding();
-        let mut guard = RecoveryGuard {
-            owner: self.owner.clone(),
-            binding: Some(binding.clone()),
-        };
-        #[cfg(test)]
-        if pause.as_ref().is_some_and(|p| !p.after_verify) {
-            let p = pause.take().unwrap();
-            let _ = p.reached.send(());
-            let _ = p.release.await;
-        }
-        let result = results::ResultStore::new(self.owner.clone());
-        result.verify_recovery(&claim.artifact, &binding).await?;
-        let io = RetainedGit::for_recovery(self.owner.clone(), &claim.artifact, binding.clone())?;
-        let files = read_corpus(
-            CorpusReader::Retained(&io),
-            &claim.artifact.repository,
-            &claim.artifact.revision,
-        )
-        .await?;
-        let frame = Frame::build(
-            &claim.project,
-            &claim.goal,
-            &claim.task,
-            &self.runtime,
-            claim.artifact.revision.clone(),
-            Some(claim.artifact.id),
-            files,
-        )?;
-        ensure!(
-            frame.versions == claim.artifact.dependencies,
-            "reconstructed retained dependency frame changed"
-        );
-        result.verify_recovery(&claim.artifact, &binding).await?;
-        let digest = digest(&serde_json::to_vec(
-            &serde_json::json!({"scope":frame.scope,"revision":frame.revision,"artifact":frame.artifact,"versions":frame.versions,"governing":frame.governing_digest,"rules":frame.rules,"config":frame.config,"mandatory":frame.mandatory}),
-        )?);
-        let proof = ReconstructedFrame {
-            frame: Arc::new(frame),
-            digest,
-        };
-        #[cfg(test)]
-        if let Some(p) = pause {
-            let _ = p.reached.send(());
-            let _ = p.release.await;
-        }
-        let installed = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .accept_retained_source_recovery(&claim, &proof)?;
-        *state = Some(TaskSources {
-            handoff: None,
-            prepared: None,
-            frame: proof.frame,
-            recovery: Some(installed),
-        });
-        guard.binding = None;
-        Ok(())
-    }
     fn owners(&self, task: TaskId) -> Result<(Project, Goal, Task)> {
         let store = self
             .owner
@@ -1039,8 +896,6 @@ impl ManagedWorkflowSources {
         state.frame.render(task, phase, budget)
     }
 }
-#[cfg(test)]
-mod recovery_tests;
 impl WorkflowSources for ManagedWorkflowSources {
     fn capture(
         &self,

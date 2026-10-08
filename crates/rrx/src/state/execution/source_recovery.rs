@@ -1,7 +1,5 @@
 //! Private source-only recovery claims. Stored metadata never recreates a grant.
 use super::*;
-#[cfg(test)]
-use crate::execution::workflow_source::ReconstructedFrame;
 use crate::execution::workflow_source::{digest, task_digest};
 use serde::{Deserialize, Serialize};
 
@@ -50,23 +48,8 @@ struct MarkerSourceAnchor {
     prior_source_body_sha256: String,
 }
 struct Snapshot {
-    // Only the test-only recovery producer (`begin`) reads these (#14).
-    #[cfg(test)]
-    project: Project,
-    #[cfg(test)]
-    goal: Goal,
     task: Task,
     pins: Pins,
-}
-/// Created only by begin's atomic current-owner claim; deliberately non-Clone.
-/// Test-only until Runtime restart scheduling (#14) adds its consumer.
-#[cfg(test)]
-pub(crate) struct SourceRecovery {
-    pub(crate) project: Project,
-    pub(crate) goal: Goal,
-    pub(crate) task: Task,
-    pub(crate) artifact: ResultArtifact,
-    binding: SourceReadBinding,
 }
 #[derive(Clone)]
 pub(crate) struct SourceReadBinding {
@@ -80,12 +63,6 @@ pub(crate) struct SourceReadBinding {
 impl SourceReadBinding {
     pub(crate) fn owns_artifact(&self, id: ArtifactId) -> bool {
         self.artifact == id
-    }
-}
-#[cfg(test)]
-impl SourceRecovery {
-    pub(crate) fn binding(&self) -> SourceReadBinding {
-        self.binding.clone()
     }
 }
 /// Only a validated pre-write snapshot may advance resulting typed bookkeeping.
@@ -265,14 +242,7 @@ fn snapshot(c: &Connection, task_id: TaskId) -> Result<Snapshot> {
         governing: governing_digest(&project, &goal)?,
         instruction: task_digest(&task)?,
     };
-    Ok(Snapshot {
-        #[cfg(test)]
-        project,
-        #[cfg(test)]
-        goal,
-        task,
-        pins,
-    })
+    Ok(Snapshot { task, pins })
 }
 fn row(c: &Connection, task: TaskId) -> Result<Option<Row>> {
     let n: Option<usize> = c
@@ -593,141 +563,8 @@ impl Store {
         tx.commit()?;
         Ok(current)
     }
-    #[cfg(test)]
-    pub(crate) fn begin_retained_source_recovery(
-        &mut self,
-        task: TaskId,
-        owner_epoch: u64,
-    ) -> Result<SourceRecovery> {
-        let tx = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        epoch(&tx, owner_epoch)?;
-        let snapshot = snapshot(&tx, task)?;
-        let old = row(&tx, task)?;
-        ensure!(
-            old.as_ref()
-                .is_none_or(|r| r.state != "preparing" && r.marker.is_none()),
-            "source recovery already Preparing or marker-bound; genuine closure/epoch recovery required"
-        );
-        let mut row = Row {
-            id: Uuid::new_v4(),
-            epoch: owner_epoch,
-            version: old.as_ref().map_or(1, |r| r.version),
-            state: "preparing".into(),
-            pins: snapshot.pins,
-            frame: None,
-            marker: None,
-        };
-        if old.is_some() {
-            write(&tx, &self.binding_permits, &mut row)?;
-        } else {
-            let (p, g, t) = scope_keys(&row.pins.scope)?;
-            let body = serde_json::to_string(&row)?;
-            ensure!(
-                body.len() <= META_BYTES,
-                "source recovery metadata exceeds bound"
-            );
-            let mutation = crate::state::managed_binding::ExactRowMutation::new(
-                "source_recoveries",
-                "INSERT",
-                None,
-                Some(image(&row, &body)?),
-            )?;
-            self.binding_permits.with_exact_permit(vec![mutation], || {
-                tx.execute("INSERT INTO source_recoveries(task_id,project_id,goal_id,id,owner_epoch,version,state,body) VALUES(?1,?2,?3,?4,?5,1,'preparing',?6)",params![t,p,g,row.id.to_string(),row.epoch,body])?;
-                self.binding_permits.ensure_consumed()
-            })?;
-        }
-        append_event(
-            &tx,
-            &row.pins.scope,
-            "execution.source_recovery_claimed",
-            json!({"recovery":row.id,"version":row.version,"epoch":row.epoch,"artifact":row.pins.artifact.id}),
-        )?;
-        tx.commit()?;
-        let binding = SourceReadBinding {
-            task,
-            id: row.id,
-            epoch: row.epoch,
-            preparing_version: Some(row.version),
-            frame: None,
-            artifact: row.pins.artifact.id,
-        };
-        Ok(SourceRecovery {
-            project: snapshot.project,
-            goal: snapshot.goal,
-            task: snapshot.task,
-            artifact: row.pins.artifact,
-            binding,
-        })
-    }
     pub(crate) fn validate_source_read(&self, binding: &SourceReadBinding) -> Result<()> {
         validate_binding(&self.connection, binding)
-    }
-    #[cfg(test)]
-    pub(crate) fn accept_retained_source_recovery(
-        &mut self,
-        claim: &SourceRecovery,
-        frame: &ReconstructedFrame,
-    ) -> Result<SourceReadBinding> {
-        let tx = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        validate_binding(&tx, &claim.binding)?;
-        let mut row = row(&tx, claim.task.id)?.unwrap();
-        ensure!(
-            frame.scope() == &row.pins.scope
-                && frame.revision() == row.pins.artifact.revision
-                && frame.artifact() == row.pins.artifact.id
-                && frame.versions() == &row.pins.artifact.dependencies
-                && frame.governing() == row.pins.governing,
-            "reconstructed frame differs from claimed source"
-        );
-        row.state = "installed".into();
-        row.frame = Some(frame.digest().into());
-        write(&tx, &self.binding_permits, &mut row)?;
-        append_event(
-            &tx,
-            &row.pins.scope,
-            "execution.source_recovery_installed",
-            json!({"recovery":row.id,"version":row.version,"epoch":row.epoch,"artifact":row.pins.artifact.id,"frame":row.frame}),
-        )?;
-        tx.commit()?;
-        Ok(SourceReadBinding {
-            task: claim.task.id,
-            id: row.id,
-            epoch: row.epoch,
-            preparing_version: None,
-            frame: row.frame,
-            artifact: row.pins.artifact.id,
-        })
-    }
-    #[cfg(test)]
-    pub(crate) fn abandon_retained_source_recovery(
-        &mut self,
-        binding: &SourceReadBinding,
-    ) -> Result<()> {
-        let tx = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if let Some(mut row) = row(&tx, binding.task)?
-            && row.id == binding.id
-            && row.epoch == binding.epoch
-            && row.state == "preparing"
-            && Some(row.version) == binding.preparing_version
-        {
-            row.state = "invalid".into();
-            write(&tx, &self.binding_permits, &mut row)?;
-            append_event(
-                &tx,
-                &row.pins.scope,
-                "execution.source_recovery_abandoned",
-                json!({"recovery":row.id,"epoch":row.epoch}),
-            )?;
-        }
-        tx.commit()?;
-        Ok(())
     }
 }
 

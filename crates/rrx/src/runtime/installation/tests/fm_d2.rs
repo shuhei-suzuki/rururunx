@@ -82,9 +82,9 @@ fn recording_fixture(provider: &str) -> ControlFixture {
     })
 }
 
-struct Committed {
-    f: ControlFixture,
-    task: Task,
+pub(super) struct Committed {
+    pub(super) f: ControlFixture,
+    pub(super) task: Task,
     config_a: String,
 }
 
@@ -92,7 +92,7 @@ struct Committed {
 /// `repo_map_tokens = 321`) and `rule_refs` (rule A) are registered before
 /// `accept`; then live B (STRICT, 777, rule B) is written uncommitted before
 /// any preparation (legitimate drift, §8.2).
-async fn committed(provider: &str, class: crate::config::WorkflowClass) -> Committed {
+pub(super) async fn committed(provider: &str, class: crate::config::WorkflowClass) -> Committed {
     let mut f = recording_fixture(provider);
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
@@ -231,7 +231,7 @@ async fn recorded_input(c: &Committed, unit: &crate::execution::ExecutionUnit) {
     .await;
 }
 
-async fn wait_closed(c: &Committed, label: &str) {
+pub(super) async fn wait_closed(c: &Committed, label: &str) {
     wait_for(
         || links(&c.f, &c.task).last().map(String::as_str) == Some("phase_closed"),
         &format!(

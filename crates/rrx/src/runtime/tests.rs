@@ -445,6 +445,64 @@ impl ControlFixture {
             .put_project(&mut self.project)
             .unwrap();
     }
+    /// A real restart over the same state file (FM §8.2): shutdown, release
+    /// every Runtime and owner custody (each awaited, never inferred), then
+    /// `RuntimeOwner::open` (a new epoch), a new Runtime with the same config,
+    /// and a new Unix-peer pair. The temporary directory is kept.
+    pub(super) async fn restart(self) -> Self {
+        let config = self.runtime.config.clone();
+        let _ = self.runtime.shutdown().await;
+        let Self {
+            _dir,
+            owner,
+            runtime,
+            project,
+            socket,
+            _peer,
+        } = self;
+        drop((socket, _peer));
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        // The installed graph holds the owner, so the owner release below
+        // also awaits the graph's custody.
+        let released = Arc::downgrade(&runtime);
+        drop(runtime);
+        while released.upgrade().is_some() {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "SETUP: Runtime custody not released"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let old_epoch = owner.epoch();
+        let released = Arc::downgrade(&owner);
+        drop(owner);
+        while released.upgrade().is_some() {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "SETUP: owner custody not released"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let owner = RuntimeOwner::open(&_dir.path().join("state.db")).unwrap();
+        assert!(owner.epoch() > old_epoch, "SETUP: restart has a new epoch");
+        let runtime = Arc::new(Runtime::new(owner.clone(), config).unwrap());
+        let project = owner
+            .store()
+            .lock()
+            .unwrap()
+            .project(project.id)
+            .unwrap()
+            .unwrap();
+        let (socket, peer) = tokio::net::UnixStream::pair().unwrap();
+        Self {
+            _dir,
+            owner,
+            runtime,
+            project,
+            socket,
+            _peer: peer,
+        }
+    }
     pub(super) fn request(&self, action: ControlAction) -> ControlRequest {
         ControlRequest {
             request_id: Uuid::new_v4(),
