@@ -77,20 +77,8 @@ fn native_dispatch_checks_each_owner_version_across_independent_connections() {
                 other.put_project(&mut project).unwrap();
             }
             1 => {
-                let before = serde_json::to_value(&goal).unwrap();
                 goal.objective = "changed".into();
-                let refused = other.put_goal(&mut goal).unwrap_err();
-                assert!(
-                    refused
-                        .to_string()
-                        .contains("Goal changes require trusted typed control ingress"),
-                    "FM S4-W: {refused:#}"
-                );
-                assert_eq!(
-                    serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap(),
-                    before,
-                    "FM S4-W: Goal unchanged"
-                );
+                crate::runtime::assert_goal_change_refused(&mut other, goal.clone());
                 continue;
             }
             _ => {

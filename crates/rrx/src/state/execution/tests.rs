@@ -1334,24 +1334,6 @@ fn stale_callbacks_and_generic_task_cancellation_cannot_reopen_authority() {
     assert!(!old.native_effects_open && !old.result_finalization_open);
 }
 
-/// FM §8.4 S4-W: the generic Goal writer refuses any Goal change on legacy
-/// rows; the Goal is unchanged.
-fn assert_goal_change_refused(store: &mut Store, mut goal: Goal) {
-    let before = serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap();
-    let refused = store.put_goal(&mut goal).unwrap_err();
-    assert!(
-        refused
-            .to_string()
-            .contains("Goal changes require trusted typed control ingress"),
-        "FM S4-W: {refused:#}"
-    );
-    assert_eq!(
-        serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap(),
-        before,
-        "FM S4-W: Goal unchanged"
-    );
-}
-
 /// FM §8.4 S4 split. The former Goal pause/resume is refused on legacy rows
 /// (S4-W). The pause subject is kept as a Project registration change on
 /// the same rows: a blocked Project fences the Unit, retirement is still
@@ -1364,7 +1346,7 @@ fn retirement_is_allowed_after_goal_pause_but_resume_cannot_revive_unit() {
         .unwrap();
     let mut goal = store.goal(t.goal_id).unwrap().unwrap();
     goal.state = GoalState::Paused;
-    assert_goal_change_refused(&mut store, goal);
+    crate::runtime::assert_goal_change_refused(&mut store, goal);
     let mut project = store.project(t.project_id).unwrap().unwrap();
     project.state = ProjectState::Blocked;
     project.blocked_reason = Some("fixture pause".into());
@@ -1637,12 +1619,12 @@ fn governing_instruction_change_fences_effects_but_preserves_historical_retireme
     let goal = store.goal(t.goal_id).unwrap().unwrap();
     let mut bookkeeping = goal.clone();
     bookkeeping.blockers.push("bookkeeping".into());
-    assert_goal_change_refused(&mut store, bookkeeping);
+    crate::runtime::assert_goal_change_refused(&mut store, bookkeeping);
     let mut instruction = goal.clone();
     instruction
         .constraints
         .push("new accepted constraint".into());
-    assert_goal_change_refused(&mut store, instruction);
+    crate::runtime::assert_goal_change_refused(&mut store, instruction);
     let mut project = store.project(t.project_id).unwrap().unwrap();
     project.name = "registry bookkeeping".into();
     store.put_project(&mut project).unwrap();

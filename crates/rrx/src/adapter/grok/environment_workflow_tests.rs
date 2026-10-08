@@ -7,7 +7,13 @@ use crate::{
     workflow::*,
 };
 
-struct Sources;
+/// FM §8.6.3: one shared test-only count of the Grok adapter, Sources
+/// (whose capture runs the fixture's direct Git) and gate callbacks.
+type Calls = Arc<std::sync::atomic::AtomicUsize>;
+fn called(calls: &Calls) {
+    calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+struct Sources(Calls);
 impl WorkflowSources for Sources {
     fn capture(
         &self,
@@ -16,6 +22,7 @@ impl WorkflowSources for Sources {
         _: Phase,
         _: ContextBudget,
     ) -> WorkflowFuture<'_, SourceSnapshot> {
+        called(&self.0);
         Box::pin(async move {
             let worktree = task.worktree.as_ref().unwrap();
             let revision = super::fixture_support::git(worktree, &["rev-parse", "HEAD"]);
@@ -29,13 +36,14 @@ impl WorkflowSources for Sources {
         })
     }
 }
-struct WorktreeEvidence(PathBuf);
+struct WorktreeEvidence(PathBuf, Calls);
 impl PhaseGates for WorktreeEvidence {
     fn complete(
         &self,
         invocation: PhaseInvocation,
         status: Option<SessionStatus>,
     ) -> WorkflowFuture<'_, GateOutcome> {
+        called(&self.1);
         Box::pin(async move {
             assert_eq!(invocation.phase, Phase::Worktree);
             assert!(status.is_none());
@@ -63,10 +71,11 @@ impl PhaseGates for WorktreeEvidence {
         })
     }
 }
-async fn engine(fixture: &Fixture, adapter: Arc<GrokAdapter>) -> WorkflowEngine {
+async fn engine(fixture: &Fixture, adapter: Arc<GrokAdapter>) -> (WorkflowEngine, Calls) {
     let task_id = fixture.request.scope.task_id.unwrap();
     let mut registry = AgentRegistry::default();
     registry.register("grok".into(), adapter).unwrap();
+    let calls = registry.count_callbacks();
     let mut config = Config {
         minimum_workflow: WorkflowClass::Quick,
         ..Config::default()
@@ -76,9 +85,10 @@ async fn engine(fixture: &Fixture, adapter: Arc<GrokAdapter>) -> WorkflowEngine 
         fixture.store.clone(),
         Arc::new(registry),
         config,
-        Arc::new(Sources),
+        Arc::new(Sources(calls.clone())),
         Arc::new(WorktreeEvidence(
             fixture.directory.path().join("worktree-proof.json"),
+            calls.clone(),
         )),
     )
     .unwrap();
@@ -89,7 +99,7 @@ async fn engine(fixture: &Fixture, adapter: Arc<GrokAdapter>) -> WorkflowEngine 
             phase: Phase::Worktree
         }
     ));
-    engine
+    (engine, calls)
 }
 
 /// FM §8.3 F2 (R). Former subject: at the first reachable Native phase the
@@ -98,9 +108,11 @@ async fn engine(fixture: &Fixture, adapter: Arc<GrokAdapter>) -> WorkflowEngine 
 /// production caller (S1) and Grok is not an installed provider (S2), so the
 /// step into Implement is now refused with the typed
 /// `ManagedBindingUnavailable` before source capture, whichever map is
-/// passed. The Task, Workflow record, audit, Units, Sessions and completed
-/// Git outputs are unchanged; no Grok process is spawned (its
-/// `grok.process_spawned` audit and Session record are in the preimage).
+/// passed. The Task, Workflow record, audit, Units, Sessions, completed
+/// Git outputs and the Grok adapter, Sources (its capture runs the fixture's
+/// direct Git) and gate callback count are unchanged; no Grok process is
+/// spawned (its `grok.process_spawned` audit and Session record are in the
+/// preimage).
 /// Its managed equivalent is SC-N continuation work (D3/D4); the rest of the
 /// former scenario is retired.
 #[tokio::test]
@@ -124,7 +136,7 @@ async fn forwarding_child() {
         store.put_project(&mut project).unwrap();
         fixture.request.project = project;
     }
-    let workflow = engine(&fixture, Arc::new(fixture.adapter())).await;
+    let (workflow, calls) = engine(&fixture, Arc::new(fixture.adapter())).await;
     let task_id = fixture.request.scope.task_id.unwrap();
     let preimage = || {
         let store = fixture.store.lock().unwrap();
@@ -137,6 +149,7 @@ async fn forwarding_child() {
             "units": store.execution_units(Some(&scope)).unwrap().len(),
             "sessions": store.records(&scope, RecordKind::Session).unwrap(),
             "git": crate::git::observed_git_outputs(),
+            "callbacks": calls.load(std::sync::atomic::Ordering::SeqCst),
         })
     };
     for map in [

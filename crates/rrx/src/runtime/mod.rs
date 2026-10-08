@@ -125,8 +125,8 @@ impl Runtime {
 mod tests;
 #[cfg(test)]
 pub(crate) use tests::{
-    LegacyFixture, LegacyLayout, LegacyTask, accepted_goal_fixture, legacy_fixture,
-    legacy_fixture_blocking, legacy_store, migrate_legacy, write_historical_copy,
+    LegacyFixture, LegacyLayout, LegacyTask, accepted_goal_fixture, assert_goal_change_refused,
+    legacy_fixture, legacy_fixture_blocking, legacy_store, migrate_legacy, write_historical_copy,
 };
 
 #[cfg(test)]

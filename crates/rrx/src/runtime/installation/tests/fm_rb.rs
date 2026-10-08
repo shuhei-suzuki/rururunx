@@ -90,19 +90,26 @@ async fn restarted(published: bool) -> (ControlFixture, Task, ResultArtifact) {
 }
 
 /// FM §8.3 S5-W: the generic Task writer refuses the former instruction edit
-/// on accepted rows; the Task body/version and the audit are unchanged.
+/// on accepted rows; the input DTO, the stored Task body/version and the
+/// audit are unchanged.
 fn assert_task_edit_refused(f: &ControlFixture, task: &Task) {
     let mut store = f.owner.store.lock().unwrap();
     let before = store.task(task.id).unwrap().unwrap();
     let audit = store.events(&task.scope(), 0, 10_000).unwrap().len();
     let mut edited = before.clone();
     edited.title = "generic instruction drift".into();
+    let input = serde_json::to_value(&edited).unwrap();
     let refused = store.put_task(&mut edited).unwrap_err();
     assert!(
         refused
             .to_string()
             .contains("managed Task changes require typed owned control/Workflow transaction"),
         "FM S5-W: {refused:#}"
+    );
+    assert_eq!(
+        serde_json::to_value(&edited).unwrap(),
+        input,
+        "FM S5-W: input DTO unchanged"
     );
     assert_eq!(
         serde_json::to_value(store.task(task.id).unwrap().unwrap()).unwrap(),

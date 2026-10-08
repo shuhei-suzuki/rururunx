@@ -463,23 +463,6 @@ fn assert_refusal(error: &anyhow::Error, expected: &NativePreflightRefusal) {
         "FM F2: typed refusal {expected:?}: {error:#}"
     );
 }
-/// FM §8.4 S4-W: the generic Goal writer refuses any Goal change on legacy
-/// rows; the Goal is unchanged.
-fn assert_goal_change_refused(store: &mut Store, mut goal: Goal) {
-    let before = serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap();
-    let refused = store.put_goal(&mut goal).unwrap_err();
-    assert!(
-        refused
-            .to_string()
-            .contains("Goal changes require trusted typed control ingress"),
-        "FM S4-W: {refused:#}"
-    );
-    assert_eq!(
-        serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap(),
-        before,
-        "FM S4-W: Goal unchanged"
-    );
-}
 struct Fixture {
     dir: crate::runtime::LegacyFixture,
     _owner: Arc<crate::execution::RuntimeOwner>,
@@ -894,7 +877,7 @@ async fn blocked_project_and_paused_goal_cannot_progress_or_publish_context() {
         let mut store = fixture.store.lock().unwrap();
         let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
         goal.state = GoalState::Paused;
-        assert_goal_change_refused(&mut store, goal);
+        crate::runtime::assert_goal_change_refused(&mut store, goal);
     }
     fixture
         .engine
@@ -1452,7 +1435,7 @@ async fn gate_owner_updates_preserve_issue_binding_goal_metadata_and_task_blocke
         store.put_task(&mut task).unwrap();
         let mut goal = store.goal(task.goal_id).unwrap().unwrap();
         goal.constraints.push("concurrent constraint".into());
-        assert_goal_change_refused(&mut store, goal);
+        crate::runtime::assert_goal_change_refused(&mut store, goal);
         let mut project = store.project(task.project_id).unwrap().unwrap();
         project.name = "concurrent registry name".into();
         store.put_project(&mut project).unwrap();
@@ -2101,7 +2084,7 @@ async fn cancelled_unknown_gate_keeps_project_reserved_after_goal_terminal() {
     let mut store = fixture.store.lock().unwrap();
     let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
     goal.state = GoalState::Cancelled;
-    assert_goal_change_refused(&mut store, goal);
+    crate::runtime::assert_goal_change_refused(&mut store, goal);
     let mut project = store.project(fixture.project.id).unwrap().unwrap();
     project.state = ProjectState::Removed;
     let refused = store.put_project(&mut project).unwrap_err();

@@ -4468,21 +4468,9 @@ mod tests {
             {
                 let mut store = fixture.reservation.store.lock().unwrap();
                 if inactive {
-                    let before = fixture.authority.snapshot.goal.clone().unwrap();
-                    let mut goal = before.clone();
+                    let mut goal = fixture.authority.snapshot.goal.clone().unwrap();
                     goal.state = crate::domain::GoalState::Paused;
-                    let refused = store.put_goal(&mut goal).unwrap_err();
-                    assert!(
-                        refused
-                            .to_string()
-                            .contains("Goal changes require trusted typed control ingress"),
-                        "FM S4-W: {refused:#}"
-                    );
-                    assert_eq!(
-                        serde_json::to_value(store.goal(before.id).unwrap().unwrap()).unwrap(),
-                        serde_json::to_value(&before).unwrap(),
-                        "FM S4-W: Goal unchanged"
-                    );
+                    crate::runtime::assert_goal_change_refused(&mut store, goal);
                     let mut task = fixture.authority.snapshot.task.clone().unwrap();
                     task.state = crate::domain::TaskState::Cancelled;
                     store.put_task(&mut task).unwrap();

@@ -7,6 +7,8 @@ const RULE_A: &str = "MANDATORY_COMMITTED_RULE_A: preserve the answer.\n";
 
 struct InitialEvidence {
     owner: Arc<execution::RuntimeOwner>,
+    /// FM §8.6.3: shared test-only callback count.
+    calls: Arc<std::sync::atomic::AtomicUsize>,
 }
 impl PhaseGates for InitialEvidence {
     fn complete(
@@ -14,6 +16,7 @@ impl PhaseGates for InitialEvidence {
         invocation: PhaseInvocation,
         transport: Option<SessionStatus>,
     ) -> WorkflowFuture<'_, GateOutcome> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Box::pin(async move {
             let marker = if invocation.phase.actor() == Actor::Executor {
                 let native = transport
@@ -67,6 +70,9 @@ struct Fixture {
     config: Config,
     registry: Arc<AgentRegistry>,
     sources: Arc<ManagedWorkflowSources>,
+    /// FM §8.6.3: every registered adapter's and this fixture's gate
+    /// callbacks (read-only, test-only).
+    callbacks: Arc<std::sync::atomic::AtomicUsize>,
 }
 impl Fixture {
     fn production_engine(&self, control: &'static str) -> WorkflowEngine {
@@ -88,6 +94,7 @@ impl Fixture {
                 )
                 .unwrap(),
                 control,
+                calls: self.callbacks.clone(),
             }),
         )
         .unwrap()
@@ -169,8 +176,9 @@ impl Fixture {
             store.put_project(&mut project).unwrap();
             store.put_task(&mut task).unwrap();
         }
-        let registry =
-            Arc::new(AgentRegistry::from_managed_config(&config, owner.clone()).unwrap());
+        let mut registry = AgentRegistry::from_managed_config(&config, owner.clone()).unwrap();
+        let callbacks = registry.count_callbacks();
+        let registry = Arc::new(registry);
         let sources = Arc::new(ManagedWorkflowSources::new(owner.clone(), config.clone()).unwrap());
         Self {
             _dir: dir,
@@ -179,6 +187,7 @@ impl Fixture {
             config,
             registry,
             sources,
+            callbacks,
         }
     }
     fn engine(&self, sources: Arc<dyn WorkflowSources>) -> WorkflowEngine {
@@ -189,12 +198,14 @@ impl Fixture {
             sources,
             Arc::new(InitialEvidence {
                 owner: self.owner.clone(),
+                calls: self.callbacks.clone(),
             }),
         )
         .unwrap()
     }
     /// FM §8.3 F2 observation: Task body, Workflow record, audit, every Unit
-    /// with its managed effects, Sessions and completed Git outputs.
+    /// with its managed effects, Sessions, completed Git outputs and the
+    /// adapter and gate callback count.
     fn preimage(&self) -> serde_json::Value {
         let store = self.owner.store.lock().unwrap();
         let scope = self.task.scope();
@@ -211,6 +222,7 @@ impl Fixture {
             "effects": effects,
             "sessions": store.records(&scope, RecordKind::Session).unwrap(),
             "git": crate::git::observed_git_outputs(),
+            "callbacks": self.callbacks.load(std::sync::atomic::Ordering::SeqCst),
         })
     }
     /// FM §8.3 F2: the legacy Engine's step into the Native phase is refused
@@ -265,6 +277,7 @@ impl Fixture {
 struct ProductionControl {
     gate: execution::workflow_gates::ManagedWorkflowGates,
     control: &'static str,
+    calls: Arc<std::sync::atomic::AtomicUsize>,
 }
 impl PhaseGates for ProductionControl {
     fn complete(
@@ -272,6 +285,7 @@ impl PhaseGates for ProductionControl {
         invocation: PhaseInvocation,
         mut transport: Option<SessionStatus>,
     ) -> WorkflowFuture<'_, GateOutcome> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Box::pin(async move {
             if invocation.phase == Phase::Implement && self.control == "terminal" {
                 transport.as_mut().unwrap().execution.as_mut().unwrap().work =

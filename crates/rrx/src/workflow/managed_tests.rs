@@ -9,12 +9,17 @@
 //! former positive subjects are owned by the SC-N continuation.
 use super::*;
 use crate::execution::{self, ArtifactState, WorkOutcome, results};
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::atomic::{AtomicUsize, Ordering::SeqCst},
+};
 
 struct Sources {
     owner: Arc<execution::RuntimeOwner>,
     seed: String,
     result: results::ResultStore,
+    /// FM §8.6.3: shared test-only callback count.
+    calls: Arc<AtomicUsize>,
 }
 impl WorkflowSources for Sources {
     fn capture(
@@ -24,6 +29,7 @@ impl WorkflowSources for Sources {
         _: Phase,
         _: ContextBudget,
     ) -> WorkflowFuture<'_, SourceSnapshot> {
+        self.calls.fetch_add(1, SeqCst);
         Box::pin(async move {
             let (unit, previous, context, artifacts) = {
                 let store = self.owner.store.lock().unwrap();
@@ -97,6 +103,7 @@ impl WorkflowSources for Sources {
 struct Gates {
     owner: Arc<execution::RuntimeOwner>,
     control: &'static str,
+    calls: Arc<AtomicUsize>,
 }
 impl PhaseGates for Gates {
     fn complete(
@@ -104,6 +111,7 @@ impl PhaseGates for Gates {
         invocation: PhaseInvocation,
         status: Option<SessionStatus>,
     ) -> WorkflowFuture<'_, GateOutcome> {
+        self.calls.fetch_add(1, SeqCst);
         Box::pin(async move {
             let marker = if invocation.phase.actor() == Actor::Executor {
                 let native = status
@@ -235,35 +243,45 @@ fn program(dir: &Path, provider: &str, scenario: Option<&str>) -> std::path::Pat
     }
     program
 }
+/// The engine over the managed registry, with every adapter, Sources and
+/// Gates callback counted (FM §8.6.3).
 fn engine(
     owner: &Arc<execution::RuntimeOwner>,
     config: Config,
     seed: String,
     control: &'static str,
-) -> WorkflowEngine {
-    let registry = Arc::new(AgentRegistry::from_managed_config(&config, owner.clone()).unwrap());
-    WorkflowEngine::new(
+) -> (WorkflowEngine, Arc<AtomicUsize>) {
+    let mut registry = AgentRegistry::from_managed_config(&config, owner.clone()).unwrap();
+    let calls = registry.count_callbacks();
+    let engine = WorkflowEngine::new(
         owner.store(),
-        registry,
+        Arc::new(registry),
         config,
         Arc::new(Sources {
             owner: owner.clone(),
             seed,
             result: results::ResultStore::new(owner.clone()),
+            calls: calls.clone(),
         }),
         Arc::new(Gates {
             owner: owner.clone(),
             control,
+            calls: calls.clone(),
         }),
     )
-    .unwrap()
+    .unwrap();
+    (engine, calls)
 }
 /// FM §8.3 F2: initialize, complete Worktree, then the step into the Native
 /// phase is refused with the typed `ManagedBindingUnavailable` before source
 /// capture. Preimage: Task body, Workflow record, audit, Units, Sessions,
-/// result artifacts and completed Git outputs (a launched Native fixture
-/// would add a Unit/Session).
-async fn f2(owner: &Arc<execution::RuntimeOwner>, engine: &WorkflowEngine, task: &Task) {
+/// result artifacts, completed Git outputs and the adapter, Sources and
+/// Gates callback count.
+async fn f2(
+    owner: &Arc<execution::RuntimeOwner>,
+    (engine, calls): &(WorkflowEngine, Arc<AtomicUsize>),
+    task: &Task,
+) {
     engine.initialize(task.id, None).await.unwrap();
     assert!(matches!(
         engine.step(task.id, BTreeMap::new()).await.unwrap(),
@@ -282,6 +300,7 @@ async fn f2(owner: &Arc<execution::RuntimeOwner>, engine: &WorkflowEngine, task:
             "sessions": store.records(&scope, RecordKind::Session).unwrap().len(),
             "artifacts": store.result_artifacts(&scope).unwrap().len(),
             "git": crate::git::observed_git_outputs(),
+            "callbacks": calls.load(SeqCst),
         })
     };
     let before = preimage();
@@ -357,7 +376,8 @@ async fn managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_i
             ..Default::default()
         },
     );
-    let registry = Arc::new(AgentRegistry::from_managed_config(&config, owner.clone()).unwrap());
+    let mut registry = AgentRegistry::from_managed_config(&config, owner.clone()).unwrap();
+    let calls = registry.count_callbacks();
     let sources = Arc::new(
         execution::workflow_source::ManagedWorkflowSources::new(owner.clone(), config.clone())
             .unwrap(),
@@ -417,18 +437,19 @@ async fn managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_i
     sources.prepare(task.id, "codex").await.unwrap();
     let engine = WorkflowEngine::new(
         owner.store(),
-        registry,
+        Arc::new(registry),
         config,
         sources,
         Arc::new(Gates {
             owner: owner.clone(),
             control: "publish",
+            calls: calls.clone(),
         }),
     )
     .unwrap()
     .with_verifier(verifier)
     .unwrap();
-    f2(&owner, &engine, &task).await;
+    f2(&owner, &(engine, calls), &task).await;
 }
 
 /// FM D4 R. Former subject: the managed Registry Workflow qualifies the real

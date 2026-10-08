@@ -5,13 +5,15 @@ use crate::{
     adapter::{AgentRegistry, InputKind, SessionStatus},
     workflow::{Evidence, GateOutcome, PhaseGates, PhaseInvocation, StepResult, WorkflowEngine},
 };
-struct Gates;
+/// FM §8.6.3: shared test-only callback count.
+struct Gates(Arc<std::sync::atomic::AtomicUsize>);
 impl PhaseGates for Gates {
     fn complete(
         &self,
         invocation: PhaseInvocation,
         _: Option<SessionStatus>,
     ) -> WorkflowFuture<'_, GateOutcome> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Box::pin(async move {
             Ok(GateOutcome::Passed(Evidence {
                 scope: invocation.task.scope(),
@@ -38,6 +40,8 @@ struct FaultSources {
     fault: Fault,
     /// Calls that reached the first-adoption consumer.
     reached: std::sync::atomic::AtomicUsize,
+    /// FM §8.6.3: every adapter, Sources and Gates callback.
+    calls: Arc<std::sync::atomic::AtomicUsize>,
 }
 impl WorkflowSources for FaultSources {
     fn capture(
@@ -47,6 +51,7 @@ impl WorkflowSources for FaultSources {
         phase: Phase,
         budget: ContextBudget,
     ) -> WorkflowFuture<'_, SourceSnapshot> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.inner.capture(project, task, phase, budget)
     }
     fn committed_input(
@@ -56,6 +61,7 @@ impl WorkflowSources for FaultSources {
         phase: Phase,
         class: WorkflowClass,
     ) -> WorkflowFuture<'_, Option<CommittedWorkflowInput>> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.inner.committed_input(project, task, phase, class)
     }
     fn take_initial_executor(
@@ -164,8 +170,8 @@ impl WorkflowSources for FaultSources {
 /// legacy-Engine step into the Native phase is now refused with the typed
 /// `ManagedBindingUnavailable` before source capture: the fault hook is never
 /// reached, and the Task, Workflow record, audit, the prepared Unit, its
-/// effects, Sessions, result artifacts and completed Git outputs are
-/// unchanged.
+/// effects, Sessions, result artifacts, completed Git outputs and the
+/// adapter, Sources and Gates callback count are unchanged.
 #[tokio::test]
 async fn first_adoption_refuses_changed_envelope_task_cas_and_unsettled_helper_atomically() {
     for fault in [Fault::Envelope, Fault::TaskCas, Fault::Helper] {
@@ -196,19 +202,20 @@ async fn first_adoption_refuses_changed_envelope_task_cas_and_unsettled_helper_a
         );
         let sources = Arc::new(ManagedWorkflowSources::new(owner.clone(), config.clone()).unwrap());
         let prepared = sources.prepare(task.id, "codex").await.unwrap();
-        let registry =
-            Arc::new(AgentRegistry::from_managed_config(&config, owner.clone()).unwrap());
+        let mut registry = AgentRegistry::from_managed_config(&config, owner.clone()).unwrap();
+        let calls = registry.count_callbacks();
         let faults = Arc::new(FaultSources {
             inner: sources,
             fault,
             reached: Default::default(),
+            calls: calls.clone(),
         });
         let engine = WorkflowEngine::new(
             owner.store(),
-            registry,
+            Arc::new(registry),
             config,
             faults.clone(),
-            Arc::new(Gates),
+            Arc::new(Gates(calls.clone())),
         )
         .unwrap();
         engine.initialize(task.id, None).await.unwrap();
@@ -228,6 +235,7 @@ async fn first_adoption_refuses_changed_envelope_task_cas_and_unsettled_helper_a
                 "sessions": store.records(&scope, RecordKind::Session).unwrap().len(),
                 "artifacts": store.result_artifacts(&scope).unwrap().len(),
                 "git": crate::git::observed_git_outputs(),
+                "callbacks": calls.load(std::sync::atomic::Ordering::SeqCst),
             })
         };
         let before = preimage();

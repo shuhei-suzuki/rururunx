@@ -289,21 +289,10 @@ async fn committed_quick(provider: &str) {
         // §8.3 S4-W: the generic Goal writer refuses the instruction change
         // on accepted rows; the Goal, artifact and Native input are unchanged.
         let mut store = c.f.owner.store.lock().unwrap();
-        let before = store.goal(c.task.goal_id).unwrap().unwrap();
-        let mut goal = before.clone();
+        let mut goal = store.goal(c.task.goal_id).unwrap().unwrap();
         goal.objective
             .push_str(" fixture changed accepted instruction");
-        let refused = store.put_goal(&mut goal).unwrap_err();
-        assert!(
-            refused
-                .to_string()
-                .contains("Goal changes require trusted typed control ingress"),
-            "{refused:#}"
-        );
-        assert_eq!(
-            serde_json::to_value(store.goal(before.id).unwrap().unwrap()).unwrap(),
-            serde_json::to_value(&before).unwrap()
-        );
+        crate::runtime::assert_goal_change_refused(&mut store, goal);
         assert_eq!(
             serde_json::to_value(store.result_artifact(artifact.id).unwrap()).unwrap(),
             serde_json::to_value(&artifact).unwrap()

@@ -1,4 +1,6 @@
 //! Thin native process contracts. Context selection and workflow decisions belong upstream.
+#[cfg(test)]
+mod counting;
 mod git_owner;
 pub mod grok;
 pub(crate) mod native;
@@ -2071,24 +2073,6 @@ mod tests {
         );
     }
 
-    /// FM §8.4 S4 split: the generic Goal writer refuses any Goal change on
-    /// legacy rows (S4-W); the Goal is unchanged.
-    fn assert_goal_change_refused(state: &mut crate::state::Store, mut goal: crate::domain::Goal) {
-        let before = serde_json::to_value(state.goal(goal.id).unwrap().unwrap()).unwrap();
-        let refused = state.put_goal(&mut goal).unwrap_err();
-        assert!(
-            refused
-                .to_string()
-                .contains("Goal changes require trusted typed control ingress"),
-            "FM S4-W: {refused:#}"
-        );
-        assert_eq!(
-            serde_json::to_value(state.goal(goal.id).unwrap().unwrap()).unwrap(),
-            before,
-            "FM S4-W: Goal unchanged"
-        );
-    }
-
     /// FM §8.4 S4 split. Former owner change: the Goal objective during the
     /// gated Git preflight. That Goal change is refused on legacy rows
     /// (S4-W); the owner change is kept as a Task-level change on the same
@@ -2140,7 +2124,7 @@ mod tests {
             let mut state = store.lock().unwrap();
             let mut goal = state.goal(scope.goal_id.unwrap()).unwrap().unwrap();
             goal.objective = "changed during preflight".into();
-            assert_goal_change_refused(&mut state, goal);
+            crate::runtime::assert_goal_change_refused(&mut state, goal);
             let mut task = state.task(scope.task_id.unwrap()).unwrap().unwrap();
             task.title = "changed during preflight".into();
             state.put_task(&mut task).unwrap();
@@ -2198,7 +2182,7 @@ mod tests {
             let mut store = store.lock().unwrap();
             let mut goal = store.goal(task.goal_id).unwrap().unwrap();
             goal.state = crate::domain::GoalState::Paused;
-            assert_goal_change_refused(&mut store, goal);
+            crate::runtime::assert_goal_change_refused(&mut store, goal);
             let mut task = store.task(task.id).unwrap().unwrap();
             task.state = crate::domain::TaskState::WaitingHuman;
             store.put_task(&mut task).unwrap();

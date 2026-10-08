@@ -719,6 +719,54 @@ pub(crate) async fn migrate_legacy(
     owner
 }
 
+/// FM §8.3 S4-W: the generic Goal writer refuses `goal` (a changed copy of a
+/// stored Goal) with "Goal changes require trusted typed control ingress".
+/// Observed immediately around the refused call: the input DTO, the stored
+/// Goal, the Goal's related Tasks and the Goal-scope audit are all unchanged.
+pub(crate) fn assert_goal_change_refused(
+    store: &mut crate::state::Store,
+    goal: crate::domain::Goal,
+) {
+    let id = goal.id;
+    let observe = |store: &crate::state::Store| {
+        let stored = store.goal(id).unwrap().expect("SETUP: stored Goal");
+        let tasks = stored
+            .dag
+            .nodes
+            .iter()
+            .map(|id| store.task(*id).unwrap())
+            .collect::<Vec<_>>();
+        let audit = store.events(&stored.scope(), 0, 10_000).unwrap();
+        assert!(audit.len() < 10_000, "SETUP: the audit read is complete");
+        serde_json::json!({
+            "goal": stored,
+            "tasks": tasks,
+            "audit": audit,
+        })
+    };
+    let before = observe(store);
+    let input = serde_json::to_value(&goal).unwrap();
+    assert_ne!(input, before["goal"], "SETUP: the input changes the Goal");
+    let mut dto = goal;
+    let refused = store.put_goal(&mut dto).unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("Goal changes require trusted typed control ingress"),
+        "FM S4-W: {refused:#}"
+    );
+    assert_eq!(
+        serde_json::to_value(&dto).unwrap(),
+        input,
+        "FM S4-W: input DTO unchanged"
+    );
+    assert_eq!(
+        observe(store),
+        before,
+        "FM S4-W: Goal, Tasks and audit unchanged"
+    );
+}
+
 /// FM §8.1. `seed` runs on the initialized `repo/` (branch `main`, one empty
 /// commit) before the Goal is created; `tasks` become the accepted plan.
 pub(crate) async fn legacy_fixture(
