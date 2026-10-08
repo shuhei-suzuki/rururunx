@@ -1,4 +1,4 @@
-# Issue 43: Claude CLI pin 2.1.283 → 2.1.294 — draft for review (A1 decided by the owner)
+# Issue 43: Claude CLI pin 2.1.283 → 2.1.294 — A1 decided by the owner; Sol 6058424878 M01, L01 and L02 addressed; implemented `cad5113`
 
 Base: `b2eb694` (PR #80 merged). This is a production compatibility change (STRICT), so the design review comes before the code.
 
@@ -20,9 +20,13 @@ Base: `b2eb694` (PR #80 merged). This is a production compatibility change (STRI
   - `config.rs:426, 455`;
   - `runtime/installation/tests.rs:69` and `tests/fm_d2.rs:65`;
   - `execution/native/native_fixture.py:9` (`--version` output);
-  - `execution/quota.rs:227` (fixture `source_version` text).
-- **Nothing persists the profile label.** It is recomputed from the SAME closed version observation's stdout on every use (`version.rs:138-153`). No schema change or migration is needed.
-- **Existing configurations.** A config or a committed original Frame that declares `cli_version='2.1.283'` stops qualifying after the change. The refusal is typed, "native compatibility version unsupported" (`compat.rs:87`), with no effect. The fix is an explicit config change. Nothing is silently rewritten.
+  - `execution/quota.rs:227`: the `rate_limit_event` `source_version` text. This is **production metadata**, stored in `quota_windows` (Codex 6058354808), so it follows the pin as `Claude Code 2.1.294/rate_limit_event`.
+- **Qualification re-derives the profile; the audit keeps it (L01).** Qualification never reads a stored profile. It re-derives the profile from the SAME closed version observation's stdout every time (`version.rs:138-153`). The profile is written into the helper receipt for audit (`version.rs:201` → `state/.../version.rs:788` → `closure.rs:390`), so historical receipts keep `claude-2.1.283`. That history grants nothing, so no schema change or migration is needed.
+- **Existing configurations (L02).**
+  - An installed declaration of `2.1.283` is refused, typed, with "native compatibility version unsupported" (`compat.rs:87`).
+  - An installed `2.1.294` with a retained original Frame declaring `2.1.283` is refused by the Frame digest check (`compat.rs:97`), a generic refusal. Editing the config does not update a retained Frame; that recovery is outside this change.
+  - In both cases, "no effect" means no NativeInput, Native invocation or Session. It does not mean an unchanged database: the preparation readiness commit (`preparation.rs:1048`) happens before the static compatibility check.
+  - Nothing is silently rewritten.
 
 ## 2. HOW (proposed)
 
@@ -50,7 +54,7 @@ The comment at `claude_wire.rs:27-29` makes the pin a schema baseline, so raisin
 | --- | --- |
 | C1: fixture `2.1.294` | The installed-lane SC suites pass unchanged in count |
 | C2: declared `2.1.283` after the bump | Typed "native compatibility version unsupported", no NativeInput |
-| C3: observed `2.1.283` stdout with declared `2.1.294` | `qualified_profile()` None → "observed version differs", no NativeInput |
+| C3: observed `2.1.283` stdout with declared `2.1.294` | The SAME version observation does not qualify (`qualified_profile()` is None), so the helper qualification refuses first, with "original helper qualification failed or remains unknown" (`version.rs:244-246`, via `prepare_phase_git`/`closed()` before `compat.observe()`; M01). No NativeInput or Native invocation |
 | Mutant M1: the gate accepts any `2.1.*` | C3 fails |
 | Mutant M2: the label is not updated in `compat.rs:139` | C1 fails (profile mismatch) |
 
@@ -58,3 +62,23 @@ The comment at `claude_wire.rs:27-29` makes the pin a schema baseline, so raisin
 
 - **A1 — decided by the owner: replace.** Only 2.1.294 is accepted, which keeps a single exact baseline.
 - **A2: accept both 2.1.283 and 2.1.294.** This keeps existing configs working, but doubles the qualified baseline. Each version then needs its own Q-a evidence, and the profile label must be selected per observed version.
+
+## 6. Review outcome and implementation
+
+| Item | Verdict | Implemented |
+| --- | --- | --- |
+| HOW §2 (A1, four sites) | Sol 6058424878: REQUEST CHANGES, M01 only | `cad5113` |
+| M01: C3 contract | Mandatory | C3 asserts the real helper qualification refusal (§4) |
+| L01: profile persistence wording | Optional, adopted | §1 |
+| L02: old Frame and "no effect" wording | Optional, adopted | §1 |
+| Q-a, Q-b, Q-c: official 2.1.294 run | Codex 6058354808: pass on macOS, 1 Project, first implement | — |
+
+Controls (non-root):
+
+| Control | Result |
+| --- | --- |
+| Gate unit `version_gate_accepts_only_the_exact_pinned_release` | pass |
+| C2 `pin_c2_old_declared_cli_version_is_refused_before_native` | pass |
+| C3 `pin_c3_old_observed_cli_version_is_refused_before_native` | pass |
+| M1: the gate accepts any `2.1.*` | gate unit FAIL; C3 FAIL (no refusal observed) |
+| M2: the label stays `claude-2.1.283` | Claude success lane (`br3_claude_linked_plan_is_never_marked`) FAIL |
