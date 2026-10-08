@@ -825,7 +825,7 @@ impl PhaseSupervisor {
             .map_err(|_| anyhow::anyhow!("pending queue poisoned"))?;
         ensure!(
             !queue.entries.values().any(|slot| slot.accepted_source),
-            "Source phase shutdown remains pending with accepted originals"
+            super::stop::ShutdownPending::at(super::stop::ShutdownSite::AcceptedOriginals)
         );
         Ok(())
     }

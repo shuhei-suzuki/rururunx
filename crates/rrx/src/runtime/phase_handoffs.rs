@@ -509,7 +509,7 @@ impl PhaseHandoffs {
         // increment has no genuine closure/retirement producer, so none is evicted.
         ensure!(
             entries.is_empty(),
-            "Source handoff shutdown remains pending with retained originals"
+            super::stop::ShutdownPending::at(super::stop::ShutdownSite::SourceHandoffs)
         );
         Ok(())
     }

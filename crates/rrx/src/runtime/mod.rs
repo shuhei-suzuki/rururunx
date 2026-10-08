@@ -15,6 +15,7 @@ pub(crate) use phase_jobs::{
 };
 pub(crate) mod phase_supervisor;
 mod service;
+pub mod stop;
 mod task_driver;
 use crate::{cli::transport::ServiceIdentity, config::Config, execution::RuntimeOwner};
 use anyhow::Result;

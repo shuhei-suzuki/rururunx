@@ -154,6 +154,12 @@ pub enum ControlResponse {
         instance: String,
         epoch: u64,
     },
+    /// Shutdown is held by owned work at `site`; the service is not stopped.
+    RuntimeStopPending {
+        instance: String,
+        epoch: u64,
+        site: super::stop::ShutdownSite,
+    },
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -426,11 +432,22 @@ impl Runtime {
             return Ok(response);
         }
         if matches!(&request.action, ControlAction::RuntimeStop) {
-            self.shutdown().await?;
-            return Ok(ControlResponse::RuntimeStopped {
-                instance: self.owner.instance_id().into(),
-                epoch: self.owner.epoch(),
-            });
+            // Held owned work is a typed pending answer; every other error,
+            // poison included, stays a sanitized refusal. Neither is cleanup.
+            return match self.shutdown().await {
+                Ok(()) => Ok(ControlResponse::RuntimeStopped {
+                    instance: self.owner.instance_id().into(),
+                    epoch: self.owner.epoch(),
+                }),
+                Err(error) => match super::stop::pending_site(&error) {
+                    Some(site) => Ok(ControlResponse::RuntimeStopPending {
+                        instance: self.owner.instance_id().into(),
+                        epoch: self.owner.epoch(),
+                        site,
+                    }),
+                    None => Err(error),
+                },
+            };
         }
         Ok(match &request.action {
             ControlAction::RuntimeStatus => ControlResponse::RuntimeMetadata {

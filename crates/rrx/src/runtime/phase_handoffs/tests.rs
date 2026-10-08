@@ -43,11 +43,10 @@ async fn original_empty_reservation_does_not_retain_queue_or_jobs() {
         SourceHandoffState::AwaitingOffer
     );
     // The still-owned original EMPTY prevents a false shutdown completion.
-    let error = runtime.shutdown().await.unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("Source handoff shutdown remains pending")
+    // C-S1d P6: through RuntimeStop, typed at the retained-handoffs site.
+    assert_eq!(
+        crate::runtime::tests::stop_pending_site(&runtime).await,
+        crate::runtime::stop::ShutdownSite::SourceHandoffs
     );
     drop(runtime);
     assert!(
@@ -65,6 +64,29 @@ async fn original_empty_reservation_does_not_retain_queue_or_jobs() {
     drop(reservation);
     assert!(ingress.observe(task).unwrap().is_none());
     ingress.ensure_shutdown_complete().unwrap();
+}
+
+/// C-S1d poison: a real failure is never pending; RuntimeStop refuses it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn c_s1d_poisoned_handoffs_stop_is_refused_not_pending() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+    let runtime = Arc::new(Runtime::new(owner, Config::default()).unwrap());
+    runtime.start().await.unwrap();
+    let ingress = runtime.phase_handoffs.clone();
+    let thread = std::thread::spawn(move || {
+        let _entries = ingress.entries.lock().unwrap();
+        panic!("intentional handoff poison");
+    });
+    assert!(thread.join().is_err());
+    let error = crate::runtime::tests::control_stop(&runtime)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        crate::runtime::stop::pending_site(&error),
+        None,
+        "{error:#}"
+    );
 }
 
 #[test]

@@ -26,10 +26,20 @@ struct Descriptor {
     socket: PathBuf,
 }
 impl Descriptor {
+    /// Live discovery: the exact protocol only.
     fn validate(&self, state: &Path) -> Result<()> {
+        self.validate_shape(state)?;
+        ensure!(
+            self.protocol == transport::PROTOCOL_VERSION,
+            "control descriptor protocol unsupported"
+        );
+        Ok(())
+    }
+    /// Same canonical state and strict shape, protocol not yet checked.
+    fn validate_shape(&self, state: &Path) -> Result<()> {
         self.identity.validate()?;
         ensure!(
-            self.protocol == transport::PROTOCOL_VERSION && self.identity.state == state,
+            self.identity.state == state,
             "control descriptor identity mismatch"
         );
         ensure!(
@@ -51,8 +61,9 @@ fn owned_directory(path: &Path, private: bool) -> Result<()> {
     Ok(())
 }
 
-fn control_directory(state: &Path) -> Result<PathBuf> {
-    let root = state
+/// `<parent>/<name>.execution` of a state path, without checks or effects.
+pub(crate) fn execution_root(state: &Path) -> Result<PathBuf> {
+    Ok(state
         .parent()
         .context("state parent missing")?
         .join(format!(
@@ -61,7 +72,18 @@ fn control_directory(state: &Path) -> Result<PathBuf> {
                 .file_name()
                 .context("state name missing")?
                 .to_string_lossy()
-        ));
+        )))
+}
+
+pub(crate) fn owned_execution_root(root: &Path) -> Result<()> {
+    owned_directory(root, false)
+}
+pub(crate) fn owned_private_directory(path: &Path) -> Result<()> {
+    owned_directory(path, true)
+}
+
+fn control_directory(state: &Path) -> Result<PathBuf> {
+    let root = execution_root(state)?;
     owned_directory(&root, false)?;
     Ok(root.join("control"))
 }
@@ -89,6 +111,24 @@ fn private_file(path: &Path, create: bool) -> Result<File> {
 }
 
 fn read_descriptor(path: &Path, state: &Path) -> Result<Descriptor> {
+    let descriptor = read_descriptor_shape(path, state)?;
+    descriptor.validate(state)?;
+    Ok(descriptor)
+}
+
+/// A leftover descriptor that the exclusive owner may replace: a known
+/// protocol, the same canonical state and the same strict shape. Foreign,
+/// malformed or oversize descriptors are refused.
+fn read_replaceable_descriptor(path: &Path, state: &Path) -> Result<Descriptor> {
+    let descriptor = read_descriptor_shape(path, state)?;
+    ensure!(
+        transport::REPLACEABLE_PROTOCOLS.contains(&descriptor.protocol),
+        "control descriptor protocol unknown"
+    );
+    Ok(descriptor)
+}
+
+fn read_descriptor_shape(path: &Path, state: &Path) -> Result<Descriptor> {
     let file = private_file(path, false)?;
     ensure!(
         file.metadata()?.len() <= DESCRIPTOR_BYTES as u64,
@@ -107,7 +147,7 @@ fn read_descriptor(path: &Path, state: &Path) -> Result<Descriptor> {
     )?;
     let descriptor: Descriptor = serde_json::from_value(value)
         .map_err(|_| anyhow::anyhow!("invalid control descriptor shape"))?;
-    descriptor.validate(state)?;
+    descriptor.validate_shape(state)?;
     Ok(descriptor)
 }
 
@@ -173,8 +213,9 @@ impl ControlEndpoint {
         let descriptor_path = directory.join("endpoint.json");
         if descriptor_path.symlink_metadata().is_ok() {
             // A stale descriptor is replaced only by the actual owner, and only
-            // after checking that it belongs to this canonical state.
-            read_descriptor(&descriptor_path, owner.state_path())?;
+            // after checking that it belongs to this canonical state. An older
+            // known protocol of the same shape is replaceable, never served.
+            read_replaceable_descriptor(&descriptor_path, owner.state_path())?;
         }
         let socket_directory = tempfile::Builder::new()
             .prefix("rrx-control-")
@@ -240,6 +281,43 @@ impl Drop for ControlEndpoint {
         {
             let _ = std::fs::remove_file(&self.descriptor_path);
         }
+    }
+}
+
+/// The endpoint input D of the daemon decision table.
+pub enum Discovery {
+    /// Descriptor read and validated; connect and `Hello` identity passed.
+    Valid(ServiceIdentity, BufReader<UnixStream>),
+    /// No descriptor file (or no state at all).
+    Absent,
+    /// Present but malformed, mismatched, refused, timed out or an old protocol.
+    Invalid(anyhow::Error),
+}
+
+/// Read-only: it never creates, deletes or rewrites anything, and an
+/// unvalidated endpoint is reported, never taken as evidence of a stop.
+pub async fn discover(state: &Path) -> Discovery {
+    match descriptor_absent(state) {
+        Ok(true) => Discovery::Absent,
+        Ok(false) => match connect_inner(state).await {
+            Ok((identity, reader)) => Discovery::Valid(identity, reader),
+            Err(error) => Discovery::Invalid(error),
+        },
+        Err(error) => Discovery::Invalid(error),
+    }
+}
+fn descriptor_absent(state: &Path) -> Result<bool> {
+    let state = match state.canonicalize() {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+        other => other?,
+    };
+    let path = execution_root(&state)?
+        .join("control")
+        .join("endpoint.json");
+    match path.symlink_metadata() {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(e) => Err(e.into()),
+        Ok(_) => Ok(false),
     }
 }
 
@@ -361,6 +439,94 @@ mod tests {
             owner.store().lock().unwrap().connection_epoch_for_test(),
             owner.epoch()
         );
+    }
+
+    /// C-S1e: a protocol-1 `Hello` from the actual endpoint is refused,
+    /// typed, before any request is sent; the peer reads only EOF.
+    #[tokio::test]
+    async fn c_s1e_protocol_1_hello_is_refused_before_any_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+        let endpoint = ControlEndpoint::bind(owner.clone()).unwrap();
+        let server = async {
+            let accepted = endpoint.accept_peer().await.unwrap();
+            let mut reader = BufReader::new(accepted);
+            transport::send(
+                reader.get_mut(),
+                &Hello {
+                    protocol: 1,
+                    identity: endpoint.descriptor.identity.clone(),
+                },
+                transport::RESPONSE_BYTES,
+            )
+            .await
+            .unwrap();
+            transport::receive::<serde_json::Value>(&mut reader, transport::REQUEST_BYTES).await
+        };
+        let (request, connected) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(server, connect(owner.state_path()))
+        })
+        .await
+        .unwrap();
+        assert!(connected.is_err(), "protocol-1 service accepted");
+        assert!(request.is_err(), "a request followed a protocol-1 Hello");
+    }
+
+    fn write_private(path: &Path, bytes: &[u8]) {
+        let _ = std::fs::remove_file(path);
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(path)
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
+    }
+
+    /// C-S1e2 (bind): the exclusive owner replaces a same-state protocol 1
+    /// or protocol 2 leftover of the strict shape, never a foreign one.
+    #[test]
+    fn c_s1e2_bind_replaces_known_leftovers_and_refuses_foreign() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = runtime.enter();
+        let endpoint = ControlEndpoint::bind(owner.clone()).unwrap();
+        let path = endpoint.descriptor_path.clone();
+        let left = endpoint.descriptor.clone();
+        drop(endpoint);
+        for protocol in [1, 2] {
+            let mut leftover = left.clone();
+            leftover.protocol = protocol;
+            write_private(&path, &serde_json::to_vec(&leftover).unwrap());
+            let replaced = ControlEndpoint::bind(owner.clone()).unwrap();
+            assert_eq!(replaced.descriptor.protocol, transport::PROTOCOL_VERSION);
+            assert_eq!(
+                read_descriptor(&path, owner.state_path()).unwrap(),
+                replaced.descriptor
+            );
+        }
+        let mut foreign = left.clone();
+        foreign.identity.state = dir.path().join("foreign.db");
+        let mut unknown = left.clone();
+        unknown.protocol = 3;
+        for bytes in [
+            serde_json::to_vec(&foreign).unwrap(),
+            serde_json::to_vec(&unknown).unwrap(),
+            b"{\"protocol\":1}".to_vec(),
+        ] {
+            write_private(&path, &bytes);
+            assert!(ControlEndpoint::bind(owner.clone()).is_err());
+            assert_eq!(
+                std::fs::read(&path).unwrap(),
+                bytes,
+                "refused leftover changed"
+            );
+        }
     }
 
     #[tokio::test]

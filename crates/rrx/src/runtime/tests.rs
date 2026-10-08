@@ -344,6 +344,39 @@ async fn actual_routing_refuses_ambiguity_stale_snapshot_and_body_index_corrupti
     );
 }
 
+/// `RuntimeStop` through the actual control entry over a Unix peer pair.
+pub(crate) async fn control_stop(runtime: &Runtime) -> anyhow::Result<ControlResponse> {
+    let (socket, _peer) = tokio::net::UnixStream::pair().unwrap();
+    runtime
+        .handle_control(
+            &socket,
+            ControlRequest {
+                request_id: Uuid::new_v4(),
+                instance: runtime.owner.instance_id().into(),
+                epoch: runtime.owner.epoch(),
+                action: ControlAction::RuntimeStop,
+            },
+        )
+        .await
+}
+/// The typed pending site of a `RuntimeStop`, for the same identity.
+pub(crate) async fn stop_pending_site(runtime: &Runtime) -> crate::runtime::stop::ShutdownSite {
+    match control_stop(runtime).await {
+        Ok(ControlResponse::RuntimeStopPending {
+            instance,
+            epoch,
+            site,
+        }) => {
+            assert_eq!(
+                (instance.as_str(), epoch),
+                (runtime.owner.instance_id(), runtime.owner.epoch())
+            );
+            site
+        }
+        other => panic!("RuntimeStop was not pending: {other:?}"),
+    }
+}
+
 // Actual accepted Unix peer ingress; this fixture never constructs Human/Driver authority.
 pub(crate) struct ControlFixture {
     pub(super) _dir: tempfile::TempDir,
@@ -1700,4 +1733,41 @@ async fn public_source_preparation_refuses_accepted_goal_before_unit_or_helper_e
         "public preparation reached actual Git helper"
     );
     assert!(!f.project.worktree_root.exists());
+}
+
+/// C-S1d P1: the control admission is held by this test (an existing held
+/// fixture). The stop is typed pending at that site, then completes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn c_s1d_p1_held_admission_stop_is_pending_then_completes() {
+    let f = ControlFixture::new();
+    f.runtime.start().await.unwrap();
+    let held = f.runtime.control_admission.lock().await;
+    assert_eq!(
+        stop_pending_site(&f.runtime).await,
+        crate::runtime::stop::ShutdownSite::Admission
+    );
+    assert!(f.runtime.service_running(), "P1 stopped the service");
+    drop(held);
+    assert!(matches!(
+        control_stop(&f.runtime).await.unwrap(),
+        ControlResponse::RuntimeStopped { .. }
+    ));
+}
+
+/// C-S1d P2: the service loop is parked at a site-scoped test park, so its
+/// join genuinely misses the deadline; after the park opens a retry completes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn c_s1d_p2_parked_loop_stop_is_pending_then_completes() {
+    let f = ControlFixture::new();
+    let park = crate::runtime::stop::park::park_loop(f.owner.state_path());
+    f.runtime.start().await.unwrap();
+    assert_eq!(
+        stop_pending_site(&f.runtime).await,
+        crate::runtime::stop::ShutdownSite::SupervisorJoin
+    );
+    park.open();
+    assert!(matches!(
+        control_stop(&f.runtime).await.unwrap(),
+        ControlResponse::RuntimeStopped { .. }
+    ));
 }

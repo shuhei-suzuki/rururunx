@@ -18,7 +18,7 @@ rusqlite = { version = "0.37", features = ["bundled", "functions", "hooks"] }
 uuid = { version = "1.18", features = ["v4", "serde"] }
 tempfile = "3.23"
 tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "process", "io-util", "io-std", "sync", "time", "signal", "net"] }
-rustix = { version = "1.1", features = ["process", "fs"] }
+rustix = { version = "1.1", features = ["process", "fs", "stdio"] }
 libc = "0.2"
 sha2 = "0.10"
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
