@@ -420,14 +420,11 @@ async fn ca4g_actual_exited_worker_keeps_same_plan_held() {
         // The private direct sweep has one observer while S5 parks the service.
         // Open only after these assertions, before genuine shutdown joins it.
         park.open();
-        let error = f.runtime.shutdown().await.unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("Task Driver shutdown remains pending"),
-            "{error:#}"
+        // C-S1d P3: through RuntimeStop, typed at the Driver poll site.
+        assert_eq!(
+            crate::runtime::tests::stop_pending_site(&f.runtime).await,
+            crate::runtime::stop::ShutdownSite::DriverPoll
         );
-        eprintln!("CA4g recorded shutdown pending: {error:#}");
         finish(f).await;
     }
 }

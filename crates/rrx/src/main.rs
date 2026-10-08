@@ -37,7 +37,16 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Serve dedicated local controls in the foreground; native dispatch is unavailable.
-    Serve,
+    Serve {
+        /// Internal to `daemon start`: detach the session and announce readiness.
+        #[arg(long, hide = true)]
+        detached: bool,
+    },
+    /// Start, inspect or stop the detached service for this state root.
+    Daemon {
+        #[command(subcommand)]
+        command: DaemonCommand,
+    },
     /// Inspect current metadata (full hierarchy and native capacity remain unavailable).
     Status {
         #[arg(long)]
@@ -63,6 +72,24 @@ enum Command {
     Project {
         #[command(subcommand)]
         command: ProjectCommand,
+    },
+}
+#[derive(Subcommand)]
+enum DaemonCommand {
+    /// Start one detached service; returns once its endpoint validates.
+    Start {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Report running, owner busy, discovery unavailable or not running.
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Request RuntimeStop through the endpoint; never a signal.
+    Stop {
+        #[arg(long)]
+        json: bool,
     },
 }
 #[derive(Args)]
@@ -391,9 +418,21 @@ enum ProjectCommand {
     /// Soft-remove an idle project, retaining audit/history and filesystem contents.
     Remove { project: String },
 }
-fn run(cli: Cli) -> Result<()> {
+fn run(cli: Cli) -> Result<ExitCode> {
     match cli.command {
-        Some(command @ (Command::Serve | Command::Status { .. } | Command::Goal { .. })) => {
+        Some(Command::Daemon { command }) => {
+            ensure!(
+                cli.project_config.is_none(),
+                "Runtime commands use the registered Project configuration; --project-config is not accepted"
+            );
+            let state = cli.state.map(Ok).unwrap_or_else(default_state_path)?;
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()?;
+            return runtime.block_on(daemon(&state, cli.config.as_deref(), command));
+        }
+        Some(command @ (Command::Serve { .. } | Command::Status { .. } | Command::Goal { .. })) => {
             ensure!(
                 cli.project_config.is_none(),
                 "Runtime commands use the registered Project configuration; --project-config is not accepted"
@@ -406,7 +445,7 @@ fn run(cli: Cli) -> Result<()> {
                 .build()?;
             runtime.block_on(async {
                 match command {
-                    Command::Serve => service::serve(&state, config).await,
+                    Command::Serve { detached } => service::serve(&state, config, detached).await,
                     Command::Status { all: _, json } => {
                         let response =
                             client::request(&state, ControlAction::RuntimeStatus).await?;
@@ -544,7 +583,49 @@ fn run(cli: Cli) -> Result<()> {
             println!();
         }
     }
+    Ok(ExitCode::SUCCESS)
+}
+fn print_outcome<T: serde::Serialize>(json: bool, label: &str, outcome: &T) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(outcome)?);
+    } else {
+        let detail = serde_json::to_value(outcome)?;
+        println!("{label}\n{}", serde_json::to_string_pretty(&detail)?);
+    }
     Ok(())
+}
+async fn daemon(state: &Path, config: Option<&Path>, command: DaemonCommand) -> Result<ExitCode> {
+    use rrx::cli::daemon::{self, DaemonStatus, StartOutcome, StopOutcome};
+    Ok(match command {
+        DaemonCommand::Start { json } => {
+            let outcome = daemon::start(state, config).await;
+            print_outcome(json, outcome.label(), &outcome)?;
+            if matches!(outcome, StartOutcome::Running { .. }) {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        DaemonCommand::Status { json } => {
+            let status = daemon::status(state).await;
+            print_outcome(json, status.label(), &status)?;
+            // LSB-style: 0 running, 3 not running, 4 unknown.
+            ExitCode::from(match status {
+                DaemonStatus::Running { .. } => 0,
+                DaemonStatus::NotRunning => 3,
+                DaemonStatus::OwnerBusy | DaemonStatus::DiscoveryUnavailable { .. } => 4,
+            })
+        }
+        DaemonCommand::Stop { json } => {
+            let outcome = daemon::stop(state).await;
+            print_outcome(json, outcome.label(), &outcome)?;
+            if matches!(outcome, StopOutcome::Completed { .. }) {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+    })
 }
 fn main() -> ExitCode {
     match rrx::execution::ipc::tool_entry() {
@@ -555,11 +636,19 @@ fn main() -> ExitCode {
             return ExitCode::from(125);
         }
     }
-    match run(Cli::parse()) {
-        Ok(()) => ExitCode::SUCCESS,
+    let cli = Cli::parse();
+    if matches!(cli.command, Some(Command::Serve { detached: true })) {
+        // The first action of a detached service, before config or owner.
+        if let Err(error) = service::detach() {
+            eprintln!("rrx: {error:#}");
+            return ExitCode::from(service::EXIT_DETACH_FAILED);
+        }
+    }
+    match run(cli) {
+        Ok(code) => code,
         Err(error) => {
             eprintln!("rrx: {error:#}");
-            ExitCode::FAILURE
+            ExitCode::from(service::exit_code(&error))
         }
     }
 }

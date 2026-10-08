@@ -111,7 +111,7 @@ async fn accepted(
     };
     let service = {
         let (db, config) = (db.clone(), config(&plans));
-        tokio::spawn(async move { rrx::cli::service::serve(&db, config).await })
+        tokio::spawn(async move { rrx::cli::service::serve(&db, config, false).await })
     };
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
     // Readiness is only "the endpoint accepts and says Hello"; no control

@@ -68,6 +68,27 @@ async fn nongrant_guard_policy_is_one_way_across_restore_and_final_drop() {
     f.runtime.shutdown().await.unwrap();
 }
 
+/// C-S1d P4 (nongrant): an accepted-policy original keeps shutdown pending,
+/// typed at its site, without claiming the Source seal was reached.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn c_s1d_p4_accepted_original_stop_is_pending() {
+    let (f, groups) = Fixture::new(4, 4, &[("accepted-original", 1)]).await;
+    let tasks = groups.into_iter().next().unwrap();
+    let (allocation, guard, unit) = f.allocation(&tasks[0], "codex").await;
+    let capacity = f
+        .runtime
+        .phases
+        .reserve_source(allocation, guard)
+        .map_err(|_| "SETUP: accepted original refused")
+        .unwrap();
+    assert_eq!(
+        crate::runtime::tests::stop_pending_site(&f.runtime).await,
+        crate::runtime::stop::ShutdownSite::AcceptedOriginals
+    );
+    f.unchanged(&unit);
+    drop(capacity);
+}
+
 struct Fixture {
     _dir: tempfile::TempDir,
     owner: Arc<RuntimeOwner>,
@@ -559,12 +580,10 @@ async fn actual_publication_drop_and_shutdown_preserve_unknown_slot_until_proven
     let (unmarked, unmarked_unit) = f.reserve(&tasks[2], "claude").await;
     // Retained publication custody keeps shutdown pending (12304a9): the
     // shutdown reports it instead of claiming completion or releasing it.
-    let pending = f.runtime.shutdown().await.unwrap_err();
-    assert!(
-        pending
-            .to_string()
-            .contains("Native phase shutdown remains pending with retained jobs"),
-        "{pending:#}"
+    // C-S1d P5: through RuntimeStop, typed at the retained-jobs site.
+    assert_eq!(
+        crate::runtime::tests::stop_pending_site(&f.runtime).await,
+        crate::runtime::stop::ShutdownSite::NativeJobs
     );
     assert!(!unmarked.is_retained());
     assert!(rollback.is_retained());

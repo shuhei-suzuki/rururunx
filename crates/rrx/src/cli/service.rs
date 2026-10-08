@@ -10,6 +10,7 @@ use crate::{
 };
 use anyhow::{Context, Result, ensure};
 use std::{
+    os::unix::fs::OpenOptionsExt,
     path::Path,
     sync::{
         Arc,
@@ -26,11 +27,90 @@ use tokio::{
 pub const MAX_CONNECTIONS: usize = 64;
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub async fn serve(state: &Path, config: Config) -> Result<()> {
-    let owner = RuntimeOwner::open(state).context("Open explicit Runtime service owner")?;
+/// Exit code of a detached service whose owner lock is held by another owner.
+pub const EXIT_OWNER_BUSY: u8 = 75;
+/// Exit code of a detached service whose `setsid` failed; nothing was opened.
+pub const EXIT_DETACH_FAILED: u8 = 71;
+
+/// The owner lock was held by another process; no epoch was begun.
+#[derive(Debug)]
+struct OwnerBusy;
+impl std::fmt::Display for OwnerBusy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("owner busy: another Runtime owns this state root")
+    }
+}
+impl std::error::Error for OwnerBusy {}
+
+/// The one-line readiness announcement written by a detached service to the
+/// parent-owned stdout pipe after its endpoint is bound.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Readiness {
+    pub instance: String,
+    pub epoch: u64,
+}
+
+/// Detach from the invoker's session. This is the detached service's first
+/// action, before configuration, owner or endpoint. A process group leader
+/// cannot `setsid`; the spawner never makes the child one.
+pub fn detach() -> Result<()> {
+    rustix::process::setsid().context("detach Runtime service session")?;
+    Ok(())
+}
+
+/// Process exit code for a failed `serve`.
+pub fn exit_code(error: &anyhow::Error) -> u8 {
+    if error.downcast_ref::<OwnerBusy>().is_some() {
+        EXIT_OWNER_BUSY
+    } else {
+        1
+    }
+}
+
+fn announce(owner: &RuntimeOwner) -> Result<()> {
+    use std::io::Write;
+    let line = serde_json::to_string(&Readiness {
+        instance: owner.instance_id().into(),
+        epoch: owner.epoch(),
+    })?;
+    let mut stdout = std::io::stdout().lock();
+    writeln!(stdout, "{line}").context("readiness announcement")?;
+    stdout.flush().context("readiness announcement")?;
+    drop(stdout);
+    // A later write must never reach the parent's closed pipe.
+    let null = std::fs::OpenOptions::new()
+        .write(true)
+        .custom_flags(rustix::fs::OFlags::CLOEXEC.bits() as i32)
+        .open("/dev/null")?;
+    rustix::stdio::dup2_stdout(&null).context("retire readiness channel")?;
+    Ok(())
+}
+
+fn open_owner(state: &Path) -> Result<Arc<RuntimeOwner>> {
+    RuntimeOwner::open(state)
+        .map_err(|error| {
+            if error.downcast_ref::<rustix::io::Errno>() == Some(&rustix::io::Errno::WOULDBLOCK) {
+                error.context(OwnerBusy)
+            } else {
+                error
+            }
+        })
+        .context("Open explicit Runtime service owner")
+}
+
+pub async fn serve(state: &Path, config: Config, detached: bool) -> Result<()> {
+    let owner = open_owner(state)?;
     let runtime =
         Arc::new(Runtime::new(owner.clone(), config).context("Construct Runtime service")?);
-    let endpoint = ControlEndpoint::bind(owner).context("Bind private Runtime control endpoint")?;
+    let endpoint =
+        ControlEndpoint::bind(owner.clone()).context("Bind private Runtime control endpoint")?;
+    if detached {
+        // Before accepting any connection: the parent ties this line to its
+        // own child, then separately to the live identity.
+        announce(&owner)?;
+    }
+    drop(owner);
     runtime.start().await.context("Start Runtime service")?;
     let stop = Arc::new(Notify::new());
     let stop_failed = Arc::new(AtomicBool::new(false));
@@ -76,9 +156,13 @@ pub async fn serve(state: &Path, config: Config) -> Result<()> {
                             let is_stop = matches!(request.action, ControlAction::RuntimeStop);
                             let response = runtime.handle_control(reader.get_ref().stream(), request).await;
                             let stopping = is_stop && runtime.is_stopping();
-                            if stopping && response.is_err() {
-                                // A repeated shutdown may retire the original error; retain
-                                // failure so the foreground process cannot claim success.
+                            let pending = matches!(response, Ok(ControlResponse::RuntimeStopPending { .. }));
+                            if is_stop
+                                && (stopping || pending)
+                                && !matches!(response, Ok(ControlResponse::RuntimeStopped { .. }))
+                            {
+                                // A repeated shutdown may retire the original pending or
+                                // failed stop; retain it so the process cannot claim success.
                                 stop_failed.store(true, Ordering::SeqCst);
                             }
                             (response.unwrap_or(ControlResponse::Rejected { request_id: Some(id) }), stopping)

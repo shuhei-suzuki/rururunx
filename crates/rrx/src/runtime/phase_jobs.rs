@@ -1068,7 +1068,7 @@ impl PhaseJobs {
             .map_err(|_| anyhow::anyhow!("phase jobs poisoned"))?;
         ensure!(
             entries.is_empty(),
-            "Native phase shutdown remains pending with retained jobs"
+            super::stop::ShutdownPending::at(super::stop::ShutdownSite::NativeJobs)
         );
         Ok(())
     }

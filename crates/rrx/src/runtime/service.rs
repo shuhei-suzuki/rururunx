@@ -1,7 +1,10 @@
 //! Retained control-service event loop. It publishes routing/readiness attention,
 //! never a native phase, prepared owner, success or reconstructed Driver.
-use super::Runtime;
-use anyhow::{Context, Result, ensure};
+use super::{
+    Runtime,
+    stop::{ShutdownPending, ShutdownSite},
+};
+use anyhow::{Result, ensure};
 use std::{
     sync::{
         Arc,
@@ -74,6 +77,8 @@ impl Runtime {
                 let Some(runtime) = retained.upgrade() else {
                     return Ok(());
                 };
+                #[cfg(test)]
+                super::stop::park::wait(runtime.owner.state_path());
                 if runtime.stopping.load(Ordering::SeqCst) {
                     return Ok(());
                 }
@@ -164,7 +169,7 @@ impl Runtime {
         let _admission =
             tokio::time::timeout(Duration::from_secs(5), self.control_admission.lock())
                 .await
-                .context("Runtime control admission shutdown remains pending")?;
+                .map_err(|_| ShutdownPending::at(ShutdownSite::Admission))?;
         self.stopping.store(true, Ordering::SeqCst);
         self._drivers.stop_all();
         self.phases.close_unmarked();
@@ -173,7 +178,7 @@ impl Runtime {
         if let Some(handle) = slot.as_mut() {
             let completed = tokio::time::timeout(Duration::from_secs(5), handle)
                 .await
-                .context("Runtime control loop shutdown remains pending")?;
+                .map_err(|_| ShutdownPending::at(ShutdownSite::SupervisorJoin))?;
             // Completion (including Err/panic) consumes the JoinHandle result.
             // Take it before propagating that error; polling it again is invalid.
             // Timeout/caller Drop still leaves the pending handle in its owner.
@@ -184,7 +189,7 @@ impl Runtime {
         while self.observe_task_drivers()? > 0 {
             ensure!(
                 tokio::time::Instant::now() < deadline,
-                "Task Driver shutdown remains pending with owned handles"
+                ShutdownPending::at(ShutdownSite::DriverPoll)
             );
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
