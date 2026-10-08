@@ -30,7 +30,13 @@ mod legacy_support {
             self.legacy.path()
         }
     }
-    pub(super) type Planned = (&'static str, &'static str, WorkflowClass, RiskClass);
+    pub(super) type Planned = (
+        &'static str,
+        &'static str,
+        WorkflowClass,
+        RiskClass,
+        &'static str,
+    );
     pub(super) fn blocking(
         root: &'static str,
         state: &'static str,
@@ -42,7 +48,7 @@ mod legacy_support {
             seed,
             tasks
                 .into_iter()
-                .map(|(key, executor, workflow, risk)| LegacyTask {
+                .map(|(key, executor, workflow, risk, _)| LegacyTask {
                     key,
                     executor,
                     workflow,
@@ -1707,7 +1713,13 @@ mod registry_tests {
             "project",
             "state.db",
             |_| {},
-            vec![("fixture", "grok", WorkflowClass::Standard, RiskClass::R1)],
+            vec![(
+                "fixture",
+                "grok",
+                WorkflowClass::Standard,
+                RiskClass::R1,
+                "verified result",
+            )],
         );
         let (project, task, worktree) = {
             let mut store = store.lock().unwrap();

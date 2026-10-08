@@ -15,7 +15,7 @@ use std::{
 
 #[path = "support/grok_fixture.rs"]
 mod fixture_support;
-#[path = "support/legacy.rs"]
+#[path = "support/legacy_grok.rs"]
 mod legacy_support;
 #[path = "support/grok_receipt.rs"]
 mod receipt_support;

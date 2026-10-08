@@ -11,6 +11,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tempfile::TempDir;
+#[path = "support/legacy.rs"]
+mod legacy;
 
 fn git(root: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -33,8 +35,21 @@ struct Fixture {
     project: Project,
     task: Task,
 }
+/// A second legitimate Project/Goal/Task in the same legacy database.
+struct Peer {
+    goal: GoalId,
+    task: TaskId,
+}
 impl Fixture {
     fn new() -> Self {
+        Self::build(false).0
+    }
+    /// FM §8.1 L: Project registration as before, then the Goal(s) from
+    /// accepted ingress through the public route and the ordered historical
+    /// migration. The Task's acceptance criterion is part of the plan; its
+    /// issue number is set on the legacy row through the legacy writer,
+    /// because one subject here is issue-number collision (D1).
+    fn build(peer: bool) -> (Self, Option<Peer>) {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().canonicalize().unwrap().join("repo");
         std::fs::create_dir(&root).unwrap();
@@ -72,34 +87,77 @@ impl Fixture {
         );
         project.rule_refs = vec![root.join("RULES.md")];
         store.put_project(&mut project).unwrap();
-        let mut goal = Goal::new(
-            project.id,
-            "Retain exact scope".into(),
-            vec![CompletionCriterion {
-                evaluator: Default::default(),
-                id: "done".into(),
-                description: "verified independently".into(),
-                evidence: None,
-                satisfied: false,
-            }],
-        );
-        store.put_goal(&mut goal).unwrap();
-        let mut task = Task::new(project.id, goal.id, "Implement codec".into(), "fake".into());
-        task.issue = Some(42);
-        task.acceptance_criteria = vec!["never omit required evidence".into()];
-        store.put_task(&mut task).unwrap();
+        let planned = || {
+            vec![(
+                "codec",
+                "fake",
+                rrx::config::WorkflowClass::Standard,
+                RiskClass::R1,
+                "never omit required evidence",
+            )]
+        };
+        let mut plans = vec![(project.id, "Retain exact scope", planned())];
+        if peer {
+            let peer_root = temp.path().canonicalize().unwrap().join("peer");
+            std::fs::create_dir(&peer_root).unwrap();
+            git(&peer_root, &["init", "-b", "main"]);
+            git(
+                &peer_root,
+                &[
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "--allow-empty",
+                    "-m",
+                    "peer",
+                ],
+            );
+            let mut other = Project::new(
+                "peer".into(),
+                peer_root.clone(),
+                rrx::git::repository_identity(&peer_root, "main").unwrap(),
+                "main".into(),
+            );
+            store.put_project(&mut other).unwrap();
+            plans.push((other.id, "Retain exact scope", planned()));
+        }
+        drop(store);
+        let db = temp.path().join("state.db");
+        let created = legacy::goals(&db, plans);
+        let mut store = Store::open(&db).unwrap();
+        let mut issued = created
+            .iter()
+            .map(|(_, tasks)| {
+                let mut task = tasks[0].clone();
+                task.issue = Some(42);
+                store.put_task(&mut task).unwrap();
+                task
+            })
+            .collect::<Vec<_>>();
+        let mut task = issued.remove(0);
+        let peer = issued.pop().map(|t| Peer {
+            goal: t.goal_id,
+            task: t.id,
+        });
         let worktree = WorktreeManager::create(&mut store, task.id)
             .unwrap()
             .worktree;
         task = store.task(task.id).unwrap().unwrap();
-        Self {
-            _temp: temp,
-            root,
-            worktree,
-            store: Arc::new(Mutex::new(store)),
-            project,
-            task,
-        }
+        (
+            Self {
+                _temp: temp,
+                root,
+                worktree,
+                store: Arc::new(Mutex::new(store)),
+                project,
+                task,
+            },
+            peer,
+        )
     }
     fn engine(&self) -> RepositoryContext {
         RepositoryContext::new(self.store.clone())
@@ -550,30 +608,32 @@ async fn same_issue_number_foreign_scope_and_project_state_cannot_reuse_context(
     assert!(other.engine().validate(&map).await.is_err());
     let foreign = Scope::task(f.project.id, f.task.goal_id, other.task.id);
     assert!(f.engine().index(&foreign, vec![]).await.is_err());
-    // Put both legitimate Projects/Goals/Tasks in one Store. Unknown IDs alone
-    // must not be the reason foreign scope is rejected.
-    let mut other_project = other.project.clone();
-    other_project.version = 0;
-    let mut other_goal = other
-        .store
-        .lock()
-        .unwrap()
-        .goal(other.task.goal_id)
-        .unwrap()
-        .unwrap();
-    other_goal.version = 0;
-    let mut other_task = other.task.clone();
-    other_task.version = 0;
-    {
-        let mut store = f.store.lock().unwrap();
-        store.put_project(&mut other_project).unwrap();
-        store.put_goal(&mut other_goal).unwrap();
-        store.put_task(&mut other_task).unwrap();
-    }
-    assert!(f.engine().index(&foreign, vec![]).await.is_err());
+    // Both legitimate Projects/Goals/Tasks in one Store (both Goals from
+    // accepted ingress before migration). Unknown IDs alone must not be the
+    // reason foreign scope is rejected.
+    let (f, peer) = Fixture::build(true);
+    let peer = peer.unwrap();
+    let map = f.map().await;
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .task(peer.task)
+            .unwrap()
+            .is_some_and(|t| t.issue == f.task.issue && t.goal_id == peer.goal)
+    );
     assert!(
         f.engine()
-            .index(&Scope::task(f.project.id, other_goal.id, f.task.id), vec![])
+            .index(
+                &Scope::task(f.project.id, f.task.goal_id, peer.task),
+                vec![]
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        f.engine()
+            .index(&Scope::task(f.project.id, peer.goal, f.task.id), vec![])
             .await
             .is_err()
     );
@@ -794,10 +854,26 @@ async fn state_version_recheck_rejects_changed_task_goal_and_worktree_branch() {
     f.store.lock().unwrap().put_task(&mut task).unwrap();
     assert!(f.engine().validate(&map).await.is_err());
     let map = f.map().await;
-    let mut goal = f.store.lock().unwrap().goal(task.goal_id).unwrap().unwrap();
+    // FM D5 / §8.3 S4-W: a Goal change is impossible on any row, so its
+    // currency half is the generic Goal writer refusal with the Goal body,
+    // version and the indexed map unchanged (former subject: Goal-version
+    // recheck; no legitimate Goal-change producer exists on legacy rows).
+    let before = f.store.lock().unwrap().goal(task.goal_id).unwrap().unwrap();
+    let mut goal = before.clone();
     goal.objective = "new Goal".into();
-    f.store.lock().unwrap().put_goal(&mut goal).unwrap();
-    assert!(f.engine().validate(&map).await.is_err());
+    let refused = f.store.lock().unwrap().put_goal(&mut goal).unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("Goal changes require trusted typed control ingress"),
+        "{refused:#}"
+    );
+    let after = f.store.lock().unwrap().goal(task.goal_id).unwrap().unwrap();
+    assert_eq!(
+        serde_json::to_value(&after).unwrap(),
+        serde_json::to_value(&before).unwrap()
+    );
+    assert!(f.engine().validate(&map).await.is_ok());
     let map = f.map().await;
     git(&f.worktree, &["checkout", "-b", "foreign-branch"]);
     assert!(f.engine().validate(&map).await.is_err());

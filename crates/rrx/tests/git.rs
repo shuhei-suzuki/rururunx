@@ -5,6 +5,8 @@ use std::{
     process::Command,
 };
 use tempfile::TempDir;
+#[path = "support/legacy.rs"]
+mod legacy;
 
 fn git(path: &Path, args: &[&str]) {
     let out = Command::new("git")
@@ -48,18 +50,29 @@ impl Fixture {
             "main".into(),
         );
         store.put_project(&mut project).unwrap();
-        let mut goal = Goal::new(
-            project.id,
-            "fixture".into(),
-            vec![CompletionCriterion {
-                evaluator: Default::default(),
-                id: "done".into(),
-                description: "fixture".into(),
-                evidence: None,
-                satisfied: false,
-            }],
-        );
-        store.put_goal(&mut goal).unwrap();
+        // FM §8.1 L: the Goal comes from accepted ingress through the public
+        // route; the rows are then migrated. Tasks are added afterwards
+        // through the legacy `put_task` writer: post-creation, issue-numbered
+        // Tasks on legacy rows are this file's subject (S5, D1).
+        drop(store);
+        let db = temp.path().join("state.db");
+        let (goal, _) = legacy::goals(
+            &db,
+            vec![(
+                project.id,
+                "fixture",
+                vec![(
+                    "planned",
+                    "fake",
+                    rrx::config::WorkflowClass::Standard,
+                    RiskClass::R1,
+                    "verified result",
+                )],
+            )],
+        )
+        .remove(0);
+        let store = Store::open(&db).unwrap();
+        let project = store.project(project.id).unwrap().unwrap();
         Self {
             _temp: temp,
             root,
@@ -402,14 +415,26 @@ fn linked_and_wrong_identity_project_roots_are_rejected() {
         "overlapping Project root accepted"
     );
     // A separate Store must also reject treating a linked worktree as a source repository.
-    let mut separate = Store::memory().unwrap();
+    let separate_db = f._temp.path().join("separate.db");
+    let mut separate = Store::open(&separate_db).unwrap();
     separate.put_project(&mut nested).unwrap();
-    let mut goal = Goal::new(
-        nested.id,
-        "fixture".into(),
-        f.goal.completion_criteria.clone(),
-    );
-    separate.put_goal(&mut goal).unwrap();
+    drop(separate);
+    let (goal, _) = legacy::goals(
+        &separate_db,
+        vec![(
+            nested.id,
+            "fixture",
+            vec![(
+                "planned",
+                "fake",
+                rrx::config::WorkflowClass::Standard,
+                RiskClass::R1,
+                "verified result",
+            )],
+        )],
+    )
+    .remove(0);
+    let mut separate = Store::open(&separate_db).unwrap();
     let mut task = Task::new(nested.id, goal.id, "fixture".into(), "fake".into());
     separate.put_task(&mut task).unwrap();
     assert!(Manager::create(&mut separate, task.id).is_err());
@@ -516,7 +541,8 @@ fn separate_git_metadata_namespace_is_rejected_before_binding_or_native_creation
         &fixture.root,
         &["init", "--separate-git-dir", metadata.to_str().unwrap()],
     );
-    fixture.store = Store::memory().unwrap();
+    let separate_db = fixture._temp.path().join("separate.db");
+    fixture.store = Store::open(&separate_db).unwrap();
     fixture.project = Project::new(
         "separate metadata".into(),
         fixture.root.clone(),
@@ -525,10 +551,25 @@ fn separate_git_metadata_namespace_is_rejected_before_binding_or_native_creation
     );
     fixture.project.worktree_root = metadata.join("worktrees");
     fixture.store.put_project(&mut fixture.project).unwrap();
-    fixture.goal.id = GoalId::new();
-    fixture.goal.project_id = fixture.project.id;
-    fixture.goal.version = 0;
-    fixture.store.put_goal(&mut fixture.goal).unwrap();
+    // Close the file connection before the in-place legacy conversion.
+    fixture.store = Store::memory().unwrap();
+    fixture.goal = legacy::goals(
+        &separate_db,
+        vec![(
+            fixture.project.id,
+            "fixture",
+            vec![(
+                "planned",
+                "fake",
+                rrx::config::WorkflowClass::Standard,
+                RiskClass::R1,
+                "verified result",
+            )],
+        )],
+    )
+    .remove(0)
+    .0;
+    fixture.store = Store::open(&separate_db).unwrap();
     let task = fixture.task(99);
     assert!(Manager::create(&mut fixture.store, task.id).is_err());
     let persisted = fixture.store.task(task.id).unwrap().unwrap();

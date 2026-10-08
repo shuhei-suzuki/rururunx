@@ -57,7 +57,7 @@ impl Fixture {
                     ],
                 );
             },
-            vec![("native", "grok", workflow, risk)],
+            vec![("native", "grok", workflow, risk, "verified result")],
         );
         let (project, task, worktree) = {
             let mut store = store.lock().unwrap();
