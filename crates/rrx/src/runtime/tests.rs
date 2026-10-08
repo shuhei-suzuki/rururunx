@@ -615,6 +615,8 @@ impl LegacyTask {
 pub(crate) struct LegacyFixture {
     dir: tempfile::TempDir,
     pub(crate) tasks: Vec<crate::domain::Task>,
+    /// One Task per sibling Project, in `LegacySibling` order.
+    pub(crate) siblings: Vec<crate::domain::Task>,
 }
 impl LegacyFixture {
     /// The fixture directory: `repo/` is the Project root, `state.db` the
@@ -830,11 +832,41 @@ pub(crate) fn legacy_fixture_blocking(
 /// Legacy rows behind a plain `Store` (no Runtime owner), for ledger tests
 /// that drive `Store` directly; the default layout.
 pub(crate) fn legacy_store(tasks: Vec<LegacyTask>) -> (LegacyFixture, crate::state::Store) {
-    let (legacy, owner) = legacy_fixture_blocking(LegacyLayout::default(), |_| {}, tasks);
+    legacy_store_with_siblings(tasks, Vec::new())
+}
+
+/// `legacy_store` plus `siblings`, each one Goal in its own Project.
+pub(crate) fn legacy_store_with_siblings(
+    tasks: Vec<LegacyTask>,
+    siblings: Vec<LegacySibling>,
+) -> (LegacyFixture, crate::state::Store) {
+    let (legacy, owner) = std::thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(legacy_fixture_with_siblings(
+                LegacyLayout::default(),
+                |_| {},
+                tasks,
+                siblings,
+            ))
+    })
+    .join()
+    .unwrap();
     assert_eq!(Arc::strong_count(&owner), 1, "SETUP: owner still shared");
     drop(owner);
     let store = crate::state::Store::open(&legacy.path().join("state.db")).unwrap();
     (legacy, store)
+}
+
+/// A Task planned in its own Project (R4.1/R4.4, S2: one active Task per
+/// Project) through the same accepted ingress as the primary Goal.
+pub(crate) struct LegacySibling {
+    /// The sibling Project root, directly under the fixture directory.
+    pub(crate) root: &'static str,
+    pub(crate) seed: fn(&std::path::Path),
+    pub(crate) task: LegacyTask,
 }
 
 pub(crate) async fn legacy_fixture_in(
@@ -842,9 +874,20 @@ pub(crate) async fn legacy_fixture_in(
     seed: impl FnOnce(&std::path::Path),
     tasks: Vec<LegacyTask>,
 ) -> (LegacyFixture, Arc<RuntimeOwner>) {
+    legacy_fixture_with_siblings(layout, seed, tasks, Vec::new()).await
+}
+
+/// `legacy_fixture_in` plus `siblings`, each one Goal in its own Project.
+pub(crate) async fn legacy_fixture_with_siblings(
+    layout: LegacyLayout,
+    seed: impl FnOnce(&std::path::Path),
+    tasks: Vec<LegacyTask>,
+    siblings: Vec<LegacySibling>,
+) -> (LegacyFixture, Arc<RuntimeOwner>) {
     let mut config = Config::default();
     let agents = tasks
         .iter()
+        .chain(siblings.iter().map(|s| &s.task))
         .flat_map(|t| std::iter::once(t.executor).chain(t.reviewers.iter().copied()));
     for agent in agents {
         // Ingress-only config: accepted plans admit claude|codex providers.
@@ -864,24 +907,41 @@ pub(crate) async fn legacy_fixture_in(
         );
     }
     // A Quick plan needs minimum Quick (Quick = R0 + minimum Quick).
-    config.minimum_workflow = tasks.iter().map(|t| t.workflow).min().unwrap_or_default();
+    config.minimum_workflow = tasks
+        .iter()
+        .chain(siblings.iter().map(|s| &s.task))
+        .map(|t| t.workflow)
+        .min()
+        .unwrap_or_default();
     let mut f = ControlFixture::configured(|_| config);
+    let legacy_plan = |tasks: &[&LegacyTask]| {
+        let mut plan = plan();
+        plan.tasks = tasks
+            .iter()
+            .map(|t| TaskDefinition {
+                key: t.key.into(),
+                title: t.key.into(),
+                acceptance_criteria: vec!["verified result".into()],
+                executor: t.executor.into(),
+                reviewers: t.reviewers.iter().map(|r| (*r).into()).collect(),
+                workflow: t.workflow,
+                risk: t.risk,
+            })
+            .collect();
+        plan
+    };
+    let mut sibling_goals = Vec::new();
+    for sibling in &siblings {
+        f.register_real_git_project_named(sibling.root);
+        (sibling.seed)(&f.project.root);
+        sibling_goals.push(f.create(legacy_plan(&[&sibling.task])).await);
+    }
+    // The primary Project is registered last, so `f.project` stays its own.
     f.register_real_git_project_named(layout.root);
     seed(&f.project.root);
-    let mut plan = plan();
-    plan.tasks = tasks
-        .iter()
-        .map(|t| TaskDefinition {
-            key: t.key.into(),
-            title: t.key.into(),
-            acceptance_criteria: vec!["verified result".into()],
-            executor: t.executor.into(),
-            reviewers: t.reviewers.iter().map(|r| (*r).into()).collect(),
-            workflow: t.workflow,
-            risk: t.risk,
-        })
-        .collect();
-    let goal_id = f.create(plan).await;
+    let goal_id = f
+        .create(legacy_plan(&tasks.iter().collect::<Vec<_>>()))
+        .await;
     let ControlFixture {
         _dir: dir,
         owner,
@@ -892,7 +952,7 @@ pub(crate) async fn legacy_fixture_in(
     } = f;
     drop((socket, _peer));
     let owner = migrate_legacy(dir.path(), owner, runtime, layout.state).await;
-    let tasks = {
+    let goal_tasks = |goal_id| {
         let store = owner.store.lock().unwrap();
         let goal = store.goal(goal_id).unwrap().unwrap();
         let tasks = goal
@@ -907,7 +967,19 @@ pub(crate) async fn legacy_fixture_in(
         );
         tasks
     };
-    (LegacyFixture { dir, tasks }, owner)
+    let tasks = goal_tasks(goal_id);
+    let siblings = sibling_goals
+        .into_iter()
+        .flat_map(goal_tasks)
+        .collect::<Vec<_>>();
+    (
+        LegacyFixture {
+            dir,
+            tasks,
+            siblings,
+        },
+        owner,
+    )
 }
 
 #[tokio::test]

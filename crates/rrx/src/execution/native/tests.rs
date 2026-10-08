@@ -306,7 +306,8 @@ async fn workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_si
 }
 #[tokio::test]
 async fn four_protocol_fixture_sessions_keep_sibling_work_when_one_is_cancelled() {
-    let (dir, owner, task) = results::tests::fixture().await;
+    let (dir, owner, task) =
+        results::tests::fixture_with_siblings(&["fixture-1", "fixture-2", "fixture-3"]).await;
     let sessions = NativeSessions::new(owner.clone()).unwrap();
     let attempts = attempts::AttemptManager::new(owner.clone());
     let mut handles = Vec::new();
@@ -318,14 +319,7 @@ async fn four_protocol_fixture_sessions_keep_sibling_work_when_one_is_cancelled(
         let task = if index == 0 {
             task.clone()
         } else {
-            let mut next = crate::domain::Task::new(
-                task.project_id,
-                task.goal_id,
-                format!("fixture-{index}"),
-                provider.into(),
-            );
-            owner.store.lock().unwrap().put_task(&mut next).unwrap();
-            next
+            dir.siblings[index - 1].clone()
         };
         let (unit, _) = attempts
             .prepare(task.id, provider, "Implement", None)
@@ -1311,16 +1305,10 @@ async fn claude_live_quota_wait_is_scoped_preserves_input_and_keeps_sibling_runn
             Disposition::CapacityInterrupted,
         ),
     ] {
-        let (dir, owner, task) = results::tests::fixture().await;
+        let (dir, owner, task) = results::tests::fixture_with_siblings(&["sibling"]).await;
         let manager = attempts::AttemptManager::new(owner.clone());
         let sessions = NativeSessions::new(owner.clone()).unwrap();
-        let mut sibling = crate::domain::Task::new(
-            task.project_id,
-            task.goal_id,
-            "sibling".into(),
-            "claude".into(),
-        );
-        owner.store.lock().unwrap().put_task(&mut sibling).unwrap();
+        let sibling = dir.siblings[0].clone();
         let (other, _) = manager
             .prepare(sibling.id, "claude", "Implement", None)
             .await
@@ -1478,7 +1466,7 @@ async fn claude_live_quota_wait_is_scoped_preserves_input_and_keeps_sibling_runn
 #[tokio::test]
 async fn configured_global_provider_alias_and_project_caps_wait_before_native_spawn() {
     for limit in ["global", "provider-alias", "project"] {
-        let (dir, owner, task) = results::tests::fixture().await;
+        let (dir, owner, task) = results::tests::fixture_with_siblings(&["cap-sibling"]).await;
         let mut config = crate::config::Config::default();
         if limit == "global" {
             config.scheduler.global_max_sessions = 1;
@@ -1522,13 +1510,21 @@ async fn configured_global_provider_alias_and_project_caps_wait_before_native_sp
         else {
             panic!("first launch unexpectedly waiting");
         };
-        let mut sibling = crate::domain::Task::new(
-            task.project_id,
-            task.goal_id,
-            "cap sibling".into(),
-            "codex".into(),
-        );
-        owner.store.lock().unwrap().put_task(&mut sibling).unwrap();
+        // The project case keeps its same-Project sibling; the global and
+        // provider cases use another Project so the fixed Project limit of 1
+        // cannot be what queues the second launch.
+        let sibling = if limit == "project" {
+            let mut sibling = crate::domain::Task::new(
+                task.project_id,
+                task.goal_id,
+                "cap sibling".into(),
+                "codex".into(),
+            );
+            owner.store.lock().unwrap().put_task(&mut sibling).unwrap();
+            sibling
+        } else {
+            dir.siblings[0].clone()
+        };
         let (second, _) = manager
             .prepare(sibling.id, "codex", "Implement", None)
             .await
