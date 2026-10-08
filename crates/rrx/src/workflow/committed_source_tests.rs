@@ -2,8 +2,6 @@
 //! Only the early evidence gates and the local native protocol peer are fixtures.
 use super::*;
 use crate::execution::{self, WorkOutcome, results, workflow_source::ManagedWorkflowSources};
-use sha2::{Digest, Sha256};
-use std::{path::Path, time::Duration};
 
 const RULE_A: &str = "MANDATORY_COMMITTED_RULE_A: preserve the answer.\n";
 
@@ -357,15 +355,6 @@ async fn production_gate_rejects_forged_success_and_corrupted_retained_manifest(
     f.assert_no_native(prepared.id);
 }
 
-async fn wait_file(path: &Path) {
-    tokio::time::timeout(Duration::from_secs(15), async {
-        while !path.exists() {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .unwrap();
-}
 async fn early_phases(engine: &WorkflowEngine, task: TaskId, class: WorkflowClass) {
     let expected: &[Phase] = if class == WorkflowClass::Quick {
         &[Phase::Worktree]

@@ -206,18 +206,7 @@ pub(crate) struct ManagedVerificationResult {
 pub struct ManagedVerifier {
     owner: Arc<RuntimeOwner>,
     sources: Arc<workflow_source::ManagedWorkflowSources>,
-    #[cfg(test)]
-    before_commands: std::sync::Mutex<Option<VerificationHook>>,
-    #[cfg(test)]
-    before_completion: std::sync::Mutex<Option<VerificationCheckpoint>>,
 }
-#[cfg(test)]
-type VerificationHook = Box<dyn FnOnce(UnitId) + Send>;
-#[cfg(test)]
-type VerificationCheckpoint = (
-    tokio::sync::oneshot::Sender<UnitId>,
-    tokio::sync::oneshot::Receiver<()>,
-);
 impl ManagedVerifier {
     pub fn new(
         owner: Arc<RuntimeOwner>,
@@ -227,22 +216,7 @@ impl ManagedVerifier {
             sources.belongs_to(&owner),
             "verifier/source Runtime mismatch"
         );
-        Ok(Self {
-            owner,
-            sources,
-            #[cfg(test)]
-            before_commands: std::sync::Mutex::new(None),
-            #[cfg(test)]
-            before_completion: std::sync::Mutex::new(None),
-        })
-    }
-    #[cfg(test)]
-    pub(crate) fn before_commands(&self, hook: VerificationHook) {
-        *self.before_commands.lock().unwrap() = Some(hook);
-    }
-    #[cfg(test)]
-    pub(crate) fn before_completion(&self, checkpoint: VerificationCheckpoint) {
-        *self.before_completion.lock().unwrap() = Some(checkpoint);
+        Ok(Self { owner, sources })
     }
     pub(crate) fn belongs_to(&self, owner: &Arc<RuntimeOwner>) -> bool {
         Arc::ptr_eq(&self.owner, owner)
@@ -478,14 +452,6 @@ impl ManagedVerifier {
                     run_digest,
                     _abandonment: abandonment,
                 };
-                #[cfg(test)]
-                {
-                    let checkpoint = self.before_completion.lock().unwrap().take();
-                    if let Some((entered, resume)) = checkpoint {
-                        let _ = entered.send(id);
-                        let _ = resume.await;
-                    }
-                }
                 Ok(ManagedVerificationResult {
                     successor,
                     outcome: GateOutcome::Passed(evidence),
@@ -523,10 +489,6 @@ impl ManagedVerifier {
         let snapshot = results::ResultStore::new(self.owner.clone())
             .snapshot(grant.unit())
             .await?;
-        #[cfg(test)]
-        if let Some(hook) = self.before_commands.lock().unwrap().take() {
-            hook(grant.unit.id);
-        }
         let mut commands = Vec::new();
         let mut bytes = 0u64;
         for (index, c) in admitted.proposal.commands.iter().enumerate() {
