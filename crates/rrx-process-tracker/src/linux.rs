@@ -240,11 +240,15 @@ mod tests {
         let uid = rustix::process::geteuid().as_raw();
         let observed = identity(child.0.id()).unwrap();
         assert_eq!(observed.uid, uid);
+        // SETUP: the child is non-dumpable. The `/proc/<pid>` directory
+        // stays owned by the task's euid by design (`task_dump_owner`); the
+        // per-process files such as `environ` become root-owned.
         assert_eq!(
-            fs::metadata(format!("/proc/{}", child.0.id()))
+            fs::metadata(format!("/proc/{}/environ", child.0.id()))
                 .unwrap()
                 .uid(),
-            0
+            0,
+            "SETUP: non-dumpable child"
         );
         if uid != 0 {
             assert!(File::open(format!("/proc/{}/environ", child.0.id())).is_err());
