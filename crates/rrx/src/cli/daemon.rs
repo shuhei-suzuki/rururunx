@@ -176,15 +176,20 @@ pub fn probe_lock(state: &Path) -> OwnerLock {
     let Ok(root) = endpoint::execution_root(&state) else {
         return OwnerLock::Error;
     };
+    // Non-blocking, so a special file (a FIFO without a writer) cannot hold
+    // the probe in `open`; only a regular file reaches `flock`.
     let file = match OpenOptions::new()
         .read(true)
-        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
+        .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK).bits() as i32)
         .open(root.join("owner.lock"))
     {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return OwnerLock::Free,
         Err(_) => return OwnerLock::Error,
     };
+    if !file.metadata().is_ok_and(|m| m.is_file()) {
+        return OwnerLock::Error;
+    }
     match rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockShared) {
         Ok(()) => OwnerLock::Free,
         Err(rustix::io::Errno::WOULDBLOCK) => OwnerLock::Busy,

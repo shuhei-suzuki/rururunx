@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::{
     fs::OpenOptions,
     io::Write,
-    os::unix::fs::{DirBuilderExt, OpenOptionsExt},
+    os::unix::fs::{DirBuilderExt, FileTypeExt, OpenOptionsExt},
     path::{Path, PathBuf},
     process::{Command, Output},
     time::{Duration, Instant},
@@ -214,6 +214,66 @@ fn c_s1c_status_table_cells_and_no_effect() {
     }
     assert_eq!(std::fs::read(f.descriptor()).unwrap(), foreign);
     assert_eq!(f.epoch_row(), epoch, "status changed the epoch");
+}
+
+/// Sol 6062003954 M1: a special `owner.lock` (a FIFO without a writer) is a
+/// typed L=error for status, start and stop, within an outer deadline, and
+/// nothing changes: no epoch, no descriptor, no spawned owner.
+#[test]
+fn owner_lock_fifo_is_a_typed_probe_error_for_every_command() {
+    let f = Fixture::new();
+    f.start_running();
+    f.stop_and_wait();
+    let epoch = f.epoch_row();
+    let lock = f.root().join("owner.lock");
+    std::fs::remove_file(&lock).unwrap();
+    assert!(
+        Command::new("/usr/bin/mkfifo")
+            .args(["-m", "600"])
+            .arg(&lock)
+            .status()
+            .unwrap()
+            .success()
+    );
+    for verb in ["status", "start", "stop"] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_rrx"))
+            .arg("--state")
+            .arg(&f.state)
+            .arg("--config")
+            .arg(&f.config)
+            .args(["daemon", verb, "--json"])
+            .current_dir(&f.base)
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while child.try_wait().unwrap().is_none() {
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("daemon {verb} blocked on a FIFO owner lock");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let output = child.wait_with_output().unwrap();
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let typed = match verb {
+            "status" => value["status"].clone(),
+            "start" => value["start"].clone(),
+            _ => value["status"]["status"].clone(),
+        };
+        assert_eq!(typed, "discovery_unavailable", "daemon {verb}: {value}");
+        assert!(!output.status.success(), "daemon {verb} succeeded");
+    }
+    assert_eq!(f.epoch_row(), epoch, "an epoch was begun");
+    assert!(!f.descriptor().exists(), "a descriptor was published");
+    assert!(
+        std::fs::symlink_metadata(&lock)
+            .unwrap()
+            .file_type()
+            .is_fifo(),
+        "the FIFO was replaced"
+    );
 }
 
 /// C-S1c2: status and start concurrently. A failed start is typed
