@@ -36,6 +36,8 @@ enum Fault {
 struct FaultSources {
     inner: Arc<ManagedWorkflowSources>,
     fault: Fault,
+    /// Calls that reached the first-adoption consumer.
+    reached: std::sync::atomic::AtomicUsize,
 }
 impl WorkflowSources for FaultSources {
     fn capture(
@@ -66,6 +68,8 @@ impl WorkflowSources for FaultSources {
         let project = project.clone();
         let task = task.clone();
         let budget = budget.clone();
+        self.reached
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Box::pin(async move {
             let token = self
                 .inner
@@ -151,18 +155,31 @@ impl WorkflowSources for FaultSources {
         })
     }
 }
+/// FM §8.3 F2 (R). Former subject: first adoption of the prepared bootstrap
+/// Unit (`adopt_prepared_workflow_execution`) refused a changed Context
+/// envelope, a stale Task CAS and an unsettled helper atomically before
+/// Native. That consumer is reachable only through legacy `prepare_agent`
+/// behind F2 (`workflow.rs:1815`), so it is a retired path ("none: retired
+/// path"); the D2 lane uses `first_executor_frame` instead. Each fault's
+/// legacy-Engine step into the Native phase is now refused with the typed
+/// `ManagedBindingUnavailable` before source capture: the fault hook is never
+/// reached, and the Task, Workflow record, audit, the prepared Unit, its
+/// effects, Sessions, result artifacts and completed Git outputs are
+/// unchanged.
 #[tokio::test]
 async fn first_adoption_refuses_changed_envelope_task_cas_and_unsettled_helper_atomically() {
     for fault in [Fault::Envelope, Fault::TaskCas, Fault::Helper] {
-        let (dir, owner, fixture_task) = results::tests::fixture().await;
-        let mut task = Task::new(
-            fixture_task.project_id,
-            fixture_task.goal_id,
-            "negative adoption".into(),
-            "codex".into(),
-        );
-        task.workflow = WorkflowClass::Quick;
-        owner.store.lock().unwrap().put_task(&mut task).unwrap();
+        let (dir, owner) = crate::runtime::legacy_fixture(
+            results::tests::seed,
+            vec![crate::runtime::LegacyTask {
+                workflow: WorkflowClass::Quick,
+                risk: crate::domain::RiskClass::R0,
+                ..crate::runtime::LegacyTask::standard("adoption", "codex")
+            }],
+        )
+        .await;
+        let task = dir.task();
+        assert_eq!(task.workflow, WorkflowClass::Quick, "SETUP: accepted class");
         let program = native::tests::program(dir.path(), "codex");
         let mut config = Config {
             minimum_workflow: WorkflowClass::Quick,
@@ -181,14 +198,16 @@ async fn first_adoption_refuses_changed_envelope_task_cas_and_unsettled_helper_a
         let prepared = sources.prepare(task.id, "codex").await.unwrap();
         let registry =
             Arc::new(AgentRegistry::from_managed_config(&config, owner.clone()).unwrap());
+        let faults = Arc::new(FaultSources {
+            inner: sources,
+            fault,
+            reached: Default::default(),
+        });
         let engine = WorkflowEngine::new(
             owner.store(),
             registry,
             config,
-            Arc::new(FaultSources {
-                inner: sources,
-                fault,
-            }),
+            faults.clone(),
             Arc::new(Gates),
         )
         .unwrap();
@@ -197,42 +216,43 @@ async fn first_adoption_refuses_changed_envelope_task_cas_and_unsettled_helper_a
             engine.step(task.id, BTreeMap::new()).await.unwrap(),
             StepResult::Completed { .. }
         ));
-        let result = engine.step(task.id, BTreeMap::new()).await;
-        assert!(result.is_err(), "fault must refuse before native");
-        let expected = match fault {
-            Fault::Envelope => "prepared source/rule frame differs",
-            Fault::TaskCas => "prepared Task CAS changed",
-            Fault::Helper => "unresolved or native effects",
+        let preimage = || {
+            let store = owner.store.lock().unwrap();
+            let scope = task.scope();
+            serde_json::json!({
+                "task": store.task(task.id).unwrap(),
+                "workflow": store.records(&scope, RecordKind::Workflow).unwrap(),
+                "events": store.events(&scope, 0, 1000).unwrap().len(),
+                "units": store.execution_units(Some(&scope)).unwrap(),
+                "effects": format!("{:?}", store.managed_effects(prepared.id).unwrap()),
+                "sessions": store.records(&scope, RecordKind::Session).unwrap().len(),
+                "artifacts": store.result_artifacts(&scope).unwrap().len(),
+                "git": crate::git::observed_git_outputs(),
+            })
         };
-        assert!(result.err().unwrap().to_string().contains(expected));
+        let before = preimage();
+        let error = engine
+            .step(task.id, BTreeMap::new())
+            .await
+            .expect_err("FM F2: the legacy Native step must be refused");
+        assert!(
+            matches!(
+                error.downcast_ref::<crate::workflow::NativePreflightRefusal>(),
+                Some(crate::workflow::NativePreflightRefusal::ManagedBindingUnavailable)
+            ),
+            "FM F2: typed refusal: {error:#}"
+        );
+        assert_eq!(preimage(), before, "FM F2: preimage unchanged");
+        assert_eq!(
+            faults.reached.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "FM F2: the first-adoption consumer is not reached"
+        );
         let store = owner.store.lock().unwrap();
         let unit = store.execution_unit(prepared.id).unwrap();
         assert_eq!(unit.phase, WORKFLOW_SOURCE_BOOTSTRAP);
-        assert!(!unit.native_effects_open && !unit.result_finalization_open);
-        assert_eq!(unit.work, Some(WorkOutcome::Unknown));
         assert!(unit.session_id.is_none());
         assert_eq!(store.execution_units(Some(&task.scope())).unwrap().len(), 1);
-        assert!(
-            store
-                .records(&task.scope(), RecordKind::Session)
-                .unwrap()
-                .is_empty()
-        );
-        assert!(store.result_artifacts(&task.scope()).unwrap().is_empty());
-        assert!(
-            store
-                .managed_effects(unit.id)
-                .unwrap()
-                .iter()
-                .all(|e| e.kind == "git_helper")
-        );
-        let workflow: WorkflowSnapshot = serde_json::from_value(
-            store.records(&task.scope(), RecordKind::Workflow).unwrap()[0]
-                .data
-                .clone(),
-        )
-        .unwrap();
-        assert!(workflow.history[workflow.active.unwrap()].unit.is_none());
     }
 }
 #[tokio::test]

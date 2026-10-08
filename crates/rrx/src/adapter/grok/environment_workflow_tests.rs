@@ -1,8 +1,9 @@
-//! Actual forwarding at the first reachable native phase; no native gate completion.
+//! The legacy Engine with Grok at its first reachable Native phase: FM §8.3
+//! F2 (R). Grok is not an installed provider (S2), so there is no D2 target.
 use super::{environment_tests::isolated, fixture_support::Fixture, *};
 use crate::{
     config::{Config, WorkflowClass},
-    domain::{RiskClass, TaskState},
+    domain::RiskClass,
     workflow::*,
 };
 
@@ -64,12 +65,6 @@ impl PhaseGates for WorktreeEvidence {
 }
 async fn engine(fixture: &Fixture, adapter: Arc<GrokAdapter>) -> WorkflowEngine {
     let task_id = fixture.request.scope.task_id.unwrap();
-    {
-        let mut store = fixture.store.lock().unwrap();
-        let mut task = store.task(task_id).unwrap().unwrap();
-        task.risk = RiskClass::R0;
-        store.put_task(&mut task).unwrap();
-    }
     let mut registry = AgentRegistry::default();
     registry.register("grok".into(), adapter).unwrap();
     let mut config = Config {
@@ -97,6 +92,17 @@ async fn engine(fixture: &Fixture, adapter: Arc<GrokAdapter>) -> WorkflowEngine 
     engine
 }
 
+/// FM §8.3 F2 (R). Former subject: at the first reachable Native phase the
+/// legacy Engine refused a reused generic environment map and bound Grok's
+/// own `environment_refs` map to a started Session. The legacy Engine has no
+/// production caller (S1) and Grok is not an installed provider (S2), so the
+/// step into Implement is now refused with the typed
+/// `ManagedBindingUnavailable` before source capture, whichever map is
+/// passed. The Task, Workflow record, audit, Units, Sessions and completed
+/// Git outputs are unchanged; no Grok process is spawned (its
+/// `grok.process_spawned` audit and Session record are in the preimage).
+/// Its managed equivalent is SC-N continuation work (D3/D4); the rest of the
+/// former scenario is retired.
 #[tokio::test]
 async fn reachable_workflow_native_phase_rejects_generic_map_and_binds_own_map() {
     isolated("adapter::grok::environment_workflow_tests::forwarding_child").await;
@@ -105,109 +111,72 @@ async fn reachable_workflow_native_phase_rejects_generic_map_and_binds_own_map()
 #[ignore = "only entered by owned env-cleared canary parent"]
 async fn forwarding_child() {
     assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
-    let denied = Fixture::with_workflow(WorkflowClass::Quick);
-    let adapter = Arc::new(denied.adapter());
-    let workflow = engine(&denied, adapter).await;
-    let task_id = denied.request.scope.task_id.unwrap();
-    let reused_generic_map = BTreeMap::from([
-        ("HOME".into(), std::env::var("HOME").unwrap()),
-        ("PATH".into(), "/usr/bin:/bin".into()),
-    ]);
-    let result = workflow.step(task_id, reused_generic_map).await.unwrap();
-    let reason = match result {
-        StepResult::Failed {
-            phase: Phase::Implement,
-            reason,
-        } => reason,
-        other => panic!("native control map forwarding unexpectedly succeeded: {other:?}"),
-    };
-    assert_eq!(
-        reason,
-        "InvalidConfiguration: native environment value cannot replace intentional runtime authority"
-    );
-    let snapshot = workflow.snapshot(task_id).unwrap();
-    let attempt = snapshot.history.last().unwrap();
-    assert_eq!(attempt.phase, Phase::Implement);
-    assert_eq!(attempt.state, AttemptState::Failed);
-    assert!(attempt.dispatch_started && attempt.session_id.is_none());
-    assert_eq!(attempt.detail.as_deref(), Some(reason.as_str()));
+    let mut fixture = Fixture::with_workflow(WorkflowClass::Quick);
     {
-        let store = denied.store.lock().unwrap();
-        let task = store.task(task_id).unwrap().unwrap();
-        assert_eq!(task.state, TaskState::WaitingHuman);
-        assert!(task.blockers.contains(&reason));
-        assert!(
-            store
-                .records(&task.scope(), RecordKind::Session)
-                .unwrap()
-                .is_empty()
-        );
-        let events = store.events(&task.scope(), 0, 1024).unwrap();
-        assert!(!events.iter().any(|e| e.kind == "grok.process_spawned"));
-        assert!(events.iter().any(
-            |e| e.kind == "workflow.saved" && e.data["evidence"]["attempt"]["detail"] == reason
-        ));
-        let records = store.records(&task.scope(), RecordKind::Workflow).unwrap();
-        assert_eq!(records[0].data["history"][1]["detail"], reason);
-    }
-
-    // Separate actual Task at the same reachable phase; no implicit failed retry.
-    let mut allowed = Fixture::with_workflow(WorkflowClass::Quick);
-    {
-        let mut store = allowed.store.lock().unwrap();
-        let mut project = allowed.request.project.clone();
+        let mut store = fixture.store.lock().unwrap();
+        let task = store
+            .task(fixture.request.scope.task_id.unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.risk, RiskClass::R0, "SETUP: accepted Quick plan");
+        let mut project = fixture.request.project.clone();
         project.environment_refs = vec!["LANG".into()];
         store.put_project(&mut project).unwrap();
-        allowed.request.project = project;
+        fixture.request.project = project;
     }
-    let adapter = Arc::new(allowed.adapter());
-    let workflow = engine(&allowed, adapter.clone()).await;
-    let task_id = allowed.request.scope.task_id.unwrap();
-    let result = workflow
-        .step(
-            task_id,
-            BTreeMap::from([("LANG".into(), "synthetic-own-locale".into())]),
-        )
-        .await
-        .unwrap();
-    let id = match result {
-        StepResult::Started {
-            phase: Phase::Implement,
-            session: Some(id),
-        } => id,
-        other => panic!("own native map did not bind at intended phase: {other:?}"),
+    let workflow = engine(&fixture, Arc::new(fixture.adapter())).await;
+    let task_id = fixture.request.scope.task_id.unwrap();
+    let preimage = || {
+        let store = fixture.store.lock().unwrap();
+        let task = store.task(task_id).unwrap().unwrap();
+        let scope = task.scope();
+        json!({
+            "task": task,
+            "workflow": store.records(&scope, RecordKind::Workflow).unwrap(),
+            "events": store.events(&scope, 0, 1024).unwrap(),
+            "units": store.execution_units(Some(&scope)).unwrap().len(),
+            "sessions": store.records(&scope, RecordKind::Session).unwrap(),
+            "git": crate::git::observed_git_outputs(),
+        })
     };
-    let bound = allowed
-        .store
-        .lock()
-        .unwrap()
-        .session(id)
-        .unwrap()
-        .unwrap()
-        .0;
-    assert_eq!(bound.agent, "grok");
-    assert_eq!(bound.scope, allowed.request.scope);
-    assert_eq!(bound.role, SessionRole::Executor);
-    let snapshot = workflow.snapshot(task_id).unwrap();
-    let attempt = snapshot.history.last().unwrap();
-    assert_eq!(attempt.phase, Phase::Implement);
-    assert_eq!(attempt.agent.as_deref(), Some("grok"));
-    assert_eq!(attempt.session_id, Some(id));
-    let mut watch = adapter.subscribe((&bound).into()).unwrap();
-    tokio::time::timeout(Duration::from_secs(15), async {
-        while !watch.borrow().terminal() {
-            watch.changed().await.unwrap();
-        }
-    })
-    .await
-    .unwrap();
-    let terminal = watch.borrow().clone();
+    for map in [
+        // The reused generic map the former test refused.
+        BTreeMap::from([
+            ("HOME".into(), std::env::var("HOME").unwrap()),
+            ("PATH".into(), "/usr/bin:/bin".into()),
+        ]),
+        // The own `environment_refs` map the former test bound.
+        BTreeMap::from([("LANG".into(), "synthetic-own-locale".into())]),
+    ] {
+        let before = preimage();
+        let error = workflow
+            .step(task_id, map)
+            .await
+            .expect_err("FM F2: the legacy Native step must be refused");
+        assert!(
+            matches!(
+                error.downcast_ref::<NativePreflightRefusal>(),
+                Some(NativePreflightRefusal::ManagedBindingUnavailable)
+            ),
+            "FM F2: typed refusal: {error:#}"
+        );
+        assert_eq!(preimage(), before, "FM F2: preimage unchanged");
+    }
+    let store = fixture.store.lock().unwrap();
+    let scope = store.task(task_id).unwrap().unwrap().scope();
     assert!(
-        terminal.session.pid.is_none(),
-        "owned native cleanup remains uncertain"
+        !store
+            .events(&scope, 0, 1024)
+            .unwrap()
+            .iter()
+            .any(|e| e.kind == "grok.process_spawned")
     );
-    assert_ne!(terminal.session.state, SessionState::Lost);
-    adapter.release((&bound).into()).unwrap();
-    // Started+binding alone is the positive; #43 still owns native phase completion.
+    assert!(
+        store
+            .records(&scope, RecordKind::Session)
+            .unwrap()
+            .is_empty()
+    );
+    drop(store);
     child_completed("adapter::grok::environment_workflow_tests::forwarding_child");
 }

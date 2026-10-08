@@ -6,35 +6,37 @@ mod retained_tests;
 /// FM §8.1 L: a legacy codex Task on `repo/` holding the committed `answer.txt`.
 pub(crate) async fn fixture() -> (crate::runtime::LegacyFixture, Arc<RuntimeOwner>, Task) {
     let (f, owner) = crate::runtime::legacy_fixture(
-        |source| {
-            std::fs::write(source.join("answer.txt"), "base\n").unwrap();
-            for args in [
-                vec!["add", "answer.txt"],
-                vec![
-                    "-c",
-                    "user.name=Fixture",
-                    "-c",
-                    "user.email=fixture@example.invalid",
-                    "-c",
-                    "commit.gpgsign=false",
-                    "commit",
-                    "-m",
-                    "fixture",
-                ],
-            ] {
-                let output = std::process::Command::new("git")
-                    .current_dir(source)
-                    .args(args)
-                    .output()
-                    .unwrap();
-                assert!(output.status.success(), "SETUP: fixture commit");
-            }
-        },
+        seed,
         vec![crate::runtime::LegacyTask::standard("answer", "codex")],
     )
     .await;
     let task = f.task();
     (f, owner, task)
+}
+/// The fixture Project's initial commit (`answer.txt`).
+pub(crate) fn seed(source: &Path) {
+    std::fs::write(source.join("answer.txt"), "base\n").unwrap();
+    for args in [
+        vec!["add", "answer.txt"],
+        vec![
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-m",
+            "fixture",
+        ],
+    ] {
+        let output = std::process::Command::new("git")
+            .current_dir(source)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "SETUP: fixture commit");
+    }
 }
 async fn commit(path: &Path) -> String {
     git(path, ["add", "answer.txt"]).await.unwrap();
