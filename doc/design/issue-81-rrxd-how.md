@@ -359,3 +359,7 @@ Branch `claude/adoring-archimedes-7eehnw`, on top of PR #83's merge (`9aed3bf`).
 | Unchecked copy restored in `effective_config` | C-S2e FAIL |
 | Quota own-Task exemption dropped | C-S2c FAIL |
 | Native configured global cap ignored | `configured_global_provider_alias_and_project_caps_wait_before_native_spawn` (global) FAIL — the sibling is in another Project, so the Project limit cannot hide it |
+
+### Verification
+
+Non-root (fmtest, umask 022, subreaper), all 19 test binaries: rrx lib 738 passed, 0 failed (20 ignored, unchanged from before S2); every integration binary passed. `cargo clippy --workspace --all-targets` and `cargo fmt --check` are clean. An earlier run was discarded: the test binary was rebuilt while it ran, and `execution/resources.rs` re-executes `current_exe()`, so the installation tests failed on the replaced executable. The clean re-run above had no build alongside it.
