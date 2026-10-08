@@ -320,3 +320,42 @@ The endpoint test failure seen once (`actual_endpoint_connects…`, rebind line)
 
 - After a pending stop, `serve` itself retries shutdown and exits 1. This is the existing behaviour, and it is now asserted: the process exit is not counted as cleanup.
 - The P2 park (`runtime::stop::park`) is `cfg(test)` only. It holds the real loop, so the join genuinely misses its deadline. It never constructs the marker.
+
+## 8. S2 outcome (implementation)
+
+Branch `claude/adoring-archimedes-7eehnw`, on top of PR #83's merge (`9aed3bf`). Paths are relative to `crates/rrx`. Protocol stays 2: the response changes are additive (`project_limit_stored` is optional and skipped when absent).
+
+| Delta | Implementation |
+| --- | --- |
+| D1 | `src/config.rs`: `MVP_PROJECT_TASKS`, `LimitOrigin`, `ProjectTaskLimitRefused`, `ensure_mvp_project_tasks` (Ok for 0, which then keeps the positive-limit refusal, and for 1). `apply_project` checks the overlay before any field is mutated; `validate` checks the runtime value; the default is MVP |
+| D2 | `src/main.rs` refuses `project add --max-tasks N≠1` (`CliFlag`) before `Config::load` and `Store::open`; `src/project.rs` `add()` checks first. `Project::new` stores MVP |
+| D3 | `state/runtime/driver/candidates.rs`: the fixed query joins `projects` on `json_extract(body,'$.max_tasks')=?11` (bound to MVP) before the eligible `LIMIT`. `claim.rs` `plan_initial_driver` re-reads the Project in its snapshot and refuses with `ProjectLimitUnsupported { stored }`; `task_driver.rs` maps it to `SkipReason::ProjectLimitUnsupported` |
+| D4 | `runtime/control.rs`: `UnavailableReason::ProjectLimitUnsupported` and the optional `project_limit_stored` on `GoalFacts` and `GoalProposalFacts`, read by `project_limit_stored` (`state/runtime/goals.rs`, `proposals.rs`). `cli/goal_facts.rs` prints the reason, the stored value and the `--max-tasks 1` repair |
+| D5 | `claim.rs`: typed `DriverCapacityUnavailable { scope: Global \| Project }`; the Project bound is MVP |
+| D6 | `admission.rs`, `task_driver.rs` (parameter removed), `control.rs` (RuntimeStatus reports 1), `execution/native.rs` (`project: MVP`), `state/execution/quotas.rs` (`configured.min(MVP).min(stored)`, distinct Tasks, own-Task exemption). `runtime/phase_supervisor.rs` `PHASE_SLOTS_PER_PROJECT = 4` |
+| D7 | Fixtures that ran several Tasks of one Project at once now plan each sibling in its own Project through the accepted control ingress (`runtime/tests.rs` `LegacySibling`, `legacy_fixture_with_siblings`, `legacy_store_with_siblings`). No Goal is written outside that ingress. CA2 uses four Projects. The native cap test keeps its same-Project sibling for the `project` case only |
+| D8 | `project::effective_config` refuses a stored value ≠ 1 with `ProjectLimitUnsupported`; README example `max_tasks_per_project = 1` |
+
+### Controls
+
+| Control | Test | Result |
+| --- | --- | --- |
+| C-S2a | `runtime/installation/tests/project_limit.rs` `c_s2a_candidate_never_lists_second_task_while_first_is_occupied` | pass |
+| C-S2a2 | `c_s2a2_final_claim_refuses_second_task_typed`: B's key read through the production reader, A claims, B evaluated under the normal admission guard | pass. `DriverCapacityUnavailable { Project }`, no Driver row or claim audit for B |
+| C-S2a3 | `c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten` | pass. Only supported Projects listed; stored rows unchanged |
+| D3 guard | `d3_plan_guard_refuses_stored_legacy_limit_without_writes` | pass |
+| D4 | `d4_status_reports_stored_legacy_limit_read_only_until_repair` | pass. Accepted Goal and proposal both report; unchanged across `reconcile_runtime_attention`; gone after repair |
+| C-S2b | `success.rs` `sc10_four_projects_close_independently`; `activation/composition.rs` `ca2_four_tasks_two_projects_retain_own_scope_and_roster` (four Projects) | pass |
+| C-S2c | `state/execution/tests.rs` `c_s2c_active_task_reviewers_run_concurrently_under_project_limit_of_one`: two Reviewer leases for the active Task, another Project admitted beside them, a second same-Project Task waits on `Capacity` | pass |
+| C-S2d | `config.rs` `c_s2d_runtime_limit_other_than_one_is_refused_typed`, `c_s2d_overlay_limit_other_than_one_is_refused_before_mutation`; `tests/cli.rs` `c_s2d_limits_other_than_one_are_refused_without_state`; `tests/project.rs` `c_s2d_registration_refuses_other_limits_and_only_explicit_one_repairs` | pass |
+| C-S2e | `tests/project.rs` `c_s2e_effective_config_refuses_stored_legacy_limit_until_explicit_repair` (legacy row through the production `put_project`) | pass |
+
+### Mutants (each restored; tree clean)
+
+| Mutant | Detected by |
+| --- | --- |
+| Claim Project bound 2 | C-S2a2 FAIL |
+| Candidate bound 2 | C-S2a FAIL |
+| Unchecked copy restored in `effective_config` | C-S2e FAIL |
+| Quota own-Task exemption dropped | C-S2c FAIL |
+| Native configured global cap ignored | `configured_global_provider_alias_and_project_caps_wait_before_native_spawn` (global) FAIL — the sibling is in another Project, so the Project limit cannot hide it |
