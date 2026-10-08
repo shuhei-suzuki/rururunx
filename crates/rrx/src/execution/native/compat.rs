@@ -80,7 +80,7 @@ pub(super) fn qualify_compat_static(
         unsupported("native compatibility profile unsupported")
     );
     let pin = match f.provider {
-        "claude" => "2.1.283",
+        "claude" => "2.1.294",
         "codex" => "codex-cli 0.160.0",
         _ => return Err(unsupported("native compatibility provider unsupported")),
     };
@@ -136,7 +136,7 @@ impl NativeCompatStatic {
         );
         version.closed()?;
         let profile = match self.declaration.config.cli_version.as_str() {
-            "2.1.283" => "claude-2.1.283",
+            "2.1.294" => "claude-2.1.294",
             "codex-cli 0.160.0" => "codex-cli-0.160.0",
             _ => return Err(unsupported("compatibility version unsupported")),
         };
@@ -250,7 +250,7 @@ mod primitive_tests {
     fn declaration(writes: NativeHookWrites) -> NativeCompatConfig {
         NativeCompatConfig {
             profile: "rrx-native-inherited-v1".into(),
-            cli_version: "2.1.283".into(),
+            cli_version: "2.1.294".into(),
             settings: "inherited".into(),
             user_hooks: vec![crate::config::NativeUserHook {
                 label: "hook".into(),

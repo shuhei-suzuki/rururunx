@@ -6,7 +6,7 @@ import sys
 import time
 
 if sys.argv[1:] == ["--version"]:
-    print("codex-cli 0.160.0" if PROVIDER == "codex" else "2.1.283 (Claude Code)")
+    print("codex-cli 0.160.0" if PROVIDER == "codex" else "2.1.294 (Claude Code)")
     sys.exit(0)
 
 def send(value):

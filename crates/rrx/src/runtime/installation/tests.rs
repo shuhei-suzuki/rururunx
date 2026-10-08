@@ -16,6 +16,7 @@ mod epoch_fence;
 mod fm_d2;
 mod fm_rb;
 mod nonsuccess;
+mod pin;
 mod preparation;
 mod success;
 mod sweep;
@@ -66,7 +67,7 @@ fn fixture_mode(
                 compatibility: declared.then(|| NativeCompatConfig {
                     profile: "rrx-native-inherited-v1".into(),
                     cli_version: if provider == "claude" {
-                        "2.1.283"
+                        "2.1.294"
                     } else {
                         "codex-cli 0.160.0"
                     }

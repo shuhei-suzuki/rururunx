@@ -224,7 +224,7 @@ pub fn claude_window(value: &Value, at: i64) -> Result<Option<QuotaObservation>>
         used_percent: used,
         resets_at: reset,
         observed_at: at,
-        source_version: "Claude Code 2.1.283/rate_limit_event (fixture conformance)".into(),
+        source_version: "Claude Code 2.1.294/rate_limit_event".into(),
         confirmed_subscription: status == QuotaStatus::Exhausted,
     }))
 }

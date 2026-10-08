@@ -147,7 +147,7 @@ impl NativeVersionObservation {
         let text = std::str::from_utf8(&self.stdout).ok()?;
         match self.plan.actor().launch().allocation().facts().provider {
             "codex" if qualified_codex_phase_version(text) => Some("codex-cli-0.160.0"),
-            "claude" if claude_wire::verify_version(text).is_ok() => Some("claude-2.1.283"),
+            "claude" if claude_wire::verify_version(text).is_ok() => Some("claude-2.1.294"),
             _ => None,
         }
     }

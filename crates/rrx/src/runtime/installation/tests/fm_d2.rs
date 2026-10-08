@@ -62,7 +62,7 @@ fn recording_fixture(provider: &str) -> ControlFixture {
                 compatibility: Some(NativeCompatConfig {
                     profile: "rrx-native-inherited-v1".into(),
                     cli_version: if provider == "claude" {
-                        "2.1.283"
+                        "2.1.294"
                     } else {
                         "codex-cli 0.160.0"
                     }
