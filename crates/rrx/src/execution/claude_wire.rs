@@ -27,7 +27,7 @@ pub(super) fn verify_version(version: &str) -> AdapterResult<()> {
     // A pinned local version/schema baseline, not native Agent conformance.
     // Real account/settings/hook qualification belongs to Phase 3. Future
     // versions require a capability probe, rather than inheriting permissions.
-    if version.split_whitespace().next() != Some("2.1.283") {
+    if version.split_whitespace().next() != Some("2.1.294") {
         return Err(failure(
             ErrorKind::UnsupportedCapability,
             "unverified native Claude wire version",
@@ -464,6 +464,23 @@ fn capacity_text(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Pin 2.1.294 (owner decision A1): exactly that first token qualifies.
+    #[test]
+    fn version_gate_accepts_only_the_exact_pinned_release() {
+        for ok in ["2.1.294 (Claude Code)", "2.1.294", "2.1.294\n"] {
+            assert!(verify_version(ok).is_ok(), "{ok:?}");
+        }
+        for refused in [
+            "2.1.283 (Claude Code)",
+            "2.1.293 (Claude Code)",
+            "2.1.2940 (Claude Code)",
+            "2.1.29",
+            "v2.1.294",
+            "",
+        ] {
+            assert!(verify_version(refused).is_err(), "{refused:?}");
+        }
+    }
     #[test]
     fn injected_failures_do_not_replace_human_proof_and_midturn_user_does_not_hang() {
         let path = std::path::Path::new("/owned");

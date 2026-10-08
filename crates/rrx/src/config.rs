@@ -423,7 +423,7 @@ mod tests {
     #[test]
     fn nongrant_native_declaration_placement_closed_writes_and_canonical_bounds() {
         for input in [
-            "[agents.a.compatibility]\nprofile='rrx-native-inherited-v1'\ncli_version='2.1.283'\nsettings='inherited'",
+            "[agents.a.compatibility]\nprofile='rrx-native-inherited-v1'\ncli_version='2.1.294'\nsettings='inherited'",
             "[[native.required_hooks]]\npath='hook.sh'\nwrites='output_only'",
             "[[native.required_hooks]]\npath='hook.sh'\nwrites='none'\nextra=true",
         ] {
@@ -452,7 +452,7 @@ mod tests {
         )
         .unwrap();
         assert!(Config::load(Some(&path), None).is_err());
-        let raw = "profile='rrx-native-inherited-v1'\ncli_version='2.1.283'\nsettings='inherited'\n[[user_hooks]]\nlabel='ok'\nreference='opaque'\nwrites='none'";
+        let raw = "profile='rrx-native-inherited-v1'\ncli_version='2.1.294'\nsettings='inherited'\n[[user_hooks]]\nlabel='ok'\nreference='opaque'\nwrites='none'";
         let mut declaration: NativeCompatConfig = toml::from_str(raw).unwrap();
         let bytes = declaration.canonical().unwrap();
         assert_eq!(bytes, declaration.clone().canonical().unwrap());
