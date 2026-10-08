@@ -463,6 +463,23 @@ fn assert_refusal(error: &anyhow::Error, expected: &NativePreflightRefusal) {
         "FM F2: typed refusal {expected:?}: {error:#}"
     );
 }
+/// FM §8.4 S4-W: the generic Goal writer refuses any Goal change on legacy
+/// rows; the Goal is unchanged.
+fn assert_goal_change_refused(store: &mut Store, mut goal: Goal) {
+    let before = serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap();
+    let refused = store.put_goal(&mut goal).unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("Goal changes require trusted typed control ingress"),
+        "FM S4-W: {refused:#}"
+    );
+    assert_eq!(
+        serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap(),
+        before,
+        "FM S4-W: Goal unchanged"
+    );
+}
 struct Fixture {
     dir: crate::runtime::LegacyFixture,
     _owner: Arc<crate::execution::RuntimeOwner>,
@@ -821,6 +838,11 @@ async fn source_scope_and_concurrent_task_changes_fail_closed_without_orphan_con
             .is_empty()
     );
 }
+/// FM §8.4 S4 split. A blocked Project cannot progress or publish Context.
+/// The former paused-Goal half is refused on legacy rows (S4-W); it is kept
+/// as a Task-level change on the same legacy row: the Task cancelled through
+/// the typed Workflow `cancel` cannot progress either, and no executor
+/// launches.
 #[tokio::test]
 async fn blocked_project_and_paused_goal_cannot_progress_or_publish_context() {
     let fixture = Fixture::new(WorkflowClass::Quick);
@@ -843,12 +865,14 @@ async fn blocked_project_and_paused_goal_cannot_progress_or_publish_context() {
         .unwrap()
         .put_project(&mut project)
         .unwrap();
+    let blocked = fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap_err();
     assert!(
-        fixture
-            .engine
-            .step(fixture.task.id, BTreeMap::new())
-            .await
-            .is_err()
+        blocked.to_string().contains("Project inactive"),
+        "{blocked:#}"
     );
     assert_eq!(
         fixture
@@ -870,14 +894,28 @@ async fn blocked_project_and_paused_goal_cannot_progress_or_publish_context() {
         let mut store = fixture.store.lock().unwrap();
         let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
         goal.state = GoalState::Paused;
-        store.put_goal(&mut goal).unwrap();
+        assert_goal_change_refused(&mut store, goal);
     }
+    fixture
+        .engine
+        .cancel(fixture.task.id, "Task-level stop".into())
+        .unwrap();
+    let inactive = fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap_err();
     assert!(
+        inactive.to_string().contains("Task terminal"),
+        "{inactive:#}"
+    );
+    assert_eq!(
         fixture
             .engine
-            .step(fixture.task.id, BTreeMap::new())
-            .await
-            .is_err()
+            .snapshot(fixture.task.id)
+            .unwrap()
+            .context_version,
+        version
     );
     assert!(fixture.executor.launches.lock().unwrap().is_empty());
 }
@@ -1386,6 +1424,14 @@ async fn default_is_fallback_not_a_floor_and_finished_workflow_cannot_reopen() {
     );
     fixture.to_f2().await;
 }
+/// FM §8.4 S4 split. An Issue gate's own Task write (issue, next action,
+/// blockers; legacy writer, S5) is preserved by the Workflow transition. The
+/// former concurrent Goal constraint update is refused on legacy rows
+/// (S4-W); the concurrent owner update is kept as a Project registry change
+/// (`name`, §8.2), which the transition also preserves. The Worktree port
+/// binds a previously unbound Task, now the accepted plan's unbound Task
+/// bound through the genuine `WorktreeManager::create` (no forged
+/// `feature/fresh-task` binding, §8.1.4).
 #[tokio::test]
 async fn gate_owner_updates_preserve_issue_binding_goal_metadata_and_task_blockers() {
     let fixture = Fixture::new(WorkflowClass::Standard);
@@ -1394,7 +1440,7 @@ async fn gate_owner_updates_preserve_issue_binding_goal_metadata_and_task_blocke
         .initialize(fixture.task.id, None)
         .await
         .unwrap();
-    // Exercise an actual Issue port Task write and a concurrent Goal update.
+    // Exercise an actual Issue port Task write and a concurrent owner update.
     let store = fixture.store.clone();
     *fixture.gates.on_complete.lock().unwrap() = Some(Box::new(move |invocation| {
         assert_eq!(invocation.phase, Phase::Issue);
@@ -1406,7 +1452,10 @@ async fn gate_owner_updates_preserve_issue_binding_goal_metadata_and_task_blocke
         store.put_task(&mut task).unwrap();
         let mut goal = store.goal(task.goal_id).unwrap().unwrap();
         goal.constraints.push("concurrent constraint".into());
-        store.put_goal(&mut goal).unwrap();
+        assert_goal_change_refused(&mut store, goal);
+        let mut project = store.project(task.project_id).unwrap().unwrap();
+        project.name = "concurrent registry name".into();
+        store.put_project(&mut project).unwrap();
         None
     }));
     assert!(matches!(
@@ -1429,54 +1478,51 @@ async fn gate_owner_updates_preserve_issue_binding_goal_metadata_and_task_blocke
     assert_eq!(task.issue, Some(42));
     assert_eq!(task.next_action.as_deref(), Some("external next action"));
     assert_eq!(task.blockers, ["unrelated blocker"]);
-    // Worktree port can bind a previously unbound Task through the normal Store.
-    let fixture = Fixture::new(WorkflowClass::Quick);
-    let mut task = fixture.task.clone();
-    task.worktree = None;
-    task.branch = None;
-    // Existing assigned bindings are immutable, so use a fresh unbound Task.
-    task.id = TaskId::new();
-    task.version = 0;
-    fixture.store.lock().unwrap().put_task(&mut task).unwrap();
-    let sources = Arc::new(Sources::new(task.scope()));
-    let gates = Arc::new(Gates::new());
-    let store = fixture.store.clone();
-    let path = fixture.project.worktree_root.join("fresh-task");
-    let assigned = path.clone();
-    *gates.on_complete.lock().unwrap() = Some(Box::new(move |invocation| {
-        let mut store = store.lock().unwrap();
-        let mut task = store.task(invocation.task.id).unwrap().unwrap();
-        task.worktree = Some(assigned);
-        task.branch = Some("feature/fresh-task".into());
-        store.put_task(&mut task).unwrap();
-        None
-    }));
-    let engine = WorkflowEngine::new(
-        fixture.store.clone(),
-        Arc::new(AgentRegistry::default()),
-        fixture.config,
-        sources,
-        gates,
-    )
-    .unwrap();
-    engine.initialize(task.id, None).await.unwrap();
-    assert!(matches!(
-        engine.step(task.id, BTreeMap::new()).await.unwrap(),
-        StepResult::Completed {
-            phase: Phase::Worktree
-        }
-    ));
     assert_eq!(
         fixture
             .store
             .lock()
             .unwrap()
-            .task(task.id)
+            .project(task.project_id)
             .unwrap()
             .unwrap()
-            .worktree,
-        Some(path)
+            .name,
+        "concurrent registry name"
     );
+    // Worktree port can bind a previously unbound Task through the normal Store.
+    let fixture = Fixture::with_binding(WorkflowClass::Quick, false);
+    let task = fixture.task.clone();
+    assert!(
+        task.worktree.is_none() && task.branch.is_none(),
+        "SETUP: unbound"
+    );
+    let store = fixture.store.clone();
+    let assigned = Arc::new(Mutex::new(None));
+    let created = assigned.clone();
+    *fixture.gates.on_complete.lock().unwrap() = Some(Box::new(move |invocation| {
+        let mut store = store.lock().unwrap();
+        crate::git::WorktreeManager::create(&mut store, invocation.task.id).unwrap();
+        let task = store.task(invocation.task.id).unwrap().unwrap();
+        *created.lock().unwrap() = Some((task.worktree, task.branch));
+        None
+    }));
+    fixture.engine.initialize(task.id, None).await.unwrap();
+    assert!(matches!(
+        fixture.engine.step(task.id, BTreeMap::new()).await.unwrap(),
+        StepResult::Completed {
+            phase: Phase::Worktree
+        }
+    ));
+    let (worktree, branch) = assigned.lock().unwrap().clone().expect("Worktree port ran");
+    let bound = fixture
+        .store
+        .lock()
+        .unwrap()
+        .task(task.id)
+        .unwrap()
+        .unwrap();
+    assert!(worktree.is_some() && branch.is_some());
+    assert_eq!((bound.worktree, bound.branch), (worktree, branch));
 }
 /// FM §8.3 F2 (R). Former subject: Commit publishes the new HEAD before Tests, Review and PR without a restart. The legacy Engine
 /// (no production caller, S1) now stops at its first legacy-Engine step into a Native phase:
@@ -2013,6 +2059,13 @@ async fn native_gate_requires_persisted_owned_status_and_sessionless_completion_
     fixture.f2_refused().await;
 }
 
+/// FM §8.4 S4 split. A cancelled Task with an unknown gate outcome cannot
+/// release its terminal reservation without explicit recovery, and its
+/// Project cannot be removed. The former terminal-Goal step is refused on
+/// legacy rows (S4-W), so removal is refused by the still-active Goal. The
+/// former subject "the unknown gate's records keep the Project reserved
+/// after the Goal is terminal" has no legacy producer for a terminal Goal;
+/// that half is R and the loss is recorded here (no new path is added).
 #[tokio::test]
 async fn cancelled_unknown_gate_keeps_project_reserved_after_goal_terminal() {
     let fixture = Fixture::new(WorkflowClass::Quick);
@@ -2048,15 +2101,15 @@ async fn cancelled_unknown_gate_keeps_project_reserved_after_goal_terminal() {
     let mut store = fixture.store.lock().unwrap();
     let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
     goal.state = GoalState::Cancelled;
-    store.put_goal(&mut goal).unwrap();
+    assert_goal_change_refused(&mut store, goal);
     let mut project = store.project(fixture.project.id).unwrap().unwrap();
     project.state = ProjectState::Removed;
+    let refused = store.put_project(&mut project).unwrap_err();
     assert!(
-        store
-            .put_project(&mut project)
-            .unwrap_err()
+        refused
             .to_string()
-            .contains("active records")
+            .contains("cannot remove project with active goals"),
+        "{refused:#}"
     );
 }
 

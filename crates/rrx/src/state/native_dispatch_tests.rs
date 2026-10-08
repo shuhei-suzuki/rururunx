@@ -57,6 +57,11 @@ fn fixture() -> (
     };
     (directory, store, project, goal, task, session)
 }
+/// FM §8.4 S4 split. Project (0) and Task (2) owner changes on an
+/// independent connection still fence the dispatch. The Goal owner change
+/// (1) is not expressible on legacy rows: the generic Goal writer refuses
+/// it on the independent connection (S4-W), the Goal is unchanged, and that
+/// half is R (no Goal-version producer exists on these rows).
 #[test]
 fn native_dispatch_checks_each_owner_version_across_independent_connections() {
     for changed in 0..3 {
@@ -72,8 +77,21 @@ fn native_dispatch_checks_each_owner_version_across_independent_connections() {
                 other.put_project(&mut project).unwrap();
             }
             1 => {
+                let before = serde_json::to_value(&goal).unwrap();
                 goal.objective = "changed".into();
-                other.put_goal(&mut goal).unwrap();
+                let refused = other.put_goal(&mut goal).unwrap_err();
+                assert!(
+                    refused
+                        .to_string()
+                        .contains("Goal changes require trusted typed control ingress"),
+                    "FM S4-W: {refused:#}"
+                );
+                assert_eq!(
+                    serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap(),
+                    before,
+                    "FM S4-W: Goal unchanged"
+                );
+                continue;
             }
             _ => {
                 task.title = "changed".into();

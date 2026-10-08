@@ -2071,6 +2071,29 @@ mod tests {
         );
     }
 
+    /// FM §8.4 S4 split: the generic Goal writer refuses any Goal change on
+    /// legacy rows (S4-W); the Goal is unchanged.
+    fn assert_goal_change_refused(state: &mut crate::state::Store, mut goal: crate::domain::Goal) {
+        let before = serde_json::to_value(state.goal(goal.id).unwrap().unwrap()).unwrap();
+        let refused = state.put_goal(&mut goal).unwrap_err();
+        assert!(
+            refused
+                .to_string()
+                .contains("Goal changes require trusted typed control ingress"),
+            "FM S4-W: {refused:#}"
+        );
+        assert_eq!(
+            serde_json::to_value(state.goal(goal.id).unwrap().unwrap()).unwrap(),
+            before,
+            "FM S4-W: Goal unchanged"
+        );
+    }
+
+    /// FM §8.4 S4 split. Former owner change: the Goal objective during the
+    /// gated Git preflight. That Goal change is refused on legacy rows
+    /// (S4-W); the owner change is kept as a Task-level change on the same
+    /// legacy row (S5), which the preflight detects as a `StateConflict`
+    /// before the executor spawns.
     #[tokio::test]
     async fn ownership_change_during_native_preflight_prevents_executor_launch() {
         let (temp, store, project, task, worktree) = preflight_fixture();
@@ -2117,7 +2140,10 @@ mod tests {
             let mut state = store.lock().unwrap();
             let mut goal = state.goal(scope.goal_id.unwrap()).unwrap().unwrap();
             goal.objective = "changed during preflight".into();
-            state.put_goal(&mut goal).unwrap();
+            assert_goal_change_refused(&mut state, goal);
+            let mut task = state.task(scope.task_id.unwrap()).unwrap().unwrap();
+            task.title = "changed during preflight".into();
+            state.put_task(&mut task).unwrap();
         }
         std::fs::write(release, "ready").unwrap();
         let result = tokio::time::timeout(Duration::from_secs(5), launch)
@@ -2158,6 +2184,11 @@ mod tests {
         assert!(output.stdout.is_empty(), "inspector child must be reaped");
     }
 
+    /// FM §8.4 S4 split. Former lifecycle change: a Goal pause after the
+    /// persisted validation. The Goal pause is refused on legacy rows (S4-W);
+    /// the lifecycle change is kept as a Task-level change on the same legacy
+    /// row (S5, the Task moves to WaitingHuman), which the Git snapshot
+    /// detects from the original versions.
     #[tokio::test]
     async fn lifecycle_change_before_git_snapshot_is_detected_from_original_versions() {
         let (_temp, store, project, task, worktree) = preflight_fixture();
@@ -2167,7 +2198,10 @@ mod tests {
             let mut store = store.lock().unwrap();
             let mut goal = store.goal(task.goal_id).unwrap().unwrap();
             goal.state = crate::domain::GoalState::Paused;
-            store.put_goal(&mut goal).unwrap();
+            assert_goal_change_refused(&mut store, goal);
+            let mut task = store.task(task.id).unwrap().unwrap();
+            task.state = crate::domain::TaskState::WaitingHuman;
+            store.put_task(&mut task).unwrap();
         }
         assert_eq!(
             validate_git(

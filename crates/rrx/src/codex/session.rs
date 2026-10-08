@@ -4455,16 +4455,37 @@ mod tests {
         peer.abort();
     }
 
+    /// FM §8.4 S4 split. A changed durable owner, or an inactive lifecycle,
+    /// prevents the Native operation grant. The former Goal pause is not
+    /// expressible on legacy rows: the generic Goal writer refuses it (S4-W,
+    /// Goal unchanged). The inactive-lifecycle half is kept as a Task-level
+    /// change on the same legacy row (S5): the cancelled Task takes the same
+    /// non-fatal preflight refusal (`Ok(false)`) as the paused Goal did.
     #[tokio::test]
     async fn changed_durable_owner_or_paused_goal_prevents_native_operation_grant() {
-        for paused in [false, true] {
+        for inactive in [false, true] {
             let mut fixture = ApprovalFixture::new(true).await;
             {
                 let mut store = fixture.reservation.store.lock().unwrap();
-                if paused {
-                    let mut goal = fixture.authority.snapshot.goal.clone().unwrap();
+                if inactive {
+                    let before = fixture.authority.snapshot.goal.clone().unwrap();
+                    let mut goal = before.clone();
                     goal.state = crate::domain::GoalState::Paused;
-                    store.put_goal(&mut goal).unwrap();
+                    let refused = store.put_goal(&mut goal).unwrap_err();
+                    assert!(
+                        refused
+                            .to_string()
+                            .contains("Goal changes require trusted typed control ingress"),
+                        "FM S4-W: {refused:#}"
+                    );
+                    assert_eq!(
+                        serde_json::to_value(store.goal(before.id).unwrap().unwrap()).unwrap(),
+                        serde_json::to_value(&before).unwrap(),
+                        "FM S4-W: Goal unchanged"
+                    );
+                    let mut task = fixture.authority.snapshot.task.clone().unwrap();
+                    task.state = crate::domain::TaskState::Cancelled;
+                    store.put_task(&mut task).unwrap();
                 } else {
                     let mut session = fixture.reservation.session.clone();
                     session.state = SessionState::Stopped;
@@ -4476,12 +4497,20 @@ mod tests {
             let (mut rpc, mut wire, peer) = rpc_peer().await;
             let (answer, result) = reply(OperationDecision::Approve, "turn");
             let outcome = fixture.answer(&mut rpc, answer).await;
-            if paused {
+            if inactive {
                 assert!(!outcome.unwrap());
             } else {
                 assert!(outcome.is_err());
             }
-            assert!(result.await.unwrap().is_err());
+            let refused = result.await.unwrap().unwrap_err();
+            if inactive {
+                assert!(
+                    refused
+                        .to_string()
+                        .contains("native Task lifecycle is inactive"),
+                    "{refused}"
+                );
+            }
             assert_eq!(fixture.intents(), 0);
             assert!(
                 !fixture

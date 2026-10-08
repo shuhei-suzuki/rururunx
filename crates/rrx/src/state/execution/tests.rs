@@ -1334,6 +1334,28 @@ fn stale_callbacks_and_generic_task_cancellation_cannot_reopen_authority() {
     assert!(!old.native_effects_open && !old.result_finalization_open);
 }
 
+/// FM §8.4 S4-W: the generic Goal writer refuses any Goal change on legacy
+/// rows; the Goal is unchanged.
+fn assert_goal_change_refused(store: &mut Store, mut goal: Goal) {
+    let before = serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap();
+    let refused = store.put_goal(&mut goal).unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("Goal changes require trusted typed control ingress"),
+        "FM S4-W: {refused:#}"
+    );
+    assert_eq!(
+        serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap(),
+        before,
+        "FM S4-W: Goal unchanged"
+    );
+}
+
+/// FM §8.4 S4 split. The former Goal pause/resume is refused on legacy rows
+/// (S4-W). The pause subject is kept as a Project registration change on
+/// the same rows: a blocked Project fences the Unit, retirement is still
+/// allowed, and re-registering the Project cannot revive the retired Unit.
 #[test]
 fn retirement_is_allowed_after_goal_pause_but_resume_cannot_revive_unit() {
     let (_fixture, mut store, t, epoch) = fixture();
@@ -1342,15 +1364,20 @@ fn retirement_is_allowed_after_goal_pause_but_resume_cannot_revive_unit() {
         .unwrap();
     let mut goal = store.goal(t.goal_id).unwrap().unwrap();
     goal.state = GoalState::Paused;
-    store.put_goal(&mut goal).unwrap();
+    assert_goal_change_refused(&mut store, goal);
+    let mut project = store.project(t.project_id).unwrap().unwrap();
+    project.state = ProjectState::Blocked;
+    project.blocked_reason = Some("fixture pause".into());
+    store.put_project(&mut project).unwrap();
     assert!(
         store
             .validate_execution(&unit.authority(), true, false)
             .is_err()
     );
     store.retire_execution(&unit.authority(), false).unwrap();
-    goal.state = GoalState::Running;
-    store.put_goal(&mut goal).unwrap();
+    project.state = ProjectState::Registered;
+    project.blocked_reason = None;
+    store.put_project(&mut project).unwrap();
     assert!(
         store
             .validate_execution(&unit.authority(), true, false)
@@ -1595,22 +1622,37 @@ fn exhaustion_without_reset_recovers_only_through_the_current_pool_probe() {
     );
 }
 
+/// FM §8.4 S4 split. The former Goal bookkeeping (blockers) and Goal
+/// instruction (constraints) changes are refused on legacy rows (S4-W). Both
+/// subjects are kept as Project registry changes on the same rows (§8.2):
+/// `name` is registry bookkeeping outside `governing_digest`, so the Unit
+/// stays valid; `environment_refs` is in the digest, so it fences effects
+/// while historical retirement stays allowed.
 #[test]
 fn governing_instruction_change_fences_effects_but_preserves_historical_retirement() {
     let (_fixture, mut store, t, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&t, epoch), t.version)
         .unwrap();
-    let mut goal = store.goal(t.goal_id).unwrap().unwrap();
-    goal.blockers.push("bookkeeping".into());
-    store.put_goal(&mut goal).unwrap();
+    let goal = store.goal(t.goal_id).unwrap().unwrap();
+    let mut bookkeeping = goal.clone();
+    bookkeeping.blockers.push("bookkeeping".into());
+    assert_goal_change_refused(&mut store, bookkeeping);
+    let mut instruction = goal.clone();
+    instruction
+        .constraints
+        .push("new accepted constraint".into());
+    assert_goal_change_refused(&mut store, instruction);
+    let mut project = store.project(t.project_id).unwrap().unwrap();
+    project.name = "registry bookkeeping".into();
+    store.put_project(&mut project).unwrap();
     assert!(
         store
             .validate_execution(&unit.authority(), true, false)
             .is_ok()
     );
-    goal.constraints.push("new accepted constraint".into());
-    store.put_goal(&mut goal).unwrap();
+    project.environment_refs.push("NEW_ACCEPTED_ENV".into());
+    store.put_project(&mut project).unwrap();
     assert!(
         store
             .validate_execution(&unit.authority(), true, false)
