@@ -602,6 +602,104 @@ fn new_generation_closes_old_reviewers_without_erasing_known_work_or_artifacts()
     );
 }
 
+/// C-S2c (R4.1, R4.3): the fixed Project limit of 1 counts distinct Tasks, so
+/// the active Task's two reviewers hold leases at once, a Task in another
+/// Project is admitted beside them, and a second Task of the same Project waits.
+#[test]
+fn c_s2c_active_task_reviewers_run_concurrently_under_project_limit_of_one() {
+    let (fixture, mut store, task, epoch) = fixture_with_siblings(&["c-s2c-other"]);
+    let unit = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    let unit = store
+        .finish_execution(
+            &unit.authority(),
+            WorkOutcome::Success,
+            Disposition::Completed,
+        )
+        .unwrap();
+    // Ledger-only artifact, as in the generation control above.
+    let mut artifact = ResultArtifact {
+        id: ArtifactId::new(),
+        scope: unit.scope.clone(),
+        unit_id: unit.id,
+        state: ArtifactState::Staging,
+        revision: "c".repeat(40),
+        base_sha: unit.base_sha.clone(),
+        object_format: "sha1".into(),
+        repository: PathBuf::from("/tmp/fixture-retained.git"),
+        manifest: PathBuf::from("/tmp/fixture-manifest.json"),
+        manifest_sha256: String::new(),
+        dependencies: std::collections::BTreeMap::new(),
+        version: 1,
+        created_at: now_ms(),
+    };
+    store.stage_result(&unit.authority(), &artifact).unwrap();
+    artifact.state = ArtifactState::Ready;
+    artifact.version = 2;
+    artifact.manifest_sha256 = "d".repeat(64);
+    store.ready_result(&artifact, 1).unwrap();
+    let current_task = store.task(task.id).unwrap().unwrap();
+    store
+        .publish_execution_result(&unit.authority(), &artifact, current_task.version)
+        .unwrap();
+    let current_task = store.task(task.id).unwrap().unwrap();
+    let admit = |store: &mut Store, unit: &ExecutionUnit| {
+        store
+            .reserve_execution_quota(&unit.authority(), "codex", "unknown", 6, 6, 6, now_ms())
+            .unwrap()
+    };
+    let mut reviewers = Vec::new();
+    for _ in 0..2 {
+        let mut spec = draft(&current_task, epoch);
+        spec.kind = UnitKind::Reviewer;
+        spec.artifact_id = Some(artifact.id);
+        spec.base_sha = artifact.revision.clone();
+        spec.branch = None;
+        let review = store.reserve_execution(spec, current_task.version).unwrap();
+        assert_eq!(
+            admit(&mut store, &review),
+            QuotaAdmission::Admitted,
+            "C-S2c: the active Task's reviewer was serialized"
+        );
+        reviewers.push(review);
+    }
+    let other = fixture.siblings[0].clone();
+    assert_ne!(other.project_id, task.project_id);
+    let other_unit = store
+        .reserve_execution(draft(&other, epoch), other.version)
+        .unwrap();
+    assert_eq!(
+        admit(&mut store, &other_unit),
+        QuotaAdmission::Admitted,
+        "C-S2c: another Project waited on this Project's limit"
+    );
+    let mut second = Task::new(
+        task.project_id,
+        task.goal_id,
+        "c-s2c second".into(),
+        "codex".into(),
+    );
+    store.put_task(&mut second).unwrap();
+    let second_unit = store
+        .reserve_execution(draft(&second, epoch), second.version)
+        .unwrap();
+    assert!(
+        matches!(
+            admit(&mut store, &second_unit),
+            QuotaAdmission::Waiting {
+                reason: WaitReason::Capacity,
+                ..
+            }
+        ),
+        "C-S2c: a second Task of the same Project was admitted"
+    );
+    for review in &reviewers {
+        let unit = store.execution_unit(review.id).unwrap();
+        assert!(unit.native_effects_open, "C-S2c: reviewer closed");
+    }
+}
+
 #[test]
 fn a_live_executor_cannot_be_replaced_or_leak_its_capacity_through_failed_reservation() {
     let (_fixture, mut store, task, epoch) = fixture();
