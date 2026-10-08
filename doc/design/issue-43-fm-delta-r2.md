@@ -1,4 +1,4 @@
-# Issue 43 FM delta R2: recovery_tests producer, and test-only seams left without callers — draft
+# Issue 43 FM delta R2: recovery_tests producer, and test-only seams left without callers — approved (B, R2-2)
 
 Base: `fc03baf` (FM HOW R3, §8.3 and §9 of `issue-43-fixture-migration-design.md`; delta R1 approved in 6051372522). This delta adds no new class or guard. It answers two questions that the approved R3 rows leave open once they are implemented:
 
@@ -54,10 +54,29 @@ Then a real restart, as in Q2. There is no legacy `put_goal` (S4) and no legacy 
 
 Decided: D4 (a), convert to R now. Each test keeps its setup (profile admission, verifier, engine) up to the refused step into Implement inside `publish()`. It asserts the typed `ManagedBindingUnavailable` and the §8.3 F2 preimage. Its doc comment names the former subject and its owner, SC-N (the Commit/Tests/Review continuation).
 
-**Decision R2-2 (for review).** `ManagedVerifier::{before_commands, before_completion}` and their `cfg(test)` fields and read sites (`execution/verification/mod.rs:210-246, 483, 527`) lose all callers.
-- **Recommended:** delete these `cfg(test)` items. SC-N re-adds a pause seam with its D2 Tests consumer.
-- There is no keep option without `allow(dead_code)`.
+**Decision R2-2 (approved, 6052644734).** `ManagedVerifier::{before_commands, before_completion}` and their `cfg(test)` fields and read sites (`execution/verification/mod.rs:210-246, 483, 527`) lose all callers in the R conversion chosen here.
+- **Decided:** delete these `cfg(test)` items. SC-N re-adds a pause seam with its D2 Tests consumer.
+- The setters need no Artifact or authority, so an R test could still call them before F2 without `allow(dead_code)`. This conversion keeps no such caller, because a seam that is set but never reached proves nothing (L1).
 
 ## 4. Counts
 
 Classes and boundaries are unchanged. R stays at 21 scenarios / 25 boundary assertions (§9), and the 20 deferred tails stay the same. The D4 R conversions (verification 12, managed 5) were already counted in §7.2 R≈66.
+
+## 5. Review outcome (Sol 6052644734) and implementation
+
+| Item | Verdict | Implemented |
+| --- | --- | --- |
+| R2-1 A (keep the #14 port) | ChangesRequired (M1) | — |
+| R2-1 B (delete the port) | Approve | `ef522bc` |
+| R2-2 (delete the verifier seams) | Approve (L1 wording, fixed above) | `eae7052` |
+| Counts and placement | Approve | — |
+
+- **M1 (confirmed at `source_recovery.rs:142`).** Resume returns before it writes the Goal back, so the Goal stays Paused. The port claim requires `GoalState::Running`, so A could not reach the port after RB.
+- **B scope.** Removed: ReconstructedFrame, RecoveryPause, RecoveryGuard, `recover_retained(_inner)`, SourceRecovery, `Store::{begin,accept,abandon}_retained_source_recovery`, and the begin-only `Snapshot.{project,goal}`. Kept: SourceReadBinding, `validate_source_read`/binding validation, the marker-bound refusal, the schema, epoch invalidation, and the Driver Source7 consumer.
+- **Placement.** The R tests are `runtime::installation::tests::fm_rb` (same 7 names), next to the fm_d2 producer, so no module visibility changes. The restart is `ControlFixture::restart` (test module): shutdown, Runtime and owner custody released and awaited, `RuntimeOwner::open` with a new epoch, a new Runtime with the same config, and a new Unix-peer pair.
+- **Ready row.** The settled evaluation is held, the captured manifest is corrupted, then released. The gate observes it without closure. The artifact is still Ready after the reopen, and this is asserted.
+- **Scenario accounting under B.** Each test function runs the RB once per distinct producer. Loop variables that only selected a retired port mode (final [epoch], inflight [modes 1/2], foreign [×3]) are collapsed, because they no longer change the setup.
+  - Executed RB scenarios: 8 (7 Published, 1 Ready).
+  - S5-W assertions: 4.
+  - In §9 units: R recovery 13 → 8 scenarios; boundary assertions RB 13 → 8, S5-W 4.
+  - Deferred #14 tails: 13, unchanged (the subjects are not proven).
