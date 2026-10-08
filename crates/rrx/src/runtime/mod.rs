@@ -126,7 +126,7 @@ mod tests;
 #[cfg(test)]
 pub(crate) use tests::{
     LegacyFixture, LegacyLayout, LegacyTask, accepted_goal_fixture, legacy_fixture,
-    legacy_fixture_blocking, write_historical_copy,
+    legacy_fixture_blocking, legacy_store, migrate_legacy, write_historical_copy,
 };
 
 #[cfg(test)]

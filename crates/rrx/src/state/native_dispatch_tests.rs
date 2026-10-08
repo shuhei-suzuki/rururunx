@@ -1,31 +1,45 @@
 use super::*;
 
-fn fixture() -> (tempfile::TempDir, Store, Project, Goal, Task, Session) {
-    let directory = tempfile::tempdir().unwrap();
-    let mut store = Store::open(&directory.path().join("state.db")).unwrap();
-    let mut project = Project::new(
-        "native".into(),
-        directory.path().to_path_buf(),
-        "fixture".into(),
-        "main".into(),
-    );
-    store.put_project(&mut project).unwrap();
-    let mut goal = Goal::new(
-        project.id,
-        "native".into(),
-        vec![CompletionCriterion {
-            evaluator: Default::default(),
-            id: "done".into(),
-            description: "fixture".into(),
-            satisfied: false,
-            evidence: None,
-        }],
-    );
-    store.put_goal(&mut goal).unwrap();
-    let mut task = Task::new(project.id, goal.id, "native".into(), "native".into());
-    task.worktree = Some(project.worktree_root.join("task"));
-    task.branch = Some("feature/task".into());
-    store.put_task(&mut task).unwrap();
+thread_local! {
+    /// The genuine worktree-creation lock record (released, kept as history)
+    /// of this test's fixture Task; each test runs on its own thread.
+    static CREATED: std::cell::Cell<Option<(RecordId, u64)>> = const { std::cell::Cell::new(None) };
+}
+/// The Task-scoped lock set: the fixture's creation lock plus `extra`.
+fn created(extra: &[(RecordId, u64)]) -> Vec<(RecordId, u64)> {
+    CREATED
+        .with(std::cell::Cell::get)
+        .into_iter()
+        .chain(extra.iter().copied())
+        .collect()
+}
+/// FM §8.1 L: legacy rows (file-backed, migrated); the Task worktree and
+/// branch are the genuine `WorktreeManager::create` ones.
+fn fixture() -> (
+    crate::runtime::LegacyFixture,
+    Store,
+    Project,
+    Goal,
+    Task,
+    Session,
+) {
+    let (directory, mut store) =
+        crate::runtime::legacy_store(vec![crate::runtime::LegacyTask::standard(
+            "native", "native",
+        )]);
+    let task = directory.task();
+    let project = store.project(task.project_id).unwrap().unwrap();
+    let goal = store.goal(task.goal_id).unwrap().unwrap();
+    crate::git::WorktreeManager::create(&mut store, task.id).unwrap();
+    let task = store.task(task.id).unwrap().unwrap();
+    let created = store
+        .records(&task.scope(), RecordKind::WorktreeLock)
+        .unwrap()
+        .into_iter()
+        .map(|r| (r.id, r.version))
+        .collect::<Vec<_>>();
+    assert_eq!(created.len(), 1, "SETUP: one genuine creation lock");
+    CREATED.with(|c| c.set(Some(created[0])));
     let session = Session {
         id: SessionId::new(),
         scope: task.scope(),
@@ -49,7 +63,7 @@ fn native_dispatch_checks_each_owner_version_across_independent_connections() {
         let (directory, mut store, mut project, mut goal, mut task, mut session) = fixture();
         let expected = [project.version, goal.version, task.version];
         let version = store
-            .put_session_if_current(&session, 0, expected, &[])
+            .put_session_if_current(&session, 0, expected, &created(&[]))
             .unwrap();
         let mut other = Store::open(&directory.path().join("state.db")).unwrap();
         match changed {
@@ -71,7 +85,7 @@ fn native_dispatch_checks_each_owner_version_across_independent_connections() {
         let before = store.events(&task.scope(), 0, 100).unwrap().len();
         assert!(matches!(
             store
-                .put_session_if_current(&session, version, expected, &[])
+                .put_session_if_current(&session, version, expected, &created(&[]))
                 .unwrap_err()
                 .downcast_ref::<StateGuardError>(),
             Some(StateGuardError::SnapshotChanged { .. })
@@ -96,7 +110,7 @@ fn native_dispatch_fences_lock_version_aba_and_session_cas() {
     store.put_record(&mut lock).unwrap();
     let locks = [(lock.id, lock.version)];
     let version = store
-        .put_session_if_current(&session, 0, expected, &locks)
+        .put_session_if_current(&session, 0, expected, &created(&locks))
         .unwrap();
     let mut other = Store::open(&directory.path().join("state.db")).unwrap();
     lock.data["active"] = json!(false);
@@ -107,7 +121,7 @@ fn native_dispatch_fences_lock_version_aba_and_session_cas() {
     session.recovery = json!({"prompt_id":"must-not-dispatch","dispatch_intent":{"input_version":1,"prompt_id":"must-not-dispatch"},"private_payload":"must-not-journal"});
     assert!(
         store
-            .put_session_if_current(&session, version, expected, &locks)
+            .put_session_if_current(&session, version, expected, &created(&locks))
             .is_err()
     );
     assert_eq!(
@@ -116,7 +130,7 @@ fn native_dispatch_fences_lock_version_aba_and_session_cas() {
     );
     let current = [(lock.id, lock.version)];
     let next = store
-        .put_session_if_current(&session, version, expected, &current)
+        .put_session_if_current(&session, version, expected, &created(&current))
         .unwrap();
     assert!(next > version);
     let events = store.events(&task.scope(), 0, 100).unwrap();
@@ -132,7 +146,7 @@ fn native_dispatch_fences_lock_version_aba_and_session_cas() {
     assert!(!saved.data.to_string().contains("must-not-journal"));
     assert!(
         store
-            .put_session_if_current(&session, version, expected, &current)
+            .put_session_if_current(&session, version, expected, &created(&current))
             .is_err()
     );
 }
@@ -191,7 +205,7 @@ fn environment_admission_rechecks_live_names_without_foreign_version_tokens() {
         .unwrap();
     let (_foreign_dir, mut foreign) = foreign_environment(&mut store);
     let version = store
-        .put_session_if_current(&session, 0, expected, &[])
+        .put_session_if_current(&session, 0, expected, &created(&[]))
         .unwrap();
     let mut other = Store::open(&directory.path().join("state.db")).unwrap();
     foreign.environment_refs = vec!["GROK_SYNTHETIC_AUTH".into()];
@@ -199,7 +213,13 @@ fn environment_admission_rechecks_live_names_without_foreign_version_tokens() {
     let watermark = store.events(&task.scope(), 0, 100).unwrap().len();
     assert!(matches!(
         store
-            .put_session_with_environment_if_current(&session, version, expected, &[], &policy)
+            .put_session_with_environment_if_current(
+                &session,
+                version,
+                expected,
+                &created(&[]),
+                &policy
+            )
             .unwrap_err()
             .downcast_ref::<StateGuardError>(),
         Some(StateGuardError::EnvironmentAuthority)
@@ -212,7 +232,13 @@ fn environment_admission_rechecks_live_names_without_foreign_version_tokens() {
     foreign.environment_refs = vec!["FOREIGN_UNRELATED".into()];
     other.put_project(&mut foreign).unwrap();
     let next = store
-        .put_session_with_environment_if_current(&session, version, expected, &[], &policy)
+        .put_session_with_environment_if_current(
+            &session,
+            version,
+            expected,
+            &created(&[]),
+            &policy,
+        )
         .unwrap();
     assert_eq!(next, version + 1);
 }
@@ -226,24 +252,36 @@ fn environment_admission_preserves_session_and_parent_guard_precedence() {
     foreign.environment_refs = vec!["GROK_SYNTHETIC_AUTH".into()];
     store.put_project(&mut foreign).unwrap();
     let version = store
-        .put_session_if_current(&session, 0, expected, &[])
+        .put_session_if_current(&session, 0, expected, &created(&[]))
         .unwrap();
     let policy = environment_policy();
     let error = store
-        .put_session_with_environment_if_current(&session, version + 1, expected, &[], &policy)
+        .put_session_with_environment_if_current(
+            &session,
+            version + 1,
+            expected,
+            &created(&[]),
+            &policy,
+        )
         .unwrap_err();
     assert!(
         matches!(error.downcast_ref::<StateGuardError>(), Some(StateGuardError::SnapshotChanged { table, .. }) if table=="records")
     );
     let error = store
-        .put_session_with_environment_if_current(&session, 0, expected, &[], &policy)
+        .put_session_with_environment_if_current(&session, 0, expected, &created(&[]), &policy)
         .unwrap_err();
     assert_eq!(error.to_string(), "snapshot insert failed");
     let mut wrong = session.clone();
     wrong.agent = "rebound".into();
     assert_eq!(
         store
-            .put_session_with_environment_if_current(&wrong, version, expected, &[], &policy)
+            .put_session_with_environment_if_current(
+                &wrong,
+                version,
+                expected,
+                &created(&[]),
+                &policy
+            )
             .unwrap_err()
             .to_string(),
         "session actor/worktree identity is immutable"
@@ -253,7 +291,7 @@ fn environment_admission_preserves_session_and_parent_guard_precedence() {
             &session,
             version,
             [project.version, goal.version, task.version + 1],
-            &[],
+            &created(&[]),
             &policy,
         )
         .unwrap_err();
@@ -379,7 +417,7 @@ fn environment_policy_keeps_blocked_lock_and_lost_guard_precedence() {
                 &session,
                 0,
                 [project.version, goal.version, task.version],
-                &locks,
+                &created(&locks),
                 &environment_policy(),
             )
             .unwrap_err();
@@ -407,7 +445,7 @@ fn own_environment_projection_rejects_invalid_authority_without_changing_native_
         store.put_project(&mut project).unwrap();
         let expected = [project.version, goal.version, task.version];
         let version = store
-            .put_session_if_current(&session, 0, expected, &[])
+            .put_session_if_current(&session, 0, expected, &created(&[]))
             .unwrap();
         store
             .connection
@@ -436,7 +474,13 @@ fn own_environment_projection_rejects_invalid_authority_without_changing_native_
             );
         }
         let error = store
-            .put_session_with_environment_if_current(&session, version, expected, &[], &policy)
+            .put_session_with_environment_if_current(
+                &session,
+                version,
+                expected,
+                &created(&[]),
+                &policy,
+            )
             .unwrap_err();
         if projection.is_array() {
             assert!(matches!(
@@ -463,7 +507,7 @@ fn own_environment_projection_rejects_invalid_authority_without_changing_native_
             &session,
             0,
             [project.version, goal.version, task.version],
-            &[],
+            &created(&[]),
         )
         .unwrap();
     store
@@ -493,7 +537,7 @@ fn own_environment_projection_rejects_invalid_authority_without_changing_native_
             &session,
             version,
             [project.version, goal.version, task.version],
-            &[],
+            &created(&[]),
             &policy,
         )
         .unwrap_err();
@@ -539,7 +583,7 @@ fn environment_transaction_rejects_invalid_own_names_independently_of_caller_sub
     store.put_project(&mut project).unwrap();
     let expected = [project.version, goal.version, task.version];
     let version = store
-        .put_session_if_current(&session, 0, expected, &[])
+        .put_session_if_current(&session, 0, expected, &created(&[]))
         .unwrap();
     let before = store.events(&task.scope(), 0, 100).unwrap().len();
     // Caller LANG remains owned: only own-name validation rejects this authority.
@@ -548,7 +592,7 @@ fn environment_transaction_rejects_invalid_own_names_independently_of_caller_sub
             &session,
             version,
             expected,
-            &[],
+            &created(&[]),
             &environment_policy(),
         )
         .unwrap_err();

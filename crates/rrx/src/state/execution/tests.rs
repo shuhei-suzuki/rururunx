@@ -2,32 +2,25 @@ use super::*;
 use crate::config::WorkflowClass;
 use std::path::PathBuf;
 
-fn fixture() -> (Store, Task, u64) {
-    let mut store = Store::memory().unwrap();
-    let mut p = Project::new(
-        "project".into(),
-        PathBuf::from("/tmp/rrx-source"),
-        "git-local".into(),
-        "main".into(),
-    );
-    store.put_project(&mut p).unwrap();
-    let mut g = Goal::new(
-        p.id,
-        "goal".into(),
-        vec![CompletionCriterion {
-            evaluator: Default::default(),
-            id: "result".into(),
-            description: "accepted commit".into(),
-            evidence: None,
-            satisfied: false,
-        }],
-    );
-    store.put_goal(&mut g).unwrap();
-    let mut t = Task::new(p.id, g.id, "task".into(), "codex".into());
-    t.workflow = WorkflowClass::Quick;
-    store.put_task(&mut t).unwrap();
+thread_local! {
+    /// The fixture Project's worktree root (`draft` places Units under it);
+    /// each test runs on its own thread.
+    static WORKTREE_ROOT: std::cell::RefCell<PathBuf> =
+        std::cell::RefCell::new(PathBuf::from("/tmp/rrx-source/worktree"));
+}
+/// FM §8.1 L: a legacy Quick codex Task (file-backed, migrated rows).
+fn fixture() -> (crate::runtime::LegacyFixture, Store, Task, u64) {
+    let (legacy, mut store) = crate::runtime::legacy_store(vec![crate::runtime::LegacyTask {
+        key: "task",
+        executor: "codex",
+        workflow: WorkflowClass::Quick,
+        risk: crate::domain::RiskClass::R0,
+    }]);
+    let t = legacy.task();
+    let root = store.project(t.project_id).unwrap().unwrap().worktree_root;
+    WORKTREE_ROOT.with(|r| *r.borrow_mut() = root);
     let (_, epoch) = store.begin_execution_epoch().unwrap();
-    (store, t, epoch)
+    (legacy, store, t, epoch)
 }
 fn draft(task: &Task, epoch: u64) -> ExecutionUnit {
     let id = UnitId::new();
@@ -47,7 +40,7 @@ fn draft(task: &Task, epoch: u64) -> ExecutionUnit {
         work: None,
         cleanup: CleanupOutcome::Unknown,
         disposition: Disposition::Active,
-        worktree: PathBuf::from(format!("/tmp/rrx-source/worktree/{}-{id}", task.id)),
+        worktree: WORKTREE_ROOT.with(|r| r.borrow().join(format!("{}-{id}", task.id))),
         branch: Some(format!("rrx/{}/{id}", task.id)),
         base_sha: "a".repeat(40),
         profile_digest: "b".repeat(64),
@@ -245,7 +238,7 @@ fn nongrant_factoring_native_open_predicate_never_accepts_closed_flag() {
 
 #[test]
 fn workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents() {
-    let (mut store, task, epoch) = fixture();
+    let (_fixture, mut store, task, epoch) = fixture();
     let mut spec = draft(&task, epoch);
     spec.phase = WORKFLOW_SOURCE_BOOTSTRAP.into();
     let unit = store.reserve_execution(spec, task.version).unwrap();
@@ -394,7 +387,7 @@ fn schema5_replaces_contract4_guards_and_fences_already_open_writer() {
 
 #[test]
 fn new_generation_closes_old_reviewers_without_erasing_known_work_or_artifacts() {
-    let (mut store, task, epoch) = fixture();
+    let (_fixture, mut store, task, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&task, epoch), task.version)
         .unwrap();
@@ -581,7 +574,7 @@ fn new_generation_closes_old_reviewers_without_erasing_known_work_or_artifacts()
 
 #[test]
 fn a_live_executor_cannot_be_replaced_or_leak_its_capacity_through_failed_reservation() {
-    let (mut store, task, epoch) = fixture();
+    let (_fixture, mut store, task, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&task, epoch), task.version)
         .unwrap();
@@ -647,7 +640,7 @@ fn a_live_executor_cannot_be_replaced_or_leak_its_capacity_through_failed_reserv
 
 #[test]
 fn unclassified_capacity_waits_for_a_fresh_attempt_without_closing_a_sibling_pool() {
-    let (mut store, task, epoch) = fixture();
+    let (_fixture, mut store, task, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&task, epoch), task.version)
         .unwrap();
@@ -725,7 +718,7 @@ fn unclassified_capacity_waits_for_a_fresh_attempt_without_closing_a_sibling_poo
 
 #[test]
 fn epoch_recovery_preserves_known_work_and_fences_live_and_already_retired_transports() {
-    let (mut store, task, epoch) = fixture();
+    let (_fixture, mut store, task, epoch) = fixture();
     let mut units = Vec::new();
     let mut sessions = Vec::new();
     for index in 0..3 {
@@ -914,7 +907,7 @@ fn epoch_recovery_preserves_known_work_and_fences_live_and_already_retired_trans
 
 #[test]
 fn epoch_recovery_rolls_back_if_a_body_redirects_an_indexed_unit() {
-    let (mut store, task, epoch) = fixture();
+    let (_fixture, mut store, task, epoch) = fixture();
     let first = store
         .reserve_execution(draft(&task, epoch), task.version)
         .unwrap();
@@ -955,7 +948,7 @@ fn epoch_recovery_rolls_back_if_a_body_redirects_an_indexed_unit() {
 
 #[test]
 fn normal_terminal_cleanup_keeps_finalization_and_result_publication_races_cancel() {
-    let (mut store, t, epoch) = fixture();
+    let (_fixture, mut store, t, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&t, epoch), t.version)
         .unwrap();
@@ -1001,7 +994,7 @@ fn normal_terminal_cleanup_keeps_finalization_and_result_publication_races_cance
 
 #[test]
 fn cleanup_claim_waits_for_finalization_and_preserves_known_work_and_sibling() {
-    let (mut store, task, epoch) = fixture();
+    let (_fixture, mut store, task, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&task, epoch), task.version)
         .unwrap();
@@ -1107,7 +1100,7 @@ fn cleanup_claim_waits_for_finalization_and_preserves_known_work_and_sibling() {
 
 #[test]
 fn cleanup_backlog_fences_expired_claims_and_old_runtime_epochs() {
-    let (mut store, task, epoch) = fixture();
+    let (_fixture, mut store, task, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&task, epoch), task.version)
         .unwrap();
@@ -1251,7 +1244,7 @@ fn pre_open_legacy_writer_and_cached_statement_cannot_write_after_upgrade() {
 
 #[test]
 fn two_tasks_keep_independent_authority_and_orphan_port_leases() {
-    let (mut store, t, epoch) = fixture();
+    let (_fixture, mut store, t, epoch) = fixture();
     let first = store
         .reserve_execution(draft(&t, epoch), t.version)
         .unwrap();
@@ -1305,7 +1298,7 @@ fn two_tasks_keep_independent_authority_and_orphan_port_leases() {
 
 #[test]
 fn stale_callbacks_and_generic_task_cancellation_cannot_reopen_authority() {
-    let (mut store, t, epoch) = fixture();
+    let (_fixture, mut store, t, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&t, epoch), t.version)
         .unwrap();
@@ -1342,7 +1335,7 @@ fn stale_callbacks_and_generic_task_cancellation_cannot_reopen_authority() {
 
 #[test]
 fn retirement_is_allowed_after_goal_pause_but_resume_cannot_revive_unit() {
-    let (mut store, t, epoch) = fixture();
+    let (_fixture, mut store, t, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&t, epoch), t.version)
         .unwrap();
@@ -1366,7 +1359,7 @@ fn retirement_is_allowed_after_goal_pause_but_resume_cannot_revive_unit() {
 
 #[test]
 fn ambiguous_quota_updates_cannot_clear_exhaustion_and_terminal_probe_is_released() {
-    let (mut store, t, epoch) = fixture();
+    let (_fixture, mut store, t, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&t, epoch), t.version)
         .unwrap();
@@ -1469,7 +1462,7 @@ fn malformed_legacy_authority_rolls_back_schema_upgrade() {
 
 #[test]
 fn body_corruption_cannot_redirect_unit_or_lease_authority() {
-    let (mut store, t, epoch) = fixture();
+    let (_fixture, mut store, t, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&t, epoch), t.version)
         .unwrap();
@@ -1491,7 +1484,7 @@ fn body_corruption_cannot_redirect_unit_or_lease_authority() {
 
 #[test]
 fn quota_bucket_body_cannot_impersonate_another_indexed_row() {
-    let (mut store, t, epoch) = fixture();
+    let (_fixture, mut store, t, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&t, epoch), t.version)
         .unwrap();
@@ -1545,7 +1538,7 @@ fn quota_bucket_body_cannot_impersonate_another_indexed_row() {
 
 #[test]
 fn exhaustion_without_reset_recovers_only_through_the_current_pool_probe() {
-    let (mut store, t, epoch) = fixture();
+    let (_fixture, mut store, t, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&t, epoch), t.version)
         .unwrap();
@@ -1603,7 +1596,7 @@ fn exhaustion_without_reset_recovers_only_through_the_current_pool_probe() {
 
 #[test]
 fn governing_instruction_change_fences_effects_but_preserves_historical_retirement() {
-    let (mut store, t, epoch) = fixture();
+    let (_fixture, mut store, t, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&t, epoch), t.version)
         .unwrap();
@@ -1649,7 +1642,7 @@ fn governing_instruction_change_fences_effects_but_preserves_historical_retireme
 
 #[test]
 fn unknown_remote_effect_gates_its_target_phase_without_blocking_local_retry() {
-    let (mut store, t, epoch) = fixture();
+    let (_fixture, mut store, t, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&t, epoch), t.version)
         .unwrap();
@@ -1695,7 +1688,7 @@ fn unknown_remote_effect_gates_its_target_phase_without_blocking_local_retry() {
 
 #[test]
 fn multi_window_recovery_preserves_one_probe_until_its_actual_release() {
-    let (mut store, task, epoch) = fixture();
+    let (_fixture, mut store, task, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&task, epoch), task.version)
         .unwrap();

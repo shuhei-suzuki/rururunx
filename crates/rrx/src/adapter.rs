@@ -1907,7 +1907,7 @@ mod tests {
         plan.assert_diagnostics_transport(reason);
     }
     use super::*;
-    use crate::domain::{CompletionCriterion, Goal, Task};
+    use crate::domain::Task;
     use std::os::unix::fs::PermissionsExt;
 
     #[cfg(target_os = "macos")]
@@ -1933,61 +1933,45 @@ mod tests {
         assert!(resolve_macos_signal_result(Err(rustix::io::Errno::ACCESS), || Ok(true)).is_err());
     }
 
-    pub(super) fn preflight_fixture() -> (tempfile::TempDir, SharedStore, Project, Task, PathBuf) {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join("repo");
-        std::fs::create_dir(&root).unwrap();
-        let git = |args: &[&str]| {
-            let output = std::process::Command::new("git")
-                .args(args)
-                .current_dir(&root)
-                .output()
-                .unwrap();
-            assert!(
-                output.status.success(),
-                "{}",
-                String::from_utf8_lossy(&output.stderr)
-            );
+    /// Keeps the fixture directory and the legacy rows' only owner alive.
+    pub(super) struct PreflightHolder {
+        legacy: crate::runtime::LegacyFixture,
+        _owner: Arc<crate::execution::RuntimeOwner>,
+    }
+    impl PreflightHolder {
+        pub(super) fn path(&self) -> &std::path::Path {
+            self.legacy.path()
+        }
+    }
+    /// FM §8.1 L: a legacy Task (file-backed, migrated) with its genuine
+    /// `WorktreeManager::create` worktree on `repo/`.
+    pub(super) fn preflight_fixture() -> (PreflightHolder, SharedStore, Project, Task, PathBuf) {
+        let (legacy, owner) = crate::runtime::legacy_fixture_blocking(
+            crate::runtime::LegacyLayout::default(),
+            |_| {},
+            vec![crate::runtime::LegacyTask::standard("timeout", "fake")],
+        );
+        let store = owner.store();
+        let (project, task, worktree) = {
+            let mut state = store.lock().unwrap();
+            let task = legacy.task();
+            let project = state.project(task.project_id).unwrap().unwrap();
+            let worktree = crate::git::WorktreeManager::create(&mut state, task.id)
+                .unwrap()
+                .worktree;
+            let task = state.task(task.id).unwrap().unwrap();
+            (project, task, worktree)
         };
-        git(&["init", "-b", "main"]);
-        git(&[
-            "-c",
-            "user.name=Fixture",
-            "-c",
-            "user.email=fixture@example.invalid",
-            "commit",
-            "--allow-empty",
-            "-m",
-            "fixture",
-        ]);
-        let root = root.canonicalize().unwrap();
-        let mut project = Project::new(
-            "timeout fixture".into(),
-            root.clone(),
-            crate::git::repository_identity(&root, "main").unwrap(),
-            "main".into(),
-        );
-        let mut goal = Goal::new(
-            project.id,
-            "bounded preflight".into(),
-            vec![CompletionCriterion {
-                evaluator: Default::default(),
-                id: "bounded".into(),
-                description: "Git must terminate".into(),
-                evidence: None,
-                satisfied: false,
-            }],
-        );
-        let mut task = Task::new(project.id, goal.id, "timeout".into(), "fake".into());
-        let mut state = Store::memory().unwrap();
-        state.put_project(&mut project).unwrap();
-        state.put_goal(&mut goal).unwrap();
-        state.put_task(&mut task).unwrap();
-        let worktree = crate::git::WorktreeManager::create(&mut state, task.id)
-            .unwrap()
-            .worktree;
-        let store = Arc::new(Mutex::new(state));
-        (temp, store, project, task, worktree)
+        (
+            PreflightHolder {
+                legacy,
+                _owner: owner,
+            },
+            store,
+            project,
+            task,
+            worktree,
+        )
     }
 
     pub(super) fn fixture_request(

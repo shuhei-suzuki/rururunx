@@ -144,32 +144,25 @@ fn schema6_failed_table_install_rolls_back_guards_and_version() {
 }
 
 // Raw test-only ledger rows exercise typed readers; they mint no producer grant.
-fn fixture() -> (Store, Task, u64) {
-    let mut store = Store::memory().unwrap();
-    let mut p = Project::new(
-        "project".into(),
-        PathBuf::from("/tmp/rrx-source"),
-        "git-local".into(),
-        "main".into(),
-    );
-    store.put_project(&mut p).unwrap();
-    let mut g = Goal::new(
-        p.id,
-        "goal".into(),
-        vec![CompletionCriterion {
-            evaluator: Default::default(),
-            id: "result".into(),
-            description: "accepted commit".into(),
-            evidence: None,
-            satisfied: false,
-        }],
-    );
-    store.put_goal(&mut g).unwrap();
-    let mut t = Task::new(p.id, g.id, "task".into(), "codex".into());
-    t.workflow = WorkflowClass::Quick;
-    store.put_task(&mut t).unwrap();
+thread_local! {
+    /// The fixture Project's worktree root (`draft` places Units under it);
+    /// each test runs on its own thread.
+    static WORKTREE_ROOT: std::cell::RefCell<PathBuf> =
+        std::cell::RefCell::new(PathBuf::from("/tmp/rrx-source/worktree"));
+}
+/// FM §8.1 L: a legacy Quick codex Task (file-backed, migrated rows).
+fn fixture() -> (crate::runtime::LegacyFixture, Store, Task, u64) {
+    let (legacy, mut store) = crate::runtime::legacy_store(vec![crate::runtime::LegacyTask {
+        key: "task",
+        executor: "codex",
+        workflow: WorkflowClass::Quick,
+        risk: crate::domain::RiskClass::R0,
+    }]);
+    let t = legacy.task();
+    let root = store.project(t.project_id).unwrap().unwrap().worktree_root;
+    WORKTREE_ROOT.with(|r| *r.borrow_mut() = root);
     let (_, epoch) = store.begin_execution_epoch().unwrap();
-    (store, t, epoch)
+    (legacy, store, t, epoch)
 }
 fn draft(task: &Task, epoch: u64) -> ExecutionUnit {
     let id = UnitId::new();
@@ -189,7 +182,7 @@ fn draft(task: &Task, epoch: u64) -> ExecutionUnit {
         work: None,
         cleanup: CleanupOutcome::Unknown,
         disposition: Disposition::Active,
-        worktree: PathBuf::from(format!("/tmp/rrx-source/worktree/{}-{id}", task.id)),
+        worktree: WORKTREE_ROOT.with(|r| r.borrow().join(format!("{}-{id}", task.id))),
         branch: Some(format!("rrx/{}/{id}", task.id)),
         base_sha: "a".repeat(40),
         profile_digest: "b".repeat(64),
@@ -225,7 +218,7 @@ fn populated_receipt(
     mut modify: impl FnMut(&mut crate::execution::native_result::NativeResultReceipt),
 ) -> (Store, NativeResultId) {
     use crate::execution::native_result::*;
-    let (mut store, task, epoch) = fixture();
+    let (_fixture, mut store, task, epoch) = fixture();
     let unit = store
         .reserve_execution(draft(&task, epoch), task.version)
         .unwrap();

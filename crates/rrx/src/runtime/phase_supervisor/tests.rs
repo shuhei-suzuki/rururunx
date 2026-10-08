@@ -17,8 +17,8 @@ use std::{collections::BTreeMap, os::unix::fs::PermissionsExt, path::Path};
 /// No accepted Source, marker, prepared Native input or installed issuer.
 #[tokio::test]
 async fn actual_empty_job_reservation_removes_only_its_fresh_original() {
-    let f = Fixture::new(4, 4).await;
-    let tasks = f.tasks("empty-reservation", 1).await;
+    let (f, groups) = Fixture::new(4, 4, &[("empty-reservation", 1)]).await;
+    let tasks = groups.into_iter().next().unwrap();
     let (allocation, _guard, unit) = f.allocation(&tasks[0], "codex").await;
     let allocation = Arc::new(allocation);
     let jobs = &f.runtime.phase_jobs;
@@ -57,8 +57,8 @@ async fn actual_empty_job_reservation_removes_only_its_fresh_original() {
 /// policy here does not fabricate the actual Source seal or qualify acceptance.
 #[tokio::test]
 async fn nongrant_guard_policy_is_one_way_across_restore_and_final_drop() {
-    let f = Fixture::new(4, 4).await;
-    let tasks = f.tasks("guard-policy", 1).await;
+    let (f, groups) = Fixture::new(4, 4, &[("guard-policy", 1)]).await;
+    let tasks = groups.into_iter().next().unwrap();
     let (_allocation, mut guard, unit) = f.allocation(&tasks[0], "codex").await;
     guard.hold_accepted_source();
     guard.hold_marker_publication();
@@ -69,11 +69,10 @@ async fn nongrant_guard_policy_is_one_way_across_restore_and_final_drop() {
 }
 
 struct Fixture {
-    dir: tempfile::TempDir,
+    _dir: tempfile::TempDir,
     owner: Arc<RuntimeOwner>,
     runtime: Arc<Runtime>,
     registry: AgentRegistry,
-    config: Config,
     counter: std::path::PathBuf,
 }
 async fn git(path: &Path, args: &[&str]) {
@@ -89,8 +88,95 @@ async fn git(path: &Path, args: &[&str]) {
         String::from_utf8_lossy(&result.stderr)
     );
 }
+/// One accepted-ingress Goal (`count` Strict codex Tasks) on its own Git
+/// Project `<dir>/<name>`.
+async fn create(
+    dir: &Path,
+    owner: &Arc<RuntimeOwner>,
+    runtime: &Arc<Runtime>,
+    config: &Config,
+    name: &str,
+    count: usize,
+) -> crate::domain::GoalId {
+    let root = dir.join(name);
+    std::fs::create_dir(&root).unwrap();
+    git(&root, &["init", "-b", "main"]).await;
+    std::fs::write(root.join("base.txt"), "original\n").unwrap();
+    git(&root, &["add", "base.txt"]).await;
+    git(
+        &root,
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-m",
+            "fixture",
+        ],
+    )
+    .await;
+    let project = {
+        let mut store = owner.store.lock().unwrap();
+        ProjectRegistry::new(&mut store)
+            .add(&root, AddProject::default(), config)
+            .unwrap()
+    };
+    let (socket, _peer) = tokio::net::UnixStream::pair().unwrap();
+    let result = runtime
+        .handle_control(
+            &socket,
+            ControlRequest {
+                request_id: uuid::Uuid::new_v4(),
+                instance: owner.instance_id().into(),
+                epoch: owner.epoch(),
+                action: ControlAction::CreateGoal {
+                    project: project.id,
+                    expected_project: project.version,
+                    plan: GoalPlan {
+                        definition: GoalDefinition {
+                            title: name.into(),
+                            objective: "retained nongrant queue".into(),
+                            criteria: vec![CriterionDefinition {
+                                id: "exact".into(),
+                                description: "same original allocation".into(),
+                                evaluator: CriterionEvaluator::RequiredTasksVerified,
+                            }],
+                            constraints: vec![],
+                            non_goals: vec![],
+                            source_refs: vec![],
+                        },
+                        tasks: (0..count)
+                            .map(|n| TaskDefinition {
+                                key: format!("task{n}"),
+                                title: format!("task{n}"),
+                                acceptance_criteria: vec!["exact original".into()],
+                                executor: "codex".into(),
+                                reviewers: vec![],
+                                workflow: WorkflowClass::Strict,
+                                risk: RiskClass::R3,
+                            })
+                            .collect(),
+                        dependencies: vec![],
+                    },
+                },
+            },
+        )
+        .await
+        .unwrap();
+    let ControlResponse::GoalAccepted { goal, .. } = result else {
+        panic!("genuine accepted ingress unavailable")
+    };
+    goal
+}
 impl Fixture {
-    async fn new(global: usize, per_project: usize) -> Self {
+    async fn new(
+        global: usize,
+        per_project: usize,
+        groups: &[(&str, usize)],
+    ) -> (Self, Vec<Vec<Task>>) {
         let dir = tempfile::tempdir().unwrap();
         let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
         let counter = dir.path().join("native-must-not-run");
@@ -117,6 +203,32 @@ impl Fixture {
                 },
             );
         }
+        let ingress = Arc::new(Runtime::new(owner.clone(), config.clone()).unwrap());
+        // FM §8.5 L: every Project and Goal comes from accepted ingress on
+        // one database first; only then is it migrated (§8.1) and the
+        // Runtime opened over the migrated legacy rows.
+        let mut goals = vec![];
+        for (name, count) in groups {
+            goals.push(create(dir.path(), &owner, &ingress, &config, name, *count).await);
+        }
+        let owner = crate::runtime::migrate_legacy(dir.path(), owner, ingress, "state.db").await;
+        let tasks = {
+            let store = owner.store.lock().unwrap();
+            goals
+                .into_iter()
+                .map(|goal| {
+                    store
+                        .goal(goal)
+                        .unwrap()
+                        .unwrap()
+                        .dag
+                        .nodes
+                        .iter()
+                        .map(|id| store.task(*id).unwrap().unwrap())
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+        };
         let registry = AgentRegistry::from_managed_config(&config, owner.clone()).unwrap();
         let runtime = Arc::new(Runtime::new(owner.clone(), config.clone()).unwrap());
         assert!(
@@ -124,98 +236,16 @@ impl Fixture {
             "separate registry must refuse installation"
         );
         runtime.start().await.unwrap();
-        Self {
-            dir,
-            owner,
-            runtime,
-            registry,
-            config,
-            counter,
-        }
-    }
-    async fn tasks(&self, name: &str, count: usize) -> Vec<Task> {
-        let root = self.dir.path().join(name);
-        std::fs::create_dir(&root).unwrap();
-        git(&root, &["init", "-b", "main"]).await;
-        std::fs::write(root.join("base.txt"), "original\n").unwrap();
-        git(&root, &["add", "base.txt"]).await;
-        git(
-            &root,
-            &[
-                "-c",
-                "user.name=Fixture",
-                "-c",
-                "user.email=fixture@example.invalid",
-                "-c",
-                "commit.gpgsign=false",
-                "commit",
-                "-m",
-                "fixture",
-            ],
+        (
+            Self {
+                _dir: dir,
+                owner,
+                runtime,
+                registry,
+                counter,
+            },
+            tasks,
         )
-        .await;
-        let project = {
-            let mut store = self.owner.store.lock().unwrap();
-            ProjectRegistry::new(&mut store)
-                .add(&root, AddProject::default(), &self.config)
-                .unwrap()
-        };
-        let (socket, _peer) = tokio::net::UnixStream::pair().unwrap();
-        let result = self
-            .runtime
-            .handle_control(
-                &socket,
-                ControlRequest {
-                    request_id: uuid::Uuid::new_v4(),
-                    instance: self.owner.instance_id().into(),
-                    epoch: self.owner.epoch(),
-                    action: ControlAction::CreateGoal {
-                        project: project.id,
-                        expected_project: project.version,
-                        plan: GoalPlan {
-                            definition: GoalDefinition {
-                                title: name.into(),
-                                objective: "retained nongrant queue".into(),
-                                criteria: vec![CriterionDefinition {
-                                    id: "exact".into(),
-                                    description: "same original allocation".into(),
-                                    evaluator: CriterionEvaluator::RequiredTasksVerified,
-                                }],
-                                constraints: vec![],
-                                non_goals: vec![],
-                                source_refs: vec![],
-                            },
-                            tasks: (0..count)
-                                .map(|n| TaskDefinition {
-                                    key: format!("task{n}"),
-                                    title: format!("task{n}"),
-                                    acceptance_criteria: vec!["exact original".into()],
-                                    executor: "codex".into(),
-                                    reviewers: vec![],
-                                    workflow: WorkflowClass::Strict,
-                                    risk: RiskClass::R3,
-                                })
-                                .collect(),
-                            dependencies: vec![],
-                        },
-                    },
-                },
-            )
-            .await
-            .unwrap();
-        let ControlResponse::GoalAccepted { goal, .. } = result else {
-            panic!("genuine accepted ingress unavailable")
-        };
-        let store = self.owner.store.lock().unwrap();
-        store
-            .goal(goal)
-            .unwrap()
-            .unwrap()
-            .dag
-            .nodes
-            .iter()
-            .map(|id| store.task(*id).unwrap().unwrap())
-            .collect()
     }
     async fn allocation(
         &self,
@@ -282,8 +312,8 @@ impl Fixture {
 
 #[tokio::test]
 async fn actual_selected_allocations_survive_caller_drop_and_guard_is_drained_on_shutdown() {
-    let f = Fixture::new(4, 4).await;
-    let tasks = f.tasks("project", 2).await;
+    let (f, groups) = Fixture::new(4, 4, &[("project", 2)]).await;
+    let tasks = groups.into_iter().next().unwrap();
     let (capacity, unit) = f.reserve(&tasks[0], "claude").await;
     let original = capacity.allocation().facts().operation_id;
     assert!(capacity.is_retained());
@@ -322,10 +352,8 @@ async fn actual_selected_allocations_survive_caller_drop_and_guard_is_drained_on
 
 #[tokio::test]
 async fn actual_capacity_refusal_returns_original_objects_and_other_project_still_admits() {
-    let f = Fixture::new(2, 1).await;
-    let a = f.tasks("a", 2).await;
-    let b = f.tasks("b", 1).await;
-    let c = f.tasks("c", 1).await;
+    let (f, groups) = Fixture::new(2, 1, &[("a", 2), ("b", 1), ("c", 1)]).await;
+    let [a, b, c]: [Vec<Task>; 3] = groups.try_into().unwrap();
     let (first, first_unit) = f.reserve(&a[0], "claude").await;
     let (allocation, preparation, rejected_unit) = f.allocation(&a[1], "codex").await;
     let original = allocation.facts().operation_id;
@@ -373,9 +401,8 @@ async fn actual_capacity_refusal_returns_original_objects_and_other_project_stil
 
 #[tokio::test]
 async fn fair_actual_pending_pages_rotate_projects_and_retain_owner_change_as_hold() {
-    let f = Fixture::new(8, 6).await;
-    let a = f.tasks("many", 3).await;
-    let b = f.tasks("sibling", 1).await;
+    let (f, groups) = Fixture::new(8, 6, &[("many", 3), ("sibling", 1)]).await;
+    let [a, b]: [Vec<Task>; 2] = groups.try_into().unwrap();
     let mut handles = Vec::new();
     for task in &a {
         handles.push(f.reserve(task, "codex").await.0);
@@ -425,8 +452,8 @@ async fn fair_actual_pending_pages_rotate_projects_and_retain_owner_change_as_ho
 
 #[tokio::test]
 async fn foreign_preparation_and_stopped_service_refuse_without_consuming_inputs() {
-    let f = Fixture::new(4, 4).await;
-    let tasks = f.tasks("project", 3).await;
+    let (f, groups) = Fixture::new(4, 4, &[("project", 3)]).await;
+    let tasks = groups.into_iter().next().unwrap();
     let (allocation, right, unit) = f.allocation(&tasks[0], "claude").await;
     let (_, wrong, other) = f.allocation(&tasks[1], "codex").await;
     let refused = f
@@ -506,8 +533,8 @@ fn pending_fallback_is_finite_and_idle_resets_backoff() {
 
 #[tokio::test]
 async fn actual_publication_drop_and_shutdown_preserve_unknown_slot_until_proven_rollback() {
-    let f = Fixture::new(4, 4).await;
-    let tasks = f.tasks("publication", 3).await;
+    let (f, groups) = Fixture::new(4, 4, &[("publication", 3)]).await;
+    let tasks = groups.into_iter().next().unwrap();
     let (capacity, unit) = f.reserve(&tasks[0], "claude").await;
     let operation = capacity.allocation().facts().operation_id;
     let publication = f.runtime.retain_marker_publication(capacity).await.unwrap();
@@ -530,7 +557,15 @@ async fn actual_publication_drop_and_shutdown_preserve_unknown_slot_until_proven
     let rollback_operation = rollback.allocation().facts().operation_id;
     let rollback = f.runtime.retain_marker_publication(rollback).await.unwrap();
     let (unmarked, unmarked_unit) = f.reserve(&tasks[2], "claude").await;
-    f.runtime.shutdown().await.unwrap();
+    // Retained publication custody keeps shutdown pending (12304a9): the
+    // shutdown reports it instead of claiming completion or releasing it.
+    let pending = f.runtime.shutdown().await.unwrap_err();
+    assert!(
+        pending
+            .to_string()
+            .contains("Native phase shutdown remains pending with retained jobs"),
+        "{pending:#}"
+    );
     assert!(!unmarked.is_retained());
     assert!(rollback.is_retained());
     assert!(f.runtime.phases.contains(slot));

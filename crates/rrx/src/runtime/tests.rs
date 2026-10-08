@@ -606,6 +606,58 @@ impl Default for LegacyLayout {
     }
 }
 
+/// FM §8.1 migration step, shared by every L fixture. `owner`/`runtime` are
+/// the ingress custody on `<dir>/state.db`; they are released first. The
+/// nongrant rows are copied into the historical schema, the ingress files are
+/// removed, and `RuntimeOwner::open(<dir>/<state>)` migrates. Post-conditions:
+/// the copy source never executed, and every authority/execution table is
+/// empty after the migration (FM-L1; `runtime_epoch` exempt).
+pub(crate) async fn migrate_legacy(
+    dir: &std::path::Path,
+    owner: Arc<RuntimeOwner>,
+    runtime: Arc<Runtime>,
+    state: &str,
+) -> Arc<RuntimeOwner> {
+    let accepted = dir.join("state.db");
+    {
+        let c = rusqlite::Connection::open(&accepted).unwrap();
+        for table in ["execution_units", "session_units", "task_drivers"] {
+            let n: i64 = c
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(n, 0, "SETUP: the copy source executed ({table})");
+        }
+    }
+    let weak = Arc::downgrade(&runtime);
+    drop(runtime);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    while weak.upgrade().is_some() || Arc::strong_count(&owner) > 1 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "SETUP: the ingress owner custody did not drop"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    drop(owner);
+    let legacy = dir.join("legacy-v2.db");
+    write_historical_copy(&accepted, &legacy);
+    for leftover in ["state.db", "state.db-wal", "state.db-shm"] {
+        let _ = std::fs::remove_file(dir.join(leftover));
+    }
+    std::fs::remove_dir_all(dir.join("state.db.execution")).unwrap();
+    let target = dir.join(state);
+    std::fs::rename(&legacy, &target).unwrap();
+    let owner = RuntimeOwner::open(&target).unwrap();
+    let c = rusqlite::Connection::open(&target).unwrap();
+    for table in legacy_required_empty(&c) {
+        let n: i64 = c
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0, "SETUP: legacy migration restored {table}");
+    }
+    owner
+}
+
 /// FM §8.1. `seed` runs on the initialized `repo/` (branch `main`, one empty
 /// commit) before the Goal is created; `tasks` become the accepted plan.
 pub(crate) async fn legacy_fixture(
@@ -631,6 +683,16 @@ pub(crate) fn legacy_fixture_blocking(
     })
     .join()
     .unwrap()
+}
+
+/// Legacy rows behind a plain `Store` (no Runtime owner), for ledger tests
+/// that drive `Store` directly; the default layout.
+pub(crate) fn legacy_store(tasks: Vec<LegacyTask>) -> (LegacyFixture, crate::state::Store) {
+    let (legacy, owner) = legacy_fixture_blocking(LegacyLayout::default(), |_| {}, tasks);
+    assert_eq!(Arc::strong_count(&owner), 1, "SETUP: owner still shared");
+    drop(owner);
+    let store = crate::state::Store::open(&legacy.path().join("state.db")).unwrap();
+    (legacy, store)
 }
 
 pub(crate) async fn legacy_fixture_in(
@@ -683,46 +745,8 @@ pub(crate) async fn legacy_fixture_in(
         _peer,
         ..
     } = f;
-    let accepted = dir.path().join("state.db");
-    {
-        // The copy source never executed: no Unit, Session or Driver.
-        let c = rusqlite::Connection::open(&accepted).unwrap();
-        for table in ["execution_units", "session_units", "task_drivers"] {
-            let n: i64 = c
-                .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
-                .unwrap();
-            assert_eq!(n, 0, "SETUP: the copy source executed ({table})");
-        }
-    }
     drop((socket, _peer));
-    let weak = Arc::downgrade(&runtime);
-    drop(runtime);
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
-    while weak.upgrade().is_some() || Arc::strong_count(&owner) > 1 {
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "SETUP: the ingress owner custody did not drop"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-    drop(owner);
-    let legacy = dir.path().join("legacy-v2.db");
-    write_historical_copy(&accepted, &legacy);
-    for leftover in ["state.db", "state.db-wal", "state.db-shm"] {
-        let _ = std::fs::remove_file(dir.path().join(leftover));
-    }
-    std::fs::remove_dir_all(dir.path().join("state.db.execution")).unwrap();
-    let target = dir.path().join(layout.state);
-    std::fs::rename(&legacy, &target).unwrap();
-    let owner = RuntimeOwner::open(&target).unwrap();
-    let c = rusqlite::Connection::open(&target).unwrap();
-    for table in legacy_required_empty(&c) {
-        let n: i64 = c
-            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(n, 0, "SETUP: legacy migration restored {table}");
-    }
-    drop(c);
+    let owner = migrate_legacy(dir.path(), owner, runtime, layout.state).await;
     let tasks = {
         let store = owner.store.lock().unwrap();
         let goal = store.goal(goal_id).unwrap().unwrap();
