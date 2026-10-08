@@ -2,7 +2,6 @@
 //! an authenticated Agent test nor evidence of native sandbox compatibility.
 use rrx::{
     config::Config,
-    domain::{CompletionCriterion, Goal, Task},
     execution::{
         RuntimeOwner, attempts::AttemptManager, ipc::ToolServer, resources::ResourceProfile,
     },
@@ -14,6 +13,8 @@ use std::{
     time::Duration,
 };
 use tokio::process::Command;
+#[path = "support/legacy.rs"]
+mod legacy;
 
 async fn git(path: &Path, args: &[&str]) -> String {
     let output = Command::new("/usr/bin/git")
@@ -76,45 +77,39 @@ async fn installed_entry_preserves_native_candidate_index_and_owner_resources() 
     std::fs::write(source.join("answer.txt"), "SAFE\n").unwrap();
     git(&source, &["add", "answer.txt"]).await;
     git(&source, &["commit", "-m", "base"]).await;
-    let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
-    let task = {
-        let shared = owner.store();
-        let mut store = shared.lock().unwrap();
-        let project = ProjectRegistry::new(&mut store)
-            .add(&source, AddProject::default(), &Config::default())
-            .unwrap();
-        let mut goal = Goal::new(
+    // FM §8.1 L: Project registration, then the Goal with both Tasks (the
+    // sibling is planned) from accepted ingress through the public route,
+    // then the ordered historical migration; the legacy public preparation
+    // route (`AttemptManager::prepare`) then runs on those rows.
+    let state = dir.path().join("state.db");
+    let project = ProjectRegistry::new(&mut rrx::state::Store::open(&state).unwrap())
+        .add(&source, AddProject::default(), &Config::default())
+        .unwrap();
+    let (_, tasks) = legacy::goals(
+        &state,
+        vec![(
             project.id,
-            "fixture".into(),
-            vec![CompletionCriterion {
-                evaluator: Default::default(),
-                id: "answer".into(),
-                description: "exact candidate".into(),
-                evidence: None,
-                satisfied: false,
-            }],
-        );
-        store.put_goal(&mut goal).unwrap();
-        let mut task = Task::new(project.id, goal.id, "candidate".into(), "codex".into());
-        store.put_task(&mut task).unwrap();
-        task
-    };
+            "fixture",
+            ["candidate", "sibling"]
+                .map(|key| {
+                    (
+                        key,
+                        "codex",
+                        rrx::config::WorkflowClass::Standard,
+                        rrx::domain::RiskClass::R1,
+                        "exact candidate",
+                    )
+                })
+                .to_vec(),
+        )],
+    )
+    .remove(0);
+    let (task, sibling) = (tasks[0].clone(), tasks[1].clone());
+    let owner = RuntimeOwner::open(&state).unwrap();
     let attempts = AttemptManager::new(owner.clone());
     let (unit, profile) = attempts
         .prepare(task.id, "codex", "Implement", None)
         .await
-        .unwrap();
-    let mut sibling = Task::new(
-        task.project_id,
-        task.goal_id,
-        "sibling".into(),
-        "codex".into(),
-    );
-    owner
-        .store()
-        .lock()
-        .unwrap()
-        .put_task(&mut sibling)
         .unwrap();
     let (sibling_unit, sibling_profile) = attempts
         .prepare(sibling.id, "codex", "Implement", None)

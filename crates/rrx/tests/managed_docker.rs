@@ -2,7 +2,6 @@
 //! No Docker daemon, provider, authentication file or unrelated repository is used.
 use rrx::{
     config::Config,
-    domain::{CompletionCriterion, Goal, Task},
     execution::{RuntimeOwner, attempts::AttemptManager, ipc::ToolServer},
     project::{AddProject, ProjectRegistry},
 };
@@ -13,6 +12,8 @@ use std::{
     time::Duration,
 };
 use tokio::process::Command;
+#[path = "support/legacy.rs"]
+mod legacy;
 
 #[test]
 fn installed_docker_entry_binds_runtime_and_shim_configuration() {
@@ -85,29 +86,30 @@ async fn installed_docker_routing_worker() {
     )
     .await;
     let state = root.join("state.db");
-    let owner = RuntimeOwner::open(&state).unwrap();
-    let task = {
-        let shared = owner.store();
-        let mut store = shared.lock().unwrap();
-        let project = ProjectRegistry::new(&mut store)
-            .add(&source, AddProject::default(), &Config::default())
-            .unwrap();
-        let mut goal = Goal::new(
+    // FM §8.1 L: Project registration, then the Goal and its Task from
+    // accepted ingress through the public route, then the ordered historical
+    // migration; the legacy public preparation route
+    // (`AttemptManager::prepare`) then runs on those rows.
+    let project = ProjectRegistry::new(&mut rrx::state::Store::open(&state).unwrap())
+        .add(&source, AddProject::default(), &Config::default())
+        .unwrap();
+    let (_, tasks) = legacy::goals(
+        &state,
+        vec![(
             project.id,
-            "fixture".into(),
-            vec![CompletionCriterion {
-                evaluator: Default::default(),
-                id: "answer".into(),
-                description: "configuration binding".into(),
-                evidence: None,
-                satisfied: false,
-            }],
-        );
-        store.put_goal(&mut goal).unwrap();
-        let mut task = Task::new(project.id, goal.id, "managed Docker".into(), "codex".into());
-        store.put_task(&mut task).unwrap();
-        task
-    };
+            "fixture",
+            vec![(
+                "docker",
+                "codex",
+                rrx::config::WorkflowClass::Standard,
+                rrx::domain::RiskClass::R1,
+                "configuration binding",
+            )],
+        )],
+    )
+    .remove(0);
+    let task = tasks[0].clone();
+    let owner = RuntimeOwner::open(&state).unwrap();
     let (unit, profile) = AttemptManager::new(owner.clone())
         .prepare(task.id, "codex", "Implement", None)
         .await
