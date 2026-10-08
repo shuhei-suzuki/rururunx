@@ -36,7 +36,7 @@ Base: `b2eb694` (PR #80 merged). This is a production compatibility change (STRI
    - auth, settings, rules, hooks and permissions;
    - the profile `rrx-native-inherited-v1` and `settings='inherited'`;
    - the Codex pin.
-3. **Tests and fixtures** follow the pin: the fixture prints `2.1.294 (Claude Code)`. A negative is added: a `2.1.283` declaration or observation is refused with a typed error and no NativeInput.
+3. **Tests and fixtures** follow the pin: the fixture prints `2.1.294 (Claude Code)`. Negatives are added, each with no NativeInput: a `2.1.283` declaration is refused with the typed `native compatibility version unsupported` (C2), and a `2.1.283` observation is refused with the generic helper-qualification refusal (C3, §4).
 
 ## 3. Qualification (needed before the pin claims compatibility)
 
