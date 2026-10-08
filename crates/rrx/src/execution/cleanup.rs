@@ -441,7 +441,21 @@ mod tests {
         let worker = CleanupWorker::start(&owner).unwrap();
         drop(owner);
         assert!(weak.upgrade().is_none());
-        let successor = RuntimeOwner::open(&state).unwrap();
+        // A concurrent test's fork shares the flock until its exec closes the
+        // CLOEXEC descriptor: retry only that refusal, briefly.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let successor = loop {
+            match RuntimeOwner::open(&state) {
+                Err(error)
+                    if error.downcast_ref::<rustix::io::Errno>()
+                        == Some(&rustix::io::Errno::WOULDBLOCK)
+                        && std::time::Instant::now() < deadline =>
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                other => break other.unwrap(),
+            }
+        };
         assert!(successor.epoch() > epoch);
         worker.shutdown().await;
     }
