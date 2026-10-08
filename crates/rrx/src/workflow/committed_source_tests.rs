@@ -239,12 +239,16 @@ impl Fixture {
             callbacks,
         }
     }
+    /// Every Sources callback is counted into the shared preimage counter.
     fn engine(&self, sources: Arc<dyn WorkflowSources>) -> WorkflowEngine {
         WorkflowEngine::new(
             self.owner.store(),
             self.registry.clone(),
             self.config.clone(),
-            sources,
+            Arc::new(CountingSources {
+                inner: sources,
+                calls: self.callbacks.clone(),
+            }),
             Arc::new(InitialEvidence {
                 owner: self.owner.clone(),
                 calls: self.callbacks.clone(),
