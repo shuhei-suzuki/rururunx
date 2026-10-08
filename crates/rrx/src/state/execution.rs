@@ -580,7 +580,7 @@ impl Store {
         // A stopped/cancelled unit can still have a native transport or an
         // unacknowledged tool effect when Runtime disappears. Reconcile all
         // managed bindings, including units whose authority was already closed.
-        sessions::fence_epoch_sessions(&tx)?;
+        sessions::fence_epoch_sessions(&tx, &self.binding_permits)?;
         effects::fence_epoch_effects(&tx)?;
         tx.execute(
             "UPDATE runtime_epoch SET epoch=?1 WHERE singleton=1",
@@ -1288,6 +1288,8 @@ mod migration;
 pub(crate) mod native_phase;
 pub(super) mod native_results;
 mod sessions;
+#[cfg(test)]
+pub(crate) use sessions::epoch_fence_fault;
 pub(super) use sessions::logically_retired_session;
 #[cfg(test)]
 mod native_results_tests;

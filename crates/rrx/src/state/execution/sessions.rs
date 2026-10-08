@@ -136,7 +136,12 @@ fn checked_session_record(
     Ok(record)
 }
 
-pub(super) fn fence_epoch_sessions(tx: &Transaction<'_>) -> Result<()> {
+pub(super) fn fence_epoch_sessions(
+    tx: &Transaction<'_>,
+    permits: &crate::state::managed_binding::PrivatePermitManager,
+) -> Result<()> {
+    // One instant for every managed Session fenced by this epoch transaction.
+    let at = now_ms();
     let mut statement = tx.prepare("SELECT session_id FROM session_units ORDER BY rowid")?;
     let ids = statement
         .query_map([], |row| row.get::<_, String>(0))?
@@ -163,7 +168,16 @@ pub(super) fn fence_epoch_sessions(tx: &Transaction<'_>) -> Result<()> {
         }
         session.state = SessionState::Lost;
         let record = checked_session_record(tx, &unit, &session, record.version)?;
-        write_record_tx(tx, &record)?;
+        let managed: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM managed_phase_owners WHERE allocated_session_id=?1)",
+            [id.to_string()],
+            |r| r.get(0),
+        )?;
+        if managed {
+            fence_managed_session(tx, permits, &record, at)?;
+        } else {
+            write_record_tx(tx, &record)?;
+        }
         tx.execute(
             "UPDATE session_units SET dispatch_state='unknown' WHERE session_id=?1 AND unit_id=?2",
             params![id.to_string(), unit.id.to_string()],
@@ -276,4 +290,74 @@ pub(super) fn close_session_tx(
         ],
     )?;
     Ok(next.version)
+}
+
+/// A managed phase Session is a protected record: its `Lost` fence is the
+/// generic prepared write applied under one exact private permit. The old
+/// image is the stored raw row (all seven columns, never re-serialized); the
+/// new image and the UPDATE use the SAME prepared body.
+fn fence_managed_session(
+    tx: &Transaction<'_>,
+    permits: &crate::state::managed_binding::PrivatePermitManager,
+    record: &Record,
+    at: i64,
+) -> Result<()> {
+    let old = tx.query_row(
+        "SELECT id,kind,project_id,goal_id,task_id,version,body FROM records WHERE id=?1",
+        [record.id.to_string()],
+        |row| {
+            (0..7)
+                .map(|i| row.get::<_, rusqlite::types::Value>(i))
+                .collect::<rusqlite::Result<Vec<_>>>()
+        },
+    )?;
+    let (next, body) = prepare_record_write(record, at)?;
+    #[cfg(test)]
+    let old = match epoch_fence_fault::take() {
+        epoch_fence_fault::Fault::None => old,
+        // Negative-only: write without any permit (the trigger must refuse).
+        epoch_fence_fault::Fault::NoPermit => {
+            return apply_record_write(tx, record.version, &next, &body);
+        }
+        // Negative-only: an old image differing by one byte of the body.
+        epoch_fence_fault::Fault::WrongOld => {
+            let mut old = old;
+            if let Some(rusqlite::types::Value::Text(body)) = old.last_mut() {
+                body.push(' ');
+            }
+            old
+        }
+    };
+    let mutation = crate::state::managed_binding::ExactRowMutation::new(
+        "records",
+        "UPDATE",
+        Some(old),
+        Some(crate::state::managed_binding::record_image(&next, &body)?),
+    )?;
+    permits.with_exact_permit(vec![mutation], || {
+        apply_record_write(tx, record.version, &next, &body)?;
+        permits.ensure_consumed()
+    })
+}
+
+/// EF3 negative stimuli for the managed epoch fence. Thread-local and taken
+/// once: it can only remove or corrupt the private permit, never grant.
+#[cfg(test)]
+pub(crate) mod epoch_fence_fault {
+    use std::cell::Cell;
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub(crate) enum Fault {
+        None,
+        NoPermit,
+        WrongOld,
+    }
+    thread_local! {
+        static FAULT: Cell<Fault> = const { Cell::new(Fault::None) };
+    }
+    pub(crate) fn arm(fault: Fault) {
+        FAULT.with(|f| f.set(fault));
+    }
+    pub(super) fn take() -> Fault {
+        FAULT.with(|f| f.replace(Fault::None))
+    }
 }

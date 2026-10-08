@@ -12,6 +12,7 @@ use crate::{
 use std::{os::unix::fs::PermissionsExt, time::Duration};
 
 mod activation;
+mod epoch_fence;
 mod nonsuccess;
 mod preparation;
 mod success;

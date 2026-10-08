@@ -24,6 +24,8 @@ pub(crate) use execution::source_recovery::SourceReadBinding;
 mod execution;
 pub(crate) use execution::QuotaAdmission;
 pub(crate) use execution::cleanup::CleanupClaim;
+#[cfg(test)]
+pub(crate) use execution::epoch_fence_fault;
 pub(crate) use execution::governing_digest as execution_governing_digest;
 #[cfg(test)]
 pub(crate) use execution::native_phase::RegistrationAckSource;
@@ -1930,15 +1932,32 @@ fn write_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
     write_record_tx_at(tx, record, now_ms())
 }
 fn write_record_tx_at(tx: &Transaction<'_>, record: &Record, at: i64) -> Result<Record> {
+    let (next, body) = prepare_record_write(record, at)?;
+    apply_record_write(tx, record.version, &next, &body)?;
+    Ok(next)
+}
+/// The single prepared postimage of a generic Record write: version bumped
+/// exactly once, `updated_at = at`, body serialized once.
+fn prepare_record_write(record: &Record, at: i64) -> Result<(Record, String)> {
     let mut next = record.clone();
     bump(&mut next.version)?;
     next.updated_at = at;
     let body = serde_json::to_string(&next)?;
+    Ok((next, body))
+}
+/// Writes exactly the prepared `next`/`body` over `expected` and appends the
+/// generic `<kind>.saved` audit event.
+fn apply_record_write(
+    tx: &Transaction<'_>,
+    expected: u64,
+    next: &Record,
+    body: &str,
+) -> Result<()> {
     write_snapshot(
         tx,
         "records",
         &next.id.to_string(),
-        record.version,
+        expected,
         "INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,?2,?3,?4,?5,?6,?7)",
         params![
             next.id.to_string(),
@@ -1949,7 +1968,7 @@ fn write_record_tx_at(tx: &Transaction<'_>, record: &Record, at: i64) -> Result<
             next.version,
             body
         ],
-        &body,
+        body,
         next.version,
     )?;
     append_event(
@@ -1963,7 +1982,7 @@ fn write_record_tx_at(tx: &Transaction<'_>, record: &Record, at: i64) -> Result<
             _ => Value::Null,
         }}),
     )?;
-    Ok(next)
+    Ok(())
 }
 
 fn put_context_tx(tx: &Transaction<'_>, context: &ContextVersion) -> Result<()> {
