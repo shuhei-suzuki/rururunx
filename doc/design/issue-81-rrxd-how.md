@@ -1,4 +1,4 @@
-# Issue 81: rrxd — HOW H1 (H0 revised per Sol 6058699019)
+# Issue 81: rrxd — HOW H2 (H0 per Sol 6058699019, H1 per Sol 6059215697)
 
 Base: `b2eb694` (#43 merged; Q5 satisfied). Requirements: `doc/design/issue-81-rrxd-requirements.md` (R1, approved 6058083336). Paths are relative to `crates/rrx/src`. This is a design only; no code exists yet.
 
@@ -21,9 +21,18 @@ R3.1–R3.3, R4.2–R4.4 and R6.4–R6.5 already hold today. Each slice keeps th
 
 ### 1.1 `rrx daemon start`
 
-1. **Probe.** Run the status procedure (§1.2).
-   - `running` → return `already running` with the identity. Nothing is written.
-   - `owner busy` or `discovery unavailable` → return that typed result. Nothing is written.
+1. **Probe.** Read the D and L inputs of §1.2. `start` acts on them, not on the `status` label (H1 M3):
+
+   | D \ L | free | busy | error |
+   | --- | --- | --- | --- |
+   | valid | `already running`, with the identity | `already running` | `already running` |
+   | absent | spawn | `owner busy` | `discovery unavailable` |
+   | invalid | **spawn** | `discovery unavailable` | `discovery unavailable` |
+
+   - Spawning on `invalid` + `free` is what lets a crashed service's leftover descriptor be replaced. It applies to a protocol-1 descriptor and to a protocol-2 descriptor alike.
+   - The spawned child takes the exclusive owner, and `ControlEndpoint::bind` then applies §1.4: it replaces a known-shape descriptor for the same canonical state, and refuses a foreign or malformed one with a typed `start failed` and the log path.
+   - `status` still reports `invalid` + `free` as `discovery unavailable` (§1.2). Only `start`, which ends up holding the exclusive owner, acts on it.
+   - Every refusal in this table writes nothing.
 2. **Spawn.** The parent runs `current_exe()` as `serve --state <abs> --config <abs> --detached`.
    - stdin is `/dev/null`.
    - stdout is a **pipe owned by this parent** (the readiness channel, M1).
@@ -33,9 +42,10 @@ R3.1–R3.3, R4.2–R4.4 and R6.4–R6.5 already hold today. Each slice keeps th
 3. **Detach.** The child's first action under `--detached`, before it opens the owner, is `rustix::process::setsid()`. rustix 1.1.5 provides it as a safe function, so no `unsafe` code, no `pre_exec` and no double fork is needed. The child is spawned without `process_group(0)`, so it is not a group leader and `setsid` succeeds. If `setsid` fails, the child exits with a typed code and opens nothing.
 4. **Readiness (M1).**
    - After `ControlEndpoint::bind` succeeds and before it accepts connections, the child writes **one** JSON line `{"instance","epoch"}` to stdout. It then points stdout at `/dev/null` with `rustix::stdio::dup2_stdout`, a safe function, so a later write cannot hit a closed pipe.
-   - The parent waits up to 30 s for that line, while polling `child.try_wait()`. It returns `running` only when two things hold:
-     1. its **own** child sent the line;
-     2. `connect(state)` then validates a live identity with the **same** `instance` and `epoch`.
+   - The parent waits up to 30 s for that line, while polling `child.try_wait()`. It returns `running` only when two separately checked conditions hold:
+     1. **own-child line:** its own child sent the line;
+     2. **identity match:** `connect(state)` then validates a live identity whose `instance` and `epoch` equal the line's.
+   - If the line arrived but the live identity differs (H1-L1), for example because the child retired and a new epoch was published in between, the parent never reports it as its own start. It re-runs the probe: a valid endpoint → `already running` with that other identity, otherwise `start unconfirmed`.
    - A child that exits without the line maps by exit code: 75 → `owner busy`; anything else → `start failed`, with the log path.
    - A winner's endpoint that the parent's own child never announced is never success. It is `owner busy` or `already running`, decided by re-running §1.2.
    - Timeout → `start unconfirmed`. The child is not killed: process exit is never cleanup.
@@ -108,12 +118,13 @@ Real failures are **not** pending and never get the marker: the poison errors at
 | Control | Assertion |
 | --- | --- |
 | C-S1a, independence | `daemon start` while an installed-lane Task is in flight. The test then SIGKILLs the invoker's process group and closes its terminal (pty). `status` stays `running` with the same epoch, the child's `getsid` differs from the invoker's, and the in-flight Task closes with native children owned by the daemon (OL3) |
-| C-S1b, race and own-child readiness | 8 concurrent `daemon start`: exactly 1 `running`; 7 `already running` or `owner busy`; the epoch counter rises by 1; one descriptor. **M1:** a loser's child is held at a test pause just before `RuntimeOwner::open`, the winner publishes, then the loser's parent polling resumes. That parent never returns `running`, and it ends with a typed refusal. Mutant: the parent drops the own-child line or identity match → the loser returns `running` → FAIL |
+| C-S1b, race and own-child line | 8 concurrent `daemon start`: exactly 1 `running`; 7 `already running` or `owner busy`; the epoch counter rises by 1; one descriptor. **M1:** a loser's child is held at a test pause just before `RuntimeOwner::open`, the winner publishes, then the loser's parent polling resumes. That parent never returns `running`, and it ends with a typed refusal. Mutant: drop the **own-child line** condition → the loser returns `running` → FAIL |
+| C-S1b2, identity match (H1-L1) | The parent has received its own child's line A. A test pause in the parent, after the last `try_wait` and before `connect`, holds it while the test stops A and starts a new epoch B that publishes. The parent resumes. It never returns `running` as its own start: it returns `already running` with identity B. Mutant: drop **only** the identity comparison → the parent returns `running` for B → FAIL |
 | C-S1c, status table | One case per non-`valid` cell of §1.2: stale descriptor + free → `discovery unavailable`; absent + busy (the test holds the owner lock only) → `owner busy`; mismatch + busy → `discovery unavailable`; absent + free → `not running`. The epoch row and descriptor bytes are unchanged in each case. Mutant: discovery failure maps to `not running` → FAIL |
 | C-S1c2, probe vs start | `status` and `start` run concurrently in a loop. Any failed `start` is typed `owner busy`, writes nothing, and the next `start` succeeds |
 | C-S1d, stop | completed → `RuntimeStopped`; each pending site P1–P6, driven through an existing held fixture or a site-scoped test pause → `RuntimeStopPending { site }`; a poison error → `Rejected`; pending first, then a retry that succeeds → `serve` exits 1; the client times out → `unconfirmed`. Mutants: remove the marker at any one site → FAIL; keep `stop_failed` on `is_err()` → FAIL |
 | C-S1e, protocol | A protocol-1 `Hello` is refused, typed, before the request is decoded. Mutant: accept 1 for live discovery → FAIL |
-| C-S1e2, old descriptor | A valid protocol-1 descriptor for the same state with the lock free: the new owner starts and publishes its protocol-2 identity. A foreign-state descriptor is still refused. Mutants: remove the replacement path → FAIL; accept a foreign state → FAIL |
+| C-S1e2, old descriptor, from the `daemon start` entry (H1 M3) | Through `daemon start`, not `bind` alone. A valid protocol-1 descriptor for the same state with the lock free → `running` with the new protocol-2 identity. A leftover protocol-2 descriptor from a crash → the same. A foreign-state or malformed descriptor → typed `start failed`, nothing published. Mutants: the probe returns on any `invalid` → FAIL; remove the `bind` replacement path → FAIL; accept a foreign state → FAIL |
 | C-S1f, native success and refusal unchanged | The installed-lane SC suite runs under `daemon start`. Success links equal those under `serve`. An auth or compat refusal case is refused identically (OL3) |
 | C-S1g, no TCP | Every socket FD of the daemon process maps to its inode. On Linux, `/proc/<pid>/fd` socket inodes are matched against `/proc/<pid>/net/{tcp,tcp6,udp,udp6}`, which list the network namespace, so the match is by inode and not by namespace membership. On macOS, `lsof -p`. No AF_INET or AF_INET6 socket is owned. The control listener is checked separately as AF_UNIX (OL3) |
 
@@ -155,7 +166,10 @@ New `ControlAction`s. Each declares its R2.6 scope.
 The `ProjectRegistry` holds `&mut Store` and reaches synchronous Git (`git.rs:590`), so the daemon never runs it as-is. Each operation splits into two steps, following the master contract (`doc/design/master/multi-project-runtime.md:240`).
 
 1. **Snapshot.** A short Store lock reads the Project row and version.
-2. **Preflight.** Git and filesystem validation (reconcile's checks, the source-root and work-tree identity) run in `spawn_blocking`, **without** the Store lock or `control_admission`. They are bounded by a 10 s timeout and the Runtime's `stopping` flag. A timeout gives a typed `project preflight unavailable` and writes nothing.
+2. **Preflight.** Git and filesystem validation (reconcile's checks, the source-root and work-tree identity) run in `spawn_blocking`, **without** the Store lock or `control_admission`. They are bounded by a 10 s timeout and the Runtime's `stopping` flag.
+   - A timeout gives a typed `project preflight unavailable` and writes nothing.
+   - Aborting a started `spawn_blocking` does not stop its work (Tokio 1.53.1, noted in 6059215697). So each Git child runs in its own process group and is owned. On timeout or stop, the group is killed and reaped before the preflight handle is released.
+   - The timeout response never claims that the work has ended, and no commit runs while a preflight for the same Project is still unreaped.
 3. **Commit.** A short `control_admission` and Store lock re-check the identity, the version (expected and snapshot), and that the Runtime is not stopping. Then the write happens, with a CAS on the version. A changed row → typed stale refusal.
 
 Reconcile's `Blocked` write follows the same commit rule.
@@ -208,6 +222,9 @@ S4 adds these read-only `ControlAction`s: `ProjectGoals`, `TaskReview`, `TaskSes
 | M6: Git ran under the Store lock | §3.2; C-S3d |
 | M7: path resolved against the daemon's working directory | §3.1 paths; C-S3e |
 | L1: the candidate-only mutant was not detected | C-S2a2 plus separate mutants |
+| H1 M3: the start probe blocked replacement | §1.1 step 1 start table; C-S1e2 from the `daemon start` entry |
+| H1-L1: the identity-only mutant was not detected | §1.1 step 4, two separate conditions; C-S1b2 |
+| H1 note: M6 timeout is not termination | §3.2 preflight: owned process group, killed and reaped |
 | OL1: Metrics | §4 |
 | OL2: log file checks | §1.1 step 2 |
 | OL3: control mapping | C-S1a, C-S1f, C-S1g |
