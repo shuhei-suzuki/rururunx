@@ -8,8 +8,10 @@ pub(crate) use environment::EnvironmentAdmission;
 pub(crate) use runtime::driver::{
     CandidateKey, CandidatePage, DriverExitPublication, DriverPreparationAdvance,
     DriverPublication, DriverReadTicket, InitialDriverPlan, InitialGateEdge, PendingDriverClaim,
-    plan_initial_driver, read_driver_ticket,
+    ProjectLimitUnsupported, plan_initial_driver, read_driver_ticket,
 };
+#[cfg(test)]
+pub(crate) use runtime::driver::{CapacityScope, DriverCapacityUnavailable};
 use std::{path::Path, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};

@@ -17,7 +17,6 @@ fn keys(f: &ControlFixture) -> Vec<CandidateKey> {
             f.owner.epoch(),
             None,
             f.runtime.config.scheduler.global_max_sessions,
-            f.runtime.config.scheduler.max_tasks_per_project,
         )
         .unwrap()
     {

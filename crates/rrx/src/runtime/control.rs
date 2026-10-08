@@ -112,6 +112,9 @@ pub enum ControlResponse {
         task_count: usize,
         dispatch_available: bool,
         attention: UnavailableReason,
+        /// Present only with `ProjectLimitUnsupported`: the stored limit.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project_limit_stored: Option<usize>,
     },
     GoalFacts {
         goal: GoalId,
@@ -123,6 +126,9 @@ pub enum ControlResponse {
         recorded: Option<RecordedGoalStatus>,
         dispatch_available: bool,
         attention: UnavailableReason,
+        /// Present only with `ProjectLimitUnsupported`: the stored limit.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project_limit_stored: Option<usize>,
     },
     GoalLifecycleChanged {
         goal: GoalId,
@@ -196,6 +202,9 @@ pub enum UnavailableReason {
     NativeBindingUnavailable,
     NativeContinuationUnavailable,
     FreshBootstrapRecoveryUnavailable,
+    /// The Project stores a Task limit other than 1 (R4.5); see
+    /// `project_limit_stored`. Repaired by `project add --max-tasks 1`.
+    ProjectLimitUnsupported,
 }
 
 // Bounds the response wait; a timed-out filesystem worker is not claimed stopped.

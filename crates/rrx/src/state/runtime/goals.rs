@@ -334,6 +334,7 @@ impl Store {
                 )
                 .or_insert(0) += 1;
         }
+        let project_limit_stored = project_limit_stored(&tx, project)?;
         let initial_driver:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM scheduler_tasks s JOIN task_drivers d ON d.task_id=s.task_id AND d.goal_id=s.goal_id AND d.project_id=s.project_id WHERE s.goal_id=?1 AND s.project_id=?2 AND s.attention IS NULL AND d.owner_epoch=?3 AND d.state='driving')",params![id.to_string(),project.to_string(),ingress.identity().1],|r|r.get(0))?;
         let mut response = ControlResponse::GoalFacts {
             goal: id,
@@ -343,11 +344,14 @@ impl Store {
             states,
             recorded: None,
             dispatch_available: false,
-            attention: if initial_driver {
+            attention: if project_limit_stored.is_some() {
+                crate::runtime::control::UnavailableReason::ProjectLimitUnsupported
+            } else if initial_driver {
                 crate::runtime::control::UnavailableReason::NativeContinuationUnavailable
             } else {
                 crate::runtime::control::UnavailableReason::NativeBindingUnavailable
             },
+            project_limit_stored,
         };
         if view.is_some() {
             recorded::enrich_status(&mut response, &goal, project)?;
@@ -622,4 +626,15 @@ impl Store {
         tx.commit()?;
         Ok(response)
     }
+}
+
+/// Read-derived Project attention (R4.5, D4): the stored Task limit when it is
+/// not the fixed MVP value. Reading writes nothing.
+pub(super) fn project_limit_stored(
+    tx: &Transaction<'_>,
+    project: ProjectId,
+) -> Result<Option<usize>> {
+    let stored: Project =
+        read_tx(tx, "projects", &project.to_string())?.context("unknown Project")?;
+    Ok((stored.max_tasks != crate::config::MVP_PROJECT_TASKS).then_some(stored.max_tasks))
 }

@@ -190,6 +190,7 @@ pub(super) fn proposal_facts(
         |r| r.get(0),
     )?;
     ensure!(tasks == 0, "inert proposal has Tasks");
+    let project_limit_stored = super::goals::project_limit_stored(tx, project)?;
     Ok(ControlResponse::GoalProposalFacts {
         goal: id,
         version,
@@ -199,6 +200,11 @@ pub(super) fn proposal_facts(
         accepted: false,
         task_count: 0,
         dispatch_available: false,
-        attention: UnavailableReason::PlanningUnavailable,
+        attention: if project_limit_stored.is_some() {
+            UnavailableReason::ProjectLimitUnsupported
+        } else {
+            UnavailableReason::PlanningUnavailable
+        },
+        project_limit_stored,
     })
 }

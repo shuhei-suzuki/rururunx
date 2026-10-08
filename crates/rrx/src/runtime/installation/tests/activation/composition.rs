@@ -110,7 +110,7 @@ async fn ca3_representable_roster_refusals_preserve_claimed_sibling() {
             .store
             .lock()
             .unwrap()
-            .ready_driver_candidates(f.owner.instance_id(), f.owner.epoch(), None, 12, 4)
+            .ready_driver_candidates(f.owner.instance_id(), f.owner.epoch(), None, 12)
             .unwrap();
         let CandidatePage::Rows { keys, .. } = page else {
             panic!("SETUP: candidates absent");

@@ -59,7 +59,6 @@ impl Runtime {
                         self.owner.epoch(),
                         cursor.as_ref(),
                         self.config.scheduler.global_max_sessions,
-                        self.config.scheduler.max_tasks_per_project,
                     )?;
                 let CandidatePage::Rows { keys, more } = page else {
                     return Ok(claimed);
