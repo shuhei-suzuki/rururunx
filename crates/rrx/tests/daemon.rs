@@ -164,12 +164,24 @@ impl Fixture {
     }
 }
 impl Drop for Fixture {
+    /// Bounded cleanup: a probe that blocks must fail the control, not hang it.
     fn drop(&mut self) {
-        let _ = Command::new(env!("CARGO_BIN_EXE_rrx"))
+        let Ok(mut child) = Command::new(env!("CARGO_BIN_EXE_rrx"))
             .arg("--state")
             .arg(&self.state)
             .args(["daemon", "stop"])
-            .output();
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        else {
+            return;
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while matches!(child.try_wait(), Ok(None)) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }
 
