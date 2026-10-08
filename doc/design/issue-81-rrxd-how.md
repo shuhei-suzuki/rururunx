@@ -1,6 +1,6 @@
 # Issue 81: rrxd — HOW H2 (H0 per Sol 6058699019, H1 per Sol 6059215697)
 
-Base: `b2eb694` (#43 merged; Q5 satisfied). Requirements: `doc/design/issue-81-rrxd-requirements.md` (R1, approved 6058083336). Paths are relative to `crates/rrx/src`. This is a design only; no code exists yet.
+Base: `b2eb694` (#43 merged; Q5 satisfied). Requirements: `doc/design/issue-81-rrxd-requirements.md` (R1, approved 6058083336). Paths are relative to `crates/rrx/src`. Approved as H2 (Sol 6059595718). S1 is implemented (§7); S2–S4 are design only.
 
 The H0 review (6058699019) was C/H/M/L = 0/0/7/1, with 3 optional items. O1–O4 were supported with conditions. Every item is addressed below and indexed in §6.
 
@@ -228,3 +228,52 @@ S4 adds these read-only `ControlAction`s: `ProjectGoals`, `TaskReview`, `TaskSes
 | OL1: Metrics | §4 |
 | OL2: log file checks | §1.1 step 2 |
 | OL3: control mapping | C-S1a, C-S1f, C-S1g |
+
+## 7. S1 outcome (implementation)
+
+Branch `claude/adoring-archimedes-7eehnw`, on top of PR #82's head (`1d7843e`). Paths are relative to `crates/rrx`.
+
+| Design item | Implementation |
+| --- | --- |
+| §1.1 probe and start table | `src/cli/daemon.rs` `start_with`. It acts on D (`endpoint::discover`) and L (`probe_lock`), and spawns on `absent+free` and on `invalid+free` |
+| §1.1 spawn and log | `serve --detached` from `current_exe()`. stdin is `/dev/null`, stdout a parent-owned pipe, stderr `<state>.execution/daemon/serve.log` (0700 directory; 0600 file opened `NOFOLLOW` and checked like `private_file`) |
+| §1.1 detach | `main.rs` runs `service::detach()` (`rustix::process::setsid`) as the first action under `--detached`. On failure it exits 71 and opens nothing |
+| §1.1 readiness | `service::announce` writes one `{"instance","epoch"}` line after `bind`, then `dup2_stdout(/dev/null)`. The parent needs the own-child line and a separate live identity match. Exit 75 (owner busy) re-runs D. Timeout gives `start unconfirmed` without killing the child |
+| §1.2 status table | `daemon::status`: D first, L only when D is not valid. The exit codes are 0 running, 3 not running, 4 owner busy or discovery unavailable |
+| §1.3 stop | `src/runtime/stop.rs` defines `ShutdownPending { site }`. It is constructed only at P1–P6, and the message text is unchanged. `RuntimeStop` answers `RuntimeStopPending { instance, epoch, site }`. `serve` keeps any stop that is pending or stopping without `RuntimeStopped` as a failure. In the CLI, EOF or timeout after sending is `stop unconfirmed` |
+| §1.4 protocol 2 | `PROTOCOL_VERSION = 2`, with exact live discovery and `Hello`. `bind` uses `read_replaceable_descriptor`: protocol ∈ {1, 2}, the same canonical state and the strict shape |
+| Feature | The workspace `rustix` gains `stdio` for the safe `dup2_stdout`. `Cargo.lock` is unchanged |
+
+### Controls
+
+| Control | Test | Result |
+| --- | --- | --- |
+| C-S1a | `tests/daemon_native.rs` `c_s1a_daemon_survives_invoker_group_and_terminal`: a pty invoker; an in-flight implement held at the peer; SIGKILL of the invoker group plus a closed master | pass. Same identity; the daemon is its own session leader, in a session other than the invoker's; the native peer descends from the daemon; links `session_bound → gate_claim → gate_observed → phase_closed` |
+| C-S1b | `src/cli/daemon/tests.rs` `c_s1b_concurrent_starts_one_runs_and_held_loser_never_claims_running`: 8 concurrent starts, plus a loser whose own child is held by its exec wrapper before `RuntimeOwner::open` | pass. 1 running, the rest `already running`/`owner busy`; epoch 1, then 2 on the next start; one descriptor |
+| C-S1b2 | `c_s1b2_identity_match_refuses_a_replacement_epoch`: a parent pause after the line, before the match; A stopped, B published | pass. `already running` with B |
+| C-S1c | `tests/daemon.rs` `c_s1c_status_table_cells_and_no_effect` | pass. Every non-valid cell; epoch row and descriptor bytes unchanged |
+| C-S1c2 | `c_s1c2_concurrent_status_never_corrupts_start` (10 rounds) | pass |
+| C-S1d | P1 `c_s1d_p1_held_admission…` (held admission), P2 `c_s1d_p2_parked_loop…` (site-scoped loop park), P3 `ca4g…`, P4 `c_s1d_p4_accepted_original…`, P5 `actual_publication_drop…`, P6 `original_empty_reservation…`, all through `RuntimeStop`; poison `c_s1d_poisoned_handoffs…`; `c_s1d_serve_exits_unsuccessfully_after_a_pending_stop`; `c_s1d_stop_without_response_is_unconfirmed_and_refusal_is_failed` | pass |
+| C-S1e | `src/cli/endpoint.rs` `c_s1e_protocol_1_hello_is_refused_before_any_request` | pass. The peer reads no request |
+| C-S1e2 | `tests/daemon.rs` `c_s1e2_daemon_start_replaces_known_leftovers_only` (through `daemon start`, including a SIGKILL crash) and `endpoint` `c_s1e2_bind_replaces_known_leftovers_and_refuses_foreign` | pass |
+| C-S1f | `tests/daemon_native.rs` `c_s1f_native_success_and_refusal_equal_under_serve_and_daemon` | pass. Success links equal; the compat refusal projection (links, `native_invocations`, Session records, readiness) is equal and empty |
+| C-S1g | `tests/daemon.rs` `c_s1g_daemon_owns_no_inet_socket` (Linux `/proc` inodes; macOS `lsof`) | pass |
+
+### Mutants (each restored; tree clean)
+
+| Mutant | Detected by |
+| --- | --- |
+| MB: an endpoint the own child never announced is reported as `running` | C-S1b FAIL |
+| MB2: the identity comparison is dropped, and only that | C-S1b2 FAIL |
+| MC: a discovery failure maps to `not running` | C-S1c FAIL |
+| MD1–MD6: the marker is removed at P1 / P2 / P3 / P4 / P5 / P6 | the matching C-S1d site test FAILs (P2 also fails the `serve` exit test) |
+| MDF: `stop_failed` is kept on `is_err()` | `c_s1d_serve_exits_unsuccessfully_after_a_pending_stop` FAIL |
+| ME: protocol 1 is accepted for live discovery | C-S1e FAIL |
+| ME2A: the probe returns on any `invalid` | C-S1e2 (`daemon start`) FAIL |
+| ME2B: the `bind` replacement path is removed | C-S1e2, both tests FAIL |
+| ME2C: a foreign-state leftover is accepted | C-S1e2, both tests FAIL |
+
+### Notes
+
+- After a pending stop, `serve` itself retries shutdown and exits 1. This is the existing behaviour, and it is now asserted: the process exit is not counted as cleanup.
+- The P2 park (`runtime::stop::park`) is `cfg(test)` only. It holds the real loop, so the join genuinely misses its deadline. It never constructs the marker.
