@@ -1,10 +1,10 @@
-# Issue 43: Claude CLI pin 2.1.283 → 2.1.293 — draft for review
+# Issue 43: Claude CLI pin 2.1.283 → 2.1.294 — draft for review (A1 decided by the owner)
 
 Base: `b2eb694` (PR #80 merged). This is a production compatibility change (STRICT), so the design review comes before the code.
 
 ## 1. Facts
 
-- **Owner decision.** The owner decided to raise the supported Claude CLI version to 2.1.293. The trigger was the official Native run in #43 (6055469975): the installed `2.1.293` was refused with profile `unsupported_or_unknown`, and no NativeInput or Session was created. The run then used an isolated official `2.1.283`.
+- **Owner decision.** The owner decided to raise the supported Claude CLI version, to exactly **2.1.294** and with option A1 (replace). The trigger was the official Native run in #43 (6055469975): the then-installed `2.1.293` was refused with profile `unsupported_or_unknown`, and no NativeInput or Session was created. The run then used an isolated official `2.1.283`.
 - **The pin is an exact single version**, by design. `claude_wire::verify_version` (`execution/claude_wire.rs:26-37`) says: "A pinned local version/schema baseline … Future versions require a capability probe, rather than inheriting permissions."
 - **Production sites, all exact-match:**
 
@@ -26,35 +26,35 @@ Base: `b2eb694` (PR #80 merged). This is a production compatibility change (STRI
 
 ## 2. HOW (proposed)
 
-1. **Replace the single pin.** Every production site above changes `2.1.283` to `2.1.293`, and the label becomes `claude-2.1.293`. It stays exact and single: 2.1.283 is no longer accepted. Accepting both is option A2 below.
+1. **Replace the single pin.** Every production site above changes `2.1.283` to `2.1.294`, and the label becomes `claude-2.1.294`. It stays exact and single: 2.1.283 is no longer accepted. Accepting both is option A2 below.
 2. **Nothing else changes:**
    - the wire handling (`control_request` initialize, `system/init`, result and `rate_limit_event` parsing);
    - auth, settings, rules, hooks and permissions;
    - the profile `rrx-native-inherited-v1` and `settings='inherited'`;
    - the Codex pin.
-3. **Tests and fixtures** follow the pin: the fixture prints `2.1.293 (Claude Code)`. A negative is added: a `2.1.283` declaration or observation is refused with a typed error and no NativeInput.
+3. **Tests and fixtures** follow the pin: the fixture prints `2.1.294 (Claude Code)`. A negative is added: a `2.1.283` declaration or observation is refused with a typed error and no NativeInput.
 
 ## 3. Qualification (needed before the pin claims compatibility)
 
-The comment at `claude_wire.rs:27-29` makes the pin a schema baseline, so raising it needs evidence that 2.1.293's wire matches what `claude_wire`/Native parse.
+The comment at `claude_wire.rs:27-29` makes the pin a schema baseline, so raising it needs evidence that 2.1.294's wire matches what `claude_wire`/Native parse.
 
-- **Q-a.** An official Native run with the real CLI `2.1.293` and existing auth, on the same lane as 6055469975: macOS, 1 Project, first implement.
+- **Q-a.** An official Native run with the real CLI `2.1.294` and existing auth, on the same lane as 6055469975: macOS, 1 Project, first implement.
   - Needed: NativeInput and transport confirmed, Session RUNNING → EXITED, `session_bound` with `normal_return`, `gate_claim`, `gate_observed` and `phase_closed`, Unit `work=success`, and no Pending/Unknown effects.
   - Any parse failure (UnsupportedCapability/ParseFailure) means the wire changed. The pin is then not raised, and the wire delta becomes its own design.
-- **Q-b.** The `--version` output format of 2.1.293. Its first whitespace token must be exactly `2.1.293`.
-- **Q-c.** `rate_limit_event` / quota frames, if 2.1.293 emits them in the run. They must still be parsed, not ignored.
+- **Q-b.** The `--version` output format of 2.1.294. Its first whitespace token must be exactly `2.1.294`.
+- **Q-c.** `rate_limit_event` / quota frames, if 2.1.294 emits them in the run. They must still be parsed, not ignored.
 
 ## 4. Controls
 
 | Control | Expected |
 | --- | --- |
-| C1: fixture `2.1.293` | The installed-lane SC suites pass unchanged in count |
+| C1: fixture `2.1.294` | The installed-lane SC suites pass unchanged in count |
 | C2: declared `2.1.283` after the bump | Typed "native compatibility version unsupported", no NativeInput |
-| C3: observed `2.1.283` stdout with declared `2.1.293` | `qualified_profile()` None → "observed version differs", no NativeInput |
+| C3: observed `2.1.283` stdout with declared `2.1.294` | `qualified_profile()` None → "observed version differs", no NativeInput |
 | Mutant M1: the gate accepts any `2.1.*` | C3 fails |
 | Mutant M2: the label is not updated in `compat.rs:139` | C1 fails (profile mismatch) |
 
 ## 5. Open question for review
 
-- **A1 (recommended): replace.** Only 2.1.293 is accepted, which keeps a single exact baseline.
-- **A2: accept both 2.1.283 and 2.1.293.** This keeps existing configs working, but doubles the qualified baseline. Each version then needs its own Q-a evidence, and the profile label must be selected per observed version.
+- **A1 — decided by the owner: replace.** Only 2.1.294 is accepted, which keeps a single exact baseline.
+- **A2: accept both 2.1.283 and 2.1.294.** This keeps existing configs working, but doubles the qualified baseline. Each version then needs its own Q-a evidence, and the profile label must be selected per observed version.
