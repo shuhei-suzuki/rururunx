@@ -608,7 +608,7 @@ pub(super) mod tests {
     use super::*;
     use crate::{
         adapter::{LaunchMode, PreparedInput},
-        domain::{CompletionCriterion, Scope},
+        domain::Scope,
         git::WorktreeManager,
         state::Store,
     };
@@ -634,8 +634,19 @@ pub(super) mod tests {
         assert!(server.load(Ordering::SeqCst));
     }
 
+    /// Keeps the fixture directory (and, for a Task scope, the migrated
+    /// legacy rows' only owner) alive for the fixture's lifetime.
+    enum Holder {
+        Project {
+            _dir: tempfile::TempDir,
+        },
+        Task {
+            _legacy: crate::runtime::LegacyFixture,
+            _owner: Arc<crate::execution::RuntimeOwner>,
+        },
+    }
     pub(in crate::codex) struct Fixture {
-        _temp: tempfile::TempDir,
+        _temp: Holder,
         pub(in crate::codex) store: SharedStore,
         pub(in crate::codex) request: LaunchRequest,
     }
@@ -656,54 +667,89 @@ pub(super) mod tests {
     }
     impl Fixture {
         pub(in crate::codex) fn new(task_scoped: bool) -> Self {
-            let temp = tempfile::tempdir().unwrap();
-            let root = temp.path().canonicalize().unwrap().join("project");
-            std::fs::create_dir(&root).unwrap();
-            git(&root, &["init", "-b", "main"]);
-            std::fs::write(root.join(".gitignore"), "worktree/\n").unwrap();
-            git(&root, &["add", ".gitignore"]);
-            git(
-                &root,
-                &[
-                    "-c",
-                    "user.name=Fixture",
-                    "-c",
-                    "user.email=fixture@example.invalid",
-                    "commit",
-                    "-m",
-                    "fixture",
-                ],
-            );
-            let mut project = Project::new(
-                "fixture".into(),
-                root.clone(),
-                crate::git::repository_identity(&root, "main").unwrap(),
-                "main".into(),
-            );
-            let mut store = Store::open(&temp.path().join("state.sqlite3")).unwrap();
-            store.put_project(&mut project).unwrap();
-            let (scope, worktree, role) = if task_scoped {
-                let mut goal = Goal::new(
-                    project.id,
-                    "fixture".into(),
-                    vec![CompletionCriterion {
-                        evaluator: Default::default(),
-                        id: "fixture".into(),
-                        description: "native scope proof".into(),
-                        evidence: None,
-                        satisfied: false,
-                    }],
+            // FM §8.1 L: a Task scope uses legacy rows from accepted ingress
+            // through the ordered historical migration (D1: no `issue`).
+            let (holder, project, store, scope, worktree, role) = if task_scoped {
+                let (legacy, owner) = crate::runtime::legacy_fixture_blocking(
+                    crate::runtime::LegacyLayout {
+                        root: "project",
+                        state: "state.sqlite3",
+                    },
+                    |root| {
+                        std::fs::write(root.join(".gitignore"), "worktree/\n").unwrap();
+                        git(root, &["add", ".gitignore"]);
+                        git(
+                            root,
+                            &[
+                                "-c",
+                                "user.name=Fixture",
+                                "-c",
+                                "user.email=fixture@example.invalid",
+                                "commit",
+                                "-m",
+                                "fixture",
+                            ],
+                        );
+                    },
+                    vec![crate::runtime::LegacyTask::standard("fixture", "codex")],
                 );
-                store.put_goal(&mut goal).unwrap();
-                let mut task = Task::new(project.id, goal.id, "fixture".into(), "codex".into());
-                task.issue = Some(42);
-                store.put_task(&mut task).unwrap();
-                let worktree = WorktreeManager::create(&mut store, task.id)
-                    .unwrap()
-                    .worktree;
-                (task.scope(), worktree, SessionRole::Executor)
+                let task = legacy.task();
+                let store = owner.store();
+                let (project, worktree) = {
+                    let mut store = store.lock().unwrap();
+                    let project = store.project(task.project_id).unwrap().unwrap();
+                    let worktree = WorktreeManager::create(&mut store, task.id)
+                        .unwrap()
+                        .worktree;
+                    (project, worktree)
+                };
+                (
+                    Holder::Task {
+                        _legacy: legacy,
+                        _owner: owner,
+                    },
+                    project,
+                    store,
+                    task.scope(),
+                    worktree,
+                    SessionRole::Executor,
+                )
             } else {
-                (Scope::project(project.id), root, SessionRole::Consultant)
+                let temp = tempfile::tempdir().unwrap();
+                let root = temp.path().canonicalize().unwrap().join("project");
+                std::fs::create_dir(&root).unwrap();
+                git(&root, &["init", "-b", "main"]);
+                std::fs::write(root.join(".gitignore"), "worktree/\n").unwrap();
+                git(&root, &["add", ".gitignore"]);
+                git(
+                    &root,
+                    &[
+                        "-c",
+                        "user.name=Fixture",
+                        "-c",
+                        "user.email=fixture@example.invalid",
+                        "commit",
+                        "-m",
+                        "fixture",
+                    ],
+                );
+                let mut project = Project::new(
+                    "fixture".into(),
+                    root.clone(),
+                    crate::git::repository_identity(&root, "main").unwrap(),
+                    "main".into(),
+                );
+                let mut store = Store::open(&temp.path().join("state.sqlite3")).unwrap();
+                store.put_project(&mut project).unwrap();
+                let scope = Scope::project(project.id);
+                (
+                    Holder::Project { _dir: temp },
+                    project,
+                    Arc::new(Mutex::new(store)),
+                    scope,
+                    root,
+                    SessionRole::Consultant,
+                )
             };
             let revision = git(&worktree, &["rev-parse", "HEAD"]);
             let request = LaunchRequest {
@@ -725,8 +771,8 @@ pub(super) mod tests {
                 effort: None,
             };
             Self {
-                _temp: temp,
-                store: Arc::new(Mutex::new(store)),
+                _temp: holder,
+                store,
                 request,
             }
         }

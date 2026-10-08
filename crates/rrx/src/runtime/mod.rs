@@ -124,7 +124,10 @@ impl Runtime {
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
-pub(crate) use tests::accepted_goal_fixture;
+pub(crate) use tests::{
+    LegacyFixture, LegacyLayout, LegacyTask, accepted_goal_fixture, legacy_fixture,
+    legacy_fixture_blocking, write_historical_copy,
+};
 
 #[cfg(test)]
 struct GoalAdmissionPause {

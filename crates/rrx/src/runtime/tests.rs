@@ -492,6 +492,250 @@ pub(crate) async fn accepted_goal_fixture() -> (ControlFixture, crate::domain::T
     };
     (fixture, task)
 }
+/// One planned Task of a legacy fixture: its plan key, executor and class.
+pub(crate) struct LegacyTask {
+    pub(crate) key: &'static str,
+    pub(crate) executor: &'static str,
+    pub(crate) workflow: WorkflowClass,
+    pub(crate) risk: RiskClass,
+}
+impl LegacyTask {
+    /// `Task::new`'s historical class (Standard, R1) for a named executor.
+    pub(crate) fn standard(key: &'static str, executor: &'static str) -> Self {
+        Self {
+            key,
+            executor,
+            workflow: WorkflowClass::Standard,
+            risk: RiskClass::R1,
+        }
+    }
+}
+
+/// FM §8.1 L harness: genuinely legacy rows. The Goal and its Tasks come from
+/// accepted Unix-peer ingress; only the historical nongrant tables are copied
+/// into the historical schema at `user_version = 2`, and `RuntimeOwner::open`
+/// runs the ordered migration (precedent `66f170b`). No authority, scheduler,
+/// Driver or execution row is copied, and no guard or writer is changed.
+/// The fixture holds no owner: `legacy_fixture` returns the only one, so a
+/// test can drop it and reopen the same state.
+pub(crate) struct LegacyFixture {
+    dir: tempfile::TempDir,
+    pub(crate) tasks: Vec<crate::domain::Task>,
+}
+impl LegacyFixture {
+    /// The fixture directory: `repo/` is the Project root, `state.db` the
+    /// migrated legacy database.
+    pub(crate) fn path(&self) -> &std::path::Path {
+        self.dir.path()
+    }
+    pub(crate) fn task(&self) -> crate::domain::Task {
+        self.tasks[0].clone()
+    }
+}
+
+/// Historical nongrant tables, the only migration input.
+const LEGACY_COPIED: [&str; 7] = [
+    "projects",
+    "goals",
+    "tasks",
+    "records",
+    "context_versions",
+    "usage",
+    "audit",
+];
+/// Authority, scheduler, Driver and execution tables that must be empty after
+/// the migration (FM-L1). `runtime_epoch` is exempt: the migration itself
+/// creates its singleton.
+pub(crate) fn legacy_required_empty(connection: &rusqlite::Connection) -> Vec<String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND (name IN ('goal_authority','scheduler_projects','scheduler_goals','scheduler_tasks','task_drivers','execution_units','session_units','task_execution','source_recoveries') OR name LIKE 'managed\\_%' ESCAPE '\\' OR name LIKE 'native\\_%' ESCAPE '\\') ORDER BY name",
+        )
+        .unwrap();
+    statement
+        .query_map([], |r| r.get::<_, String>(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+/// Copy the nongrant rows of `source` into the historical schema at `target`
+/// and label it `user_version = 2`. The caller opens it to migrate.
+pub(crate) fn write_historical_copy(source: &std::path::Path, target: &std::path::Path) {
+    let connection = rusqlite::Connection::open(target).unwrap();
+    // Build the historical SQL layout, rather than relabelling a current
+    // database whose execution tables and writer guards already exist.
+    connection
+        .execute_batch(include_str!("../state/schema.sql"))
+        .unwrap();
+    connection
+        .execute(
+            "ATTACH DATABASE ?1 AS current_fixture",
+            [source.to_str().unwrap()],
+        )
+        .unwrap();
+    for table in LEGACY_COPIED {
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO {table} SELECT * FROM current_fixture.{table}"
+            ))
+            .unwrap();
+    }
+    connection
+        .execute_batch("DETACH DATABASE current_fixture")
+        .unwrap();
+    connection
+        .pragma_update(None, "application_id", crate::state::APPLICATION_ID)
+        .unwrap();
+    connection.pragma_update(None, "user_version", 2).unwrap();
+}
+
+/// Where a legacy fixture puts its Project root and state database, both
+/// directly under the fixture directory.
+#[derive(Clone, Copy)]
+pub(crate) struct LegacyLayout {
+    pub(crate) root: &'static str,
+    pub(crate) state: &'static str,
+}
+impl Default for LegacyLayout {
+    fn default() -> Self {
+        Self {
+            root: "repo",
+            state: "state.db",
+        }
+    }
+}
+
+/// FM §8.1. `seed` runs on the initialized `repo/` (branch `main`, one empty
+/// commit) before the Goal is created; `tasks` become the accepted plan.
+pub(crate) async fn legacy_fixture(
+    seed: impl FnOnce(&std::path::Path),
+    tasks: Vec<LegacyTask>,
+) -> (LegacyFixture, Arc<RuntimeOwner>) {
+    legacy_fixture_in(LegacyLayout::default(), seed, tasks).await
+}
+
+/// `legacy_fixture` for a synchronous caller: the same ingress and migration
+/// on a dedicated thread and runtime.
+pub(crate) fn legacy_fixture_blocking(
+    layout: LegacyLayout,
+    seed: impl FnOnce(&std::path::Path) + Send + 'static,
+    tasks: Vec<LegacyTask>,
+) -> (LegacyFixture, Arc<RuntimeOwner>) {
+    std::thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(legacy_fixture_in(layout, seed, tasks))
+    })
+    .join()
+    .unwrap()
+}
+
+pub(crate) async fn legacy_fixture_in(
+    layout: LegacyLayout,
+    seed: impl FnOnce(&std::path::Path),
+    tasks: Vec<LegacyTask>,
+) -> (LegacyFixture, Arc<RuntimeOwner>) {
+    let mut config = Config::default();
+    for task in &tasks {
+        let provider = match task.executor {
+            "claude" | "codex" | "grok" => task.executor,
+            _ => "claude",
+        };
+        config.agents.insert(
+            task.executor.into(),
+            AgentConfig {
+                provider: Some(provider.into()),
+                command: vec!["/bin/true".into()],
+                ..Default::default()
+            },
+        );
+    }
+    let mut f = ControlFixture::configured(|_| config);
+    f.register_real_git_project_named(layout.root);
+    seed(&f.project.root);
+    let mut plan = plan();
+    plan.tasks = tasks
+        .iter()
+        .map(|t| TaskDefinition {
+            key: t.key.into(),
+            title: t.key.into(),
+            acceptance_criteria: vec!["verified result".into()],
+            executor: t.executor.into(),
+            reviewers: vec![],
+            workflow: t.workflow,
+            risk: t.risk,
+        })
+        .collect();
+    let goal_id = f.create(plan).await;
+    let ControlFixture {
+        _dir: dir,
+        owner,
+        runtime,
+        socket,
+        _peer,
+        ..
+    } = f;
+    let accepted = dir.path().join("state.db");
+    {
+        // The copy source never executed: no Unit, Session or Driver.
+        let c = rusqlite::Connection::open(&accepted).unwrap();
+        for table in ["execution_units", "session_units", "task_drivers"] {
+            let n: i64 = c
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(n, 0, "SETUP: the copy source executed ({table})");
+        }
+    }
+    drop((socket, _peer));
+    let weak = Arc::downgrade(&runtime);
+    drop(runtime);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    while weak.upgrade().is_some() || Arc::strong_count(&owner) > 1 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "SETUP: the ingress owner custody did not drop"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    drop(owner);
+    let legacy = dir.path().join("legacy-v2.db");
+    write_historical_copy(&accepted, &legacy);
+    for leftover in ["state.db", "state.db-wal", "state.db-shm"] {
+        let _ = std::fs::remove_file(dir.path().join(leftover));
+    }
+    std::fs::remove_dir_all(dir.path().join("state.db.execution")).unwrap();
+    let target = dir.path().join(layout.state);
+    std::fs::rename(&legacy, &target).unwrap();
+    let owner = RuntimeOwner::open(&target).unwrap();
+    let c = rusqlite::Connection::open(&target).unwrap();
+    for table in legacy_required_empty(&c) {
+        let n: i64 = c
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0, "SETUP: legacy migration restored {table}");
+    }
+    drop(c);
+    let tasks = {
+        let store = owner.store.lock().unwrap();
+        let goal = store.goal(goal_id).unwrap().unwrap();
+        let tasks = goal
+            .dag
+            .nodes
+            .iter()
+            .map(|id| store.task(*id).unwrap().unwrap())
+            .collect::<Vec<_>>();
+        assert!(
+            tasks.iter().all(|t| t.worktree.is_none()),
+            "SETUP: no LegacyUnreconciled Unit source"
+        );
+        tasks
+    };
+    (LegacyFixture { dir, tasks }, owner)
+}
+
 #[tokio::test]
 async fn actual_accepted_goal_transaction_idempotency_and_generic_writers() {
     let f = ControlFixture::new();

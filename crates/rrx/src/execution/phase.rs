@@ -267,7 +267,7 @@ mod tests {
     async fn fixture(
         provider: &str,
     ) -> (
-        tempfile::TempDir,
+        crate::runtime::LegacyFixture,
         Arc<RuntimeOwner>,
         ExecutionUnit,
         AgentRegistry,

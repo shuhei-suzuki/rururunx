@@ -63,7 +63,7 @@ async fn retained_inspection_routing_worker() {
 }
 
 async fn ancestor_fixture() -> (
-    tempfile::TempDir,
+    crate::runtime::LegacyFixture,
     Arc<RuntimeOwner>,
     Task,
     ResultArtifact,

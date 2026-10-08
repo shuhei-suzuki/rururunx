@@ -1,40 +1,40 @@
 use super::*;
-use crate::{
-    config::Config,
-    domain::{CompletionCriterion, Goal, Task},
-    project::{AddProject, ProjectRegistry},
-};
+use crate::domain::Task;
 use serde_json::json;
 mod retained_tests;
 
-pub(crate) async fn fixture() -> (tempfile::TempDir, Arc<RuntimeOwner>, Task) {
-    let dir = tempfile::tempdir().unwrap();
-    let source = dir.path().join("repo");
-    std::fs::create_dir(&source).unwrap();
-    git(&source, ["init", "-b", "main"]).await.unwrap();
-    std::fs::write(source.join("answer.txt"), "base\n").unwrap();
-    commit(&source).await;
-    let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
-    let mut store = owner.store.lock().unwrap();
-    let project = ProjectRegistry::new(&mut store)
-        .add(&source, AddProject::default(), &Config::default())
-        .unwrap();
-    let mut goal = Goal::new(
-        project.id,
-        "fixture".into(),
-        vec![CompletionCriterion {
-            evaluator: Default::default(),
-            id: "answer".into(),
-            description: "pinned result".into(),
-            evidence: None,
-            satisfied: false,
-        }],
-    );
-    store.put_goal(&mut goal).unwrap();
-    let mut task = Task::new(project.id, goal.id, "answer".into(), "codex".into());
-    store.put_task(&mut task).unwrap();
-    drop(store);
-    (dir, owner, task)
+/// FM §8.1 L: a legacy codex Task on `repo/` holding the committed `answer.txt`.
+pub(crate) async fn fixture() -> (crate::runtime::LegacyFixture, Arc<RuntimeOwner>, Task) {
+    let (f, owner) = crate::runtime::legacy_fixture(
+        |source| {
+            std::fs::write(source.join("answer.txt"), "base\n").unwrap();
+            for args in [
+                vec!["add", "answer.txt"],
+                vec![
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "-m",
+                    "fixture",
+                ],
+            ] {
+                let output = std::process::Command::new("git")
+                    .current_dir(source)
+                    .args(args)
+                    .output()
+                    .unwrap();
+                assert!(output.status.success(), "SETUP: fixture commit");
+            }
+        },
+        vec![crate::runtime::LegacyTask::standard("answer", "codex")],
+    )
+    .await;
+    let task = f.task();
+    (f, owner, task)
 }
 async fn commit(path: &Path) -> String {
     git(path, ["add", "answer.txt"]).await.unwrap();

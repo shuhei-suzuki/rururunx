@@ -8,7 +8,7 @@ const SIBLING: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 const UNREGISTERED: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 struct Fixture {
-    _dir: tempfile::TempDir,
+    _dir: crate::runtime::LegacyFixture,
     owner: Arc<RuntimeOwner>,
     unit: ExecutionUnit,
     siblings: Vec<ExecutionUnit>,

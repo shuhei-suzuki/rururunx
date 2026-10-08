@@ -1412,40 +1412,9 @@ async fn project_minimum_and_rule_refresh_override_defaults_and_force_new_genera
 async fn ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected() {
     let (fixture, task) = crate::runtime::accepted_goal_fixture().await;
     let db = fixture.state_path().with_file_name("legacy-v2.db");
-    let connection = rusqlite::Connection::open(&db).unwrap();
-    // Build the historical SQL layout, rather than relabelling a schema-v4
-    // database whose execution tables and writer guards already exist.
-    connection
-        .execute_batch(include_str!("../state/schema.sql"))
-        .unwrap();
-    connection
-        .execute(
-            "ATTACH DATABASE ?1 AS current_fixture",
-            [fixture.state_path().to_str().unwrap()],
-        )
-        .unwrap();
-    for table in [
-        "projects",
-        "goals",
-        "tasks",
-        "records",
-        "context_versions",
-        "usage",
-        "audit",
-    ] {
-        connection
-            .execute_batch(&format!(
-                "INSERT INTO {table} SELECT * FROM current_fixture.{table}"
-            ))
-            .unwrap();
-    }
     // Only the historical nongrant tables are copied. Accepted authority,
     // scheduler/Driver state and Native execution rows are not migration input.
-    connection
-        .pragma_update(None, "application_id", crate::state::APPLICATION_ID)
-        .unwrap();
-    connection.pragma_update(None, "user_version", 2).unwrap();
-    drop(connection);
+    crate::runtime::write_historical_copy(&fixture.state_path(), &db);
     let restored = Store::open(&db).unwrap();
     assert_eq!(
         restored.schema_version().unwrap(),

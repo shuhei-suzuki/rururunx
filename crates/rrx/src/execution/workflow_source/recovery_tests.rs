@@ -9,7 +9,7 @@ use crate::{
 use std::time::Duration;
 
 struct Published {
-    dir: tempfile::TempDir,
+    dir: crate::runtime::LegacyFixture,
     owner: Arc<RuntimeOwner>,
     config: Config,
     task: TaskId,

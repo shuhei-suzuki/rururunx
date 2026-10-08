@@ -64,7 +64,7 @@ impl PhaseGates for InitialEvidence {
 }
 
 struct Fixture {
-    _dir: tempfile::TempDir,
+    _dir: crate::runtime::LegacyFixture,
     owner: Arc<execution::RuntimeOwner>,
     task: Task,
     config: Config,
