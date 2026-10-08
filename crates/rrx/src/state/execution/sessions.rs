@@ -312,32 +312,42 @@ fn fence_managed_session(
         },
     )?;
     let (next, body) = prepare_record_write(record, at)?;
-    #[cfg(test)]
-    let old = match epoch_fence_fault::take() {
-        epoch_fence_fault::Fault::None => old,
-        // Negative-only: write without any permit (the trigger must refuse).
-        epoch_fence_fault::Fault::NoPermit => {
-            return apply_record_write(tx, record.version, &next, &body);
-        }
-        // Negative-only: an old image differing by one byte of the body.
-        epoch_fence_fault::Fault::WrongOld => {
-            let mut old = old;
-            if let Some(rusqlite::types::Value::Text(body)) = old.last_mut() {
-                body.push(' ');
+    let result = (|| {
+        #[cfg(test)]
+        let old = match epoch_fence_fault::take() {
+            epoch_fence_fault::Fault::None => old,
+            // Negative-only: write without any permit (the trigger must refuse).
+            epoch_fence_fault::Fault::NoPermit => {
+                return apply_record_write(tx, record.version, &next, &body);
             }
-            old
-        }
-    };
-    let mutation = crate::state::managed_binding::ExactRowMutation::new(
-        "records",
-        "UPDATE",
-        Some(old),
-        Some(crate::state::managed_binding::record_image(&next, &body)?),
-    )?;
-    permits.with_exact_permit(vec![mutation], || {
-        apply_record_write(tx, record.version, &next, &body)?;
-        permits.ensure_consumed()
-    })
+            // Negative-only: an old image differing by one byte of the body.
+            epoch_fence_fault::Fault::WrongOld => {
+                let mut old = old;
+                if let Some(rusqlite::types::Value::Text(body)) = old.last_mut() {
+                    body.push(' ');
+                }
+                old
+            }
+        };
+        let mutation = crate::state::managed_binding::ExactRowMutation::new(
+            "records",
+            "UPDATE",
+            Some(old),
+            Some(crate::state::managed_binding::record_image(&next, &body)?),
+        )?;
+        permits.with_exact_permit(vec![mutation], || {
+            apply_record_write(tx, record.version, &next, &body)?;
+            permits.ensure_consumed()
+        })
+    })();
+    // Same manager, after the writer returned and before the Store is dropped.
+    #[cfg(test)]
+    epoch_fence_fault::observe(epoch_fence_fault::Observation {
+        at,
+        ok: result.is_ok(),
+        permit_active: permits.permit_active(),
+    });
+    result
 }
 
 /// EF3 negative stimuli for the managed epoch fence. Thread-local and taken
@@ -359,5 +369,21 @@ pub(crate) mod epoch_fence_fault {
     }
     pub(super) fn take() -> Fault {
         FAULT.with(|f| f.replace(Fault::None))
+    }
+    /// Nongrant record of one managed fence on this thread's open.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub(crate) struct Observation {
+        pub(crate) at: i64,
+        pub(crate) ok: bool,
+        pub(crate) permit_active: bool,
+    }
+    thread_local! {
+        static SEEN: std::cell::RefCell<Vec<Observation>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    pub(super) fn observe(observation: Observation) {
+        SEEN.with(|s| s.borrow_mut().push(observation));
+    }
+    pub(crate) fn observations() -> Vec<Observation> {
+        SEEN.with(|s| std::mem::take(&mut *s.borrow_mut()))
     }
 }

@@ -232,7 +232,9 @@ What is never used as a solution:
 - a mid-flight `begin_execution_epoch` (a startup-only seam).
 
 Legitimate drift on D2 (verified at `38e4f56`):
-- **Project registry changes** (name, `rule_refs`, `config_ref`, `environment_refs`): `put_project` has no accepted-Goal check. Root and identity are refused (`state/mod.rs:351-366`). These fields feed `governing_digest` (`state/execution.rs:498-511`).
+- **Project registry changes:** `put_project` has no accepted-Goal check; root and identity are refused (`state/mod.rs:351-366`). Two kinds are distinct:
+  - `config_ref`, `rule_refs` and `environment_refs` feed `governing_digest` (`state/execution.rs:506-509`), so a change is an instruction drift.
+  - `name` is registry-mutable but is **not** in `governing_digest`. A name change alone proves no instruction-digest refusal and is not counted as one.
 - **Goal lifecycle** through `ControlAction::SetGoalLifecycle` on live ingress (`state/runtime/goals.rs:358`).
 - **Filesystem changes** in the worktree, in the retained manifest and in live rules.
 - **A real restart:** shutdown, then `RuntimeOwner::open`.
@@ -318,7 +320,7 @@ What this L coverage does not prove:
 
 Each row gives what the test proves today, its D2 part, its R part (with its §8.3 boundary) and what is deferred.
 
-**`workflow_source/recovery_tests`.** All 11 subcases share these facts:
+**`workflow_source/recovery_tests`.** 11 rows, 13 scenarios: the foreign row runs three DTO fields (`for field in 0..3`, `recovery_tests.rs:743-752`). All of them share these facts:
 - **Producer:** the SC1 lane, with `config_ref`/`rule_refs` committed before `accept`.
 - **Consumer:** `begin_retained_source_recovery` and the recovery port. They are test-only until #14 adds their consumer (`source_recovery.rs:61-62`, `workflow_source.rs:671-760`).
 - **No Source7 row on D2:** `fresh()` refuses any `source_recoveries` row (`claim.rs:233-238`).
@@ -359,10 +361,12 @@ Their consumer `adopt_prepared_workflow_execution` (`state/execution.rs:636-728`
 - The `current_exe` shim target needs the same repoint as today.
 - If this proves infeasible, implementation stops and the case is returned to review. There is no silent fallback.
 
-**Totals (by subcase):**
+**Totals.** One unit throughout: a *scenario* is one executed subject (a provider, mode or DTO-field iteration is its own scenario). A *boundary assertion* is one named R refusal (§8.3); a scenario can carry more than one.
 
-| Class | Count | Members |
-| --- | --- | --- |
-| D2 | 11 | `:301` ×2, `:470`-manifest, `:631` fronts ×6, `managed_tools`, `managed_docker` |
-| R | 25 | recovery ×11, adoption ×6, `:470`-terminal, `:631`-claude tail, plus the S5-W parts carried inside recovery rows |
-| Deferred | 18 tails | SC-N ×3, evidence integration ×4, #14 ×11 |
+| Class | Scenarios | Boundary assertions | Members |
+| --- | --- | --- | --- |
+| D2 | 11 | — | `:301` ×2, `:470`-manifest, `:631` fronts ×6 (Quick ×2, Standard/Strict ×4), `managed_tools`, `managed_docker` |
+| R | 21 | 25 | recovery ×13 (RB ×13, plus S5-W ×4 inside the published, source_claim, final [no epoch] and inflight [mode 0] scenarios), adoption ×6 (F2), `:470`-terminal (F2), `:631`-claude tail (S4-W) |
+| Deferred | 20 tails | — | SC-N ×3 (`:301` ×2, `:631`-codex), evidence integration ×4, #14 ×13 |
+
+R25 = 13 + 4 + 6 + 1 + 1 boundary assertions. Earlier revisions counted the foreign row once (R 25 by a mixed unit, deferred 18); this revision changes only the counting, not any case's class or guard.

@@ -313,6 +313,15 @@ impl PrivatePermitManager {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(())
     }
+    /// Nongrant observation: whether any permit is still installed.
+    #[cfg(test)]
+    pub(in crate::state) fn permit_active(&self) -> bool {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .active
+            .is_some()
+    }
     #[cfg(test)]
     pub(in crate::state) fn consumed_observations(&self) -> u64 {
         self.consumed_observations
