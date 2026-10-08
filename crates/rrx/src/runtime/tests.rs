@@ -640,8 +640,11 @@ pub(crate) async fn legacy_fixture_in(
 ) -> (LegacyFixture, Arc<RuntimeOwner>) {
     let mut config = Config::default();
     for task in &tasks {
+        // Ingress-only config: accepted plans admit claude|codex providers.
+        // The copied legacy row carries only the executor name, exactly as
+        // `Task::new(.., executor)` wrote it (e.g. "grok").
         let provider = match task.executor {
-            "claude" | "codex" | "grok" => task.executor,
+            "codex" => "codex",
             _ => "claude",
         };
         config.agents.insert(
@@ -653,6 +656,8 @@ pub(crate) async fn legacy_fixture_in(
             },
         );
     }
+    // A Quick plan needs minimum Quick (Quick = R0 + minimum Quick).
+    config.minimum_workflow = tasks.iter().map(|t| t.workflow).min().unwrap_or_default();
     let mut f = ControlFixture::configured(|_| config);
     f.register_real_git_project_named(layout.root);
     seed(&f.project.root);

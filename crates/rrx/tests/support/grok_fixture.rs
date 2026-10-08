@@ -3,7 +3,7 @@ use super::receipt_support::{Attempt, Observation};
 use super::*;
 
 pub(super) struct Fixture {
-    pub(super) directory: tempfile::TempDir,
+    pub(super) directory: super::legacy_support::Holder,
     pub(super) request: LaunchRequest,
     pub(super) store: SharedStore,
     pub(super) executable: std::path::PathBuf,
@@ -29,64 +29,47 @@ impl Fixture {
     pub(super) fn new() -> Self {
         Self::with_workflow(WorkflowClass::default())
     }
+    /// FM §8.1 L: legacy rows from accepted ingress through the ordered
+    /// historical migration; the worktree and branch are the genuine
+    /// `WorktreeManager::create` names on that legacy Task.
     pub(super) fn with_workflow(workflow: WorkflowClass) -> Self {
-        let directory = tempfile::tempdir().unwrap();
-        let root = directory.path().join("project");
-        std::fs::create_dir(&root).unwrap();
-        git(&root, &["init", "-b", "main"]);
-        std::fs::write(root.join("own.txt"), "owned baseline\n").unwrap();
-        git(&root, &["add", "own.txt"]);
-        git(
-            &root,
-            &[
-                "-c",
-                "user.name=Fixture",
-                "-c",
-                "user.email=fixture@example.invalid",
-                "commit",
-                "-m",
-                "fixture",
-            ],
+        let risk = match workflow {
+            WorkflowClass::Quick => RiskClass::R0,
+            WorkflowClass::Standard => RiskClass::R1,
+            WorkflowClass::Strict => RiskClass::R3,
+        };
+        let (directory, store, tasks) = super::legacy_support::blocking(
+            "project",
+            "state.db",
+            |root| {
+                std::fs::write(root.join("own.txt"), "owned baseline\n").unwrap();
+                git(root, &["add", "own.txt"]);
+                git(
+                    root,
+                    &[
+                        "-c",
+                        "user.name=Fixture",
+                        "-c",
+                        "user.email=fixture@example.invalid",
+                        "commit",
+                        "-m",
+                        "fixture",
+                    ],
+                );
+            },
+            vec![("native", "grok", workflow, risk)],
         );
-        let worktree = root.join("worktree/task");
-        git(
-            &root,
-            &[
-                "worktree",
-                "add",
-                "-b",
-                "feature/task",
-                worktree.to_str().unwrap(),
-            ],
-        );
-        let root = root.canonicalize().unwrap();
-        let worktree = worktree.canonicalize().unwrap();
-        let mut project = Project::new(
-            "fixture".into(),
-            root.clone(),
-            fixture_git::repository_identity(&root, "main").unwrap(),
-            "main".into(),
-        );
-        let mut goal = Goal::new(
-            project.id,
-            "native".into(),
-            vec![CompletionCriterion {
-                evaluator: Default::default(),
-                id: "fixture".into(),
-                description: "owned ACP edit".into(),
-                satisfied: false,
-                evidence: None,
-            }],
-        );
-        let mut task = Task::new(project.id, goal.id, "native".into(), "grok".into());
-        task.workflow = workflow;
-        task.worktree = Some(worktree.clone());
-        task.branch = Some("feature/task".into());
+        let (project, task, worktree) = {
+            let mut store = store.lock().unwrap();
+            assert_eq!(tasks[0].workflow, workflow, "SETUP: accepted class");
+            let project = store.project(tasks[0].project_id).unwrap().unwrap();
+            let worktree = fixture_git::WorktreeManager::create(&mut store, tasks[0].id)
+                .unwrap()
+                .worktree;
+            let task = store.task(tasks[0].id).unwrap().unwrap();
+            (project, task, worktree)
+        };
         let database = directory.path().join("state.db");
-        let mut store = Store::open(&database).unwrap();
-        store.put_project(&mut project).unwrap();
-        store.put_goal(&mut goal).unwrap();
-        store.put_task(&mut task).unwrap();
         let request = LaunchRequest {
             project,
             scope: task.scope(),
@@ -112,7 +95,7 @@ impl Fixture {
         Self {
             directory,
             request,
-            store: Arc::new(Mutex::new(store)),
+            store,
             executable,
             attempts: Mutex::new(BTreeMap::new()),
             observations: Mutex::new(BTreeMap::new()),
