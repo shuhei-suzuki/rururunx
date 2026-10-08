@@ -13,6 +13,43 @@ pub enum WorkflowClass {
     Strict,
 }
 
+/// The MVP runs exactly one active Task per Project (R4.1, R4.5).
+pub const MVP_PROJECT_TASKS: usize = 1;
+
+/// Where a refused per-Project Task limit came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LimitOrigin {
+    RuntimeConfig,
+    ProjectOverlay,
+    CliFlag,
+}
+
+/// A requested per-Project Task limit other than [`MVP_PROJECT_TASKS`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectTaskLimitRefused {
+    pub origin: LimitOrigin,
+    pub requested: usize,
+}
+impl std::fmt::Display for ProjectTaskLimitRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "MVP supports exactly {MVP_PROJECT_TASKS} active Task per Project ({:?} requested {})",
+            self.origin, self.requested
+        )
+    }
+}
+impl std::error::Error for ProjectTaskLimitRefused {}
+
+/// Refuses any per-Project Task limit other than the fixed MVP value. Zero
+/// keeps the existing positive-limit refusal.
+pub fn ensure_mvp_project_tasks(origin: LimitOrigin, requested: usize) -> Result<()> {
+    if requested == 0 || requested == MVP_PROJECT_TASKS {
+        return Ok(());
+    }
+    Err(ProjectTaskLimitRefused { origin, requested }.into())
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SchedulerConfig {
@@ -24,7 +61,7 @@ impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
             global_max_sessions: 12,
-            max_tasks_per_project: 4,
+            max_tasks_per_project: MVP_PROJECT_TASKS,
         }
     }
 }
@@ -275,6 +312,9 @@ impl Config {
     }
 
     fn apply_project(&mut self, project: ProjectOverlay) -> Result<()> {
+        if let Some(limit) = project.scheduler.max_tasks_per_project {
+            ensure_mvp_project_tasks(LimitOrigin::ProjectOverlay, limit)?;
+        }
         project.native.validate()?;
         self.native = project.native;
         if let Some(minimum) = project.minimum_workflow {
@@ -337,6 +377,10 @@ impl Config {
         if self.scheduler.global_max_sessions == 0 || self.scheduler.max_tasks_per_project == 0 {
             bail!("scheduler limits must be positive");
         }
+        ensure_mvp_project_tasks(
+            LimitOrigin::RuntimeConfig,
+            self.scheduler.max_tasks_per_project,
+        )?;
         if [
             self.context.repo_map_tokens,
             self.context.review_context_tokens,
@@ -388,26 +432,97 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_support_multiple_projects_and_four_tasks() {
+    fn defaults_support_multiple_projects_and_one_task_each() {
         let config = Config::load(None, None).unwrap();
         assert_eq!(config.scheduler.global_max_sessions, 12);
-        assert_eq!(config.scheduler.max_tasks_per_project, 4);
+        assert_eq!(config.scheduler.max_tasks_per_project, MVP_PROJECT_TASKS);
         assert!(config.context.enabled);
     }
 
     #[test]
     fn project_preserves_runtime_limits_and_only_escalates_minimum() {
         let mut config: Config = toml::from_str("minimum_workflow = 'STRICT'\n[scheduler]\nglobal_max_sessions = 8\n[agents.codex]\nmodel = 'original'\ncommand = ['codex']\nmax_concurrent = 6").unwrap();
-        config.apply_project(toml::from_str("minimum_workflow = 'QUICK'\n[scheduler]\nmax_tasks_per_project = 2\n[agents.codex]\neffort = 'high'").unwrap()).unwrap();
+        config.apply_project(toml::from_str("minimum_workflow = 'QUICK'\n[scheduler]\nmax_tasks_per_project = 1\n[agents.codex]\neffort = 'high'").unwrap()).unwrap();
         assert_eq!(config.minimum_workflow, WorkflowClass::Strict);
         assert_eq!(config.scheduler.global_max_sessions, 8);
-        assert_eq!(config.scheduler.max_tasks_per_project, 2);
+        assert_eq!(config.scheduler.max_tasks_per_project, MVP_PROJECT_TASKS);
         assert_eq!(config.agents["codex"].model.as_deref(), Some("original"));
         assert_eq!(config.agents["codex"].command, ["codex"]);
         assert_eq!(config.agents["codex"].max_concurrent, Some(6));
         assert_eq!(config.agents["codex"].effort.as_deref(), Some("high"));
         assert!(WorkflowClass::Quick < WorkflowClass::Standard);
         assert!(WorkflowClass::Standard < WorkflowClass::Strict);
+    }
+
+    fn refusal(error: &anyhow::Error) -> Option<ProjectTaskLimitRefused> {
+        error
+            .chain()
+            .find_map(|e| e.downcast_ref::<ProjectTaskLimitRefused>().copied())
+    }
+
+    /// C-S2d (config): a runtime limit other than 1 is refused, typed; an
+    /// explicit 1 is accepted; 0 keeps the positive-limit refusal.
+    #[test]
+    fn c_s2d_runtime_limit_other_than_one_is_refused_typed() {
+        for (input, expected) in [
+            ("[scheduler]\nmax_tasks_per_project = 2", Some(2)),
+            ("[scheduler]\nmax_tasks_per_project = 4", Some(4)),
+            ("[scheduler]\nmax_tasks_per_project = 0", None),
+        ] {
+            let config: Config = toml::from_str(input).unwrap();
+            let error = config.validate().unwrap_err();
+            assert_eq!(
+                refusal(&error),
+                expected.map(|requested| ProjectTaskLimitRefused {
+                    origin: LimitOrigin::RuntimeConfig,
+                    requested
+                }),
+                "{input}"
+            );
+            if expected.is_none() {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("scheduler limits must be positive")
+                );
+            }
+        }
+        let explicit: Config = toml::from_str("[scheduler]\nmax_tasks_per_project = 1").unwrap();
+        explicit.validate().unwrap();
+    }
+
+    /// C-S2d (overlay): an overlay limit other than 1 is refused, typed,
+    /// before any field of the merged config changes.
+    #[test]
+    fn c_s2d_overlay_limit_other_than_one_is_refused_before_mutation() {
+        let original: Config = toml::from_str(
+            "minimum_workflow = 'QUICK'\n[agents.codex]\nmodel = 'original'\ncommand = ['codex']",
+        )
+        .unwrap();
+        let mut config = original.clone();
+        let error = config
+            .apply_project(toml::from_str("minimum_workflow = 'STRICT'\n[scheduler]\nmax_tasks_per_project = 2\n[agents.codex]\neffort = 'high'").unwrap())
+            .unwrap_err();
+        assert_eq!(
+            refusal(&error),
+            Some(ProjectTaskLimitRefused {
+                origin: LimitOrigin::ProjectOverlay,
+                requested: 2
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&config).unwrap(),
+            serde_json::to_value(&original).unwrap()
+        );
+        let error = original
+            .with_project_text("[scheduler]\nmax_tasks_per_project = 0")
+            .unwrap_err();
+        assert_eq!(refusal(&error), None);
+        assert!(
+            error
+                .to_string()
+                .contains("scheduler limits must be positive")
+        );
     }
 
     #[test]

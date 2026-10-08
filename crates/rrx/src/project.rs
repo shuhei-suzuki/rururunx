@@ -44,6 +44,12 @@ impl<'a> ProjectRegistry<'a> {
 
     /// Registration/reactivation is explicit and preserves an existing root's ID.
     pub fn add(&mut self, path: &Path, options: AddProject, runtime: &Config) -> Result<Project> {
+        if let Some(requested) = options.max_tasks {
+            crate::config::ensure_mvp_project_tasks(
+                crate::config::LimitOrigin::CliFlag,
+                requested,
+            )?;
+        }
         runtime.validate()?;
         let root = source_root(path)?;
         let previous = self.store.projects()?.into_iter().find(|p| p.root == root);

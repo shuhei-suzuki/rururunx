@@ -186,7 +186,7 @@ impl Project {
             config_ref: None,
             rule_refs: vec![],
             environment_refs: vec![],
-            max_tasks: 4,
+            max_tasks: crate::config::MVP_PROJECT_TASKS,
             state: ProjectState::Registered,
             blocked_reason: None,
             version: 0,

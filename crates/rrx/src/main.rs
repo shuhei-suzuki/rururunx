@@ -479,6 +479,17 @@ fn run(cli: Cli) -> Result<ExitCode> {
             );
         }
         Some(Command::Project { command }) => {
+            // C-S2d: refused before reconcile and before Store::open writes.
+            if let ProjectCommand::Add {
+                max_tasks: Some(requested),
+                ..
+            } = &command
+            {
+                rrx::config::ensure_mvp_project_tasks(
+                    rrx::config::LimitOrigin::CliFlag,
+                    *requested,
+                )?;
+            }
             let runtime = Config::load(cli.config.as_deref(), None)?;
             ensure!(
                 cli.project_config.is_none() || matches!(&command, ProjectCommand::Add { .. }),

@@ -347,7 +347,7 @@ fn config_rules_environment_and_symlinks_never_cross_project() {
     let mut s = Store::open(&f.db).unwrap();
     std::fs::write(
         f.a.join("project.toml"),
-        "[scheduler]\nmax_tasks_per_project = 2\n[context]\nenabled = false",
+        "[scheduler]\nmax_tasks_per_project = 1\n[context]\nenabled = false",
     )
     .unwrap();
     let runtime = Config::default();
@@ -366,7 +366,7 @@ fn config_rules_environment_and_symlinks_never_cross_project() {
     let b = f.add(&mut s, &f.b);
     let ac = effective_config(&s, a.id, &runtime).unwrap();
     let bc = effective_config(&s, b.id, &runtime).unwrap();
-    assert_eq!(ac.scheduler.max_tasks_per_project, 2);
+    assert_eq!(ac.scheduler.max_tasks_per_project, 1);
     assert_eq!(ac.scheduler.global_max_sessions, 12);
     assert!(!ac.context.enabled);
     assert!(bc.context.enabled);
@@ -1068,4 +1068,76 @@ fn blocked_work_cannot_resurrect_terminal_rows_or_rewrite_goal_and_task_metadata
     assert!(store.put_goal(&mut historical).is_err());
     task.state = TaskState::WaitingHuman;
     assert!(store.put_task(&mut task).is_err());
+}
+
+fn limit_refusal(error: &anyhow::Error) -> Option<rrx::config::ProjectTaskLimitRefused> {
+    error.chain().find_map(|e| {
+        e.downcast_ref::<rrx::config::ProjectTaskLimitRefused>()
+            .copied()
+    })
+}
+
+/// C-S2d (registration): `--max-tasks` other than 1 is refused, typed, with no
+/// row; an explicit 1 succeeds; a no-argument re-add keeps a stored legacy 4
+/// byte for byte; only an explicit 1 repairs it.
+#[test]
+fn c_s2d_registration_refuses_other_limits_and_only_explicit_one_repairs() {
+    let f = Fixture::new();
+    let mut s = Store::open(&f.db).unwrap();
+    let runtime = Config::default();
+    let error = Registry::new(&mut s)
+        .add(
+            &f.a,
+            AddProject {
+                max_tasks: Some(2),
+                ..Default::default()
+            },
+            &runtime,
+        )
+        .unwrap_err();
+    assert_eq!(
+        limit_refusal(&error),
+        Some(rrx::config::ProjectTaskLimitRefused {
+            origin: rrx::config::LimitOrigin::CliFlag,
+            requested: 2
+        })
+    );
+    assert!(s.projects().unwrap().is_empty());
+    let added = Registry::new(&mut s)
+        .add(
+            &f.a,
+            AddProject {
+                max_tasks: Some(1),
+                ..Default::default()
+            },
+            &runtime,
+        )
+        .unwrap();
+    assert_eq!(added.max_tasks, 1);
+    // A row registered before S2 kept the old default of 4 (production store
+    // write, the path every pre-S2 registration took).
+    let mut legacy = added.clone();
+    legacy.max_tasks = 4;
+    s.put_project(&mut legacy).unwrap();
+    let stored = serde_json::to_value(s.projects().unwrap().pop().unwrap()).unwrap();
+    let readded = Registry::new(&mut s)
+        .add(&f.a, AddProject::default(), &runtime)
+        .unwrap();
+    assert_eq!(readded.max_tasks, 4);
+    assert_eq!(
+        serde_json::to_value(s.projects().unwrap().pop().unwrap()).unwrap(),
+        stored
+    );
+    let repaired = Registry::new(&mut s)
+        .add(
+            &f.a,
+            AddProject {
+                max_tasks: Some(1),
+                ..Default::default()
+            },
+            &runtime,
+        )
+        .unwrap();
+    assert_eq!(repaired.max_tasks, 1);
+    assert_eq!(s.projects().unwrap().pop().unwrap().max_tasks, 1);
 }

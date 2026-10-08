@@ -367,7 +367,7 @@ Configuration checking does not start agents or write state. Example:
 minimum_workflow = "STANDARD"
 [scheduler]
 global_max_sessions = 12
-max_tasks_per_project = 4
+max_tasks_per_project = 1
 [context]
 enabled = true
 repo_map_tokens = 2000

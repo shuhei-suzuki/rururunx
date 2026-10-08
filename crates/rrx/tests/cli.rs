@@ -60,8 +60,8 @@ fn missing_explicit_config_is_an_error_with_and_without_subcommand() {
 #[test]
 fn project_file_overrides_project_fields_and_preserves_global_limits() {
     let fixture = Fixture::new();
-    let global = fixture.write("global.toml", "minimum_workflow = 'STRICT'\n[scheduler]\nglobal_max_sessions = 8\nmax_tasks_per_project = 4\n[context]\nenabled = true\n[agents.codex]\nmodel = 'old'\ncommand = ['codex', 'exec']");
-    let project = fixture.write("project.toml", "minimum_workflow = 'QUICK'\n[scheduler]\nmax_tasks_per_project = 2\n[context]\nenabled = false\n[agents.codex]\nmodel = 'new'");
+    let global = fixture.write("global.toml", "minimum_workflow = 'STRICT'\n[scheduler]\nglobal_max_sessions = 8\nmax_tasks_per_project = 1\n[context]\nenabled = true\n[agents.codex]\nmodel = 'old'\ncommand = ['codex', 'exec']");
+    let project = fixture.write("project.toml", "minimum_workflow = 'QUICK'\n[scheduler]\nmax_tasks_per_project = 1\n[context]\nenabled = false\n[agents.codex]\nmodel = 'new'");
     let config = rrx::config::Config::load(Some(&global), Some(&project)).unwrap();
     assert_eq!(config.minimum_workflow, rrx::config::WorkflowClass::Strict);
     assert_eq!(config.agents["codex"].model.as_deref(), Some("new"));
@@ -81,7 +81,7 @@ fn project_file_overrides_project_fields_and_preserves_global_limits() {
     );
     assert!(
         String::from_utf8_lossy(&output.stdout)
-            .contains("global sessions 8, tasks/project 2, context baseline")
+            .contains("global sessions 8, tasks/project 1, context baseline")
     );
 }
 
@@ -153,4 +153,38 @@ fn readme_configuration_example_is_valid() {
             .status
             .success()
     );
+}
+
+/// C-S2d (CLI): a runtime config, an overlay or `--max-tasks` other than 1 is
+/// refused with the typed message, and `project add` writes no state at all.
+#[test]
+fn c_s2d_limits_other_than_one_are_refused_without_state() {
+    let fixture = Fixture::new();
+    let global = fixture.write("global.toml", "[scheduler]\nmax_tasks_per_project = 2");
+    let overlay = fixture.write("project.toml", "[scheduler]\nmax_tasks_per_project = 2");
+    for args in [
+        vec!["--config".into(), global.clone(), "config-check".into()],
+        vec!["--project-config".into(), overlay, "config-check".into()],
+    ] {
+        let output = rrx().args(&args).output().unwrap();
+        assert!(!output.status.success(), "{args:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("MVP supports exactly 1 active Task per Project"),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let state = fixture.0.join("state").join("rrx.db");
+    let output = rrx()
+        .arg("--state")
+        .arg(&state)
+        .args(["project", "add"])
+        .arg(&fixture.0)
+        .args(["--max-tasks", "2"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("CliFlag requested 2"));
+    assert!(!fixture.0.join("state").exists(), "project add wrote state");
 }
