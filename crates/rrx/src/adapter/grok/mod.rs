@@ -53,6 +53,7 @@ mod legacy_support {
                     executor,
                     workflow,
                     risk,
+                    reviewers: &[],
                 })
                 .collect(),
         );

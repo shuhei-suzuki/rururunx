@@ -15,6 +15,7 @@ fn fixture() -> (crate::runtime::LegacyFixture, Store, Task, u64) {
         executor: "codex",
         workflow: WorkflowClass::Quick,
         risk: crate::domain::RiskClass::R0,
+        reviewers: &[],
     }]);
     let t = legacy.task();
     let root = store.project(t.project_id).unwrap().unwrap().worktree_root;

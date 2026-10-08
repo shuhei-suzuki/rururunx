@@ -498,6 +498,8 @@ pub(crate) struct LegacyTask {
     pub(crate) executor: &'static str,
     pub(crate) workflow: WorkflowClass,
     pub(crate) risk: RiskClass,
+    /// Planned reviewer agents (configured for the ingress like executors).
+    pub(crate) reviewers: &'static [&'static str],
 }
 impl LegacyTask {
     /// `Task::new`'s historical class (Standard, R1) for a named executor.
@@ -507,6 +509,7 @@ impl LegacyTask {
             executor,
             workflow: WorkflowClass::Standard,
             risk: RiskClass::R1,
+            reviewers: &[],
         }
     }
 }
@@ -701,16 +704,19 @@ pub(crate) async fn legacy_fixture_in(
     tasks: Vec<LegacyTask>,
 ) -> (LegacyFixture, Arc<RuntimeOwner>) {
     let mut config = Config::default();
-    for task in &tasks {
+    let agents = tasks
+        .iter()
+        .flat_map(|t| std::iter::once(t.executor).chain(t.reviewers.iter().copied()));
+    for agent in agents {
         // Ingress-only config: accepted plans admit claude|codex providers.
         // The copied legacy row carries only the executor name, exactly as
         // `Task::new(.., executor)` wrote it (e.g. "grok").
-        let provider = match task.executor {
+        let provider = match agent {
             "codex" => "codex",
             _ => "claude",
         };
         config.agents.insert(
-            task.executor.into(),
+            agent.into(),
             AgentConfig {
                 provider: Some(provider.into()),
                 command: vec!["/bin/true".into()],
@@ -731,7 +737,7 @@ pub(crate) async fn legacy_fixture_in(
             title: t.key.into(),
             acceptance_criteria: vec!["verified result".into()],
             executor: t.executor.into(),
-            reviewers: vec![],
+            reviewers: t.reviewers.iter().map(|r| (*r).into()).collect(),
             workflow: t.workflow,
             risk: t.risk,
         })
