@@ -439,7 +439,10 @@ async fn managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_i
         owner.store(),
         Arc::new(registry),
         config,
-        sources,
+        Arc::new(super::committed_source_tests::CountingSources {
+            inner: sources,
+            calls: calls.clone(),
+        }),
         Arc::new(Gates {
             owner: owner.clone(),
             control: "publish",

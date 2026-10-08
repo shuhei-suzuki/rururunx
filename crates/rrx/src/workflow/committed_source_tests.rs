@@ -5,6 +5,52 @@ use crate::execution::{self, WorkOutcome, results, workflow_source::ManagedWorkf
 
 const RULE_A: &str = "MANDATORY_COMMITTED_RULE_A: preserve the answer.\n";
 
+/// FM §8.6.3: the engine's Sources port with every callback counted, then
+/// delegated unchanged to the production `ManagedWorkflowSources`.
+pub(super) struct CountingSources {
+    pub(super) inner: Arc<dyn WorkflowSources>,
+    pub(super) calls: Arc<std::sync::atomic::AtomicUsize>,
+}
+impl CountingSources {
+    fn count(&self) -> &dyn WorkflowSources {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.as_ref()
+    }
+}
+impl WorkflowSources for CountingSources {
+    fn committed_input(
+        &self,
+        project: Project,
+        task: Task,
+        phase: Phase,
+        class: WorkflowClass,
+    ) -> WorkflowFuture<'_, Option<CommittedWorkflowInput>> {
+        self.count().committed_input(project, task, phase, class)
+    }
+    fn take_initial_executor(
+        &self,
+        project: &Project,
+        task: &Task,
+        phase: Phase,
+        budget: &ContextBudget,
+    ) -> WorkflowFuture<'_, Option<crate::execution::workflow_source::InitialWorkflowExecutor>>
+    {
+        self.count()
+            .take_initial_executor(project, task, phase, budget)
+    }
+    fn retire_initial(&self, scope: &Scope) -> Result<()> {
+        self.count().retire_initial(scope)
+    }
+    fn capture(
+        &self,
+        project: Project,
+        task: Task,
+        phase: Phase,
+        budget: ContextBudget,
+    ) -> WorkflowFuture<'_, SourceSnapshot> {
+        self.count().capture(project, task, phase, budget)
+    }
+}
 struct InitialEvidence {
     owner: Arc<execution::RuntimeOwner>,
     /// FM §8.6.3: shared test-only callback count.
@@ -86,7 +132,10 @@ impl Fixture {
             self.owner.store(),
             self.registry.clone(),
             self.config.clone(),
-            self.sources.clone(),
+            Arc::new(CountingSources {
+                inner: self.sources.clone(),
+                calls: self.callbacks.clone(),
+            }),
             Arc::new(ProductionControl {
                 gate: execution::workflow_gates::ManagedWorkflowGates::new(
                     self.owner.clone(),
