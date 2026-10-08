@@ -16,6 +16,10 @@ use std::{
 };
 
 const MAX_PENDING: usize = 128;
+/// Pending phase operations per Project (O2). This counts operations, not
+/// distinct Tasks: the active Task's reviewers run concurrently (R4.3). The
+/// distinct-Task limit of 1 is enforced at candidate selection and claim.
+pub(super) const PHASE_SLOTS_PER_PROJECT: usize = 4;
 const PAGE: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

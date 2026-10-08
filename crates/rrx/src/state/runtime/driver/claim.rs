@@ -23,8 +23,8 @@ pub(crate) struct InitialDriverPlan {
 /// A stored Project Task limit other than the fixed MVP value (R4.5). The row
 /// is never rewritten; an explicit `project add --max-tasks 1` repairs it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ProjectLimitUnsupported {
-    pub(crate) stored: usize,
+pub struct ProjectLimitUnsupported {
+    pub stored: usize,
 }
 impl std::fmt::Display for ProjectLimitUnsupported {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

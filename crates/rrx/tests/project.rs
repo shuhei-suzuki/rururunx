@@ -1141,3 +1141,54 @@ fn c_s2d_registration_refuses_other_limits_and_only_explicit_one_repairs() {
     assert_eq!(repaired.max_tasks, 1);
     assert_eq!(s.projects().unwrap().pop().unwrap().max_tasks, 1);
 }
+
+/// C-S2e (D8): `effective_config` never copies a stored limit unchecked. A
+/// stored legacy 4 is a typed refusal with the row unchanged; an explicit
+/// `--max-tasks 1` repair then gives 1.
+#[test]
+fn c_s2e_effective_config_refuses_stored_legacy_limit_until_explicit_repair() {
+    let f = Fixture::new();
+    let mut s = Store::open(&f.db).unwrap();
+    let runtime = Config::default();
+    let added = f.add(&mut s, &f.a);
+    assert_eq!(
+        effective_config(&s, added.id, &runtime)
+            .unwrap()
+            .scheduler
+            .max_tasks_per_project,
+        1
+    );
+    let mut legacy = added.clone();
+    legacy.max_tasks = 4;
+    s.put_project(&mut legacy).unwrap();
+    let stored = serde_json::to_value(s.projects().unwrap().pop().unwrap()).unwrap();
+    let error = effective_config(&s, added.id, &runtime).unwrap_err();
+    assert_eq!(
+        error.chain().find_map(|e| e
+            .downcast_ref::<rrx::state::ProjectLimitUnsupported>()
+            .copied()),
+        Some(rrx::state::ProjectLimitUnsupported { stored: 4 })
+    );
+    assert_eq!(
+        serde_json::to_value(s.projects().unwrap().pop().unwrap()).unwrap(),
+        stored,
+        "refusal changed the row"
+    );
+    Registry::new(&mut s)
+        .add(
+            &f.a,
+            AddProject {
+                max_tasks: Some(1),
+                ..Default::default()
+            },
+            &runtime,
+        )
+        .unwrap();
+    assert_eq!(
+        effective_config(&s, added.id, &runtime)
+            .unwrap()
+            .scheduler
+            .max_tasks_per_project,
+        1
+    );
+}

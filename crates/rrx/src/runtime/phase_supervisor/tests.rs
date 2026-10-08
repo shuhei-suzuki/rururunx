@@ -17,7 +17,7 @@ use std::{collections::BTreeMap, os::unix::fs::PermissionsExt, path::Path};
 /// No accepted Source, marker, prepared Native input or installed issuer.
 #[tokio::test]
 async fn actual_empty_job_reservation_removes_only_its_fresh_original() {
-    let (f, groups) = Fixture::new(4, 4, &[("empty-reservation", 1)]).await;
+    let (f, groups) = Fixture::new(4, &[("empty-reservation", 1)]).await;
     let tasks = groups.into_iter().next().unwrap();
     let (allocation, _guard, unit) = f.allocation(&tasks[0], "codex").await;
     let allocation = Arc::new(allocation);
@@ -57,7 +57,7 @@ async fn actual_empty_job_reservation_removes_only_its_fresh_original() {
 /// policy here does not fabricate the actual Source seal or qualify acceptance.
 #[tokio::test]
 async fn nongrant_guard_policy_is_one_way_across_restore_and_final_drop() {
-    let (f, groups) = Fixture::new(4, 4, &[("guard-policy", 1)]).await;
+    let (f, groups) = Fixture::new(4, &[("guard-policy", 1)]).await;
     let tasks = groups.into_iter().next().unwrap();
     let (_allocation, mut guard, unit) = f.allocation(&tasks[0], "codex").await;
     guard.hold_accepted_source();
@@ -72,7 +72,7 @@ async fn nongrant_guard_policy_is_one_way_across_restore_and_final_drop() {
 /// typed at its site, without claiming the Source seal was reached.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn c_s1d_p4_accepted_original_stop_is_pending() {
-    let (f, groups) = Fixture::new(4, 4, &[("accepted-original", 1)]).await;
+    let (f, groups) = Fixture::new(4, &[("accepted-original", 1)]).await;
     let tasks = groups.into_iter().next().unwrap();
     let (allocation, guard, unit) = f.allocation(&tasks[0], "codex").await;
     let capacity = f
@@ -193,11 +193,7 @@ async fn create(
     goal
 }
 impl Fixture {
-    async fn new(
-        global: usize,
-        per_project: usize,
-        groups: &[(&str, usize)],
-    ) -> (Self, Vec<Vec<Task>>) {
+    async fn new(global: usize, groups: &[(&str, usize)]) -> (Self, Vec<Vec<Task>>) {
         let dir = tempfile::tempdir().unwrap();
         let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
         let counter = dir.path().join("native-must-not-run");
@@ -213,7 +209,6 @@ impl Fixture {
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
         let mut config = Config::default();
         config.scheduler.global_max_sessions = global;
-        config.scheduler.max_tasks_per_project = per_project;
         for provider in ["claude", "codex"] {
             config.agents.insert(
                 provider.into(),
@@ -333,7 +328,7 @@ impl Fixture {
 
 #[tokio::test]
 async fn actual_selected_allocations_survive_caller_drop_and_guard_is_drained_on_shutdown() {
-    let (f, groups) = Fixture::new(4, 4, &[("project", 2)]).await;
+    let (f, groups) = Fixture::new(4, &[("project", 2)]).await;
     let tasks = groups.into_iter().next().unwrap();
     let (capacity, unit) = f.reserve(&tasks[0], "claude").await;
     let original = capacity.allocation().facts().operation_id;
@@ -373,10 +368,17 @@ async fn actual_selected_allocations_survive_caller_drop_and_guard_is_drained_on
 
 #[tokio::test]
 async fn actual_capacity_refusal_returns_original_objects_and_other_project_still_admits() {
-    let (f, groups) = Fixture::new(2, 1, &[("a", 2), ("b", 1), ("c", 1)]).await;
+    // O2: the per-Project bound counts pending operations, PHASE_SLOTS_PER_PROJECT
+    // of them, with global headroom; one more global slot is left for b.
+    let slots = super::PHASE_SLOTS_PER_PROJECT;
+    let (f, groups) = Fixture::new(slots + 1, &[("a", slots + 1), ("b", 1), ("c", 1)]).await;
     let [a, b, c]: [Vec<Task>; 3] = groups.try_into().unwrap();
     let (first, first_unit) = f.reserve(&a[0], "claude").await;
-    let (allocation, preparation, rejected_unit) = f.allocation(&a[1], "codex").await;
+    let mut held = Vec::new();
+    for task in &a[1..slots] {
+        held.push(f.reserve(task, "claude").await);
+    }
+    let (allocation, preparation, rejected_unit) = f.allocation(&a[slots], "codex").await;
     let original = allocation.facts().operation_id;
     let refused = f
         .runtime
@@ -417,12 +419,13 @@ async fn actual_capacity_refusal_returns_original_objects_and_other_project_stil
     );
     assert!(resumed.is_retained());
     drop(global_refused);
+    drop(held);
     f.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn fair_actual_pending_pages_rotate_projects_and_retain_owner_change_as_hold() {
-    let (f, groups) = Fixture::new(8, 6, &[("many", 3), ("sibling", 1)]).await;
+    let (f, groups) = Fixture::new(8, &[("many", 3), ("sibling", 1)]).await;
     let [a, b]: [Vec<Task>; 2] = groups.try_into().unwrap();
     let mut handles = Vec::new();
     for task in &a {
@@ -473,7 +476,7 @@ async fn fair_actual_pending_pages_rotate_projects_and_retain_owner_change_as_ho
 
 #[tokio::test]
 async fn foreign_preparation_and_stopped_service_refuse_without_consuming_inputs() {
-    let (f, groups) = Fixture::new(4, 4, &[("project", 3)]).await;
+    let (f, groups) = Fixture::new(4, &[("project", 3)]).await;
     let tasks = groups.into_iter().next().unwrap();
     let (allocation, right, unit) = f.allocation(&tasks[0], "claude").await;
     let (_, wrong, other) = f.allocation(&tasks[1], "codex").await;
@@ -554,7 +557,7 @@ fn pending_fallback_is_finite_and_idle_resets_backoff() {
 
 #[tokio::test]
 async fn actual_publication_drop_and_shutdown_preserve_unknown_slot_until_proven_rollback() {
-    let (f, groups) = Fixture::new(4, 4, &[("publication", 3)]).await;
+    let (f, groups) = Fixture::new(4, &[("publication", 3)]).await;
     let tasks = groups.into_iter().next().unwrap();
     let (capacity, unit) = f.reserve(&tasks[0], "claude").await;
     let operation = capacity.allocation().facts().operation_id;

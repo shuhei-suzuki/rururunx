@@ -202,3 +202,97 @@ async fn d3_plan_guard_refuses_stored_legacy_limit_without_writes() {
     assert_eq!(project_row(&f, &project.id.to_string()), row);
     finish(f).await;
 }
+
+async fn status(f: &ControlFixture, goal: GoalId) -> (UnavailableReason, Option<usize>) {
+    match f
+        .runtime
+        .handle_control(
+            &f.socket,
+            f.request(ControlAction::GoalStatus {
+                view: None,
+                project: f.project.id,
+                goal,
+            }),
+        )
+        .await
+        .unwrap()
+    {
+        ControlResponse::GoalFacts {
+            attention,
+            project_limit_stored,
+            ..
+        }
+        | ControlResponse::GoalProposalFacts {
+            attention,
+            project_limit_stored,
+            ..
+        } => (attention, project_limit_stored),
+        other => panic!("unexpected status {other:?}"),
+    }
+}
+
+/// D4: an accepted Goal and an inert proposal both report the read-derived
+/// `ProjectLimitUnsupported` with the stored value; the answer is the same
+/// before and after the service reconciles attention; reading writes nothing;
+/// the repair clears it.
+#[tokio::test]
+async fn d4_status_reports_stored_legacy_limit_read_only_until_repair() {
+    let mut f = fixture("claude", true);
+    let (accepted, _) = accept(&f, 1).await;
+    let proposed = match f
+        .runtime
+        .handle_control(
+            &f.socket,
+            f.request(ControlAction::ProposeGoal {
+                project: f.project.id,
+                expected_project: f.project.version,
+                objective: "inert objective".into(),
+            }),
+        )
+        .await
+        .unwrap()
+    {
+        ControlResponse::GoalProposed { goal, .. } => goal,
+        other => panic!("SETUP: proposal refused {other:?}"),
+    };
+    let mut project = f.project.clone();
+    store_legacy_limit(&f, &mut project, 4);
+    f.project = project.clone();
+    let row = project_row(&f, &project.id.to_string());
+    let audits = count(&f, "audit");
+    let expected = (UnavailableReason::ProjectLimitUnsupported, Some(4));
+    assert_eq!(status(&f, accepted).await, expected);
+    assert_eq!(status(&f, proposed).await, expected);
+    assert_eq!(count(&f, "audit"), audits, "status read wrote audit");
+    assert_eq!(
+        project_row(&f, &project.id.to_string()),
+        row,
+        "read changed the row"
+    );
+    f.runtime.start().await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        status(&f, accepted).await,
+        expected,
+        "changed after reconcile"
+    );
+    assert_eq!(
+        status(&f, proposed).await,
+        expected,
+        "changed after reconcile"
+    );
+    assert_eq!(
+        project_row(&f, &project.id.to_string()),
+        row,
+        "read changed the row"
+    );
+    assert_eq!(count(&f, "task_drivers"), 0, "legacy Project was driven");
+    store_legacy_limit(&f, &mut project, 1);
+    f.project = project.clone();
+    for goal in [accepted, proposed] {
+        let (attention, stored) = status(&f, goal).await;
+        assert_ne!(attention, UnavailableReason::ProjectLimitUnsupported);
+        assert_eq!(stored, None);
+    }
+    finish(f).await;
+}

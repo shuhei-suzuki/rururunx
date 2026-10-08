@@ -194,7 +194,7 @@ pub struct WorkflowWait {
     pub kind: WorkflowWaitKind,
     pub detail: String,
 }
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnavailableReason {
     TaskDriverUnavailable,
@@ -465,7 +465,7 @@ impl Runtime {
                 operational: false,
                 service_running: self.service_running(),
                 requested_global_sessions: self.config.scheduler.global_max_sessions,
-                requested_tasks_per_project: self.config.scheduler.max_tasks_per_project,
+                requested_tasks_per_project: crate::config::MVP_PROJECT_TASKS,
             },
             _ => ControlResponse::Unavailable {
                 request_id: request.request_id,

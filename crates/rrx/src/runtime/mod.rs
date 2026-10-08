@@ -64,7 +64,7 @@ impl Runtime {
         let phases = phase_supervisor::PhaseSupervisor::new(
             owner.clone(),
             config.scheduler.global_max_sessions,
-            config.scheduler.max_tasks_per_project,
+            phase_supervisor::PHASE_SLOTS_PER_PROJECT,
             admission,
         );
         let phase_jobs = Arc::new(phase_jobs::PhaseJobs::default());

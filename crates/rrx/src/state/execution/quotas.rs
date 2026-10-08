@@ -516,7 +516,10 @@ pub(super) fn project_capacity_blocked(
 ) -> Result<bool> {
     let project: Project =
         read_tx(tx, "projects", &unit.scope.project_id.to_string())?.context("unknown project")?;
-    let limit = configured.min(project.max_tasks);
+    // R4.5: min(MVP, stored); a legacy stored limit can only lower it.
+    let limit = configured
+        .min(crate::config::MVP_PROJECT_TASKS)
+        .min(project.max_tasks);
     ensure!(limit > 0, "invalid project concurrency");
     let (tasks, own): (usize, bool) = tx.query_row(
         "SELECT COUNT(DISTINCT u.task_id),COALESCE(MAX(u.task_id=?2),0) FROM quota_leases q JOIN execution_units u ON u.id=q.unit_id WHERE q.active=1 AND u.project_id=?1",
