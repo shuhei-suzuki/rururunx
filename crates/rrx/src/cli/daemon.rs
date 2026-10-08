@@ -476,7 +476,7 @@ async fn spawn(launch: &Launch, state: &Path, config: Option<&Path>) -> StartOut
         Err(_) => return failed(&log, anyhow::anyhow!("malformed readiness announcement")),
     };
     #[cfg(test)]
-    tests::pause(tests::BEFORE_IDENTITY_MATCH);
+    tests::pause(tests::BEFORE_IDENTITY_MATCH, &state);
     // Own-child line, then a separately checked live identity match.
     match endpoint::discover(&state).await {
         Discovery::Valid(identity, _)
