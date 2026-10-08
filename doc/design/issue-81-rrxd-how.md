@@ -273,6 +273,15 @@ Branch `claude/adoring-archimedes-7eehnw`, on top of PR #82's head (`1d7843e`). 
 | ME2B: the `bind` replacement path is removed | C-S1e2, both tests FAIL |
 | ME2C: a foreign-state leftover is accepted | C-S1e2, both tests FAIL |
 
+### Source review
+
+| Round | Result |
+| --- | --- |
+| 6061653755 → Sol 6062003954 | REQUEST CHANGES, required 0/0/1/0. M1: a FIFO `owner.lock` held the probe in `open(2)` |
+| `34cd2e7`, `69337b6` → Sol 6062762783 | **APPROVE LIMITED, 0 findings**. The probe opens `O_NONBLOCK` and requires a regular file before `flock`. Control `owner_lock_fifo_is_a_typed_probe_error_for_every_command`: all three commands return typed `discovery_unavailable` within a deadline. The mutant without `O_NONBLOCK` FAILs |
+
+The endpoint test failure seen once (`actual_endpoint_connects…`, rebind line) remains unexplained. It passed 15 consecutive runs under the same filter set. It is recorded as an open observation, not as a flake.
+
 ### Notes
 
 - After a pending stop, `serve` itself retries shutdown and exits 1. This is the existing behaviour, and it is now asserted: the process exit is not counted as cleanup.
