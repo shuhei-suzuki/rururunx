@@ -145,7 +145,7 @@ Real failures are **not** pending and never get the marker: the poison errors at
 | C-S2d | Config 2, overlay 2 and `--max-tasks 2` are each refused, typed, with no change. A stored 4 → `ProjectLimitUnsupported`, no Driver, row bytes unchanged |
 | Mutants (L1) | Candidate limit 2 → C-S2a FAIL. Claim limit 2 → C-S2a2 FAIL. Each limit is changed separately |
 
-### 2.1 S2 implementation delta (D1–D7, for review before code)
+### 2.1 S2 implementation delta (D1–D8, for review before code)
 
 The design above stays as it is. This delta fixes the open implementation points.
 
@@ -158,6 +158,26 @@ The design above stays as it is. This delta fixes the open implementation points
 | D5 | Final-claim refusal (L1) | `claim.rs:337-338` changes from a string `ensure!` to a typed `DriverCapacityUnavailable { scope: Global \| Project }`, and the Project bound is `MVP_PROJECT_TASKS`. The seam for C-S2a2 is `cfg(test)` only. It parks admission after candidate selection and before planning for a named Task, and it never constructs authority or skips a check. The test lets Task A claim, then releases B's parked evaluation, and asserts the typed `Project` refusal with no `task_drivers` row for B |
 | D6 | Consumers | `MVP_PROJECT_TASKS` replaces the config value at `admission.rs:62`, `task_driver.rs:53`, `control.rs:459` (reports 1), `native.rs:158`, `quotas.rs:519` and `native_phase/quota.rs:507`. The last two use `min(MVP, stored)`, which is 1 for every admitted row. `PhaseSupervisor` (`runtime/mod.rs:67`) gets its own `PHASE_SLOTS_PER_PROJECT = 4` (O2) |
 | D7 | Existing rows and tests | Projects registered before S2 store `4`, the old default. Each is reported as `ProjectLimitUnsupported` until `project add <path> --max-tasks 1`; this is the intended R4.5 behaviour and is not migrated. Test fixtures that set `max_tasks_per_project` directly change as follows. `activation/pages.rs:8` uses 128 Projects with one Task each, so it drops the line and keeps its meaning. The `phase_supervisor/tests.rs` fixture drops its `per_project` argument. Its per-Project pending refusal test (`:376`, today limit 1 with 2 operations) becomes `PHASE_SLOTS_PER_PROJECT` operations admitted and the next one refused, so it asserts the same bound. `tests/cli.rs:63-64` and `tests/project.rs:350` become refusal controls under C-S2d, and the overlay merge assertions keep their other fields |
+| D8 | Effective config (Sol 6070180593 M1) | `project::effective_config` (`project.rs:567-576`) no longer copies the stored `Project.max_tasks` without a check. A stored 1 returns `MVP_PROJECT_TASKS`. Any other stored value returns the typed `ProjectLimitUnsupported { stored }` without touching the row, and status still reads. The README configuration example (`README.md:366`) changes to `max_tasks_per_project = 1`, so `readme_configuration_example_is_valid` (`tests/cli.rs:132`) still runs it through the real loader. Control C-S2e: a stored 4 gives the typed refusal with the row, version and audit unchanged; an explicit `--max-tasks 1` repair then gives 1. Mutant: restoring the unchecked copy makes C-S2e fail |
+
+Conditions from the review (6070180593), applied to the controls:
+
+- **D1/D2.** The overlay refusal runs before the first field mutation in `apply_project`. The CLI refusal runs before `reconcile` and before `Store::open`'s initialisation writes. The controls cover these cases separately:
+  - `origin` and `requested`;
+  - an explicit 1 succeeds;
+  - a config or overlay 0 keeps the positive-limit refusal;
+  - a re-add with no argument keeps a stored 4;
+  - only an explicit 1 repairs it.
+- **D3.** The SQL keeps a fixed query with bound values, and the existing cursor, order and occupancy conditions. The `projects` join on Project ID and the fixed-1 filter apply before the eligible `LIMIT`. C-S2a3 mixes many stored-4 Projects with supported ones and asserts that only the supported ones are listed. The snapshot guard in `plan_initial_driver` gets its own control: a typed refusal with nothing written.
+- **D4.** An accepted Goal and an inert proposal both report the reason and the stored value. The answer is the same before and after `reconcile_runtime_attention`. The read changes no row, version or audit. After the repair the extra reason is gone. The plain `goal status` renderer (`cli/goal_facts.rs:105`) also prints the reason, the stored value and the `--max-tasks 1` repair (the optional item, taken).
+- **D5, the harness.** `admit_ready_tasks` holds `control_admission` and the cursor from candidate selection through evaluation, so B is not parked inside it. The test:
+  1. reads B's key through the production reader;
+  2. waits while holding no admission, cursor or Store guard;
+  3. lets A claim through the normal path;
+  4. takes the normal admission guard and passes B's key to the same production evaluator, as the existing sweep controls do (`installation/tests/sweep.rs:9`).
+
+  Global capacity is free and A's occupancy remains. B must reach the `Project` variant, with no new Driver row and no new claim audit for B. The deciding mutant changes only the claim's Project bound to 2. A candidate check or an early refusal alone does not pass.
+- **D6/D7.** Both quota boundaries keep `min(MVP, stored)` and the own-Task check. The pending-bound control keeps global headroom. It still tells apart four operations followed by the next per-Project refusal, another Project's progress, the global refusal, and the retry of the original objects.
 
 ## 3. S3 — Project operations (R3.4, R3.5; O3: supported)
 
