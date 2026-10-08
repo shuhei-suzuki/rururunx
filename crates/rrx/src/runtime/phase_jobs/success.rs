@@ -730,6 +730,8 @@ pub(crate) const SUCCESS_ADMITTED: &str = "success admitted";
 pub(crate) const OWNER_IMMEDIATE: &str = "owner immediate";
 #[cfg(test)]
 pub(crate) const OWNER_PLANNING: &str = "owner planning";
+#[cfg(test)]
+pub(crate) const QUOTA_APPLY: &str = "quota apply";
 /// Test-only async hold of one settled helper capture of a Task: the helper
 /// stays in flight while its fence keeps ticking. Parks and resumes only.
 #[cfg(test)]

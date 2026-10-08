@@ -1524,38 +1524,29 @@ async fn scr_codex_completion_survives_refused_plan_and_conflict() {
     retained_all("codex").await;
 }
 
-/// SC10: four Tasks in four distinct Projects (two Claude, two Codex; one
-/// active Task per Project) close independently in commit mode, with no
-/// cross-job acknowledgment or Driver publication.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn sc10_four_projects_close_independently() {
-    let mut f = fixture_mode("claude", true, None, |config| {
-        // A second configured agent: the same protocol fixture as Codex.
-        let mut codex = config.agents["worker"].clone();
-        let claude_script = std::path::PathBuf::from(&codex.command[0]);
-        let codex_script = claude_script.with_file_name("configured-protocol-fixture-codex");
-        let source = std::fs::read_to_string(&claude_script).unwrap();
-        std::fs::write(
-            &codex_script,
-            source.replacen("PROVIDER=\"claude\"", "PROVIDER=\"codex\"", 1),
-        )
-        .unwrap();
-        std::fs::set_permissions(&codex_script, std::fs::Permissions::from_mode(0o700)).unwrap();
-        codex.provider = Some("codex".into());
-        codex.command = vec![codex_script.to_string_lossy().into()];
-        if let Some(compat) = codex.compatibility.as_mut() {
-            compat.cli_version = "codex-cli 0.160.0".into();
-        }
-        config.agents.insert("worker-codex".into(), codex);
-    });
-    if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+/// A second configured agent: the same protocol fixture as Codex.
+fn codex_worker(config: &mut crate::config::Config) {
+    let mut codex = config.agents["worker"].clone();
+    let claude_script = std::path::PathBuf::from(&codex.command[0]);
+    let codex_script = claude_script.with_file_name("configured-protocol-fixture-codex");
+    let source = std::fs::read_to_string(&claude_script).unwrap();
+    std::fs::write(
+        &codex_script,
+        source.replacen("PROVIDER=\"claude\"", "PROVIDER=\"codex\"", 1),
+    )
+    .unwrap();
+    std::fs::set_permissions(&codex_script, std::fs::Permissions::from_mode(0o700)).unwrap();
+    codex.provider = Some("codex".into());
+    codex.command = vec![codex_script.to_string_lossy().into()];
+    if let Some(compat) = codex.compatibility.as_mut() {
+        compat.cli_version = "codex-cli 0.160.0".into();
     }
+    config.agents.insert("worker-codex".into(), codex);
+}
+/// One accepted Task per new real Git Project, in distinct Projects.
+async fn project_tasks(f: &mut ControlFixture, executors: &[&str]) -> Vec<Task> {
     let mut tasks = Vec::new();
-    for (i, executor) in ["worker", "worker-codex", "worker", "worker-codex"]
-        .iter()
-        .enumerate()
-    {
+    for (i, executor) in executors.iter().enumerate() {
         f.register_real_git_project_named(&format!("sc10-project-{i}"));
         let mut p = plan();
         p.tasks[0].risk = RiskClass::R1;
@@ -1570,7 +1561,23 @@ async fn sc10_four_projects_close_independently() {
         tasks.push(task);
     }
     let projects: std::collections::BTreeSet<_> = tasks.iter().map(|t| t.project_id).collect();
-    assert_eq!(projects.len(), 4, "SETUP: four distinct Projects");
+    assert_eq!(projects.len(), executors.len(), "SETUP: distinct Projects");
+    tasks
+}
+/// SC10: four Tasks in four distinct Projects (two Claude, two Codex; one
+/// active Task per Project) close independently in commit mode, with no
+/// cross-job acknowledgment or Driver publication.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc10_four_projects_close_independently() {
+    let mut f = fixture_mode("claude", true, None, codex_worker);
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let tasks = project_tasks(
+        &mut f,
+        &["worker", "worker-codex", "worker", "worker-codex"],
+    )
+    .await;
     f.runtime.start().await.unwrap();
     for task in &tasks {
         wait_normal_bound(&f, task).await;
@@ -1639,6 +1646,161 @@ async fn sc10_four_projects_close_independently() {
         )
         .await;
     }
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+
+/// Releases only the external protocol peer's bootstrap hold (Codex
+/// `initialize`); its completion stays held.
+fn release_bootstrap(f: &ControlFixture, task: &Task) {
+    let profile = crate::execution::resources::ResourceManager::new(f.owner.clone())
+        .profile(&bound_unit(f, task))
+        .unwrap();
+    std::fs::write(profile.output.join("fixture-bootstrap-release"), "release").unwrap();
+}
+/// Exact provider-shared quota images (`quota_pools`, `quota_windows`).
+fn shared_quota(f: &ControlFixture) -> Vec<String> {
+    let raw = raw(f);
+    let mut statement = raw
+        .prepare(
+            "SELECT 'pool',provider,next_probe_at,probe_unit,backoff,last_role FROM quota_pools \
+             UNION ALL SELECT 'window',provider,bucket,observed_at,body,NULL FROM quota_windows \
+             ORDER BY 1,2,3",
+        )
+        .unwrap();
+    statement
+        .query_map([], |r| {
+            Ok((0..6)
+                .map(|i| format!("{:?}", r.get::<_, rusqlite::types::Value>(i).unwrap()))
+                .collect::<Vec<_>>()
+                .join("|"))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+/// SC10 C1: two Codex Tasks in two Projects. A's first live quota write is
+/// held between its plan and apply while B, released, writes the
+/// provider-shared quota window. A re-plans once from fresh images, its
+/// Session is not Lost and both close.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc10_cross_project_quota_drift_replans_from_fresh_images() {
+    use crate::runtime::phase_jobs::{QUOTA_APPLY, counted};
+    let mut f = fixture_mode("claude", true, None, codex_worker);
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let tasks = project_tasks(&mut f, &["worker-codex", "worker-codex"]).await;
+    let (a, b) = (&tasks[0], &tasks[1]);
+    let hold_a = held(a, QUOTA_APPLY);
+    let hold_b = held(b, QUOTA_APPLY);
+    f.runtime.start().await.unwrap();
+    for task in &tasks {
+        wait_normal_bound(&f, task).await;
+        release_bootstrap(&f, task);
+    }
+    wait_for(
+        || hold_a.0.reached() && hold_b.0.reached(),
+        "SETUP: both live quota plans not reached",
+        60,
+    )
+    .await;
+    let planned = shared_quota(&f);
+    hold_b.0.release();
+    wait_for(
+        || shared_quota(&f) != planned,
+        "SETUP: B wrote the shared quota images after A planned",
+        60,
+    )
+    .await;
+    hold_a.0.release();
+    wait_for(
+        || counted(a.id, "quota re-plan") > 0,
+        "C1: A did not re-plan",
+        60,
+    )
+    .await;
+    for task in &tasks {
+        release_completion(&f, task);
+    }
+    for task in &tasks {
+        wait_for(
+            || links(&f, task).last().map(String::as_str) == Some("phase_closed"),
+            "C1: both Tasks close",
+            90,
+        )
+        .await;
+        assert_eq!(
+            links(&f, task),
+            [
+                "session_bound",
+                "gate_claim",
+                "gate_observed",
+                "phase_closed"
+            ],
+            "C1: independent typed links"
+        );
+    }
+    assert_eq!(
+        counted(a.id, "quota re-plan"),
+        1,
+        "C1: A re-planned once from fresh images"
+    );
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+/// SC10 C2: the own active lease changes while the first live quota write is
+/// held between plan and apply. The refusal is not shared drift: no re-plan,
+/// the shared quota images are not written, and the Native owner ends with
+/// no gate link.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc10_own_lease_change_refuses_without_replan() {
+    use crate::runtime::phase_jobs::{QUOTA_APPLY, counted};
+    let mut f = fixture_mode("claude", true, None, codex_worker);
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let tasks = project_tasks(&mut f, &["worker-codex"]).await;
+    let task = &tasks[0];
+    let hold = held(task, QUOTA_APPLY);
+    f.runtime.start().await.unwrap();
+    wait_normal_bound(&f, task).await;
+    release_bootstrap(&f, task);
+    wait_for(
+        || hold.0.reached(),
+        "SETUP: live quota plan not reached",
+        60,
+    )
+    .await;
+    let unit = f.runtime.phase_jobs.observed_jobs()[0].unit;
+    let images = shared_quota(&f);
+    // Fault injection on the own lease (a negative only; nothing is granted).
+    assert_eq!(
+        raw(&f)
+            .execute(
+                "UPDATE quota_leases SET epoch=epoch+1 WHERE unit_id=?1 AND active=1",
+                [unit.to_string()],
+            )
+            .unwrap(),
+        1,
+        "SETUP: own active lease present"
+    );
+    hold.0.release();
+    wait_for(
+        || {
+            f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .any(|j| j.owner_live == Some(false))
+        },
+        "C2: Native owner did not end after the refusal",
+        60,
+    )
+    .await;
+    assert_eq!(counted(task.id, "quota re-plan"), 0, "C2: no re-plan");
+    assert_eq!(shared_quota(&f), images, "C2: shared images not written");
+    assert_eq!(links(&f, task), ["session_bound"], "C2: no gate link");
     let _ = f.runtime.shutdown().await;
     finish(f).await;
 }

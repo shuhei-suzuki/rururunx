@@ -1483,14 +1483,10 @@ impl Core {
     }
     fn quota_read(&self) -> Result<(bool, Vec<QuotaObservation>)> {
         if let Some(phase) = &self.phase {
-            self.native_write(&phase.owner, || {
+            self.quota_write(&phase.owner, || {
                 let plan = crate::state::Store::plan_phase_quota_read(&self.owner, &phase.owner)?;
                 let result = (plan.is_own_probe(), plan.observations().to_vec());
-                self.owner
-                    .store
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .apply_phase_live_quota(plan)?;
+                self.quota_apply(plan)?;
                 Ok(result)
             })
         } else {
@@ -1513,18 +1509,14 @@ impl Core {
     }
     fn observe_quota(&self, observation: &QuotaObservation, recovery: bool) -> Result<()> {
         if let Some(phase) = &self.phase {
-            self.native_write(&phase.owner, || {
+            self.quota_write(&phase.owner, || {
                 let plan = crate::state::Store::plan_phase_quota_observation(
                     &self.owner,
                     &phase.owner,
                     observation,
                     recovery,
                 )?;
-                self.owner
-                    .store
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .apply_phase_live_quota(plan)?;
+                self.quota_apply(plan)?;
                 Ok(())
             })
         } else {
@@ -1538,14 +1530,10 @@ impl Core {
     }
     fn quota_wait(&self, retry: bool) -> Result<ExecutionUnit> {
         if let Some(phase) = &self.phase {
-            self.native_write(&phase.owner, || {
+            self.quota_write(&phase.owner, || {
                 let plan =
                     crate::state::Store::plan_phase_quota_wait(&self.owner, &phase.owner, retry)?;
-                self.owner
-                    .store
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .apply_phase_live_quota(plan)
+                self.quota_apply(plan)
             })
         } else {
             let authority = self.authority()?;
@@ -1563,17 +1551,13 @@ impl Core {
     }
     fn quota_resume(&self, buckets: &std::collections::BTreeSet<String>) -> Result<ExecutionUnit> {
         if let Some(phase) = &self.phase {
-            self.native_write(&phase.owner, || {
+            self.quota_write(&phase.owner, || {
                 let plan = crate::state::Store::plan_phase_quota_resume(
                     &self.owner,
                     &phase.owner,
                     buckets,
                 )?;
-                self.owner
-                    .store
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .apply_phase_live_quota(plan)
+                self.quota_apply(plan)
             })
         } else {
             let authority = self.authority()?;
@@ -1583,6 +1567,35 @@ impl Core {
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?
                 .resume_execution_quota_wait(&authority, buckets)
         }
+    }
+    /// SC10: a complete fresh plan+apply per attempt, re-planned only while
+    /// the provider-shared quota images drifted (bounded), inside BR.
+    fn quota_write<T>(
+        &self,
+        phase: &Arc<NativePhaseSession>,
+        mut attempt: impl FnMut() -> Result<T>,
+    ) -> Result<T> {
+        self.native_write(phase, || {
+            crate::state::replan_shared_quota(&mut attempt, || {
+                #[cfg(test)]
+                crate::runtime::count(phase.allocation().facts().scope.task_id, "quota re-plan");
+            })
+        })
+    }
+    /// The planned live quota write; nothing is held between plan and apply.
+    fn quota_apply(&self, plan: crate::state::NativeLiveQuotaPlan) -> Result<ExecutionUnit> {
+        #[cfg(test)]
+        crate::runtime::pause_at(
+            self.phase
+                .as_ref()
+                .and_then(|p| p.owner.allocation().facts().scope.task_id),
+            crate::runtime::QUOTA_APPLY,
+        );
+        self.owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .apply_phase_live_quota(plan)
     }
     /// BR: one re-plan only after the SAME operation's first binding link was
     /// committed between an unlinked owner plan and its first owner check.

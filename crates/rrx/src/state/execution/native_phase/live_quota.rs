@@ -143,12 +143,49 @@ impl NativeLiveQuotaPlan {
         self.owner.validate_tx(tx)?;
         let actual = read(tx, &self.owner)?;
         ensure!(
-            actual.lease == self.before.lease
-                && actual.pool == self.before.pool
-                && actual.windows == self.before.windows,
-            "registered quota complete plan images changed"
+            actual.lease == self.before.lease,
+            "registered quota own active lease differs"
         );
+        if actual.pool != self.before.pool || actual.windows != self.before.windows {
+            return Err(QuotaSharedImagesChanged(()).into());
+        }
         Ok(())
+    }
+}
+/// SC10: after the owner and own-lease checks passed, only the provider-shared
+/// pool/window images moved between plan and apply (another Unit's legitimate
+/// quota write). Raised before the first write; constructible only here.
+#[derive(Debug)]
+struct QuotaSharedImagesChanged(());
+impl std::fmt::Display for QuotaSharedImagesChanged {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("registered quota shared pool/window images changed")
+    }
+}
+impl std::error::Error for QuotaSharedImagesChanged {}
+/// SC10: attempts per call of [`replan_shared_quota`].
+const SHARED_QUOTA_ATTEMPTS: usize = 8;
+/// SC10: runs a complete fresh plan+apply `attempt` again, at most
+/// [`SHARED_QUOTA_ATTEMPTS`] times in total, only while it is refused for
+/// shared-image drift. Every attempt re-reads and re-validates the complete
+/// images exactly; any other refusal, and exhaustion, return the error as is.
+/// Inside BR (`native_write`) each BR leg has its own bound (at most 16).
+pub(crate) fn replan_shared_quota<T>(
+    mut attempt: impl FnMut() -> Result<T>,
+    mut replanned: impl FnMut(),
+) -> Result<T> {
+    let mut attempts = 1;
+    loop {
+        match attempt() {
+            Err(error)
+                if attempts < SHARED_QUOTA_ATTEMPTS
+                    && error.downcast_ref::<QuotaSharedImagesChanged>().is_some() =>
+            {
+                attempts += 1;
+                replanned();
+            }
+            other => return other,
+        }
     }
 }
 fn plan(
@@ -345,5 +382,43 @@ impl Store {
         };
         tx.commit()?;
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// SC10 bound: a perpetually drifting shared image is attempted exactly
+    /// `SHARED_QUOTA_ATTEMPTS` times and the last refusal is returned; any
+    /// other refusal is never re-planned.
+    #[test]
+    fn shared_quota_replan_is_bounded_and_typed_only() {
+        let mut calls = 0;
+        let mut replans = 0;
+        let result: Result<()> = replan_shared_quota(
+            || {
+                calls += 1;
+                if calls >= 100 {
+                    return Ok(());
+                }
+                Err(QuotaSharedImagesChanged(()).into())
+            },
+            || replans += 1,
+        );
+        let error = result.expect_err("SC10: exhaustion returns the refusal");
+        assert!(error.downcast_ref::<QuotaSharedImagesChanged>().is_some());
+        assert_eq!(calls, SHARED_QUOTA_ATTEMPTS, "SC10: bounded attempts");
+        assert_eq!(replans, SHARED_QUOTA_ATTEMPTS - 1, "SC10: re-plans counted");
+        let mut calls = 0;
+        let result: Result<()> = replan_shared_quota(
+            || {
+                calls += 1;
+                anyhow::bail!("registered quota own active lease differs")
+            },
+            || panic!("SC10: other refusals are never re-planned"),
+        );
+        assert!(result.is_err());
+        assert_eq!(calls, 1, "SC10: other refusals are never re-planned");
     }
 }

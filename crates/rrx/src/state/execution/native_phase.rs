@@ -36,6 +36,7 @@ pub(crate) use version::{
     NativeHelperSettlementPlan, NativeVersionClosurePlan, NativeVersionHelperPlan,
 };
 mod live_quota;
+pub(crate) use live_quota::{NativeLiveQuotaPlan, replan_shared_quota};
 mod transport;
 #[cfg(test)]
 pub(crate) use transport::RegistrationAckSource;

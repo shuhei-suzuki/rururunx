@@ -40,6 +40,7 @@ pub(crate) use execution::native_phase::{
     NativeTransportStartPlan, NativeVersionClosurePlan, NativeVersionHelperPlan, RegistrationAck,
     RegistrationProbe, SettledTerminalImages,
 };
+pub(crate) use execution::native_phase::{NativeLiveQuotaPlan, replan_shared_quota};
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
 /// Typed transactional guards let callers distinguish contention from storage failure.
