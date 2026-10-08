@@ -2071,15 +2071,18 @@ async fn sc7_killed(provider: &str) {
         .unwrap()
         .output;
     let needle = format!("RRX_OUTPUT_DIR={}", output.display());
-    let pid = std::fs::read_dir("/proc")
-        .unwrap()
-        .filter_map(Result::ok)
-        .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
-        .find(|pid| {
-            std::fs::read(format!("/proc/{pid}/environ"))
-                .ok()
-                .is_some_and(|env| env.split(|b| *b == 0).any(|v| v == needle.as_bytes()))
-        })
+    // BSD-style `ps axeww` appends each process's environment to its command
+    // line on both Linux (procps) and macOS, so no procfs is required.
+    let listing = std::process::Command::new("ps")
+        .args(["axeww", "-o", "pid=,command="])
+        .output()
+        .unwrap();
+    assert!(listing.status.success(), "SETUP: ps listing");
+    let pid = String::from_utf8_lossy(&listing.stdout)
+        .lines()
+        .filter(|line| line.split_whitespace().any(|word| word == needle))
+        .filter_map(|line| line.split_whitespace().next()?.parse::<u32>().ok())
+        .find(|pid| *pid != std::process::id())
         .expect("SETUP: genuine peer process");
     let killed = std::process::Command::new("kill")
         .args(["-9", &pid.to_string()])

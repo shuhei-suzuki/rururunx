@@ -50,7 +50,7 @@ Plus `SettledTerminalImages` ≤ about 6.3 MiB (§12, unchanged). The maximum is
 
   The `gate_claim` headroom check therefore remains defense-only, as the SC design already allows.
 
-## 6. Transient ownership (SOL-L03, as implemented after the SOL-M03 fix)
+## 6. Transient ownership (SOL-L03, as implemented after the SOL-M03 fix; digest term corrected per Sol 6049348078)
 
 The old §12 figure ("≤16 MiB, one at a time by Store serialization") is not inherited. A Driver or Root worker builds its material before control admission and the Store guard. Workers of different Projects can therefore hold materials at the same time; only the Store-held part is serialized.
 
@@ -58,14 +58,15 @@ Units are encoded owned bytes, W = 8 MiB. Parsed values are heap only, as in §1
 
 | Step | Store held | Owned during the step | Peak |
 | --- | --- | --- | --- |
-| Materialization `images()` + `material_digest` | no | decoded SAME preimage `Body` 2W (dropped on return); the new Workflow serialization moved into its `Body` 2W; the digest's JSON copy plus its serialization ≤2W | ≈ **5W ≈ 40 MiB**, momentary |
+| Materialization `images()` (also run once at planning, outside every lock) | no | decoded SAME preimage `Body` 2W (dropped when `images()` returns); the new Workflow serialization, moved into its `Body` 2W; Task, Unit, artifact, operation and link data (small, Task ≤1 MiB) | ≈ **4W ≈ 32 MiB** |
+| `material_digest` (right after `images()`, preimage already dropped) | no | material Workflow `Body` 2W; the digest's `json!` copies of the Workflow raw W and the Context raw ≤W (the 8 MiB `BODY_BYTES` bound), plus the small raws; the serialized JSON string ≤2×(W+W) = 4W, because every `"` and `\` of a raw JSON text is escaped to two bytes and valid JSON text has no raw control characters; `sha` hashes it in place | ≈ **8W ≈ 64 MiB** (+ ≈3 MiB small) |
 | Held material, waiting for admission | no | Workflow postimage `Body` 2W; Task ≤1 MiB, Unit ≤16 KiB, artifact, operation and link data (small); identity head of the preimage (six columns, small) | ≈ **2W ≈ 16 MiB** per waiting worker |
 | Writer W1–W8 (`close_phase_success`) | yes, serialized | material 2W; permit old image (a raw copy of the retained preimage) W; permit new image W. No decode inside the Immediate since SOL-M03 | ≈ **4W ≈ 32 MiB**, one at a time |
 | Confirmation (`confirm_phase_success`) | yes, serialized | material 2W; the current Workflow row read ≤W | ≈ **3W ≈ 24 MiB**, one at a time |
 
-Per active success stage, the bound is the §2 retained peak (≈40.1 MiB) plus the transient. The transient is ≤5W at materialization, then 2W while waiting. The serialized writer adds ≤2W once system-wide.
+Per active success stage, the bound is the §2 retained peak (≈40.1 MiB) plus the transient. The transient is ≤8W at materialization (the `material_digest` step), then 2W while waiting. The serialized writer and confirmation add ≤2W once system-wide. The Context raw in the plan is retained (§1) and is not double-counted; only the digest's fresh copy and its serialization are new.
 
-Worst case, counting every waiting worker at its momentary materialization peak: ≤128 jobs × (56.2 + 40.1 + 6.3 + 40) MiB ≈ **17.8 GiB** encoded, plus one serialized writer increment (16 MiB). As in §3, the practical bound under the #81 rule of one active Task per Project is the number of concurrently active Projects. No new cap or Task limit is proposed. These are encoded-byte bounds, not RSS figures; M1b remains the measurement.
+Worst case, counting every worker at its momentary materialization peak: ≤128 jobs × (56.2 + 40.1 + 6.3 + 64) MiB ≈ **20.8 GiB** encoded, plus one serialized writer increment (16 MiB). As in §3, the practical bound under the #81 rule of one active Task per Project is the number of concurrently active Projects. No new cap or Task limit is proposed. These are encoded-byte bounds, not RSS figures; M1b remains the measurement.
 
 SOL-M03 source fix (`success_closure.rs`):
 - `images()` records the preimage's six identity columns (`record_head`), id and version, from the decode it already performs outside the Store.
