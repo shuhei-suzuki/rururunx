@@ -9,7 +9,7 @@ use rrx::{
     config::{AgentConfig, Config, WorkflowClass},
     domain::{Goal, ProjectId, RiskClass, Task},
     runtime::{
-        control::{ControlAction, ControlResponse},
+        control::{ControlAction, ControlResponse, GoalControl},
         goal::{CriterionDefinition, GoalDefinition, GoalPlan, TaskDefinition},
     },
     state::Store,
@@ -97,7 +97,11 @@ fn plan(objective: &str, tasks: &[Planned]) -> GoalPlan {
     }
 }
 
-async fn accepted(db: PathBuf, plans: Vec<GoalSpec>) -> Vec<rrx::domain::GoalId> {
+async fn accepted(
+    db: PathBuf,
+    plans: Vec<(GoalSpec, Option<GoalControl>)>,
+) -> Vec<rrx::domain::GoalId> {
+    let (plans, lifecycles): (Vec<_>, Vec<_>) = plans.into_iter().unzip();
     let projects = {
         let store = Store::open(&db).unwrap();
         plans
@@ -110,27 +114,24 @@ async fn accepted(db: PathBuf, plans: Vec<GoalSpec>) -> Vec<rrx::domain::GoalId>
         tokio::spawn(async move { rrx::cli::service::serve(&db, config).await })
     };
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+    // Readiness is only "the endpoint accepts and says Hello"; no control
+    // action is used as a probe (refusals are legitimate for some Projects).
     loop {
-        let probe = rrx::cli::client::request(
-            &db,
-            ControlAction::ResolveProject {
-                selector: Some(projects[0].id.to_string()),
-                cwd: projects[0].root.clone(),
-            },
-        )
-        .await;
+        let probe = rrx::cli::endpoint::connect(&db).await;
         if probe.is_ok() {
             break;
         }
         assert!(
             tokio::time::Instant::now() < deadline,
-            "SETUP: Runtime service endpoint unavailable: {probe:?}"
+            "SETUP: Runtime service endpoint unavailable: {:?}",
+            probe.err()
         );
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
     let mut goals = vec![];
-    for (project, (_, objective, tasks)) in projects.iter().zip(&plans) {
-        match rrx::cli::client::request(
+    for ((project, (_, objective, tasks)), lifecycle) in projects.iter().zip(&plans).zip(lifecycles)
+    {
+        let (goal, version) = match rrx::cli::client::request(
             &db,
             ControlAction::CreateGoal {
                 project: project.id,
@@ -141,9 +142,30 @@ async fn accepted(db: PathBuf, plans: Vec<GoalSpec>) -> Vec<rrx::domain::GoalId>
         .await
         .unwrap()
         {
-            ControlResponse::GoalAccepted { goal, .. } => goals.push(goal),
+            ControlResponse::GoalAccepted { goal, version, .. } => (goal, version),
             other => panic!("SETUP: actual accepted Goal required, got {other:?}"),
+        };
+        // Legitimate drift (§8.2): Goal lifecycle through live ingress,
+        // before the rows are migrated.
+        if let Some(target) = lifecycle {
+            match rrx::cli::client::request(
+                &db,
+                ControlAction::SetGoalLifecycle {
+                    project: project.id,
+                    goal,
+                    expected_goal: version,
+                    target,
+                    reason: "fixture lifecycle".into(),
+                },
+            )
+            .await
+            .unwrap()
+            {
+                ControlResponse::GoalLifecycleChanged { .. } => {}
+                other => panic!("SETUP: actual Goal lifecycle required, got {other:?}"),
+            }
         }
+        goals.push(goal);
     }
     rrx::cli::client::request(&db, ControlAction::RuntimeStop)
         .await
@@ -158,6 +180,15 @@ async fn accepted(db: PathBuf, plans: Vec<GoalSpec>) -> Vec<rrx::domain::GoalId>
 /// Every connection to `db` must be closed by the caller. Returns each Goal
 /// with its Tasks, read from the migrated database.
 pub fn goals(db: &Path, plans: Vec<GoalSpec>) -> Vec<(Goal, Vec<Task>)> {
+    goals_with(db, plans.into_iter().map(|plan| (plan, None)).collect())
+}
+
+/// `goals`, with an optional lifecycle control applied to each Goal through
+/// the same public route before the migration.
+pub fn goals_with(
+    db: &Path,
+    plans: Vec<(GoalSpec, Option<GoalControl>)>,
+) -> Vec<(Goal, Vec<Task>)> {
     let goal_ids = {
         let db = db.to_path_buf();
         std::thread::spawn(move || {

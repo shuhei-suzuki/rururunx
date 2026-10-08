@@ -4,6 +4,8 @@ use rrx::{domain::*, state::Store};
 use serde_json::json;
 #[path = "support/current_writer.rs"]
 mod current_writer;
+#[path = "support/legacy.rs"]
+mod legacy;
 
 fn project(store: &mut Store, name: &str, root: &std::path::Path) -> Project {
     let mut project = Project::new(
@@ -15,20 +17,47 @@ fn project(store: &mut Store, name: &str, root: &std::path::Path) -> Project {
     store.put_project(&mut project).unwrap();
     project
 }
-fn goal(store: &mut Store, project: &Project) -> Goal {
-    let mut goal = Goal::new(
-        project.id,
-        "Complete MVP".into(),
-        vec![CompletionCriterion {
-            evaluator: Default::default(),
-            id: "tests".into(),
-            description: "tests pass".into(),
-            evidence: None,
-            satisfied: false,
-        }],
+/// FM §8.1 L: one Goal per Project from accepted ingress through the public
+/// route on this database (`db`, which `store` is connected to), which is
+/// then replaced by the ordered historical migration of its nongrant rows;
+/// `store` is reconnected to the migrated file. Each Goal's planned Task is
+/// returned with Issue 42 set through the legacy writer, as `task` does
+/// (issue collisions are a subject here, D1).
+fn goals(store: &mut Store, db: &std::path::Path, projects: &[&Project]) -> Vec<(Goal, Task)> {
+    // Close this connection: the in-place conversion replaces the file.
+    *store = Store::memory().unwrap();
+    let created = legacy::goals(
+        db,
+        projects
+            .iter()
+            .map(|p| {
+                (
+                    p.id,
+                    "Complete MVP",
+                    vec![(
+                        "planned",
+                        "fake",
+                        rrx::config::WorkflowClass::Standard,
+                        RiskClass::R1,
+                        "tests pass",
+                    )],
+                )
+            })
+            .collect(),
     );
-    store.put_goal(&mut goal).unwrap();
-    goal
+    *store = Store::open(db).unwrap();
+    created
+        .into_iter()
+        .map(|(goal, tasks)| {
+            let mut task = tasks[0].clone();
+            task.issue = Some(42);
+            store.put_task(&mut task).unwrap();
+            (goal, task)
+        })
+        .collect()
+}
+fn goal(store: &mut Store, db: &std::path::Path, project: &Project) -> Goal {
+    goals(store, db, &[project]).remove(0).0
 }
 fn task(store: &mut Store, project: &Project, goal: &Goal) -> Task {
     let mut task = Task::new(project.id, goal.id, "Implement #42".into(), "fake".into());
@@ -60,7 +89,7 @@ fn current_scope_audit_rechecks_versions_and_activity_across_connections() {
     let db = temp.path().join("state.db");
     let mut first = Store::open(&db).unwrap();
     let mut p = project(&mut first, "one", temp.path());
-    let g = goal(&mut first, &p);
+    let g = goal(&mut first, &db, &p);
     let mut t = task(&mut first, &p, &g);
     let scope = t.scope();
     let old = [p.version, g.version, t.version];
@@ -116,18 +145,15 @@ fn restart_preserves_hierarchy_decisions_dag_sessions_context_and_nullable_usage
     let mut store = Store::open(&db).unwrap();
     assert_eq!(store.schema_version().unwrap(), rrx::state::SCHEMA_VERSION);
     let project = project(&mut store, "one", dir.path());
-    let mut goal = goal(&mut store, &project);
-    let mut task = task(&mut store, &project, &goal);
+    // The planned Task is already the genuine Goal's DAG node (no generic
+    // Goal change: FM D5; the Goal's accepted state is what restart keeps).
+    let (goal, mut task) = goals(&mut store, &db, &[&project]).remove(0);
     task.worktree = Some(dir.path().join("worktree/issue-42"));
     task.branch = Some("feature/issue-42".into());
     task.state = TaskState::WaitingApproval;
     task.phase = Some("implement".into());
     task.context_version = 1;
     store.put_task(&mut task).unwrap();
-    goal.state = GoalState::Running;
-    goal.dag.nodes.push(task.id);
-    goal.context_version = 1;
-    store.put_goal(&mut goal).unwrap();
     let session = session(&task, task.worktree.clone().unwrap());
     store.put_session(&session, 0).unwrap();
     let mut review = Record::new(
@@ -179,7 +205,8 @@ fn restart_preserves_hierarchy_decisions_dag_sessions_context_and_nullable_usage
         "repo:one"
     );
     let restored_goal = restored.goal(goal.id).unwrap().unwrap();
-    assert_eq!(restored_goal.state, GoalState::Running);
+    assert_eq!(restored_goal.state, goal.state);
+    assert_eq!(restored_goal.version, goal.version);
     assert_eq!(restored_goal.dag.nodes, [task.id]);
     assert!(!restored_goal.completion_criteria[0].satisfied);
     assert_eq!(
@@ -236,13 +263,13 @@ fn restart_preserves_hierarchy_decisions_dag_sessions_context_and_nullable_usage
 #[test]
 fn project_identity_prevents_issue_collisions_and_rejects_cross_project_children() {
     let dir = tempfile::tempdir().unwrap();
-    let mut store = Store::memory().unwrap();
+    let db = dir.path().join("state.db");
+    let mut store = Store::open(&db).unwrap();
     let one = project(&mut store, "one", &dir.path().join("one"));
     let two = project(&mut store, "two", &dir.path().join("two"));
-    let goal_one = goal(&mut store, &one);
-    let goal_two = goal(&mut store, &two);
-    let task_one = task(&mut store, &one, &goal_one);
-    let task_two = task(&mut store, &two, &goal_two);
+    let mut created = goals(&mut store, &db, &[&one, &two]);
+    let (goal_two, task_two) = created.pop().unwrap();
+    let (goal_one, task_one) = created.pop().unwrap();
     assert_ne!(task_one.id, task_two.id);
     assert_eq!(store.tasks(one.id, None).unwrap().len(), 1);
     assert_eq!(store.tasks(two.id, None).unwrap().len(), 1);
@@ -275,7 +302,7 @@ fn stale_writers_do_not_overwrite_state_or_append_events() {
     let db = dir.path().join("state.db");
     let mut writer = Store::open(&db).unwrap();
     let project = project(&mut writer, "one", dir.path());
-    let goal = goal(&mut writer, &project);
+    let goal = goal(&mut writer, &db, &project);
     let mut task = task(&mut writer, &project, &goal);
     let mut other = Store::open(&db).unwrap();
     let mut stale = other.task(task.id).unwrap().unwrap();
@@ -303,7 +330,7 @@ fn append_only_audit_and_failed_journal_write_roll_back_snapshot() {
     let db = dir.path().join("state.db");
     let mut store = Store::open(&db).unwrap();
     let project = project(&mut store, "one", dir.path());
-    let goal = goal(&mut store, &project);
+    let goal = goal(&mut store, &db, &project);
     let mut task = task(&mut store, &project, &goal);
     let raw = current_writer::open(&db).unwrap();
     assert!(raw.execute("UPDATE audit SET kind='forged'", []).is_err());
@@ -321,9 +348,10 @@ fn append_only_audit_and_failed_journal_write_roll_back_snapshot() {
 #[test]
 fn context_versions_are_immutable_consecutive_and_scoped() {
     let dir = tempfile::tempdir().unwrap();
-    let mut store = Store::memory().unwrap();
+    let db = dir.path().join("state.db");
+    let mut store = Store::open(&db).unwrap();
     let project = project(&mut store, "one", dir.path());
-    let goal = goal(&mut store, &project);
+    let goal = goal(&mut store, &db, &project);
     let task = task(&mut store, &project, &goal);
     let mut context = ContextVersion {
         scope: task.scope(),
@@ -365,9 +393,10 @@ fn context_versions_are_immutable_consecutive_and_scoped() {
 #[test]
 fn usage_missing_is_explicit_and_session_ownership_is_enforced() {
     let dir = tempfile::tempdir().unwrap();
-    let mut store = Store::memory().unwrap();
+    let db = dir.path().join("state.db");
+    let mut store = Store::open(&db).unwrap();
     let project = project(&mut store, "one", dir.path());
-    let goal = goal(&mut store, &project);
+    let goal = goal(&mut store, &db, &project);
     let task = task(&mut store, &project, &goal);
     let mut task = task;
     task.worktree = Some(dir.path().join("worktree/issue-42"));
@@ -422,9 +451,10 @@ fn future_schema_is_rejected_without_rewriting_database() {
 #[test]
 fn changing_decisions_preserves_previous_round_evidence_in_journal() {
     let dir = tempfile::tempdir().unwrap();
-    let mut store = Store::memory().unwrap();
+    let db = dir.path().join("state.db");
+    let mut store = Store::open(&db).unwrap();
     let project = project(&mut store, "one", dir.path());
-    let goal = goal(&mut store, &project);
+    let goal = goal(&mut store, &db, &project);
     let task = task(&mut store, &project, &goal);
     let mut approval = Record::new(
         task.scope(),
@@ -565,17 +595,39 @@ fn nongrant_current_writer_denies_protected_insert_and_session_projection() {
     );
 }
 
+/// FM §8.3 S4-W (as `tests/goal_graph.rs`): every Goal change below is
+/// refused by the generic Goal writer on any row, before DAG/follow-up
+/// validation. The former subject — the writer's cross-Project/Goal DAG and
+/// follow-up reference validation — has no legitimate producer now (Goal
+/// changes require typed control ingress), so that proof is LOST and
+/// recorded here; each attempt asserts the typed refusal and an unchanged
+/// Goal instead.
 #[test]
 fn dag_and_followup_references_cannot_cross_project_or_goal_boundaries() {
     let dir = tempfile::tempdir().unwrap();
-    let mut store = Store::memory().unwrap();
+    let db = dir.path().join("state.db");
+    let mut store = Store::open(&db).unwrap();
     let one = project(&mut store, "one", &dir.path().join("one"));
     let two = project(&mut store, "two", &dir.path().join("two"));
-    let mut goal_one = goal(&mut store, &one);
-    let goal_two = goal(&mut store, &two);
+    let mut goal_one = goal(&mut store, &db, &one);
+    let preimage = serde_json::to_value(&goal_one).unwrap();
+    let refused = |store: &mut Store, goal: &mut Goal| {
+        let error = store.put_goal(goal).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Goal changes require trusted typed control ingress"),
+            "{error:#}"
+        );
+        assert_eq!(
+            serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap(),
+            preimage
+        );
+    };
+    let goal_two = goal(&mut store, &db, &two);
     let foreign_task = task(&mut store, &two, &goal_two);
     goal_one.dag.nodes.push(foreign_task.id);
-    assert!(store.put_goal(&mut goal_one).is_err());
+    refused(&mut store, &mut goal_one);
     goal_one.dag.nodes.clear();
     goal_one.followups.push(FollowupProposal {
         title: "follow-up".into(),
@@ -587,7 +639,7 @@ fn dag_and_followup_references_cannot_cross_project_or_goal_boundaries() {
         material_scope_expansion: false,
         disposition: "proposed".into(),
     });
-    assert!(store.put_goal(&mut goal_one).is_err());
+    refused(&mut store, &mut goal_one);
     goal_one.followups.clear();
     let local_task = task(&mut store, &one, &goal_one);
     goal_one.dag.edges.push(Dependency {
@@ -595,7 +647,7 @@ fn dag_and_followup_references_cannot_cross_project_or_goal_boundaries() {
         dependent: foreign_task.id,
         hard: true,
     });
-    assert!(store.put_goal(&mut goal_one).is_err());
+    refused(&mut store, &mut goal_one);
     goal_one.dag.edges.clear();
     goal_one.dag.nodes.push(local_task.id);
     let undeclared = task(&mut store, &one, &goal_one);
@@ -604,9 +656,9 @@ fn dag_and_followup_references_cannot_cross_project_or_goal_boundaries() {
         dependent: undeclared.id,
         hard: true,
     });
-    assert!(store.put_goal(&mut goal_one).is_err());
+    refused(&mut store, &mut goal_one);
     goal_one.dag.edges.clear();
-    store.put_goal(&mut goal_one).unwrap();
+    refused(&mut store, &mut goal_one);
 }
 
 #[test]
@@ -652,7 +704,7 @@ fn context_versions_reject_sql_update_delete_and_replace() {
     let db = dir.path().join("state.db");
     let mut store = Store::open(&db).unwrap();
     let project = project(&mut store, "one", dir.path());
-    let goal = goal(&mut store, &project);
+    let goal = goal(&mut store, &db, &project);
     let context = ContextVersion {
         scope: goal.scope(),
         version: 1,
@@ -687,9 +739,10 @@ fn context_versions_reject_sql_update_delete_and_replace() {
 #[test]
 fn usage_integer_overflow_cannot_publish_rows_or_audit_or_change_owners() {
     let temp = tempfile::tempdir().unwrap();
-    let mut store = Store::memory().unwrap();
+    let db = temp.path().join("state.db");
+    let mut store = Store::open(&db).unwrap();
     let p = project(&mut store, "usage-range", temp.path());
-    let g = goal(&mut store, &p);
+    let g = goal(&mut store, &db, &p);
     let mut t = task(&mut store, &p, &g);
     t.worktree = Some(p.worktree_root.join("task-worktree"));
     t.branch = Some("feature/usage-range".into());
@@ -814,8 +867,12 @@ fn legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes(
     let db = temp.path().join("usage-scope.db");
     let mut store = Store::open(&db).unwrap();
     let p = project(&mut store, "usage-scope", &temp.path().join("one"));
-    let g = goal(&mut store, &p);
-    let mut t = task(&mut store, &p, &g);
+    // Both Goals are created before any Task is bound: a bound legacy Task
+    // would make the migration create a LegacyUnreconciled Unit (FM-L1).
+    let foreign_p = project(&mut store, "foreign-usage-scope", &temp.path().join("two"));
+    let mut created = goals(&mut store, &db, &[&p, &foreign_p]);
+    let (foreign_g, foreign_t) = created.pop().unwrap();
+    let (g, mut t) = created.pop().unwrap();
     t.worktree = Some(p.worktree_root.join("task-worktree"));
     t.branch = Some("feature/usage-scope".into());
     store.put_task(&mut t).unwrap();
@@ -838,9 +895,6 @@ fn legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes(
         missing_reason: Some("legacy history is unqualified".into()),
     };
     store.put_usage(&valid).unwrap();
-    let foreign_p = project(&mut store, "foreign-usage-scope", &temp.path().join("two"));
-    let foreign_g = goal(&mut store, &foreign_p);
-    let foreign_t = task(&mut store, &foreign_p, &foreign_g);
     // Both legitimate Tasks have Issue42, but distinct Project identities.
     assert_eq!(foreign_t.issue, t.issue);
     let views = [
@@ -940,7 +994,7 @@ fn legacy_usage_query_preserves_null_scopes_and_refuses_null_column_wildcards() 
     let db = temp.path().join("usage-null-scope.db");
     let mut store = Store::open(&db).unwrap();
     let p = project(&mut store, "usage-null-scope", temp.path());
-    let g = goal(&mut store, &p);
+    let g = goal(&mut store, &db, &p);
     let t = task(&mut store, &p, &g);
     let project_scope = Scope {
         project_id: p.id,
@@ -1074,7 +1128,7 @@ fn legacy_usage_query_redacts_malformed_body_decode_chain_without_writes() {
     let db = temp.path().join("usage-decode.db");
     let mut store = Store::open(&db).unwrap();
     let p = project(&mut store, "usage-decode", temp.path());
-    let g = goal(&mut store, &p);
+    let g = goal(&mut store, &db, &p);
     let t = task(&mut store, &p, &g);
     let mut s = session(&t, p.worktree_root.join("legacy-review"));
     s.role = SessionRole::Reviewer;

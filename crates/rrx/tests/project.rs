@@ -13,6 +13,8 @@ use std::{
     process::{Command, Output},
 };
 use tempfile::TempDir;
+#[path = "support/legacy.rs"]
+mod legacy;
 fn git(root: &Path, args: &[&str]) {
     let out = Command::new("git")
         .current_dir(root)
@@ -86,20 +88,54 @@ impl Fixture {
             .unwrap()
     }
 }
-fn goal(store: &mut Store, p: &Project) -> Goal {
-    let mut g = Goal::new(
-        p.id,
-        "fixture".into(),
-        vec![CompletionCriterion {
-            evaluator: Default::default(),
-            id: "done".into(),
-            description: "pass".into(),
-            evidence: None,
-            satisfied: false,
-        }],
+/// FM §8.1 L: the Goal from accepted ingress through the public route on
+/// `db` (which `store` is connected to), optionally given a lifecycle control
+/// on live ingress (§8.2), then the ordered historical migration in place;
+/// `store` is reconnected to the migrated file.
+fn lifecycle(
+    store: &mut Store,
+    db: &Path,
+    p: &Project,
+    target: Option<rrx::runtime::control::GoalControl>,
+) -> Goal {
+    // Close this connection: the in-place conversion replaces the file.
+    *store = Store::memory().unwrap();
+    let spec = (p.id, "fixture", planned());
+    let (goal, _) = match target {
+        None => legacy::goals(db, vec![spec]),
+        Some(target) => legacy::goals_with(db, vec![(spec, Some(target))]),
+    }
+    .remove(0);
+    *store = Store::open(db).unwrap();
+    goal
+}
+fn planned() -> Vec<legacy::Planned> {
+    vec![(
+        "planned",
+        "fake",
+        rrx::config::WorkflowClass::Standard,
+        RiskClass::R1,
+        "pass",
+    )]
+}
+/// FM §8.3 S4-W: the generic Goal writer refuses the change and leaves the
+/// stored Goal byte-identical.
+fn goal_change_refused(store: &mut Store, goal: &mut Goal) {
+    let before = serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap();
+    let error = store.put_goal(goal).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("Goal changes require trusted typed control ingress"),
+        "{error:#}"
     );
-    store.put_goal(&mut g).unwrap();
-    g
+    assert_eq!(
+        serde_json::to_value(store.goal(goal.id).unwrap().unwrap()).unwrap(),
+        before
+    );
+}
+fn goal(store: &mut Store, db: &Path, p: &Project) -> Goal {
+    lifecycle(store, db, p, None)
 }
 fn task(store: &mut Store, p: &Project, g: &Goal) -> Task {
     let mut t = Task::new(p.id, g.id, "Issue 42".into(), "fake".into());
@@ -196,8 +232,8 @@ fn two_project_issue42_worktrees_context_and_goals_are_isolated() {
     let mut s = Store::open(&f.db).unwrap();
     let a = f.add(&mut s, &f.a);
     let b = f.add(&mut s, &f.b);
-    let ga = goal(&mut s, &a);
-    let gb = goal(&mut s, &b);
+    let ga = goal(&mut s, &f.db, &a);
+    let gb = goal(&mut s, &f.db, &b);
     let ta = task(&mut s, &a, &ga);
     let tb = task(&mut s, &b, &gb);
     let wa = WorktreeManager::create(&mut s, ta.id).unwrap();
@@ -413,16 +449,32 @@ fn config_rules_environment_and_symlinks_never_cross_project() {
 fn removal_checks_live_goals_tasks_sessions_and_locks_under_store_transaction() {
     let f = Fixture::new();
     let mut s = Store::open(&f.db).unwrap();
-    let mut p = f.add(&mut s, &f.a);
-    let mut g = goal(&mut s, &p);
-    let mut t = task(&mut s, &p, &g);
+    let p = f.add(&mut s, &f.a);
+    let mut g = goal(&mut s, &f.db, &p);
+    task(&mut s, &p, &g);
     assert!(
         Registry::new(&mut s)
             .remove(&p.id.to_string(), &f.root)
             .is_err()
     );
+    // FM D5: completing a legacy Goal through the generic writer is S4-W.
     g.state = GoalState::Completed;
-    s.put_goal(&mut g).unwrap();
+    goal_change_refused(&mut s, &mut g);
+    // The remaining ladder runs on a legacy database whose Goal was made
+    // terminal on live ingress before migration (§8.2 Goal lifecycle).
+    let f = Fixture::new();
+    let mut s = Store::open(&f.db).unwrap();
+    let mut p = f.add(&mut s, &f.a);
+    let g = lifecycle(
+        &mut s,
+        &f.db,
+        &p,
+        Some(rrx::runtime::control::GoalControl::Cancel),
+    );
+    assert_eq!(g.state, GoalState::Cancelled);
+    // Its planned Task (the Goal's DAG node) is the ladder's live Task.
+    let mut t = s.task(g.dag.nodes[0]).unwrap().unwrap();
+    assert_eq!(t.state, TaskState::Created);
     assert!(
         Registry::new(&mut s)
             .remove(&p.id.to_string(), &f.root)
@@ -705,7 +757,7 @@ fn blocked_projects_accept_lost_and_blocker_updates_without_starting_new_work() 
     let f = Fixture::new();
     let mut s = Store::open(&f.db).unwrap();
     let p = f.add(&mut s, &f.a);
-    let mut g = goal(&mut s, &p);
+    let mut g = goal(&mut s, &f.db, &p);
     let mut t = task(&mut s, &p, &g);
     let wt = WorktreeManager::create(&mut s, t.id).unwrap();
     t = s.task(t.id).unwrap().unwrap();
@@ -730,9 +782,11 @@ fn blocked_projects_accept_lost_and_blocker_updates_without_starting_new_work() 
     Registry::new(&mut s).reconcile().unwrap();
     session.state = SessionState::Lost;
     let version = s.put_session(&session, version).unwrap();
+    // FM D5: the Goal blocker update is S4-W on legacy rows; the Task
+    // blocker update below is the legitimate one.
     g.state = GoalState::Blocked;
     g.blockers.push("source moved".into());
-    s.put_goal(&mut g).unwrap();
+    goal_change_refused(&mut s, &mut g);
     t.blockers.push("source moved".into());
     s.put_task(&mut t).unwrap();
     assert!(
@@ -926,7 +980,22 @@ fn blocked_work_cannot_resurrect_terminal_rows_or_rewrite_goal_and_task_metadata
     let f = Fixture::new();
     let mut store = Store::open(&f.db).unwrap();
     let mut p = f.add(&mut store, &f.a);
-    let mut g = goal(&mut store, &p);
+    // Both Goals come from accepted ingress before any Task is bound: the
+    // live one, and a historical one made terminal on live ingress (§8.2).
+    drop(store);
+    let mut created = legacy::goals_with(
+        &f.db,
+        vec![
+            ((p.id, "fixture", planned()), None),
+            (
+                (p.id, "terminal insert", planned()),
+                Some(rrx::runtime::control::GoalControl::Cancel),
+            ),
+        ],
+    );
+    let mut historical = created.pop().unwrap().0;
+    let mut g = created.pop().unwrap().0;
+    let mut store = Store::open(&f.db).unwrap();
     let mut t = task(&mut store, &p, &g);
     let wt = WorktreeManager::create(&mut store, t.id).unwrap();
     t = store.task(t.id).unwrap().unwrap();
@@ -986,17 +1055,12 @@ fn blocked_work_cannot_resurrect_terminal_rows_or_rewrite_goal_and_task_metadata
     store.put_task(&mut t).unwrap();
     t.state = TaskState::WaitingHuman;
     assert!(store.put_task(&mut t).is_err());
+    // FM D5: completing a legacy Goal through the generic writer is S4-W.
     g.state = GoalState::Completed;
-    store.put_goal(&mut g).unwrap();
+    goal_change_refused(&mut store, &mut g);
     g.state = GoalState::Blocked;
     assert!(store.put_goal(&mut g).is_err());
-    let mut historical = Goal::new(
-        p.id,
-        "terminal insert".into(),
-        g.completion_criteria.clone(),
-    );
-    historical.state = GoalState::Completed;
-    store.put_goal(&mut historical).unwrap();
+    assert_eq!(historical.state, GoalState::Cancelled);
     let mut task = Task::new(p.id, historical.id, "terminal insert".into(), "fake".into());
     task.state = TaskState::Cancelled;
     store.put_task(&mut task).unwrap();
