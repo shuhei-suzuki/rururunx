@@ -14,7 +14,9 @@ use super::{
 use crate::{
     domain::{Project, ProjectId, ProjectState, RecordKind, Scope},
     git::PreflightGroups,
-    project::{ProjectStatus, ProjectStatusView, plan_add, plan_block},
+    project::{
+        ProjectStatus, ProjectStatusView, plan_add, plan_block, public_project, public_reason,
+    },
 };
 use anyhow::{Result, ensure};
 use std::{
@@ -24,10 +26,6 @@ use std::{
 
 /// D5: the deadline of one Project preflight.
 pub(super) const PREFLIGHT_DEADLINE: Duration = Duration::from_secs(10);
-/// D5: how long a cut-off preflight waits for its killed children's reap.
-const REAP_BOUND: Duration = Duration::from_secs(2);
-/// Bounds a `ProjectRefused` message.
-const REFUSAL_BYTES: usize = 2048;
 
 /// The outcome of one bounded preflight.
 pub(super) enum Preflight<T> {
@@ -62,16 +60,17 @@ fn unavailable(request: &ControlRequest, reason: UnavailableReason) -> ControlRe
         reason,
     }
 }
+/// M4: a refusal carries only the non-secret, bounded reason.
 fn refused(error: &anyhow::Error) -> ControlResponse {
-    let mut reason = format!("{error:#}");
-    if reason.len() > REFUSAL_BYTES {
-        let mut end = REFUSAL_BYTES;
-        while !reason.is_char_boundary(end) {
-            end -= 1;
-        }
-        reason.truncate(end);
+    ControlResponse::ProjectRefused {
+        reason: public_reason(&format!("{error:#}")),
     }
-    ControlResponse::ProjectRefused { reason }
+}
+fn saved(project: Project, changed: bool) -> ControlResponse {
+    ControlResponse::ProjectSaved {
+        project: public_project(project),
+        changed,
+    }
 }
 /// Maps a commit error to its typed answer.
 fn commit_refusal(request: &ControlRequest, error: &anyhow::Error) -> ControlResponse {
@@ -81,6 +80,24 @@ fn commit_refusal(request: &ControlRequest, error: &anyhow::Error) -> ControlRes
         unavailable(request, UnavailableReason::ProjectPreflightInFlight)
     } else {
         refused(error)
+    }
+}
+
+/// D8: one row's mark and the version that mark is about.
+#[derive(Clone, Copy)]
+struct Reconciled {
+    mark: ReconcileMark,
+    version: u64,
+}
+impl Reconciled {
+    /// M2: the mark for the row as it is reported, at `current`.
+    fn for_version(self, current: u64) -> ReconcileMark {
+        match self.mark {
+            ReconcileMark::Checked | ReconcileMark::NotRegistered if current != self.version => {
+                ReconcileMark::Changed
+            }
+            mark => mark,
+        }
     }
 }
 
@@ -137,14 +154,7 @@ impl Runtime {
                 // Kill every owned group; the blocking task reaps its own
                 // child and only then joins, so the in-flight entry clears
                 // after the reap and after the child's pipes closed.
-                groups.cancel();
-                // C-S3d4: every killed child is reaped before the response;
-                // a child that does not die within the bound still keeps
-                // the entry held until the join.
-                let reap_deadline = tokio::time::Instant::now() + REAP_BOUND;
-                while !groups.all_reaped() && tokio::time::Instant::now() < reap_deadline {
-                    tokio::time::sleep(Duration::from_millis(10)).await;
-                }
+                groups.cancel_and_await_reap().await;
                 let flights = self.project_preflights.clone();
                 tokio::spawn(async move {
                     let _ = handle.await;
@@ -162,12 +172,6 @@ impl Runtime {
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .projects()
     }
-    fn project_in_flight(&self, id: ProjectId) -> bool {
-        self.project_preflights
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .contains(&id)
-    }
 
     /// D6: writes `project` after checking, in the same transaction, the
     /// owner epoch, `!stopping`, the in-flight set and `expected` (the
@@ -176,9 +180,17 @@ impl Runtime {
         let _admission = self.control_admission.lock().await;
         let (instance, epoch) = (self.owner.instance_id().to_owned(), self.owner.epoch());
         let stopping = self.stopping.clone();
-        let in_flight = self.project_in_flight(project.id);
+        // M1: the in-flight set stays locked until the write has committed,
+        // so no preflight for this Project can register between the check
+        // and the write. Lock order: in-flight set, then Store.
+        let flights = self
+            .project_preflights
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let in_flight = flights.contains(&project.id);
         let planned = project.clone();
-        self.owner
+        let written = self
+            .owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
@@ -207,7 +219,9 @@ impl Runtime {
                     }
                     _ => Err(CurrencyChanged.into()),
                 }
-            })
+            });
+        drop(flights);
+        written
     }
 
     /// The S3 Project actions; `None` for every other action.
@@ -268,10 +282,7 @@ impl Runtime {
                     )));
                 }
                 match self.commit_project(&mut project, None).await {
-                    Ok(()) => ControlResponse::ProjectSaved {
-                        project,
-                        changed: true,
-                    },
+                    Ok(()) => saved(project, true),
                     Err(error) => commit_refusal(request, &error),
                 }
             }
@@ -315,19 +326,13 @@ impl Runtime {
                 };
                 ensure!(project.id == *id, "Project update planned another row");
                 if !changed {
-                    return Ok(Some(ControlResponse::ProjectSaved {
-                        project,
-                        changed: false,
-                    }));
+                    return Ok(Some(saved(project, false)));
                 }
                 match self
                     .commit_project(&mut project, Some(*expected_project))
                     .await
                 {
-                    Ok(()) => ControlResponse::ProjectSaved {
-                        project,
-                        changed: true,
-                    },
+                    Ok(()) => saved(project, true),
                     Err(error) => commit_refusal(request, &error),
                 }
             }
@@ -348,10 +353,7 @@ impl Runtime {
                     )));
                 }
                 if project.state == ProjectState::Removed {
-                    return Ok(Some(ControlResponse::ProjectSaved {
-                        project,
-                        changed: false,
-                    }));
+                    return Ok(Some(saved(project, false)));
                 }
                 // §3.1: the reconcile runs after the version check. A
                 // Blocked finding does not prevent the removal; only the
@@ -380,10 +382,7 @@ impl Runtime {
                     .commit_project(&mut project, Some(*expected_project))
                     .await
                 {
-                    Ok(()) => ControlResponse::ProjectSaved {
-                        project,
-                        changed: true,
-                    },
+                    Ok(()) => saved(project, true),
                     Err(error) => commit_refusal(request, &error),
                 }
             }
@@ -416,13 +415,19 @@ impl Runtime {
                     .into_iter()
                     .filter(|p| *all || p.state != ProjectState::Removed)
                     .map(|project| {
+                        // M2: a row that appeared or changed after its check
+                        // is reported without claiming that check.
                         let reconcile = snapshot
                             .iter()
                             .zip(&marks)
                             .find(|(p, _)| p.id == project.id)
-                            .map(|(_, mark)| *mark)
-                            .unwrap_or(ReconcileMark::NotRegistered);
-                        ProjectRow { project, reconcile }
+                            .map_or(ReconcileMark::Changed, |(_, mark)| {
+                                mark.for_version(project.version)
+                            });
+                        ProjectRow {
+                            project: public_project(project),
+                            reconcile,
+                        }
                     })
                     .collect();
                 ControlResponse::ProjectRows { rows }
@@ -438,18 +443,19 @@ impl Runtime {
                     Ok(project) => project,
                     Err(error) => return Ok(Some(refused(&error))),
                 };
-                let reconcile = self.reconcile_one(&project).await;
+                let checked = self.reconcile_one(&project).await;
                 // C-S3g(iii): a status whose own check did not finish is a
                 // typed refusal, never facts presented as current.
-                if reconcile == ReconcileMark::Unavailable {
+                if checked.mark == ReconcileMark::Unavailable {
                     return Ok(Some(unavailable(
                         request,
                         UnavailableReason::ProjectPreflightUnavailable,
                     )));
                 }
+                let status = self.project_status_view(project.id)?;
                 ControlResponse::ProjectStatusFacts {
-                    status: self.project_status_view(project.id)?,
-                    reconcile,
+                    reconcile: checked.for_version(status.project.version),
+                    status,
                 }
             }
             _ => return Ok(None),
@@ -459,28 +465,32 @@ impl Runtime {
 
     /// D8: reconciles one row. An in-flight Project is not waited on; a
     /// `Blocked` write that loses its snapshot CAS is skipped (Q2).
-    async fn reconcile_one(&self, project: &Project) -> ReconcileMark {
+    async fn reconcile_one(&self, project: &Project) -> Reconciled {
+        let at = |mark, version| Reconciled { mark, version };
         if project.state != ProjectState::Registered {
-            return ReconcileMark::NotRegistered;
+            return at(ReconcileMark::NotRegistered, project.version);
         }
         let checked = project.clone();
         match self
             .project_preflight(Some(project.id), move || Ok(plan_block(&checked)))
             .await
         {
-            Preflight::InFlight => ReconcileMark::SkippedInFlight,
-            Preflight::Unavailable => ReconcileMark::Unavailable,
-            Preflight::Done(Err(_)) => ReconcileMark::Unavailable,
-            Preflight::Done(Ok(None)) => ReconcileMark::Checked,
+            Preflight::InFlight => at(ReconcileMark::SkippedInFlight, project.version),
+            Preflight::Unavailable | Preflight::Done(Err(_)) => {
+                at(ReconcileMark::Unavailable, project.version)
+            }
+            Preflight::Done(Ok(None)) => at(ReconcileMark::Checked, project.version),
             Preflight::Done(Ok(Some(reason))) => {
                 let mut blocked = project.clone();
                 blocked.state = ProjectState::Blocked;
                 blocked.blocked_reason = Some(reason);
                 let expected = project.version;
                 // Any refusal leaves the row as it now reads; the response
-                // re-reads it and never presents the stale check as current.
-                let _ = self.commit_project(&mut blocked, Some(expected)).await;
-                ReconcileMark::Checked
+                // re-reads it, and M2 reports a changed row as `changed`.
+                match self.commit_project(&mut blocked, Some(expected)).await {
+                    Ok(()) => at(ReconcileMark::Checked, blocked.version),
+                    Err(_) => at(ReconcileMark::Checked, expected),
+                }
             }
         }
     }

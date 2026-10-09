@@ -74,12 +74,42 @@ impl From<&ProjectStatus> for ProjectStatusView {
     fn from(status: &ProjectStatus) -> Self {
         let (active_goals, active_tasks) = ProjectRegistry::active_counts(status);
         Self {
-            project: status.project.clone(),
+            project: public_project(status.project.clone()),
             active_goals,
             active_tasks,
             sessions: status.sessions.iter().map(SessionView::from).collect(),
         }
     }
+}
+
+/// S3 D1 (Sol 6079932858 M4): bounds a refusal or Blocked reason.
+const PUBLIC_REASON_BYTES: usize = 2048;
+/// S3 D1 (Sol 6079932858 M4): the non-secret form of a refusal or Blocked
+/// reason. A failed Git command's captured stderr (the root cause, so the
+/// tail of an error chain) is dropped; only the command and "failed" stay.
+/// Applies to stored text too, so a row written before S3 is projected the
+/// same way.
+pub(crate) fn public_reason(text: &str) -> String {
+    let mut reason = match text.find("Git [") {
+        Some(start) => match text[start..].find("] failed") {
+            Some(end) => text[..start + end + "] failed".len()].to_owned(),
+            None => text.to_owned(),
+        },
+        None => text.to_owned(),
+    };
+    if reason.len() > PUBLIC_REASON_BYTES {
+        let mut end = PUBLIC_REASON_BYTES;
+        while !reason.is_char_boundary(end) {
+            end -= 1;
+        }
+        reason.truncate(end);
+    }
+    reason
+}
+/// The Project row as the API and `project status` return it.
+pub(crate) fn public_project(mut project: Project) -> Project {
+    project.blocked_reason = project.blocked_reason.as_deref().map(public_reason);
+    project
 }
 
 pub struct ProjectRegistry<'a> {
@@ -357,7 +387,9 @@ pub(crate) fn plan_add(
 
 /// S3 D8: the reconcile check for one Registered row; `Some(reason)` blocks it.
 pub(crate) fn plan_block(project: &Project) -> Option<String> {
-    validate(project).err().map(|error| format!("{error:#}"))
+    validate(project)
+        .err()
+        .map(|error| public_reason(&format!("{error:#}")))
 }
 
 pub fn validate(project: &Project) -> Result<()> {

@@ -610,6 +610,18 @@ impl PreflightGroups {
             kill_group(*pid);
         }
     }
+    /// D5, C-S3d4: kills every owned group and waits, bounded, until every
+    /// killed child is reaped, so a cut-off response follows the reap. A
+    /// child that does not die within the bound still keeps its preflight's
+    /// in-flight entry held until the join.
+    pub(crate) async fn cancel_and_await_reap(&self) {
+        const REAP_BOUND: std::time::Duration = std::time::Duration::from_secs(2);
+        self.cancel();
+        let deadline = tokio::time::Instant::now() + REAP_BOUND;
+        while !self.all_reaped() && tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
     /// Whether every child started so far has been reaped.
     pub(crate) fn all_reaped(&self) -> bool {
         self.unreaped.load(std::sync::atomic::Ordering::SeqCst) == 0
@@ -622,6 +634,24 @@ impl PreflightGroups {
             .live
             .len()
     }
+}
+/// How long a killed group's members may take to be gone.
+const GROUP_EXIT_BOUND: std::time::Duration = std::time::Duration::from_secs(2);
+fn await_group_empty(pgid: rustix::process::Pid) {
+    let deadline = std::time::Instant::now() + GROUP_EXIT_BOUND;
+    while rustix::process::test_kill_process_group(pgid).is_ok()
+        && std::time::Instant::now() < deadline
+    {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+// C-S3d4 (Sol 6079932858 L1): delays this thread's reap of a preflight child,
+// so a response that does not wait for the reap is observable. It changes no
+// authority, ownership or outcome.
+#[cfg(test)]
+std::thread_local! {
+    static REAP_DELAY: std::cell::Cell<std::time::Duration> =
+        const { std::cell::Cell::new(std::time::Duration::ZERO) };
 }
 fn kill_group(pid: i32) {
     if let Some(pid) = rustix::process::Pid::from_raw(pid) {
@@ -708,13 +738,22 @@ fn finish_owned(
                     result => break result,
                 }
             };
+            // Sol 6079932858 M3: the group is owned beyond its leader. While
+            // the leader is an unreaped zombie its pid still names this group,
+            // so every member it left behind is killed here.
+            kill_group(pid);
             groups
                 .state
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .live
                 .remove(&pid);
+            #[cfg(test)]
+            std::thread::sleep(REAP_DELAY.with(std::cell::Cell::get));
             let status = child.wait();
+            // The reaped leader's pid stays reserved while any member lives,
+            // so the group is counted as reaped only once it is empty.
+            await_group_empty(raw);
             groups
                 .unreaped
                 .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
@@ -812,5 +851,80 @@ mod tests {
                 .to_string()
                 .contains("Project preflight cancelled")
         );
+    }
+
+    /// C-S3d4 (Sol 6079932858 L1): with the reap delayed, a cut-off returns
+    /// only after the killed child is reaped. Mutant: return without waiting
+    /// for the reap → FAIL.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cut_off_returns_only_after_a_slow_reap() {
+        let groups = Arc::new(PreflightGroups::default());
+        let worker = {
+            let groups = groups.clone();
+            std::thread::spawn(move || {
+                REAP_DELAY.with(|delay| delay.set(Duration::from_millis(500)));
+                with_preflight_groups(groups, || {
+                    let mut child = Command::new("sh");
+                    child.args(["-c", "sleep 30"]);
+                    run(child)
+                })
+            })
+        };
+        let started = Instant::now();
+        while groups.live() == 0 {
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "child never registered"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        groups.cancel_and_await_reap().await;
+        assert!(groups.all_reaped(), "the cut-off returned before the reap");
+        assert!(!worker.join().unwrap().unwrap().status.success());
+    }
+
+    /// Sol 6079932858 M3: a member the Git leader leaves in its group is
+    /// killed when the leader exits, before the call returns, even on a
+    /// normal exit and with the member holding no pipe.
+    #[test]
+    fn a_member_left_in_the_group_dies_with_its_leader() {
+        let groups = Arc::new(PreflightGroups::default());
+        let output = with_preflight_groups(groups.clone(), || {
+            let mut child = Command::new("sh");
+            child.args(["-c", "sleep 30 >/dev/null 2>&1 & echo $!"]);
+            run(child)
+        })
+        .unwrap();
+        assert!(output.status.success());
+        let member: i32 = String::from_utf8(output.stdout)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let running = || {
+            std::fs::read_to_string(format!("/proc/{member}/stat"))
+                .ok()
+                .and_then(|stat| stat.rsplit(')').next().map(|s| s.trim().starts_with('Z')))
+                .is_some_and(|zombie| !zombie)
+        };
+        assert!(!running(), "the left member outlived its leader");
+        assert!(groups.all_reaped());
+        assert_eq!(groups.live(), 0);
+    }
+
+    /// Sol 6079932858 M4: a failed Git command's stderr never reaches the
+    /// public reason; the command and "failed" do.
+    #[test]
+    fn public_reason_drops_git_stderr() {
+        let dir = tempfile::tempdir().unwrap();
+        let error = git(dir.path(), &["rev-parse", "--verify", "HEAD"]).unwrap_err();
+        let full = format!("{:#}", error.context("project root check"));
+        assert!(full.contains("fatal"), "SETUP: no stderr captured: {full}");
+        let public = crate::project::public_reason(&full);
+        assert!(public.ends_with("] failed"), "{public}");
+        assert!(public.starts_with("project root check: Git ["), "{public}");
+        assert!(!public.contains("fatal"), "{public}");
+        let after = public.split("] failed").last().unwrap();
+        assert!(after.is_empty());
     }
 }

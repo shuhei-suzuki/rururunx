@@ -86,11 +86,13 @@ impl Fixture {
                 .stdout,
         )
         .unwrap();
-        // Pauses while `<repo>/.git/rrx-hold` exists, after recording its own
+        // Fails with a secret-looking stderr while `<repo>/.git/rrx-fail`
+        // exists. Pauses while `<repo>/.git/rrx-hold` exists, after recording its own
         // pid; with `rrx-escape` it first starts a descendant in a new
         // session that keeps the output pipes open for a while.
         let wrapper = format!(
             "#!/bin/sh\nhere=$(pwd -P)\necho \"$here $*\" >> '{log}'\n\
+             if [ -e \"$here/.git/rrx-fail\" ]; then echo 'fatal: SECRET-TOKEN-81' >&2; exit 128; fi\n\
              if [ -e \"$here/.git/rrx-hold\" ]; then\n\
              echo $$ >> \"$here/.git/rrx-held\"\n\
              if [ -e \"$here/.git/rrx-escape\" ]; then setsid sleep 14 & fi\n\
@@ -773,4 +775,101 @@ fn c_s3h_add_reactivates_a_removed_row_and_refuses_a_stale_lookup() {
         "{stale:?}"
     );
     assert_eq!((f.row(id), f.audit(id)), (row, audit));
+}
+
+/// Sol 6079932858 M2: List checks B at version v while A holds the List;
+/// B is updated before the List returns. B is reported at its new version
+/// as `changed`, never as `checked`. Mutant: keep the snapshot mark → FAIL.
+#[test]
+fn m2_a_row_changed_after_its_check_is_not_reported_checked() {
+    let f = Fixture::new();
+    let a = f.add(&f.a);
+    let b = f.add(&f.b);
+    f.start();
+    f.hold(&f.a);
+    let state = f.state.clone();
+    let list = std::thread::spawn(move || api(&state, ControlAction::ProjectList { all: false }));
+    f.wait_held(&f.a);
+    // B's own check has finished: its preflight is no longer in flight.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let vb = loop {
+        let (_, vb, _) = lookup(&f.state, &f.b);
+        match f.api(ControlAction::ProjectUpdate {
+            project: b,
+            expected_project: vb,
+            options: renamed("moved"),
+        }) {
+            ControlResponse::ProjectSaved { project, .. } => break project.version,
+            other => {
+                assert_eq!(
+                    reason(&other),
+                    Some(UnavailableReason::ProjectPreflightInFlight)
+                );
+                assert!(Instant::now() < deadline, "B stayed in flight");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+    };
+    f.release(&f.a);
+    let rows = match list.join().unwrap() {
+        ControlResponse::ProjectRows { rows } => rows,
+        other => panic!("list: {other:?}"),
+    };
+    let row = |id| rows.iter().find(|r| r.project.id == id).unwrap();
+    assert_eq!(row(b).project.version, vb);
+    assert_eq!(row(b).reconcile, ReconcileMark::Changed);
+    assert_eq!(row(a).reconcile, ReconcileMark::Checked);
+}
+
+/// Sol 6079932858 M4: a Git failure's stderr reaches neither a typed
+/// refusal, nor a Blocked reason in any API response, nor the stored row.
+#[test]
+fn m4_git_stderr_never_reaches_api_projections_or_stored_reasons() {
+    let f = Fixture::new();
+    let a = f.add(&f.a);
+    f.start();
+    for repo in [&f.a, &f.c] {
+        std::fs::write(repo.join(".git/rrx-fail"), "").unwrap();
+    }
+    let secret = "SECRET-TOKEN-81";
+    let refused = f.api(ControlAction::ProjectRegister {
+        path: f.c.clone(),
+        options: ProjectOptions::default(),
+    });
+    match &refused {
+        ControlResponse::ProjectRefused { reason } => {
+            assert!(reason.contains("failed"), "{reason}");
+            assert!(!reason.contains(secret), "{reason}");
+        }
+        other => panic!("register: {other:?}"),
+    }
+    let cli = f.cli(&f.base, &["project", "add", f.c.to_str().unwrap()]);
+    assert!(!cli.status.success());
+    assert!(!stderr(&cli).contains(secret), "{}", stderr(&cli));
+    let status = status_of(&f.state, a);
+    let ControlResponse::ProjectStatusFacts { status, .. } = &status else {
+        panic!("status: {status:?}");
+    };
+    assert_eq!(status.project.state, ProjectState::Blocked);
+    let reason = status.project.blocked_reason.clone().unwrap();
+    assert!(
+        reason.contains("failed") && !reason.contains(secret),
+        "{reason}"
+    );
+    let ControlResponse::ProjectRows { rows } = f.api(ControlAction::ProjectList { all: true })
+    else {
+        panic!("list");
+    };
+    for row in rows {
+        assert!(!format!("{:?}", row.project).contains(secret));
+    }
+    let stored = f.row(a).unwrap().1;
+    assert!(!stored.contains(secret), "{stored}");
+    for out in [
+        f.cli(&f.base, &["project", "status", &a.to_string(), "--json"]),
+        f.cli(&f.base, &["project", "list", "--all", "--json"]),
+    ] {
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(!text.contains(secret), "{text}");
+    }
 }

@@ -141,9 +141,12 @@ pub struct ProjectLookupFound {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReconcileMark {
-    /// Checked by this request's own preflight (a `Blocked` result was
-    /// written, or skipped because the row changed meanwhile).
+    /// Checked by this request's own preflight, and the reported row is the
+    /// version that was checked (or the `Blocked` row this check wrote).
     Checked,
+    /// Not checked at the reported version (Sol 6079932858 M2): the row
+    /// changed, or appeared, after this request's check.
+    Changed,
     /// Another request's preflight for this Project was in flight; not
     /// waited on, the current row is reported.
     SkippedInFlight,
