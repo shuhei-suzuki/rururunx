@@ -412,3 +412,69 @@ Branch `claude/adoring-archimedes-7eehnw`, on top of PR #83's merge (`9aed3bf`).
 Non-root (fmtest, umask 022, subreaper), all 19 test binaries: rrx lib 738 passed, 0 failed (20 ignored, unchanged from before S2); every integration binary passed. `cargo clippy --workspace --all-targets` and `cargo fmt --check` are clean. An earlier run was discarded: the test binary was rebuilt while it ran, and `execution/resources.rs` re-executes `current_exe()`, so the installation tests failed on the replaced executable. The clean re-run above had no build alongside it.
 
 Review-fix run (`cafc547`, non-root, no build alongside): rrx lib 740 passed, 0 failed (20 ignored). Every integration binary passed except `adapter` 18/19: `runtime_shutdown_terminates_native_group_and_preserves_uncertain_reservation` failed once with "fixture descendant still running: R". The S2 diff touches no adapter or process code, and the failure did not reproduce in 40 single runs or 10 whole-binary runs. The failing path is the `GenericCliAdapter`'s `ProcessGroup::drop` (`adapter.rs:604`, corrected by Sol 6072320376), which signals the group without waiting, and `assert_process_dead` (`tests/adapter.rs:564`) samples `ps` once, so a SIGKILLed descendant can still read `R` while it exits. This is recorded as an open observation, not as a flake. The proposed fix, a bounded wait for the process to be gone or a zombie before asserting, is outside S2.
+
+## 9. S3 outcome (implementation)
+
+Branch `claude/adoring-archimedes-7eehnw`, on top of PR #84 (`93eeb60`). Paths are relative to `crates/rrx`.
+
+| Design item | Implementation |
+| --- | --- |
+| D1 wire | `src/runtime/control.rs`: the six actions, `ProjectOptions`, `ProjectLookupFound`, `ReconcileMark`, `ProjectRow`, the responses `ProjectLookup`, `ProjectSaved`, `ProjectRows`, `ProjectStatusFacts`, and the four `UnavailableReason`s. **Addition:** `ProjectRefused { reason }`, a registry refusal (for example a duplicate root or a bad reference) as text bounded at 2048 bytes. Without it, a handler error becomes a sanitized `Rejected` and the CLI loses the reason |
+| D1 projection | `src/project.rs` `SessionView` and `ProjectStatusView` (`From<&ProjectStatus>`). Offline and API `project status --json` print the view; the plain-text lines are unchanged |
+| D1 protocol | `src/cli/transport.rs` `PROTOCOL_VERSION = 3`, replaceable `{1, 2, 3}`. C-S1e loops protocols 1 and 2 (both refused); C-S1e2 replaces 1 and 2 through `daemon start` and checks the new descriptor is 3 |
+| D2 routing | `src/cli/project.rs` `run`: `Valid` → API; `Absent` → `OwnerLock::exclusive` then offline; lock `WOULDBLOCK` → `owner busy`, exit 4; `Invalid` → `discovery unavailable`, exit 4. No fallback after an API error. `main.rs` keeps the C-S2d `--max-tasks` and `--project-config` checks before routing |
+| D3 paths | Only `path` (add) and `cwd` (status) are canonicalized by the client. `--project-config`, rules and env refs are sent as given. The runtime refuses a relative path, root or CWD with `ProjectPathNotAbsolute` |
+| D4 split | `project::plan_add(snapshot, …)` holds the old `add` body and runs no Store; `ProjectRegistry::add` is snapshot → `plan_add` → `put_project`. `Store::put_project_checked(project, check)` runs `check` inside the existing Immediate transaction before every existing check; `put_project` passes a no-op |
+| D5 preflight | `src/git.rs` `PreflightGroups` and `with_preflight_groups`: inside a preflight each Git child runs in its own process group, registered while it runs. `cancel()` refuses new children and SIGKILLs every live group. A child is unregistered while it is still an unreaped zombie (`waitid(WNOWAIT)`), so a reused pid is never signalled, and it is reaped before its pipe readers are joined, so a descendant that left the group cannot delay the reap. `runtime/project_control.rs` `project_preflight`: `spawn_blocking`, a 10 s deadline, `stopping` polled every 50 ms. On cut-off it cancels, waits up to 2 s for every child to be reaped, and answers; the in-flight entry is released only when the task has joined |
+| D6 commit | `commit_project`: `control_admission`, then `put_project_checked` checking the owner epoch, `!stopping`, the in-flight set, `expected = snapshot = current` version, and unchanged root, identity and base. Mismatches are typed `ProjectCurrencyChanged` or `ProjectPreflightInFlight` |
+| D6 remove | The version is checked against a snapshot first (a stale remove runs no Git). §3.1 "before any reconcile": the target is then reconciled by a bounded preflight; a Blocked finding does not prevent removal, a cut-off is `ProjectPreflightUnavailable`, an in-flight target is `ProjectPreflightInFlight` |
+| D7 lock | `src/execution/owner.rs` `lock_state_root` holds every check of `RuntimeOwner::open` plus the non-blocking exclusive `flock`. `RuntimeOwner::open` and the new `OwnerLock::exclusive` both use it. The offline path holds it from before `Store::open` until its last write |
+| D8 reconcile | `reconcile_one` marks `checked`, `skipped_in_flight`, `unavailable` or `not_registered`. Status reconciles its own Project only and answers `ProjectPreflightUnavailable` when its own check did not finish. List runs a bounded `git --version` first (a missing Git refuses the whole list), then every row concurrently. The CLI fails the list, typed, if any row is `unavailable`. A Blocked write that loses its CAS is skipped and the row re-read (Q2) |
+| D9 scope | No Goal, Task or native change |
+| D10 lookup | `ProjectLookupRoot`: exact root over all rows, Removed included. `None` → `ProjectRegister`, which refuses a planned row with a nonzero version as `ProjectCurrencyChanged`; `Some` → `ProjectUpdate` with that id and version |
+
+### Controls
+
+All in `tests/project_api.rs` unless noted. Rows are registered by the public CLI. A held preflight is a `git` wrapper first on the daemon's `PATH`, which pauses only inside a repository whose `.git` carries a marker, records its pid, and with a second marker first starts a `setsid` descendant that keeps the output pipes open for 14 s.
+
+| Control | Test | Result |
+| --- | --- | --- |
+| C-S3a | `c_s3a_every_subcommand_goes_through_the_api_while_a_daemon_runs` | pass. add, list, status and remove each run Git in the daemon (the wrapper log grows with the root) |
+| C-S3a projection | `tests/grok.rs` `c_s3a_project_status_projects_sessions_without_native_ref_or_pid`: a running Grok Session from the production producer with `native_ref` and `pid` set | pass. Offline and through the API, each session object's key set equals the `SessionView` allowlist; no `native_ref` value, `native_ref` or `"pid"` key; the plain-text lines keep their shape |
+| C-S3b | `c_s3b_offline_write_holds_the_owner_lock_until_its_last_write`: the offline `project add` is held in its own Git after `Store::open` | pass. `daemon start` is `owner_busy`; after release, start succeeds and the row appears once |
+| C-S3c | `c_s3c_a_stale_client_version_is_refused_typed_without_change` | pass. B's update and remove are `ProjectCurrencyChanged`; row and audit unchanged |
+| C-S3d | `c_s3d_a_held_preflight_never_blocks_other_projects_or_stop` | pass. B's status (`checked`) and `RuntimeStop` within 5 s; A's preflight is cut by the stop with `ProjectPreflightUnavailable` and its child is gone |
+| C-S3d2 | `c_s3d2_status_reconciles_only_its_own_project` | pass. Within 5 s, no Git in A |
+| C-S3d3 | `c_s3d3_list_never_waits_for_an_in_flight_preflight` | pass. List within 5 s while A's status is still running; A `skipped_in_flight`, B `checked` |
+| C-S3d4 | `c_s3d4_list_own_timeout_is_unavailable_and_reaped_before_response` (with the pipe-holding descendant) | pass. A `unavailable` (asserted separately from `skipped_in_flight`), B `checked`, A's child reaped before the response |
+| C-S3e | `c_s3e_add_dot_resolves_against_the_client_cwd` (state inside B, so the daemon's CWD is B) | pass. Only A registered |
+| C-S3e2 | `c_s3e2_project_config_is_relative_to_the_source_root` | pass. Offline and API: `config_ref` is `<root>/project.toml`; `../outside.toml` refused |
+| C-S3f | `c_s3f_in_flight_entry_clears_only_after_the_reap` (with the pipe-holding descendant); `src/git.rs` `cancelled_preflight_group_is_killed_and_reaped` | pass. `ProjectPreflightUnavailable`; the child reaped before the response; in the window, A's update is `ProjectPreflightInFlight` with row and audit unchanged while B's update commits; the entry clears later. Unit: the grandchild `sleep` dies with the group, no group stays registered, a later child is refused |
+| C-S3g | `c_s3g_refused_routes_are_typed_and_write_nothing`: add (new and registered), remove, list, status | pass. (i) exit 4 `discovery unavailable`; (ii) exit 4 `owner busy`; (iii) non-zero with `project_preflight_unavailable`. Row, version, audit and row count unchanged in each case |
+| C-S3h | `c_s3h_add_reactivates_a_removed_row_and_refuses_a_stale_lookup` | pass. Same ID reactivated; the stale lookup's update is `ProjectCurrencyChanged`, row and audit unchanged |
+
+### Mutants (each restored; tree clean)
+
+An unmutated baseline of `project_api` passed in the same harness first.
+
+| Mutant | Detected by |
+| --- | --- |
+| M-a: direct-`Store` fallback after an API error | C-S3g FAIL |
+| M-b: `OwnerLock::exclusive` offline fallback after an API error | C-S3g FAIL (`owner busy` is not the API reason) |
+| The CLI opens the Store directly with a daemon running | C-S3a FAIL |
+| The runtime takes the latest version instead of `expected_project` (update and remove) | C-S3c FAIL |
+| `control_admission` held across the status preflight | C-S3d FAIL (deadline) |
+| Status reconciles every Registered Project | C-S3d2 FAIL (deadline) |
+| List waits for an in-flight entry to clear | C-S3d3 FAIL (deadline) |
+| The in-flight entry released at cut-off, before the join | C-S3f FAIL (`ProjectPreflightUnavailable` instead of `InFlight`) |
+| The reap waits for the pipes to drain | C-S3d4 FAIL (the child is still a zombie at the response) |
+| No client-side canonicalization of `add` | C-S3e FAIL |
+| **Survived:** the response no longer waits for the reap | Not observable on its own. A SIGKILLed child is reaped in microseconds by the waiting thread, faster than the reply. The wait is a bound for a slow reap; the slow-reap ordering bug it guards is the killed mutant above |
+
+### Source review
+
+Pending.
+
+### Verification
+
+Non-root (fmtest, umask 022, subreaper), all 20 test binaries (the new `project_api` included), with no build alongside: rrx lib 742 passed, 0 failed (20 ignored, unchanged); `project_api` 12/12; `grok` 16 passed (2 ignored, unchanged); `adapter` 19/19; every other binary passed. `cargo clippy --workspace --all-targets` is clean with no `allow` added, and `cargo fmt --check` is clean. A first mutant pass was discarded: its harness misparsed the test binary path, so every row, the baseline included, read as failed. The table above is from the corrected harness, whose unmutated baseline passed.
