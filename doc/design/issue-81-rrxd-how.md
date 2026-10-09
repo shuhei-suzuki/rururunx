@@ -433,6 +433,7 @@ Branch `claude/adoring-archimedes-7eehnw`, on top of PR #84 (`93eeb60`). Paths a
 | D9 scope | No Goal, Task or native change |
 | Review fixes (Sol 6079932858) | **M1:** `commit_project` keeps the in-flight set locked from its check until the write commits (lock order: in-flight set, then Store), so no preflight registers between them. **M2:** `ReconcileMark::Changed` — a row whose version differs from the version its mark was about (or that appeared after the check) is reported without claiming the check. **M3:** when a preflight Git leader exits, its group is SIGKILLed while the leader is still a zombie (the pid still names the group), and the child counts as reaped only once `kill(-pgid, 0)` reports the group empty (bounded 2 s). **M4:** `project::public_reason` keeps a failed Git command and "failed" but drops its captured stderr (the chain's tail), bounded at 2048 bytes; it applies to `ProjectRefused`, to every Project in an API response and in `ProjectStatusView` (stored text included), and to new Blocked reasons before they are stored. **L1:** the cut-off wait is `PreflightGroups::cancel_and_await_reap` |
 | Review fixes round 2 (Sol 6080527668, 6080740320) | **M4:** `public_reason` returns one of a finite set — the first `: `-separated segment that is an allowlisted fixed message, or the fixed part of an allowlisted formatted one (Git failure, missing reference, invalid project config, …), else `Project check failed`; no part of the input is copied. Offline `list`/`add` project stored reasons the same way. **M3:** a group not seen empty within the bound stays owned as *lingering*: the Git call fails, `all_reaped` stays false, and the Project's in-flight entry is released only once `kill(-pgid, 0)` reports every group gone. **L1/M1:** runtime-level causal controls. **N1:** liveness by `kill(pid, 0)` |
+| Review fix round 3 (Sol 6082039538) | **M3-R:** a preflight whose groups are not all confirmed gone answers `Unavailable` whatever `work` returned, a swallowed Git error included, so it never becomes `checked`, a Blocked write, or a Register/Update/Remove commit (Status: typed `ProjectPreflightUnavailable`; List: `unavailable`) |
 | D10 lookup | `ProjectLookupRoot`: exact root over all rows, Removed included. `None` → `ProjectRegister`, which refuses a planned row with a nonzero version as `ProjectCurrencyChanged`; `Some` → `ProjectUpdate` with that id and version |
 
 ### Controls
@@ -484,6 +485,7 @@ An unmutated baseline of `project_api` passed in the same harness first.
 | M4: copy the input text | `m4_…` FAIL |
 | M3: treat the bound as an empty group | `a_group_not_seen_empty_stays_owned_and_fails_the_call` FAIL |
 | M3: release the entry without the group check | `lingering_group_keeps_the_project_in_flight` FAIL (it first survived: the control looked only at the answer, before the detached release ran; it now checks 300 ms later) |
+| M3-R: report `Done` despite a lingering group | `lingering_group_keeps_the_project_in_flight` FAIL (its `work` swallows the Git failure and returns `Ok`) |
 | L1: the Runtime's cut-off only cancels | `runtime_cut_off_answers_only_after_the_reap` FAIL |
 
 ### Source review
@@ -491,6 +493,7 @@ An unmutated baseline of `project_api` passed in the same harness first.
 | Round | Result |
 | --- | --- |
 | 6079535783 → Sol 6079932858 | REQUEST CHANGES, required 0/0/4/1 (M1 in-flight/commit synchronization, M2 a stale check marked on the latest row, M3 the owned group not kept past its leader, M4 no non-secret projection of `ProjectRefused`/Blocked reasons, L1 the reap-wait mutant not identified). The detail stayed in Sol's private artifact; the fixes follow the titles as confirmed against the source |
+| `62fca2a`…`b0f847c` → Sol 6082039538 | REQUEST CHANGES 0/0/1/0: M1, M2, M4, L1, N1 closed; M3's low-level ownership closed, but an unconfirmed group's result still reached `checked`/commit (M3-R) |
 | `9970319`, `756698a` → 6080527668, Sol 6080740320 | REQUEST CHANGES 0/0/2/2: M1, M2 closed in source (M1 lacked a causal control); M3 partially fixed (a group unconfirmed within the bound was counted as completed); M4 partially fixed (non-Git errors, paths and parser text reached the API verbatim; offline output not projected); L1 partially fixed (the Runtime's own wait was not distinguished); N1 the M3 control read an unobservable process as dead (`/proc` on macOS) |
 
 ### Verification
@@ -500,3 +503,5 @@ Non-root (fmtest, umask 022, subreaper), all 20 test binaries (the new `project_
 Review-fix run (`9970319`, non-root, no build alongside): all 20 binaries passed — rrx lib 745 passed, 0 failed (20 ignored, unchanged); `project_api` 14/14; `adapter` 19/19. clippy (no `allow` added) and fmt are clean.
 
 Review-fix round 2 (`9eccde9`, non-root, no build alongside): all 20 binaries passed — rrx lib 749 passed, 0 failed (20 ignored, unchanged); `project_api` 14/14; `adapter` 19/19. clippy (no `allow` added) and fmt are clean.
+
+Review-fix round 3 (`0d4b445`, non-root, no build alongside): all 20 binaries passed — rrx lib 749 passed, 0 failed (20 ignored, unchanged); `project_api` 14/14; `adapter` 19/19. clippy (no `allow` added) and fmt are clean.
