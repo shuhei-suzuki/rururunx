@@ -10,7 +10,9 @@ use crate::{
     domain::{Project, ProjectId},
     execution::OwnerLock,
     project::{AddProject, ProjectRegistry, ProjectStatusView},
-    runtime::control::{ControlAction, ControlResponse, ProjectOptions, UnavailableReason},
+    runtime::control::{
+        ControlAction, ControlResponse, ProjectOptions, ReconcileMark, UnavailableReason,
+    },
     state::Store,
 };
 use anyhow::{Context, Result, bail};
@@ -136,6 +138,20 @@ async fn api(state: &Path, request: ProjectRequest) -> Result<()> {
         ProjectRequest::List { all, json } => {
             match send(state, ControlAction::ProjectList { all }).await? {
                 ControlResponse::ProjectRows { rows } => {
+                    // C-S3g(iii): a row whose check did not finish fails the
+                    // command typed; it is never printed as current.
+                    let unavailable: Vec<String> = rows
+                        .iter()
+                        .filter(|r| r.reconcile == ReconcileMark::Unavailable)
+                        .map(|r| r.project.id.to_string())
+                        .collect();
+                    if !unavailable.is_empty() {
+                        bail!(
+                            "{}: {}",
+                            reason_name(UnavailableReason::ProjectPreflightUnavailable),
+                            unavailable.join(", ")
+                        );
+                    }
                     let projects: Vec<Project> = rows.into_iter().map(|r| r.project).collect();
                     print_list(&projects, json)?;
                 }

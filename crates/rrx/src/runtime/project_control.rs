@@ -24,6 +24,8 @@ use std::{
 
 /// D5: the deadline of one Project preflight.
 pub(super) const PREFLIGHT_DEADLINE: Duration = Duration::from_secs(10);
+/// D5: how long a cut-off preflight waits for its killed children's reap.
+const REAP_BOUND: Duration = Duration::from_secs(2);
 /// Bounds a `ProjectRefused` message.
 const REFUSAL_BYTES: usize = 2048;
 
@@ -134,8 +136,15 @@ impl Runtime {
             None => {
                 // Kill every owned group; the blocking task reaps its own
                 // child and only then joins, so the in-flight entry clears
-                // after the reap. The response never claims the work ended.
+                // after the reap and after the child's pipes closed.
                 groups.cancel();
+                // C-S3d4: every killed child is reaped before the response;
+                // a child that does not die within the bound still keeps
+                // the entry held until the join.
+                let reap_deadline = tokio::time::Instant::now() + REAP_BOUND;
+                while !groups.all_reaped() && tokio::time::Instant::now() < reap_deadline {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
                 let flights = self.project_preflights.clone();
                 tokio::spawn(async move {
                     let _ = handle.await;
@@ -344,6 +353,28 @@ impl Runtime {
                         changed: false,
                     }));
                 }
+                // §3.1: the reconcile runs after the version check. A
+                // Blocked finding does not prevent the removal; only the
+                // bound and the in-flight set are enforced here.
+                let checked = project.clone();
+                match self
+                    .project_preflight(Some(*id), move || Ok(plan_block(&checked)))
+                    .await
+                {
+                    Preflight::Done(_) => {}
+                    Preflight::InFlight => {
+                        return Ok(Some(unavailable(
+                            request,
+                            UnavailableReason::ProjectPreflightInFlight,
+                        )));
+                    }
+                    Preflight::Unavailable => {
+                        return Ok(Some(unavailable(
+                            request,
+                            UnavailableReason::ProjectPreflightUnavailable,
+                        )));
+                    }
+                }
                 project.state = ProjectState::Removed;
                 match self
                     .commit_project(&mut project, Some(*expected_project))
@@ -408,6 +439,14 @@ impl Runtime {
                     Err(error) => return Ok(Some(refused(&error))),
                 };
                 let reconcile = self.reconcile_one(&project).await;
+                // C-S3g(iii): a status whose own check did not finish is a
+                // typed refusal, never facts presented as current.
+                if reconcile == ReconcileMark::Unavailable {
+                    return Ok(Some(unavailable(
+                        request,
+                        UnavailableReason::ProjectPreflightUnavailable,
+                    )));
+                }
                 ControlResponse::ProjectStatusFacts {
                     status: self.project_status_view(project.id)?,
                     reconcile,

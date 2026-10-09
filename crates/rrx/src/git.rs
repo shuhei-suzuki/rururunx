@@ -593,6 +593,8 @@ fn command(cwd: &Path, args: &[&str]) -> Result<Command> {
 #[derive(Default)]
 pub(crate) struct PreflightGroups {
     state: std::sync::Mutex<PreflightGroupsState>,
+    /// Children spawned and not yet reaped.
+    unreaped: std::sync::atomic::AtomicUsize,
 }
 #[derive(Default)]
 struct PreflightGroupsState {
@@ -607,6 +609,10 @@ impl PreflightGroups {
         for pid in &state.live {
             kill_group(*pid);
         }
+    }
+    /// Whether every child started so far has been reaped.
+    pub(crate) fn all_reaped(&self) -> bool {
+        self.unreaped.load(std::sync::atomic::Ordering::SeqCst) == 0
     }
     #[cfg(test)]
     pub(crate) fn live(&self) -> usize {
@@ -655,64 +661,72 @@ fn run(mut command: Command) -> Result<Output> {
         let mut state = groups.state.lock().unwrap_or_else(|e| e.into_inner());
         ensure!(!state.cancelled, "Project preflight cancelled");
         let child = command.spawn().context("cannot start Git")?;
+        groups
+            .unreaped
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         state.live.insert(child.id() as i32);
         child
     };
     finish_owned(&groups, child).context("cannot reap Git")
 }
-/// Collects the child's output, then unregisters its group while it is still
-/// an unreaped zombie (`WNOWAIT`), so `cancel` can never signal a reused pid;
-/// only then is the child reaped.
+/// Waits for the child to exit while its pipes drain on reader threads, then
+/// unregisters its group while it is still an unreaped zombie (`WNOWAIT`), so
+/// `cancel` can never signal a reused pid, and only then reaps it. The reap
+/// does not wait for the pipes: a descendant that left the group may hold them
+/// open, and is waited for only afterwards, before this call returns.
 fn finish_owned(
     groups: &PreflightGroups,
     mut child: std::process::Child,
 ) -> std::io::Result<Output> {
     use std::io::Read;
-    let pid = child.id() as i32;
-    let mut stdout_pipe = child.stdout.take();
-    let mut stderr_pipe = child.stderr.take();
-    let (stdout, stderr) = std::thread::scope(|scope| {
-        let stderr = scope.spawn(move || {
-            let mut buffer = Vec::new();
-            stderr_pipe
-                .as_mut()
-                .map_or(Ok(0), |pipe| pipe.read_to_end(&mut buffer))
-                .map(|_| buffer)
-        });
+    fn drain(pipe: Option<impl Read>) -> std::io::Result<Vec<u8>> {
         let mut buffer = Vec::new();
-        let stdout = stdout_pipe
-            .as_mut()
-            .map_or(Ok(0), |pipe| pipe.read_to_end(&mut buffer))
-            .map(|_| buffer);
-        let stderr = stderr
-            .join()
-            .unwrap_or_else(|_| Err(std::io::Error::other("stderr reader panicked")));
-        (stdout, stderr)
-    });
-    let observed = loop {
-        match rustix::process::waitid(
-            rustix::process::WaitId::Pid(
-                rustix::process::Pid::from_raw(pid)
-                    .ok_or_else(|| std::io::Error::other("invalid pid"))?,
-            ),
-            rustix::process::WaitIdOptions::EXITED | rustix::process::WaitIdOptions::NOWAIT,
-        ) {
-            Err(rustix::io::Errno::INTR) => continue,
-            result => break result,
+        if let Some(mut pipe) = pipe {
+            pipe.read_to_end(&mut buffer)?;
         }
-    };
-    groups
-        .state
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .live
-        .remove(&pid);
-    let status = child.wait()?;
-    observed?;
-    Ok(Output {
-        status,
-        stdout: stdout?,
-        stderr: stderr?,
+        Ok(buffer)
+    }
+    let pid = child.id() as i32;
+    let (stdout_pipe, stderr_pipe) = (child.stdout.take(), child.stderr.take());
+    std::thread::scope(|scope| {
+        let stdout = scope.spawn(move || drain(stdout_pipe));
+        let stderr = scope.spawn(move || drain(stderr_pipe));
+        let reaped = (|| {
+            let raw = rustix::process::Pid::from_raw(pid)
+                .ok_or_else(|| std::io::Error::other("invalid pid"))?;
+            let observed = loop {
+                match rustix::process::waitid(
+                    rustix::process::WaitId::Pid(raw),
+                    rustix::process::WaitIdOptions::EXITED | rustix::process::WaitIdOptions::NOWAIT,
+                ) {
+                    Err(rustix::io::Errno::INTR) => continue,
+                    result => break result,
+                }
+            };
+            groups
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .live
+                .remove(&pid);
+            let status = child.wait();
+            groups
+                .unreaped
+                .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            observed?;
+            status
+        })();
+        let joined = |reader: std::thread::ScopedJoinHandle<'_, std::io::Result<Vec<u8>>>| {
+            reader
+                .join()
+                .unwrap_or_else(|_| Err(std::io::Error::other("pipe reader panicked")))
+        };
+        let (stdout, stderr) = (joined(stdout), joined(stderr));
+        Ok(Output {
+            status: reaped?,
+            stdout: stdout?,
+            stderr: stderr?,
+        })
     })
 }
 fn git(cwd: &Path, args: &[&str]) -> Result<Output> {
