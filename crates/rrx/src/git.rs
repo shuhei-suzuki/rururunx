@@ -691,6 +691,11 @@ fn finish_owned(
     std::thread::scope(|scope| {
         let stdout = scope.spawn(move || drain(stdout_pipe));
         let stderr = scope.spawn(move || drain(stderr_pipe));
+        let joined = |reader: std::thread::ScopedJoinHandle<'_, std::io::Result<Vec<u8>>>| {
+            reader
+                .join()
+                .unwrap_or_else(|_| Err(std::io::Error::other("pipe reader panicked")))
+        };
         let reaped = (|| {
             let raw = rustix::process::Pid::from_raw(pid)
                 .ok_or_else(|| std::io::Error::other("invalid pid"))?;
@@ -716,11 +721,6 @@ fn finish_owned(
             observed?;
             status
         })();
-        let joined = |reader: std::thread::ScopedJoinHandle<'_, std::io::Result<Vec<u8>>>| {
-            reader
-                .join()
-                .unwrap_or_else(|_| Err(std::io::Error::other("pipe reader panicked")))
-        };
         let (stdout, stderr) = (joined(stdout), joined(stderr));
         Ok(Output {
             status: reaped?,

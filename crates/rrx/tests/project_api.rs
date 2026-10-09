@@ -507,13 +507,17 @@ fn c_s3d3_list_never_waits_for_an_in_flight_preflight() {
 
 /// C-S3d4: nothing in flight; List's own preflight for A runs past the
 /// deadline, so A is `unavailable` (not `skipped_in_flight`), B is checked,
-/// and A's Git child is reaped before the response arrives.
+/// and A's Git child is reaped before the response arrives, even though a
+/// descendant that left its group still holds the child's output pipes.
+/// Mutant: reap only after the pipes drain → the child is still a zombie
+/// when the response arrives → FAIL.
 #[test]
 fn c_s3d4_list_own_timeout_is_unavailable_and_reaped_before_response() {
     let f = Fixture::new();
     let a = f.add(&f.a);
     let b = f.add(&f.b);
     f.start();
+    std::fs::write(f.a.join(".git/rrx-escape"), "").unwrap();
     f.hold(&f.a);
     let rows = match f.api(ControlAction::ProjectList { all: false }) {
         ControlResponse::ProjectRows { rows } => rows,
