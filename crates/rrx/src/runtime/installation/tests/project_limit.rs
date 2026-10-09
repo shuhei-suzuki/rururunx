@@ -148,25 +148,65 @@ async fn c_s2a2_final_claim_refuses_second_task_typed() {
 #[tokio::test]
 async fn c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten() {
     let mut f = fixture("claude", true);
+    f.register_real_git_project_named("supported");
+    let supported_project = f.project.clone();
+    // L2 (Sol 6071558338): more legacy-limit Tasks than the eligible LIMIT
+    // (65) sort before the supported Task, so excluding them after the LIMIT
+    // would leave the supported Task off the first page.
+    const LEGACY_TASKS: usize = 70;
     let mut legacy = Vec::new();
-    for i in 0..3 {
+    let mut before_supported = None;
+    for i in 0..64 {
         f.register_real_git_project_named(&format!("legacy-{i}"));
         let mut project = f.project.clone();
         store_legacy_limit(&f, &mut project, 4);
         f.project = project.clone();
-        accept(&f, 1).await;
+        let tasks = if before_supported.is_none()
+            && project.id.to_string() < supported_project.id.to_string()
+        {
+            before_supported = Some(project.id);
+            LEGACY_TASKS
+        } else {
+            1
+        };
+        accept(&f, tasks).await;
         legacy.push((
             project.id.to_string(),
             project_row(&f, &project.id.to_string()),
         ));
+        if before_supported.is_some() && legacy.len() >= 3 {
+            break;
+        }
     }
-    f.register_real_git_project_named("supported");
+    assert!(
+        before_supported.is_some(),
+        "SETUP: no legacy Project sorts before the supported one"
+    );
+    let supported_id = supported_project.id;
+    f.project = supported_project;
     let (_, supported) = accept(&f, 1).await;
+    let rotations: Vec<(String, u64)> = {
+        let c = raw(&f);
+        let mut q = c
+            .prepare(
+                "SELECT project_id,rotation FROM scheduler_projects ORDER BY rotation,project_id",
+            )
+            .unwrap();
+        q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    };
+    let position = |id: String| rotations.iter().position(|(p, _)| *p == id).unwrap();
+    assert!(
+        position(before_supported.unwrap().to_string()) < position(supported_id.to_string()),
+        "SETUP: the large legacy Project does not sort first: {rotations:?}"
+    );
     let listed = keys(&f);
     assert_eq!(
         listed.iter().map(|k| k.task_id.clone()).collect::<Vec<_>>(),
         vec![supported[0].id.to_string()],
-        "only the supported Project's Task is a candidate"
+        "only the supported Project's Task is a candidate, on the first page"
     );
     f.runtime.start().await.unwrap();
     wait_claims(&f, 1).await;
@@ -203,6 +243,63 @@ async fn d3_plan_guard_refuses_stored_legacy_limit_without_writes() {
     finish(f).await;
 }
 
+/// Every row, version and audit entry a Goal status read could touch.
+fn status_rows(f: &ControlFixture) -> Vec<String> {
+    let c = raw(f);
+    let mut out = Vec::new();
+    for table in [
+        "projects",
+        "goals",
+        "tasks",
+        "records",
+        "scheduler_projects",
+        "scheduler_goals",
+        "scheduler_tasks",
+        "task_drivers",
+        "execution_units",
+        "audit",
+    ] {
+        let mut q = c
+            .prepare(&format!("SELECT * FROM {table} ORDER BY rowid"))
+            .unwrap();
+        let columns = q.column_count();
+        let rows = q
+            .query_map([], |r| {
+                (0..columns)
+                    .map(|i| r.get::<_, rusqlite::types::Value>(i))
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .unwrap()
+            .map(|r| format!("{table}: {:?}", r.unwrap()))
+            .collect::<Vec<_>>();
+        out.extend(rows);
+    }
+    out
+}
+/// A status read that must change nothing it could touch.
+async fn read_only_status(f: &ControlFixture, goal: GoalId) -> (UnavailableReason, Option<usize>) {
+    let before = status_rows(f);
+    let answer = status(f, goal).await;
+    assert_eq!(status_rows(f), before, "status read changed state");
+    answer
+}
+/// Runs the production attention reconciliation over every Task to its end.
+fn reconcile_attention(f: &ControlFixture) {
+    let mut after = 0;
+    loop {
+        let (next, more) = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .reconcile_runtime_attention(f.owner.instance_id(), f.owner.epoch(), after)
+            .unwrap();
+        if !more {
+            break;
+        }
+        after = next;
+    }
+}
 async fn status(f: &ControlFixture, goal: GoalId) -> (UnavailableReason, Option<usize>) {
     match f
         .runtime
@@ -258,33 +355,31 @@ async fn d4_status_reports_stored_legacy_limit_read_only_until_repair() {
     let mut project = f.project.clone();
     store_legacy_limit(&f, &mut project, 4);
     f.project = project.clone();
-    let row = project_row(&f, &project.id.to_string());
-    let audits = count(&f, "audit");
     let expected = (UnavailableReason::ProjectLimitUnsupported, Some(4));
-    assert_eq!(status(&f, accepted).await, expected);
-    assert_eq!(status(&f, proposed).await, expected);
-    assert_eq!(count(&f, "audit"), audits, "status read wrote audit");
+    // L3 (Sol 6071558338): every read leaves every related row, version and
+    // audit unchanged, before and after the attention reconciliation runs.
+    let row = project_row(&f, &project.id.to_string());
+    assert_eq!(read_only_status(&f, accepted).await, expected);
+    assert_eq!(read_only_status(&f, proposed).await, expected);
+    reconcile_attention(&f);
     assert_eq!(
-        project_row(&f, &project.id.to_string()),
-        row,
-        "read changed the row"
+        read_only_status(&f, accepted).await,
+        expected,
+        "changed after reconcile"
+    );
+    assert_eq!(
+        read_only_status(&f, proposed).await,
+        expected,
+        "changed after reconcile"
     );
     f.runtime.start().await.unwrap();
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    assert_eq!(
-        status(&f, accepted).await,
-        expected,
-        "changed after reconcile"
-    );
-    assert_eq!(
-        status(&f, proposed).await,
-        expected,
-        "changed after reconcile"
-    );
+    reconcile_attention(&f);
+    assert_eq!(read_only_status(&f, accepted).await, expected);
+    assert_eq!(read_only_status(&f, proposed).await, expected);
     assert_eq!(
         project_row(&f, &project.id.to_string()),
         row,
-        "read changed the row"
+        "the stored legacy row changed"
     );
     assert_eq!(count(&f, "task_drivers"), 0, "legacy Project was driven");
     store_legacy_limit(&f, &mut project, 1);
@@ -294,5 +389,185 @@ async fn d4_status_reports_stored_legacy_limit_read_only_until_repair() {
         assert_ne!(attention, UnavailableReason::ProjectLimitUnsupported);
         assert_eq!(stored, None);
     }
+    finish(f).await;
+}
+
+/// The three occupancy branches the candidate reader and the final claim
+/// count for `task`: a driving Driver, an open Unit, an open phase operation.
+fn occupancy(f: &ControlFixture, task: &Task) -> (usize, usize, usize) {
+    raw(f)
+        .query_row(
+            "SELECT (SELECT count(*) FROM task_drivers WHERE task_id=?1 AND state='driving'),(SELECT count(*) FROM execution_units WHERE task_id=?1 AND (native_effects_open=1 OR result_finalization_open=1)),(SELECT count(*) FROM managed_phase_operations WHERE task_id=?1 AND phase_open=1)",
+            [task.id.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap()
+}
+async fn wait_until(mut condition: impl FnMut() -> bool, label: &str) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(40);
+    while !condition() {
+        assert!(tokio::time::Instant::now() < deadline, "{label}");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+/// C-S2a, held occupancy (Sol 6071558338 L1): A's Goal is paused through the
+/// lifecycle writer while A's phase operation is open. The pause retires A's
+/// Unit and invalidates its Driver, so the open phase operation is the only
+/// occupancy left. B, a runnable Task of the same Project in another Goal, is
+/// never a candidate until that operation closes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn c_s2a_held_phase_operation_alone_keeps_second_task_out() {
+    use crate::execution::native::PreparationObservation;
+    let mut f = fixture("claude", true);
+    f.register_real_git_project();
+    if let Err(refusal) = &f.runtime.installed {
+        panic!("SETUP: {}", refusal.0);
+    }
+    let adapter = f
+        .runtime
+        .installed
+        .as_ref()
+        .ok()
+        .unwrap()
+        .registry
+        .native_phase_port("worker")
+        .unwrap()
+        .selected_adapter()
+        .unwrap();
+    let arrived = Arc::new(tokio::sync::Semaphore::new(0));
+    let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let (hook_arrived, hook_release) = (arrived.clone(), release.clone());
+    adapter
+        .sessions
+        .set_preparation_observer(Some(Arc::new(move |observed| {
+            let (arrived, release) = (hook_arrived.clone(), hook_release.clone());
+            Box::pin(async move {
+                if observed == PreparationObservation::BeforeTransport {
+                    arrived.add_permits(1);
+                    release.acquire().await.unwrap().forget();
+                }
+            })
+        })));
+    let (goal_a, tasks) = accept(&f, 1).await;
+    let a = tasks[0].clone();
+    f.runtime.start().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(40), arrived.acquire())
+        .await
+        .expect("SETUP: A's preparation did not reach the hold")
+        .unwrap()
+        .forget();
+    let (_, tasks) = accept(&f, 1).await;
+    let b = tasks[0].clone();
+    assert_eq!(b.project_id, a.project_id);
+    eprintln!(
+        "C-S2a held: A occupancy while preparing {:?}",
+        occupancy(&f, &a)
+    );
+    let expected_goal = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .goal(goal_a)
+        .unwrap()
+        .unwrap()
+        .version;
+    let paused = f
+        .runtime
+        .handle_control(
+            &f.socket,
+            f.request(ControlAction::SetGoalLifecycle {
+                project: f.project.id,
+                goal: goal_a,
+                expected_goal,
+                target: crate::runtime::control::GoalControl::Pause,
+                reason: "C-S2a held occupancy".into(),
+            }),
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(paused, ControlResponse::GoalLifecycleChanged { .. }),
+        "SETUP: {paused:?}"
+    );
+    assert_eq!(
+        occupancy(&f, &a),
+        (0, 0, 1),
+        "SETUP: the open phase operation is not A's only occupancy"
+    );
+    assert!(
+        keys(&f).iter().all(|k| k.task_id != b.id.to_string()),
+        "B listed while A's held phase operation occupies the Project"
+    );
+    assert_eq!(driver_for(&f, &b.id.to_string()), 0);
+    // Released, A's start ends before dispatch. The production non-success
+    // consumer keeps the plan Held (the paused Goal changed its owners), so
+    // the operation stays open and B stays out however often it runs.
+    release.add_permits(1);
+    wait_until(
+        || {
+            f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .any(|j| j.finished && j.attention == Some("original non-success plan Held"))
+        },
+        "SETUP: A's released start was not held by the non-success consumer",
+    )
+    .await;
+    for _ in 0..3 {
+        f.runtime.phase_dispatcher.reconcile_nonsuccess().unwrap();
+    }
+    assert_eq!(occupancy(&f, &a), (0, 0, 1), "SETUP: held operation closed");
+    assert!(
+        keys(&f).iter().all(|k| k.task_id != b.id.to_string()),
+        "B listed after reconciliation while A's held operation is open"
+    );
+    // The reader and the service still admit a Task of another Project.
+    f.register_real_git_project_named("c-s2a-other-project");
+    let (_, tasks) = accept(&f, 1).await;
+    let c = tasks[0].clone();
+    assert_ne!(c.project_id, a.project_id);
+    wait_until(
+        || driver_for(&f, &c.id.to_string()) == 1,
+        "another Project's Task was not admitted beside the held operation",
+    )
+    .await;
+    assert_eq!(driver_for(&f, &b.id.to_string()), 0, "B was admitted");
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+
+/// C-S2a, unbound occupancy (Sol 6071558338 L1): A's Driver is claimed and
+/// its Source preparation fails on a Project root that is not a Git
+/// repository. The Unit is retired and the Driver is retained, so the driving
+/// Driver is A's only occupancy. B, in the same Goal, is never listed.
+#[tokio::test]
+async fn c_s2a_retained_driver_alone_keeps_second_task_out() {
+    let f = fixture("claude", true);
+    let (_, tasks) = accept(&f, 2).await;
+    f.runtime.start().await.unwrap();
+    wait_claims(&f, 1).await;
+    let claimed: String = raw(&f)
+        .query_row("SELECT task_id FROM task_drivers", [], |r| r.get(0))
+        .unwrap();
+    let (a, b) = if tasks[0].id.to_string() == claimed {
+        (&tasks[0], &tasks[1])
+    } else {
+        (&tasks[1], &tasks[0])
+    };
+    wait_until(
+        || occupancy(&f, a) == (1, 0, 0),
+        "SETUP: A's retained Driver did not become its only occupancy",
+    )
+    .await;
+    assert!(
+        keys(&f).iter().all(|k| k.task_id != b.id.to_string()),
+        "B listed while A's retained Driver occupies the Project"
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(occupancy(&f, a), (1, 0, 0));
+    assert_eq!(driver_for(&f, &b.id.to_string()), 0, "B was admitted");
     finish(f).await;
 }

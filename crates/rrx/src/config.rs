@@ -41,10 +41,11 @@ impl std::fmt::Display for ProjectTaskLimitRefused {
 }
 impl std::error::Error for ProjectTaskLimitRefused {}
 
-/// Refuses any per-Project Task limit other than the fixed MVP value. Zero
-/// keeps the existing positive-limit refusal.
+/// Refuses any per-Project Task limit other than the fixed MVP value. A
+/// config or overlay zero keeps the existing positive-limit refusal; a CLI
+/// zero is refused here, before any state is opened (D2).
 pub fn ensure_mvp_project_tasks(origin: LimitOrigin, requested: usize) -> Result<()> {
-    if requested == 0 || requested == MVP_PROJECT_TASKS {
+    if requested == MVP_PROJECT_TASKS || (requested == 0 && origin != LimitOrigin::CliFlag) {
         return Ok(());
     }
     Err(ProjectTaskLimitRefused { origin, requested }.into())

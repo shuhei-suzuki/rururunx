@@ -176,15 +176,27 @@ fn c_s2d_limits_other_than_one_are_refused_without_state() {
         );
     }
     let state = fixture.0.join("state").join("rrx.db");
-    let output = rrx()
-        .arg("--state")
-        .arg(&state)
-        .args(["project", "add"])
-        .arg(&fixture.0)
-        .args(["--max-tasks", "2"])
-        .output()
-        .unwrap();
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("CliFlag requested 2"));
-    assert!(!fixture.0.join("state").exists(), "project add wrote state");
+    // D2 (Sol 6071558338 M1): a CLI 0 is refused typed like 2, before the
+    // state directory or database is created.
+    for requested in ["0", "2"] {
+        let output = rrx()
+            .arg("--state")
+            .arg(&state)
+            .args(["project", "add"])
+            .arg(&fixture.0)
+            .args(["--max-tasks", requested])
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "--max-tasks {requested}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains(&format!("CliFlag requested {requested}")),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !fixture.0.join("state").exists(),
+            "project add --max-tasks {requested} wrote state"
+        );
+    }
 }

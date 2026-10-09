@@ -1085,24 +1085,31 @@ fn c_s2d_registration_refuses_other_limits_and_only_explicit_one_repairs() {
     let f = Fixture::new();
     let mut s = Store::open(&f.db).unwrap();
     let runtime = Config::default();
-    let error = Registry::new(&mut s)
-        .add(
-            &f.a,
-            AddProject {
-                max_tasks: Some(2),
-                ..Default::default()
-            },
-            &runtime,
-        )
-        .unwrap_err();
-    assert_eq!(
-        limit_refusal(&error),
-        Some(rrx::config::ProjectTaskLimitRefused {
-            origin: rrx::config::LimitOrigin::CliFlag,
-            requested: 2
-        })
-    );
-    assert!(s.projects().unwrap().is_empty());
+    // D2 (Sol 6071558338 M1): 0 and 2 are both the typed `CliFlag` refusal.
+    let refuse = |s: &mut Store, requested: usize| {
+        let error = Registry::new(s)
+            .add(
+                &f.a,
+                AddProject {
+                    max_tasks: Some(requested),
+                    ..Default::default()
+                },
+                &runtime,
+            )
+            .unwrap_err();
+        assert_eq!(
+            limit_refusal(&error),
+            Some(rrx::config::ProjectTaskLimitRefused {
+                origin: rrx::config::LimitOrigin::CliFlag,
+                requested
+            }),
+            "{error:#}"
+        );
+    };
+    for requested in [0, 2] {
+        refuse(&mut s, requested);
+        assert!(s.projects().unwrap().is_empty());
+    }
     let added = Registry::new(&mut s)
         .add(
             &f.a,
@@ -1119,15 +1126,24 @@ fn c_s2d_registration_refuses_other_limits_and_only_explicit_one_repairs() {
     let mut legacy = added.clone();
     legacy.max_tasks = 4;
     s.put_project(&mut legacy).unwrap();
-    let stored = serde_json::to_value(s.projects().unwrap().pop().unwrap()).unwrap();
+    let observe = |s: &Store| {
+        let project = s.projects().unwrap().pop().unwrap();
+        let audit = s
+            .events(&rrx::domain::Scope::project(project.id), 0, 10_000)
+            .unwrap();
+        serde_json::json!({ "project": project, "audit": audit })
+    };
+    let stored = observe(&s);
+    // The refusals leave an existing row, its version and its audit unchanged.
+    for requested in [0, 2] {
+        refuse(&mut s, requested);
+        assert_eq!(observe(&s), stored, "--max-tasks {requested} changed state");
+    }
     let readded = Registry::new(&mut s)
         .add(&f.a, AddProject::default(), &runtime)
         .unwrap();
     assert_eq!(readded.max_tasks, 4);
-    assert_eq!(
-        serde_json::to_value(s.projects().unwrap().pop().unwrap()).unwrap(),
-        stored
-    );
+    assert_eq!(observe(&s)["project"], stored["project"]);
     let repaired = Registry::new(&mut s)
         .add(
             &f.a,
