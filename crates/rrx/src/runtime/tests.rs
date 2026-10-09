@@ -1843,3 +1843,104 @@ async fn c_s1d_p2_parked_loop_stop_is_pending_then_completes() {
         ControlResponse::RuntimeStopped { .. }
     ));
 }
+
+/// C-S2a, Unit-only occupancy (Sol 6072320376 L1): a migrated legacy Task's
+/// Unit is reserved through the production `AttemptManager`, with no Driver
+/// and no phase operation. On the same owner and epoch, an accepted Task B in
+/// the same Project is never a candidate; an accepted Task C in another
+/// Project is.
+#[tokio::test]
+async fn c_s2a_legacy_unit_alone_keeps_same_project_accepted_task_out() {
+    fn sibling_seed(path: &std::path::Path) {
+        crate::execution::results::tests::seed(path);
+    }
+    let (legacy, owner) = legacy_fixture_with_siblings(
+        LegacyLayout::default(),
+        crate::execution::results::tests::seed,
+        vec![LegacyTask::standard("answer", "codex")],
+        vec![LegacySibling {
+            root: "c-s2a-other",
+            seed: sibling_seed,
+            task: LegacyTask::standard("other", "codex"),
+        }],
+    )
+    .await;
+    let LegacyFixture {
+        dir,
+        tasks,
+        siblings,
+    } = legacy;
+    let a = tasks[0].clone();
+    let other_project = siblings[0].project_id;
+    crate::execution::attempts::AttemptManager::new(owner.clone())
+        .prepare(a.id, "codex", "Implement", None)
+        .await
+        .unwrap();
+    let occupancy = |task: &crate::domain::Task| -> (usize, usize, usize) {
+        crate::state::current_test_writer(owner.state_path())
+            .unwrap()
+            .query_row(
+                "SELECT (SELECT count(*) FROM task_drivers WHERE task_id=?1 AND state='driving'),(SELECT count(*) FROM execution_units WHERE task_id=?1 AND (native_effects_open=1 OR result_finalization_open=1)),(SELECT count(*) FROM managed_phase_operations WHERE task_id=?1 AND phase_open=1)",
+                [task.id.to_string()],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap()
+    };
+    assert_eq!(occupancy(&a), (0, 1, 0), "SETUP: legacy Unit is not alone");
+    let (instance, epoch) = (owner.instance_id().to_owned(), owner.epoch());
+    let (socket, peer) = tokio::net::UnixStream::pair().unwrap();
+    let mut f = ControlFixture {
+        _dir: dir,
+        owner: owner.clone(),
+        runtime: Arc::new(Runtime::new(owner.clone(), config()).unwrap()),
+        project: owner
+            .store()
+            .lock()
+            .unwrap()
+            .project(a.project_id)
+            .unwrap()
+            .unwrap(),
+        socket,
+        _peer: peer,
+    };
+    let goal_task = |f: &ControlFixture, goal| {
+        let store = f.owner.store.lock().unwrap();
+        let goal = store.goal(goal).unwrap().unwrap();
+        store.task(goal.dag.nodes[0]).unwrap().unwrap()
+    };
+    let b = goal_task(&f, f.create(plan()).await);
+    assert_eq!(b.project_id, a.project_id);
+    f.project = owner
+        .store()
+        .lock()
+        .unwrap()
+        .project(other_project)
+        .unwrap()
+        .unwrap();
+    let c = goal_task(&f, f.create(plan()).await);
+    assert_eq!(c.project_id, other_project);
+    assert_eq!(
+        (owner.instance_id(), owner.epoch()),
+        (instance.as_str(), epoch),
+        "SETUP: owner or epoch changed"
+    );
+    assert_eq!(occupancy(&a), (0, 1, 0), "SETUP: legacy Unit changed");
+    let crate::state::CandidatePage::Rows { keys, .. } = owner
+        .store()
+        .lock()
+        .unwrap()
+        .ready_driver_candidates(&instance, epoch, None, 6)
+        .unwrap()
+    else {
+        panic!("SETUP: unexpected global saturation");
+    };
+    let listed = keys.iter().map(|k| k.task_id.clone()).collect::<Vec<_>>();
+    assert!(
+        !listed.contains(&b.id.to_string()),
+        "B listed while the legacy Unit occupies its Project: {listed:?}"
+    );
+    assert!(
+        listed.contains(&c.id.to_string()),
+        "another Project's Task is not a candidate: {listed:?}"
+    );
+}

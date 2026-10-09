@@ -148,40 +148,39 @@ async fn c_s2a2_final_claim_refuses_second_task_typed() {
 #[tokio::test]
 async fn c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten() {
     let mut f = fixture("claude", true);
-    f.register_real_git_project_named("supported");
-    let supported_project = f.project.clone();
-    // L2 (Sol 6071558338): more legacy-limit Tasks than the eligible LIMIT
-    // (65) sort before the supported Task, so excluding them after the LIMIT
-    // would leave the supported Task off the first page.
+    // L2 (Sol 6071558338, 6072320376): more legacy-limit Tasks than the
+    // eligible LIMIT (65) sort before the supported Task, so excluding them
+    // after the LIMIT would leave the supported Task off the first page. Two
+    // genuinely registered Projects are assigned by their observed ID order:
+    // the smaller holds the legacy Tasks, the larger is supported.
     const LEGACY_TASKS: usize = 70;
-    let mut legacy = Vec::new();
-    let mut before_supported = None;
-    for i in 0..64 {
+    f.register_real_git_project_named("ordered-a");
+    let first = f.project.clone();
+    f.register_real_git_project_named("ordered-b");
+    let second = f.project.clone();
+    let (mut large_legacy, supported_project) = if first.id.to_string() < second.id.to_string() {
+        (first, second)
+    } else {
+        (second, first)
+    };
+    store_legacy_limit(&f, &mut large_legacy, 4);
+    f.project = large_legacy.clone();
+    accept(&f, LEGACY_TASKS).await;
+    let mut legacy = vec![(
+        large_legacy.id.to_string(),
+        project_row(&f, &large_legacy.id.to_string()),
+    )];
+    for i in 0..2 {
         f.register_real_git_project_named(&format!("legacy-{i}"));
         let mut project = f.project.clone();
         store_legacy_limit(&f, &mut project, 4);
         f.project = project.clone();
-        let tasks = if before_supported.is_none()
-            && project.id.to_string() < supported_project.id.to_string()
-        {
-            before_supported = Some(project.id);
-            LEGACY_TASKS
-        } else {
-            1
-        };
-        accept(&f, tasks).await;
+        accept(&f, 1).await;
         legacy.push((
             project.id.to_string(),
             project_row(&f, &project.id.to_string()),
         ));
-        if before_supported.is_some() && legacy.len() >= 3 {
-            break;
-        }
     }
-    assert!(
-        before_supported.is_some(),
-        "SETUP: no legacy Project sorts before the supported one"
-    );
     let supported_id = supported_project.id;
     f.project = supported_project;
     let (_, supported) = accept(&f, 1).await;
@@ -199,7 +198,7 @@ async fn c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten() {
     };
     let position = |id: String| rotations.iter().position(|(p, _)| *p == id).unwrap();
     assert!(
-        position(before_supported.unwrap().to_string()) < position(supported_id.to_string()),
+        position(large_legacy.id.to_string()) < position(supported_id.to_string()),
         "SETUP: the large legacy Project does not sort first: {rotations:?}"
     );
     let listed = keys(&f);
