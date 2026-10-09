@@ -33,16 +33,21 @@ async fn ca2_four_tasks_two_projects_retain_own_scope_and_roster() {
     f.runtime.start().await.unwrap();
     let mut tasks = Vec::new();
     let mut workflows = Vec::new();
-    for project in ["ca2-project-a", "ca2-project-b"] {
+    // R4.1/R4.4 (S2): one active Task per Project, so the four concurrent
+    // Tasks are in four Projects, both executors in each provider pair.
+    for (project, executor) in [
+        ("ca2-project-a", "worker"),
+        ("ca2-project-b", "codex-worker"),
+        ("ca2-project-c", "worker"),
+        ("ca2-project-d", "codex-worker"),
+    ] {
         f.register_real_git_project_named(project);
-        for executor in ["worker", "codex-worker"] {
-            let mut p = task_plan(&["rev-a", "rev-b"]);
-            p.tasks[0].executor = executor.into();
-            let task = accepted_plan(&f, p).await.remove(0);
-            let (_, workflow) = wait_bound(&f, &task).await;
-            tasks.push(task);
-            workflows.push(workflow);
-        }
+        let mut p = task_plan(&["rev-a", "rev-b"]);
+        p.tasks[0].executor = executor.into();
+        let task = accepted_plan(&f, p).await.remove(0);
+        let (_, workflow) = wait_bound(&f, &task).await;
+        tasks.push(task);
+        workflows.push(workflow);
     }
     assert_eq!(
         count(&f, "workflow_native_contracts"),
@@ -59,9 +64,15 @@ async fn ca2_four_tasks_two_projects_retain_own_scope_and_roster() {
     for o in &actual {
         assert_contract(&f, o, "CA2 original scoped contract");
     }
-    assert_ne!(tasks[0].project_id, tasks[2].project_id);
-    assert_eq!(tasks[0].project_id, tasks[1].project_id);
-    assert_eq!(tasks[2].project_id, tasks[3].project_id);
+    assert_eq!(
+        tasks
+            .iter()
+            .map(|t| t.project_id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        4,
+        "CA2 one active Task per Project"
+    );
     let unique = actual
         .iter()
         .map(|o| o.expected["workflow_id"].as_str().unwrap())
@@ -110,7 +121,7 @@ async fn ca3_representable_roster_refusals_preserve_claimed_sibling() {
             .store
             .lock()
             .unwrap()
-            .ready_driver_candidates(f.owner.instance_id(), f.owner.epoch(), None, 12, 4)
+            .ready_driver_candidates(f.owner.instance_id(), f.owner.epoch(), None, 12)
             .unwrap();
         let CandidatePage::Rows { keys, .. } = page else {
             panic!("SETUP: candidates absent");

@@ -5,11 +5,14 @@ pub(crate) mod managed_binding;
 mod native_dispatch_tests;
 mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
+pub use runtime::driver::ProjectLimitUnsupported;
 pub(crate) use runtime::driver::{
     CandidateKey, CandidatePage, DriverExitPublication, DriverPreparationAdvance,
     DriverPublication, DriverReadTicket, InitialDriverPlan, InitialGateEdge, PendingDriverClaim,
     plan_initial_driver, read_driver_ticket,
 };
+#[cfg(test)]
+pub(crate) use runtime::driver::{CapacityScope, DriverCapacityUnavailable};
 use std::{path::Path, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};

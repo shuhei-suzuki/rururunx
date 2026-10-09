@@ -5,9 +5,26 @@ mod retained_tests;
 
 /// FM §8.1 L: a legacy codex Task on `repo/` holding the committed `answer.txt`.
 pub(crate) async fn fixture() -> (crate::runtime::LegacyFixture, Arc<RuntimeOwner>, Task) {
-    let (f, owner) = crate::runtime::legacy_fixture(
+    fixture_with_siblings(&[]).await
+}
+/// `fixture` plus one seeded Task in each named sibling Project (R4.1/R4.4,
+/// S2: concurrently running siblings live in their own Projects).
+pub(crate) async fn fixture_with_siblings(
+    roots: &[&'static str],
+) -> (crate::runtime::LegacyFixture, Arc<RuntimeOwner>, Task) {
+    let siblings = roots
+        .iter()
+        .map(|root| crate::runtime::LegacySibling {
+            root,
+            seed,
+            task: crate::runtime::LegacyTask::standard("answer", "codex"),
+        })
+        .collect();
+    let (f, owner) = crate::runtime::legacy_fixture_with_siblings(
+        crate::runtime::LegacyLayout::default(),
         seed,
         vec![crate::runtime::LegacyTask::standard("answer", "codex")],
+        siblings,
     )
     .await;
     let task = f.task();

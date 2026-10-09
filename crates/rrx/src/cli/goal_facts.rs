@@ -238,6 +238,20 @@ pub fn render(response: &ControlResponse, json: bool) -> Result<String> {
         }
         _ => unreachable!(),
     }
+    if let ControlResponse::GoalFacts {
+        project_limit_stored: Some(stored),
+        ..
+    }
+    | ControlResponse::GoalProposalFacts {
+        project_limit_stored: Some(stored),
+        ..
+    } = response
+    {
+        writeln!(
+            output,
+            "Attention: project_limit_unsupported (stored task limit {stored}; MVP supports exactly 1). Repair: rrx project add <path> --max-tasks 1"
+        )?;
+    }
     writeln!(
         output,
         "verified criterion completion: unavailable\nrunnable admission: unknown\nIndependent scoped observation; incomplete: {}",

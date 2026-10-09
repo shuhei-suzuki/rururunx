@@ -44,6 +44,12 @@ impl<'a> ProjectRegistry<'a> {
 
     /// Registration/reactivation is explicit and preserves an existing root's ID.
     pub fn add(&mut self, path: &Path, options: AddProject, runtime: &Config) -> Result<Project> {
+        if let Some(requested) = options.max_tasks {
+            crate::config::ensure_mvp_project_tasks(
+                crate::config::LimitOrigin::CliFlag,
+                requested,
+            )?;
+        }
         runtime.validate()?;
         let root = source_root(path)?;
         let previous = self.store.projects()?.into_iter().find(|p| p.root == root);
@@ -572,7 +578,15 @@ pub fn effective_config(store: &Store, id: ProjectId, runtime: &Config) -> Resul
         Some(path) => runtime.with_project_file(&resolve_file(&project, path)?)?,
         None => runtime.clone(),
     };
-    result.scheduler.max_tasks_per_project = project.max_tasks;
+    // R4.5 / D8: a stored limit is never copied unchecked; a legacy row is a
+    // typed refusal and stays unchanged until an explicit --max-tasks 1.
+    if project.max_tasks != crate::config::MVP_PROJECT_TASKS {
+        return Err(crate::state::ProjectLimitUnsupported {
+            stored: project.max_tasks,
+        }
+        .into());
+    }
+    result.scheduler.max_tasks_per_project = crate::config::MVP_PROJECT_TASKS;
     Ok(result)
 }
 /// Runtime-global default, independent of CWD. Resolving a path has no filesystem effects.

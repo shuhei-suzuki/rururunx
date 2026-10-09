@@ -3,23 +3,46 @@ use crate::config::WorkflowClass;
 use std::path::PathBuf;
 
 thread_local! {
-    /// The fixture Project's worktree root (`draft` places Units under it);
-    /// each test runs on its own thread.
-    static WORKTREE_ROOT: std::cell::RefCell<PathBuf> =
-        std::cell::RefCell::new(PathBuf::from("/tmp/rrx-source/worktree"));
+    /// The fixture Projects' worktree roots (`draft` places each Unit under
+    /// its Task's); each test runs on its own thread.
+    static WORKTREE_ROOTS: std::cell::RefCell<BTreeMap<ProjectId, PathBuf>> =
+        const { std::cell::RefCell::new(BTreeMap::new()) };
 }
+const QUICK_CODEX: crate::runtime::LegacyTask = crate::runtime::LegacyTask {
+    key: "task",
+    executor: "codex",
+    workflow: WorkflowClass::Quick,
+    risk: crate::domain::RiskClass::R0,
+    reviewers: &[],
+};
 /// FM §8.1 L: a legacy Quick codex Task (file-backed, migrated rows).
 fn fixture() -> (crate::runtime::LegacyFixture, Store, Task, u64) {
-    let (legacy, mut store) = crate::runtime::legacy_store(vec![crate::runtime::LegacyTask {
-        key: "task",
-        executor: "codex",
-        workflow: WorkflowClass::Quick,
-        risk: crate::domain::RiskClass::R0,
-        reviewers: &[],
-    }]);
+    fixture_with_siblings(&[])
+}
+/// `fixture` plus one Quick codex Task in each named sibling Project
+/// (R4.1/R4.4, S2: concurrent siblings live in their own Projects).
+fn fixture_with_siblings(
+    roots: &[&'static str],
+) -> (crate::runtime::LegacyFixture, Store, Task, u64) {
+    let siblings = roots
+        .iter()
+        .map(|root| crate::runtime::LegacySibling {
+            root,
+            seed: |_| {},
+            task: QUICK_CODEX,
+        })
+        .collect();
+    let (legacy, mut store) =
+        crate::runtime::legacy_store_with_siblings(vec![QUICK_CODEX], siblings);
     let t = legacy.task();
-    let root = store.project(t.project_id).unwrap().unwrap().worktree_root;
-    WORKTREE_ROOT.with(|r| *r.borrow_mut() = root);
+    for task in std::iter::once(&t).chain(&legacy.siblings) {
+        let root = store
+            .project(task.project_id)
+            .unwrap()
+            .unwrap()
+            .worktree_root;
+        WORKTREE_ROOTS.with(|r| r.borrow_mut().insert(task.project_id, root));
+    }
     let (_, epoch) = store.begin_execution_epoch().unwrap();
     (legacy, store, t, epoch)
 }
@@ -41,7 +64,13 @@ fn draft(task: &Task, epoch: u64) -> ExecutionUnit {
         work: None,
         cleanup: CleanupOutcome::Unknown,
         disposition: Disposition::Active,
-        worktree: WORKTREE_ROOT.with(|r| r.borrow().join(format!("{}-{id}", task.id))),
+        worktree: WORKTREE_ROOTS.with(|r| {
+            r.borrow()
+                .get(&task.project_id)
+                .cloned()
+                .unwrap_or_else(|| PathBuf::from("/tmp/rrx-source/worktree"))
+                .join(format!("{}-{id}", task.id))
+        }),
         branch: Some(format!("rrx/{}/{id}", task.id)),
         base_sha: "a".repeat(40),
         profile_digest: "b".repeat(64),
@@ -573,6 +602,104 @@ fn new_generation_closes_old_reviewers_without_erasing_known_work_or_artifacts()
     );
 }
 
+/// C-S2c (R4.1, R4.3): the fixed Project limit of 1 counts distinct Tasks, so
+/// the active Task's two reviewers hold leases at once, a Task in another
+/// Project is admitted beside them, and a second Task of the same Project waits.
+#[test]
+fn c_s2c_active_task_reviewers_run_concurrently_under_project_limit_of_one() {
+    let (fixture, mut store, task, epoch) = fixture_with_siblings(&["c-s2c-other"]);
+    let unit = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    let unit = store
+        .finish_execution(
+            &unit.authority(),
+            WorkOutcome::Success,
+            Disposition::Completed,
+        )
+        .unwrap();
+    // Ledger-only artifact, as in the generation control above.
+    let mut artifact = ResultArtifact {
+        id: ArtifactId::new(),
+        scope: unit.scope.clone(),
+        unit_id: unit.id,
+        state: ArtifactState::Staging,
+        revision: "c".repeat(40),
+        base_sha: unit.base_sha.clone(),
+        object_format: "sha1".into(),
+        repository: PathBuf::from("/tmp/fixture-retained.git"),
+        manifest: PathBuf::from("/tmp/fixture-manifest.json"),
+        manifest_sha256: String::new(),
+        dependencies: std::collections::BTreeMap::new(),
+        version: 1,
+        created_at: now_ms(),
+    };
+    store.stage_result(&unit.authority(), &artifact).unwrap();
+    artifact.state = ArtifactState::Ready;
+    artifact.version = 2;
+    artifact.manifest_sha256 = "d".repeat(64);
+    store.ready_result(&artifact, 1).unwrap();
+    let current_task = store.task(task.id).unwrap().unwrap();
+    store
+        .publish_execution_result(&unit.authority(), &artifact, current_task.version)
+        .unwrap();
+    let current_task = store.task(task.id).unwrap().unwrap();
+    let admit = |store: &mut Store, unit: &ExecutionUnit| {
+        store
+            .reserve_execution_quota(&unit.authority(), "codex", "unknown", 6, 6, 6, now_ms())
+            .unwrap()
+    };
+    let mut reviewers = Vec::new();
+    for _ in 0..2 {
+        let mut spec = draft(&current_task, epoch);
+        spec.kind = UnitKind::Reviewer;
+        spec.artifact_id = Some(artifact.id);
+        spec.base_sha = artifact.revision.clone();
+        spec.branch = None;
+        let review = store.reserve_execution(spec, current_task.version).unwrap();
+        assert_eq!(
+            admit(&mut store, &review),
+            QuotaAdmission::Admitted,
+            "C-S2c: the active Task's reviewer was serialized"
+        );
+        reviewers.push(review);
+    }
+    let other = fixture.siblings[0].clone();
+    assert_ne!(other.project_id, task.project_id);
+    let other_unit = store
+        .reserve_execution(draft(&other, epoch), other.version)
+        .unwrap();
+    assert_eq!(
+        admit(&mut store, &other_unit),
+        QuotaAdmission::Admitted,
+        "C-S2c: another Project waited on this Project's limit"
+    );
+    let mut second = Task::new(
+        task.project_id,
+        task.goal_id,
+        "c-s2c second".into(),
+        "codex".into(),
+    );
+    store.put_task(&mut second).unwrap();
+    let second_unit = store
+        .reserve_execution(draft(&second, epoch), second.version)
+        .unwrap();
+    assert!(
+        matches!(
+            admit(&mut store, &second_unit),
+            QuotaAdmission::Waiting {
+                reason: WaitReason::Capacity,
+                ..
+            }
+        ),
+        "C-S2c: a second Task of the same Project was admitted"
+    );
+    for review in &reviewers {
+        let unit = store.execution_unit(review.id).unwrap();
+        assert!(unit.native_effects_open, "C-S2c: reviewer closed");
+    }
+}
+
 #[test]
 fn a_live_executor_cannot_be_replaced_or_leak_its_capacity_through_failed_reservation() {
     let (_fixture, mut store, task, epoch) = fixture();
@@ -641,7 +768,7 @@ fn a_live_executor_cannot_be_replaced_or_leak_its_capacity_through_failed_reserv
 
 #[test]
 fn unclassified_capacity_waits_for_a_fresh_attempt_without_closing_a_sibling_pool() {
-    let (_fixture, mut store, task, epoch) = fixture();
+    let (fixture, mut store, task, epoch) = fixture_with_siblings(&["sibling"]);
     let unit = store
         .reserve_execution(draft(&task, epoch), task.version)
         .unwrap();
@@ -675,13 +802,7 @@ fn unclassified_capacity_waits_for_a_fresh_attempt_without_closing_a_sibling_poo
         }
     );
     let waiting = store.execution_unit(retry.id).unwrap();
-    let mut sibling = Task::new(
-        task.project_id,
-        task.goal_id,
-        "sibling".into(),
-        "codex".into(),
-    );
-    store.put_task(&mut sibling).unwrap();
+    let sibling = fixture.siblings[0].clone();
     let sibling_unit = store
         .reserve_execution(draft(&sibling, epoch), sibling.version)
         .unwrap();
@@ -719,21 +840,14 @@ fn unclassified_capacity_waits_for_a_fresh_attempt_without_closing_a_sibling_poo
 
 #[test]
 fn epoch_recovery_preserves_known_work_and_fences_live_and_already_retired_transports() {
-    let (_fixture, mut store, task, epoch) = fixture();
+    let (fixture, mut store, task, epoch) = fixture_with_siblings(&["sibling-1", "sibling-2"]);
     let mut units = Vec::new();
     let mut sessions = Vec::new();
     for index in 0..3 {
         let task = if index == 0 {
             task.clone()
         } else {
-            let mut sibling = Task::new(
-                task.project_id,
-                task.goal_id,
-                format!("sibling-{index}"),
-                "codex".into(),
-            );
-            store.put_task(&mut sibling).unwrap();
-            sibling
+            fixture.siblings[index as usize - 1].clone()
         };
         let unit = store
             .reserve_execution(draft(&task, epoch), task.version)

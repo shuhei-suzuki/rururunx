@@ -112,6 +112,9 @@ pub enum ControlResponse {
         task_count: usize,
         dispatch_available: bool,
         attention: UnavailableReason,
+        /// Present only with `ProjectLimitUnsupported`: the stored limit.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project_limit_stored: Option<usize>,
     },
     GoalFacts {
         goal: GoalId,
@@ -123,6 +126,9 @@ pub enum ControlResponse {
         recorded: Option<RecordedGoalStatus>,
         dispatch_available: bool,
         attention: UnavailableReason,
+        /// Present only with `ProjectLimitUnsupported`: the stored limit.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project_limit_stored: Option<usize>,
     },
     GoalLifecycleChanged {
         goal: GoalId,
@@ -188,7 +194,7 @@ pub struct WorkflowWait {
     pub kind: WorkflowWaitKind,
     pub detail: String,
 }
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnavailableReason {
     TaskDriverUnavailable,
@@ -196,6 +202,9 @@ pub enum UnavailableReason {
     NativeBindingUnavailable,
     NativeContinuationUnavailable,
     FreshBootstrapRecoveryUnavailable,
+    /// The Project stores a Task limit other than 1 (R4.5); see
+    /// `project_limit_stored`. Repaired by `project add --max-tasks 1`.
+    ProjectLimitUnsupported,
 }
 
 // Bounds the response wait; a timed-out filesystem worker is not claimed stopped.
@@ -456,7 +465,7 @@ impl Runtime {
                 operational: false,
                 service_running: self.service_running(),
                 requested_global_sessions: self.config.scheduler.global_max_sessions,
-                requested_tasks_per_project: self.config.scheduler.max_tasks_per_project,
+                requested_tasks_per_project: crate::config::MVP_PROJECT_TASKS,
             },
             _ => ControlResponse::Unavailable {
                 request_id: request.request_id,

@@ -64,7 +64,7 @@ impl Runtime {
         let phases = phase_supervisor::PhaseSupervisor::new(
             owner.clone(),
             config.scheduler.global_max_sessions,
-            config.scheduler.max_tasks_per_project,
+            phase_supervisor::PHASE_SLOTS_PER_PROJECT,
             admission,
         );
         let phase_jobs = Arc::new(phase_jobs::PhaseJobs::default());
@@ -126,8 +126,10 @@ impl Runtime {
 mod tests;
 #[cfg(test)]
 pub(crate) use tests::{
-    LegacyFixture, LegacyLayout, LegacyTask, accepted_goal_fixture, assert_goal_change_refused,
-    legacy_fixture, legacy_fixture_blocking, legacy_store, migrate_legacy, write_historical_copy,
+    LegacyFixture, LegacyLayout, LegacySibling, LegacyTask, accepted_goal_fixture,
+    assert_goal_change_refused, legacy_fixture, legacy_fixture_blocking,
+    legacy_fixture_with_siblings, legacy_store, legacy_store_with_siblings, migrate_legacy,
+    write_historical_copy,
 };
 
 #[cfg(test)]

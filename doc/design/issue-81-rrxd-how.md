@@ -145,6 +145,40 @@ Real failures are **not** pending and never get the marker: the poison errors at
 | C-S2d | Config 2, overlay 2 and `--max-tasks 2` are each refused, typed, with no change. A stored 4 → `ProjectLimitUnsupported`, no Driver, row bytes unchanged |
 | Mutants (L1) | Candidate limit 2 → C-S2a FAIL. Claim limit 2 → C-S2a2 FAIL. Each limit is changed separately |
 
+### 2.1 S2 implementation delta (D1–D8, for review before code)
+
+The design above stays as it is. This delta fixes the open implementation points.
+
+| # | Point | Decision |
+| --- | --- | --- |
+| D1 | Typed config refusal | New `ProjectTaskLimitRefused { origin, requested }`, where `origin` is `RuntimeConfig`, `ProjectOverlay` or `CliFlag`. The message stays "MVP supports exactly 1 active Task per Project". `Config::validate` raises it for a value other than 1 (`config.rs:337`). So does `apply_project`, before any field is mutated (`:297`). `SchedulerConfig::default()` becomes `MVP_PROJECT_TASKS`, and an explicit `= 1` is still accepted. A value of 0 keeps its existing "scheduler limits must be positive" refusal |
+| D2 | `project add` | `--max-tasks N` with N ≠ 1 is refused with `ProjectTaskLimitRefused { origin: CliFlag }` before `reconcile` or any write. A new Project stores `MVP_PROJECT_TASKS`, and the `Project::new` default becomes 1. Re-adding an existing Project without `--max-tasks` keeps the stored value byte for byte. `--max-tasks 1` is the only rewrite, and it is the explicit fix |
+| D3 | Stored > 1 at admission | Nothing is written: no Project row, no `scheduler_tasks.attention`, no Driver. A Project whose stored `max_tasks` is not 1 is excluded in the `ready_driver_candidates` SQL by joining `projects` on `json_extract(body,'$.max_tasks') = MVP_PROJECT_TASKS`, so it never uses up the 32-evaluation budget. `plan_initial_driver` re-reads the Project in its snapshot and refuses with a typed `ProjectLimitUnsupported { stored }` as a second guard |
+| D4 | The "typed attention" | It is derived when status is read, not stored. `UnavailableReason` gains `ProjectLimitUnsupported`. `GoalFacts` and `GoalProposalFacts` report it when the Project's stored limit is not 1, and status still reads. The stored value goes in a new optional `project_limit_stored` field, so the existing unit-enum encoding of `UnavailableReason` keeps its shape |
+| D5 | Final-claim refusal (L1) | `claim.rs:337-338` changes from a string `ensure!` to a typed `DriverCapacityUnavailable { scope: Global \| Project }`, and the Project bound is `MVP_PROJECT_TASKS`. The seam for C-S2a2 is `cfg(test)` only. It parks admission after candidate selection and before planning for a named Task, and it never constructs authority or skips a check. The test lets Task A claim, then releases B's parked evaluation, and asserts the typed `Project` refusal with no `task_drivers` row for B |
+| D6 | Consumers | `MVP_PROJECT_TASKS` replaces the config value at `admission.rs:62`, `task_driver.rs:53`, `control.rs:459` (reports 1), `native.rs:158`, `quotas.rs:519` and `native_phase/quota.rs:507`. The last two use `min(MVP, stored)`, which is 1 for every admitted row. `PhaseSupervisor` (`runtime/mod.rs:67`) gets its own `PHASE_SLOTS_PER_PROJECT = 4` (O2) |
+| D7 | Existing rows and tests | Projects registered before S2 store `4`, the old default. Each is reported as `ProjectLimitUnsupported` until `project add <path> --max-tasks 1`; this is the intended R4.5 behaviour and is not migrated. Test fixtures that set `max_tasks_per_project` directly change as follows. `activation/pages.rs:8` uses 128 Projects with one Task each, so it drops the line and keeps its meaning. The `phase_supervisor/tests.rs` fixture drops its `per_project` argument. Its per-Project pending refusal test (`:376`, today limit 1 with 2 operations) becomes `PHASE_SLOTS_PER_PROJECT` operations admitted and the next one refused, so it asserts the same bound. `tests/cli.rs:63-64` and `tests/project.rs:350` become refusal controls under C-S2d, and the overlay merge assertions keep their other fields |
+| D8 | Effective config (Sol 6070180593 M1) | `project::effective_config` (`project.rs:567-576`) no longer copies the stored `Project.max_tasks` without a check. A stored 1 returns `MVP_PROJECT_TASKS`. Any other stored value returns the typed `ProjectLimitUnsupported { stored }` without touching the row, and status still reads. The README configuration example (`README.md:366`) changes to `max_tasks_per_project = 1`, so `readme_configuration_example_is_valid` (`tests/cli.rs:132`) still runs it through the real loader. Control C-S2e: a stored 4 gives the typed refusal with the row, version and audit unchanged; an explicit `--max-tasks 1` repair then gives 1. Mutant: restoring the unchecked copy makes C-S2e fail |
+
+Conditions from the review (6070180593), applied to the controls:
+
+- **D1/D2.** The overlay refusal runs before the first field mutation in `apply_project`. The CLI refusal runs before `reconcile` and before `Store::open`'s initialisation writes. The controls cover these cases separately:
+  - `origin` and `requested`;
+  - an explicit 1 succeeds;
+  - a config or overlay 0 keeps the positive-limit refusal;
+  - a re-add with no argument keeps a stored 4;
+  - only an explicit 1 repairs it.
+- **D3.** The SQL keeps a fixed query with bound values, and the existing cursor, order and occupancy conditions. The `projects` join on Project ID and the fixed-1 filter apply before the eligible `LIMIT`. C-S2a3 mixes many stored-4 Projects with supported ones and asserts that only the supported ones are listed. The snapshot guard in `plan_initial_driver` gets its own control: a typed refusal with nothing written.
+- **D4.** An accepted Goal and an inert proposal both report the reason and the stored value. The answer is the same before and after `reconcile_runtime_attention`. The read changes no row, version or audit. After the repair the extra reason is gone. The plain `goal status` renderer (`cli/goal_facts.rs:105`) also prints the reason, the stored value and the `--max-tasks 1` repair (the optional item, taken).
+- **D5, the harness.** `admit_ready_tasks` holds `control_admission` and the cursor from candidate selection through evaluation, so B is not parked inside it. The test:
+  1. reads B's key through the production reader;
+  2. waits while holding no admission, cursor or Store guard;
+  3. lets A claim through the normal path;
+  4. takes the normal admission guard and passes B's key to the same production evaluator, as the existing sweep controls do (`installation/tests/sweep.rs:9`).
+
+  Global capacity is free and A's occupancy remains. B must reach the `Project` variant, with no new Driver row and no new claim audit for B. The deciding mutant changes only the claim's Project bound to 2. A candidate check or an early refusal alone does not pass.
+- **D6/D7.** Both quota boundaries keep `min(MVP, stored)` and the own-Task check. The pending-bound control keeps global headroom. It still tells apart four operations followed by the next per-Project refusal, another Project's progress, the global refusal, and the retry of the original objects.
+
 ## 3. S3 — Project operations (R3.4, R3.5; O3: supported)
 
 ### 3.1 API (M5, M7)
@@ -286,3 +320,65 @@ The endpoint test failure seen once (`actual_endpoint_connects…`, rebind line)
 
 - After a pending stop, `serve` itself retries shutdown and exits 1. This is the existing behaviour, and it is now asserted: the process exit is not counted as cleanup.
 - The P2 park (`runtime::stop::park`) is `cfg(test)` only. It holds the real loop, so the join genuinely misses its deadline. It never constructs the marker.
+
+## 8. S2 outcome (implementation)
+
+Branch `claude/adoring-archimedes-7eehnw`, on top of PR #83's merge (`9aed3bf`). Paths are relative to `crates/rrx`. Protocol stays 2: the response changes are additive (`project_limit_stored` is optional and skipped when absent).
+
+| Delta | Implementation |
+| --- | --- |
+| D1 | `src/config.rs`: `MVP_PROJECT_TASKS`, `LimitOrigin`, `ProjectTaskLimitRefused`, `ensure_mvp_project_tasks` (Ok for 0, which then keeps the positive-limit refusal, and for 1). `apply_project` checks the overlay before any field is mutated; `validate` checks the runtime value; the default is MVP |
+| D2 | `src/main.rs` refuses `project add --max-tasks N≠1`, 0 included (`CliFlag`), before `Config::load` and `Store::open`; `src/project.rs` `add()` checks first. `ensure_mvp_project_tasks` exempts 0 only for `RuntimeConfig` and `ProjectOverlay`, which keep the positive-limit refusal (Sol 6071558338 M1). `Project::new` stores MVP |
+| D3 | `state/runtime/driver/candidates.rs`: the fixed query joins `projects` on `json_extract(body,'$.max_tasks')=?11` (bound to MVP) before the eligible `LIMIT`. `claim.rs` `plan_initial_driver` re-reads the Project in its snapshot and refuses with `ProjectLimitUnsupported { stored }`; `task_driver.rs` maps it to `SkipReason::ProjectLimitUnsupported` |
+| D4 | `runtime/control.rs`: `UnavailableReason::ProjectLimitUnsupported` and the optional `project_limit_stored` on `GoalFacts` and `GoalProposalFacts`, read by `project_limit_stored` (`state/runtime/goals.rs`, `proposals.rs`). `cli/goal_facts.rs` prints the reason, the stored value and the `--max-tasks 1` repair |
+| D5 | `claim.rs`: typed `DriverCapacityUnavailable { scope: Global \| Project }`; the Project bound is MVP |
+| D6 | `admission.rs`, `task_driver.rs` (parameter removed), `control.rs` (RuntimeStatus reports 1), `execution/native.rs` (`project: MVP`), `state/execution/quotas.rs` (`configured.min(MVP).min(stored)`, distinct Tasks, own-Task exemption). `runtime/phase_supervisor.rs` `PHASE_SLOTS_PER_PROJECT = 4` |
+| D7 | Fixtures that ran several Tasks of one Project at once now plan each sibling in its own Project through the accepted control ingress (`runtime/tests.rs` `LegacySibling`, `legacy_fixture_with_siblings`, `legacy_store_with_siblings`). No Goal is written outside that ingress. CA2 uses four Projects. The native cap test keeps its same-Project sibling for the `project` case only |
+| D8 | `project::effective_config` refuses a stored value ≠ 1 with `ProjectLimitUnsupported`; README example `max_tasks_per_project = 1` |
+
+### Controls
+
+| Control | Test | Result |
+| --- | --- | --- |
+| C-S2a | `runtime/installation/tests/project_limit.rs` `c_s2a_candidate_never_lists_second_task_while_first_is_occupied` | pass |
+| C-S2a, retained Driver alone | `c_s2a_retained_driver_alone_keeps_second_task_out`: A's Source preparation fails (the root is not a Git repository), its Unit is retired and its Driver retained; occupancy `(driver, unit, operation) = (1, 0, 0)` | pass. B never listed or claimed |
+| C-S2a, Unit alone | `runtime/tests.rs` `c_s2a_legacy_unit_alone_keeps_same_project_accepted_task_out`: a migrated legacy Task's Unit is reserved by the production `AttemptManager::prepare`, with no Driver and no operation; occupancy `(0, 1, 0)`. On the same owner and epoch an accepted Task B of the same Project and C of another Project are created through control ingress | pass. B is not a candidate; C is |
+| C-S2a, held operation alone | `c_s2a_held_phase_operation_alone_keeps_second_task_out`: A parked before transport; A's Goal paused through the lifecycle writer (Unit retired, Driver invalidated); the non-success consumer keeps the plan Held; occupancy `(0, 0, 1)` | pass. B (same Project, another Goal) never listed across reconciliations; a Task of another Project is admitted beside it |
+| C-S2a2 | `c_s2a2_final_claim_refuses_second_task_typed`: B's key read through the production reader, A claims, B evaluated under the normal admission guard | pass. `DriverCapacityUnavailable { Project }`, no Driver row or claim audit for B |
+| C-S2a3 | `c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten`: 70 legacy-limit Tasks in a Project that sorts before the supported one (more than the eligible `LIMIT 65`). Two registered Projects are assigned by observed ID order, so the setup never depends on a random search (Sol 6072320376 L2) | pass. The supported Task is the only key on the first page and is claimed; stored rows unchanged |
+| D3 guard | `d3_plan_guard_refuses_stored_legacy_limit_without_writes` | pass |
+| D4 | `d4_status_reports_stored_legacy_limit_read_only_until_repair` | pass. Accepted Goal and proposal both report. Around every read, the `projects`, `goals`, `tasks`, `records`, `scheduler_*`, `task_drivers`, `execution_units` and `audit` rows are unchanged. The answer is the same after the production `reconcile_runtime_attention` runs to its end, before and after start; gone after repair |
+| C-S2b | `success.rs` `sc10_four_projects_close_independently`; `activation/composition.rs` `ca2_four_tasks_two_projects_retain_own_scope_and_roster` (four Projects) | pass |
+| C-S2c | `state/execution/tests.rs` `c_s2c_active_task_reviewers_run_concurrently_under_project_limit_of_one`: two Reviewer leases for the active Task, another Project admitted beside them, a second same-Project Task waits on `Capacity` | pass |
+| C-S2d | `config.rs` `c_s2d_runtime_limit_other_than_one_is_refused_typed`, `c_s2d_overlay_limit_other_than_one_is_refused_before_mutation`; `tests/cli.rs` `c_s2d_limits_other_than_one_are_refused_without_state` (`--max-tasks` 0 and 2: typed `CliFlag`, no state directory or database); `tests/project.rs` `c_s2d_registration_refuses_other_limits_and_only_explicit_one_repairs` (0 and 2 typed `CliFlag`, on an empty Store and on an existing row whose row, version and audit stay unchanged) | pass |
+| C-S2e | `tests/project.rs` `c_s2e_effective_config_refuses_stored_legacy_limit_until_explicit_repair` (legacy row through the production `put_project`) | pass |
+
+### Mutants (each restored; tree clean)
+
+| Mutant | Detected by |
+| --- | --- |
+| Claim Project bound 2 | C-S2a2 FAIL |
+| Candidate bound 2 | C-S2a FAIL |
+| Unchecked copy restored in `effective_config` | C-S2e FAIL |
+| Quota own-Task exemption dropped | C-S2c FAIL |
+| Native configured global cap ignored | `configured_global_provider_alias_and_project_caps_wait_before_native_spawn` (global) FAIL — the sibling is in another Project, so the Project limit cannot hide it |
+| CLI 0 exempt again (M1) | `tests/cli.rs` C-S2d and `tests/project.rs` C-S2d FAIL |
+| Candidate Driver branch dropped | `c_s2a_retained_driver_alone_keeps_second_task_out` FAIL |
+| Candidate phase-operation branch dropped | `c_s2a_held_phase_operation_alone_keeps_second_task_out` FAIL |
+| Legacy exclusion moved after the eligible `LIMIT` | C-S2a3 FAIL |
+| Status read stores an attention row | D4 FAIL ("status read changed state") |
+| Candidate Unit branch dropped | `c_s2a_legacy_unit_alone_keeps_same_project_accepted_task_out` FAIL at the candidate assertion (Sol 6072320376 L1: the legacy `AttemptManager` path leaves a Unit open on its own) |
+
+### Source review
+
+| Round | Result |
+| --- | --- |
+| 6071357590 → Sol 6071558338 | REQUEST CHANGES, required 0/0/1/3. M1: a CLI `--max-tasks 0` passed the early check and was refused only after `Store::open`. L1–L3: missing single-occupancy, pre-`LIMIT` and read-only controls |
+| `cafc547` → Sol 6072320376 | M1, L1 (Driver and operation alone), L2 (original), L3 closed. REQUEST CHANGES 0/0/0/2: L1 Unit alone through the legacy path; L2 setup relied on a bounded random search |
+| `90e6a0d`, `d6ca604` → Sol 6072686320 | **APPROVE LIMITED, required 0/0/0/0.** L1 (Unit alone) and L2 (deterministic order) closed; M1, L1 (Driver, operation), L3 stay closed. The earlier adapter 18/19 stays an open observation |
+
+### Verification
+
+Non-root (fmtest, umask 022, subreaper), all 19 test binaries: rrx lib 738 passed, 0 failed (20 ignored, unchanged from before S2); every integration binary passed. `cargo clippy --workspace --all-targets` and `cargo fmt --check` are clean. An earlier run was discarded: the test binary was rebuilt while it ran, and `execution/resources.rs` re-executes `current_exe()`, so the installation tests failed on the replaced executable. The clean re-run above had no build alongside it.
+
+Review-fix run (`cafc547`, non-root, no build alongside): rrx lib 740 passed, 0 failed (20 ignored). Every integration binary passed except `adapter` 18/19: `runtime_shutdown_terminates_native_group_and_preserves_uncertain_reservation` failed once with "fixture descendant still running: R". The S2 diff touches no adapter or process code, and the failure did not reproduce in 40 single runs or 10 whole-binary runs. The failing path is the `GenericCliAdapter`'s `ProcessGroup::drop` (`adapter.rs:604`, corrected by Sol 6072320376), which signals the group without waiting, and `assert_process_dead` (`tests/adapter.rs:564`) samples `ps` once, so a SIGKILLed descendant can still read `R` while it exits. This is recorded as an open observation, not as a flake. The proposed fix, a bounded wait for the process to be gone or a zombie before asserting, is outside S2.

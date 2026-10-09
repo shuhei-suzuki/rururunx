@@ -14,6 +14,8 @@ pub(super) enum SkipReason {
     Composition,
     ValidateFor,
     Plan,
+    /// The Project stores a Task limit other than the fixed MVP value.
+    ProjectLimitUnsupported,
 }
 pub(super) enum AdmitOutcome {
     Claimed,
@@ -50,9 +52,11 @@ impl Runtime {
             self.owner.clone(),
             task,
             self.config.scheduler.global_max_sessions,
-            self.config.scheduler.max_tasks_per_project,
         ) {
             Ok(plan) => plan,
+            Err(error) if error.is::<crate::state::ProjectLimitUnsupported>() => {
+                return Ok(AdmitOutcome::Skipped(SkipReason::ProjectLimitUnsupported));
+            }
             Err(_) => return Ok(AdmitOutcome::Skipped(SkipReason::Plan)),
         };
         let pending = self._drivers.reserve_pending(&plan)?;

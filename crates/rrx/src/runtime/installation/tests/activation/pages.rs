@@ -5,7 +5,6 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
     for one_held in [true, false] {
         let mut f = fixture_with("claude", true, |config| {
             config.scheduler.global_max_sessions = 128;
-            config.scheduler.max_tasks_per_project = 128;
         });
         let mut tasks = Vec::new();
         for i in 0..128 {

@@ -155,7 +155,7 @@ impl NativeLimits {
         }
         Self {
             global: config.scheduler.global_max_sessions.min(6),
-            project: config.scheduler.max_tasks_per_project,
+            project: crate::config::MVP_PROJECT_TASKS,
             providers,
         }
     }

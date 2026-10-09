@@ -19,8 +19,40 @@ pub(crate) struct InitialDriverPlan {
     project_rotation: u64,
     goal_rotation: u64,
     global_limit: usize,
-    project_limit: usize,
 }
+/// A stored Project Task limit other than the fixed MVP value (R4.5). The row
+/// is never rewritten; an explicit `project add --max-tasks 1` repairs it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectLimitUnsupported {
+    pub stored: usize,
+}
+impl std::fmt::Display for ProjectLimitUnsupported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Project stores task limit {}; MVP supports exactly {} (repair with project add --max-tasks 1)",
+            self.stored,
+            crate::config::MVP_PROJECT_TASKS
+        )
+    }
+}
+impl std::error::Error for ProjectLimitUnsupported {}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CapacityScope {
+    Global,
+    Project,
+}
+/// The final claim found no distinct-Task capacity; nothing was written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DriverCapacityUnavailable {
+    pub(crate) scope: CapacityScope,
+}
+impl std::fmt::Display for DriverCapacityUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "distinct Task capacity unavailable ({:?})", self.scope)
+    }
+}
+impl std::error::Error for DriverCapacityUnavailable {}
 /// Exact committed content only; this is not a reconstructed live association.
 pub(crate) struct PendingDriverClaim {
     plan: Arc<InitialDriverPlan>,
@@ -244,14 +276,21 @@ pub(crate) fn plan_initial_driver(
     owner: Arc<RuntimeOwner>,
     task: TaskId,
     global_limit: usize,
-    project_limit: usize,
 ) -> Result<InitialDriverPlan> {
     ensure!(
-        global_limit > 0 && project_limit > 0 && global_limit <= 4096 && project_limit <= 4096,
+        global_limit > 0 && global_limit <= 4096,
         "Driver capacity bound invalid"
     );
     crate::state::managed_binding::snapshot(&owner, |tx| {
         let t: Task = bounded(tx, "tasks", &task.to_string(), 1024 * 1024)?;
+        let project: Project = read_tx(tx, "projects", &t.project_id.to_string())?
+            .context("Driver Project missing")?;
+        if project.max_tasks != crate::config::MVP_PROJECT_TASKS {
+            return Err(ProjectLimitUnsupported {
+                stored: project.max_tasks,
+            }
+            .into());
+        }
         let scope = crate::state::managed_binding::read_scope(tx, &owner, &t.scope())?;
         ensure!(
             scope.task().id == task && !scope.has_input_history(),
@@ -290,7 +329,6 @@ pub(crate) fn plan_initial_driver(
             project_rotation,
             goal_rotation,
             global_limit,
-            project_limit,
         })
     })
 }
@@ -335,7 +373,12 @@ impl Store {
             // Union distinct Tasks, including held/unbound operations and claims.
             // Pending phase slots are separately retained by Root's supervisor.
             let (all,project):(usize,usize)=tx.query_row("WITH occupied AS (SELECT task_id,project_id FROM task_drivers WHERE state='driving' UNION SELECT task_id,project_id FROM execution_units WHERE native_effects_open=1 OR result_finalization_open=1 UNION SELECT task_id,project_id FROM managed_phase_operations WHERE phase_open=1) SELECT count(*),COALESCE(sum(project_id=?1),0) FROM occupied",[task.project_id.to_string()],|r|Ok((r.get(0)?,r.get(1)?)))?;
-            ensure!(all<plan.global_limit && project<plan.project_limit,"distinct Task capacity unavailable");
+            if all>=plan.global_limit {
+                return Err(DriverCapacityUnavailable{scope:CapacityScope::Global}.into());
+            }
+            if project>=crate::config::MVP_PROJECT_TASKS {
+                return Err(DriverCapacityUnavailable{scope:CapacityScope::Project}.into());
+            }
             tx.execute("INSERT INTO task_drivers(task_id,goal_id,project_id,id,owner_epoch,version,state,body) VALUES(?1,?2,?3,?4,?5,1,'driving',?6)",params![task.id.to_string(),task.goal_id.to_string(),task.project_id.to_string(),plan.row.id.to_string(),plan.row.epoch,plan.encoded])?;
             let next_project=plan.project_rotation.checked_add(1).filter(|v|*v<=i64::MAX as u64).context("Project fairness exhausted")?;
             let next_goal=plan.goal_rotation.checked_add(1).filter(|v|*v<=i64::MAX as u64).context("Goal fairness exhausted")?;

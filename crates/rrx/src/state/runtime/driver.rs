@@ -8,6 +8,9 @@ use uuid::Uuid;
 mod candidates;
 pub(crate) use candidates::{CandidateKey, CandidatePage};
 mod claim;
+pub use claim::ProjectLimitUnsupported;
+#[cfg(test)]
+pub(crate) use claim::{CapacityScope, DriverCapacityUnavailable};
 pub(crate) use claim::{InitialDriverPlan, PendingDriverClaim, plan_initial_driver};
 mod ticket;
 pub(crate) use ticket::{DriverReadTicket, read_driver_ticket};
