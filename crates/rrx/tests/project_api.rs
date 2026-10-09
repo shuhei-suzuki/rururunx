@@ -290,8 +290,11 @@ fn renamed(name: &str) -> ProjectOptions {
         ..Default::default()
     }
 }
+/// Sol 6080740320 N1: `kill(pid, 0)`, not `/proc`, so an unobservable
+/// process is never read as gone. A zombie still counts as alive.
 fn alive(pid: u32) -> bool {
-    Path::new(&format!("/proc/{pid}")).exists()
+    let pid = rustix::process::Pid::from_raw(pid as i32).unwrap();
+    rustix::process::test_kill_process(pid) != Err(rustix::io::Errno::SRCH)
 }
 fn stderr(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).into_owned()
@@ -872,4 +875,83 @@ fn m4_git_stderr_never_reaches_api_projections_or_stored_reasons() {
         let text = String::from_utf8_lossy(&out.stdout);
         assert!(!text.contains(secret), "{text}");
     }
+
+    // Sol 6080527668: non-Git producers. A missing reference's path and a
+    // project config parser message each carry a sentinel; neither reaches a
+    // refusal, the CLI's error, a Blocked reason or the stored reason.
+    let sentinel = "SENTINEL-81-text";
+    std::fs::write(
+        f.b.join("project.toml"),
+        format!("[scheduler\n{sentinel} = 1\n"),
+    )
+    .unwrap();
+    let refusals = [
+        (
+            ProjectOptions {
+                rule_refs: vec![format!("{sentinel}/missing.md").into()],
+                ..Default::default()
+            },
+            vec!["--rule".to_owned(), format!("{sentinel}/missing.md")],
+        ),
+        (
+            ProjectOptions {
+                config_ref: Some("project.toml".into()),
+                ..Default::default()
+            },
+            vec!["--project-config".to_owned(), "project.toml".to_owned()],
+        ),
+    ];
+    for (options, flags) in refusals {
+        match f.api(ControlAction::ProjectRegister {
+            path: f.b.clone(),
+            options,
+        }) {
+            ControlResponse::ProjectRefused { reason } => {
+                assert!(!reason.contains(sentinel), "{reason}");
+            }
+            other => panic!("register b: {other:?}"),
+        }
+        let (global, local): (Vec<&str>, Vec<&str>) = if flags[0] == "--project-config" {
+            (flags.iter().map(String::as_str).collect(), vec![])
+        } else {
+            (vec![], flags.iter().map(String::as_str).collect())
+        };
+        let mut args = global;
+        args.extend(["project", "add", f.b.to_str().unwrap()]);
+        args.extend(local);
+        let out = f.cli(&f.base, &args);
+        assert!(!out.status.success(), "{args:?}");
+        assert!(!stderr(&out).contains(sentinel), "{}", stderr(&out));
+    }
+    std::fs::create_dir(f.b.join(sentinel)).unwrap();
+    std::fs::write(f.b.join(sentinel).join("r.md"), "rules").unwrap();
+    let reference = format!("{sentinel}/r.md");
+    let b: ProjectId = f
+        .ok(
+            &f.base,
+            &[
+                "project",
+                "add",
+                f.b.to_str().unwrap(),
+                "--rule",
+                &reference,
+            ],
+        )
+        .split('\t')
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    std::fs::remove_dir_all(f.b.join(sentinel)).unwrap();
+    let ControlResponse::ProjectStatusFacts { status, .. } = status_of(&f.state, b) else {
+        panic!("status b");
+    };
+    assert_eq!(status.project.state, ProjectState::Blocked);
+    let reason = status.project.blocked_reason.unwrap();
+    assert_eq!(reason, "missing project reference");
+    let stored: Value = serde_json::from_str(&f.row(b).unwrap().1).unwrap();
+    assert_eq!(
+        stored["blocked_reason"], "missing project reference",
+        "{stored}"
+    );
 }

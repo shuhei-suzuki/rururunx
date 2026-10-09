@@ -9,7 +9,7 @@ use crate::{
     config::Config,
     domain::{Project, ProjectId},
     execution::OwnerLock,
-    project::{AddProject, ProjectRegistry, ProjectStatusView},
+    project::{AddProject, ProjectRegistry, ProjectStatusView, public_project},
     runtime::control::{
         ControlAction, ControlResponse, ProjectOptions, ReconcileMark, UnavailableReason,
     },
@@ -82,9 +82,18 @@ fn offline(lock: &OwnerLock, config: &Config, request: ProjectRequest) -> Result
     match request {
         ProjectRequest::Add { path, options } => {
             registry.reconcile()?;
-            print_saved(&registry.add(&path, options, config)?);
+            print_saved(&public_project(registry.add(&path, options, config)?));
         }
-        ProjectRequest::List { all, json } => print_list(&registry.list(all)?, json)?,
+        // M4 (Sol 6080740320): stored reasons are projected offline as on
+        // the API.
+        ProjectRequest::List { all, json } => {
+            let projects: Vec<Project> = registry
+                .list(all)?
+                .into_iter()
+                .map(public_project)
+                .collect();
+            print_list(&projects, json)?;
+        }
         ProjectRequest::Status { selector, json } => {
             let status = registry.status(selector.as_deref(), &cwd)?;
             print_status(&ProjectStatusView::from(&status), json)?;

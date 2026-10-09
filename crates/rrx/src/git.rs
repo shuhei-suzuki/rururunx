@@ -600,6 +600,9 @@ pub(crate) struct PreflightGroups {
 struct PreflightGroupsState {
     cancelled: bool,
     live: std::collections::BTreeSet<i32>,
+    /// Groups whose leader was reaped but which were not seen empty within
+    /// the bound (Sol 6080740320 M3); still owned, never counted as reaped.
+    lingering: std::collections::BTreeSet<i32>,
 }
 impl PreflightGroups {
     /// Refuses further Git children and kills every live group.
@@ -622,9 +625,15 @@ impl PreflightGroups {
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
     }
-    /// Whether every child started so far has been reaped.
+    /// Whether every child started so far has been reaped and every group it
+    /// led is confirmed empty. A lingering group is re-checked here, and
+    /// dropped only once `kill(-pgid, 0)` reports it gone.
     pub(crate) fn all_reaped(&self) -> bool {
-        self.unreaped.load(std::sync::atomic::Ordering::SeqCst) == 0
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state
+            .lingering
+            .retain(|pgid| rustix::process::Pid::from_raw(*pgid).is_some_and(group_alive));
+        state.lingering.is_empty() && self.unreaped.load(std::sync::atomic::Ordering::SeqCst) == 0
     }
     #[cfg(test)]
     pub(crate) fn live(&self) -> usize {
@@ -637,13 +646,19 @@ impl PreflightGroups {
 }
 /// How long a killed group's members may take to be gone.
 const GROUP_EXIT_BOUND: std::time::Duration = std::time::Duration::from_secs(2);
-fn await_group_empty(pgid: rustix::process::Pid) {
+fn group_alive(pgid: rustix::process::Pid) -> bool {
+    rustix::process::test_kill_process_group(pgid) != Err(rustix::io::Errno::SRCH)
+}
+/// Whether the group was seen empty within the bound.
+fn await_group_empty(pgid: rustix::process::Pid) -> bool {
     let deadline = std::time::Instant::now() + GROUP_EXIT_BOUND;
-    while rustix::process::test_kill_process_group(pgid).is_ok()
-        && std::time::Instant::now() < deadline
-    {
+    while group_alive(pgid) {
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
+    true
 }
 // C-S3d4 (Sol 6079932858 L1): delays this thread's reap of a preflight child,
 // so a response that does not wait for the reap is observable. It changes no
@@ -652,6 +667,17 @@ fn await_group_empty(pgid: rustix::process::Pid) {
 std::thread_local! {
     static REAP_DELAY: std::cell::Cell<std::time::Duration> =
         const { std::cell::Cell::new(std::time::Duration::ZERO) };
+}
+/// C-S3d4 (L1): sets this thread's reap delay for preflight children.
+#[cfg(test)]
+pub(crate) fn set_reap_delay(delay: std::time::Duration) {
+    REAP_DELAY.with(|d| d.set(delay));
+}
+/// Runs `command` as a preflight child would be run (owned group, reaped
+/// before return) for runtime controls; it grants nothing a Git call does not.
+#[cfg(test)]
+pub(crate) fn run_owned(command: Command) -> Result<Output> {
+    run(command)
 }
 fn kill_group(pid: i32) {
     if let Some(pid) = rustix::process::Pid::from_raw(pid) {
@@ -752,12 +778,23 @@ fn finish_owned(
             std::thread::sleep(REAP_DELAY.with(std::cell::Cell::get));
             let status = child.wait();
             // The reaped leader's pid stays reserved while any member lives,
-            // so the group is counted as reaped only once it is empty.
-            await_group_empty(raw);
-            groups
-                .unreaped
-                .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            // so the group is counted as reaped only once it is empty. One
+            // not seen empty within the bound stays owned as lingering, and
+            // this Git call fails: its exit is not proof the group ended.
+            let empty = await_group_empty(raw);
+            {
+                let mut state = groups.state.lock().unwrap_or_else(|e| e.into_inner());
+                if !empty {
+                    state.lingering.insert(pid);
+                }
+                groups
+                    .unreaped
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            }
             observed?;
+            if !empty {
+                return Err(std::io::Error::other("Git process group did not exit"));
+            }
             status
         })();
         let (stdout, stderr) = (joined(stdout), joined(stderr));
@@ -883,9 +920,10 @@ mod tests {
         assert!(!worker.join().unwrap().unwrap().status.success());
     }
 
-    /// Sol 6079932858 M3: a member the Git leader leaves in its group is
-    /// killed when the leader exits, before the call returns, even on a
-    /// normal exit and with the member holding no pipe.
+    /// Sol 6079932858 M3, 6080740320 N1: a member the Git leader leaves in
+    /// its group is killed when the leader exits, before the call returns,
+    /// even on a normal exit and with the member holding no pipe. Gone is
+    /// `kill(pid, 0)` = ESRCH, observable on Linux and macOS alike.
     #[test]
     fn a_member_left_in_the_group_dies_with_its_leader() {
         let groups = Arc::new(PreflightGroups::default());
@@ -901,30 +939,107 @@ mod tests {
             .trim()
             .parse()
             .unwrap();
-        let running = || {
-            std::fs::read_to_string(format!("/proc/{member}/stat"))
-                .ok()
-                .and_then(|stat| stat.rsplit(')').next().map(|s| s.trim().starts_with('Z')))
-                .is_some_and(|zombie| !zombie)
-        };
-        assert!(!running(), "the left member outlived its leader");
+        let member = rustix::process::Pid::from_raw(member).unwrap();
+        assert_eq!(
+            rustix::process::test_kill_process(member),
+            Err(rustix::io::Errno::SRCH),
+            "the left member outlived its leader"
+        );
         assert!(groups.all_reaped());
         assert_eq!(groups.live(), 0);
     }
 
-    /// Sol 6079932858 M4: a failed Git command's stderr never reaches the
-    /// public reason; the command and "failed" do.
+    /// Sol 6080740320 M3: a group not seen empty within the bound is not
+    /// turned into a completed call: the call fails, the group stays owned
+    /// (not reaped) until it is gone, and only then counts as reaped. The
+    /// member is this test's own child joined to the group, left an unreaped
+    /// zombie after the kill. Mutant: treat the bound as empty → FAIL.
     #[test]
-    fn public_reason_drops_git_stderr() {
+    fn a_group_not_seen_empty_stays_owned_and_fails_the_call() {
+        use std::os::unix::process::CommandExt;
+        let dir = tempfile::tempdir().unwrap();
+        let go = dir.path().join("go");
+        let groups = Arc::new(PreflightGroups::default());
+        let worker = {
+            let (groups, go) = (groups.clone(), go.clone());
+            std::thread::spawn(move || {
+                with_preflight_groups(groups, || {
+                    let mut child = Command::new("sh");
+                    child.args([
+                        "-c",
+                        &format!("while [ ! -e '{}' ]; do sleep 0.01; done", go.display()),
+                    ]);
+                    run(child)
+                })
+            })
+        };
+        let started = Instant::now();
+        let leader = loop {
+            if let Some(pid) = groups.state.lock().unwrap().live.first().copied() {
+                break pid;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "child never registered"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let mut member = Command::new("sleep")
+            .arg("30")
+            .process_group(leader)
+            .spawn()
+            .unwrap();
+        std::fs::write(&go, "").unwrap();
+        let error = worker.join().unwrap().unwrap_err();
+        assert!(
+            format!("{error:#}").contains("Git process group did not exit"),
+            "{error:#}"
+        );
+        assert!(
+            !groups.all_reaped(),
+            "an unconfirmed group counted as reaped"
+        );
+        member.wait().unwrap();
+        assert!(groups.all_reaped(), "a gone group stayed lingering");
+    }
+
+    /// Sol 6079932858 M4, 6080527668: the public reason is one of a finite
+    /// set and copies no part of the error text: a Git failure's stderr, a
+    /// path, a parser message or an unknown error's text all stay out.
+    #[test]
+    fn public_reason_is_finite_and_copies_no_input() {
+        use crate::project::public_reason;
         let dir = tempfile::tempdir().unwrap();
         let error = git(dir.path(), &["rev-parse", "--verify", "HEAD"]).unwrap_err();
         let full = format!("{:#}", error.context("project root check"));
         assert!(full.contains("fatal"), "SETUP: no stderr captured: {full}");
-        let public = crate::project::public_reason(&full);
-        assert!(public.ends_with("] failed"), "{public}");
-        assert!(public.starts_with("project root check: Git ["), "{public}");
-        assert!(!public.contains("fatal"), "{public}");
-        let after = public.split("] failed").last().unwrap();
-        assert!(after.is_empty());
+        assert_eq!(public_reason(&full), "Git check failed");
+        let sentinel = "SENTINEL-81-path";
+        for (text, public) in [
+            (
+                format!("missing project reference /tmp/{sentinel}/rules.md: No such file"),
+                "missing project reference",
+            ),
+            (
+                format!("invalid project config /tmp/{sentinel}.toml: TOML parse error {sentinel}"),
+                "invalid project config",
+            ),
+            (
+                format!("repository root missing: /tmp/{sentinel}"),
+                "repository root missing",
+            ),
+            (
+                format!("an unknown failure {sentinel}"),
+                "Project check failed",
+            ),
+            (
+                format!("{sentinel}: repository identity already registered"),
+                "repository identity already registered",
+            ),
+        ] {
+            let reason = public_reason(&text);
+            assert_eq!(reason, public, "{text}");
+            assert!(!reason.contains(sentinel));
+        }
     }
 }

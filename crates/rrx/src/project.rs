@@ -82,29 +82,117 @@ impl From<&ProjectStatus> for ProjectStatusView {
     }
 }
 
-/// S3 D1 (Sol 6079932858 M4): bounds a refusal or Blocked reason.
-const PUBLIC_REASON_BYTES: usize = 2048;
-/// S3 D1 (Sol 6079932858 M4): the non-secret form of a refusal or Blocked
-/// reason. A failed Git command's captured stderr (the root cause, so the
-/// tail of an error chain) is dropped; only the command and "failed" stay.
-/// Applies to stored text too, so a row written before S3 is projected the
-/// same way.
+/// S3 D1 (Sol 6079932858 M4, 6080527668): fixed refusal and Blocked reasons
+/// a Project path produces; each is returned exactly.
+const PUBLIC_REASONS: &[&str] = &[
+    "unknown project ID",
+    "unknown project name",
+    "unknown project",
+    "ambiguous project name; use a stable project ID",
+    "ambiguous current project; use a stable project ID",
+    "current directory is not a registered project source or owned task worktree",
+    "unknown or ambiguous registered Project routing",
+    "registered repository identity/base changed; refusing silent rebinding",
+    "repository needs a name",
+    "cannot set and clear project config together",
+    "cannot set and clear rules together",
+    "cannot set and clear environment refs together",
+    "invalid project display name",
+    "project task limit must be positive",
+    "project root moved or is no longer canonical",
+    "repository identity changed at registered root",
+    "repository root must be a directory",
+    "bare repositories are not project sources",
+    "project path must be the exact Git repository root",
+    "invalid remote default branch",
+    "cannot infer base; supply --base",
+    "repository has no base history",
+    "project is not registered/active",
+    "environment references must be names, never assignments/values",
+    "parent traversal in project reference",
+    "project reference must be a source file within owning root",
+    "reference has no parent",
+    "project reference belongs to a nested/foreign repository",
+    "worktree namespace must be a normalized path below project source root",
+    "symlink or non-directory worktree namespace",
+    "worktree namespace belongs to a nested/foreign repository",
+    "namespace has no existing parent",
+    "project name/base branch must be nonempty",
+    "project root must be absolute and task limit positive",
+    "project root is not UTF-8",
+    "project identity/root cannot silently change",
+    "cannot change Project namespace after task worktree binding",
+    "repository identity already registered",
+    "Project roots/worktree namespaces overlap",
+    "Project removed",
+    "registered Project root moved",
+    "Project preflight cancelled",
+    "Git path is not UTF-8",
+];
+/// Formatted messages: only the fixed part is returned, never the value
+/// (a path, a name, a parser message or a Git command's stderr).
+const PUBLIC_PREFIXES: &[(&str, &str)] = &[
+    ("Git [", "Git check failed"),
+    ("Git check failed", "Git check failed"),
+    ("native Git unavailable", "native Git unavailable"),
+    ("cannot start Git", "Git check failed"),
+    ("cannot reap Git", "Git check failed"),
+    ("Git process group did not exit", "Git check failed"),
+    ("repository root missing", "repository root missing"),
+    ("missing project reference", "missing project reference"),
+    (
+        "unsafe environment routing reference",
+        "unsafe environment reference",
+    ),
+    (
+        "unsafe proxy routing reference",
+        "unsafe environment reference",
+    ),
+    (
+        "duplicate environment reference",
+        "duplicate environment reference",
+    ),
+    ("invalid project config", "invalid project config"),
+    ("cannot read config", "cannot read project config"),
+    ("invalid config", "invalid project config"),
+    (
+        "project cannot configure unregistered runtime agent",
+        "invalid project config",
+    ),
+    (
+        "cannot remove project with active",
+        "cannot remove project with active work",
+    ),
+    (
+        "MVP supports exactly",
+        "MVP supports exactly 1 active Task per Project",
+    ),
+];
+/// The reason given when nothing in the text is allowlisted.
+const PUBLIC_FALLBACK: &str = "Project check failed";
+/// S3 D1 (Sol 6079932858 M4, 6080527668): the public form of a refusal or
+/// Blocked reason is one of a finite set: the first `: `-separated segment
+/// of the error text that is an allowlisted message, or the fixed part of an
+/// allowlisted formatted one, else `Project check failed`. No part of the
+/// input text is copied. Applies to stored text too, so a row written
+/// before S3 is projected the same way.
 pub(crate) fn public_reason(text: &str) -> String {
-    let mut reason = match text.find("Git [") {
-        Some(start) => match text[start..].find("] failed") {
-            Some(end) => text[..start + end + "] failed".len()].to_owned(),
-            None => text.to_owned(),
-        },
-        None => text.to_owned(),
-    };
-    if reason.len() > PUBLIC_REASON_BYTES {
-        let mut end = PUBLIC_REASON_BYTES;
-        while !reason.is_char_boundary(end) {
-            end -= 1;
-        }
-        reason.truncate(end);
-    }
-    reason
+    text.split(": ")
+        .find_map(|segment| {
+            let segment = segment.trim();
+            PUBLIC_REASONS
+                .iter()
+                .find(|known| segment == **known)
+                .copied()
+                .or_else(|| {
+                    PUBLIC_PREFIXES
+                        .iter()
+                        .find(|(prefix, _)| segment.starts_with(prefix))
+                        .map(|(_, public)| *public)
+                })
+        })
+        .unwrap_or(PUBLIC_FALLBACK)
+        .to_owned()
 }
 /// The Project row as the API and `project status` return it.
 pub(crate) fn public_project(mut project: Project) -> Project {

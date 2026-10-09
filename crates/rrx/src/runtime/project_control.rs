@@ -101,6 +101,27 @@ impl Reconciled {
     }
 }
 
+// M1 causal control: pauses one Project's commit inside its transaction
+// check, twice on one barrier (reached, then resume). It grants nothing and
+// changes no outcome.
+#[cfg(test)]
+static COMMIT_PAUSE: std::sync::Mutex<Option<(ProjectId, Arc<std::sync::Barrier>)>> =
+    std::sync::Mutex::new(None);
+#[cfg(test)]
+fn commit_pause(id: ProjectId) {
+    let pause = {
+        let mut slot = COMMIT_PAUSE.lock().unwrap_or_else(|e| e.into_inner());
+        match slot.as_ref() {
+            Some((target, _)) if *target == id => slot.take().map(|(_, barrier)| barrier),
+            _ => None,
+        }
+    };
+    if let Some(barrier) = pause {
+        barrier.wait();
+        barrier.wait();
+    }
+}
+
 impl Runtime {
     /// D5: runs `work` in `spawn_blocking` with its Git children owned by a
     /// fresh `PreflightGroups`, bounded by the deadline and by `stopping`.
@@ -137,28 +158,41 @@ impl Runtime {
                 }
             }
         };
-        let release = move |flights: &std::sync::Mutex<std::collections::BTreeSet<ProjectId>>| {
-            if let Some(id) = project {
-                flights
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .remove(&id);
-            }
-        };
+        // M3 (Sol 6080740320): the entry is released only once every group
+        // this preflight led is confirmed gone; a lingering group keeps the
+        // Project in flight until then, however long that takes.
+        let release =
+            move |flights: Arc<std::sync::Mutex<std::collections::BTreeSet<ProjectId>>>,
+                  groups: Arc<PreflightGroups>| async move {
+                while !groups.all_reaped() {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                if let Some(id) = project {
+                    flights
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(&id);
+                }
+            };
+        let flights = self.project_preflights.clone();
         match finished {
             Some(joined) => {
-                release(&self.project_preflights);
+                if groups.all_reaped() {
+                    release(flights, groups).await;
+                } else {
+                    tokio::spawn(release(flights, groups));
+                }
                 Preflight::Done(joined.unwrap_or_else(|e| Err(anyhow::anyhow!(e))))
             }
             None => {
                 // Kill every owned group; the blocking task reaps its own
                 // child and only then joins, so the in-flight entry clears
-                // after the reap and after the child's pipes closed.
+                // after the reap, after the child's pipes closed and after
+                // its group is gone.
                 groups.cancel_and_await_reap().await;
-                let flights = self.project_preflights.clone();
                 tokio::spawn(async move {
                     let _ = handle.await;
-                    release(&flights);
+                    release(flights, groups).await;
                 });
                 Preflight::Unavailable
             }
@@ -195,6 +229,8 @@ impl Runtime {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .put_project_checked(project, |tx, current| {
+                #[cfg(test)]
+                commit_pause(planned.id);
                 let owner: (String, u64) = tx.query_row(
                     "SELECT instance_id,epoch FROM runtime_epoch WHERE singleton=1",
                     [],
@@ -516,5 +552,180 @@ impl Runtime {
             project,
         };
         Ok(ProjectStatusView::from(&status))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{config::Config, execution::RuntimeOwner};
+    use std::time::Instant;
+
+    fn runtime(dir: &std::path::Path) -> Runtime {
+        let owner = RuntimeOwner::open(&dir.join("state.db")).unwrap();
+        Runtime::new(owner, Config::default()).unwrap()
+    }
+
+    /// C-S3d4 (Sol 6080740320 L1): the Runtime's own cut-off answers only
+    /// after the killed child is reaped. The reap is delayed by 500 ms and
+    /// the cut-off comes from `stopping`. Mutant: the cut-off only cancels
+    /// (no reap wait) → the child is still a zombie at the answer → FAIL.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn runtime_cut_off_answers_only_after_the_reap() {
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = runtime(dir.path());
+        let pidfile = dir.path().join("pid");
+        let script = format!("echo $$ > '{}'; sleep 30", pidfile.display());
+        let work = move || {
+            crate::git::set_reap_delay(Duration::from_millis(500));
+            let mut child = std::process::Command::new("sh");
+            child.args(["-c", &script]);
+            crate::git::run_owned(child).map(drop)
+        };
+        let (stopping, watched) = (runtime.stopping.clone(), pidfile.clone());
+        tokio::spawn(async move {
+            while !watched.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            stopping.store(true, Ordering::SeqCst);
+        });
+        let answer = runtime.project_preflight(None, work).await;
+        assert!(matches!(answer, Preflight::Unavailable));
+        let pid: i32 = std::fs::read_to_string(&pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert_eq!(
+            rustix::process::test_kill_process(rustix::process::Pid::from_raw(pid).unwrap()),
+            Err(rustix::io::Errno::SRCH),
+            "answered before the reap"
+        );
+    }
+
+    /// M3 (Sol 6080740320): a preflight whose Git group was not seen empty
+    /// finishes, but its Project stays in flight until the group is gone.
+    /// The lingering member is this test's own child joined to the group and
+    /// left an unreaped zombie. Mutant: release without the group check →
+    /// FAIL.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn lingering_group_keeps_the_project_in_flight() {
+        use std::os::unix::process::CommandExt;
+        let dir = tempfile::tempdir().unwrap();
+        let runtime = runtime(dir.path());
+        let (pidfile, go) = (dir.path().join("pid"), dir.path().join("go"));
+        let script = format!(
+            "echo $$ > '{}'; while [ ! -e '{}' ]; do sleep 0.01; done",
+            pidfile.display(),
+            go.display()
+        );
+        let work = move || {
+            let mut child = std::process::Command::new("sh");
+            child.args(["-c", &script]);
+            crate::git::run_owned(child).map(drop)
+        };
+        let id = ProjectId::new();
+        let joiner = {
+            let (pidfile, go) = (pidfile.clone(), go.clone());
+            tokio::task::spawn_blocking(move || {
+                while !pidfile.exists() {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                let leader: i32 = std::fs::read_to_string(&pidfile)
+                    .unwrap()
+                    .trim()
+                    .parse()
+                    .unwrap();
+                let member = std::process::Command::new("sleep")
+                    .arg("30")
+                    .process_group(leader)
+                    .spawn()
+                    .unwrap();
+                std::fs::write(&go, "").unwrap();
+                member
+            })
+        };
+        let answer = runtime.project_preflight(Some(id), work).await;
+        assert!(matches!(answer, Preflight::Done(Err(_))));
+        let held = runtime.project_preflights.lock().unwrap().contains(&id);
+        assert!(held, "a lingering group released its Project");
+        let mut member = joiner.await.unwrap();
+        tokio::task::spawn_blocking(move || member.wait().unwrap())
+            .await
+            .unwrap();
+        let started = Instant::now();
+        while runtime.project_preflights.lock().unwrap().contains(&id) {
+            assert!(started.elapsed() < Duration::from_secs(5), "never released");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    /// M1 (Sol 6079932858, 6080740320 causal control): while a commit is
+    /// between its in-flight check and its write, no preflight can register
+    /// for that Project. The commit is paused inside its transaction check.
+    /// Mutant: read the in-flight set and release it before the transaction
+    /// → the registration succeeds during the pause → FAIL.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn m1_no_preflight_registers_between_check_and_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        for args in [
+            &["init", "-b", "main"][..],
+            &[
+                "-c",
+                "user.name=F",
+                "-c",
+                "user.email=f@example.invalid",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "f",
+            ][..],
+        ] {
+            assert!(
+                std::process::Command::new("git")
+                    .current_dir(&repo)
+                    .args(args)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        let runtime = Arc::new(runtime(dir.path()));
+        let (planned, _) = plan_add(
+            &[],
+            &repo,
+            crate::project::AddProject::default(),
+            &Config::default(),
+        )
+        .unwrap();
+        let mut project = planned;
+        runtime.commit_project(&mut project, None).await.unwrap();
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        *COMMIT_PAUSE.lock().unwrap() = Some((project.id, barrier.clone()));
+        let committing = {
+            let (runtime, mut renamed) = (runtime.clone(), project.clone());
+            renamed.name = "renamed".into();
+            let expected = project.version;
+            tokio::spawn(async move { runtime.commit_project(&mut renamed, Some(expected)).await })
+        };
+        let wait = barrier.clone();
+        tokio::task::spawn_blocking(move || wait.wait())
+            .await
+            .unwrap();
+        let started = Instant::now();
+        let registered = runtime.project_preflights.try_lock().is_ok();
+        assert!(
+            !registered,
+            "a preflight could register inside the commit window"
+        );
+        let resume = barrier.clone();
+        tokio::task::spawn_blocking(move || resume.wait())
+            .await
+            .unwrap();
+        committing.await.unwrap().unwrap();
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(runtime.project_preflights.try_lock().is_ok());
     }
 }
