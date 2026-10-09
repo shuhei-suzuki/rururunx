@@ -211,14 +211,14 @@ fn c_s1c_status_table_cells_and_no_effect() {
     let epoch = f.epoch_row();
     assert!(epoch.is_some());
     // stale descriptor + free
-    let stale = f.stale(2, &f.state);
+    let stale = f.stale(3, &f.state);
     f.write_descriptor(&stale);
     let (output, status) = f.daemon("status");
     assert_eq!(status["status"], "discovery_unavailable", "{status}");
     assert_eq!(output.status.code(), Some(4));
     assert_eq!(std::fs::read(f.descriptor()).unwrap(), stale);
     // mismatch + busy
-    let foreign = f.stale(2, &f.base.join("foreign.db"));
+    let foreign = f.stale(3, &f.base.join("foreign.db"));
     f.write_descriptor(&foreign);
     {
         let _lock = f.hold_owner_lock();
@@ -317,22 +317,31 @@ fn c_s1c2_concurrent_status_never_corrupts_start() {
     }
 }
 
-/// C-S1e2 through `daemon start`: a same-state protocol-1 descriptor and a
-/// crashed protocol-2 leftover are replaced by a protocol-2 service; foreign
+/// C-S1e2 through `daemon start`: same-state protocol-1 and protocol-2
+/// descriptors and a crashed protocol-3 leftover are replaced by a protocol-3
+/// service; foreign
 /// and malformed descriptors are refused, typed, and nothing is published.
 #[test]
 fn c_s1e2_daemon_start_replaces_known_leftovers_only() {
     let f = Fixture::new();
     f.start_running();
     f.stop_and_wait();
-    // A valid protocol-1 descriptor for the same state, lock free.
-    f.write_descriptor(&f.stale(1, &f.state));
-    let identity = f.start_running();
-    assert_eq!(identity["protocol"], 2);
-    let published: Value = serde_json::from_slice(&std::fs::read(f.descriptor()).unwrap()).unwrap();
-    assert_eq!(published["protocol"], 2);
-    assert_eq!(published["identity"]["epoch"], identity["epoch"]);
-    // A crash leaves the protocol-2 descriptor behind.
+    // Valid protocol-1 and protocol-2 descriptors for the same state, lock
+    // free, are each replaced.
+    let mut identity = Value::Null;
+    for protocol in [1, 2] {
+        f.write_descriptor(&f.stale(protocol, &f.state));
+        identity = f.start_running();
+        assert_eq!(identity["protocol"], 3);
+        let published: Value =
+            serde_json::from_slice(&std::fs::read(f.descriptor()).unwrap()).unwrap();
+        assert_eq!(published["protocol"], 3);
+        assert_eq!(published["identity"]["epoch"], identity["epoch"]);
+        if protocol == 1 {
+            f.stop_and_wait();
+        }
+    }
+    // A crash leaves the protocol-3 descriptor behind.
     let pid = f.service_pid();
     assert!(
         Command::new("kill")
@@ -358,8 +367,8 @@ fn c_s1e2_daemon_start_replaces_known_leftovers_only() {
     f.stop_and_wait();
     // Foreign state and malformed descriptors are refused.
     for bytes in [
-        f.stale(2, &f.base.join("foreign.db")),
-        br#"{"protocol":2}"#.to_vec(),
+        f.stale(3, &f.base.join("foreign.db")),
+        br#"{"protocol":3}"#.to_vec(),
     ] {
         f.write_descriptor(&bytes);
         let started = f.start();

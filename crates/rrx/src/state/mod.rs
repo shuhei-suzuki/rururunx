@@ -46,6 +46,16 @@ pub(crate) use execution::native_phase::{
 pub(crate) use execution::native_phase::{NativeLiveQuotaPlan, replan_shared_quota};
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
+/// True when `error` is a lost snapshot CAS (`StateGuardError::SnapshotChanged`).
+pub(crate) fn snapshot_changed(error: &anyhow::Error) -> bool {
+    error.chain().any(|e| {
+        matches!(
+            e.downcast_ref::<StateGuardError>(),
+            Some(StateGuardError::SnapshotChanged { .. })
+        )
+    })
+}
+
 /// Typed transactional guards let callers distinguish contention from storage failure.
 #[derive(Debug)]
 pub enum StateGuardError {
@@ -335,6 +345,17 @@ impl Store {
     }
 
     pub fn put_project(&mut self, project: &mut Project) -> Result<()> {
+        self.put_project_checked(project, |_, _| Ok(()))
+    }
+
+    /// `put_project` with extra currency checks inside the same Immediate
+    /// transaction, before the write (S3 D6). `check` sees the current row,
+    /// if any; every existing check, CAS and audit is unchanged.
+    pub(crate) fn put_project_checked(
+        &mut self,
+        project: &mut Project,
+        check: impl FnOnce(&Transaction<'_>, Option<&Project>) -> Result<()>,
+    ) -> Result<()> {
         ensure!(
             !project.name.trim().is_empty() && !project.base_branch.trim().is_empty(),
             "project name/base branch must be nonempty"
@@ -352,6 +373,10 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        check(
+            &tx,
+            read_tx::<Project>(&tx, "projects", &project.id.to_string())?.as_ref(),
+        )?;
         if project.state == ProjectState::Removed {
             ensure_project_idle(&tx, project.id)?;
         }

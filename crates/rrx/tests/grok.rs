@@ -1055,3 +1055,119 @@ async fn parent_replacement_after_native_preflight_never_reaches_prompt_wire() {
     assert_eq!(other.task(task.id).unwrap().unwrap().title, task.title);
     receipt_support::assert_receipt(&fixture.observation(&status).receipt);
 }
+
+/// #81 S3 C-S3a projection (M1): a real Session written by the Grok producer
+/// with `native_ref` and `pid` set. Offline and through the API, every
+/// session object in `project status --json` has exactly the `SessionView`
+/// keys and no `native_ref` or `pid`; the plain-text lines are unchanged.
+#[tokio::test]
+async fn c_s3a_project_status_projects_sessions_without_native_ref_or_pid() {
+    let mut fixture = Fixture::new();
+    fixture.mode("hang");
+    let adapter = fixture.adapter();
+    let session = fixture.start(&adapter).await.unwrap();
+    let mut watch = adapter.subscribe((&session).into()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while watch.borrow().session.state != SessionState::Running {
+            watch.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    let stored = fixture
+        .store
+        .lock()
+        .unwrap()
+        .session(session.id)
+        .unwrap()
+        .unwrap()
+        .0;
+    let native = stored.native_ref.clone().expect("SETUP: native_ref unset");
+    assert!(stored.pid.is_some(), "SETUP: pid unset");
+    let state = fixture.directory.path().join("state.db");
+    let config = fixture.directory.path().join("config.toml");
+    std::fs::write(
+        &config,
+        "[agents.worker]\nprovider='claude'\ncommand=['/usr/bin/false']\n",
+    )
+    .unwrap();
+    let project = fixture.request.project.id.to_string();
+    let rrx = |args: Vec<String>| {
+        let (state, config) = (state.clone(), config.clone());
+        async move {
+            tokio::process::Command::new(env!("CARGO_BIN_EXE_rrx"))
+                .arg("--state")
+                .arg(&state)
+                .arg("--config")
+                .arg(&config)
+                .args(args)
+                .output()
+                .await
+                .unwrap()
+        }
+    };
+    let allow: std::collections::BTreeSet<&str> = [
+        "id",
+        "task",
+        "agent",
+        "provider",
+        "role",
+        "state",
+        "started_at",
+    ]
+    .into();
+    let check = |route: &str, json: &[u8], text: &[u8]| {
+        let json = String::from_utf8_lossy(json);
+        let value: Value =
+            serde_json::from_str(&json).unwrap_or_else(|_| panic!("{route}: {json}"));
+        let sessions = value["sessions"].as_array().unwrap();
+        assert_eq!(sessions.len(), 1, "{route}");
+        for object in sessions {
+            let keys: std::collections::BTreeSet<&str> = object
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect();
+            assert_eq!(keys, allow, "{route}");
+        }
+        for leak in [native.as_str(), "native_ref", "\"pid\""] {
+            assert!(!json.contains(leak), "{route} leaked {leak}");
+        }
+        let text = String::from_utf8_lossy(text);
+        let first = text.lines().next().unwrap();
+        assert!(
+            first.starts_with(&format!("{project}\t")),
+            "{route}: {text}"
+        );
+        assert!(text.contains("\nRoot: "), "{route}: {text}");
+        assert!(text.contains("; sessions: 1\n"), "{route}: {text}");
+        assert!(!text.contains(&native), "{route}");
+    };
+    let status = |json: bool| {
+        let mut args = vec!["project".to_owned(), "status".to_owned(), project.clone()];
+        if json {
+            args.push("--json".into());
+        }
+        args
+    };
+    let (json, text) = (rrx(status(true)).await, rrx(status(false)).await);
+    assert!(
+        json.status.success(),
+        "{}",
+        String::from_utf8_lossy(&json.stderr)
+    );
+    check("offline", &json.stdout, &text.stdout);
+    let started = rrx(vec!["daemon".into(), "start".into(), "--json".into()]).await;
+    let started: Value = serde_json::from_slice(&started.stdout).unwrap();
+    assert_eq!(started["start"], "running", "{started}");
+    let (json, text) = (rrx(status(true)).await, rrx(status(false)).await);
+    let _ = rrx(vec!["daemon".into(), "stop".into(), "--json".into()]).await;
+    assert!(
+        json.status.success(),
+        "{}",
+        String::from_utf8_lossy(&json.stderr)
+    );
+    check("api", &json.stdout, &text.stdout);
+    let _ = adapter.stop((&session).into()).await;
+}

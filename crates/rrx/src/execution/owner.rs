@@ -165,66 +165,115 @@ impl Drop for HelperGuard {
     }
 }
 
+/// The state root and its exclusive owner lock, taken with every check
+/// `RuntimeOwner::open` makes. Shared by the Runtime owner and the offline
+/// `OwnerLock::exclusive` (S3 D7), so both refuse the same aliases.
+struct LockedStateRoot {
+    path: std::path::PathBuf,
+    root: std::path::PathBuf,
+    lock: std::fs::File,
+    database_file: std::fs::File,
+}
+fn lock_state_root(state: &Path) -> Result<LockedStateRoot> {
+    let path = if state.is_absolute() {
+        state.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(state)
+    };
+    let parent = path.parent().context("state needs parent")?;
+    std::fs::create_dir_all(parent)?;
+    // SQLite's own locking must not be shadowed by a flock on its DB inode.
+    // Canonicalize symlinks and refuse unsupported hardlink aliases instead.
+    let database_file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(&path)?;
+    ensure!(
+        database_file.metadata()?.nlink() == 1,
+        "hardlinked state databases are unsupported"
+    );
+    ensure!(
+        rustix::io::fcntl_getfd(&database_file)?.contains(rustix::io::FdFlags::CLOEXEC),
+        "database descriptor must be close-on-exec"
+    );
+    let path = path.canonicalize()?;
+    let parent = path.parent().context("canonical state needs parent")?;
+    let root = parent.join(format!(
+        "{}.execution",
+        path.file_name()
+            .context("state needs file name")?
+            .to_string_lossy()
+    ));
+    std::fs::create_dir_all(&root)?;
+    let root = root.canonicalize()?;
+    let lock_path = root.join("owner.lock");
+    ensure!(
+        !std::fs::symlink_metadata(&lock_path).is_ok_and(|m| m.file_type().is_symlink()),
+        "owner lock cannot be a symlink"
+    );
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
+        .open(&lock_path)?;
+    rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)
+        .context("another Runtime owns this state root")?;
+    // Rust File::open uses close-on-exec; verify rather than inheriting authority into a CLI.
+    ensure!(
+        rustix::io::fcntl_getfd(&lock)?.contains(rustix::io::FdFlags::CLOEXEC),
+        "owner lock must be close-on-exec"
+    );
+    ensure!(
+        database_file.metadata()?.nlink() == 1,
+        "state database alias changed"
+    );
+    Ok(LockedStateRoot {
+        path,
+        root,
+        lock,
+        database_file,
+    })
+}
+
+/// S3 D7 (R3.5): the offline writer's hold on a state root. It takes the
+/// Runtime owner's exclusive lock and nothing else: no epoch, no Runtime and
+/// no Task or Session authority. Held from before `Store::open` until after
+/// the last offline write, so a daemon starting meanwhile is `owner busy`.
+pub struct OwnerLock {
+    path: std::path::PathBuf,
+    _lock: std::fs::File,
+    _database_file: std::fs::File,
+}
+impl OwnerLock {
+    /// `WOULDBLOCK` in the error chain means another owner holds the root.
+    pub fn exclusive(state: &Path) -> Result<Self> {
+        let locked = lock_state_root(state)?;
+        Ok(Self {
+            path: locked.path,
+            _lock: locked.lock,
+            _database_file: locked.database_file,
+        })
+    }
+    /// The canonical state database path this lock covers.
+    pub fn state_path(&self) -> &Path {
+        &self.path
+    }
+}
+
 impl RuntimeOwner {
     pub fn open(state: &Path) -> Result<Arc<Self>> {
-        let path = if state.is_absolute() {
-            state.to_path_buf()
-        } else {
-            std::env::current_dir()?.join(state)
-        };
-        let parent = path.parent().context("state needs parent")?;
-        std::fs::create_dir_all(parent)?;
-        // SQLite's own locking must not be shadowed by a flock on its DB inode.
-        // Canonicalize symlinks and refuse unsupported hardlink aliases instead.
-        let database_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .open(&path)?;
-        ensure!(
-            database_file.metadata()?.nlink() == 1,
-            "hardlinked state databases are unsupported"
-        );
-        ensure!(
-            rustix::io::fcntl_getfd(&database_file)?.contains(rustix::io::FdFlags::CLOEXEC),
-            "database descriptor must be close-on-exec"
-        );
-        let path = path.canonicalize()?;
-        let parent = path.parent().context("canonical state needs parent")?;
-        let root = parent.join(format!(
-            "{}.execution",
-            path.file_name()
-                .context("state needs file name")?
-                .to_string_lossy()
-        ));
-        std::fs::create_dir_all(&root)?;
-        let root = root.canonicalize()?;
-        let lock_path = root.join("owner.lock");
-        ensure!(
-            !std::fs::symlink_metadata(&lock_path).is_ok_and(|m| m.file_type().is_symlink()),
-            "owner lock cannot be a symlink"
-        );
-        let lock = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
-            .open(&lock_path)?;
-        rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)
-            .context("another Runtime owns this state root")?;
-        // Rust File::open uses close-on-exec; verify rather than inheriting authority into a CLI.
-        ensure!(
-            rustix::io::fcntl_getfd(&lock)?.contains(rustix::io::FdFlags::CLOEXEC),
-            "owner lock must be close-on-exec"
-        );
-        ensure!(
-            database_file.metadata()?.nlink() == 1,
-            "state database alias changed"
-        );
+        let LockedStateRoot {
+            path,
+            root,
+            lock,
+            database_file,
+        } = lock_state_root(state)?;
         let mut store = Store::open(&path)?;
         let (instance, epoch) = store.begin_execution_epoch()?;
         let ipc = tempfile::Builder::new().prefix("rrx-").tempdir_in("/tmp")?;
