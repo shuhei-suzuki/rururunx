@@ -716,15 +716,16 @@ mod tests {
             .unwrap();
         let started = Instant::now();
         let registered = runtime.project_preflights.try_lock().is_ok();
-        assert!(
-            !registered,
-            "a preflight could register inside the commit window"
-        );
+        // Resume first, so a failing assertion never leaves the commit paused.
         let resume = barrier.clone();
         tokio::task::spawn_blocking(move || resume.wait())
             .await
             .unwrap();
         committing.await.unwrap().unwrap();
+        assert!(
+            !registered,
+            "a preflight could register inside the commit window"
+        );
         assert!(started.elapsed() < Duration::from_secs(5));
         assert!(runtime.project_preflights.try_lock().is_ok());
     }
