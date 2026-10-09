@@ -432,6 +432,7 @@ Branch `claude/adoring-archimedes-7eehnw`, on top of PR #84 (`93eeb60`). Paths a
 | D8 reconcile | `reconcile_one` marks `checked`, `skipped_in_flight`, `unavailable` or `not_registered`. Status reconciles its own Project only and answers `ProjectPreflightUnavailable` when its own check did not finish. List runs a bounded `git --version` first (a missing Git refuses the whole list), then every row concurrently. The CLI fails the list, typed, if any row is `unavailable`. A Blocked write that loses its CAS is skipped and the row re-read (Q2) |
 | D9 scope | No Goal, Task or native change |
 | Review fixes (Sol 6079932858) | **M1:** `commit_project` keeps the in-flight set locked from its check until the write commits (lock order: in-flight set, then Store), so no preflight registers between them. **M2:** `ReconcileMark::Changed` — a row whose version differs from the version its mark was about (or that appeared after the check) is reported without claiming the check. **M3:** when a preflight Git leader exits, its group is SIGKILLed while the leader is still a zombie (the pid still names the group), and the child counts as reaped only once `kill(-pgid, 0)` reports the group empty (bounded 2 s). **M4:** `project::public_reason` keeps a failed Git command and "failed" but drops its captured stderr (the chain's tail), bounded at 2048 bytes; it applies to `ProjectRefused`, to every Project in an API response and in `ProjectStatusView` (stored text included), and to new Blocked reasons before they are stored. **L1:** the cut-off wait is `PreflightGroups::cancel_and_await_reap` |
+| Review fixes round 2 (Sol 6080527668, 6080740320) | **M4:** `public_reason` returns one of a finite set — the first `: `-separated segment that is an allowlisted fixed message, or the fixed part of an allowlisted formatted one (Git failure, missing reference, invalid project config, …), else `Project check failed`; no part of the input is copied. Offline `list`/`add` project stored reasons the same way. **M3:** a group not seen empty within the bound stays owned as *lingering*: the Git call fails, `all_reaped` stays false, and the Project's in-flight entry is released only once `kill(-pgid, 0)` reports every group gone. **L1/M1:** runtime-level causal controls. **N1:** liveness by `kill(pid, 0)` |
 | D10 lookup | `ProjectLookupRoot`: exact root over all rows, Removed included. `None` → `ProjectRegister`, which refuses a planned row with a nonzero version as `ProjectCurrencyChanged`; `Some` → `ProjectUpdate` with that id and version |
 
 ### Controls
@@ -456,6 +457,7 @@ All in `tests/project_api.rs` unless noted. Rows are registered by the public CL
 | M2 | `m2_a_row_changed_after_its_check_is_not_reported_checked`: B checked while A holds the List, then B updated before the List returns | pass. B at its new version is `changed`; A `checked` |
 | M3 | `src/git.rs` `a_member_left_in_the_group_dies_with_its_leader`: the leader exits 0, leaving `sleep 30` in its group with no pipe | pass. The member is gone (or a zombie) when `run` returns; nothing stays registered |
 | M4 | `m4_git_stderr_never_reaches_api_projections_or_stored_reasons` (the wrapper fails with `fatal: SECRET-TOKEN-81`); `src/git.rs` `public_reason_drops_git_stderr` | pass. `ProjectRefused`, the CLI's error, the status facts' Blocked reason, every List row, status/list `--json` and the stored row carry "… failed" and never the stderr |
+| Round 2 | `src/git.rs` `public_reason_is_finite_and_copies_no_input` (Git stderr, a sentinel path, a TOML parser message, an unknown error); `m4_…` extended with non-Git sentinels (a missing rule reference and an unparsable `project.toml` in `ProjectRefused` and the CLI error; a Blocked reason from a removed reference in status facts and the stored row); `a_group_not_seen_empty_stays_owned_and_fails_the_call` (the test's own child joined to the group, left a zombie); `runtime/project_control.rs` `lingering_group_keeps_the_project_in_flight`, `runtime_cut_off_answers_only_after_the_reap` (500 ms delayed reap under a `stopping` cut-off), `m1_no_preflight_registers_between_check_and_commit` (a commit paused inside its transaction check; `try_lock` on the in-flight set must fail) | pass |
 | L1 | `src/git.rs` `cut_off_returns_only_after_a_slow_reap` (a `cfg(test)` thread-local delays the reap by 500 ms; it changes no authority, ownership or outcome) | pass |
 
 ### Mutants (each restored; tree clean)
@@ -478,16 +480,23 @@ An unmutated baseline of `project_api` passed in the same harness first.
 | M2: keep the snapshot mark for a changed row | `m2_…` FAIL (`checked` instead of `changed`) |
 | M3: no group kill when the leader exits | `a_member_left_in_the_group_dies_with_its_leader` FAIL |
 | M4: public reason is the raw text | `m4_…` FAIL |
-| M1 (not mutated) | No deterministic control. The window was between reading the in-flight set and taking the Store lock; the fix removes it structurally by holding the set's lock across the transaction |
+| M1: release the in-flight set before the transaction | `m1_no_preflight_registers_between_check_and_commit` FAIL (round 2; round 1 had no causal control) |
+| M4: copy the input text | `m4_…` FAIL |
+| M3: treat the bound as an empty group | `a_group_not_seen_empty_stays_owned_and_fails_the_call` FAIL |
+| M3: release the entry without the group check | `lingering_group_keeps_the_project_in_flight` FAIL (it first survived: the control looked only at the answer, before the detached release ran; it now checks 300 ms later) |
+| L1: the Runtime's cut-off only cancels | `runtime_cut_off_answers_only_after_the_reap` FAIL |
 
 ### Source review
 
 | Round | Result |
 | --- | --- |
 | 6079535783 → Sol 6079932858 | REQUEST CHANGES, required 0/0/4/1 (M1 in-flight/commit synchronization, M2 a stale check marked on the latest row, M3 the owned group not kept past its leader, M4 no non-secret projection of `ProjectRefused`/Blocked reasons, L1 the reap-wait mutant not identified). The detail stayed in Sol's private artifact; the fixes follow the titles as confirmed against the source |
+| `9970319`, `756698a` → 6080527668, Sol 6080740320 | REQUEST CHANGES 0/0/2/2: M1, M2 closed in source (M1 lacked a causal control); M3 partially fixed (a group unconfirmed within the bound was counted as completed); M4 partially fixed (non-Git errors, paths and parser text reached the API verbatim; offline output not projected); L1 partially fixed (the Runtime's own wait was not distinguished); N1 the M3 control read an unobservable process as dead (`/proc` on macOS) |
 
 ### Verification
 
 Non-root (fmtest, umask 022, subreaper), all 20 test binaries (the new `project_api` included), with no build alongside: rrx lib 742 passed, 0 failed (20 ignored, unchanged); `project_api` 12/12; `grok` 16 passed (2 ignored, unchanged); `adapter` 19/19; every other binary passed. `cargo clippy --workspace --all-targets` is clean with no `allow` added, and `cargo fmt --check` is clean. A first mutant pass was discarded: its harness misparsed the test binary path, so every row, the baseline included, read as failed. The table above is from the corrected harness, whose unmutated baseline passed.
 
 Review-fix run (`9970319`, non-root, no build alongside): all 20 binaries passed — rrx lib 745 passed, 0 failed (20 ignored, unchanged); `project_api` 14/14; `adapter` 19/19. clippy (no `allow` added) and fmt are clean.
+
+Review-fix round 2 (`9eccde9`, non-root, no build alongside): all 20 binaries passed — rrx lib 749 passed, 0 failed (20 ignored, unchanged); `project_api` 14/14; `adapter` 19/19. clippy (no `allow` added) and fmt are clean.
