@@ -342,9 +342,10 @@ Branch `claude/adoring-archimedes-7eehnw`, on top of PR #83's merge (`9aed3bf`).
 | --- | --- | --- |
 | C-S2a | `runtime/installation/tests/project_limit.rs` `c_s2a_candidate_never_lists_second_task_while_first_is_occupied` | pass |
 | C-S2a, retained Driver alone | `c_s2a_retained_driver_alone_keeps_second_task_out`: A's Source preparation fails (the root is not a Git repository), its Unit is retired and its Driver retained; occupancy `(driver, unit, operation) = (1, 0, 0)` | pass. B never listed or claimed |
+| C-S2a, Unit alone | `runtime/tests.rs` `c_s2a_legacy_unit_alone_keeps_same_project_accepted_task_out`: a migrated legacy Task's Unit is reserved by the production `AttemptManager::prepare`, with no Driver and no operation; occupancy `(0, 1, 0)`. On the same owner and epoch an accepted Task B of the same Project and C of another Project are created through control ingress | pass. B is not a candidate; C is |
 | C-S2a, held operation alone | `c_s2a_held_phase_operation_alone_keeps_second_task_out`: A parked before transport; A's Goal paused through the lifecycle writer (Unit retired, Driver invalidated); the non-success consumer keeps the plan Held; occupancy `(0, 0, 1)` | pass. B (same Project, another Goal) never listed across reconciliations; a Task of another Project is admitted beside it |
 | C-S2a2 | `c_s2a2_final_claim_refuses_second_task_typed`: B's key read through the production reader, A claims, B evaluated under the normal admission guard | pass. `DriverCapacityUnavailable { Project }`, no Driver row or claim audit for B |
-| C-S2a3 | `c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten`: 70 legacy-limit Tasks in a Project that sorts before the supported one (more than the eligible `LIMIT 65`) | pass. The supported Task is the only key on the first page and is claimed; stored rows unchanged |
+| C-S2a3 | `c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten`: 70 legacy-limit Tasks in a Project that sorts before the supported one (more than the eligible `LIMIT 65`). Two registered Projects are assigned by observed ID order, so the setup never depends on a random search (Sol 6072320376 L2) | pass. The supported Task is the only key on the first page and is claimed; stored rows unchanged |
 | D3 guard | `d3_plan_guard_refuses_stored_legacy_limit_without_writes` | pass |
 | D4 | `d4_status_reports_stored_legacy_limit_read_only_until_repair` | pass. Accepted Goal and proposal both report. Around every read, the `projects`, `goals`, `tasks`, `records`, `scheduler_*`, `task_drivers`, `execution_units` and `audit` rows are unchanged. The answer is the same after the production `reconcile_runtime_attention` runs to its end, before and after start; gone after repair |
 | C-S2b | `success.rs` `sc10_four_projects_close_independently`; `activation/composition.rs` `ca2_four_tasks_two_projects_retain_own_scope_and_roster` (four Projects) | pass |
@@ -366,17 +367,18 @@ Branch `claude/adoring-archimedes-7eehnw`, on top of PR #83's merge (`9aed3bf`).
 | Candidate phase-operation branch dropped | `c_s2a_held_phase_operation_alone_keeps_second_task_out` FAIL |
 | Legacy exclusion moved after the eligible `LIMIT` | C-S2a3 FAIL |
 | Status read stores an attention row | D4 FAIL ("status read changed state") |
-| Candidate Unit branch dropped | **survives**: no reachable state of an accepted Task has an open Unit without a driving Driver. `AttemptManager::prepare` refuses an accepted Task without its managed Driver; the Goal lifecycle writer retires the Units in the same transaction that invalidates the Driver (`goals.rs` `fence_task_tx` then `invalidate_tx`); a failed Source preparation retires the Unit and keeps the Driver |
+| Candidate Unit branch dropped | `c_s2a_legacy_unit_alone_keeps_same_project_accepted_task_out` FAIL at the candidate assertion (Sol 6072320376 L1: the legacy `AttemptManager` path leaves a Unit open on its own) |
 
 ### Source review
 
 | Round | Result |
 | --- | --- |
 | 6071357590 → Sol 6071558338 | REQUEST CHANGES, required 0/0/1/3. M1: a CLI `--max-tasks 0` passed the early check and was refused only after `Store::open`. L1–L3: missing single-occupancy, pre-`LIMIT` and read-only controls |
-| `cafc547` | M1 fixed; L1–L3 controls and mutants above |
+| `cafc547` → Sol 6072320376 | M1, L1 (Driver and operation alone), L2 (original), L3 closed. REQUEST CHANGES 0/0/0/2: L1 Unit alone through the legacy path; L2 setup relied on a bounded random search |
+| `90e6a0d` | Unit-alone control and deterministic C-S2a3 above |
 
 ### Verification
 
 Non-root (fmtest, umask 022, subreaper), all 19 test binaries: rrx lib 738 passed, 0 failed (20 ignored, unchanged from before S2); every integration binary passed. `cargo clippy --workspace --all-targets` and `cargo fmt --check` are clean. An earlier run was discarded: the test binary was rebuilt while it ran, and `execution/resources.rs` re-executes `current_exe()`, so the installation tests failed on the replaced executable. The clean re-run above had no build alongside it.
 
-Review-fix run (`cafc547`, non-root, no build alongside): rrx lib 740 passed, 0 failed (20 ignored). Every integration binary passed except `adapter` 18/19: `runtime_shutdown_terminates_native_group_and_preserves_uncertain_reservation` failed once with "fixture descendant still running: R". The S2 diff touches no adapter or process code, and the failure did not reproduce in 40 single runs or 10 whole-binary runs. `OwnedProcess::drop` (`execution/process.rs:283`) signals the group without waiting, and `assert_process_dead` (`tests/adapter.rs:564`) samples `ps` once, so a SIGKILLed descendant can still read `R` while it exits. This is recorded as an open observation, not as a flake. The proposed fix, a bounded wait for the process to be gone or a zombie before asserting, is outside S2.
+Review-fix run (`cafc547`, non-root, no build alongside): rrx lib 740 passed, 0 failed (20 ignored). Every integration binary passed except `adapter` 18/19: `runtime_shutdown_terminates_native_group_and_preserves_uncertain_reservation` failed once with "fixture descendant still running: R". The S2 diff touches no adapter or process code, and the failure did not reproduce in 40 single runs or 10 whole-binary runs. The failing path is the `GenericCliAdapter`'s `ProcessGroup::drop` (`adapter.rs:604`, corrected by Sol 6072320376), which signals the group without waiting, and `assert_process_dead` (`tests/adapter.rs:564`) samples `ps` once, so a SIGKILLed descendant can still read `R` while it exits. This is recorded as an open observation, not as a flake. The proposed fix, a bounded wait for the process to be gone or a zombie before asserting, is outside S2.
