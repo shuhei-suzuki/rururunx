@@ -328,7 +328,7 @@ Branch `claude/adoring-archimedes-7eehnw`, on top of PR #83's merge (`9aed3bf`).
 | Delta | Implementation |
 | --- | --- |
 | D1 | `src/config.rs`: `MVP_PROJECT_TASKS`, `LimitOrigin`, `ProjectTaskLimitRefused`, `ensure_mvp_project_tasks` (Ok for 0, which then keeps the positive-limit refusal, and for 1). `apply_project` checks the overlay before any field is mutated; `validate` checks the runtime value; the default is MVP |
-| D2 | `src/main.rs` refuses `project add --max-tasks N≠1` (`CliFlag`) before `Config::load` and `Store::open`; `src/project.rs` `add()` checks first. `Project::new` stores MVP |
+| D2 | `src/main.rs` refuses `project add --max-tasks N≠1`, 0 included (`CliFlag`), before `Config::load` and `Store::open`; `src/project.rs` `add()` checks first. `ensure_mvp_project_tasks` exempts 0 only for `RuntimeConfig` and `ProjectOverlay`, which keep the positive-limit refusal (Sol 6071558338 M1). `Project::new` stores MVP |
 | D3 | `state/runtime/driver/candidates.rs`: the fixed query joins `projects` on `json_extract(body,'$.max_tasks')=?11` (bound to MVP) before the eligible `LIMIT`. `claim.rs` `plan_initial_driver` re-reads the Project in its snapshot and refuses with `ProjectLimitUnsupported { stored }`; `task_driver.rs` maps it to `SkipReason::ProjectLimitUnsupported` |
 | D4 | `runtime/control.rs`: `UnavailableReason::ProjectLimitUnsupported` and the optional `project_limit_stored` on `GoalFacts` and `GoalProposalFacts`, read by `project_limit_stored` (`state/runtime/goals.rs`, `proposals.rs`). `cli/goal_facts.rs` prints the reason, the stored value and the `--max-tasks 1` repair |
 | D5 | `claim.rs`: typed `DriverCapacityUnavailable { scope: Global \| Project }`; the Project bound is MVP |
@@ -341,13 +341,15 @@ Branch `claude/adoring-archimedes-7eehnw`, on top of PR #83's merge (`9aed3bf`).
 | Control | Test | Result |
 | --- | --- | --- |
 | C-S2a | `runtime/installation/tests/project_limit.rs` `c_s2a_candidate_never_lists_second_task_while_first_is_occupied` | pass |
+| C-S2a, retained Driver alone | `c_s2a_retained_driver_alone_keeps_second_task_out`: A's Source preparation fails (the root is not a Git repository), its Unit is retired and its Driver retained; occupancy `(driver, unit, operation) = (1, 0, 0)` | pass. B never listed or claimed |
+| C-S2a, held operation alone | `c_s2a_held_phase_operation_alone_keeps_second_task_out`: A parked before transport; A's Goal paused through the lifecycle writer (Unit retired, Driver invalidated); the non-success consumer keeps the plan Held; occupancy `(0, 0, 1)` | pass. B (same Project, another Goal) never listed across reconciliations; a Task of another Project is admitted beside it |
 | C-S2a2 | `c_s2a2_final_claim_refuses_second_task_typed`: B's key read through the production reader, A claims, B evaluated under the normal admission guard | pass. `DriverCapacityUnavailable { Project }`, no Driver row or claim audit for B |
-| C-S2a3 | `c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten` | pass. Only supported Projects listed; stored rows unchanged |
+| C-S2a3 | `c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten`: 70 legacy-limit Tasks in a Project that sorts before the supported one (more than the eligible `LIMIT 65`) | pass. The supported Task is the only key on the first page and is claimed; stored rows unchanged |
 | D3 guard | `d3_plan_guard_refuses_stored_legacy_limit_without_writes` | pass |
-| D4 | `d4_status_reports_stored_legacy_limit_read_only_until_repair` | pass. Accepted Goal and proposal both report; unchanged across `reconcile_runtime_attention`; gone after repair |
+| D4 | `d4_status_reports_stored_legacy_limit_read_only_until_repair` | pass. Accepted Goal and proposal both report. Around every read, the `projects`, `goals`, `tasks`, `records`, `scheduler_*`, `task_drivers`, `execution_units` and `audit` rows are unchanged. The answer is the same after the production `reconcile_runtime_attention` runs to its end, before and after start; gone after repair |
 | C-S2b | `success.rs` `sc10_four_projects_close_independently`; `activation/composition.rs` `ca2_four_tasks_two_projects_retain_own_scope_and_roster` (four Projects) | pass |
 | C-S2c | `state/execution/tests.rs` `c_s2c_active_task_reviewers_run_concurrently_under_project_limit_of_one`: two Reviewer leases for the active Task, another Project admitted beside them, a second same-Project Task waits on `Capacity` | pass |
-| C-S2d | `config.rs` `c_s2d_runtime_limit_other_than_one_is_refused_typed`, `c_s2d_overlay_limit_other_than_one_is_refused_before_mutation`; `tests/cli.rs` `c_s2d_limits_other_than_one_are_refused_without_state`; `tests/project.rs` `c_s2d_registration_refuses_other_limits_and_only_explicit_one_repairs` | pass |
+| C-S2d | `config.rs` `c_s2d_runtime_limit_other_than_one_is_refused_typed`, `c_s2d_overlay_limit_other_than_one_is_refused_before_mutation`; `tests/cli.rs` `c_s2d_limits_other_than_one_are_refused_without_state` (`--max-tasks` 0 and 2: typed `CliFlag`, no state directory or database); `tests/project.rs` `c_s2d_registration_refuses_other_limits_and_only_explicit_one_repairs` (0 and 2 typed `CliFlag`, on an empty Store and on an existing row whose row, version and audit stay unchanged) | pass |
 | C-S2e | `tests/project.rs` `c_s2e_effective_config_refuses_stored_legacy_limit_until_explicit_repair` (legacy row through the production `put_project`) | pass |
 
 ### Mutants (each restored; tree clean)
@@ -359,6 +361,19 @@ Branch `claude/adoring-archimedes-7eehnw`, on top of PR #83's merge (`9aed3bf`).
 | Unchecked copy restored in `effective_config` | C-S2e FAIL |
 | Quota own-Task exemption dropped | C-S2c FAIL |
 | Native configured global cap ignored | `configured_global_provider_alias_and_project_caps_wait_before_native_spawn` (global) FAIL — the sibling is in another Project, so the Project limit cannot hide it |
+| CLI 0 exempt again (M1) | `tests/cli.rs` C-S2d and `tests/project.rs` C-S2d FAIL |
+| Candidate Driver branch dropped | `c_s2a_retained_driver_alone_keeps_second_task_out` FAIL |
+| Candidate phase-operation branch dropped | `c_s2a_held_phase_operation_alone_keeps_second_task_out` FAIL |
+| Legacy exclusion moved after the eligible `LIMIT` | C-S2a3 FAIL |
+| Status read stores an attention row | D4 FAIL ("status read changed state") |
+| Candidate Unit branch dropped | **survives**: no reachable state of an accepted Task has an open Unit without a driving Driver. `AttemptManager::prepare` refuses an accepted Task without its managed Driver; the Goal lifecycle writer retires the Units in the same transaction that invalidates the Driver (`goals.rs` `fence_task_tx` then `invalidate_tx`); a failed Source preparation retires the Unit and keeps the Driver |
+
+### Source review
+
+| Round | Result |
+| --- | --- |
+| 6071357590 → Sol 6071558338 | REQUEST CHANGES, required 0/0/1/3. M1: a CLI `--max-tasks 0` passed the early check and was refused only after `Store::open`. L1–L3: missing single-occupancy, pre-`LIMIT` and read-only controls |
+| `cafc547` | M1 fixed; L1–L3 controls and mutants above |
 
 ### Verification
 
