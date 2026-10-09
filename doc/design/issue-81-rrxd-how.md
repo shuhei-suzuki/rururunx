@@ -493,6 +493,7 @@ An unmutated baseline of `project_api` passed in the same harness first.
 | Round | Result |
 | --- | --- |
 | 6079535783 → Sol 6079932858 | REQUEST CHANGES, required 0/0/4/1 (M1 in-flight/commit synchronization, M2 a stale check marked on the latest row, M3 the owned group not kept past its leader, M4 no non-secret projection of `ProjectRefused`/Blocked reasons, L1 the reap-wait mutant not identified). The detail stayed in Sol's private artifact; the fixes follow the titles as confirmed against the source |
+| `0d4b445`, `e1721c6` → Sol 6082711157 | **APPROVE LIMITED, required 0/0/0/0.** M3-R closed in source and control; M1, M2, M4, L1, N1 stay closed. The S2 adapter OPEN OBSERVATION is kept |
 | `62fca2a`…`b0f847c` → Sol 6082039538 | REQUEST CHANGES 0/0/1/0: M1, M2, M4, L1, N1 closed; M3's low-level ownership closed, but an unconfirmed group's result still reached `checked`/commit (M3-R) |
 | `9970319`, `756698a` → 6080527668, Sol 6080740320 | REQUEST CHANGES 0/0/2/2: M1, M2 closed in source (M1 lacked a causal control); M3 partially fixed (a group unconfirmed within the bound was counted as completed); M4 partially fixed (non-Git errors, paths and parser text reached the API verbatim; offline output not projected); L1 partially fixed (the Runtime's own wait was not distinguished); N1 the M3 control read an unobservable process as dead (`/proc` on macOS) |
 
