@@ -179,10 +179,15 @@ impl Runtime {
             Some(joined) => {
                 if groups.all_reaped() {
                     release(flights, groups).await;
+                    Preflight::Done(joined.unwrap_or_else(|e| Err(anyhow::anyhow!(e))))
                 } else {
+                    // M3-R (Sol 6082039538): a group not confirmed gone makes
+                    // the whole preflight unavailable, whatever `work`
+                    // returned (a swallowed Git error included): its result
+                    // never becomes `checked`, a Blocked write or a commit.
                     tokio::spawn(release(flights, groups));
+                    Preflight::Unavailable
                 }
-                Preflight::Done(joined.unwrap_or_else(|e| Err(anyhow::anyhow!(e))))
             }
             None => {
                 // Kill every owned group; the blocking task reaps its own
@@ -603,8 +608,10 @@ mod tests {
         );
     }
 
-    /// M3 (Sol 6080740320): a preflight whose Git group was not seen empty
-    /// finishes, but its Project stays in flight until the group is gone.
+    /// M3 (Sol 6080740320), M3-R (6082039538): a preflight whose Git group
+    /// was not seen empty is unavailable even when `work` swallowed the Git
+    /// failure and returned `Ok`, and its Project stays in flight until the
+    /// group is gone.
     /// The lingering member is this test's own child joined to the group and
     /// left an unreaped zombie. Mutant: release without the group check →
     /// FAIL.
@@ -619,10 +626,13 @@ mod tests {
             pidfile.display(),
             go.display()
         );
+        // The Git failure is swallowed, as an optional Git probe would; the
+        // lingering group alone must make the preflight unavailable.
         let work = move || {
             let mut child = std::process::Command::new("sh");
             child.args(["-c", &script]);
-            crate::git::run_owned(child).map(drop)
+            let _ = crate::git::run_owned(child);
+            Ok(())
         };
         let id = ProjectId::new();
         let joiner = {
@@ -646,7 +656,10 @@ mod tests {
             })
         };
         let answer = runtime.project_preflight(Some(id), work).await;
-        assert!(matches!(answer, Preflight::Done(Err(_))));
+        assert!(
+            matches!(answer, Preflight::Unavailable),
+            "a lingering group's preflight was reported as finished"
+        );
         // Held for as long as the group lingers, not only at the answer.
         tokio::time::sleep(Duration::from_millis(300)).await;
         let held = runtime.project_preflights.lock().unwrap().contains(&id);
