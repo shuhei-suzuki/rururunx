@@ -658,15 +658,62 @@ fn run(mut command: Command) -> Result<Output> {
         state.live.insert(child.id() as i32);
         child
     };
+    finish_owned(&groups, child).context("cannot reap Git")
+}
+/// Collects the child's output, then unregisters its group while it is still
+/// an unreaped zombie (`WNOWAIT`), so `cancel` can never signal a reused pid;
+/// only then is the child reaped.
+fn finish_owned(
+    groups: &PreflightGroups,
+    mut child: std::process::Child,
+) -> std::io::Result<Output> {
+    use std::io::Read;
     let pid = child.id() as i32;
-    let output = child.wait_with_output();
+    let mut stdout_pipe = child.stdout.take();
+    let mut stderr_pipe = child.stderr.take();
+    let (stdout, stderr) = std::thread::scope(|scope| {
+        let stderr = scope.spawn(move || {
+            let mut buffer = Vec::new();
+            stderr_pipe
+                .as_mut()
+                .map_or(Ok(0), |pipe| pipe.read_to_end(&mut buffer))
+                .map(|_| buffer)
+        });
+        let mut buffer = Vec::new();
+        let stdout = stdout_pipe
+            .as_mut()
+            .map_or(Ok(0), |pipe| pipe.read_to_end(&mut buffer))
+            .map(|_| buffer);
+        let stderr = stderr
+            .join()
+            .unwrap_or_else(|_| Err(std::io::Error::other("stderr reader panicked")));
+        (stdout, stderr)
+    });
+    let observed = loop {
+        match rustix::process::waitid(
+            rustix::process::WaitId::Pid(
+                rustix::process::Pid::from_raw(pid)
+                    .ok_or_else(|| std::io::Error::other("invalid pid"))?,
+            ),
+            rustix::process::WaitIdOptions::EXITED | rustix::process::WaitIdOptions::NOWAIT,
+        ) {
+            Err(rustix::io::Errno::INTR) => continue,
+            result => break result,
+        }
+    };
     groups
         .state
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .live
         .remove(&pid);
-    output.context("cannot reap Git")
+    let status = child.wait()?;
+    observed?;
+    Ok(Output {
+        status,
+        stdout: stdout?,
+        stderr: stderr?,
+    })
 }
 fn git(cwd: &Path, args: &[&str]) -> Result<Output> {
     let output = run(command(cwd, args)?)?;
@@ -701,4 +748,55 @@ std::thread_local! { static GIT_OUTPUTS: std::cell::Cell<usize> = const { std::c
 #[cfg(test)]
 pub(crate) fn observed_git_outputs() -> usize {
     GIT_OUTPUTS.with(std::cell::Cell::get)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        sync::Arc,
+        time::{Duration, Instant},
+    };
+
+    /// C-S3f: a cancelled preflight kills its child's whole group (the
+    /// grandchild `sleep` included), reaps the child before the scope can
+    /// return, leaves no registered group, and refuses later children.
+    #[test]
+    fn cancelled_preflight_group_is_killed_and_reaped() {
+        let groups = Arc::new(PreflightGroups::default());
+        let started = Instant::now();
+        let worker = {
+            let groups = groups.clone();
+            std::thread::spawn(move || {
+                with_preflight_groups(groups, || {
+                    let mut child = Command::new("sh");
+                    child.args(["-c", "sleep 30; echo late"]);
+                    let first = run(child);
+                    let mut again = Command::new("true");
+                    again.arg("unused");
+                    (first, run(again))
+                })
+            })
+        };
+        while groups.live() == 0 {
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "child never registered"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        groups.cancel();
+        let (first, again) = worker.join().unwrap();
+        let first = first.unwrap();
+        assert!(!first.status.success(), "the group was not killed");
+        assert!(first.stdout.is_empty());
+        assert_eq!(groups.live(), 0, "a reaped child stayed registered");
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(
+            again
+                .unwrap_err()
+                .to_string()
+                .contains("Project preflight cancelled")
+        );
+    }
 }

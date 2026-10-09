@@ -1,15 +1,18 @@
 use anyhow::{Result, ensure};
 use clap::{Args, Parser, Subcommand};
 use rrx::{
-    cli::{client, service},
+    cli::{
+        client,
+        project::{self, ProjectRequest},
+        service,
+    },
     config::Config,
     domain::{GoalId, ProjectId, TaskId},
-    project::{AddProject, ProjectRegistry, default_state_path},
+    project::{AddProject, default_state_path},
     runtime::{
         control::{ControlAction, ControlResponse, GoalControl},
         goal::GoalPlan,
     },
-    state::Store,
 };
 use serde::Deserialize;
 use std::{
@@ -499,10 +502,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
             if let Some(parent) = state.parent().filter(|p| !p.as_os_str().is_empty()) {
                 std::fs::create_dir_all(parent)?;
             }
-            let mut store = Store::open(&state)?;
-            let mut registry = ProjectRegistry::new(&mut store);
-            let cwd = std::env::current_dir()?;
-            match command {
+            let request = match command {
                 ProjectCommand::Add {
                     path,
                     name,
@@ -514,78 +514,33 @@ fn run(cli: Cli) -> Result<ExitCode> {
                     clear_project_config,
                     clear_rules,
                     clear_env_refs,
-                } => {
-                    registry.reconcile()?;
-                    let project = registry.add(
-                        &path,
-                        AddProject {
-                            name,
-                            base_branch: base,
-                            config_ref: cli.project_config,
-                            rule_refs: rules,
-                            environment_refs,
-                            worktree_root,
-                            max_tasks,
-                            clear_config: clear_project_config,
-                            clear_rules,
-                            clear_environment: clear_env_refs,
-                        },
-                        &runtime,
-                    )?;
-                    println!(
-                        "{}\t{}\t{:?}\t{}",
-                        project.id,
-                        project.name,
-                        project.state,
-                        project.root.display()
-                    );
-                }
-                ProjectCommand::List { all, json } => {
-                    let projects = registry.list(all)?;
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&projects)?);
-                    } else {
-                        for p in projects {
-                            println!(
-                                "{}\t{}\t{:?}\t{}{}",
-                                p.id,
-                                p.name,
-                                p.state,
-                                p.root.display(),
-                                p.blocked_reason
-                                    .as_ref()
-                                    .map(|r| format!("\t{r}"))
-                                    .unwrap_or_default()
-                            );
-                        }
-                    }
-                }
-                ProjectCommand::Status { project, json } => {
-                    let status = registry.status(project.as_deref(), &cwd)?;
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&status)?);
-                    } else {
-                        let (goals, tasks) = ProjectRegistry::active_counts(&status);
-                        println!(
-                            "{}\t{}\t{:?}\nRoot: {}\nBase: {}\nNamespace: {}\nActive goals: {goals}; active tasks: {tasks}; sessions: {}",
-                            status.project.id,
-                            status.project.name,
-                            status.project.state,
-                            status.project.root.display(),
-                            status.project.base_branch,
-                            status.project.worktree_root.display(),
-                            status.sessions.len()
-                        );
-                        if let Some(reason) = status.project.blocked_reason {
-                            println!("Blocked: {reason}");
-                        }
-                    }
-                }
-                ProjectCommand::Remove { project } => {
-                    let p = registry.remove(&project, &cwd)?;
-                    println!("{}\t{}\t{:?}", p.id, p.name, p.state);
-                }
-            }
+                } => ProjectRequest::Add {
+                    path,
+                    options: AddProject {
+                        name,
+                        base_branch: base,
+                        config_ref: cli.project_config,
+                        rule_refs: rules,
+                        environment_refs,
+                        worktree_root,
+                        max_tasks,
+                        clear_config: clear_project_config,
+                        clear_rules,
+                        clear_environment: clear_env_refs,
+                    },
+                },
+                ProjectCommand::List { all, json } => ProjectRequest::List { all, json },
+                ProjectCommand::Status { project, json } => ProjectRequest::Status {
+                    selector: project,
+                    json,
+                },
+                ProjectCommand::Remove { project } => ProjectRequest::Remove { selector: project },
+            };
+            let executor = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()?;
+            return executor.block_on(project::run(&state, runtime, request));
         }
         None => {
             Config::load(cli.config.as_deref(), cli.project_config.as_deref())?;
