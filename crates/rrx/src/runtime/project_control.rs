@@ -647,6 +647,8 @@ mod tests {
         };
         let answer = runtime.project_preflight(Some(id), work).await;
         assert!(matches!(answer, Preflight::Done(Err(_))));
+        // Held for as long as the group lingers, not only at the answer.
+        tokio::time::sleep(Duration::from_millis(300)).await;
         let held = runtime.project_preflights.lock().unwrap().contains(&id);
         assert!(held, "a lingering group released its Project");
         let mut member = joiner.await.unwrap();
