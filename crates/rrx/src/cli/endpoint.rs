@@ -441,35 +441,41 @@ mod tests {
         );
     }
 
-    /// C-S1e: a protocol-1 `Hello` from the actual endpoint is refused,
-    /// typed, before any request is sent; the peer reads only EOF.
+    /// C-S1e: an older-protocol `Hello` (1, or 2 before S3's Project
+    /// control) from the actual endpoint is refused, typed, before any
+    /// request is sent; the peer reads only EOF.
     #[tokio::test]
     async fn c_s1e_protocol_1_hello_is_refused_before_any_request() {
-        let dir = tempfile::tempdir().unwrap();
-        let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
-        let endpoint = ControlEndpoint::bind(owner.clone()).unwrap();
-        let server = async {
-            let accepted = endpoint.accept_peer().await.unwrap();
-            let mut reader = BufReader::new(accepted);
-            transport::send(
-                reader.get_mut(),
-                &Hello {
-                    protocol: 1,
-                    identity: endpoint.descriptor.identity.clone(),
-                },
-                transport::RESPONSE_BYTES,
-            )
+        for protocol in [1, 2] {
+            let dir = tempfile::tempdir().unwrap();
+            let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+            let endpoint = ControlEndpoint::bind(owner.clone()).unwrap();
+            let server = async {
+                let accepted = endpoint.accept_peer().await.unwrap();
+                let mut reader = BufReader::new(accepted);
+                transport::send(
+                    reader.get_mut(),
+                    &Hello {
+                        protocol,
+                        identity: endpoint.descriptor.identity.clone(),
+                    },
+                    transport::RESPONSE_BYTES,
+                )
+                .await
+                .unwrap();
+                transport::receive::<serde_json::Value>(&mut reader, transport::REQUEST_BYTES).await
+            };
+            let (request, connected) = tokio::time::timeout(Duration::from_secs(5), async {
+                tokio::join!(server, connect(owner.state_path()))
+            })
             .await
             .unwrap();
-            transport::receive::<serde_json::Value>(&mut reader, transport::REQUEST_BYTES).await
-        };
-        let (request, connected) = tokio::time::timeout(Duration::from_secs(5), async {
-            tokio::join!(server, connect(owner.state_path()))
-        })
-        .await
-        .unwrap();
-        assert!(connected.is_err(), "protocol-1 service accepted");
-        assert!(request.is_err(), "a request followed a protocol-1 Hello");
+            assert!(connected.is_err(), "protocol-{protocol} service accepted");
+            assert!(
+                request.is_err(),
+                "a request followed a protocol-{protocol} Hello"
+            );
+        }
     }
 
     fn write_private(path: &Path, bytes: &[u8]) {
@@ -484,8 +490,8 @@ mod tests {
             .unwrap();
     }
 
-    /// C-S1e2 (bind): the exclusive owner replaces a same-state protocol 1
-    /// or protocol 2 leftover of the strict shape, never a foreign one.
+    /// C-S1e2 (bind): the exclusive owner replaces a same-state protocol 1,
+    /// 2 or 3 leftover of the strict shape, never a foreign one.
     #[test]
     fn c_s1e2_bind_replaces_known_leftovers_and_refuses_foreign() {
         let dir = tempfile::tempdir().unwrap();
@@ -499,7 +505,7 @@ mod tests {
         let path = endpoint.descriptor_path.clone();
         let left = endpoint.descriptor.clone();
         drop(endpoint);
-        for protocol in [1, 2] {
+        for protocol in [1, 2, 3] {
             let mut leftover = left.clone();
             leftover.protocol = protocol;
             write_private(&path, &serde_json::to_vec(&leftover).unwrap());
@@ -513,7 +519,7 @@ mod tests {
         let mut foreign = left.clone();
         foreign.identity.state = dir.path().join("foreign.db");
         let mut unknown = left.clone();
-        unknown.protocol = 3;
+        unknown.protocol = 4;
         for bytes in [
             serde_json::to_vec(&foreign).unwrap(),
             serde_json::to_vec(&unknown).unwrap(),
