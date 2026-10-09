@@ -67,6 +67,96 @@ pub enum ControlAction {
     },
     RuntimeStatus,
     RuntimeStop,
+    /// S3 D10: exact-root match over every row, Removed included.
+    ProjectLookupRoot {
+        root: PathBuf,
+    },
+    /// S3 D1: registers a new root; `path` is client-canonicalized.
+    ProjectRegister {
+        path: PathBuf,
+        options: ProjectOptions,
+    },
+    /// S3 D1/D6: updates or reactivates a row at the observed version.
+    ProjectUpdate {
+        project: ProjectId,
+        expected_project: u64,
+        options: ProjectOptions,
+    },
+    /// S3 D6: soft removal at the observed version.
+    ProjectRemove {
+        project: ProjectId,
+        expected_project: u64,
+    },
+    /// S3 D8: every row, each Registered one reconciled and bounded.
+    ProjectList {
+        all: bool,
+    },
+    /// S3 D8: one Project, resolved read-only and reconciled alone.
+    ProjectStatus {
+        selector: Option<String>,
+        cwd: PathBuf,
+    },
+}
+/// S3 D1: `project add` options. Source references (`config_ref`, rules,
+/// `worktree_root`) keep their source-relative meaning and are sent as given.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectOptions {
+    pub name: Option<String>,
+    pub base_branch: Option<String>,
+    pub config_ref: Option<PathBuf>,
+    pub rule_refs: Vec<PathBuf>,
+    pub environment_refs: Vec<String>,
+    pub worktree_root: Option<PathBuf>,
+    pub max_tasks: Option<usize>,
+    pub clear_config: bool,
+    pub clear_rules: bool,
+    pub clear_environment: bool,
+}
+impl From<ProjectOptions> for crate::project::AddProject {
+    fn from(o: ProjectOptions) -> Self {
+        Self {
+            name: o.name,
+            base_branch: o.base_branch,
+            config_ref: o.config_ref,
+            rule_refs: o.rule_refs,
+            environment_refs: o.environment_refs,
+            worktree_root: o.worktree_root,
+            max_tasks: o.max_tasks,
+            clear_config: o.clear_config,
+            clear_rules: o.clear_rules,
+            clear_environment: o.clear_environment,
+        }
+    }
+}
+/// S3 D10: what an exact-root lookup found.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectLookupFound {
+    pub id: ProjectId,
+    pub version: u64,
+    pub state: ProjectState,
+}
+/// S3 D8: how one row's reconcile went in this read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReconcileMark {
+    /// Checked by this request's own preflight (a `Blocked` result was
+    /// written, or skipped because the row changed meanwhile).
+    Checked,
+    /// Another request's preflight for this Project was in flight; not
+    /// waited on, the current row is reported.
+    SkippedInFlight,
+    /// This request's own preflight did not finish within its deadline.
+    Unavailable,
+    /// Not Registered, so not reconciled.
+    NotRegistered,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectRow {
+    pub project: crate::domain::Project,
+    pub reconcile: ReconcileMark,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -82,6 +172,29 @@ pub enum ControlResponse {
     /// Sanitized refusal; rejected raw frames and internal errors are never echoed.
     Rejected {
         request_id: Option<Uuid>,
+    },
+    /// S3 D10.
+    ProjectLookup {
+        found: Option<ProjectLookupFound>,
+    },
+    /// S3 D1: the row after a register, update or remove.
+    ProjectSaved {
+        project: crate::domain::Project,
+        changed: bool,
+    },
+    /// S3 D8.
+    ProjectRows {
+        rows: Vec<ProjectRow>,
+    },
+    /// S3 D1/D8: the non-secret status projection of one Project.
+    ProjectStatusFacts {
+        status: crate::project::ProjectStatusView,
+        reconcile: ReconcileMark,
+    },
+    /// S3: a registry or Store validation refused the operation, with its
+    /// bounded message (same-UID peer, its own paths). Nothing was written.
+    ProjectRefused {
+        reason: String,
     },
     /// Routing metadata only; actual source identity is checked before effects.
     ProjectResolved {
@@ -205,6 +318,16 @@ pub enum UnavailableReason {
     /// The Project stores a Task limit other than 1 (R4.5); see
     /// `project_limit_stored`. Repaired by `project add --max-tasks 1`.
     ProjectLimitUnsupported,
+    /// S3 D5: the bounded Git/filesystem preflight did not finish; nothing
+    /// was written and the work is not claimed to have ended.
+    ProjectPreflightUnavailable,
+    /// S3 D5: another request's preflight for this Project has not joined.
+    ProjectPreflightInFlight,
+    /// S3 D6: the row, version, owner epoch or Runtime state changed since
+    /// the observed version; nothing was written.
+    ProjectCurrencyChanged,
+    /// S3 D3: a `path`, `cwd` or `root` that is not absolute.
+    ProjectPathNotAbsolute,
 }
 
 // Bounds the response wait; a timed-out filesystem worker is not claimed stopped.
@@ -256,6 +379,73 @@ impl HumanIngress {
     }
 }
 impl Runtime {
+    /// Read-only Project routing by selector or CWD: the same route checks
+    /// `ResolveProject` answers with, shared by S3's `ProjectStatus` (D8).
+    pub(super) async fn resolve_project_route(
+        &self,
+        selector: Option<&str>,
+        cwd: &std::path::Path,
+    ) -> Result<crate::domain::Project> {
+        ensure!(cwd.as_os_str().len() <= 4096, "routing CWD exceeds bound");
+        let cwd = canonical_directory(cwd.to_path_buf()).await?;
+        let snapshot = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .runtime_project_routes(selector, &cwd, self.owner.instance_id(), self.owner.epoch())?;
+        let mut matches = BTreeSet::new();
+        for project in &snapshot.projects {
+            if selector.is_some() {
+                matches.insert(project.id);
+                continue;
+            }
+            if project.state == ProjectState::Removed {
+                continue;
+            }
+            // Canonicalize physical routing boundaries only off the Store lock.
+            if cwd.starts_with(&project.root)
+                && !cwd.starts_with(&project.worktree_root)
+                && !cwd.starts_with(project.root.join(".git"))
+            {
+                let root = canonical_directory(project.root.clone()).await?;
+                ensure!(root == project.root, "registered Project root moved");
+                matches.insert(project.id);
+            }
+            for task in snapshot.tasks.iter().filter(|t| t.project_id == project.id) {
+                let path = task
+                    .worktree
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("registered Task worktree missing"))?;
+                if cwd.starts_with(path) {
+                    let actual = canonical_directory(path.clone()).await?;
+                    ensure!(actual == *path, "registered Task worktree moved");
+                    matches.insert(project.id);
+                }
+            }
+        }
+        ensure!(
+            matches.len() == 1,
+            "unknown or ambiguous registered Project routing"
+        );
+        let selected = snapshot
+            .projects
+            .iter()
+            .find(|p| matches.contains(&p.id))
+            .ok_or_else(|| anyhow::anyhow!("Project routing missing"))?;
+        self.owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .recheck_runtime_project_routes(
+                selector,
+                &cwd,
+                self.owner.instance_id(),
+                self.owner.epoch(),
+                &snapshot,
+            )?;
+        Ok(selected.clone())
+    }
     /// Trusted controls publish only their specific typed decisions. A public
     /// request never supplies Driver, native input or result authority.
     pub(crate) async fn handle_control(
@@ -266,75 +456,16 @@ impl Runtime {
         let ingress = HumanIngress::from_connection(self, accepted)?;
         ingress.check(&request)?;
         if let ControlAction::ResolveProject { selector, cwd } = &request.action {
-            ensure!(cwd.as_os_str().len() <= 4096, "routing CWD exceeds bound");
-            let cwd = canonical_directory(cwd.clone()).await?;
-            let snapshot = self
-                .owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .runtime_project_routes(
-                    selector.as_deref(),
-                    &cwd,
-                    self.owner.instance_id(),
-                    self.owner.epoch(),
-                )?;
-            let mut matches = BTreeSet::new();
-            for project in &snapshot.projects {
-                if selector.is_some() {
-                    matches.insert(project.id);
-                    continue;
-                }
-                if project.state == ProjectState::Removed {
-                    continue;
-                }
-                // Canonicalize physical routing boundaries only off the Store lock.
-                if cwd.starts_with(&project.root)
-                    && !cwd.starts_with(&project.worktree_root)
-                    && !cwd.starts_with(project.root.join(".git"))
-                {
-                    let root = canonical_directory(project.root.clone()).await?;
-                    ensure!(root == project.root, "registered Project root moved");
-                    matches.insert(project.id);
-                }
-                for task in snapshot.tasks.iter().filter(|t| t.project_id == project.id) {
-                    let path = task
-                        .worktree
-                        .as_ref()
-                        .ok_or_else(|| anyhow::anyhow!("registered Task worktree missing"))?;
-                    if cwd.starts_with(path) {
-                        let actual = canonical_directory(path.clone()).await?;
-                        ensure!(actual == *path, "registered Task worktree moved");
-                        matches.insert(project.id);
-                    }
-                }
-            }
-            ensure!(
-                matches.len() == 1,
-                "unknown or ambiguous registered Project routing"
-            );
-            let selected = snapshot
-                .projects
-                .iter()
-                .find(|p| matches.contains(&p.id))
-                .ok_or_else(|| anyhow::anyhow!("Project routing missing"))?;
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .recheck_runtime_project_routes(
-                    selector.as_deref(),
-                    &cwd,
-                    self.owner.instance_id(),
-                    self.owner.epoch(),
-                    &snapshot,
-                )?;
+            let selected = self.resolve_project_route(selector.as_deref(), cwd).await?;
             return Ok(ControlResponse::ProjectResolved {
                 project: selected.id,
                 version: selected.version,
                 display_name: selected.name.clone(),
                 state: selected.state,
             });
+        }
+        if let Some(response) = self.handle_project(&request).await? {
+            return Ok(response);
         }
         if let ControlAction::CreateGoal { plan, .. } = &request.action {
             ensure!(

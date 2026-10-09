@@ -297,15 +297,14 @@ impl WorktreeManager {
             "task branch is not merged into project base"
         );
         // Native branch -d uses upstream when set, otherwise root HEAD. Check it first.
-        let upstream = command(
+        let upstream = run(command(
             &root,
             &[
                 "rev-parse",
                 "--verify",
                 &format!("{}@{{upstream}}", status.branch),
             ],
-        )?
-        .output()?;
+        )?)?;
         let delete_target = if upstream.status.success() {
             String::from_utf8(upstream.stdout)?.trim().to_owned()
         } else {
@@ -587,8 +586,90 @@ fn command(cwd: &Path, args: &[&str]) -> Result<Command> {
     Ok(cmd)
 }
 
+/// S3 D5: the Git children of one bounded Project preflight. Each child runs
+/// in its own process group, registered here while it runs, so a timeout or
+/// a Runtime stop can kill every group; the blocking caller reaps its own
+/// child (`wait_with_output`) before the preflight task can join.
+#[derive(Default)]
+pub(crate) struct PreflightGroups {
+    state: std::sync::Mutex<PreflightGroupsState>,
+}
+#[derive(Default)]
+struct PreflightGroupsState {
+    cancelled: bool,
+    live: std::collections::BTreeSet<i32>,
+}
+impl PreflightGroups {
+    /// Refuses further Git children and kills every live group.
+    pub(crate) fn cancel(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.cancelled = true;
+        for pid in &state.live {
+            kill_group(*pid);
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn live(&self) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .live
+            .len()
+    }
+}
+fn kill_group(pid: i32) {
+    if let Some(pid) = rustix::process::Pid::from_raw(pid) {
+        let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
+    }
+}
+std::thread_local! {
+    static PREFLIGHT: std::cell::RefCell<Option<std::sync::Arc<PreflightGroups>>> =
+        const { std::cell::RefCell::new(None) };
+}
+/// Runs `f` with every Git child on this thread owned by `groups`.
+pub(crate) fn with_preflight_groups<T>(
+    groups: std::sync::Arc<PreflightGroups>,
+    f: impl FnOnce() -> T,
+) -> T {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            PREFLIGHT.with(|p| p.borrow_mut().take());
+        }
+    }
+    PREFLIGHT.with(|p| *p.borrow_mut() = Some(groups));
+    let _reset = Reset;
+    f()
+}
+fn run(mut command: Command) -> Result<Output> {
+    let Some(groups) = PREFLIGHT.with(|p| p.borrow().clone()) else {
+        return command.output().context("cannot start Git");
+    };
+    use std::os::unix::process::CommandExt;
+    command
+        .process_group(0)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let child = {
+        let mut state = groups.state.lock().unwrap_or_else(|e| e.into_inner());
+        ensure!(!state.cancelled, "Project preflight cancelled");
+        let child = command.spawn().context("cannot start Git")?;
+        state.live.insert(child.id() as i32);
+        child
+    };
+    let pid = child.id() as i32;
+    let output = child.wait_with_output();
+    groups
+        .state
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .live
+        .remove(&pid);
+    output.context("cannot reap Git")
+}
 fn git(cwd: &Path, args: &[&str]) -> Result<Output> {
-    let output = command(cwd, args)?.output().context("cannot start Git")?;
+    let output = run(command(cwd, args)?)?;
     #[cfg(test)]
     GIT_OUTPUTS.with(|n| n.set(n.get() + 1));
     ensure!(
@@ -600,7 +681,7 @@ fn git(cwd: &Path, args: &[&str]) -> Result<Output> {
     Ok(output)
 }
 fn git_success(cwd: &Path, args: &[&str]) -> Result<bool> {
-    let status = command(cwd, args)?.output()?.status;
+    let status = run(command(cwd, args)?)?.status;
     ensure!(
         matches!(status.code(), Some(0 | 1)),
         "Git check failed: {status}"

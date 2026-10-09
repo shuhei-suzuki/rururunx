@@ -6,7 +6,7 @@ use crate::{
     state::{Store, goal_terminal, task_terminal},
 };
 use anyhow::{Context, Result, bail, ensure};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
     env,
@@ -34,6 +34,54 @@ pub struct ProjectStatus {
     pub sessions: Vec<Session>,
 }
 
+/// S3 D1 (M1): the non-secret Session projection. `native_ref`, `pid`,
+/// `recovery`, `worktree`, `model` and `effort` are never returned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SessionView {
+    pub id: SessionId,
+    pub task: Option<TaskId>,
+    pub agent: String,
+    pub provider: String,
+    pub role: SessionRole,
+    pub state: SessionState,
+    pub started_at: i64,
+}
+impl From<&Session> for SessionView {
+    fn from(session: &Session) -> Self {
+        Self {
+            id: session.id,
+            task: session.scope.task_id,
+            agent: session.agent.clone(),
+            provider: session.provider.clone(),
+            role: session.role,
+            state: session.state,
+            started_at: session.started_at,
+        }
+    }
+}
+/// S3 D1 (M1): what `project status` returns, on the API and offline. No
+/// Goal, Task or Session body is serialized.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectStatusView {
+    pub project: Project,
+    pub active_goals: usize,
+    pub active_tasks: usize,
+    pub sessions: Vec<SessionView>,
+}
+impl From<&ProjectStatus> for ProjectStatusView {
+    fn from(status: &ProjectStatus) -> Self {
+        let (active_goals, active_tasks) = ProjectRegistry::active_counts(status);
+        Self {
+            project: status.project.clone(),
+            active_goals,
+            active_tasks,
+            sessions: status.sessions.iter().map(SessionView::from).collect(),
+        }
+    }
+}
+
 pub struct ProjectRegistry<'a> {
     store: &'a mut Store,
 }
@@ -44,109 +92,9 @@ impl<'a> ProjectRegistry<'a> {
 
     /// Registration/reactivation is explicit and preserves an existing root's ID.
     pub fn add(&mut self, path: &Path, options: AddProject, runtime: &Config) -> Result<Project> {
-        if let Some(requested) = options.max_tasks {
-            crate::config::ensure_mvp_project_tasks(
-                crate::config::LimitOrigin::CliFlag,
-                requested,
-            )?;
-        }
-        runtime.validate()?;
-        let root = source_root(path)?;
-        let previous = self.store.projects()?.into_iter().find(|p| p.root == root);
-        let base = options
-            .base_branch
-            .clone()
-            .or_else(|| previous.as_ref().map(|p| p.base_branch.clone()))
-            .map(Ok)
-            .unwrap_or_else(|| default_base(&root))?;
-        let identity = repository_identity(&root, &base)?;
-        let mut project = match previous {
-            Some(p) => {
-                ensure!(
-                    p.repository_identity == identity && p.base_branch == base,
-                    "registered repository identity/base changed; refusing silent rebinding"
-                );
-                p
-            }
-            None => Project::new(
-                root.file_name()
-                    .context("repository needs a name")?
-                    .to_string_lossy()
-                    .into(),
-                root.clone(),
-                identity,
-                base,
-            ),
-        };
-        let before = serde_json::to_value(&project)?;
-        ensure!(
-            !options.clear_config || options.config_ref.is_none(),
-            "cannot set and clear project config together"
-        );
-        ensure!(
-            !options.clear_rules || options.rule_refs.is_empty(),
-            "cannot set and clear rules together"
-        );
-        ensure!(
-            !options.clear_environment || options.environment_refs.is_empty(),
-            "cannot set and clear environment refs together"
-        );
-        if options.clear_config {
-            project.config_ref = None;
-        }
-        if options.clear_rules {
-            project.rule_refs.clear();
-        }
-        if options.clear_environment {
-            project.environment_refs.clear();
-        }
-
-        if let Some(name) = options.name {
-            project.name = name;
-        }
-        if let Some(config) = options.config_ref {
-            project.config_ref = Some(resolve_file(&project, &config)?);
-        }
-        if !options.rule_refs.is_empty() {
-            project.rule_refs = options
-                .rule_refs
-                .iter()
-                .map(|p| resolve_file(&project, p))
-                .collect::<Result<_>>()?;
-        }
-        if !options.environment_refs.is_empty() {
-            project.environment_refs = options.environment_refs;
-        }
-        if let Some(namespace) = options.worktree_root {
-            project.worktree_root = if namespace.is_absolute() {
-                namespace
-            } else {
-                root.join(namespace)
-            };
-        }
-        ensure!(
-            project.name.trim() == project.name
-                && !project.name.is_empty()
-                && !project.name.chars().any(char::is_control)
-                && project.name.parse::<ProjectId>().is_err(),
-            "invalid project display name"
-        );
-        validate_inputs(&project)?;
-        let effective = match &project.config_ref {
-            Some(path) => runtime.with_project_file(&resolve_file(&project, path)?)?,
-            None => runtime.clone(),
-        };
-        project.max_tasks = options.max_tasks.unwrap_or({
-            if project.version == 0 {
-                effective.scheduler.max_tasks_per_project
-            } else {
-                project.max_tasks
-            }
-        });
-        ensure!(project.max_tasks > 0, "project task limit must be positive");
-        project.state = ProjectState::Registered;
-        project.blocked_reason = None;
-        if project.version == 0 || serde_json::to_value(&project)? != before {
+        let snapshot = self.store.projects()?;
+        let (mut project, changed) = plan_add(&snapshot, path, options, runtime)?;
+        if changed {
             self.store.put_project(&mut project)?;
         }
         Ok(project)
@@ -160,10 +108,16 @@ impl<'a> ProjectRegistry<'a> {
             if project.state != ProjectState::Registered {
                 continue;
             }
-            if let Err(error) = validate(&project) {
+            if let Some(reason) = plan_block(&project) {
                 project.state = ProjectState::Blocked;
-                project.blocked_reason = Some(format!("{error:#}"));
-                self.store.put_project(&mut project)?;
+                project.blocked_reason = Some(reason);
+                // Q2: a write that lost its snapshot CAS is skipped, never
+                // re-applied to the newer row.
+                if let Err(error) = self.store.put_project(&mut project)
+                    && !crate::state::snapshot_changed(&error)
+                {
+                    return Err(error);
+                }
             }
         }
         Ok(())
@@ -286,6 +240,124 @@ impl<'a> ProjectRegistry<'a> {
                 .count(),
         )
     }
+}
+
+/// S3 D4 step 2: the add/update plan from a snapshot of every row (Removed
+/// included); it holds no Store. Returns the planned row and whether it
+/// differs from the stored one. The commit writes it with the snapshot
+/// version as its CAS.
+pub(crate) fn plan_add(
+    snapshot: &[Project],
+    path: &Path,
+    options: AddProject,
+    runtime: &Config,
+) -> Result<(Project, bool)> {
+    if let Some(requested) = options.max_tasks {
+        crate::config::ensure_mvp_project_tasks(crate::config::LimitOrigin::CliFlag, requested)?;
+    }
+    runtime.validate()?;
+    let root = source_root(path)?;
+    let previous = snapshot.iter().find(|p| p.root == root).cloned();
+    let base = options
+        .base_branch
+        .clone()
+        .or_else(|| previous.as_ref().map(|p| p.base_branch.clone()))
+        .map(Ok)
+        .unwrap_or_else(|| default_base(&root))?;
+    let identity = repository_identity(&root, &base)?;
+    let mut project = match previous {
+        Some(p) => {
+            ensure!(
+                p.repository_identity == identity && p.base_branch == base,
+                "registered repository identity/base changed; refusing silent rebinding"
+            );
+            p
+        }
+        None => Project::new(
+            root.file_name()
+                .context("repository needs a name")?
+                .to_string_lossy()
+                .into(),
+            root.clone(),
+            identity,
+            base,
+        ),
+    };
+    let before = serde_json::to_value(&project)?;
+    ensure!(
+        !options.clear_config || options.config_ref.is_none(),
+        "cannot set and clear project config together"
+    );
+    ensure!(
+        !options.clear_rules || options.rule_refs.is_empty(),
+        "cannot set and clear rules together"
+    );
+    ensure!(
+        !options.clear_environment || options.environment_refs.is_empty(),
+        "cannot set and clear environment refs together"
+    );
+    if options.clear_config {
+        project.config_ref = None;
+    }
+    if options.clear_rules {
+        project.rule_refs.clear();
+    }
+    if options.clear_environment {
+        project.environment_refs.clear();
+    }
+
+    if let Some(name) = options.name {
+        project.name = name;
+    }
+    if let Some(config) = options.config_ref {
+        project.config_ref = Some(resolve_file(&project, &config)?);
+    }
+    if !options.rule_refs.is_empty() {
+        project.rule_refs = options
+            .rule_refs
+            .iter()
+            .map(|p| resolve_file(&project, p))
+            .collect::<Result<_>>()?;
+    }
+    if !options.environment_refs.is_empty() {
+        project.environment_refs = options.environment_refs;
+    }
+    if let Some(namespace) = options.worktree_root {
+        project.worktree_root = if namespace.is_absolute() {
+            namespace
+        } else {
+            root.join(namespace)
+        };
+    }
+    ensure!(
+        project.name.trim() == project.name
+            && !project.name.is_empty()
+            && !project.name.chars().any(char::is_control)
+            && project.name.parse::<ProjectId>().is_err(),
+        "invalid project display name"
+    );
+    validate_inputs(&project)?;
+    let effective = match &project.config_ref {
+        Some(path) => runtime.with_project_file(&resolve_file(&project, path)?)?,
+        None => runtime.clone(),
+    };
+    project.max_tasks = options.max_tasks.unwrap_or({
+        if project.version == 0 {
+            effective.scheduler.max_tasks_per_project
+        } else {
+            project.max_tasks
+        }
+    });
+    ensure!(project.max_tasks > 0, "project task limit must be positive");
+    project.state = ProjectState::Registered;
+    project.blocked_reason = None;
+    let changed = project.version == 0 || serde_json::to_value(&project)? != before;
+    Ok((project, changed))
+}
+
+/// S3 D8: the reconcile check for one Registered row; `Some(reason)` blocks it.
+pub(crate) fn plan_block(project: &Project) -> Option<String> {
+    validate(project).err().map(|error| format!("{error:#}"))
 }
 
 pub fn validate(project: &Project) -> Result<()> {

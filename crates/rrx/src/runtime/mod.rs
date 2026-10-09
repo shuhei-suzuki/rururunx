@@ -8,6 +8,7 @@ pub(crate) mod installation;
 pub(crate) mod phase_effect_admission;
 mod phase_handoffs;
 mod phase_jobs;
+mod project_control;
 #[cfg(test)]
 pub(crate) use phase_jobs::{
     OWNER_IMMEDIATE, OWNER_PLANNING, QUOTA_APPLY, SETTLED_CLOSURE, SETTLED_EVALUATION,
@@ -40,6 +41,8 @@ pub struct Runtime {
     stopping: Arc<AtomicBool>,
     wake: Arc<tokio::sync::Notify>,
     control_admission: Arc<tokio::sync::Mutex<()>>,
+    /// S3 D5: Projects whose bounded preflight has not yet joined.
+    project_preflights: Arc<std::sync::Mutex<std::collections::BTreeSet<crate::domain::ProjectId>>>,
     #[cfg(test)]
     goal_admission_pause: std::sync::Mutex<Option<GoalAdmissionPause>>,
     #[cfg(test)]
@@ -92,6 +95,7 @@ impl Runtime {
             stopping,
             wake: Arc::new(tokio::sync::Notify::new()),
             control_admission,
+            project_preflights: Arc::default(),
             #[cfg(test)]
             goal_admission_pause: std::sync::Mutex::new(None),
             #[cfg(test)]

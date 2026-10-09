@@ -3,7 +3,7 @@
 pub mod model;
 pub use model::*;
 pub mod owner;
-pub use owner::RuntimeOwner;
+pub use owner::{OwnerLock, RuntimeOwner};
 pub mod attempts;
 mod claude_wire;
 pub mod cleanup;
