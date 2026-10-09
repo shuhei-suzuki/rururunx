@@ -375,7 +375,7 @@ Branch `claude/adoring-archimedes-7eehnw`, on top of PR #83's merge (`9aed3bf`).
 | --- | --- |
 | 6071357590 → Sol 6071558338 | REQUEST CHANGES, required 0/0/1/3. M1: a CLI `--max-tasks 0` passed the early check and was refused only after `Store::open`. L1–L3: missing single-occupancy, pre-`LIMIT` and read-only controls |
 | `cafc547` → Sol 6072320376 | M1, L1 (Driver and operation alone), L2 (original), L3 closed. REQUEST CHANGES 0/0/0/2: L1 Unit alone through the legacy path; L2 setup relied on a bounded random search |
-| `90e6a0d` | Unit-alone control and deterministic C-S2a3 above |
+| `90e6a0d`, `d6ca604` → Sol 6072686320 | **APPROVE LIMITED, required 0/0/0/0.** L1 (Unit alone) and L2 (deterministic order) closed; M1, L1 (Driver, operation), L3 stay closed. The earlier adapter 18/19 stays an open observation |
 
 ### Verification
 
