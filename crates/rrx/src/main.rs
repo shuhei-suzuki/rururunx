@@ -4,10 +4,10 @@ use rrx::{
     cli::{
         client,
         project::{self, ProjectRequest},
-        service,
+        read, service,
     },
     config::Config,
-    domain::{GoalId, ProjectId, TaskId},
+    domain::{GoalId, ProjectId, SessionId, TaskId},
     project::{AddProject, default_state_path},
     runtime::{
         control::{ControlAction, ControlResponse, GoalControl},
@@ -76,6 +76,99 @@ enum Command {
         #[command(subcommand)]
         command: ProjectCommand,
     },
+    /// Read one Task's Review/Approval metadata or Sessions (one page).
+    Task {
+        #[command(subcommand)]
+        command: TaskCommand,
+    },
+    /// One page of the derived attention queue: all Projects, or one with --project.
+    Attention {
+        #[arg(long)]
+        project: Option<String>,
+        /// `<project>:<goal>:goal` or `<project>:<goal>:task:<task>` from a previous page.
+        #[arg(long)]
+        after: Option<String>,
+        #[arg(long, default_value_t = 64, value_parser = clap::value_parser!(u16).range(1..=128))]
+        maximum: u16,
+        #[arg(long)]
+        json: bool,
+    },
+    /// One page of audit summaries (fixed kinds, never event data).
+    Events {
+        #[command(flatten)]
+        scope: ScopeArgs,
+        /// The last audit sequence of a previous page.
+        #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
+        after: Option<i64>,
+        #[arg(long, default_value_t = 64, value_parser = clap::value_parser!(u16).range(1..=128))]
+        maximum: u16,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Native/session routing metadata (unavailable in this release).
+    Routing {
+        #[command(flatten)]
+        scope: ScopeArgs,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Token, cache and cost metrics (unavailable: stored Usage is unqualified).
+    Metrics {
+        #[command(flatten)]
+        scope: ScopeArgs,
+        #[arg(long)]
+        json: bool,
+    },
+}
+#[derive(Args)]
+struct ScopeArgs {
+    #[arg(long)]
+    project: Option<String>,
+    #[arg(long)]
+    goal: Option<GoalId>,
+    #[arg(long, requires = "goal")]
+    task: Option<TaskId>,
+}
+impl From<ScopeArgs> for read::ScopeSelector {
+    fn from(args: ScopeArgs) -> Self {
+        Self {
+            project: args.project,
+            goal: args.goal,
+            task: args.task,
+        }
+    }
+}
+#[derive(Subcommand)]
+enum TaskCommand {
+    /// Review/Approval metadata; never a decision.
+    Review {
+        task: TaskId,
+        #[arg(long)]
+        goal: GoalId,
+        #[arg(long)]
+        project: Option<String>,
+        /// `review:<id>` or `approval:<id>` from a previous page.
+        #[arg(long)]
+        after: Option<String>,
+        #[arg(long, default_value_t = 64, value_parser = clap::value_parser!(u16).range(1..=128))]
+        maximum: u16,
+        #[arg(long)]
+        json: bool,
+    },
+    /// The Task's own Sessions.
+    Sessions {
+        task: TaskId,
+        #[arg(long)]
+        goal: GoalId,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        after: Option<SessionId>,
+        #[arg(long, default_value_t = 64, value_parser = clap::value_parser!(u16).range(1..=128))]
+        maximum: u16,
+        #[arg(long)]
+        json: bool,
+    },
 }
 #[derive(Subcommand)]
 enum DaemonCommand {
@@ -135,6 +228,17 @@ enum GoalCommand {
         goal: GoalId,
         #[arg(long)]
         project: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// One page of the Project's Goals by stable Goal ID.
+    List {
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        after: Option<GoalId>,
+        #[arg(long, default_value_t = 64, value_parser = clap::value_parser!(u16).range(1..=128))]
+        maximum: u16,
         #[arg(long)]
         json: bool,
     },
@@ -435,6 +539,29 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 .build()?;
             return runtime.block_on(daemon(&state, cli.config.as_deref(), command));
         }
+        Some(
+            command @ (Command::Task { .. }
+            | Command::Attention { .. }
+            | Command::Events { .. }
+            | Command::Routing { .. }
+            | Command::Metrics { .. }
+            | Command::Goal {
+                command: Some(GoalCommand::List { .. }),
+                ..
+            }),
+        ) => {
+            ensure!(
+                cli.project_config.is_none(),
+                "Runtime commands use the registered Project configuration; --project-config is not accepted"
+            );
+            let (request, json) = read_request(command)?;
+            let state = cli.state.map(Ok).unwrap_or_else(default_state_path)?;
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()?;
+            return runtime.block_on(read::run(&state, request, json));
+        }
         Some(command @ (Command::Serve { .. } | Command::Status { .. } | Command::Goal { .. })) => {
             ensure!(
                 cli.project_config.is_none(),
@@ -550,6 +677,118 @@ fn run(cli: Cli) -> Result<ExitCode> {
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+/// S4: the parsed read and its output mode.
+fn read_request(command: Command) -> Result<(read::ReadRequest, bool)> {
+    use read::{ReadRequest, TaskSelector};
+    Ok(match command {
+        Command::Goal {
+            command:
+                Some(GoalCommand::List {
+                    project,
+                    after,
+                    maximum,
+                    json,
+                }),
+            ..
+        } => (
+            ReadRequest::Goals {
+                project,
+                after,
+                maximum: usize::from(maximum),
+            },
+            json,
+        ),
+        Command::Task {
+            command:
+                TaskCommand::Review {
+                    task,
+                    goal,
+                    project,
+                    after,
+                    maximum,
+                    json,
+                },
+        } => (
+            ReadRequest::Review {
+                task: TaskSelector {
+                    project,
+                    goal,
+                    task,
+                },
+                after: after
+                    .as_deref()
+                    .map(read::parse_review_cursor)
+                    .transpose()?,
+                maximum: usize::from(maximum),
+            },
+            json,
+        ),
+        Command::Task {
+            command:
+                TaskCommand::Sessions {
+                    task,
+                    goal,
+                    project,
+                    after,
+                    maximum,
+                    json,
+                },
+        } => (
+            ReadRequest::Sessions {
+                task: TaskSelector {
+                    project,
+                    goal,
+                    task,
+                },
+                after,
+                maximum: usize::from(maximum),
+            },
+            json,
+        ),
+        Command::Attention {
+            project,
+            after,
+            maximum,
+            json,
+        } => (
+            ReadRequest::Attention {
+                project,
+                after: after
+                    .as_deref()
+                    .map(read::parse_attention_cursor)
+                    .transpose()?,
+                maximum: usize::from(maximum),
+            },
+            json,
+        ),
+        Command::Events {
+            scope,
+            after,
+            maximum,
+            json,
+        } => (
+            ReadRequest::Events {
+                scope: scope.into(),
+                after,
+                maximum: usize::from(maximum),
+            },
+            json,
+        ),
+        Command::Routing { scope, json } => (
+            ReadRequest::Routing {
+                scope: scope.into(),
+            },
+            json,
+        ),
+        Command::Metrics { scope, json } => (
+            ReadRequest::Metrics {
+                scope: scope.into(),
+            },
+            json,
+        ),
+        _ => unreachable!("not an S4 read"),
+    })
 }
 fn print_outcome<T: serde::Serialize>(json: bool, label: &str, outcome: &T) -> Result<()> {
     if json {

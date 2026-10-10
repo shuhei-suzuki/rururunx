@@ -4,5 +4,6 @@ pub mod daemon;
 pub mod endpoint;
 pub mod goal_facts;
 pub mod project;
+pub mod read;
 pub mod service;
 pub mod transport;
