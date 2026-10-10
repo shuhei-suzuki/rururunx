@@ -13,6 +13,8 @@ pub(crate) use runtime::driver::{
 };
 #[cfg(test)]
 pub(crate) use runtime::driver::{CapacityScope, DriverCapacityUnavailable};
+#[cfg(test)]
+pub(crate) use runtime::read::READ_PAGE_BYTES;
 pub(crate) use runtime::read::ResumeInputs;
 use std::{path::Path, time::Duration};
 

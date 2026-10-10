@@ -704,12 +704,7 @@ fn goal_items(
     }
     let tasks = scoped_tasks(tx, &current)?;
     let mut items = Vec::new();
-    let state_fact = match current.state {
-        GoalState::WaitingHuman => Some(AttentionFact::GoalWaitingHuman),
-        GoalState::Paused => Some(AttentionFact::GoalPaused),
-        GoalState::Blocked => Some(AttentionFact::GoalBlocked),
-        _ => None,
-    };
+    let state_fact = goal_state_fact(current.state);
     if tasks.is_empty() || state_fact.is_some() || limit.is_some() {
         let mut facts = Vec::new();
         if tasks.is_empty() {
@@ -845,23 +840,8 @@ fn task_facts(
     epoch: u64,
 ) -> Result<Vec<AttentionFact>> {
     let mut facts = Vec::new();
-    if let Some(PhaseWaitingObservation::Waiting { reason, next_due }) =
-        super::waiting::observe(tx, task, goal)
-    {
-        // `observe` qualifies only quota and capacity parking.
-        facts.extend(match reason {
-            crate::execution::WaitReason::Quota => Some(AttentionFact::QuotaWait { next_due }),
-            crate::execution::WaitReason::Capacity => {
-                Some(AttentionFact::CapacityWait { next_due })
-            }
-            _ => None,
-        });
-    }
-    match task.state {
-        TaskState::WaitingHuman => facts.push(AttentionFact::TaskWaitingHuman),
-        TaskState::WaitingApproval => facts.push(AttentionFact::TaskWaitingApproval),
-        _ => {}
-    }
+    facts.extend(super::waiting::observe(tx, task, goal).and_then(|o| wait_fact(&o)));
+    facts.extend(task_state_fact(task.state));
     // The same fallback `GoalTasks` applies to an unreadable Workflow.
     let wait = super::waiting::workflow_wait(tx, task).unwrap_or_else(|_| {
         Some(WorkflowWait {
@@ -886,16 +866,163 @@ fn task_facts(
         )
         .optional()?;
     if let Some((attention, driving)) = scheduler {
-        facts.extend(match (attention, driving) {
-            (0, false) => None,
-            (0, true) => Some(AttentionFact::Unavailable {
-                reason: UnavailableReason::NativeContinuationUnavailable,
-            }),
-            (1, false) => Some(AttentionFact::Unavailable {
-                reason: UnavailableReason::NativeBindingUnavailable,
-            }),
-            _ => Some(AttentionFact::StoredUnqualified),
-        });
+        facts.extend(scheduler_fact(attention, driving));
     }
     Ok(facts)
+}
+
+fn goal_state_fact(state: GoalState) -> Option<AttentionFact> {
+    match state {
+        GoalState::WaitingHuman => Some(AttentionFact::GoalWaitingHuman),
+        GoalState::Paused => Some(AttentionFact::GoalPaused),
+        GoalState::Blocked => Some(AttentionFact::GoalBlocked),
+        _ => None,
+    }
+}
+fn task_state_fact(state: TaskState) -> Option<AttentionFact> {
+    match state {
+        TaskState::WaitingHuman => Some(AttentionFact::TaskWaitingHuman),
+        TaskState::WaitingApproval => Some(AttentionFact::TaskWaitingApproval),
+        _ => None,
+    }
+}
+/// `observe` qualifies only quota and capacity parking; `Held` is no fact.
+fn wait_fact(observation: &PhaseWaitingObservation) -> Option<AttentionFact> {
+    match observation {
+        PhaseWaitingObservation::Waiting {
+            reason: crate::execution::WaitReason::Quota,
+            next_due,
+        } => Some(AttentionFact::QuotaWait {
+            next_due: *next_due,
+        }),
+        PhaseWaitingObservation::Waiting {
+            reason: crate::execution::WaitReason::Capacity,
+            next_due,
+        } => Some(AttentionFact::CapacityWait {
+            next_due: *next_due,
+        }),
+        _ => None,
+    }
+}
+/// Stored attention class (0 none, 1 the fixed binding hold, else other)
+/// and whether a current-epoch Driver is driving. Only combinations the
+/// typed readers reproduce are typed; every other one is unqualified.
+fn scheduler_fact(attention: u8, driving: bool) -> Option<AttentionFact> {
+    match (attention, driving) {
+        (0, false) => None,
+        (0, true) => Some(AttentionFact::Unavailable {
+            reason: UnavailableReason::NativeContinuationUnavailable,
+        }),
+        (1, false) => Some(AttentionFact::Unavailable {
+            reason: UnavailableReason::NativeBindingUnavailable,
+        }),
+        _ => Some(AttentionFact::StoredUnqualified),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::execution::WaitReason;
+
+    /// C-S4d (pure): states and waits with no producer reachable from a
+    /// Runtime control test map to their fixed facts; nothing else does.
+    #[test]
+    fn c_s4d_fact_mappings_are_fixed() {
+        assert_eq!(
+            goal_state_fact(GoalState::WaitingHuman),
+            Some(AttentionFact::GoalWaitingHuman)
+        );
+        assert_eq!(
+            goal_state_fact(GoalState::Blocked),
+            Some(AttentionFact::GoalBlocked)
+        );
+        assert_eq!(goal_state_fact(GoalState::Running), None);
+        assert_eq!(
+            task_state_fact(TaskState::WaitingHuman),
+            Some(AttentionFact::TaskWaitingHuman)
+        );
+        assert_eq!(
+            task_state_fact(TaskState::WaitingApproval),
+            Some(AttentionFact::TaskWaitingApproval)
+        );
+        assert_eq!(task_state_fact(TaskState::Implementing), None);
+        let waiting = |reason| PhaseWaitingObservation::Waiting {
+            reason,
+            next_due: 77,
+        };
+        assert_eq!(
+            wait_fact(&waiting(WaitReason::Quota)),
+            Some(AttentionFact::QuotaWait { next_due: 77 })
+        );
+        assert_eq!(
+            wait_fact(&waiting(WaitReason::Capacity)),
+            Some(AttentionFact::CapacityWait { next_due: 77 })
+        );
+        assert_eq!(wait_fact(&waiting(WaitReason::Approval)), None);
+        assert_eq!(wait_fact(&PhaseWaitingObservation::Held), None);
+        assert_eq!(scheduler_fact(0, false), None);
+        assert_eq!(
+            scheduler_fact(1, true),
+            Some(AttentionFact::StoredUnqualified)
+        );
+        assert_eq!(
+            scheduler_fact(2, false),
+            Some(AttentionFact::StoredUnqualified)
+        );
+        assert_eq!(
+            scheduler_fact(2, true),
+            Some(AttentionFact::StoredUnqualified)
+        );
+    }
+
+    #[derive(serde::Serialize)]
+    struct Synthetic {
+        blob: String,
+    }
+    fn budget_fits(budget: usize) -> impl Fn(&[Synthetic], bool) -> bool {
+        move |rows, more| {
+            super::super::recorded::fits(&serde_json::json!({"rows": rows, "more": more}), budget)
+        }
+    }
+    fn size(rows: &[Synthetic], more: bool) -> usize {
+        serde_json::to_vec(&serde_json::json!({"rows": rows, "more": more}))
+            .unwrap()
+            .len()
+    }
+
+    /// C-S4h (pure packer): a synthetic non-elidable public DTO larger than
+    /// the item budget is `TooLarge`, never truncated; a page exactly at the
+    /// byte boundary succeeds; a later row that does not fit ends the page.
+    #[test]
+    fn c_s4h_packer_refuses_oversize_and_packs_to_the_boundary() {
+        let big = || Synthetic {
+            blob: "x".repeat(READ_PAGE_BYTES),
+        };
+        assert!(matches!(
+            pack(vec![big()], false, budget_fits(READ_PAGE_BYTES)),
+            Packed::TooLarge
+        ));
+        let row = |n| Synthetic {
+            blob: "y".repeat(n),
+        };
+        let exact = size(&[row(1000)], false);
+        match pack(vec![row(1000)], false, budget_fits(exact)) {
+            Packed::Page(rows, more) => {
+                assert_eq!((rows.len(), more), (1, false));
+                assert_eq!(rows[0].blob.len(), 1000, "row was altered");
+            }
+            Packed::TooLarge => panic!("boundary page refused"),
+        }
+        assert!(matches!(
+            pack(vec![row(1000)], false, budget_fits(exact - 1)),
+            Packed::TooLarge
+        ));
+        // Two rows where only the first fits: one row, more remain.
+        let one = size(&[row(1000)], true);
+        match pack(vec![row(1000), row(1000)], false, budget_fits(one)) {
+            Packed::Page(rows, more) => assert_eq!((rows.len(), more), (1, true)),
+            Packed::TooLarge => panic!("first row fits"),
+        }
+    }
 }

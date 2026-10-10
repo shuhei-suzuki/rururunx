@@ -535,6 +535,39 @@ mod tests {
         }
     }
 
+    /// C-S4i: a live endpoint whose descriptor names protocol 3 (same
+    /// canonical state, strict shape, live socket) is `Invalid`, never
+    /// `Absent`; removing the descriptor is what makes it `Absent`.
+    #[tokio::test]
+    async fn c_s4i_live_protocol_3_descriptor_is_invalid_not_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+        let endpoint = ControlEndpoint::bind(owner.clone()).unwrap();
+        assert!(endpoint.descriptor.socket.exists(), "SETUP: live socket");
+        let mut old = endpoint.descriptor.clone();
+        old.protocol = 3;
+        write_private(
+            &endpoint.descriptor_path,
+            &serde_json::to_vec(&old).unwrap(),
+        );
+        // The live endpoint keeps serving its own Hello meanwhile, so only
+        // the descriptor's protocol decides the classification.
+        let (discovery, _) = tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::join!(
+                discover(owner.state_path()),
+                tokio::time::timeout(Duration::from_secs(2), endpoint.accept())
+            )
+        })
+        .await
+        .unwrap();
+        assert!(matches!(discovery, Discovery::Invalid(_)));
+        std::fs::remove_file(&endpoint.descriptor_path).unwrap();
+        assert!(matches!(
+            discover(owner.state_path()).await,
+            Discovery::Absent
+        ));
+    }
+
     #[tokio::test]
     async fn missing_or_symlinked_discovery_refuses_without_creating_state() {
         let dir = tempfile::tempdir().unwrap();

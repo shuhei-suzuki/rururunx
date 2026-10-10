@@ -1078,6 +1078,40 @@ async fn sc6_requirements(provider: &str) {
         Some(crate::runtime::control::WorkflowWaitKind::EvidenceIntegrationUnavailable),
         "SC12 {provider}: evidence_integration_unavailable"
     );
+    // C-S4d (3): the S4 queue derives the same production-written wait as a
+    // typed Task fact, with Task operations unavailable.
+    let ControlResponse::AttentionPage { items, .. } = f
+        .runtime
+        .handle_control(
+            &f.socket,
+            f.request(ControlAction::AttentionQueue {
+                project: Some(marked.project_id),
+                after: None,
+                maximum: 128,
+            }),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("C-S4d {provider}: AttentionPage")
+    };
+    let item = items
+        .iter()
+        .find(|i| i.task == Some(task.id))
+        .expect("C-S4d: waiting Task item");
+    assert!(
+        item.facts.iter().any(|f| matches!(
+            f,
+            crate::runtime::control::AttentionFact::WorkflowWait { wait }
+                if wait.kind == crate::runtime::control::WorkflowWaitKind::EvidenceIntegrationUnavailable
+        )),
+        "C-S4d {provider}: workflow wait fact: {:?}",
+        item.facts
+    );
+    assert!(item.operations.iter().all(|o| o.availability
+        == crate::runtime::control::OperationAvailability::Unavailable {
+            reason: UnavailableReason::TaskDriverUnavailable
+        }));
     let _ = f.runtime.shutdown().await;
     finish(f).await;
 }
