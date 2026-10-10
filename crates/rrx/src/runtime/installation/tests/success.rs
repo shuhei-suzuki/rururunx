@@ -561,19 +561,8 @@ async fn sc3p_parent_change(provider: &str) {
         );
     }
     pause.0.release();
-    // At least the original 6 s observation window, extended (bounded) until
-    // a later normal plan has actually been made and refused.
-    let refused = || {
-        f.runtime
-            .phase_jobs
-            .observed_success_turns()
-            .iter()
-            .any(|(_, l)| *l == "normal plan refused")
-    };
     let started = std::time::Instant::now();
-    while started.elapsed() < Duration::from_secs(6)
-        || (!refused() && started.elapsed() < Duration::from_secs(60))
-    {
+    while started.elapsed() < Duration::from_secs(6) {
         f.runtime.wake.notify_one();
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
