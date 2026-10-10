@@ -470,6 +470,10 @@ fn plan_owner_currency(
     })
 }
 impl NativeOwnerPlan {
+    #[cfg(test)]
+    pub(crate) fn is_linked(&self) -> bool {
+        self.current.has_links()
+    }
     fn validate_registered_facts_tx(&self, tx: &Transaction<'_>) -> Result<()> {
         let phase = self.binding.owner();
         phase.validate_known_registration()?;

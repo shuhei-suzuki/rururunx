@@ -11,8 +11,9 @@ mod phase_jobs;
 mod project_control;
 #[cfg(test)]
 pub(crate) use phase_jobs::{
-    OWNER_IMMEDIATE, OWNER_PLANNING, QUOTA_APPLY, SETTLED_CLOSURE, SETTLED_EVALUATION,
-    SETTLEMENT_GAP, SUCCESS_ADMISSION, SUCCESS_ADMITTED, count, hold_helper, pause_at,
+    OWNER_IMMEDIATE, OWNER_IMMEDIATE_LINKED, OWNER_PLANNING, QUOTA_APPLY, SETTLED_CLOSURE,
+    SETTLED_EVALUATION, SETTLEMENT_GAP, SUCCESS_ADMISSION, SUCCESS_ADMITTED, count, hold_helper,
+    pause_at,
 };
 pub(crate) mod phase_supervisor;
 mod service;
