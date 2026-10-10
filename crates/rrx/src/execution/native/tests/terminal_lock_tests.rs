@@ -113,7 +113,10 @@ async fn legacy_fixture() -> (tempfile::TempDir, Arc<RuntimeOwner>, Task) {
         .unwrap();
     c.pragma_update(None, "user_version", 9).unwrap();
     drop(c);
-    assert_eq!(Store::open(&db).unwrap().schema_version().unwrap(), 10);
+    assert_eq!(
+        Store::open(&db).unwrap().schema_version().unwrap(),
+        crate::state::SCHEMA_VERSION
+    );
     let owner = RuntimeOwner::open(&db).unwrap();
     {
         let store = owner.store.lock().unwrap();
