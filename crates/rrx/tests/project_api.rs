@@ -89,14 +89,15 @@ impl Fixture {
         // Fails with a secret-looking stderr while `<repo>/.git/rrx-fail`
         // exists. Pauses while `<repo>/.git/rrx-hold` exists, after recording its own
         // pid; with `rrx-escape` it first starts a descendant in a new
-        // session that keeps the output pipes open until the hold is
-        // released (bounded at about 60 s), not for a fixed time.
+        // session (perl's setsid: macOS has no setsid(1)) that keeps the
+        // output pipes open until the hold is released (bounded at about
+        // 60 s), not for a fixed time.
         let wrapper = format!(
             "#!/bin/sh\nhere=$(pwd -P)\necho \"$here $*\" >> '{log}'\n\
              if [ -e \"$here/.git/rrx-fail\" ]; then echo 'fatal: SECRET-TOKEN-81' >&2; exit 128; fi\n\
              if [ -e \"$here/.git/rrx-hold\" ]; then\n\
              echo $$ >> \"$here/.git/rrx-held\"\n\
-             if [ -e \"$here/.git/rrx-escape\" ]; then setsid sh -c 'n=0; while [ -e \"$1\" ] && [ $n -lt 1200 ]; do sleep 0.05; n=$((n+1)); done' _ \"$here/.git/rrx-hold\" & fi\n\
+             if [ -e \"$here/.git/rrx-escape\" ]; then perl -MPOSIX -e 'POSIX::setsid() or die; exec @ARGV' sh -c 'n=0; while [ -e \"$1\" ] && [ $n -lt 1200 ]; do sleep 0.05; n=$((n+1)); done' _ \"$here/.git/rrx-hold\" & fi\n\
              while [ -e \"$here/.git/rrx-hold\" ]; do sleep 0.05; done\nfi\n\
              exec '{real}' \"$@\"\n",
             log = log.display(),
