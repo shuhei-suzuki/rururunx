@@ -6,8 +6,7 @@
 //! `AuditEvent.data`, Usage or stored attention text into a response.
 use super::super::*;
 use super::goals::{
-    current_goal, goal_attention, owner_current, preparation_history, project_limit_stored,
-    scoped_tasks,
+    current_goal, goal_attention, limit_of, owner_current, preparation_history, scoped_tasks,
 };
 use crate::runtime::control::{
     AttentionCursor, AttentionFact, AttentionItem, AttentionLane, AttentionOperationKind,
@@ -553,8 +552,10 @@ impl Store {
         let tx = self.connection.unchecked_transaction()?;
         owner_current(&tx, ingress)?;
         let epoch = ingress.identity().1;
+        // R10: each Project row is read at most once per request and reused.
+        let mut projects: BTreeMap<ProjectId, Project> = BTreeMap::new();
         if let Some(project) = project {
-            project_version(&tx, project)?;
+            cached_project(&tx, &mut projects, project)?;
         }
         // The cursor's Goal must be in the selected view's inventory.
         if let Some(cursor) = after {
@@ -583,7 +584,6 @@ impl Store {
             start,
             ATTENTION_GOALS + 1 - rows.len(),
         )?);
-        let mut projects: BTreeMap<ProjectId, Project> = BTreeMap::new();
         let mut items: Vec<AttentionItem> = Vec::new();
         let (mut goals_evaluated, mut tasks_evaluated) = (0, 0);
         let mut last_evaluated = None;
@@ -598,18 +598,8 @@ impl Store {
                 budget_ended = true;
                 break;
             }
-            if let std::collections::btree_map::Entry::Vacant(slot) = projects.entry(goal_project) {
-                let stored: Project = read_tx(&tx, "projects", &goal_project.to_string())?
-                    .context("unknown Project")?;
-                ensure!(
-                    stored.id == goal_project,
-                    "Project body/index identity differs"
-                );
-                #[cfg(test)]
-                observation::project_row();
-                slot.insert(stored);
-            }
-            let mut derived = goal_items(&tx, &projects[&goal_project], goal, epoch, resume)?;
+            let stored = cached_project(&tx, &mut projects, goal_project)?;
+            let mut derived = goal_items(&tx, stored, goal, epoch, resume)?;
             if goals_evaluated == 0
                 && let Some(cursor @ AttentionCursor::Item { .. }) = after
             {
@@ -668,6 +658,22 @@ impl Store {
         };
         finish(tx, answer)
     }
+}
+
+/// R10: the queue's only Project read; a Project already read by this
+/// request is reused, never read again.
+fn cached_project<'a>(
+    tx: &Transaction<'_>,
+    projects: &'a mut BTreeMap<ProjectId, Project>,
+    id: ProjectId,
+) -> Result<&'a Project> {
+    if let std::collections::btree_map::Entry::Vacant(slot) = projects.entry(id) {
+        let stored: Project =
+            read_tx(tx, "projects", &id.to_string())?.context("unknown Project")?;
+        ensure!(stored.id == id, "Project body/index identity differs");
+        slot.insert(stored);
+    }
+    Ok(&projects[&id])
 }
 
 /// D2 / D6-R2 R2'': the Project→Goal page, a `goals_by_project` seek; only
@@ -750,7 +756,8 @@ pub(crate) mod observation {
     pub(super) fn goal_row() {
         update(|r| r.goal_rows += 1);
     }
-    pub(super) fn project_row() {
+    /// Called by `read_tx` for every Project row it reads.
+    pub(crate) fn project_row() {
         update(|r| r.project_rows += 1);
     }
     pub(super) fn evaluated(tasks: usize) {
@@ -772,7 +779,7 @@ fn goal_items(
     epoch: u64,
     resume: &ResumeInputs<'_>,
 ) -> Result<Vec<AttentionItem>> {
-    let limit = project_limit_stored(tx, project.id)?;
+    let limit = limit_of(project);
     let accepted: bool = tx.query_row(
         "SELECT EXISTS(SELECT 1 FROM goal_authority WHERE goal_id=?1 AND project_id=?2)",
         params![goal.to_string(), project.id.to_string()],
@@ -795,7 +802,7 @@ fn goal_items(
             attention,
             project_limit_stored,
             ..
-        } = super::proposals::proposal_facts(tx, project.id, goal)?
+        } = super::proposals::proposal_facts_at(tx, project.id, goal, limit)?
         else {
             bail!("proposal facts differ");
         };

@@ -134,6 +134,16 @@ pub(super) fn proposal_facts(
     project: ProjectId,
     id: GoalId,
 ) -> Result<ControlResponse> {
+    let project_limit_stored = super::goals::project_limit_stored(tx, project)?;
+    proposal_facts_at(tx, project, id, project_limit_stored)
+}
+/// `proposal_facts` with the Project's stored limit already read (R4.5).
+pub(super) fn proposal_facts_at(
+    tx: &Transaction<'_>,
+    project: ProjectId,
+    id: GoalId,
+    project_limit_stored: Option<usize>,
+) -> Result<ControlResponse> {
     let (version, bytes): (u64, usize) = tx.query_row(
         "SELECT version,length(CAST(body AS BLOB)) FROM goals WHERE id=?1 AND project_id=?2",
         params![id.to_string(), project.to_string()],
@@ -190,7 +200,6 @@ pub(super) fn proposal_facts(
         |r| r.get(0),
     )?;
     ensure!(tasks == 0, "inert proposal has Tasks");
-    let project_limit_stored = super::goals::project_limit_stored(tx, project)?;
     Ok(ControlResponse::GoalProposalFacts {
         goal: id,
         version,

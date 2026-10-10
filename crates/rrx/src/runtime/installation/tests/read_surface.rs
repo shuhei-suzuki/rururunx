@@ -1305,11 +1305,26 @@ async fn c_s4d_r_task_budget_ends_the_request() {
 }
 
 /// C-S4d-R (R10): Project rows are read only for Projects that own fetched
-/// Goals; 60 Projects without Goals are never read.
+/// Goals, each at most once per request, counted wherever a Project row is
+/// read: three Goals (one a proposal) share one Project read, a second
+/// Project with a Goal adds one, and 60 Projects without Goals add none.
 #[tokio::test]
 async fn c_s4d_r_project_rows_only_for_fetched_goals() {
     let f = fixture("claude", true);
     accept(&f, 1).await;
+    f.create(plan()).await;
+    proposal_of(
+        read(
+            &f,
+            ControlAction::ProposeGoal {
+                project: f.project.id,
+                expected_project: f.project.version,
+                objective: "a proposal shares the Project read".into(),
+            },
+        )
+        .await,
+    );
+    other_project(&f, 1).await;
     for i in 0..60 {
         let root = f._dir.path().join(format!("quiet-{i}"));
         std::fs::create_dir(&root).unwrap();
@@ -1321,18 +1336,21 @@ async fn c_s4d_r_project_rows_only_for_fetched_goals() {
         );
         f.store().lock().unwrap().put_project(&mut project).unwrap();
     }
-    read(
-        &f,
-        ControlAction::AttentionQueue {
-            project: None,
-            after: None,
-            maximum: 128,
-        },
-    )
-    .await;
-    let observed = last_read();
-    assert_eq!(observed.goal_rows, 1);
-    assert_eq!(observed.project_rows, 1, "{observed:?}");
+    for (project, goals, projects) in [(None, 4, 2), (Some(f.project.id), 3, 1)] {
+        read(
+            &f,
+            ControlAction::AttentionQueue {
+                project,
+                after: None,
+                maximum: 128,
+            },
+        )
+        .await;
+        let observed = last_read();
+        assert_eq!(observed.goal_rows, goals, "{project:?}: {observed:?}");
+        assert_eq!(observed.goals_evaluated, goals, "{project:?}: {observed:?}");
+        assert_eq!(observed.project_rows, projects, "{project:?}: {observed:?}");
+    }
     finish(f).await;
 }
 

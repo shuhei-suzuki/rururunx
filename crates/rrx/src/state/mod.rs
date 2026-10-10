@@ -2322,6 +2322,11 @@ fn bump(version: &mut u64) -> Result<()> {
     Ok(())
 }
 fn read_tx<T: DeserializeOwned>(tx: &Connection, table: &str, id: &str) -> Result<Option<T>> {
+    // D6-R3 R10: the controls count Project rows where they are read.
+    #[cfg(test)]
+    if table == "projects" {
+        runtime::read::observation::project_row();
+    }
     let body: Option<String> = tx
         .query_row(
             &format!("SELECT body FROM {table} WHERE id=?1"),

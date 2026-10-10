@@ -665,5 +665,9 @@ pub(super) fn project_limit_stored(
 ) -> Result<Option<usize>> {
     let stored: Project =
         read_tx(tx, "projects", &project.to_string())?.context("unknown Project")?;
-    Ok((stored.max_tasks != crate::config::MVP_PROJECT_TASKS).then_some(stored.max_tasks))
+    Ok(limit_of(&stored))
+}
+/// R4.5 on an already-read Project row.
+pub(super) fn limit_of(project: &Project) -> Option<usize> {
+    (project.max_tasks != crate::config::MVP_PROJECT_TASKS).then_some(project.max_tasks)
 }
