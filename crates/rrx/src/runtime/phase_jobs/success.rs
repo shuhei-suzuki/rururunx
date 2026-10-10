@@ -728,6 +728,10 @@ pub(crate) const ROOT_ADMISSION: &str = "root admission";
 pub(crate) const SUCCESS_ADMITTED: &str = "success admitted";
 #[cfg(test)]
 pub(crate) const OWNER_IMMEDIATE: &str = "owner immediate";
+/// The same owner-immediate site, reached only by a plan made after the
+/// operation's first Workflow link (never by an earlier unlinked plan).
+#[cfg(test)]
+pub(crate) const OWNER_IMMEDIATE_LINKED: &str = "owner immediate linked";
 #[cfg(test)]
 pub(crate) const OWNER_PLANNING: &str = "owner planning";
 #[cfg(test)]
