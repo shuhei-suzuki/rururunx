@@ -694,6 +694,71 @@ async fn c_s4d_attention_queue_derives_typed_items_and_operations() {
     finish(f).await;
 }
 
+/// C-S4d (S4-SOL-M2): cancelling or failing a Goal leaves its Tasks'
+/// unresolved facts in the queue; only the Goal item and its lifecycle
+/// operations go away.
+#[tokio::test]
+async fn c_s4d_terminal_goal_keeps_its_task_facts() {
+    let f = fixture("claude", true);
+    let (cancelled, cancelled_tasks) = accept(&f, 1).await;
+    let (failed, failed_tasks) = accept(&f, 1).await;
+    f.store()
+        .lock()
+        .unwrap()
+        .reconcile_runtime_attention(f.owner.instance_id(), f.owner.epoch(), 0)
+        .unwrap();
+    for (goal, target) in [
+        (cancelled, GoalControl::Cancel),
+        (failed, GoalControl::Fail),
+    ] {
+        assert!(matches!(
+            read(
+                &f,
+                ControlAction::SetGoalLifecycle {
+                    project: f.project.id,
+                    goal,
+                    expected_goal: 1,
+                    target,
+                    reason: "terminal".into(),
+                },
+            )
+            .await,
+            ControlResponse::GoalLifecycleChanged { .. }
+        ));
+    }
+    let (queue, _) = items(
+        read(
+            &f,
+            ControlAction::AttentionQueue {
+                project: Some(f.project.id),
+                after: None,
+                maximum: 128,
+            },
+        )
+        .await,
+    );
+    for (goal, task) in [
+        (cancelled, cancelled_tasks[0].id),
+        (failed, failed_tasks[0].id),
+    ] {
+        assert!(
+            !queue
+                .iter()
+                .any(|i| i.goal == goal && i.lane == AttentionLane::Goal),
+            "a terminal Goal has no Goal item"
+        );
+        let item = queue
+            .iter()
+            .find(|i| i.task == Some(task))
+            .expect("the terminal Goal's Task fact stays");
+        assert!(item.facts.contains(&AttentionFact::Unavailable {
+            reason: UnavailableReason::NativeBindingUnavailable
+        }));
+        assert!(item.goal_state != crate::domain::GoalState::Running);
+    }
+    finish(f).await;
+}
+
 /// C-S4d (4): a stored legacy limit is a Goal item with the Project repair
 /// at the observed Project version.
 #[tokio::test]

@@ -699,13 +699,15 @@ fn goal_items(
         }]);
     }
     let current = current_goal(tx, project.id, goal)?;
-    if goal_terminal(current.state) {
-        return Ok(Vec::new());
-    }
     let tasks = scoped_tasks(tx, &current)?;
     let mut items = Vec::new();
     let state_fact = goal_state_fact(current.state);
-    if tasks.is_empty() || state_fact.is_some() || limit.is_some() {
+    // A terminal Goal has no Goal item or lifecycle operation, but its
+    // Tasks' unresolved facts stay in the queue (S4-SOL-M2): cancelling or
+    // failing a Goal does not resolve a Task's wait.
+    if !goal_terminal(current.state)
+        && (tasks.is_empty() || state_fact.is_some() || limit.is_some())
+    {
         let mut facts = Vec::new();
         if tasks.is_empty() {
             facts.push(AttentionFact::GoalWithoutTasks);

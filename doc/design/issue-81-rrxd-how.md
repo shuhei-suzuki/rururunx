@@ -288,6 +288,20 @@ S4 is a **read-only projection milestone** for CLI/Desktop. It does not create R
 
 Implementation is blocked on design review of D1–D9. S4 source code must not start until this delta has no required review findings.
 
+### S4 source-review delta D6-R (S4-SOL-M1), for review before code
+
+Sol 6094695367 S4-SOL-M1: one `AttentionQueue` page can make the Runtime evaluate the whole Goal/Task inventory under the shared Store lock. D6 requires a next cursor to name an item that is still present, so a request that has found few items keeps scanning. Bounding that work needs a continuation that is not an item, which changes the D6 cursor contract. This delta is therefore reviewed before any code.
+
+| # | Point | Decision |
+| --- | --- | --- |
+| R1 | Per-request budget | One request evaluates at most `ATTENTION_GOALS = 64` Goals and at most `ATTENTION_TASKS = 1024` Tasks, counted by the cheap indexed `count(*)` before a Goal is decoded. The first Goal of a request is always evaluated, so every request makes progress. Each Goal's own evaluation keeps its existing bounds (`current_goal` 4 MiB, `scoped_tasks` 4096 Tasks / 32 MiB) |
+| R2 | Inventory reads | Goal IDs are read by an SQL page after the position, `(project_id, id) > (p, g)` (one Project when filtered), with `ORDER BY project_id, id LIMIT` the remaining budget. The full Project or Goal list is never materialized |
+| R3 | Cursor shape | `AttentionCursor` becomes `Item { project, goal, lane, task }` (unchanged meaning: the item must still be present) or `ScannedThrough { project, goal }` (the scan resumes after that Goal). A `ScannedThrough` cursor must name a Goal of the selected view's inventory (inside the filtered Project), else `ReadCursorInvalid`. Goals are never deleted, so the position stays valid |
+| R4 | Page meaning | When the budget ends before `maximum` items, the page returns the items found so far with `next = ScannedThrough` the last evaluated Goal. It may have zero items. `next` is `None` only when the inventory is exhausted. D3 holds: pages are independent observations, there is no automatic traversal, and the CLI prints `More: --after …` for either cursor shape |
+| R5 | Controls | C-S4d-R: (1) 70 accepted Goals with no attention, followed by one Goal with attention. The first page has fewer items than `maximum` and a `ScannedThrough` cursor; following `next` reaches the item exactly once and then `None`. (2) A `cfg(test)` counter of evaluated Goals/Tasks per request is an observation only (no authority, ownership or outcome change); it never exceeds the budget plus the first-Goal allowance. (3) A `ScannedThrough` cursor naming a Goal of another Project is `ReadCursorInvalid`. Mutants: no budget, budget not reset per request, the full list materialized ahead of the budget (detected by the counter), a `ScannedThrough` cursor without the scope check |
+
+S4-SOL-M2 (a terminal Goal hid its Tasks' unresolved facts) needs no design change; D6 already derives Task items from current rows. The source fix is in §10.
+
 ## 5. Decisions (6058699019)
 
 | # | Decision |
@@ -604,3 +618,9 @@ The type surface makes these impossible to write rather than merely detected: se
 ### Verification
 
 All 20 test binaries passed: non-root (fmtest, umask 022, subreaper), with no build running alongside. The rrx lib had 763 passed and 0 failed, with 20 ignored as before. `project_api` passed 14/14, `daemon` 6/6, `adapter` 19/19 and `grok` 16 (2 ignored, unchanged), and every other binary passed. `cargo clippy -p rrx --all-targets -D warnings` is clean with no `allow` added, and `cargo fmt --check` is clean. No test is ignored or disabled.
+
+### Source review
+
+| Round | Result |
+| --- | --- |
+| `4ab25d8` → Sol 6094695367 | 2 Medium. **S4-SOL-M1** (one attention page evaluates the whole inventory under the Store lock): confirmed in source; it needs a non-item continuation, so the D6-R delta (§4) is submitted for design review before code. **S4-SOL-M2** (Cancel/Fail of a Goal removed its Tasks' unresolved waits from the queue): confirmed in source (`goal_items` returned nothing for a terminal Goal) and fixed. Only the Goal lane skips a terminal Goal; its non-terminal Tasks keep their facts. Control `c_s4d_terminal_goal_keeps_its_task_facts` (Cancel and Fail, with the production binding hold) passes, and the restored early-return mutant FAILs it |
