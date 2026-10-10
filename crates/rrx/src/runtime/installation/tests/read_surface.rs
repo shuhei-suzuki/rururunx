@@ -1239,9 +1239,9 @@ async fn c_s4d_r_queue_work_is_bounded_per_request() {
         );
         let observed = last_read();
         requests += 1;
+        // The design's budget (D6-R3 R1), not the compiled constant.
         assert!(
-            observed.goals_evaluated <= crate::state::ATTENTION_GOALS
-                && observed.goal_rows <= crate::state::ATTENTION_GOALS + 1,
+            observed.goals_evaluated <= 64 && observed.goal_rows <= 65,
             "request {requests}: {observed:?}"
         );
         found.extend(page.iter().map(|i| (i.goal, i.lane)));

@@ -17,7 +17,7 @@ pub(crate) use runtime::driver::{
 pub(crate) use runtime::driver::{CapacityScope, DriverCapacityUnavailable};
 pub(crate) use runtime::read::ResumeInputs;
 #[cfg(test)]
-pub(crate) use runtime::read::{ATTENTION_GOALS, READ_PAGE_BYTES, observation as read_observation};
+pub(crate) use runtime::read::{READ_PAGE_BYTES, observation as read_observation};
 use std::{path::Path, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};

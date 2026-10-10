@@ -289,6 +289,15 @@ fn actual9_to10_fences_preopened_cached_all_table_writers_and_reopens() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("state.db");
     let old = old9(&path);
+    // S4 D6-R3 R6: the historical layout files carry no read index.
+    let historical: i64 = old
+        .query_row(
+            "SELECT count(*) FROM sqlite_schema WHERE type='index' AND name='goals_by_project'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(historical, 0);
     let mut cached = old
         .prepare("UPDATE runtime_epoch SET epoch=epoch+1 WHERE singleton=1")
         .unwrap();
