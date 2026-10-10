@@ -2,6 +2,7 @@
 pub(crate) mod driver;
 mod goals;
 mod proposals;
+pub(crate) mod read;
 mod recorded;
 mod routing;
 mod service;

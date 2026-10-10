@@ -441,12 +441,12 @@ mod tests {
         );
     }
 
-    /// C-S1e: an older-protocol `Hello` (1, or 2 before S3's Project
-    /// control) from the actual endpoint is refused, typed, before any
-    /// request is sent; the peer reads only EOF.
+    /// C-S1e / C-S4i: an older-protocol `Hello` (1, 2 before S3's Project
+    /// control, or 3 before S4's read surface) from the actual endpoint is
+    /// refused, typed, before any request is sent; the peer reads only EOF.
     #[tokio::test]
     async fn c_s1e_protocol_1_hello_is_refused_before_any_request() {
-        for protocol in [1, 2] {
+        for protocol in [1, 2, 3] {
             let dir = tempfile::tempdir().unwrap();
             let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
             let endpoint = ControlEndpoint::bind(owner.clone()).unwrap();
@@ -490,8 +490,8 @@ mod tests {
             .unwrap();
     }
 
-    /// C-S1e2 (bind): the exclusive owner replaces a same-state protocol 1,
-    /// 2 or 3 leftover of the strict shape, never a foreign one.
+    /// C-S1e2 / C-S4i (bind): the exclusive owner replaces a same-state
+    /// protocol 1–4 leftover of the strict shape, never a foreign one.
     #[test]
     fn c_s1e2_bind_replaces_known_leftovers_and_refuses_foreign() {
         let dir = tempfile::tempdir().unwrap();
@@ -505,7 +505,7 @@ mod tests {
         let path = endpoint.descriptor_path.clone();
         let left = endpoint.descriptor.clone();
         drop(endpoint);
-        for protocol in [1, 2, 3] {
+        for protocol in [1, 2, 3, 4] {
             let mut leftover = left.clone();
             leftover.protocol = protocol;
             write_private(&path, &serde_json::to_vec(&leftover).unwrap());
@@ -519,7 +519,7 @@ mod tests {
         let mut foreign = left.clone();
         foreign.identity.state = dir.path().join("foreign.db");
         let mut unknown = left.clone();
-        unknown.protocol = 4;
+        unknown.protocol = 5;
         for bytes in [
             serde_json::to_vec(&foreign).unwrap(),
             serde_json::to_vec(&unknown).unwrap(),
@@ -533,6 +533,39 @@ mod tests {
                 "refused leftover changed"
             );
         }
+    }
+
+    /// C-S4i: a live endpoint whose descriptor names protocol 3 (same
+    /// canonical state, strict shape, live socket) is `Invalid`, never
+    /// `Absent`; removing the descriptor is what makes it `Absent`.
+    #[tokio::test]
+    async fn c_s4i_live_protocol_3_descriptor_is_invalid_not_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+        let endpoint = ControlEndpoint::bind(owner.clone()).unwrap();
+        assert!(endpoint.descriptor.socket.exists(), "SETUP: live socket");
+        let mut old = endpoint.descriptor.clone();
+        old.protocol = 3;
+        write_private(
+            &endpoint.descriptor_path,
+            &serde_json::to_vec(&old).unwrap(),
+        );
+        // The live endpoint keeps serving its own Hello meanwhile, so only
+        // the descriptor's protocol decides the classification.
+        let (discovery, _) = tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::join!(
+                discover(owner.state_path()),
+                tokio::time::timeout(Duration::from_secs(2), endpoint.accept())
+            )
+        })
+        .await
+        .unwrap();
+        assert!(matches!(discovery, Discovery::Invalid(_)));
+        std::fs::remove_file(&endpoint.descriptor_path).unwrap();
+        assert!(matches!(
+            discover(owner.state_path()).await,
+            Discovery::Absent
+        ));
     }
 
     #[tokio::test]

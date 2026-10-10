@@ -207,7 +207,7 @@ impl Store {
     }
 }
 
-fn current_goal(tx: &Transaction<'_>, project: ProjectId, id: GoalId) -> Result<Goal> {
+pub(super) fn current_goal(tx: &Transaction<'_>, project: ProjectId, id: GoalId) -> Result<Goal> {
     let size: usize = tx.query_row(
         "SELECT length(CAST(body AS BLOB)) FROM goals WHERE id=?1 AND project_id=?2",
         params![id.to_string(), project.to_string()],
@@ -251,7 +251,7 @@ fn current_goal(tx: &Transaction<'_>, project: ProjectId, id: GoalId) -> Result<
     );
     Ok(goal)
 }
-fn scoped_tasks(tx: &Transaction<'_>, goal: &Goal) -> Result<Vec<Task>> {
+pub(super) fn scoped_tasks(tx: &Transaction<'_>, goal: &Goal) -> Result<Vec<Task>> {
     let (count,bytes):(usize,usize)=tx.query_row("SELECT count(*),COALESCE(sum(length(CAST(body AS BLOB))),0) FROM tasks WHERE goal_id=?1 AND project_id=?2",params![goal.id.to_string(),goal.project_id.to_string()],|r|Ok((r.get(0)?,r.get(1)?)))?;
     ensure!(
         count <= 4096 && bytes <= 32 * 1024 * 1024,
@@ -335,7 +335,6 @@ impl Store {
                 .or_insert(0) += 1;
         }
         let project_limit_stored = project_limit_stored(&tx, project)?;
-        let initial_driver:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM scheduler_tasks s JOIN task_drivers d ON d.task_id=s.task_id AND d.goal_id=s.goal_id AND d.project_id=s.project_id WHERE s.goal_id=?1 AND s.project_id=?2 AND s.attention IS NULL AND d.owner_epoch=?3 AND d.state='driving')",params![id.to_string(),project.to_string(),ingress.identity().1],|r|r.get(0))?;
         let mut response = ControlResponse::GoalFacts {
             goal: id,
             version: goal.version,
@@ -344,13 +343,13 @@ impl Store {
             states,
             recorded: None,
             dispatch_available: false,
-            attention: if project_limit_stored.is_some() {
-                crate::runtime::control::UnavailableReason::ProjectLimitUnsupported
-            } else if initial_driver {
-                crate::runtime::control::UnavailableReason::NativeContinuationUnavailable
-            } else {
-                crate::runtime::control::UnavailableReason::NativeBindingUnavailable
-            },
+            attention: goal_attention(
+                &tx,
+                project,
+                id,
+                ingress.identity().1,
+                project_limit_stored,
+            )?,
             project_limit_stored,
         };
         if view.is_some() {
@@ -438,10 +437,9 @@ impl Store {
                     saved_policy == policy_sha256,
                     "Goal accepted policy changed; resume remains held"
                 );
-                let history:u64=tx.query_row("SELECT (SELECT count(*) FROM execution_units WHERE goal_id=?1 AND project_id=?2)+(SELECT count(*) FROM records WHERE goal_id=?1 AND project_id=?2 AND kind IN ('workflow','session','worktree_lock'))+(SELECT count(*) FROM context_versions WHERE project_id=?2 AND goal_id=?1)+(SELECT count(*) FROM source_recoveries WHERE goal_id=?1 AND project_id=?2)",params![id.to_string(),project.to_string()],|r|r.get(0))?;
                 // Only a genuinely never-prepared graph can resume here. A row,
                 // retired Unit or old Session is not a recovery capability.
-                if history > 0 {
+                if preparation_history(&tx, *project, *id)? > 0 {
                     return Ok(ControlResponse::Unavailable {
                         request_id: request.request_id,
                         reason: UnavailableReason::FreshBootstrapRecoveryUnavailable,
@@ -628,6 +626,37 @@ impl Store {
     }
 }
 
+/// The accepted Goal's typed attention, shared by `GoalStatus` and the S4
+/// queue (D6): the Project limit first, then an initial Driver without
+/// attention (continuation), else binding.
+pub(super) fn goal_attention(
+    tx: &Transaction<'_>,
+    project: ProjectId,
+    id: GoalId,
+    epoch: u64,
+    project_limit_stored: Option<usize>,
+) -> Result<crate::runtime::control::UnavailableReason> {
+    use crate::runtime::control::UnavailableReason;
+    if project_limit_stored.is_some() {
+        return Ok(UnavailableReason::ProjectLimitUnsupported);
+    }
+    let initial_driver:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM scheduler_tasks s JOIN task_drivers d ON d.task_id=s.task_id AND d.goal_id=s.goal_id AND d.project_id=s.project_id WHERE s.goal_id=?1 AND s.project_id=?2 AND s.attention IS NULL AND d.owner_epoch=?3 AND d.state='driving')",params![id.to_string(),project.to_string(),epoch],|r|r.get(0))?;
+    Ok(if initial_driver {
+        UnavailableReason::NativeContinuationUnavailable
+    } else {
+        UnavailableReason::NativeBindingUnavailable
+    })
+}
+/// Rows that make a Goal no longer never-prepared; shared by the lifecycle
+/// resume and the S4 queue's resume availability (D6).
+pub(super) fn preparation_history(
+    tx: &Transaction<'_>,
+    project: ProjectId,
+    id: GoalId,
+) -> Result<u64> {
+    Ok(tx.query_row("SELECT (SELECT count(*) FROM execution_units WHERE goal_id=?1 AND project_id=?2)+(SELECT count(*) FROM records WHERE goal_id=?1 AND project_id=?2 AND kind IN ('workflow','session','worktree_lock'))+(SELECT count(*) FROM context_versions WHERE project_id=?2 AND goal_id=?1)+(SELECT count(*) FROM source_recoveries WHERE goal_id=?1 AND project_id=?2)",params![id.to_string(),project.to_string()],|r|r.get(0))?)
+}
+
 /// Read-derived Project attention (R4.5, D4): the stored Task limit when it is
 /// not the fixed MVP value. Reading writes nothing.
 pub(super) fn project_limit_stored(
@@ -636,5 +665,9 @@ pub(super) fn project_limit_stored(
 ) -> Result<Option<usize>> {
     let stored: Project =
         read_tx(tx, "projects", &project.to_string())?.context("unknown Project")?;
-    Ok((stored.max_tasks != crate::config::MVP_PROJECT_TASKS).then_some(stored.max_tasks))
+    Ok(limit_of(&stored))
+}
+/// R4.5 on an already-read Project row.
+pub(super) fn limit_of(project: &Project) -> Option<usize> {
+    (project.max_tasks != crate::config::MVP_PROJECT_TASKS).then_some(project.max_tasks)
 }

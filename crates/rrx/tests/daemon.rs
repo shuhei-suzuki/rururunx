@@ -59,6 +59,40 @@ impl Fixture {
     fn status(&self) -> Value {
         self.daemon("status").1
     }
+    /// An S4 reader through the compiled entry.
+    fn read(&self, args: &[&str]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_rrx"))
+            .arg("--state")
+            .arg(&self.state)
+            .arg("--config")
+            .arg(&self.config)
+            .args(args)
+            .current_dir(&self.base)
+            .output()
+            .unwrap()
+    }
+    /// Every Store file of the selected state, as (name, length, hash).
+    fn store_files(&self) -> Vec<(String, usize, u64)> {
+        use std::hash::{Hash, Hasher};
+        let mut files = std::fs::read_dir(&self.base)
+            .unwrap()
+            .map(|e| e.unwrap())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("state.db"))
+            .filter(|e| e.file_type().unwrap().is_file())
+            .map(|e| {
+                let bytes = std::fs::read(e.path()).unwrap();
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                bytes.hash(&mut hasher);
+                (
+                    e.file_name().to_string_lossy().into_owned(),
+                    bytes.len(),
+                    hasher.finish(),
+                )
+            })
+            .collect::<Vec<_>>();
+        files.sort();
+        files
+    }
     fn start(&self) -> Value {
         self.daemon("start").1
     }
@@ -317,31 +351,31 @@ fn c_s1c2_concurrent_status_never_corrupts_start() {
     }
 }
 
-/// C-S1e2 through `daemon start`: same-state protocol-1 and protocol-2
-/// descriptors and a crashed protocol-3 leftover are replaced by a protocol-3
-/// service; foreign
+/// C-S1e2 / C-S4i through `daemon start`: same-state protocol-1, protocol-2
+/// and protocol-3 descriptors and a crashed protocol-4 leftover are replaced
+/// by a protocol-4 service; foreign
 /// and malformed descriptors are refused, typed, and nothing is published.
 #[test]
 fn c_s1e2_daemon_start_replaces_known_leftovers_only() {
     let f = Fixture::new();
     f.start_running();
     f.stop_and_wait();
-    // Valid protocol-1 and protocol-2 descriptors for the same state, lock
-    // free, are each replaced.
+    // Valid protocol-1, protocol-2 and protocol-3 descriptors for the same
+    // state, lock free, are each replaced.
     let mut identity = Value::Null;
-    for protocol in [1, 2] {
+    for protocol in [1, 2, 3] {
         f.write_descriptor(&f.stale(protocol, &f.state));
         identity = f.start_running();
-        assert_eq!(identity["protocol"], 3);
+        assert_eq!(identity["protocol"], 4);
         let published: Value =
             serde_json::from_slice(&std::fs::read(f.descriptor()).unwrap()).unwrap();
-        assert_eq!(published["protocol"], 3);
+        assert_eq!(published["protocol"], 4);
         assert_eq!(published["identity"]["epoch"], identity["epoch"]);
-        if protocol == 1 {
+        if protocol != 3 {
             f.stop_and_wait();
         }
     }
-    // A crash leaves the protocol-3 descriptor behind.
+    // A crash leaves the protocol-4 descriptor behind.
     let pid = f.service_pid();
     assert!(
         Command::new("kill")
@@ -367,8 +401,9 @@ fn c_s1e2_daemon_start_replaces_known_leftovers_only() {
     f.stop_and_wait();
     // Foreign state and malformed descriptors are refused.
     for bytes in [
-        f.stale(3, &f.base.join("foreign.db")),
-        br#"{"protocol":3}"#.to_vec(),
+        f.stale(4, &f.base.join("foreign.db")),
+        f.stale(5, &f.state),
+        br#"{"protocol":4}"#.to_vec(),
     ] {
         f.write_descriptor(&bytes);
         let started = f.start();
@@ -382,6 +417,50 @@ fn c_s1e2_daemon_start_replaces_known_leftovers_only() {
             std::thread::sleep(Duration::from_millis(20));
         }
     }
+}
+/// C-S4i through the compiled readers: with the owner lock free, an absent
+/// endpoint and a same-state protocol-3 descriptor are both refused as
+/// service unavailable, reported distinctly, and neither creates, opens or
+/// writes the Store (no offline fallback).
+#[test]
+fn c_s4i_compiled_readers_never_fall_back_to_the_store() {
+    let f = Fixture::new();
+    let readers: [&[&str]; 4] = [&["attention"], &["goal", "list"], &["events"], &["metrics"]];
+    for args in readers {
+        let output = f.read(args);
+        assert_eq!(output.status.code(), Some(4), "{args:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("no Runtime service"),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !f.state.exists() && !f.root().exists(),
+            "an absent endpoint created state: {args:?}"
+        );
+    }
+    f.start_running();
+    f.stop_and_wait();
+    f.write_descriptor(&f.stale(3, &f.state));
+    // Reading the epoch row opens SQLite itself, so it precedes the file
+    // snapshot and follows each comparison.
+    let epoch = f.epoch_row();
+    let files = f.store_files();
+    let descriptor = std::fs::read(f.descriptor()).unwrap();
+    assert!(!files.is_empty(), "SETUP: no Store files");
+    for args in readers {
+        let output = f.read(args);
+        assert_eq!(output.status.code(), Some(4), "{args:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("discovery refused"),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(f.store_files(), files, "a reader wrote the Store: {args:?}");
+        assert_eq!(f.epoch_row(), epoch, "a reader began an epoch: {args:?}");
+        assert_eq!(std::fs::read(f.descriptor()).unwrap(), descriptor);
+    }
+    assert!(!rrx_lock_busy(&f.root().join("owner.lock")));
 }
 fn rrx_lock_busy(path: &Path) -> bool {
     let Ok(file) = std::fs::File::open(path) else {

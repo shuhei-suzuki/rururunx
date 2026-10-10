@@ -3,6 +3,8 @@ mod environment;
 pub(crate) mod managed_binding;
 #[cfg(test)]
 mod native_dispatch_tests;
+#[cfg(test)]
+mod read_index_tests;
 mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
 pub use runtime::driver::ProjectLimitUnsupported;
@@ -13,6 +15,9 @@ pub(crate) use runtime::driver::{
 };
 #[cfg(test)]
 pub(crate) use runtime::driver::{CapacityScope, DriverCapacityUnavailable};
+pub(crate) use runtime::read::ResumeInputs;
+#[cfg(test)]
+pub(crate) use runtime::read::{READ_PAGE_BYTES, observation as read_observation};
 use std::{path::Path, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
@@ -22,7 +27,9 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 10;
+pub const SCHEMA_VERSION: i64 = 11;
+/// The managed-binding layout was introduced at 10 and is unchanged at 11.
+pub(crate) const BINDING_LAYOUT_VERSION: i64 = 10;
 pub(crate) use execution::source_recovery::SourceReadBinding;
 mod execution;
 pub(crate) use execution::QuotaAdmission;
@@ -108,6 +115,13 @@ pub struct Store {
     /// Finite read-only observations of real committed test-build windows.
     #[cfg(test)]
     record_window_observations: Vec<(RecordId, u64, i64, u64, i64, u64)>,
+}
+
+/// Schema 11 (S4 D6-R3 R6): the read-surface seek index, kept out of the
+/// historical layout files.
+pub(in crate::state) fn install_read_indexes(tx: &Transaction<'_>) -> Result<()> {
+    tx.execute_batch(include_str!("read_indexes.sql"))?;
+    Ok(())
 }
 
 fn register_writer_contract(
@@ -211,7 +225,19 @@ impl Store {
                 runtime::install_schema(&tx)?;
                 managed_binding::install_schema(&tx)?;
                 execution::install_schema(&tx)?;
+                install_read_indexes(&tx)?;
                 tx.pragma_update(None, "application_id", APPLICATION_ID)?;
+                tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            } else if locked_version == BINDING_LAYOUT_VERSION {
+                // S4 D6-R3 R8: a protected v10 is checked exactly first, and
+                // nothing is changed unless it is the v10 layout. The legacy
+                // namespace checks and installers never run for it.
+                let application: i64 =
+                    tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
+                ensure!(application == APPLICATION_ID, "not an rrx state database");
+                managed_binding::validate_exact_v10_layout(&tx)?;
+                install_read_indexes(&tx)?;
+                execution::install_writer_guards(&tx)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else {
                 ensure!(
@@ -255,13 +281,16 @@ impl Store {
                         execution::native_results::install_schema(&tx)?;
                         execution::install_writer_guards(&tx)?;
                     }
-                    if matches!(next, 7..=10) {
+                    if matches!(next, 7..=11) {
                         execution::install_writer_guards(&tx)?;
+                    }
+                    if next == 11 {
+                        install_read_indexes(&tx)?;
                     }
                     tx.pragma_update(None, "user_version", next)?;
                 }
             }
-            if locked_version < SCHEMA_VERSION {
+            if locked_version < BINDING_LAYOUT_VERSION {
                 managed_binding::install_retained_guards(&tx)?;
             }
             if locked_version > 0 && locked_version < 8 {
@@ -2293,6 +2322,11 @@ fn bump(version: &mut u64) -> Result<()> {
     Ok(())
 }
 fn read_tx<T: DeserializeOwned>(tx: &Connection, table: &str, id: &str) -> Result<Option<T>> {
+    // D6-R3 R10: the controls count Project rows where they are read.
+    #[cfg(test)]
+    if table == "projects" {
+        runtime::read::observation::project_row();
+    }
     let body: Option<String> = tx
         .query_row(
             &format!("SELECT body FROM {table} WHERE id=?1"),

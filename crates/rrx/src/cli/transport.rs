@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{io::Write, path::PathBuf, time::Duration};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 /// Protocols whose leftover descriptor (same canonical state, same strict
 /// shape) an exclusive owner may replace. Never a live-discovery range.
-pub const REPLACEABLE_PROTOCOLS: [u32; 3] = [1, 2, 3];
+pub const REPLACEABLE_PROTOCOLS: [u32; 4] = [1, 2, 3, 4];
 pub const REQUEST_BYTES: usize = 1024 * 1024;
 pub const RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 const IO_TIMEOUT: Duration = Duration::from_secs(30);

@@ -247,6 +247,14 @@ fn catalog(c: &Connection) -> Result<Vec<SqlObject>> {
 /// Compiled layout reference only: no selected DB repair/history, Owner or grant.
 /// No recursive Store initialization, and no SQL-literal-destroying normalize.
 pub(in crate::state) fn validate_current_layout(c: &Connection) -> Result<()> {
+    validate_layout(c, SCHEMA_VERSION)
+}
+/// S4 D6-R3 R8: the exact protected v10 layout (no read index, v10 writer
+/// guards), checked before a v10 database is changed at all.
+pub(in crate::state) fn validate_exact_v10_layout(c: &Connection) -> Result<()> {
+    validate_layout(c, crate::state::BINDING_LAYOUT_VERSION)
+}
+fn validate_layout(c: &Connection, version: i64) -> Result<()> {
     // Bound/read the selected snapshot FIRST, before creating the reference.
     let actual = catalog(c)?;
     let mut reference = Connection::open_in_memory()?;
@@ -257,6 +265,11 @@ pub(in crate::state) fn validate_current_layout(c: &Connection) -> Result<()> {
     install_schema(&tx)?;
     crate::state::execution::install_schema(&tx)?;
     install_retained_guards(&tx)?;
+    if version == SCHEMA_VERSION {
+        crate::state::install_read_indexes(&tx)?;
+    } else {
+        crate::state::execution::install_writer_guards_at(&tx, version)?;
+    }
     let expected = catalog(&tx)?;
     ensure!(
         actual == expected,
@@ -539,6 +552,10 @@ pub(super) fn migrate_inventory(
         }
     }
     // Instrumentation is returned to the caller/tests, not a new authority row.
-    ensure!(SCHEMA_VERSION == 10, "Binding10 installer contract differs");
+    ensure!(
+        crate::state::BINDING_LAYOUT_VERSION == 10
+            && SCHEMA_VERSION >= crate::state::BINDING_LAYOUT_VERSION,
+        "Binding10 installer contract differs"
+    );
     Ok(inventory)
 }

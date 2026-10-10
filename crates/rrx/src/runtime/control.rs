@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, path::PathBuf, time::Duration};
 use tokio::net::UnixStream;
 use uuid::Uuid;
+mod read;
 mod recorded;
+pub use read::*;
 pub use recorded::*;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -95,6 +97,44 @@ pub enum ControlAction {
     ProjectStatus {
         selector: Option<String>,
         cwd: PathBuf,
+    },
+    /// S4 D2: one page of a Project's Goals, by stable Goal ID.
+    ProjectGoals {
+        project: ProjectId,
+        after: Option<GoalId>,
+        maximum: usize,
+    },
+    /// S4 D4: one page of a Task's Review/Approval metadata.
+    TaskReview {
+        scope: Scope,
+        after: Option<ReviewCursor>,
+        maximum: usize,
+    },
+    /// S4 D5: one page of a Task's own Sessions, by stable Session ID.
+    TaskSessions {
+        scope: Scope,
+        after: Option<crate::domain::SessionId>,
+        maximum: usize,
+    },
+    /// S4 D6: one page of the derived Goal+Task attention queue.
+    AttentionQueue {
+        project: Option<ProjectId>,
+        after: Option<AttentionCursor>,
+        maximum: usize,
+    },
+    /// S4 D7: one page of audit summaries, by audit sequence.
+    Events {
+        scope: Scope,
+        after: Option<i64>,
+        maximum: usize,
+    },
+    /// S4 D8: typed unavailable.
+    Routing {
+        scope: Scope,
+    },
+    /// S4 D8: typed unavailable.
+    Metrics {
+        scope: Scope,
     },
 }
 /// S3 D1: `project add` options. Source references (`config_ref`, rules,
@@ -259,6 +299,40 @@ pub enum ControlResponse {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         recorded: Option<RecordedGoalTaskPage>,
     },
+    /// S4 D2.
+    ProjectGoalPage {
+        project: ProjectId,
+        project_version: u64,
+        goals: Vec<GoalView>,
+        next: Option<GoalId>,
+    },
+    /// S4 D4: metadata only; `decision` stays unqualified.
+    TaskReviewPage {
+        task: Scope,
+        task_version: u64,
+        items: Vec<ReviewRecordView>,
+        next: Option<ReviewCursor>,
+        decision: ReviewDecisionView,
+    },
+    /// S4 D5.
+    TaskSessionPage {
+        task: Scope,
+        task_version: u64,
+        sessions: Vec<crate::project::SessionView>,
+        next: Option<crate::domain::SessionId>,
+    },
+    /// S4 D6: advisory, never authority.
+    AttentionPage {
+        project: Option<ProjectId>,
+        items: Vec<AttentionItem>,
+        next: Option<AttentionCursor>,
+    },
+    /// S4 D7.
+    EventPage {
+        scope: Scope,
+        events: Vec<EventView>,
+        next: Option<i64>,
+    },
     /// Control-service facts only; native Driver admission remains unavailable.
     RuntimeMetadata {
         instance: String,
@@ -331,6 +405,19 @@ pub enum UnavailableReason {
     ProjectCurrencyChanged,
     /// S3 D3: a `path`, `cwd` or `root` that is not absolute.
     ProjectPathNotAbsolute,
+    /// S4 D2–D7: a cursor not present in the exact selected scope/view.
+    ReadCursorInvalid,
+    /// S4 D3: a non-elidable projected item cannot fit one response.
+    ReadProjectionTooLarge,
+    /// S4 D4: stored Review/Approval rows are not a qualified decision.
+    ReviewDecisionUnqualified,
+    /// S4 D8: stored Usage is not a qualified metric.
+    MetricsUnqualified,
+    /// S4 D8: no qualified routing projection exists.
+    RoutingUnavailable,
+    /// S4 D6: the Goal lifecycle resume predicate (accepted policy,
+    /// registered Project, Runtime not stopping) does not hold now.
+    GoalResumeHeld,
 }
 
 // Bounds the response wait; a timed-out filesystem worker is not claimed stopped.
@@ -449,6 +536,79 @@ impl Runtime {
             )?;
         Ok(selected.clone())
     }
+    /// The accepted-policy digest a Goal is accepted and resumed under.
+    fn policy_digest(&self) -> Result<String> {
+        use sha2::{Digest, Sha256};
+        let policy = serde_json::to_vec(&self.config)?;
+        ensure!(policy.len() <= 1024 * 1024, "Runtime policy exceeds bound");
+        Ok(format!("{:x}", Sha256::digest(&policy)))
+    }
+    /// S4 (D1–D9): the read-only surface; `None` for every other action.
+    /// Each reader holds only the short Store lock and performs no Git,
+    /// process or native I/O.
+    fn handle_read(
+        &self,
+        ingress: &HumanIngress,
+        request: &ControlRequest,
+    ) -> Result<Option<ControlResponse>> {
+        let store = || {
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))
+        };
+        let answer = match &request.action {
+            ControlAction::ProjectGoals {
+                project,
+                after,
+                maximum,
+            } => store()?.runtime_project_goals(ingress, *project, *after, *maximum)?,
+            ControlAction::TaskReview {
+                scope,
+                after,
+                maximum,
+            } => store()?.runtime_task_review(ingress, scope, *after, *maximum)?,
+            ControlAction::TaskSessions {
+                scope,
+                after,
+                maximum,
+            } => store()?.runtime_task_sessions(ingress, scope, *after, *maximum)?,
+            ControlAction::AttentionQueue {
+                project,
+                after,
+                maximum,
+            } => {
+                let policy = self.policy_digest()?;
+                let resume = crate::state::ResumeInputs {
+                    policy_sha256: &policy,
+                    stopping: self.stopping.load(std::sync::atomic::Ordering::SeqCst),
+                };
+                store()?.runtime_attention_queue(ingress, *project, *after, *maximum, &resume)?
+            }
+            ControlAction::Events {
+                scope,
+                after,
+                maximum,
+            } => store()?.runtime_events(ingress, scope, *after, *maximum)?,
+            ControlAction::Routing { scope } => store()?.runtime_unqualified_read(
+                ingress,
+                scope,
+                UnavailableReason::RoutingUnavailable,
+            )?,
+            ControlAction::Metrics { scope } => store()?.runtime_unqualified_read(
+                ingress,
+                scope,
+                UnavailableReason::MetricsUnqualified,
+            )?,
+            _ => return Ok(None),
+        };
+        Ok(Some(answer.unwrap_or_else(|reason| {
+            ControlResponse::Unavailable {
+                request_id: request.request_id,
+                reason,
+            }
+        })))
+    }
     /// Trusted controls publish only their specific typed decisions. A public
     /// request never supplies Driver, native input or result authority.
     pub(crate) async fn handle_control(
@@ -476,10 +636,7 @@ impl Runtime {
                 "Runtime stopping; new Goal refused"
             );
             let validated = plan.clone().validate(&self.config)?;
-            use sha2::{Digest, Sha256};
-            let policy = serde_json::to_vec(&self.config)?;
-            ensure!(policy.len() <= 1024 * 1024, "Runtime policy exceeds bound");
-            let digest = format!("{:x}", Sha256::digest(&policy));
+            let digest = self.policy_digest()?;
             // Same admission boundary as shutdown, retained through actual publication.
             let _admission = self.control_admission.lock().await;
             ensure!(
@@ -547,6 +704,9 @@ impl Runtime {
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?
                 .runtime_goal_task_page(&ingress, *project, *goal, *after, *maximum, *view);
         }
+        if let Some(response) = self.handle_read(&ingress, &request)? {
+            return Ok(response);
+        }
         if matches!(&request.action, ControlAction::SetGoalLifecycle { .. }) {
             let _admission = self.control_admission.lock().await;
             if matches!(
@@ -561,10 +721,7 @@ impl Runtime {
                     "Runtime stopping; Goal resume refused"
                 );
             }
-            use sha2::{Digest, Sha256};
-            let policy = serde_json::to_vec(&self.config)?;
-            ensure!(policy.len() <= 1024 * 1024, "Runtime policy exceeds bound");
-            let policy_digest = format!("{:x}", Sha256::digest(policy));
+            let policy_digest = self.policy_digest()?;
             let response = self
                 .owner
                 .store
