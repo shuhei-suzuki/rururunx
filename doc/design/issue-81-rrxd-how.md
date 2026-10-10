@@ -529,3 +529,78 @@ Review-fix run (`9970319`, non-root, no build alongside): all 20 binaries passed
 Review-fix round 2 (`9eccde9`, non-root, no build alongside): all 20 binaries passed — rrx lib 749 passed, 0 failed (20 ignored, unchanged); `project_api` 14/14; `adapter` 19/19. clippy (no `allow` added) and fmt are clean.
 
 Review-fix round 3 (`0d4b445`, non-root, no build alongside): all 20 binaries passed — rrx lib 749 passed, 0 failed (20 ignored, unchanged); `project_api` 14/14; `adapter` 19/19. clippy (no `allow` added) and fmt are clean.
+
+## 10. S4 outcome (implementation)
+
+Branch `claude/issue-81-s4-read-surface`, on top of the approved design `704b379` (Sol 6092934593). Paths are relative to `crates/rrx`.
+
+| Design item | Implementation |
+| --- | --- |
+| D1 wire | `src/runtime/control.rs`: the seven actions `ProjectGoals`, `TaskReview`, `TaskSessions`, `AttentionQueue`, `Events`, `Routing` and `Metrics`; the responses `ProjectGoalPage`, `TaskReviewPage`, `TaskSessionPage`, `AttentionPage` and `EventPage`; the five new `UnavailableReason`s. The DTOs are in `src/runtime/control/read.rs`. **Addition:** `UnavailableReason::GoalResumeHeld`, the D6 resume availability when the lifecycle path's resume predicate does not hold now (accepted policy changed, Project not Registered, or Runtime stopping). That path refuses those cases with a sanitized error and has no typed reason, so the advisory operation needs one. `handle_read` holds only the short Store lock and maps each typed unavailability to `Unavailable { request_id, reason }`; every other refusal stays a sanitized `Rejected` |
+| D1 protocol | `src/cli/transport.rs` `PROTOCOL_VERSION = 4`, replaceable `{1, 2, 3, 4}`. Live discovery accepts 4 only, so a live protocol 1–3 descriptor is `Discovery::Invalid`. `src/cli/read.rs` `run`: `Valid` → API; `Absent` → `service unavailable: no Runtime service`, exit 4; `Invalid` → `service unavailable: discovery refused`, exit 4. There is no offline or direct-Store read path |
+| D2 Project → Goal | `Store::runtime_project_goals` (`src/state/runtime/read.rs`): SQL paging by Goal ID inside the exact Project (`LIMIT maximum + 1`). It reads only fixed fields (`json_extract` of id, project, version, state and title) and never decodes the body. The body/index identity is checked. The title is `null` when its UTF-8 length exceeds 512 bytes. The cursor must name a Goal of that Project (`ReadCursorInvalid`) |
+| D3 bounds | `maximum` is 1..=128 for every page (otherwise `Rejected`). `pack` builds each page under `READ_PAGE_BYTES` = 256 KiB. A row that does not fit ends the page with `next`; a first row that does not fit is `ReadProjectionTooLarge`. Rows are never truncated. Pages are independent observations; there is no automatic traversal |
+| D4 Review/Approval | `runtime_task_review`: exact Project+Goal+Task first, then the union in `(review, approval)` × Record-ID order. Only id, kind, version, `created_at`, `updated_at` and the scope identity are extracted; `data` is never selected. The cursor must name a row of that kind in that Task. `decision` is always `Unavailable { ReviewDecisionUnqualified }` |
+| D5 Sessions | `runtime_task_sessions`: only `kind='session'` rows whose indexed Project, Goal and Task equal the request. Each body is bounded at 1 MiB, decoded, identity-checked and projected through S3 `SessionView` |
+| D6 attention | `runtime_attention_queue` scans Projects and Goals in ID order and computes items only from the cursor's Goal onward (the cursor's own Goal is computed to check that the cursor is still present). Proposals go through the same `proposal_facts` as `GoalStatus`; accepted Goals go through `current_goal`/`scoped_tasks` and the shared `goal_attention` (factored out of `runtime_goal_facts`). Task facts use `waiting::observe`/`effective_state`/`workflow_wait`. Stored `scheduler_tasks.attention` is classified in SQL (none / the fixed binding hold / other) and never read out. Goal operations use the lifecycle predicates: non-terminal → pause/cancel/fail; Paused/Blocked/WaitingHuman → resume, held when the policy differs, the Runtime is stopping or the Project is not Registered, and `FreshBootstrapRecoveryUnavailable` with preparation history (`preparation_history`, factored out of the lifecycle path). Task retry/cancel are listed as `TaskDriverUnavailable`. No review/approve operation exists. A Goal that is neither accepted nor a qualified proposal makes the queue refuse (sanitized `Rejected`), as `GoalStatus` refuses it |
+| D7 events | `runtime_events`: the existing descendant filter, with `kind` mapped through the exact-kind `EventKindView::of` allowlist (21 production kinds; every other kind → `event_unavailable`). `data` is never selected. The cursor must be a sequence inside the selected scope |
+| D8 metrics/routing | `runtime_unqualified_read`: checks the scope and answers `MetricsUnqualified` / `RoutingUnavailable`. It reads no Usage, Session or native row |
+| D9 read-only | Every reader runs in a read transaction under the caller's Store lock, checks the owner epoch first and writes nothing, on success or refusal. No Git, process or native I/O |
+| CLI | `rrx goal list`, `rrx task review`, `rrx task sessions`, `rrx attention` (all Projects, or one with `--project`), `rrx events`, `rrx routing` and `rrx metrics`, each with `--json` (the page as an independent scoped observation). Text output quotes stored user text with control characters escaped; a typed unavailable answer exits 3 |
+
+### Controls
+
+The Runtime controls are in `src/runtime/installation/tests/read_surface.rs`. They use the actual Runtime and accepted Unix ingress, with Projects, Goals, Tasks, Records, Sessions, Usage and audit written only through production control and Store paths. The one SQL write is the legacy `scheduler_tasks.attention` sentinel, a negative control.
+
+| Control | Test | Result |
+| --- | --- | --- |
+| C-S4a | `c_s4a_hierarchy_pages_are_scoped_and_cursors_checked`: two Projects, accepted Goals and a proposal | pass. Pages of 2 return exactly the selected Project's Goals in ID order. The other Project's Goal and a random Goal are `ReadCursorInvalid`. `GoalTasks` refuses a foreign or missing Task cursor. A pause between pages shows only as a higher version |
+| C-S4b | `c_s4b_review_pages_every_row_once_without_data_or_decision`: 140 Review/Approval rows with `decision=APPROVE`, reasons, findings and reviewer sentinels | pass. 3 pages of 64 return every row exactly once in `(kind, id)` order, with no sentinel and no `findings`/`reviewer` key, and the decision is `ReviewDecisionUnqualified`. Another Task's row and a right ID with the wrong kind are `ReadCursorInvalid`. A wrong Goal in the scope refuses |
+| C-S4c | `c_s4c_sessions_project_only_the_task_session_view`: Sessions with `native_ref`, pid, worktree, model, effort and recovery set, plus a sibling Task's and a Goal-scoped Session | pass. Exactly the Task's own Session, with exactly the 7 `SessionView` keys and no sentinel. A missing cursor is `ReadCursorInvalid` |
+| C-S4d | `c_s4d_attention_queue_derives_typed_items_and_operations` | pass. The taskless proposal is a Goal item (`goal_without_tasks`, `planning_unavailable`, no operations). The paused Goal lists pause/cancel/fail/resume available at its version. A running Goal with Tasks has no Goal item. The production sweep's hold is `native_binding_unavailable` with retry/cancel `task_driver_unavailable`. The sentinel Task is `stored_unqualified`; no sentinel byte appears and the stored value is unchanged. Cursor paging gives the same order; a cursor for an item no longer present is `ReadCursorInvalid`. Executing resume at the observed version commits once, and the same stale version then refuses; `TaskRetry` stays `TaskDriverUnavailable` |
+| C-S4d | `c_s4d_project_limit_is_a_goal_item_with_repair` (a stored limit of 4 through `put_project`) | pass. `project_limit_unsupported {stored: 4}` and `project_set_task_limit` available at the observed Project version |
+| C-S4d | `c_s4d_claimed_driver_is_native_continuation_unavailable` (a real service claim) | pass |
+| C-S4d | `success.rs` SC6 (claude and codex): the production Requirements wait | pass. The Task item carries `workflow_wait` `evidence_integration_unavailable` |
+| C-S4d | `src/state/runtime/read.rs` `c_s4d_fact_mappings_are_fixed` (pure) | pass. Goal `WaitingHuman`/`Blocked`, Task `WaitingHuman`/`WaitingApproval`, and qualified quota/capacity parks with `next_due` have no producer reachable from a Runtime control test, so their fixed mappings are checked on typed values. The readers they feed (`observe`, the Goal and Task state) are the ones `GoalStatus`/`GoalTasks` already use |
+| C-S4e | `c_s4e_event_kinds_are_allowlisted_and_data_is_never_returned`: production events, `custom.ok` and an overlong control-character kind, each with a data sentinel | pass. Project, Goal and Task scopes page (3 per page) exactly the descendant sequences. `goal_accepted`, `project_saved` and `review_saved` are mapped; both custom kinds are `event_unavailable`. No sentinel, raw kind, `rrx.private` or `.saved` appears. A sequence from another Project is `ReadCursorInvalid` |
+| C-S4f | `c_s4f_metrics_and_routing_are_typed_unavailable`: Usage with positive tokens/cost and a cache sentinel | pass. Only `metrics_unqualified` / `routing_unavailable`, with no stored value. An unknown scope refuses |
+| C-S4g | `c_s4g_every_read_writes_nothing_and_bounds_hold`: an idle Runtime, no attention sweep yet | pass. Each of 9 successful/typed-unavailable reads and 12 refusals leaves all 16 Runtime tables (owner epoch, Projects, Goals, Tasks, Records, Usage, audit, context, authority, observations, acks, scheduler, Drivers) and the connection epoch unchanged |
+| C-S4h | the same test; `src/state/runtime/read.rs` `c_s4h_packer_refuses_oversize_and_packs_to_the_boundary` (a synthetic public DTO, no storage) | pass. `maximum` 0 and 129 refuse for all 5 pages. A 513-byte title is `null` with the page intact; a 512-byte title is returned. The oversize DTO is `TooLarge`; a page exactly at the byte budget succeeds and one byte less is `TooLarge`; a second row that does not fit ends the page with more. Every response is under the 256 KiB page budget |
+| C-S4i | `src/cli/endpoint.rs` `c_s4i_live_protocol_3_descriptor_is_invalid_not_absent` (the live endpoint keeps serving Hello meanwhile); `c_s1e_…` now covers Hello 1–3; `c_s1e2_…` replaces 1–4 and refuses 5 | pass |
+| C-S4i | `tests/daemon.rs` `c_s4i_compiled_readers_never_fall_back_to_the_store`: `attention`, `goal list`, `events` and `metrics`, with no state and then with a same-state protocol-3 descriptor and the lock free; `c_s1e2_daemon_start_replaces_known_leftovers_only` now covers 1–3, a crashed 4, and refuses 5 | pass. Exit 4 with the distinct `no Runtime service` / `discovery refused` messages. No state is created; the Store files, the epoch row and the descriptor are unchanged; the owner lock is free |
+
+### Mutants (each restored; tree clean)
+
+The unmutated tree passed every listed control first. Each mutant was applied alone, its controls run, and the file restored.
+
+| Mutant | Detected by |
+| --- | --- |
+| a1 ProjectGoals drops the Project scope | C-S4a FAIL |
+| a2 ProjectGoals drops the cursor check | C-S4a FAIL |
+| b1 TaskReview stops after the first page | C-S4b FAIL |
+| b2 TaskReview drops the cursor scope check | C-S4b FAIL |
+| c1 TaskSessions reads Project-descendant records | C-S4c FAIL |
+| c2 TaskSessions drops the cursor check | C-S4c FAIL |
+| d1 Goal attention requires a Task (the taskless proposal dropped) | C-S4d FAIL |
+| d2 Goal operations omitted | C-S4d FAIL |
+| d3 the queue calls `reconcile_runtime_attention` | C-S4d FAIL (the sentinel is overwritten), C-S4g FAIL |
+| d4 Task operations omitted | C-S4d FAIL |
+| d5 the Project repair omitted | C-S4d (limit) FAIL |
+| d6 the attention cursor not checked | C-S4d FAIL |
+| e1 an unknown kind passes as a known value | C-S4e FAIL |
+| e2 Events drops the Project scope | C-S4e FAIL |
+| f1 Metrics/Routing skip the scope check | C-S4f FAIL |
+| g1 a reader writes (`scheduler_clock`) | C-S4g FAIL |
+| h1 an over-long title rejects the row | C-S4g/h FAIL |
+| h2 an oversize row is silently truncated | packer control FAIL |
+| h3 `maximum` not bounded | C-S4g/h FAIL |
+| i1 live discovery accepts protocol 3 | C-S4i FAIL |
+| i2 old-protocol discovery maps to `Absent` | C-S4i FAIL |
+| i3 `Invalid` opens the owner/Store offline | compiled-reader C-S4i FAIL |
+| i4 `Absent` opens the owner/Store offline | compiled-reader C-S4i FAIL |
+
+The type surface makes these impossible to write rather than merely detected: serializing `Record.data`, `AuditEvent.data`, a raw kind, stored attention text or a Usage row. No DTO field can hold any of them. Likewise, "infer a decision": `ReviewDecisionView` has only `Unavailable`.
+
+### Verification
+
+All 20 test binaries passed: non-root (fmtest, umask 022, subreaper), with no build running alongside. The rrx lib had 763 passed and 0 failed, with 20 ignored as before. `project_api` passed 14/14, `daemon` 6/6, `adapter` 19/19 and `grok` 16 (2 ignored, unchanged), and every other binary passed. `cargo clippy -p rrx --all-targets -D warnings` is clean with no `allow` added, and `cargo fmt --check` is clean. No test is ignored or disabled.
