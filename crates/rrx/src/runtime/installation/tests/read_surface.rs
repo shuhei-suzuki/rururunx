@@ -542,7 +542,7 @@ async fn c_s4d_attention_queue_derives_typed_items_and_operations() {
     assert!(!text(&response).contains("LEGACY-ATTENTION-SENTINEL"));
     let (queue, next) = items(response);
     assert_eq!(next, None);
-    let keys = queue.iter().map(|i| i.cursor().key()).collect::<Vec<_>>();
+    let keys = queue.iter().map(|i| i.key()).collect::<Vec<_>>();
     let mut sorted = keys.clone();
     sorted.sort();
     assert_eq!(keys, sorted, "queue order");
@@ -644,7 +644,7 @@ async fn c_s4d_attention_queue_derives_typed_items_and_operations() {
             .collect::<Vec<_>>(),
         queue.iter().map(|i| i.cursor()).collect::<Vec<_>>()
     );
-    let stale = AttentionCursor {
+    let stale = AttentionCursor::Item {
         project: f.project.id,
         goal: running,
         lane: AttentionLane::Goal,
@@ -1153,7 +1153,7 @@ async fn c_s4g_every_read_writes_nothing_and_bounds_hold() {
         },
         ControlAction::AttentionQueue {
             project: Some(project),
-            after: Some(AttentionCursor {
+            after: Some(AttentionCursor::Item {
                 project,
                 goal: GoalId::new(),
                 lane: AttentionLane::Goal,

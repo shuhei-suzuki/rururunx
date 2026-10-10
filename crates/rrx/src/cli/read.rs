@@ -196,28 +196,43 @@ pub fn parse_review_cursor(value: &str) -> Result<ReviewCursor> {
             .map_err(|_| anyhow::anyhow!("review cursor ID invalid"))?,
     })
 }
-/// `<project>:<goal>:goal` or `<project>:<goal>:task:<task>`.
+/// `<project>:<goal>:goal`, `<project>:<goal>:task:<task>` or
+/// `<project>:<goal>:scanned` (a position after that Goal).
 pub fn parse_attention_cursor(value: &str) -> Result<AttentionCursor> {
     let parts: Vec<&str> = value.split(':').collect();
     let id = |part: &str| -> Result<uuid::Uuid> {
         uuid::Uuid::parse_str(part).map_err(|_| anyhow::anyhow!("attention cursor ID invalid"))
     };
-    let (lane, task) = match parts.as_slice() {
-        [_, _, "goal"] => (AttentionLane::Goal, None),
-        [_, _, "task", task] => (AttentionLane::Task, Some(TaskId(id(task)?))),
-        _ => bail!("attention cursor is <project>:<goal>:goal or <project>:<goal>:task:<task>"),
+    let item = |lane, task| -> Result<AttentionCursor> {
+        Ok(AttentionCursor::Item {
+            project: ProjectId(id(parts[0])?),
+            goal: GoalId(id(parts[1])?),
+            lane,
+            task,
+        })
     };
-    Ok(AttentionCursor {
-        project: ProjectId(id(parts[0])?),
-        goal: GoalId(id(parts[1])?),
-        lane,
-        task,
-    })
+    match parts.as_slice() {
+        [_, _, "goal"] => item(AttentionLane::Goal, None),
+        [_, _, "task", task] => item(AttentionLane::Task, Some(TaskId(id(task)?))),
+        [_, _, "scanned"] => Ok(AttentionCursor::ScannedThrough {
+            project: ProjectId(id(parts[0])?),
+            goal: GoalId(id(parts[1])?),
+        }),
+        _ => bail!(
+            "attention cursor is <project>:<goal>:goal, <project>:<goal>:task:<task> or <project>:<goal>:scanned"
+        ),
+    }
 }
 fn attention_cursor(cursor: &AttentionCursor) -> String {
-    match cursor.task {
-        Some(task) => format!("{}:{}:task:{task}", cursor.project, cursor.goal),
-        None => format!("{}:{}:goal", cursor.project, cursor.goal),
+    match *cursor {
+        AttentionCursor::Item {
+            project,
+            goal,
+            task: Some(task),
+            ..
+        } => format!("{project}:{goal}:task:{task}"),
+        AttentionCursor::Item { project, goal, .. } => format!("{project}:{goal}:goal"),
+        AttentionCursor::ScannedThrough { project, goal } => format!("{project}:{goal}:scanned"),
     }
 }
 
@@ -400,25 +415,27 @@ mod tests {
 
     #[test]
     fn cursors_round_trip_and_refuse_malformed_text() {
-        let cursor = AttentionCursor {
-            project: ProjectId::new(),
-            goal: GoalId::new(),
-            lane: AttentionLane::Task,
-            task: Some(TaskId::new()),
-        };
-        assert_eq!(
-            parse_attention_cursor(&attention_cursor(&cursor)).unwrap(),
-            cursor
-        );
-        let goal = AttentionCursor {
-            lane: AttentionLane::Goal,
-            task: None,
-            ..cursor
-        };
-        assert_eq!(
-            parse_attention_cursor(&attention_cursor(&goal)).unwrap(),
-            goal
-        );
+        let (project, goal) = (ProjectId::new(), GoalId::new());
+        for cursor in [
+            AttentionCursor::Item {
+                project,
+                goal,
+                lane: AttentionLane::Task,
+                task: Some(TaskId::new()),
+            },
+            AttentionCursor::Item {
+                project,
+                goal,
+                lane: AttentionLane::Goal,
+                task: None,
+            },
+            AttentionCursor::ScannedThrough { project, goal },
+        ] {
+            assert_eq!(
+                parse_attention_cursor(&attention_cursor(&cursor)).unwrap(),
+                cursor
+            );
+        }
         let id = RecordId::new();
         assert_eq!(
             parse_review_cursor(&format!("approval:{id}")).unwrap(),

@@ -294,7 +294,7 @@ fn actual9_to10_fences_preopened_cached_all_table_writers_and_reopens() {
         .unwrap();
     cached.execute([]).unwrap();
     let s = Store::open(&path).unwrap();
-    assert_eq!(s.schema_version().unwrap(), 10);
+    assert_eq!(s.schema_version().unwrap(), SCHEMA_VERSION);
     assert!(cached.execute([]).is_err());
     for table in execution::MUTABLE_TABLES {
         for action in ["INSERT", "UPDATE", "DELETE"] {
@@ -306,14 +306,17 @@ fn actual9_to10_fences_preopened_cached_all_table_writers_and_reopens() {
                     |r| r.get(0),
                 )
                 .unwrap();
-            assert!(sql.contains("<>10"), "{table}/{action}");
+            assert!(
+                sql.contains(&format!("<>{SCHEMA_VERSION}")),
+                "{table}/{action}"
+            );
         }
     }
     assert!(
         old.execute("UPDATE scheduler_clock SET sequence=sequence+1", [])
             .is_err()
     );
-    // An actual old9 initializer refuses current10; cached old9 SQL lacks its permit functions too.
+    // An actual old9 initializer refuses the current schema; cached old9 SQL lacks its permit functions too.
     let version: i64 = old
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
@@ -321,7 +324,10 @@ fn actual9_to10_fences_preopened_cached_all_table_writers_and_reopens() {
     drop(cached);
     drop(s);
     drop(old);
-    assert_eq!(Store::open(&path).unwrap().schema_version().unwrap(), 10);
+    assert_eq!(
+        Store::open(&path).unwrap().schema_version().unwrap(),
+        SCHEMA_VERSION
+    );
 }
 #[test]
 fn namespace_and_wrong_actual9_layout_refuse_atomically_without_file_changes() {
@@ -610,10 +616,11 @@ fn future_schema_refuses_open_before_wal_and_cached_current_guards_refuse_future
         .prepare("UPDATE runtime_epoch SET epoch=epoch+1 WHERE singleton=1")
         .unwrap();
     cached.execute([]).unwrap();
-    // Isolated future-contract fixture, NOT a production Review11 migration.
+    // Isolated future-contract fixture, NOT a production migration.
+    let next = SCHEMA_VERSION + 1;
     let future = Connection::open(&path).unwrap();
-    future.execute_batch("DROP TRIGGER writer_runtime_epoch_UPDATE; CREATE TRIGGER writer_runtime_epoch_UPDATE BEFORE UPDATE ON runtime_epoch WHEN rrx_writer_contract_version()<>11 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;").unwrap();
-    future.pragma_update(None, "user_version", 11).unwrap();
+    future.execute_batch(&format!("DROP TRIGGER writer_runtime_epoch_UPDATE; CREATE TRIGGER writer_runtime_epoch_UPDATE BEFORE UPDATE ON runtime_epoch WHEN rrx_writer_contract_version()<>{next} BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
+    future.pragma_update(None, "user_version", next).unwrap();
     assert!(cached.execute([]).is_err());
     assert!(Store::open(&path).is_err());
 }

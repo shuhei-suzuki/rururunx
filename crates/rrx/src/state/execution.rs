@@ -122,6 +122,11 @@ pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
 }
 
 pub(super) fn install_writer_guards(tx: &Transaction<'_>) -> Result<()> {
+    install_writer_guards_at(tx, SCHEMA_VERSION)
+}
+/// The guards of one writer contract `version`; the v10 layout reference
+/// (S4 D6-R3 R8) is the only caller with an older version.
+pub(super) fn install_writer_guards_at(tx: &Transaction<'_>, version: i64) -> Result<()> {
     // Replace only contract guards; retain all append-only and identity triggers.
     // The function is connection-local, not a persisted flag inherited by old writers.
     for table in MUTABLE_TABLES {
@@ -129,7 +134,7 @@ pub(super) fn install_writer_guards(tx: &Transaction<'_>) -> Result<()> {
             tx.execute_batch(&format!(
                 "DROP TRIGGER IF EXISTS writer_{table}_{action}; \
                  CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} \
-                 WHEN rrx_writer_contract_version()<>{SCHEMA_VERSION} BEGIN \
+                 WHEN rrx_writer_contract_version()<>{version} BEGIN \
                  SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;"
             ))?;
         }

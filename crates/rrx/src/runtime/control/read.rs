@@ -68,19 +68,31 @@ pub enum AttentionLane {
     Goal,
     Task,
 }
-/// D6: names one item of the selected queue view.
+/// D6 / D6-R3 R3: a queue position. `Item` names an item that must still
+/// be present in the selected view; `ScannedThrough` says the scan resumes
+/// after that Goal, which must still be in the selected view's inventory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AttentionCursor {
-    pub project: ProjectId,
-    pub goal: GoalId,
-    pub lane: AttentionLane,
-    pub task: Option<TaskId>,
+#[serde(tag = "position", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AttentionCursor {
+    Item {
+        project: ProjectId,
+        goal: GoalId,
+        lane: AttentionLane,
+        task: Option<TaskId>,
+    },
+    ScannedThrough {
+        project: ProjectId,
+        goal: GoalId,
+    },
 }
 impl AttentionCursor {
-    /// The queue order `(project, goal, lane, task-or-nil)`.
-    pub(crate) fn key(&self) -> (ProjectId, GoalId, AttentionLane, Option<TaskId>) {
-        (self.project, self.goal, self.lane, self.task)
+    /// The Goal the position belongs to.
+    pub(crate) fn goal_position(&self) -> (ProjectId, GoalId) {
+        match *self {
+            Self::Item { project, goal, .. } | Self::ScannedThrough { project, goal } => {
+                (project, goal)
+            }
+        }
     }
 }
 /// D6: one typed fact derived from current rows. No raw text.
@@ -165,12 +177,16 @@ pub struct AttentionItem {
 }
 impl AttentionItem {
     pub(crate) fn cursor(&self) -> AttentionCursor {
-        AttentionCursor {
+        AttentionCursor::Item {
             project: self.project,
             goal: self.goal,
             lane: self.lane,
             task: self.task,
         }
+    }
+    /// The queue order `(project, goal, lane, task-or-nil)`.
+    pub(crate) fn key(&self) -> (ProjectId, GoalId, AttentionLane, Option<TaskId>) {
+        (self.project, self.goal, self.lane, self.task)
     }
 }
 

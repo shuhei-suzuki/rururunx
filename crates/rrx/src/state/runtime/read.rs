@@ -16,6 +16,7 @@ use crate::runtime::control::{
     ReviewKind, ReviewRecordView, UnavailableReason, WorkflowWait, WorkflowWaitKind,
 };
 use crate::workflow::PhaseWaitingObservation;
+use std::collections::BTreeMap;
 
 /// D3: the per-response budget, well below `RESPONSE_BYTES`.
 pub(crate) const READ_PAGE_BYTES: usize = 256 * 1024;
@@ -166,13 +167,13 @@ impl Store {
              typeof(json_extract(g.body,'$.title')),
              EXISTS(SELECT 1 FROM goal_authority a WHERE a.goal_id=g.id AND a.project_id=g.project_id),
              (SELECT count(*) FROM tasks t WHERE t.goal_id=g.id AND t.project_id=g.project_id)
-             FROM goals g WHERE g.project_id=?1 AND (?2 IS NULL OR g.id>?2) ORDER BY g.id LIMIT ?4",
+             FROM goals g WHERE g.project_id=?1 AND g.id>?2 ORDER BY g.id LIMIT ?4",
         )?;
         let rows = statement
             .query_map(
                 params![
                     project.to_string(),
-                    str_id(after),
+                    after.map(|g| g.to_string()).unwrap_or_default(),
                     GOAL_TITLE_BYTES as i64,
                     maximum as i64 + 1
                 ],
@@ -544,8 +545,11 @@ impl Store {
         finish(tx, Err(reason))
     }
 
-    /// D6: the derived Goal+Task attention queue. It never calls
-    /// `reconcile_runtime_attention` and never writes attention.
+    /// D6 / D6-R3: the derived Goal+Task attention queue. It never calls
+    /// `reconcile_runtime_attention` and never writes attention. One request
+    /// evaluates at most `ATTENTION_GOALS` Goals and `ATTENTION_TASKS`
+    /// Tasks (the first Goal always), seeking `goals_by_project` after its
+    /// position; Project rows are read only for fetched Goals.
     pub(crate) fn runtime_attention_queue(
         &self,
         ingress: &HumanIngress,
@@ -555,83 +559,208 @@ impl Store {
         resume: &ResumeInputs<'_>,
     ) -> Result<ReadAnswer> {
         maximum_valid(maximum)?;
+        #[cfg(test)]
+        observation::reset();
         let tx = self.connection.unchecked_transaction()?;
         owner_current(&tx, ingress)?;
         let epoch = ingress.identity().1;
-        let projects: Vec<ProjectId> = match project {
-            Some(project) => {
-                project_version(&tx, project)?;
-                if after.is_some_and(|c| c.project != project) {
+        if let Some(project) = project {
+            project_version(&tx, project)?;
+        }
+        // The cursor's Goal must be in the selected view's inventory.
+        if let Some(cursor) = after {
+            let (cursor_project, goal) = cursor.goal_position();
+            let present: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM goals WHERE id=?1 AND project_id=?2)",
+                params![goal.to_string(), cursor_project.to_string()],
+                |r| r.get(0),
+            )?;
+            if !present || project.is_some_and(|p| p != cursor_project) {
+                return finish(tx, Err(UnavailableReason::ReadCursorInvalid));
+            }
+        }
+        // An `Item` position re-evaluates its own (validated) Goal first;
+        // either position then seeks strictly after its Goal.
+        let mut rows = Vec::new();
+        if let Some(AttentionCursor::Item { project, goal, .. }) = after {
+            #[cfg(test)]
+            observation::goal_row();
+            rows.push((project, goal));
+        }
+        let start = after.map(|c| c.goal_position());
+        rows.extend(goal_seek(
+            &tx,
+            project,
+            start,
+            ATTENTION_GOALS + 1 - rows.len(),
+        )?);
+        let mut projects: BTreeMap<ProjectId, Project> = BTreeMap::new();
+        let mut items: Vec<AttentionItem> = Vec::new();
+        let (mut goals_evaluated, mut tasks_evaluated) = (0, 0);
+        let mut last_evaluated = None;
+        let mut budget_ended = rows.len() > ATTENTION_GOALS;
+        for (goal_project, goal) in rows.iter().take(ATTENTION_GOALS).copied() {
+            let task_count: usize = tx.query_row(
+                "SELECT count(*) FROM tasks WHERE goal_id=?1 AND project_id=?2",
+                params![goal.to_string(), goal_project.to_string()],
+                |r| r.get(0),
+            )?;
+            if goals_evaluated > 0 && tasks_evaluated + task_count > ATTENTION_TASKS {
+                budget_ended = true;
+                break;
+            }
+            if let std::collections::btree_map::Entry::Vacant(slot) = projects.entry(goal_project) {
+                let stored: Project = read_tx(&tx, "projects", &goal_project.to_string())?
+                    .context("unknown Project")?;
+                ensure!(
+                    stored.id == goal_project,
+                    "Project body/index identity differs"
+                );
+                #[cfg(test)]
+                observation::project_row();
+                slot.insert(stored);
+            }
+            let mut derived = goal_items(&tx, &projects[&goal_project], goal, epoch, resume)?;
+            if goals_evaluated == 0
+                && let Some(cursor @ AttentionCursor::Item { .. }) = after
+            {
+                if !derived.iter().any(|i| i.cursor() == cursor) {
                     return finish(tx, Err(UnavailableReason::ReadCursorInvalid));
                 }
-                vec![project]
+                let AttentionCursor::Item {
+                    project,
+                    goal,
+                    lane,
+                    task,
+                } = cursor
+                else {
+                    unreachable!("matched as an item position")
+                };
+                derived.retain(|i| i.key() > (project, goal, lane, task));
             }
-            None => {
-                let mut statement = tx.prepare("SELECT id FROM projects ORDER BY id")?;
-                let ids = statement
-                    .query_map([], |r| r.get::<_, String>(0))?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
-                drop(statement);
-                ids.iter().map(|id| parse(id)).collect::<Result<_>>()?
+            goals_evaluated += 1;
+            tasks_evaluated += task_count;
+            #[cfg(test)]
+            observation::evaluated(task_count);
+            last_evaluated = Some((goal_project, goal));
+            items.extend(derived);
+            if items.len() > maximum {
+                break;
+            }
+        }
+        // Where the next page starts: after the last item when items remain
+        // or were cut, else after the last evaluated Goal when the budget
+        // ended the scan, else nowhere.
+        let items_remain = items.len() > maximum;
+        items.truncate(maximum);
+        let total = items.len();
+        let scanned = (!items_remain && budget_ended)
+            .then_some(last_evaluated)
+            .flatten()
+            .map(|(project, goal)| AttentionCursor::ScannedThrough { project, goal });
+        let next = |items: &[AttentionItem], more: bool| -> Option<AttentionCursor> {
+            if !more {
+                return None;
+            }
+            match scanned {
+                Some(position) if items.len() == total => Some(position),
+                _ => items.last().map(AttentionItem::cursor),
             }
         };
-        let mut items = Vec::new();
-        let mut cursor_found = after.is_none();
-        'scan: for project in projects {
-            if after.is_some_and(|c| project < c.project) {
-                continue;
-            }
-            let stored: Project =
-                read_tx(&tx, "projects", &project.to_string())?.context("unknown Project")?;
-            ensure!(stored.id == project, "Project body/index identity differs");
-            let mut statement =
-                tx.prepare("SELECT id FROM goals WHERE project_id=?1 ORDER BY id")?;
-            let goals = statement
-                .query_map([project.to_string()], |r| r.get::<_, String>(0))?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-            drop(statement);
-            for goal in goals {
-                let goal: GoalId = parse(&goal)?;
-                if let Some(cursor) = after.filter(|_| !cursor_found) {
-                    if (project, goal) < (cursor.project, cursor.goal) {
-                        continue;
-                    }
-                    if (project, goal) > (cursor.project, cursor.goal) {
-                        // The cursor's Goal is not in the selected view.
-                        break 'scan;
-                    }
-                }
-                let mut derived = goal_items(&tx, &stored, goal, epoch, resume)?;
-                if let Some(cursor) = after.filter(|_| !cursor_found) {
-                    if !derived.iter().any(|i| i.cursor() == cursor) {
-                        break 'scan;
-                    }
-                    cursor_found = true;
-                    derived.retain(|i| i.cursor().key() > cursor.key());
-                }
-                items.extend(derived);
-                if items.len() > maximum {
-                    break 'scan;
-                }
-            }
-        }
-        if !cursor_found {
-            return finish(tx, Err(UnavailableReason::ReadCursorInvalid));
-        }
-        let more_beyond = items.len() > maximum;
-        items.truncate(maximum);
         let page = |items: &[AttentionItem], more: bool| ControlResponse::AttentionPage {
             project,
             items: items.to_vec(),
-            next: more
-                .then(|| items.last().map(AttentionItem::cursor))
-                .flatten(),
+            next: next(items, more),
         };
+        let more_beyond = items_remain || scanned.is_some();
         let answer = match pack(items, more_beyond, |i, more| fits(&page(i, more))) {
             Packed::Page(items, more) => Ok(page(&items, more)),
             Packed::TooLarge => Err(UnavailableReason::ReadProjectionTooLarge),
         };
         finish(tx, answer)
+    }
+}
+
+/// D6-R3 R1: the per-request evaluation budget.
+pub(crate) const ATTENTION_GOALS: usize = 64;
+pub(crate) const ATTENTION_TASKS: usize = 1024;
+/// D6-R2 R2'': the Goal seeks over `goals_by_project`, shared with the
+/// query-plan controls so the checked text is the production text.
+pub(crate) const PROJECT_GOAL_SEEK_SQL: &str =
+    "SELECT id,project_id FROM goals WHERE project_id=?1 AND id>?2 ORDER BY id LIMIT ?3";
+pub(crate) const RUNTIME_GOAL_SEEK_SQL: &str =
+    "SELECT id,project_id FROM goals WHERE (project_id,id)>(?1,?2) ORDER BY project_id,id LIMIT ?3";
+
+/// Goal positions strictly after `start`, in `(project, goal)` order, at
+/// most `limit` rows, by an index seek on `goals_by_project`.
+fn goal_seek(
+    tx: &Transaction<'_>,
+    project: Option<ProjectId>,
+    start: Option<(ProjectId, GoalId)>,
+    limit: usize,
+) -> Result<Vec<(ProjectId, GoalId)>> {
+    let after = |goal: Option<GoalId>| goal.map(|g| g.to_string()).unwrap_or_default();
+    let (sql, first, second) = match project {
+        Some(project) => (
+            PROJECT_GOAL_SEEK_SQL,
+            project.to_string(),
+            after(start.map(|(_, g)| g)),
+        ),
+        None => (
+            RUNTIME_GOAL_SEEK_SQL,
+            start.map(|(p, _)| p.to_string()).unwrap_or_default(),
+            after(start.map(|(_, g)| g)),
+        ),
+    };
+    let mut statement = tx.prepare(sql)?;
+    let mut rows = statement.query(params![first, second, limit as i64])?;
+    let mut positions = Vec::new();
+    while let Some(row) = rows.next()? {
+        #[cfg(test)]
+        observation::goal_row();
+        let (id, project): (String, String) = (row.get(0)?, row.get(1)?);
+        positions.push((parse(&project)?, parse(&id)?));
+    }
+    Ok(positions)
+}
+
+/// D6-R3 R5'/R10: per-request observations for the controls only. They
+/// count rows and evaluations; no authority, ownership or outcome reads them.
+#[cfg(test)]
+pub(crate) mod observation {
+    use std::cell::Cell;
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+    pub(crate) struct Read {
+        pub(crate) goal_rows: usize,
+        pub(crate) project_rows: usize,
+        pub(crate) goals_evaluated: usize,
+        pub(crate) tasks_evaluated: usize,
+    }
+    thread_local! { static LAST: Cell<Read> = Cell::new(Read::default()); }
+    fn update(f: impl FnOnce(&mut Read)) {
+        LAST.with(|last| {
+            let mut read = last.get();
+            f(&mut read);
+            last.set(read);
+        });
+    }
+    pub(super) fn reset() {
+        LAST.with(|last| last.set(Read::default()));
+    }
+    pub(super) fn goal_row() {
+        update(|r| r.goal_rows += 1);
+    }
+    pub(super) fn project_row() {
+        update(|r| r.project_rows += 1);
+    }
+    pub(super) fn evaluated(tasks: usize) {
+        update(|r| {
+            r.goals_evaluated += 1;
+            r.tasks_evaluated += tasks;
+        });
+    }
+    pub(crate) fn last() -> Read {
+        LAST.with(Cell::get)
     }
 }
 
