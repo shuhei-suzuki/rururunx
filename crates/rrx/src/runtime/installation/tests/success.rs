@@ -561,8 +561,19 @@ async fn sc3p_parent_change(provider: &str) {
         );
     }
     pause.0.release();
+    // At least the original 6 s observation window, extended (bounded) until
+    // a later normal plan has actually been made and refused.
+    let refused = || {
+        f.runtime
+            .phase_jobs
+            .observed_success_turns()
+            .iter()
+            .any(|(_, l)| *l == "normal plan refused")
+    };
     let started = std::time::Instant::now();
-    while started.elapsed() < Duration::from_secs(6) {
+    while started.elapsed() < Duration::from_secs(6)
+        || (!refused() && started.elapsed() < Duration::from_secs(60))
+    {
         f.runtime.wake.notify_one();
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -895,7 +906,7 @@ async fn br2_codex_parent_drift_never_retries() {
 /// BR3: a plan made after the binding (linked), refused for the parent change:
 /// no marker and no retry.
 async fn br3(provider: &str) {
-    use crate::runtime::phase_jobs::{OWNER_IMMEDIATE, counted};
+    use crate::runtime::phase_jobs::{OWNER_IMMEDIATE_LINKED, counted};
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
@@ -905,7 +916,9 @@ async fn br3(provider: &str) {
     let task = &tasks[0];
     f.runtime.start().await.unwrap();
     wait_normal_bound(&f, task).await;
-    let core = held(task, OWNER_IMMEDIATE);
+    // Held only by a plan that already carries the binding link: an earlier
+    // unlinked plan still in flight passes this site and is not measured.
+    let core = held(task, OWNER_IMMEDIATE_LINKED);
     release_completion(&f, task);
     wait_for(
         || core.0.reached(),

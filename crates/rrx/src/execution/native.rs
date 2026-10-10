@@ -1058,7 +1058,15 @@ fn actual_native_authority(
     native_write(owner, phase, || {
         let plan = crate::state::Store::plan_native_phase_owner(owner, phase)?;
         #[cfg(test)]
-        crate::runtime::pause_at(facts.scope.task_id, crate::runtime::OWNER_IMMEDIATE);
+        {
+            crate::runtime::pause_at(facts.scope.task_id, crate::runtime::OWNER_IMMEDIATE);
+            if plan.is_linked() {
+                crate::runtime::pause_at(
+                    facts.scope.task_id,
+                    crate::runtime::OWNER_IMMEDIATE_LINKED,
+                );
+            }
+        }
         owner
             .store
             .lock()
