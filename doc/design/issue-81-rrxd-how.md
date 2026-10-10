@@ -302,6 +302,19 @@ Sol 6094695367 S4-SOL-M1: one `AttentionQueue` page can make the Runtime evaluat
 
 S4-SOL-M2 (a terminal Goal hid its Tasks' unresolved facts) needs no design change; D6 already derives Task items from current rows. The source fix is in §10.
 
+### D6-R2 (Sol 6094912294: S4-D6R-M1, S4-D6R-L1), for review before code
+
+**S4-D6R-M1** is confirmed against the schema. `goals` has only `PRIMARY KEY(id)` and `UNIQUE(id, project_id)`, and `goal_authority`/`goal_observations` are keyed by `goal_id` alone. So no index starts with `project_id`, and `(project_id, id) > (p, g) ORDER BY project_id, id LIMIT n` is a full scan plus a sort whatever `n` is. The same holds for the shipped D2 `ProjectGoals` query (`project_id=?1 AND id>?2 ORDER BY id LIMIT`): it range-scans the primary key and filters other Projects' rows, so its work is bounded by the whole Goal table, not by the page. D6-R2 therefore covers both readers. **S4-D6R-L1** is confirmed too: an evaluated-Goal counter cannot see rows that were fetched and never evaluated.
+
+| # | Point | Decision |
+| --- | --- | --- |
+| R2' | Index | Schema v11 adds `CREATE INDEX goals_by_project ON goals(project_id, id)`. It goes in the fresh `schema.sql` and in an ordered migration step `next == 11`, inside the existing single Immediate migration transaction. No table, trigger, guard semantics or row changes. Blast radius, stated for review: `SCHEMA_VERSION` 10→11; the writer-contract version check and `install_writer_guards` are reinstalled for 11 as for 7–10; the managed-binding `Binding10` installer assertion is updated to accept the v11 layout; tests that assert schema 10 change their expected value only. `validate_current_layout` compares against the reference built from the same files, so a v10 database is valid only after the migration |
+| R2'' | Seek queries | D6: `SELECT id, project_id FROM goals WHERE (project_id, id) > (?p, ?g) [AND project_id = ?f] ORDER BY project_id, id LIMIT ?remaining+1`. D2: `… WHERE project_id=?1 AND id>?2 ORDER BY id LIMIT ?3`. Both must be `SEARCH goals USING (COVERING) INDEX goals_by_project`, with no `SCAN goals` and no `USE TEMP B-TREE`. The first position (no cursor) seeks from the start of the index, or of the filtered Project. Project rows are read only by the IDs that appear on the page |
+| R1/R3/R4 | Unchanged | The budget (64 Goals / 1024 Tasks, first Goal always), `AttentionCursor = Item \| ScannedThrough`, and the page meaning stay as in D6-R |
+| R5' | Controls (L1) | (1) A `cfg(test)` per-request counter of **rows fetched** from each Goal-ID page statement (incremented in the row loop) never exceeds the remaining budget + 1. With 70 Goals before the attention Goal, the first request fetches at most 65 rows. A mutant that pre-fetches every ID (or materializes the Project/Goal lists) FAILs on this counter, not on the evaluation counter. (2) `EXPLAIN QUERY PLAN` of the exact production statements (the SQL text is a shared constant) on a migrated v10→v11 database and a fresh v11 database shows `goals_by_project` with no `SCAN goals` and no temp B-tree. A mutant that drops the index or the seek predicate FAILs. (3) A migration control: a v10 database opens, gains exactly the index, keeps every row and audit row, and `validate_current_layout` passes. (4) The R5 controls from D6-R remain |
+
+**Alternative, not proposed:** keep schema 10 and cap the whole Goal inventory (for example 4096 Goals, refused beyond). That bounds the work only by a constant cap, and a large state becomes unreadable through the queue. The index is the smaller, durable change.
+
 ## 5. Decisions (6058699019)
 
 | # | Decision |
