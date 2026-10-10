@@ -295,6 +295,16 @@ fn actual9_to10_fences_preopened_cached_all_table_writers_and_reopens() {
     cached.execute([]).unwrap();
     let s = Store::open(&path).unwrap();
     assert_eq!(s.schema_version().unwrap(), SCHEMA_VERSION);
+    // S4 D6-R3 R11(2): the unchanged v9 layout reaches 11 with the read index.
+    let indexed: i64 = s
+        .connection
+        .query_row(
+            "SELECT count(*) FROM sqlite_schema WHERE type='index' AND name='goals_by_project'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(indexed, 1);
     assert!(cached.execute([]).is_err());
     for table in execution::MUTABLE_TABLES {
         for action in ["INSERT", "UPDATE", "DELETE"] {

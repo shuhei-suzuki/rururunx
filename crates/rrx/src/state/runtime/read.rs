@@ -157,18 +157,7 @@ impl Store {
                 return finish(tx, Err(UnavailableReason::ReadCursorInvalid));
             }
         }
-        // Only fixed fields are extracted; the body is never decoded whole.
-        let mut statement = tx.prepare(
-            "SELECT g.id,g.version,json_extract(g.body,'$.id'),json_extract(g.body,'$.project_id'),
-             json_extract(g.body,'$.version'),json_extract(g.body,'$.state'),
-             CASE WHEN typeof(json_extract(g.body,'$.title'))='text'
-              AND length(CAST(json_extract(g.body,'$.title') AS BLOB))<=?3
-              THEN json_extract(g.body,'$.title') END,
-             typeof(json_extract(g.body,'$.title')),
-             EXISTS(SELECT 1 FROM goal_authority a WHERE a.goal_id=g.id AND a.project_id=g.project_id),
-             (SELECT count(*) FROM tasks t WHERE t.goal_id=g.id AND t.project_id=g.project_id)
-             FROM goals g WHERE g.project_id=?1 AND g.id>?2 ORDER BY g.id LIMIT ?4",
-        )?;
+        let mut statement = tx.prepare(PROJECT_GOALS_PAGE_SQL)?;
         let rows = statement
             .query_map(
                 params![
@@ -681,6 +670,17 @@ impl Store {
     }
 }
 
+/// D2 / D6-R2 R2'': the Project→Goal page, a `goals_by_project` seek; only
+/// fixed fields are extracted and the body is never decoded whole.
+pub(crate) const PROJECT_GOALS_PAGE_SQL: &str = "SELECT g.id,g.version,json_extract(g.body,'$.id'),json_extract(g.body,'$.project_id'),
+             json_extract(g.body,'$.version'),json_extract(g.body,'$.state'),
+             CASE WHEN typeof(json_extract(g.body,'$.title'))='text'
+              AND length(CAST(json_extract(g.body,'$.title') AS BLOB))<=?3
+              THEN json_extract(g.body,'$.title') END,
+             typeof(json_extract(g.body,'$.title')),
+             EXISTS(SELECT 1 FROM goal_authority a WHERE a.goal_id=g.id AND a.project_id=g.project_id),
+             (SELECT count(*) FROM tasks t WHERE t.goal_id=g.id AND t.project_id=g.project_id)
+             FROM goals g WHERE g.project_id=?1 AND g.id>?2 ORDER BY g.id LIMIT ?4";
 /// D6-R3 R1: the per-request evaluation budget.
 pub(crate) const ATTENTION_GOALS: usize = 64;
 pub(crate) const ATTENTION_TASKS: usize = 1024;

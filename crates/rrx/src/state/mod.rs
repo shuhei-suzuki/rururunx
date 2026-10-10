@@ -3,6 +3,8 @@ mod environment;
 pub(crate) mod managed_binding;
 #[cfg(test)]
 mod native_dispatch_tests;
+#[cfg(test)]
+mod read_index_tests;
 mod runtime;
 pub(crate) use environment::EnvironmentAdmission;
 pub use runtime::driver::ProjectLimitUnsupported;
@@ -13,9 +15,9 @@ pub(crate) use runtime::driver::{
 };
 #[cfg(test)]
 pub(crate) use runtime::driver::{CapacityScope, DriverCapacityUnavailable};
-#[cfg(test)]
-pub(crate) use runtime::read::READ_PAGE_BYTES;
 pub(crate) use runtime::read::ResumeInputs;
+#[cfg(test)]
+pub(crate) use runtime::read::{ATTENTION_GOALS, READ_PAGE_BYTES, observation as read_observation};
 use std::{path::Path, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};

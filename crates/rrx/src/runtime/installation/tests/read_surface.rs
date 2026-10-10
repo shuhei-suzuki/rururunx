@@ -1198,3 +1198,188 @@ async fn c_s4g_every_read_writes_nothing_and_bounds_hold() {
     assert_eq!(title(exact_goal), Some("E".repeat(GOAL_TITLE_BYTES)));
     finish(f).await;
 }
+
+fn last_read() -> crate::state::read_observation::Read {
+    crate::state::read_observation::last()
+}
+/// C-S4d-R (D6-R3 R5'(1)): 70 accepted Goals with no attention and one
+/// proposal. Every request evaluates at most 64 Goals and fetches at most
+/// 65 Goal rows; following `next` (including `ScannedThrough`) reaches the
+/// one item exactly once and then ends.
+#[tokio::test]
+async fn c_s4d_r_queue_work_is_bounded_per_request() {
+    let f = fixture("claude", true);
+    for _ in 0..70 {
+        f.create(plan()).await;
+    }
+    let proposal = proposal_of(
+        read(
+            &f,
+            ControlAction::ProposeGoal {
+                project: f.project.id,
+                expected_project: f.project.version,
+                objective: "after many quiet Goals".into(),
+            },
+        )
+        .await,
+    );
+    let mut after = None;
+    let (mut found, mut requests, mut scanned) = (Vec::new(), 0, 0);
+    loop {
+        let (page, next) = items(
+            read(
+                &f,
+                ControlAction::AttentionQueue {
+                    project: None,
+                    after,
+                    maximum: 128,
+                },
+            )
+            .await,
+        );
+        let observed = last_read();
+        requests += 1;
+        assert!(
+            observed.goals_evaluated <= crate::state::ATTENTION_GOALS
+                && observed.goal_rows <= crate::state::ATTENTION_GOALS + 1,
+            "request {requests}: {observed:?}"
+        );
+        found.extend(page.iter().map(|i| (i.goal, i.lane)));
+        if matches!(next, Some(AttentionCursor::ScannedThrough { .. })) {
+            scanned += 1;
+        }
+        match next {
+            Some(next) => after = Some(next),
+            None => break,
+        }
+    }
+    assert_eq!(found, [(proposal, AttentionLane::Goal)]);
+    assert!(
+        requests >= 2 && scanned >= 1,
+        "{requests} requests, {scanned} scans"
+    );
+    finish(f).await;
+}
+
+/// C-S4d-R (R1): the Task budget ends a request before a Goal whose Tasks
+/// would exceed 1024, once one Goal has been evaluated.
+#[tokio::test]
+async fn c_s4d_r_task_budget_ends_the_request() {
+    let f = fixture("claude", true);
+    accept(&f, 600).await;
+    accept(&f, 600).await;
+    let (page, next) = items(
+        read(
+            &f,
+            ControlAction::AttentionQueue {
+                project: Some(f.project.id),
+                after: None,
+                maximum: 128,
+            },
+        )
+        .await,
+    );
+    let observed = last_read();
+    assert!(page.is_empty());
+    assert_eq!(
+        (observed.goals_evaluated, observed.tasks_evaluated),
+        (1, 600)
+    );
+    let Some(next @ AttentionCursor::ScannedThrough { .. }) = next else {
+        panic!("budget end is a ScannedThrough position: {next:?}")
+    };
+    let (_, last) = items(
+        read(
+            &f,
+            ControlAction::AttentionQueue {
+                project: Some(f.project.id),
+                after: Some(next),
+                maximum: 128,
+            },
+        )
+        .await,
+    );
+    assert_eq!(last_read().goals_evaluated, 1);
+    assert_eq!(last, None);
+    finish(f).await;
+}
+
+/// C-S4d-R (R10): Project rows are read only for Projects that own fetched
+/// Goals; 60 Projects without Goals are never read.
+#[tokio::test]
+async fn c_s4d_r_project_rows_only_for_fetched_goals() {
+    let f = fixture("claude", true);
+    accept(&f, 1).await;
+    for i in 0..60 {
+        let root = f._dir.path().join(format!("quiet-{i}"));
+        std::fs::create_dir(&root).unwrap();
+        let mut project = Project::new(
+            format!("quiet-{i}"),
+            root.canonicalize().unwrap(),
+            format!("account-free-no-Git-{i}"),
+            "main".into(),
+        );
+        f.store().lock().unwrap().put_project(&mut project).unwrap();
+    }
+    read(
+        &f,
+        ControlAction::AttentionQueue {
+            project: None,
+            after: None,
+            maximum: 128,
+        },
+    )
+    .await;
+    let observed = last_read();
+    assert_eq!(observed.goal_rows, 1);
+    assert_eq!(observed.project_rows, 1, "{observed:?}");
+    finish(f).await;
+}
+
+/// C-S4d-R (R3): a `ScannedThrough` position must name a Goal of the
+/// selected view.
+#[tokio::test]
+async fn c_s4d_r_scanned_position_is_scope_checked() {
+    let f = fixture("claude", true);
+    accept(&f, 1).await;
+    let (other, other_goal, _) = other_project(&f, 1).await;
+    for (project, cursor) in [
+        (
+            Some(f.project.id),
+            AttentionCursor::ScannedThrough {
+                project: other.id,
+                goal: other_goal,
+            },
+        ),
+        (
+            Some(f.project.id),
+            AttentionCursor::ScannedThrough {
+                project: f.project.id,
+                goal: other_goal,
+            },
+        ),
+        (
+            None,
+            AttentionCursor::ScannedThrough {
+                project: f.project.id,
+                goal: GoalId::new(),
+            },
+        ),
+    ] {
+        let response = read(
+            &f,
+            ControlAction::AttentionQueue {
+                project,
+                after: Some(cursor),
+                maximum: 8,
+            },
+        )
+        .await;
+        assert_eq!(
+            unavailable(&response),
+            Some(UnavailableReason::ReadCursorInvalid),
+            "{cursor:?}"
+        );
+    }
+    finish(f).await;
+}
