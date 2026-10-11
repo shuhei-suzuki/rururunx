@@ -376,6 +376,15 @@ impl RuntimeOwner {
                 issue87_wait.elapsed()
             ));
         }
+        // ISSUE87 causal control only: lengthen every gate hold by a fixed
+        // amount (set by the measurement script for a filtered serial run).
+        #[cfg(test)]
+        if let Some(ms) = std::env::var("ISSUE87_GIT_GATE_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+        }
         let lease = Arc::new(GitLease {
             id: OperationId::new(),
             unit,

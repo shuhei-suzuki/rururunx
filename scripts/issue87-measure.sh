@@ -9,6 +9,7 @@ run() {
   local name=$1; shift
   local start=$(date +%s)
   cargo test --locked -p rrx --lib -- "$@" >"$out/$name.log" 2>&1
+  # (an ISSUE87_GIT_GATE_DELAY_MS prefix on the run call is inherited here)
   local code=$?
   echo "RUN $name exit=$code seconds=$(( $(date +%s) - start )) args=$*" | tee -a "$out/summary.txt"
   # Re-executed child test binaries print their own "test result" lines;
@@ -21,7 +22,12 @@ run() {
   done
   grep -E '^    [a-z0-9_:]+$' "$out/$name.log" | sed "s/^/  FAILED $name: /" | tee -a "$out/summary.txt"
 }
-if [ "${ISSUE87_PLAN:-full}" = t12x2 ]; then
+if [ "${ISSUE87_PLAN:-full}" = control ]; then
+  CA4I=(ca4i_whole_registry_counts_actual_held_plan_across_two_pages)
+  for d in 0 500 1000; do
+    ISSUE87_GIT_GATE_DELAY_MS=$d run "control-ca4i-serial-delay$d" --test-threads=1 "${CA4I[@]}"
+  done
+elif [ "${ISSUE87_PLAN:-full}" = t12x2 ]; then
   for i in 1 2 3 4; do run "parallel-t12-$i" --test-threads=12; done
 else
   for i in 1 2 3; do run "parallel-default-$i"; done

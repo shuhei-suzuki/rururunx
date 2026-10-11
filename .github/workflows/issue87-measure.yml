@@ -11,6 +11,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         ref: [head]
+        plan: [t12x2, control]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 340
     steps:
@@ -29,9 +30,9 @@ jobs:
       - name: Measure
         run: bash "$RUNNER_TEMP/measure.sh" "$RUNNER_TEMP/logs"
         env:
-          ISSUE87_PLAN: t12x2  # four runs
+          ISSUE87_PLAN: ${{ matrix.plan }}
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: issue87-${{ matrix.os }}-${{ matrix.ref }}
+          name: issue87-${{ matrix.os }}-${{ matrix.ref }}-${{ matrix.plan }}
           path: ${{ runner.temp }}/logs
