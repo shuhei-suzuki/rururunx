@@ -309,5 +309,33 @@
     "historical_failed_gates": "f072 localRelease308/6 ande30CI MacCodex313/1 plus35/fd/prior remainFAILED; cause/contribution/regressionUNKNOWN. New445+2 successes certify changed combined source once, not causal resolution or historical exoneration.",
     "audit_scope": "Selected audit45mac/42Linux unchanged;20newCodex custody controls outside selectors gain no selected production-pool isolation/native settlement credit.",
     "mutations": "27compiled runs/23operators/25intendedkills plus2historicalmasked survivors0credit; no operators rerun at this composition, R23nonvacuityonly/R18cancelonly/diagnostic-only limits preserved."
+  },
+  "final_metadata_head": {
+    "head": "63d548c31c13c7eabcfb4e4a6c68a20f1a315fa4",
+    "ci": 37271712764,
+    "actual_checkout": "281f47aad585ebc494881adf31485e962993c878",
+    "parents": [
+      "a9fc5e92b31175b60c12c4d8edc312db27885d65",
+      "63d548c31c13c7eabcfb4e4a6c68a20f1a315fa4"
+    ],
+    "entries": 321,
+    "complete_tree_equal": true,
+    "tree": "91eab742298d174e2824572d354b85653514360d",
+    "both_os_every_step_success": true,
+    "log_sha256": "d162036e11b02a5d90d42efe2173fa87967591fadd3b36bc0990f57af2fe498a",
+    "condition_status": "All current limitedcomponent conditions fulfilled:777 clean fullD/R firstPASS+quality/build, twoindependent compositionAPP0,8docfinalQuickAPP0,exactfinalCI successful. Historicalfailures UNKNOWN/whole60/native/backend/MVPopen preserved."
+  },
+  "merge_disposition": {
+    "pr": 64,
+    "merge_commit": "6146b1639bf03f244d1c5b716304dc1d20146194",
+    "reviewed_head": "63d548c31c13c7eabcfb4e4a6c68a20f1a315fa4",
+    "quick_docs_review": {
+      "verdict": "APPROVE",
+      "findings": 0,
+      "scope": "8docs only; no test/native execution"
+    },
+    "merged_complete_tree_equals_reviewed_head": true,
+    "closing_issues_references_empty": true,
+    "scope": "Selected mechanical Git reader/caller lifetime component only. WholeIssue60/native/backend/F1/MVP remainOPEN. Historical failed gates and causesUNKNOWN retained."
   }
 }

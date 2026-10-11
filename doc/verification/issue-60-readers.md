@@ -909,8 +909,8 @@ Source5 approvals and verified evidence-only Low corrections in their own scope.
 Root's finite disposition permits normal **limited component** merge only after
 the final outcome-only documentation delta receives direct QUICK verification
 and its new required bothOS CI passes every step with actual complete-tree proof.
-This records conditions, not their premature fulfillment. Current metadata-head
-qualification is still pending. The mutation ledger remains27/23/25 plus two
+At that phase these were conditions, not premature fulfillment. The subsequent
+final63d qualification and normal limited merge are recorded below. The mutation ledger remains27/23/25 plus two
 historical masked survivors at zero credit; none was rerun for this composition,
 and all R18/R23/diagnostic-only limits remain unchanged.
 
@@ -919,3 +919,25 @@ cause/contribution/regression UNKNOWN. New combined passes neither fix nor
 exonerate historical failures. Whole60/native3/backend/F1/MVP, durable recovery,
 shared ProcessGroup/new/Drop and genuine effect/managed producer qualification
 remain OPEN. No absent privileged runtime/profile/containment service is assumed.
+
+
+### Final metadata head and merged component
+
+At clean63d548c31c13c7eabcfb4e4a6c68a20f1a315fa4, the outcome-only delta comprised
+eight docs: six current outcome/status records and two incoming main72 custody
+status records. No crates/Cargo/CI byte changed from the both-mode-tested777. Root
+direct QUICK verification approved this delta without findings, after the two
+independent finite composition reviews had closed.
+
+CI37271712764 passed every step on Linux and macOS. Both actual checkout logs
+identify281f47aad585ebc494881adf31485e962993c878, parentsa9fc5e9/63d548c; complete
+tree91eab742298d174e2824572d354b85653514360d, all321 mode/type/blob/path entries,
+equals the reviewed final head. Root independently checked the parents, complete
+tree, per-OS checkout logs and every step. CI supplies Debug TEST plus both BUILDs;
+the distinct local777 Release TEST remains its own observation.
+
+The final conditions were fulfilled before normal PR64 merge6146b1639bf03f244d1c5b716304dc1d20146194.
+Its complete tree equals the reviewed final head. No force/admin bypass or whole
+Issue60 close was used. This merges the selected mechanical Git reader/caller
+lifetime component only. The historical failed observations, unknown causes,
+finite mutation/audit limits and whole60/native/backend/F1/MVP gaps remain open.

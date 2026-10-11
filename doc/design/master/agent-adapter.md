@@ -387,8 +387,8 @@ UNKNOWN. Normal main custody composition777 subsequently passed first local
 macOS full default Debug and distinct Release TEST, each445 top-level Rust tests+
 2docs/27ignored, plus fmt/Clippy/both BUILDs. Two independent static read-only
 reviews approve only this composition without findings. CI37270293297 passed
-every step on bothOS with complete tested-tree equality. Final docs-only checks
-remain before limited component merge; old failures stay FAILED/UNKNOWN and
+every step on bothOS with complete tested-tree equality. Final docs-only checks subsequently passed and PR64 merged at6146b163;
+old failures stay FAILED/UNKNOWN and
 whole60/native/backend/F1/MVP remain OPEN. Production custody is None, its file
 factory is test-only, and ordinary Codex remains EMPTY; no ownership/capability
 is transferred between the separate custody and selected Git pools. See the current
