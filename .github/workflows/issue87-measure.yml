@@ -9,9 +9,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macos-latest]
         ref: [head]
-        plan: [control2, t24]
+        plan: [control3]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 340
     steps:

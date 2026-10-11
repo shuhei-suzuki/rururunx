@@ -937,7 +937,7 @@ impl Lines {
         self.response(id).await
     }
     async fn response(&mut self, id: u64) -> Result<Value> {
-        tokio::time::timeout(Duration::from_secs(30),async {loop {
+        let issue87_response = tokio::time::timeout(Duration::from_secs(30),async {loop {
             let value=self.line().await?;crate::codex::managed::frame(&value)?;
             if value.get("method").is_none() && value["id"]==id {
                 if value.get("error").is_some() {
@@ -948,7 +948,12 @@ impl Lines {
             if value.get("id").is_some() && value.get("method").is_some(){
                 self.send(&json!({"id":value["id"],"error":{"code":-32601,"message":"No native turn established"}})).await?;
             }else{self.queue(value)?;}
-        }}).await?
+        }}).await;
+        #[cfg(test)]
+        if issue87_response.is_err() {
+            crate::issue87_trace::mark(&format!("native rpc response {id} timed out (30 s)"));
+        }
+        issue87_response?
     }
 }
 /// A private scoped dispatch boundary. The ledger stores a digest, never the
@@ -2301,7 +2306,7 @@ impl Core {
         let session = self.session.id;
         let phase = self.phase.as_ref().map(|phase| phase.owner.clone());
         let mut fence = tokio::time::interval(Duration::from_millis(100));
-        tokio::time::timeout(Duration::from_secs(30),async {
+        let issue87_bootstrap = tokio::time::timeout(Duration::from_secs(30),async {
             loop {tokio::select! {
                 frame=self.wire.line()=>{
                     let frame=frame?;
@@ -2316,7 +2321,15 @@ impl Core {
                 },
                 _=fence.tick()=>{actual_native_authority(&owner,&pinned,session,phase.as_ref())?;}
             }}Ok::<_,anyhow::Error>(())
-        }).await??;
+        }).await;
+        #[cfg(test)]
+        if issue87_bootstrap.is_err() {
+            crate::issue87_trace::mark(&format!(
+                "claude bootstrap initialize timed out (30 s) unit {}",
+                self.unit.id
+            ));
+        }
+        issue87_bootstrap??;
         self.authority()?;
         self.send_effect(&json!({"type":"user","session_id":self.native,"parent_tool_use_id":null,"message":{"role":"user","content":input.payload}}),None,"native_input").await?;
         let mut state = claude_wire::RunState::default();

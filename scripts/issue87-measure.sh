@@ -32,6 +32,12 @@ elif [ "${ISSUE87_PLAN:-full}" = control2 ]; then
   for d in 0 10000; do
     ISSUE87_TERMINAL_DELAY_MS=$d run "control-sc7-serial-delay$d" --test-threads=1 "${SC7[@]}"
   done
+elif [ "${ISSUE87_PLAN:-full}" = control3 ]; then
+  SC10=(sc10_four_projects_close_independently)
+  ISSUE87_SC10_RELEASE_DELAY_MS=0 run "control-sc10-serial-delay0" --test-threads=1 "${SC10[@]}"
+  ISSUE87_SC10_RELEASE_DELAY_MS=35000 run "control-sc10-serial-delay35000" --test-threads=1 "${SC10[@]}"
+  ISSUE87_SC10_RELEASE_DELAY_MS=35000 ISSUE87_SC10_BOOTSTRAP_PER_TASK=1 run "control-sc10-serial-delay35000-bootstrap-per-task" --test-threads=1 "${SC10[@]}"
+  ISSUE87_SC10_RELEASE_DELAY_MS=25000 run "control-sc10-serial-delay25000" --test-threads=1 "${SC10[@]}"
 elif [ "${ISSUE87_PLAN:-full}" = t24 ]; then
   for i in 1 2; do run "parallel-t24-$i" --test-threads=24; done
 elif [ "${ISSUE87_PLAN:-full}" = t12x2 ]; then

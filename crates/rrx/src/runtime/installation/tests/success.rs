@@ -1644,9 +1644,27 @@ async fn sc10_four_projects_close_independently() {
     .await;
     crate::issue87_trace::mark("SC10 start");
     f.runtime.start().await.unwrap();
+    // ISSUE87 causal control only: release each peer's bootstrap as soon as
+    // its own Task is bound, and/or delay the shared completion release.
+    let issue87_bootstrap_per_task = std::env::var("ISSUE87_SC10_BOOTSTRAP_PER_TASK").is_ok();
     for task in &tasks {
         wait_normal_bound(&f, task).await;
         crate::issue87_trace::mark(&format!("SC10 {} normal bound", task.id));
+        if issue87_bootstrap_per_task {
+            let unit = bound_unit(&f, task);
+            let profile = crate::execution::resources::ResourceManager::new(f.owner.clone())
+                .profile(&unit)
+                .unwrap();
+            std::fs::write(profile.output.join("fixture-bootstrap-release"), "release").unwrap();
+            crate::issue87_trace::mark(&format!("SC10 {} bootstrap released", task.id));
+        }
+    }
+    if let Some(ms) = std::env::var("ISSUE87_SC10_RELEASE_DELAY_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+    {
+        crate::issue87_trace::mark(&format!("SC10 delaying completion release {ms} ms"));
+        tokio::time::sleep(Duration::from_millis(ms)).await;
     }
     let marked: Vec<_> = tasks.iter().map(|t| stored_task(&f, t)).collect();
     for task in &tasks {
