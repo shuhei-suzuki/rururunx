@@ -149,7 +149,16 @@ m5 survives because SC7's Task is Bound (`observation: Bound` in every snapshot)
 | Linux ×4 | 4/4 | 4/4 | 4/4 | run 3: `cli::endpoint` ×2 (EAGAIN, §8) |
 | macOS runner ×3 | 3/3 | 3/3 | **2/3** | §8 |
 
-The macOS SC10 failure (run 1) is a different mode from the one D3 fixes: `SETUP: normal Bound absent` after the 60 s `wait_normal_bound`. No production deadline fired in SC10. The four units kept taking the gate (holds of 1.4–9.9 s, waits up to 13 s), but no Task was Bound within 60 s. In the same run, single-Task tests that also hold the peer's bootstrap until Bound failed when the 30 s bootstrap deadline fired before Bound (`sc4_codex`, `sc4n_codex`, `scr_codex`; `sc4_claude` in run 3). And `ca6` (run 2) recorded one service sweep body blocked for 40.5 s inside `observe_task_drivers`. Since Bound is written by a sweep, a sweep blocked for that long explains both the missing Bound and the expired bootstrap deadline. This is a hypothesis under measurement: commit `2b47305` adds step timings inside `observe_task_drivers` and dumps the sweep's current stage when the Bound wait fails. Nothing is changed for it until the cause is shown.
+The macOS SC10 failure (run 1) is a different mode from the one D3 fixes: `SETUP: normal Bound absent` after the 60 s `wait_normal_bound`. No production deadline fired in SC10. The four units kept taking the gate (holds of 1.4–9.9 s, waits up to 13 s), but no Task was Bound within 60 s. In the same run, single-Task tests that also hold the peer's bootstrap until Bound failed when the 30 s bootstrap deadline fired before Bound (`sc4_codex`, `sc4n_codex`, `scr_codex`; `sc4_claude` in run 3). And `ca6` (run 2) recorded one service sweep body blocked for 40.5 s inside `observe_task_drivers`. Since Bound is written by a sweep, a sweep blocked for that long explains both the missing Bound and the expired bootstrap deadline. Measured next (commit `dde1463`, run 38138100807, three macOS jobs × 3 runs at t12):
+
+| | CA4i | SC7 codex | SC10 |
+| --- | --- | --- | --- |
+| macOS runner, 9 runs | 9/9 | 8/9 | 6/9 |
+
+- **The blocked-sweep hypothesis is refuted as the common cause.** When a Bound wait failed, the sweep's recorded stage was `idle wait` (0.3–4.8 s) in every case that recorded one. A sweep body blocked for tens of seconds was seen once more (40.1 s in `observe_task_drivers`, `ca4d`), not in SC10 or SC7.
+- **SC10 (b2, b3, c1)**: no deadline fired. The four units take the owner-wide gate in turn, with holds of 1.5–9.4 s and waits of 5–17 s. The first Task's own gate steps then need longer than the fixed 60 s `wait_normal_bound`. This is the same structure as CA4i before D1: a fixed total window over a serialized gate.
+- **SC7 (c3) and 12 other single-Task tests ("pattern P")**: four gate holds after `driver … prepared` (the last 4–9 s), then about 30 s with no gate activity and an idle sweep. Then `native rpc response 1 timed out (30 s)`, the owner is revoked with no settlement, and the test fails `SETUP: normal Bound absent` or `normal write not reached`. The test holds the peer's bootstrap until Bound, so the 30 s production deadline measures the time from bootstrap start to Bound. What delays Bound here is **not yet known**: it is not the gate and not the sweep.
+- Every one of these failures is on the GitHub macOS runner (3 vCPU) with 12 test threads. `runtime::installation` setup failures of the same two shapes also hit tests outside #87 (`sc1`, `sc4`, `sc8`, `br1`, `sc11n`, `fm_rb`, `ca1`/`ca3`/`ca4d`, among others).
 
 ## 7. Verification plan
 
