@@ -954,7 +954,7 @@ async fn bounded_fs<T: Send + 'static>(
         .clone();
     #[cfg(test)]
     let issue87_acquire = std::time::Instant::now();
-    let permit = tokio::time::timeout(Duration::from_secs(5), slots.acquire_owned()).await;
+    let permit = tokio::time::timeout(Duration::from_secs(5), slots.clone().acquire_owned()).await;
     #[cfg(test)]
     if permit.is_err() || issue87_acquire.elapsed() > Duration::from_millis(500) {
         crate::issue87_trace::mark(&format!(
