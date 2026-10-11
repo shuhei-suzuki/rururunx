@@ -8,6 +8,8 @@ pub mod domain;
 pub mod execution;
 pub mod git;
 mod goal;
+#[cfg(test)]
+pub(crate) mod issue87_trace;
 pub mod project;
 pub mod runtime;
 pub mod state;

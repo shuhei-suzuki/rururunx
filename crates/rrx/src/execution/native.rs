@@ -1333,6 +1333,11 @@ fn persist_saved_terminal(
         } else {
             phase.owner.project(&session, version)?;
             phase.owner.revoke();
+            #[cfg(test)]
+            crate::issue87_trace::mark(&format!(
+                "native terminal committed and owner revoked (no settlement) unit {}",
+                unit.id
+            ));
         }
         return Ok((unit, receipt, session, version));
     }

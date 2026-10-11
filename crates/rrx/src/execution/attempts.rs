@@ -392,8 +392,20 @@ impl AttemptManager {
             !path.exists() && path.symlink_metadata().is_err(),
             "fresh worktree path already exists"
         );
+        #[cfg(test)]
+        let issue87_admission = std::time::Instant::now();
         let admission = self.resources.admission().await;
+        #[cfg(test)]
+        let issue87_admitted = std::time::Instant::now();
         let profile = self.resources.draft(id, &task.scope(), &path)?;
+        #[cfg(test)]
+        if issue87_admission.elapsed() > std::time::Duration::from_millis(300) {
+            crate::issue87_trace::mark(&format!(
+                "resource admission waited {:?} draft {:?} unit {id}",
+                issue87_admitted - issue87_admission,
+                issue87_admitted.elapsed()
+            ));
+        }
         let branch = format!("rrx/{}/{id}", task.id);
         let at = crate::domain::now_ms();
         let unit = ExecutionUnit {

@@ -952,15 +952,35 @@ async fn bounded_fs<T: Send + 'static>(
     let slots = SLOTS
         .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(2)))
         .clone();
-    let permit = tokio::time::timeout(Duration::from_secs(5), slots.acquire_owned())
-        .await
-        .context("context filesystem workers busy/timed out")??;
+    #[cfg(test)]
+    let issue87_acquire = std::time::Instant::now();
+    let permit = tokio::time::timeout(Duration::from_secs(5), slots.clone().acquire_owned()).await;
+    #[cfg(test)]
+    if permit.is_err() || issue87_acquire.elapsed() > Duration::from_millis(500) {
+        crate::issue87_trace::mark(&format!(
+            "bounded_fs acquire waited {:?} timed_out={} available={}",
+            issue87_acquire.elapsed(),
+            permit.is_err(),
+            slots.available_permits()
+        ));
+    }
+    let permit = permit.context("context filesystem workers busy/timed out")??;
+    #[cfg(test)]
+    let issue87_run = std::time::Instant::now();
     let job = tokio::task::spawn_blocking(move || {
         let _permit = permit;
         operation()
     });
-    tokio::time::timeout(Duration::from_secs(5), job)
-        .await
+    let finished = tokio::time::timeout(Duration::from_secs(5), job).await;
+    #[cfg(test)]
+    if finished.is_err() || issue87_run.elapsed() > Duration::from_millis(500) {
+        crate::issue87_trace::mark(&format!(
+            "bounded_fs operation took {:?} timed_out={}",
+            issue87_run.elapsed(),
+            finished.is_err()
+        ));
+    }
+    finished
         .context("context filesystem operation timed out (worker reservation retained)")?
         .context("context filesystem worker failed")?
 }

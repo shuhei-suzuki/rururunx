@@ -70,7 +70,17 @@ impl Runtime {
                 for key in keys {
                     evaluations += 1;
                     cursor = Some(key.clone());
+                    #[cfg(test)]
+                    let issue87_evaluate = std::time::Instant::now();
                     let outcome = self.evaluate_driver_candidate(&admission, &key);
+                    #[cfg(test)]
+                    if issue87_evaluate.elapsed() > std::time::Duration::from_millis(100) {
+                        crate::issue87_trace::mark(&format!(
+                            "admission evaluate took {:?} claimed={}",
+                            issue87_evaluate.elapsed(),
+                            matches!(outcome, Ok(AdmitOutcome::Claimed))
+                        ));
+                    }
                     match outcome {
                         Ok(AdmitOutcome::Claimed) => {
                             claimed += 1;
