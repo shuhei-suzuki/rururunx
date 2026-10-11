@@ -68,13 +68,6 @@ pub(super) fn bound_unit(f: &ControlFixture, task: &Task) -> crate::execution::E
 pub(super) fn release_completion(f: &ControlFixture, task: &Task) {
     release_unit(f, &bound_unit(f, task));
 }
-/// Only the peer's bootstrap; it still waits for `fixture-release`.
-fn release_bootstrap(f: &ControlFixture, task: &Task) {
-    let profile = crate::execution::resources::ResourceManager::new(f.owner.clone())
-        .profile(&bound_unit(f, task))
-        .unwrap();
-    std::fs::write(profile.output.join("fixture-bootstrap-release"), "release").unwrap();
-}
 pub(super) fn release_unit(f: &ControlFixture, unit: &crate::execution::ExecutionUnit) {
     let profile = crate::execution::resources::ResourceManager::new(f.owner.clone())
         .profile(unit)
