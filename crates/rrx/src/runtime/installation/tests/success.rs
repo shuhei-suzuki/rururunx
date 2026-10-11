@@ -363,17 +363,13 @@ async fn sc7_ordinary_failure(provider: &str) {
     // turn by design, so the start task's `finished` is too early (#87).
     wait_for(
         || {
-            f.runtime
-                .phase_jobs
-                .observed_jobs()
-                .iter()
-                .any(|j| {
-                    if crate::issue87_trace::mutant("m3") {
-                        j.finished
-                    } else {
-                        j.owner_live == Some(false)
-                    }
-                })
+            f.runtime.phase_jobs.observed_jobs().iter().any(|j| {
+                if crate::issue87_trace::mutant("m3") {
+                    j.finished
+                } else {
+                    j.owner_live == Some(false)
+                }
+            })
         },
         "SETUP: ordinary-failure terminal not observed",
         60,

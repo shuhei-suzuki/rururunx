@@ -394,7 +394,9 @@ impl RuntimeOwner {
             static ISSUE87_LEASES: std::sync::atomic::AtomicUsize =
                 std::sync::atomic::AtomicUsize::new(0);
             if ISSUE87_LEASES.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1 == n {
-                crate::issue87_trace::mark(&format!("git_gate lease {n} never ends (control) unit {unit}"));
+                crate::issue87_trace::mark(&format!(
+                    "git_gate lease {n} never ends (control) unit {unit}"
+                ));
                 std::future::pending::<()>().await;
             }
         }
