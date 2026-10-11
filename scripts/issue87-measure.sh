@@ -22,7 +22,7 @@ run() {
   grep -E '^    [a-z0-9_:]+$' "$out/$name.log" | sed "s/^/  FAILED $name: /" | tee -a "$out/summary.txt"
 }
 if [ "${ISSUE87_PLAN:-full}" = t12x2 ]; then
-  for i in 1 2; do run "parallel-t12-$i" --test-threads=12; done
+  for i in 1 2 3 4; do run "parallel-t12-$i" --test-threads=12; done
 else
   for i in 1 2 3; do run "parallel-default-$i"; done
   for i in 1 2 3; do run "parallel-t12-$i" --test-threads=12; done
