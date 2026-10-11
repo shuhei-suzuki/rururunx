@@ -69,6 +69,8 @@ elif [ "${ISSUE87_PLAN:-full}" = verify ]; then
   ISSUE87_MUTANT=m7 run "m7-sc10-no-continuation" --test-threads=1 "${SC10[@]}"
 elif [ "${ISSUE87_PLAN:-full}" = t12x3 ]; then
   for i in 1 2 3; do run "parallel-t12-$i" --test-threads=12; done
+elif [ "${ISSUE87_PLAN:-full}" = default5 ]; then
+  for i in 1 2 3 4 5; do run "parallel-default-$i"; done
 elif [ "${ISSUE87_PLAN:-full}" = t24 ]; then
   for i in 1 2; do run "parallel-t24-$i" --test-threads=24; done
 elif [ "${ISSUE87_PLAN:-full}" = t12x2 ]; then
