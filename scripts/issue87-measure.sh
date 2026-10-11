@@ -8,7 +8,11 @@ TARGETS=(ca4i_whole_registry_counts_actual_held_plan_across_two_pages sc10_four_
 run() {
   local name=$1; shift
   local start=$(date +%s)
-  cargo test --locked -p rrx --lib -- "$@" >"$out/$name.log" 2>&1
+  local tmo=()
+  if [ -n "${ISSUE87_TIMEOUT:-}" ]; then
+    if command -v timeout >/dev/null; then tmo=(timeout "$ISSUE87_TIMEOUT"); elif command -v gtimeout >/dev/null; then tmo=(gtimeout "$ISSUE87_TIMEOUT"); fi
+  fi
+  ${tmo[@]+"${tmo[@]}"} cargo test --locked -p rrx --lib -- "$@" >"$out/$name.log" 2>&1
   # (an ISSUE87_GIT_GATE_DELAY_MS prefix on the run call is inherited here)
   local code=$?
   echo "RUN $name exit=$code seconds=$(( $(date +%s) - start )) args=$*" | tee -a "$out/summary.txt"
@@ -38,6 +42,31 @@ elif [ "${ISSUE87_PLAN:-full}" = control3 ]; then
   ISSUE87_SC10_RELEASE_DELAY_MS=35000 run "control-sc10-serial-delay35000" --test-threads=1 "${SC10[@]}"
   ISSUE87_SC10_RELEASE_DELAY_MS=35000 ISSUE87_SC10_BOOTSTRAP_PER_TASK=1 run "control-sc10-serial-delay35000-bootstrap-per-task" --test-threads=1 "${SC10[@]}"
   ISSUE87_SC10_RELEASE_DELAY_MS=25000 run "control-sc10-serial-delay25000" --test-threads=1 "${SC10[@]}"
+elif [ "${ISSUE87_PLAN:-full}" = verify ]; then
+  # Controls and mutants at the D1-D3 head (expected results in the design doc).
+  CA4I=(ca4i_whole_registry_counts_actual_held_plan_across_two_pages)
+  SC7C=(sc7_codex_ordinary_failure_installs_no_settlement)
+  SC7L=(sc7_claude_ordinary_failure_installs_no_settlement)
+  SC10=(sc10_four_projects_close_independently)
+  run "plain-targets-serial" --test-threads=1 "${CA4I[@]}" "${SC7C[@]}" "${SC7L[@]}" "${SC10[@]}"
+  ISSUE87_GIT_GATE_DELAY_MS=1000 run "C87-1-ca4i-gate1000" --test-threads=1 "${CA4I[@]}"
+  ISSUE87_TIMEOUT=900 ISSUE87_GIT_GATE_HANG_NTH=10 run "C87-2-ca4i-lease10-never-ends" --test-threads=1 "${CA4I[@]}"
+  ISSUE87_TERMINAL_DELAY_MS=10000 run "C87-3-sc7-codex-terminal10000" --test-threads=1 "${SC7C[@]}"
+  ISSUE87_TERMINAL_DELAY_MS=10000 run "C87-4-sc7-claude-terminal10000" --test-threads=1 "${SC7L[@]}"
+  ISSUE87_SC10_RELEASE_DELAY_MS=35000 run "C87-6-sc10-release35000" --test-threads=1 "${SC10[@]}"
+  ISSUE87_MUTANT=m1 ISSUE87_GIT_GATE_DELAY_MS=1000 run "m1-ca4i-fixed120-gate1000" --test-threads=1 "${CA4I[@]}"
+  if command -v timeout >/dev/null || command -v gtimeout >/dev/null; then
+    ISSUE87_TIMEOUT=600 ISSUE87_MUTANT=m2 ISSUE87_GIT_GATE_HANG_NTH=10 run "m2-ca4i-unbounded-lease10" --test-threads=1 "${CA4I[@]}"
+  else
+    echo "RUN m2 skipped: no timeout tool" | tee -a "$out/summary.txt"
+  fi
+  ISSUE87_MUTANT=m3 ISSUE87_TERMINAL_DELAY_MS=10000 run "m3-sc7-codex-from-finished-terminal10000" --test-threads=1 "${SC7C[@]}"
+  ISSUE87_MUTANT=m4 run "m4-sc7-settlement-turn-skips" --test-threads=1 "${SC7C[@]}" "${SC7L[@]}"
+  ISSUE87_MUTANT=m5 run "m5-sc7-binding-turn-skips-unbound-poll" --test-threads=1 "${SC7C[@]}" "${SC7L[@]}"
+  ISSUE87_MUTANT=m6 ISSUE87_SC10_RELEASE_DELAY_MS=35000 run "m6-sc10-shared-bootstrap-release35000" --test-threads=1 "${SC10[@]}"
+  ISSUE87_MUTANT=m7 run "m7-sc10-no-continuation" --test-threads=1 "${SC10[@]}"
+elif [ "${ISSUE87_PLAN:-full}" = t12x3 ]; then
+  for i in 1 2 3; do run "parallel-t12-$i" --test-threads=12; done
 elif [ "${ISSUE87_PLAN:-full}" = t24 ]; then
   for i in 1 2; do run "parallel-t24-$i" --test-threads=24; done
 elif [ "${ISSUE87_PLAN:-full}" = t12x2 ]; then

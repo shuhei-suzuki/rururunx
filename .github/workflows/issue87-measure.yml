@@ -9,9 +9,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        ref: [head]
-        plan: [control3]
+        include:
+          - { os: ubuntu-latest, ref: head, plan: verify }
+          - { os: macos-latest, ref: head, plan: verify }
+          - { os: ubuntu-latest, ref: head, plan: t12x2 }
+          - { os: macos-latest, ref: head, plan: t12x3 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 340
     steps:

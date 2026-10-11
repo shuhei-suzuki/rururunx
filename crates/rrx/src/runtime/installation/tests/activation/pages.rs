@@ -64,9 +64,27 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
         );
         crate::issue87_trace::mark(&format!("CA4i one_held={one_held} start"));
         f.runtime.start().await.unwrap();
-        let setup_end = tokio::time::Instant::now() + Duration::from_secs(120);
+        // The owner-wide Git gate prepares the 128 claims one at a time, with
+        // no total deadline by design (#87). Setup fails only when neither the
+        // claim count nor the S1 count advances for SETUP_STALL.
+        const SETUP_STALL: Duration = Duration::from_secs(30);
+        let mut last_counts = (0, 0);
+        let mut stall_end = tokio::time::Instant::now() + SETUP_STALL;
+        let mut sample = tokio::time::Instant::now();
+        let issue87_setup_end = tokio::time::Instant::now() + Duration::from_secs(120);
         let mut progress = tokio::time::Instant::now();
         while observations.lock().unwrap().len() != 128 {
+            if tokio::time::Instant::now() >= sample {
+                let counts = (
+                    count(&f, "task_drivers"),
+                    observations.lock().unwrap().len(),
+                );
+                if counts != last_counts {
+                    last_counts = counts;
+                    stall_end = tokio::time::Instant::now() + SETUP_STALL;
+                }
+                sample = tokio::time::Instant::now() + Duration::from_secs(1);
+            }
             if tokio::time::Instant::now() >= progress {
                 let exits = f.runtime._drivers.pending_exits().unwrap();
                 let labels = exits.iter().map(|e| e.label()).collect::<Vec<_>>();
@@ -82,7 +100,14 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
                 crate::issue87_trace::mark("CA4i progress line above");
                 progress = tokio::time::Instant::now() + Duration::from_secs(10);
             }
-            if tokio::time::Instant::now() >= setup_end {
+            let issue87_expired = if crate::issue87_trace::mutant("m1") {
+                tokio::time::Instant::now() >= issue87_setup_end
+            } else if crate::issue87_trace::mutant("m2") {
+                false
+            } else {
+                tokio::time::Instant::now() >= stall_end
+            };
+            if issue87_expired {
                 let claims = count(&f, "task_drivers");
                 let s1 = observations.lock().unwrap().len();
                 let unfinished = f.runtime._drivers.observe_finished().unwrap();
@@ -93,7 +118,7 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
                 eprintln!("CA4i controlled setup shutdown: {shutdown:?}");
                 finish(f).await;
                 panic!(
-                    "SETUP: fewer than 128 genuine retained S1 preparations; claims={claims} S1={s1} unfinished={unfinished}"
+                    "SETUP: genuine retained S1 preparations stalled for {SETUP_STALL:?} before 128; claims={claims} S1={s1} unfinished={unfinished}"
                 );
             }
             tokio::time::sleep(Duration::from_millis(20)).await;

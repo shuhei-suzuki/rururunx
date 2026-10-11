@@ -438,6 +438,10 @@ impl Job {
                 _ => return Ok(Turn::Skipped),
             }
         } else {
+            #[cfg(test)]
+            if crate::issue87_trace::mutant("m5") {
+                return Ok(Turn::Skipped);
+            }
             // Revoked and unbound without a settlement: no conclusion.
             self.success_held(
                 "owned success settlement not observed",
@@ -473,7 +477,15 @@ impl Job {
             return Ok(Turn::Skipped);
         }
         let snap = Arc::new(binding.owner_arc().binding_snapshot()?);
-        if snap.settlement().is_none() {
+        #[cfg(test)]
+        if snap.settlement().is_none() && crate::issue87_trace::mutant("m4") {
+            return Ok(Turn::Skipped);
+        }
+        #[cfg(test)]
+        let issue87_m7 = crate::issue87_trace::mutant("m7");
+        #[cfg(not(test))]
+        let issue87_m7 = false;
+        if snap.settlement().is_none() || issue87_m7 {
             // The revoke->settle gap, a Core drop before its saved terminal
             // settles, or a non-success terminal: never concluded here.
             self.success_held(

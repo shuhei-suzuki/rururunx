@@ -68,6 +68,13 @@ pub(super) fn bound_unit(f: &ControlFixture, task: &Task) -> crate::execution::E
 pub(super) fn release_completion(f: &ControlFixture, task: &Task) {
     release_unit(f, &bound_unit(f, task));
 }
+/// Only the peer's bootstrap; it still waits for `fixture-release`.
+fn release_bootstrap(f: &ControlFixture, task: &Task) {
+    let profile = crate::execution::resources::ResourceManager::new(f.owner.clone())
+        .profile(&bound_unit(f, task))
+        .unwrap();
+    std::fs::write(profile.output.join("fixture-bootstrap-release"), "release").unwrap();
+}
 pub(super) fn release_unit(f: &ControlFixture, unit: &crate::execution::ExecutionUnit) {
     let profile = crate::execution::resources::ResourceManager::new(f.owner.clone())
         .profile(unit)
@@ -351,15 +358,24 @@ async fn sc7_ordinary_failure(provider: &str) {
     let marked = stored_task(&f, task);
     release_completion(&f, task);
     crate::issue87_trace::mark(&format!("SC7 {provider} completion released"));
+    // The window starts at the non-success terminal: the saved terminal is
+    // committed and the owner revoked. Until then a live owner costs no
+    // turn by design, so the start task's `finished` is too early (#87).
     wait_for(
         || {
             f.runtime
                 .phase_jobs
                 .observed_jobs()
                 .iter()
-                .any(|j| j.finished)
+                .any(|j| {
+                    if crate::issue87_trace::mutant("m3") {
+                        j.finished
+                    } else {
+                        j.owner_live == Some(false)
+                    }
+                })
         },
-        "SETUP: ordinary-failure job did not finish",
+        "SETUP: ordinary-failure terminal not observed",
         60,
     )
     .await;
@@ -1646,16 +1662,14 @@ async fn sc10_four_projects_close_independently() {
     f.runtime.start().await.unwrap();
     // ISSUE87 causal control only: release each peer's bootstrap as soon as
     // its own Task is bound, and/or delay the shared completion release.
-    let issue87_bootstrap_per_task = std::env::var("ISSUE87_SC10_BOOTSTRAP_PER_TASK").is_ok();
     for task in &tasks {
         wait_normal_bound(&f, task).await;
         crate::issue87_trace::mark(&format!("SC10 {} normal bound", task.id));
-        if issue87_bootstrap_per_task {
-            let unit = bound_unit(&f, task);
-            let profile = crate::execution::resources::ResourceManager::new(f.owner.clone())
-                .profile(&unit)
-                .unwrap();
-            std::fs::write(profile.output.join("fixture-bootstrap-release"), "release").unwrap();
+        // Release this peer's bootstrap at its own Bound. Holding it until
+        // the last Task is Bound would charge other Tasks' bind latency to
+        // its 30 s native bootstrap deadline (#87). Completions stay held.
+        if !crate::issue87_trace::mutant("m6") {
+            release_bootstrap(&f, task);
             crate::issue87_trace::mark(&format!("SC10 {} bootstrap released", task.id));
         }
     }

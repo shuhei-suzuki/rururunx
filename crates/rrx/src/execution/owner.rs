@@ -385,6 +385,19 @@ impl RuntimeOwner {
         {
             tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
         }
+        // ISSUE87 causal control only: the Nth gate lease never ends.
+        #[cfg(test)]
+        if let Some(n) = std::env::var("ISSUE87_GIT_GATE_HANG_NTH")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+        {
+            static ISSUE87_LEASES: std::sync::atomic::AtomicUsize =
+                std::sync::atomic::AtomicUsize::new(0);
+            if ISSUE87_LEASES.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1 == n {
+                crate::issue87_trace::mark(&format!("git_gate lease {n} never ends (control) unit {unit}"));
+                std::future::pending::<()>().await;
+            }
+        }
         let lease = Arc::new(GitLease {
             id: OperationId::new(),
             unit,
