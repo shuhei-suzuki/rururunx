@@ -432,7 +432,7 @@ impl Job {
                     Err(_cause) => {
                         #[cfg(test)]
                         crate::issue87_trace::mark(&format!(
-                            "normal plan refused task {}: {_cause:#}",
+                            "normal plan refused task {:?}: {_cause:#}",
                             self.allocation.facts().scope.task_id
                         ));
                         self.success_retry()?;
@@ -466,7 +466,7 @@ impl Job {
             Err(_cause) => {
                 #[cfg(test)]
                 crate::issue87_trace::mark(&format!(
-                    "binding write refused task {}: {_cause:#}",
+                    "binding write refused task {:?}: {_cause:#}",
                     self.allocation.facts().scope.task_id
                 ));
                 self.success_retry()?
