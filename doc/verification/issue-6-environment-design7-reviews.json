@@ -1,0 +1,260 @@
+{
+  "scope": "Design7 qualified finite textual component only; source/native qualification pending",
+  "head": "a645b94b067177b1c01c37df74f1a2d85dd71beb",
+  "independent_peer_free": true,
+  "native_defaults_and_rules_preserved": true,
+  "zero_operation_tools": true,
+  "reports": [
+    {
+      "head": "a645b94b067177b1c01c37df74f1a2d85dd71beb",
+      "section": "A7",
+      "native_session": "4cd69c81-2458-4115-9eb4-3107ec74cc89",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "142-145",
+            "problem": "The design treats the 256-byte per-name and 32KiB aggregate caller DTO bounds as actual-consumer observables to test after the per-key traversal. Through the real consumer they cannot be reached. An eligible caller name is either one of the six short ordinary names or a non-control Codex member whose exact frozen value is present. The constructor has already bounded those frozen names to 256 bytes or less. The 32KiB aggregate equals 128 x 256, so the count and per-name bounds already imply it. Only the 128-name count bound can be reached after traversal.",
+            "causal_scenario": "An implementer tries to build an eligible caller map with a name longer than 256 bytes. The name is either refused at the per-key shape check because it is not in the baseline, or the constructor has already refused it. The planned distinguishing test either cannot be written or gets satisfied by a check that is not the DTO bound, which gives misleading coverage or mutant credit.",
+            "required_fix": "Keep only the count greater than 128 case, with malformed-later-key precedence, as the actual-consumer observable. State that the caller per-name and aggregate byte bounds are structurally implied, covered unit-only through EnvironmentAdmission::new, and earn no actual-consumer test or mutant credit. This matches the treatment already used for the reference aggregate bound."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "151-158, 351-353, 464-468",
+            "problem": "Lines 351-353 say unconditionally that own edits after checkpoint 'still produce stale-own StateConflict', which matches Issue51 requirement 7 precedence. Lines 153-156 and 464-465 instead accept an opaque InvalidConfiguration when an own edit, such as removing a caller key, lands between resume capture and the separate initial Store read. For resume, the proposal contradicts itself and weakens the merged precedence wording for that race window.",
+            "causal_scenario": "A resume captures the checkpointed Project. A second connection then removes an owning declaration that the cached caller map still uses, before the initial environment read. The resume returns InvalidConfiguration ('native environment authority unavailable') rather than StateConflict. An operator follows the environment remedy instead of re-checkpointing. Only the next resume attempt sees StateConflict at capture. No effect occurs in either case.",
+            "required_fix": "Choose one. (a) After an initial environment refusal, re-read the own Project version with the existing Store::project and map any difference from the captured snapshot to StateConflict. This needs no publication, no new transaction and no Store API change, and restores deterministic precedence. (b) Alternatively, qualify lines 351-353 and record the race carve-out against Issue51 requirement 7 explicitly. Make the test plan expectations match the chosen option."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "258-262, 282-286, 305-309",
+            "problem": "preparation::bounded_git is shared by plain Git preflight (the verify_git_preparing observe closure) and the native --version exec. The proposal does not tie the cfg(test) PRE-CAS hook, the post-primitive observer, or the 'attempt-scoped' spawn counters to the presence of the selected before-spawn callback. Counters scoped to the attempt would include the several Git preflight spawns that run before the version site. A hook bound to bounded_git would first fire at a Git preflight call, before Starting's Git has finished.",
+            "causal_scenario": "If the hook is bound to bounded_git in general, the 'replacement immediately before version exec' edit actually happens before the first Git preflight. The test still passes, but against the wrong window, and the own-edit StateConflict attribution moves to the post-Git recheck. If the counters are bound to the attempt in general, the correct post-CAS control would read non-zero attempt and success counts from Git preflight.",
+            "required_fix": "State that the hook, observer and counters exist only on the selected-callback (Some) path, keyed per (attempt, selected site). Git preflight calls pass None, carry no hook or counter, and a test asserts they stay unhooked."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "201-209, 434-437, 501",
+            "problem": "The real public-new observables are candidate-name presence (OPENAI_API_KEY) and refusal of an oversize LC_ name. Neither distinguishes production wiring through vars_os() from a std::env::vars() or lossy-string mutant. std::env::vars() panics on any non-UTF-8 name or value in the host environment, and lossy conversion corrupts values. The unit tests use the injected constructor, so they do not observe new()'s own source iterator.",
+            "causal_scenario": "A new() that collects std::env::vars() into OsString pairs passes every planned public-new assertion, because the sanitized child's environment is all UTF-8. In production, any host with a non-UTF-8 environment entry makes construction panic.",
+            "required_fix": "Make the sanitized re-exec child include a known non-UTF-8 value under a member name and a non-UTF-8 name, built with OsStr::from_bytes. Check them only through byte-equality booleans. Assert that construction succeeds and that the candidate result is unchanged. Bind the vars()/lossy mutant kill to that child."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "57-61",
+            "problem": "The proposal says frozen and selected containers implement no Debug, Display or Serialize. The actual exec boundaries take Vec<(OsString, OsString)>: bounded_git's environment parameter and NativeServer::launch_preparing. tokio::process::Command also holds environment values and implements Debug. The proposal does not say whether the non-Debug type reaches those boundaries, how transient conversions are confined, or how the prohibition is checked structurally.",
+            "causal_scenario": "An implementer converts the private selection to the existing Vec at each call site, as current code already does with environment.clone(). The values then exist in a Debug-capable form that any later diagnostic, test failure message or panic payload could format, and nothing in the planned checks detects it.",
+            "required_fix": "Pass the non-Debug selection type, or a borrowed iterator over it, into the Codex-private exec helpers and expand it only inside command.envs(...). Forbid formatting Command. Add a structural, non-value check that the selection and frozen types do not implement Debug, Display or Serialize."
+          }
+        ],
+        "limitations": [
+          "No tools were used. The review is limited to the supplied public excerpts at a645b94; session.rs bodies after line 1950 were not supplied, including supervise and answer_approval, so the assertion that no other selected-environment exec or roster-dependent recheck exists there is unverified.",
+          "crates/rrx/src/config.rs, the CLI binary sources and other crate tests were not supplied. The claims that no production factory constructs CodexAdapter, that no other workspace consumer uses codex::policy::native_environment, and that only eighteen CodexAdapter::new unit-test calls exist (all in session.rs) could not be confirmed crate-wide.",
+          "The crates.io 404 result, the absence of tags and release workflows, and the README installation note are stated by the proposal and were not independently observed.",
+          "No native config/read evidence for built-in or default provider reference shapes, or for profile-selected providers, was supplied. The effect of the step-9 presence rule on ordinary default launches is therefore unassessed and remains the proposal's declared OPEN native qualification gate. No provenance or auth semantics were inferred.",
+          "The shared crate::git::native_environment ambient Git residual is used by Codex preflight and checkpoint. It passes all ambient pairs except nine routing names to Git children, which can run repository-configured programs. It was reviewed only as the explicitly declared OPEN #51/#60 residual under ordinary EMPTY, not as new work in this component.",
+          "Master agent-adapter.md was reviewed only for lines 410-510. The rest of preparation.rs, protocol.rs and transport.rs was omitted, as were the full fixture child implementation (synthetic_owned_native_rpc_child) and the bootstrap fixtures, so fixture feasibility under purely synthetic iterator environments was not verified.",
+          "This assessment covers the proposed component design only. It does not approve native MVP, workload ownership or settlement, IPC02, F1 backend acceptance, or any change to ordinary EMPTY availability."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 189142,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 95185,
+        "output_tokens_details": {
+          "thinking_tokens": 92159
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 189142,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 95185,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 189142,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 189142
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 95185,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 189142,
+          "webSearchRequests": 0,
+          "costUSD": 3.417276,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 92159,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 3.417276,
+      "duration_api_ms": 884016,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    },
+    {
+      "head": "a645b94b067177b1c01c37df74f1a2d85dd71beb",
+      "section": "B7",
+      "native_session": "72ee787c-3d9a-40dc-9b28-fa6381c4ca8f",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "282-304",
+            "problem": "The PRE-CAS hook and the post-primitive observer are synchronous. Each blocks the Tokio worker that is polling the attempt task until cancellation becomes visible. The design requires two or more workers and finite deadlines, but it does not say which rendezvous primitive the hooks use. Tokio's per-worker LIFO slot cannot be stolen by other workers. A task that is woken from inside the blocked attempt task (for example via a tokio watch, as the existing TestGates use) can therefore sit in that worker's LIFO slot and never run while the hook blocks.",
+            "causal_scenario": "A synchronous hook signals 'reached' through a tokio watch to a spawned helper task, and that helper calls adapter.stop(). The helper lands in the blocked worker's LIFO slot, so cancellation never becomes visible. Every per-site real-stop control then hits its finite deadline and fails closed. The Cancelled-guard omission kill and the final-check omission kill are left without executable evidence, or the gates become flaky.",
+            "required_fix": "Specify that synchronous hooks rendezvous only through std::sync primitives, or wrap the blocking wait in tokio::task::block_in_place. The stop driver and the reached-waiter must run on the test's block_on thread, never as a task woken from inside the hooked attempt. Keep the finite fail-closed deadline."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "53-59, 65-66, 102-105",
+            "problem": "The common private constructor accepts arbitrary (OsString, OsString) pairs. The design does not define how it handles shapes that production vars_os cannot produce: names containing '=' or NUL, and values containing NUL. It also does not define handling of duplicate names, which a real environ can contain and for which Command::envs keeps the last value. Finally, it forbids lossy name comparison but does not require byte-exact OsStr comparison for exact-frozen caller values.",
+            "causal_scenario": "A synthetic fixture injects a duplicate OPENAI_API_KEY. The frozen container keeps the first value while Command resolves to the last, so the caller exact-value check and the value the child actually receives disagree. A NUL-bearing pair instead makes spawn fail, and that failure can be mistaken for an environment refusal. Separately, a to_string_lossy value comparison would accept a caller string that matches a non-UTF-8 frozen value up to U+FFFD, and would replace the raw native value.",
+            "required_fix": "Define deterministic constructor rules. Fail closed on '=' or NUL in names and on NUL in values. For duplicate names, pick exactly one winner, and make it the same value that is later passed to Command. Require byte-exact OsStr comparison for caller values. Add a synthetic constructor case for each rule."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "88-91 versus 102-105",
+            "problem": "Lines 88-91 say registry-valid LC_* names keep their frozen values: the component 'never changes or restores their frozen values'. The OR rule at lines 102-105, however, lets an owning-declared caller replace LC_ALL or LC_CTYPE with any ordinary value. Both are LC_* Codex members.",
+            "causal_scenario": "An implementer following lines 88-91 refuses a differing LC_ALL caller value, or writes a test asserting that the frozen LC_ALL reaches the child. That contradicts the ordinary-precedence positive and the Issue51 OR rule, so one of the two required tests must fail or be silently rewritten.",
+            "required_fix": "State explicitly that LANG, TERM, LC_ALL and LC_CTYPE follow the ordinary-value alternative. Only non-ordinary LC_* and XDG_* caller keys must exactly match the frozen value."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "258-260, 305-313",
+            "problem": "bounded_git is shared by the selected --version exec and the plain Git preflight. The design places spawn-attempt and spawn-success counters 'at each selected site', but it does not say they are keyed to the invocation that carries the before-spawn callback.",
+            "causal_scenario": "A counter placed unconditionally inside bounded_git increments on every preceding Git preflight spawn. The version-site post-CAS real-stop control then cannot assert 'both counters zero'. It either fails, or gets rewritten as a delta, which weakens the deterministic kill of the final-check omission mutant at that site.",
+            "required_fix": "Attach the spawn observers only to callback-bearing selected exec invocations (version, discovery, main). Scope them per attempt and per site, and assert that Git preflight spawns never touch them."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "233-236, 464-468",
+            "problem": "Neutral or enlarging own edits made after capture are said to fail 'after Starting/Git at the existing recheck', or at the 'post-Git recheck or first native CAS'. Capture and recheck compare the whole persisted own Project JSON with request.project, so the post-Git recheck always fails first. The 'first native CAS' alternative is unreachable while the recheck exists.",
+            "causal_scenario": "A mutant that removes the post-Git recheck is still refused at the version pre-exec CAS, with the same StateConflict kind. A test that asserts only 'StateConflict after Starting/Git' cannot distinguish the mutant from correct code. Recording either refusal path as acceptable then grants complementary-path evidence that is not justified.",
+            "required_fix": "Pin the exact expected refusal point for this path: post-Git recheck, no version entry sentinel, and no pre-exec session.saved or version increment. Otherwise, declare the recheck-omission mutant masked by the version CAS and give it no kill credit."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "57-63",
+            "problem": "The no-Debug/Display/Serialize invariant covers only the frozen and selected containers and CodexAdapter. The selected values are also copied into the std/tokio Command, whose Debug output prints environment assignments. The raw-value prohibition does not cover Command or the error context at the selected exec sites.",
+            "causal_scenario": "A later diagnostic in bounded_git or launch_preparing adds format!(\"{command:?}\") on spawn failure. The structural no-Debug assertion still passes, while frozen credential values reach logs, audit records or error messages.",
+            "required_fix": "Extend the raw-value prohibition to Command and to any transient structure holding selected values. Add a source check, such as grep or a clippy disallowed-formatting rule, against Debug-formatting those values at the selected exec sites."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "153-156, 226-229",
+            "problem": "The design describes the initial environment check as one separate SQLite read. Outside a transaction, Store::check_environment_admission actually runs own_refs, the foreign aggregate validity query and the foreign json_each stream as separate autocommit statements, each with its own WAL snapshot.",
+            "causal_scenario": "A foreign row becomes non-array between the aggregate validity query and the stream. The stream's CASE fallback treats that row as '[]', so the initial check passes even though authority is currently unknown. Starting publication and Git preflight, which uses the ambient Git environment, then run before the version pre-exec CAS refuses.",
+            "required_fix": "State that the initial evaluation is not a single snapshot and is an early refusal only for deterministic pre-existing states. Make no initial-completeness claim under concurrent foreign corruption. Keep each Immediate-transaction pre-exec CAS as the sole authority before any exec."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "125-134, 453-454",
+            "problem": "environment_candidates becomes the only ungated, Store-reading public route on an ordinary EMPTY adapter. The verification plan asserts only the names it returns. It does not extend the existing EMPTY no-effect suite (registry, sessions, events, availability sites, Git/native markers) to cover this route.",
+            "causal_scenario": "An implementation calls ScopeSnapshot::capture, records Site::ScopeAccess, or touches the session registry inside environment_candidates. The EMPTY boundary claimed in master section 16 is then widened, and no test fails.",
+            "required_fix": "Add environment_candidates to the in-crate EMPTY test and the ordinary-library child. Assert an unchanged no_effect_snapshot (registry, Session records, events, sites) and no Git or native marker, alongside the name assertion."
+          }
+        ],
+        "limitations": [
+          "Manual read-only review of the supplied packet only; no repository, compilation, test, mutation or native operation was performed.",
+          "session.rs beyond line 1950 is not visible, apart from labeled test excerpts: supervise, answer_approval, bootstrap_fixture and the full fixture child bodies are omitted. Full native RPC, other provider consumers and the remaining Workflow code are also omitted, so hook placement and migration feasibility there are not verified.",
+          "The Issue6 requirements file was supplied only through line 154, and the master agent-adapter design only for lines 410-510. Other normative sections were not checked.",
+          "No installed config/read output was supplied. If installed Codex reports built-in provider entries whose header references fall outside the Codex membership, step 9 would refuse ordinary default configurations. The design explicitly keeps default and custom-provider conformance OPEN, and this review does not judge it.",
+          "Tokio scheduler details (LIFO-slot stealability in tokio 1.48) were not verified; finding 1 is a precision request, not an observed failure.",
+          "The crates.io 404 observation and the absence of tags or release workflows are executor-reported external facts that this packet cannot verify. The README was not supplied, so the migration-note location was not assessed.",
+          "The shared Git preflight environment, which passes all ambient variables except nine routing names, and the ownership/custody residual remain OPEN under #51/#60 and were not assessed further.",
+          "This approval covers only the component design proposal. It grants no native MVP, F1 workload ownership, settlement, IPC02, managed/Consult/Git ownership, multi-Project dogfood or source acceptance. Ordinary Codex availability remains EMPTY."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 189135,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 95455,
+        "output_tokens_details": {
+          "thinking_tokens": 91693
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 189135,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 95455,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 189135,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 189135
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 95455,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 189135,
+          "webSearchRequests": 0,
+          "costUSD": 3.42262,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 91693,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 3.42262,
+      "duration_api_ms": 897380,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    }
+  ]
+}

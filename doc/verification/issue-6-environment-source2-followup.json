@@ -1,0 +1,89 @@
+{
+  "head": "dc3d7ae4e8e952544856c29c71bd8f04fc6a09b9",
+  "scope": "Finite test/docs Source2 Low follow-up; production/Cargo/CI unchanged from798. No whole/default/native acceptance.",
+  "prior_compile_failures": {
+    "head": "9563e10c1c21e48787f09011a0e88f7294ab5f1f",
+    "cause": "Test helper missing BTreeMap import; both compile failed, no test execution.",
+    "runs": [
+      {
+        "owned_tool": 1693,
+        "exit_code": 101,
+        "log_sha256": "284cbff27ac9bc7aa2689dd6eb5081f565cdb88b30e8795fad702db0a62d975a",
+        "log_bytes": 675
+      },
+      {
+        "owned_tool": 34495,
+        "exit_code": 101,
+        "log_sha256": "284cbff27ac9bc7aa2689dd6eb5081f565cdb88b30e8795fad702db0a62d975a",
+        "log_bytes": 675
+      }
+    ]
+  },
+  "fix": "One test-only collections::BTreeMap import atdc3.",
+  "targeted_controls": [
+    {
+      "mode": "debug",
+      "target": "raw",
+      "owned_tool": 96922,
+      "exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "seconds": 0.03,
+      "log_sha256": "65adbf46fda23969225b55f17d83f838a287830b31c536cc3cf7d13ec5e10d6b",
+      "log_bytes": 481
+    },
+    {
+      "mode": "debug",
+      "target": "initial",
+      "owned_tool": 53061,
+      "exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "seconds": 1.77,
+      "log_sha256": "02fa401ace8136959073564bf8b709ca8e3e3cb7be3ed18772c5592ae6d4d519",
+      "log_bytes": 388
+    },
+    {
+      "mode": "release",
+      "target": "raw",
+      "owned_tool": 21061,
+      "exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "seconds": 0.03,
+      "log_sha256": "24b94c960790183bf0e8db7eb84a596fd9aa451ef0350c5d88495c73c5914706",
+      "log_bytes": 473
+    },
+    {
+      "mode": "release",
+      "target": "initial",
+      "owned_tool": 85546,
+      "exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "seconds": 1.77,
+      "log_sha256": "e11329f3ff84fe2c535d568de39ba68e56b7aeba249c05b8aa9e2161380ce368",
+      "log_bytes": 379
+    }
+  ],
+  "fmt_including_test_file": true,
+  "alltarget_clippy_deny_warnings": {
+    "owned_tool": 6290,
+    "exit_code": 0,
+    "log_sha256": "039b0f0ee333299d05faef370ccdb5201e13f8172e7cdb662046d592ad22492e",
+    "log_bytes": 173
+  },
+  "direct_readonly_review": {
+    "root_reviewed": "9563e10c1c21e48787f09011a0e88f7294ab5f1f",
+    "verdict": "approve",
+    "findings": 0,
+    "scope": "Finite eight-file test/docs/evidence delta only; one later compile-only import correction; no whole/native approval."
+  },
+  "limits": [
+    "Actual selected-owned fixture cleanup assertions passed; no complete enabled-native profile/resource settlement proof.",
+    "Existing full Debug283/4/24 and Release280/7/24 failures remain; causeUNKNOWN. Later integration/docs targets did not execute.",
+    "Ordinary native availability remains EMPTY. StageB/F1/backend/native defaults/custom-provider/managed ownership/settlement/wholeIssue6/MVP remainOPEN.",
+    "No deadlines, default internal concurrency, uncertainty latch, auth, hooks, native model/effort or config changed.",
+    "Current final-head CI remains pending; earlier798 exact-tree CI facts remain historical."
+  ]
+}

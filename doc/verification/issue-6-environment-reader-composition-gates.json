@@ -1,0 +1,708 @@
+{
+  "schema": "finite-component-gates-v1",
+  "source": {
+    "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+    "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+    "parents": [
+      "f89cb29ccb1eee63da43fc9deee6d45d5ff0b842",
+      "6146b1639bf03f244d1c5b716304dc1d20146194"
+    ],
+    "baseline": "f89cb29ccb1eee63da43fc9deee6d45d5ff0b842",
+    "incoming": "6146b1639bf03f244d1c5b716304dc1d20146194",
+    "incoming_tree": "91eab742298d174e2824572d354b85653514360d"
+  },
+  "scope": "Actual main6146 selected Git reader normal composition with existing Codex environment/custody component; no new backend/native operation authority.",
+  "semantic_binding": {
+    "incoming_8_rust_paths_equal_6146": [
+      {
+        "path": "crates/rrx/src/adapter.rs",
+        "current_blob": "5483f37fc457197086ccaf00f467d95a8959186a",
+        "reference_blob": "5483f37fc457197086ccaf00f467d95a8959186a",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/adapter/git_owner.rs",
+        "current_blob": "c11922dc249c01dc08a8b13c8fed9b59f41b8d2f",
+        "reference_blob": "c11922dc249c01dc08a8b13c8fed9b59f41b8d2f",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/adapter/git_owner/tests.rs",
+        "current_blob": "6a7c77fdc4a760c42e3a4cb2bc26a666681c73cd",
+        "reference_blob": "6a7c77fdc4a760c42e3a4cb2bc26a666681c73cd",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/adapter/grok/mod.rs",
+        "current_blob": "840f049b1b5c1d57d0ed4f359a26fa3e2c92795e",
+        "reference_blob": "840f049b1b5c1d57d0ed4f359a26fa3e2c92795e",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/adapter/grok/ownership.rs",
+        "current_blob": "e673e0f3804bf7323206ce95eb248aebb070c9c1",
+        "reference_blob": "e673e0f3804bf7323206ce95eb248aebb070c9c1",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/adapter/grok/reader_tests.rs",
+        "current_blob": "355db619b8ff35a8799026e0194a4ef521a8f812",
+        "reference_blob": "355db619b8ff35a8799026e0194a4ef521a8f812",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/context.rs",
+        "current_blob": "9dcc3e3f68fae2a96ca088e93ebb544e1c0bcfd9",
+        "reference_blob": "9dcc3e3f68fae2a96ca088e93ebb544e1c0bcfd9",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/tests/adapter.rs",
+        "current_blob": "b2c1d1d4cfb50c1dc108ebba1780027636aff996",
+        "reference_blob": "b2c1d1d4cfb50c1dc108ebba1780027636aff996",
+        "equal": true
+      }
+    ],
+    "codex_13_paths_equal_f89": [
+      {
+        "path": "crates/rrx/src/codex/attempt.rs",
+        "current_blob": "e76e301f1ee2838720416b4ecda2bd60b51a8849",
+        "reference_blob": "e76e301f1ee2838720416b4ecda2bd60b51a8849",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/codex/availability.rs",
+        "current_blob": "ac20a0d4706a4a2bbdf6912f564e030f280213e5",
+        "reference_blob": "ac20a0d4706a4a2bbdf6912f564e030f280213e5",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/codex/custody.rs",
+        "current_blob": "b92306b03d3d17175fc2193b163c54afaf9a56f8",
+        "reference_blob": "b92306b03d3d17175fc2193b163c54afaf9a56f8",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/codex/custody_tests.rs",
+        "current_blob": "67e5d395f868bd91220065dd9c5ff58fee211dce",
+        "reference_blob": "67e5d395f868bd91220065dd9c5ff58fee211dce",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/codex/environment.rs",
+        "current_blob": "c30f10be7312cd565769fad2e9391a9aba67c6d0",
+        "reference_blob": "c30f10be7312cd565769fad2e9391a9aba67c6d0",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/codex/environment_controls.rs",
+        "current_blob": "1579d3fdb0b15c3b0e180cdc7d134dbaeb986439",
+        "reference_blob": "1579d3fdb0b15c3b0e180cdc7d134dbaeb986439",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/codex/mod.rs",
+        "current_blob": "583bf853f9d82f7049c632f607db30a919afae50",
+        "reference_blob": "583bf853f9d82f7049c632f607db30a919afae50",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/codex/ownership.rs",
+        "current_blob": "8983691a988825a7388d08820f1c1563fca5e429",
+        "reference_blob": "8983691a988825a7388d08820f1c1563fca5e429",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/codex/policy.rs",
+        "current_blob": "f6bae2d458fb0e115188bdb887414aacd741c889",
+        "reference_blob": "f6bae2d458fb0e115188bdb887414aacd741c889",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/codex/preparation.rs",
+        "current_blob": "63b470f2ceb7b77ff773d8f681ac3d8499f6a6ef",
+        "reference_blob": "63b470f2ceb7b77ff773d8f681ac3d8499f6a6ef",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/codex/protocol.rs",
+        "current_blob": "6ba832caf4a4aadc5ad6a631ff075db3d7d90b36",
+        "reference_blob": "6ba832caf4a4aadc5ad6a631ff075db3d7d90b36",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/codex/session.rs",
+        "current_blob": "f89b7c4c0cad30abdc08cc85d597139efe383ec5",
+        "reference_blob": "f89b7c4c0cad30abdc08cc85d597139efe383ec5",
+        "equal": true
+      },
+      {
+        "path": "crates/rrx/src/codex/transport.rs",
+        "current_blob": "4d4b7224007c15f00a3610e558219d0c37a1bd2d",
+        "reference_blob": "4d4b7224007c15f00a3610e558219d0c37a1bd2d",
+        "equal": true
+      }
+    ],
+    "inventory": [
+      "Common bounded_git/raw signatures preserved; private git_owner owns std Child/readers independently of caller runtime.",
+      "Generic/Grok/Context use selected common owner; Context sticky latch and Generic uncertain Lost mapping retained.",
+      "Codex verify_git_preparing still uses codex::preparation::bounded_git; Tokio conversion gap remains pending, no new owner migration credit.",
+      "Shared ProcessGroup constructor/Drop/cleanup authority unchanged in imported adapter diff.",
+      "Codex environment hooks, Scope currency, cfg(test) factory/ordinaryNone and EMPTY source bytes remain f89.",
+      "README sole conflict retains both paragraphs; no production resolution changes."
+    ],
+    "resolution": "Only README conflict, additive retention of both paragraphs. No production conflict resolution changes."
+  },
+  "build_binding": {
+    "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+    "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+    "source_root": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env",
+    "dedicated_target": "/private/tmp/rururunx-issue6-env-561-current-target",
+    "artifacts": [
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/examples/native_codex_session.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/examples/native_codex_session",
+        "bytes": 467560,
+        "sha256": "17ae66ce6be85bbc1b6c0ddf869dfe8bcc819492cd1d15fead5b6eeeeb467938"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/examples/native_codex_protocol.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/examples/native_codex_protocol",
+        "bytes": 467608,
+        "sha256": "d95ef063fbbd5b1825515b6c38061a59e522b579c1ef2ec1645b76acc60e1134"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/src/main.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/deps/rrx-dd114c080317f4d3",
+        "bytes": 998616,
+        "sha256": "2162ef7dc5be854697ed69983e0204bbc56f682a263f7fe6e5764edf92690912"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/tests/cli.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/deps/cli-748e5454ddea15a2",
+        "bytes": 4330904,
+        "sha256": "d3d32efb5b4901406921a39d10e9d91a11e2be1928ea7624ae92a911a170b38d"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/tests/git.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/deps/git-549a40d5de84904e",
+        "bytes": 7471512,
+        "sha256": "f02b141c67c51499e88866900d1ee6314b1827cdb4305c97fb3352eec7c34949"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/tests/goal_graph.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/deps/goal_graph-41ef01161980246a",
+        "bytes": 6965656,
+        "sha256": "82491d6a6f399a3fb5c57a699b1cfd849f45f806fcaae06fadf4f88746f20a8d"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/tests/project.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/deps/project-f4f2da47dca4214c",
+        "bytes": 10309608,
+        "sha256": "cbda8d58a8cfee40118c08a5a3f37cba3f96ddda38981b13b50598820fe4b5e7"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/tests/codex_unavailable.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/deps/codex_unavailable-84b9a79c36447998",
+        "bytes": 15670944,
+        "sha256": "eb46f05c8c54e2dbc1a7478eed37b490b611695737f9b2f5f4a9b53451c7f053"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/src/main.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/rrx",
+        "bytes": 11770248,
+        "sha256": "65914e912a7d5fb4fd49e539aa40200da45620426171379d881f0ab265421f53"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/tests/state.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/deps/state-b2947838475fa844",
+        "bytes": 7682760,
+        "sha256": "27ebbc5ff12a30e359b75588b8d63a919affac9f10be2a761522227415668b87"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/tests/adapter.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/deps/adapter-75e74a2a3d2e2a2d",
+        "bytes": 14532584,
+        "sha256": "8b7945df22e27c601c2f19fd12b493d6723de4f76d84d53f569551974a606ffe"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/tests/grok.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/deps/grok-c3877c6217e9af30",
+        "bytes": 14719640,
+        "sha256": "8f0e62d0acbb125fb8a7fa195c88ae7098dc9ede2ad802fd8e92a0ef283b80cb"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/tests/context.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/deps/context-720d5a228c521e0e",
+        "bytes": 12721912,
+        "sha256": "1e444fb536eb836a2e461fa7fe8610b88833b89d7e6e00d3a4a2fb7d3d820ded"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/examples/repository-context.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/examples/repository-context",
+        "bytes": 12647488,
+        "sha256": "fb687b345bb7ee8d559e2957ba15568ac97398114ca7151e6addd24e2d11cd49"
+      },
+      {
+        "manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+        "source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/src/lib.rs",
+        "fresh": false,
+        "executable": "/private/tmp/rururunx-issue6-env-561-current-target/debug/deps/rrx-c8478e6c49df54d8",
+        "bytes": 42526296,
+        "sha256": "b7ed3d24a2c3a46edea08f916b532c26e2cc2407aa9e8b40bd9a004046df0a9b"
+      }
+    ]
+  },
+  "gates": [
+    {
+      "label": "compile-binding",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--locked",
+        "--offline",
+        "--no-run",
+        "--message-format=json"
+      ],
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+      "source_root": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env",
+      "target_root": "/private/tmp/rururunx-issue6-env-561-current-target",
+      "exit_code": 0,
+      "seconds": 25.202,
+      "log": "/private/tmp/rururunx-issue6-env-561-compile-binding.log",
+      "bytes": 112122,
+      "sha256": "95733b390de128afec25d92a0f2a040111cf7d4c812ea0a78afe08602d82c51a"
+    },
+    {
+      "label": "env-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "--lib",
+        "codex::tests::environment_controls"
+      ],
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+      "source_root": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env",
+      "target_root": "/private/tmp/rururunx-issue6-env-561-current-target",
+      "exit_code": 0,
+      "seconds": 0.742,
+      "log": "/private/tmp/rururunx-issue6-env-561-env-debug.log",
+      "bytes": 308,
+      "sha256": "baef90c0efada594222ca5ce7bfe4b606020f8da601da2e6fd2245586a31a131"
+    },
+    {
+      "label": "custody-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "--lib",
+        "codex::tests::custody_tests"
+      ],
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+      "source_root": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env",
+      "target_root": "/private/tmp/rururunx-issue6-env-561-current-target",
+      "exit_code": 0,
+      "seconds": 0.149,
+      "log": "/private/tmp/rururunx-issue6-env-561-custody-debug.log",
+      "bytes": 308,
+      "sha256": "27262dccc6c3692acdc9ea60e58ab64cadb7b4fba994f9202d49eb2952522ecb"
+    },
+    {
+      "label": "git-owner-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "--lib",
+        "adapter::git_owner::tests"
+      ],
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+      "source_root": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env",
+      "target_root": "/private/tmp/rururunx-issue6-env-561-current-target",
+      "exit_code": 0,
+      "seconds": 4.302,
+      "log": "/private/tmp/rururunx-issue6-env-561-git-owner-debug.log",
+      "bytes": 8690,
+      "sha256": "84987e8bb8fe7bdc8017e3124caf60e90b521ff291672a6733b5e4578d9c1349"
+    },
+    {
+      "label": "full-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--locked",
+        "--offline"
+      ],
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+      "source_root": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env",
+      "target_root": "/private/tmp/rururunx-issue6-env-561-current-target",
+      "exit_code": 101,
+      "seconds": 64.724,
+      "log": "/private/tmp/rururunx-issue6-env-561-full-debug.log",
+      "bytes": 51181,
+      "sha256": "f14f9a4313cbcdb870cbe963d2ece6193a0091172f3b24bccca591a81d9ba0ad"
+    },
+    {
+      "label": "full-release",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--release",
+        "--locked",
+        "--offline"
+      ],
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+      "source_root": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env",
+      "target_root": "/private/tmp/rururunx-issue6-env-561-current-target",
+      "exit_code": 0,
+      "seconds": 246.949,
+      "log": "/private/tmp/rururunx-issue6-env-561-full-release.log",
+      "bytes": 61358,
+      "sha256": "447a861943634eb0df2651bf1d9189dd00fc7235bfa1ba4e0dfc84f1a713f4dd"
+    },
+    {
+      "label": "fmt-workspace",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+      "source_root": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env",
+      "target_root": "/private/tmp/rururunx-issue6-env-561-current-target",
+      "exit_code": 0,
+      "seconds": 0.367,
+      "log": "/private/tmp/rururunx-issue6-env-561-fmt-workspace.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "fmt-env",
+      "command": [
+        "rustfmt",
+        "--edition",
+        "2024",
+        "--check",
+        "crates/rrx/src/codex/environment_controls.rs"
+      ],
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+      "source_root": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env",
+      "target_root": "/private/tmp/rururunx-issue6-env-561-current-target",
+      "exit_code": 0,
+      "seconds": 0.056,
+      "log": "/private/tmp/rururunx-issue6-env-561-fmt-env.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--offline",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+      "source_root": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env",
+      "target_root": "/private/tmp/rururunx-issue6-env-561-current-target",
+      "exit_code": 0,
+      "seconds": 10.265,
+      "log": "/private/tmp/rururunx-issue6-env-561-clippy.log",
+      "bytes": 2645,
+      "sha256": "df834398c22483d18f55fc35f14257523dcb35039af04e40697036d08fa1f62e"
+    },
+    {
+      "label": "build-debug",
+      "command": [
+        "cargo",
+        "build",
+        "--workspace",
+        "--locked",
+        "--offline"
+      ],
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+      "source_root": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env",
+      "target_root": "/private/tmp/rururunx-issue6-env-561-current-target",
+      "exit_code": 0,
+      "seconds": 0.255,
+      "log": "/private/tmp/rururunx-issue6-env-561-build-debug.log",
+      "bytes": 72,
+      "sha256": "d7dae192715495fa89ccbe279af3efb9792c1dae1768228e369035e68a1df673"
+    },
+    {
+      "label": "build-release",
+      "command": [
+        "cargo",
+        "build",
+        "--workspace",
+        "--release",
+        "--locked",
+        "--offline"
+      ],
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "tree": "71ef9a4b691620a27bee8314e4fefb5c0b3283f3",
+      "source_root": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env",
+      "target_root": "/private/tmp/rururunx-issue6-env-561-current-target",
+      "exit_code": 0,
+      "seconds": 0.22,
+      "log": "/private/tmp/rururunx-issue6-env-561-build-release.log",
+      "bytes": 62,
+      "sha256": "a70da5408e7a6da7efe97b23011504833b16a7875bda14543f2504b5b8c7d97a"
+    }
+  ],
+  "corrected_focused_controls": [
+    {
+      "label": "env-debug-corrected-selector",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "--lib",
+        "codex::session::tests::environment_controls"
+      ],
+      "exit_code": 0,
+      "seconds": 5.621,
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "log": "/private/tmp/rururunx-issue6-env-561-env-debug-corrected-selector.log",
+      "bytes": 1856,
+      "sha256": "0d15cec8281d366221d51ee8804b8fa5605c32c59092f009c535dee212c8cb1b"
+    },
+    {
+      "label": "custody-debug-corrected-selector",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "--lib",
+        "codex::session::tests::custody_mechanics"
+      ],
+      "exit_code": 0,
+      "seconds": 2.654,
+      "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+      "log": "/private/tmp/rururunx-issue6-env-561-custody-debug-corrected-selector.log",
+      "bytes": 2796,
+      "sha256": "052231372b0e10470f0241667e7212224f9e845446c979292a6799fadba6239d"
+    }
+  ],
+  "counting": {
+    "git_owner_target": {
+      "top_level_passed": 34,
+      "top_level_ignored": 1,
+      "nested_private_audit_passed": 44,
+      "nested_private_audit_ignored": 1
+    },
+    "full_debug": {
+      "exit_code": 101,
+      "library_passed": 349,
+      "library_failed": 1,
+      "library_ignored": 25,
+      "nested_private_audit_passed": 44,
+      "nested_private_audit_ignored": 1,
+      "later_workspace_targets": "NOT EXECUTED after library failure"
+    },
+    "full_release": {
+      "exit_code": 0,
+      "library_passed": 350,
+      "library_failed": 0,
+      "library_ignored": 25,
+      "top_level_rust_passed": 461,
+      "top_level_ignored": 28,
+      "nested_private_audit_passed": 44,
+      "nested_private_audit_ignored": 1,
+      "nested_ordinary_child_passed": 1,
+      "doctests_passed": 2,
+      "raw_printed_passed_aggregate": 508,
+      "all_workspace_targets_executed": true
+    },
+    "corrected_environment": {
+      "passed": 11,
+      "ignored": 1
+    },
+    "corrected_custody": {
+      "passed": 20
+    }
+  },
+  "setup_qualification": {
+    "env_debug_original": "Wrong namespace selector; zero tests. SETUP unqualified, no acceptance.",
+    "custody_debug_original": "Wrong namespace selector; zero tests. SETUP unqualified, no acceptance.",
+    "correction": "Actual codex::session::tests::environment_controls and custody_mechanics selectors each ran nonzero intended controls on same dedicated current artifacts. This is not a retry of failed full Debug.",
+    "compiler": "Never-used561-current-target before compile. All15 owned compiler executable artifacts reported fresh=false with exact current manifest/source path; SHA/bytes bound. This target is never shared with mutants/archive.",
+    "prior_shared_target": "680 requested restored PASS/FAIL remain SETUP unqualified; new dedicated results do not retroactively qualify them."
+  },
+  "failure_diagnostic": {
+    "head": "561f4457c7d0936d2027bd73616c6eecdd7dd90c",
+    "scope": "Read-only existing raw/source; no tests/probe/source edit",
+    "log": {
+      "path": "/private/tmp/rururunx-issue6-env-561-full-debug.log",
+      "bytes": 51181,
+      "sha256": "f14f9a4313cbcdb870cbe963d2ece6193a0091172f3b24bccca591a81d9ba0ad"
+    },
+    "completed_cases": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "last_progress": {
+      "line": 510,
+      "text": "grok_environment_progress boundary=1 case=8 stage=resumed_terminal"
+    },
+    "observation": "Outer owned child watchdog60002ms expired, own child killed/reaped per original failure. Case8 entered resumed_terminal, did not log release/finished. This is NOT evidence checkpoint call hung.",
+    "source_trace": [
+      "environment_tests isolated_with lines9-51 uses one60second child observation for whole9case loop.",
+      "irrelevant lines1043-1143 calls fresh fixture/start/15second terminal percase, checkpoint/explicitfreshresume/15second terminal for boundary1/2, observation assertions, release and finished.",
+      "terminal lines53-66 subscribes existing privatewatch, waits terminal up to15s, then synchronously captures fixture receipts. Latest progress precedes this entire terminal-and-observe call.",
+      "Successful case0..7 each logged finished; case8 checkpoint and resume calls returned because subsequent resumed_terminal log exists.",
+      "Remaining unseparated calls after latest marker: terminal watch wait, fixture.observe receipt capture, transport_succeeded private registry/status check, observation event equality, release.",
+      "Markers contain no monotonic percase timing/innerawait timing; parent expiry does not locate one call or establish deadlock, load, cleanup or regression cause."
+    ],
+    "disposition": {
+      "verified_source_defect": null,
+      "cause": "UNKNOWN",
+      "contribution": "UNKNOWN",
+      "regression": "UNKNOWN",
+      "checkpoint_hang_claim": "WITHDRAWN/not supported",
+      "deadlines_parallelism": "unchanged",
+      "whole_debug": "FAILED; laterworkspace targets unrun",
+      "merge": "CONDITIONS_UNMET"
+    },
+    "source_digests": [
+      {
+        "path": "crates/rrx/src/adapter/grok/environment_tests.rs",
+        "sha256": "32012c975348c9ec8cecbc2f06cffd21e1e4672e03e80723e7fbf17742d11abe"
+      },
+      {
+        "path": "crates/rrx/src/adapter/grok/mod.rs",
+        "sha256": "637b80baa61578b82470338001fc36c2a82849b1df5ebc42355721e9cadcb944"
+      },
+      {
+        "path": "crates/rrx/tests/support/grok_fixture.rs",
+        "sha256": "1f44a22205f29b8659f2ddff1a21efc80c692cfe1474816ebf4cdd85652ee885"
+      }
+    ],
+    "limits": [
+      "Selected group cleanup/reap is not all native descendant containment or managed settlement.",
+      "Release alltargets success is separate mode observation and cannot erase Debug failure.",
+      "No new positive native/MVP/backend credit or code correction inferred."
+    ]
+  },
+  "static_review": {
+    "root": {
+      "verdict": "APPROVE",
+      "findings": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "confidence": 0.94,
+      "closed": true
+    },
+    "independent_peer": {
+      "verdict": "APPROVE",
+      "findings": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "confidence": 0.94,
+      "closed": true
+    },
+    "conditions": [
+      "Proper dedicated current build binding, actual intended nonzero controls and first current full default Debug and distinct Release workspace tests all pass",
+      "Required fmt, alltarget Clippy warnings denied, both builds pass",
+      "Final documentation-only delta directly verified and final bothOS CI every step succeeds, actual complete tested tree equals reviewed final head"
+    ],
+    "independence": "Both finite static rounds independently closed before peer findings shared. No new native calls or test execution in these reviews.",
+    "qualification": "CONDITIONAL only; full Debug condition unmet. No merge approval."
+  },
+  "observations": {
+    "required_quality": "Workspace fmt, explicitly included environment fixture fmt, alltarget Clippy-Dwarnings, both production builds PASS.",
+    "budgets": "Original internal parallelism, deadlines, watchdogs and latches unchanged. Each full mode was its initial actual combined run.",
+    "read_only_diagnostic": "Existing raw/source only. No source defect verified, no test/probe/rerun, no checkpoint-hang attribution.",
+    "process_jobs": "Both current driver68781 and corrected-control79053 closed; no current test/build/native model command remains. This is not a complete native descendant cleanup claim."
+  },
+  "historical_phase_closures": {
+    "680": "Initial dedicated full Debug passed; distinct full Release8Grokfail remains FAILED, cause/contribution/regression UNKNOWN.",
+    "f89": "Normal public push succeeded. Fresh CI unregistered, PR checks empty/mergeconflicting. NOT STARTED/completed/success; no CI substitution.",
+    "root_pr73": "Separate docs-only6146-code observation, reported CI37274128354 failed macOS Context whitespace path consumer on native inspection timeout. Not a561 result, no causal or regression attribution; its code remains6146.",
+    "other": "All prior source/full failures and old held native harness/CWD resources remain retained and unqualified."
+  },
+  "current_ci": {
+    "status": "PENDING new published final head",
+    "required": "Every step bothOS SUCCESS and actual checkout SHA/parents/complete tree equality; trigger head alone is insufficient.",
+    "limits": "CI Debug TEST and Release BUILD do not replace failed local Debug or prove full Release TEST."
+  },
+  "disposition": {
+    "merge": "NO MERGE; current full Debug condition unmet",
+    "availability": "EMPTY",
+    "ordinary_custody": "None; cfg(test)-only factory mechanics",
+    "whole_native_backend_mvp": "OPEN/UNQUALIFIED",
+    "retained_holds": "Old c8 harness hold/resources not adopted, signalled or released.",
+    "no_new_authority": [
+      "No native backend/custody/settlement capability",
+      "No managed19 operation/receipt/environment credential provenance producer",
+      "No native settings/auth/defaults change",
+      "No scope narrowing, deadline weakening or test shopping"
+    ]
+  }
+}

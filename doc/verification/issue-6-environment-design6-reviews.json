@@ -1,0 +1,236 @@
+{
+  "scope": "Design6 textual proposal only; pair not qualified, not source/native qualification",
+  "head": "f0fc37c1999ff536edabc88ba805672195309dae",
+  "independent_peer_free": true,
+  "native_defaults_and_rules_preserved": true,
+  "zero_operation_tools": true,
+  "reports": [
+    {
+      "head": "f0fc37c1999ff536edabc88ba805672195309dae",
+      "section": "A6",
+      "native_session": "9958f97c-1172-4fae-92e7-d2dbe91069a1",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "251-254, 272-282, 400-405, 433-436, 458-469",
+            "problem": "The design claims a compiled actual-consumer kill for the 'post-CAS cancellation check omission' mutant, bound to a 'no child' entry-sentinel assertion. No deterministic observable distinguishes that mutant. If the final preparation.check() before spawn is removed, the child is still spawned and then cleaned up at once. In bounded_git (preparation.rs 290-317), the next step is preparation.wait(), which calls check() before polling. It returns the latched Cancelled cause, and cleanup_group then kills the group. NativeServer::launch_preparing (transport.rs 199-227) does the same through preparation.wait() and terminate(). Whether the version, discovery or main fixture writes its entry sentinel depends on a race between exec plus /bin/sh startup and the group kill. The Store version, session.saved events, watch, Control, Cancelled first cause and the real stop outcome are the same with and without the mutant.",
+            "causal_scenario": "1. The post-CAS hook holds after a successful pre-exec CAS. 2. adapter.stop() latches Cancelled and the hook is released. 3. The mutant skips the final check and spawns the fixture. 4. preparation.wait() returns Cancelled synchronously, and cleanup_group kills the process group before the shell runs its sentinel write. 5. All assertions pass (no sentinel, Cancelled cause, coherent Store/watch, stop outcome). The mutant survives, or is killed only in some runs, while the design records it as killed at each of version/discovery/main.",
+            "required_fix": "Add a deterministic cfg(test) observer at each selected exec site that records successful Command::spawn immediately after spawn returns. Scope it to the attempt and exclude it from production behavior. Bind the post-CAS cancellation-omission mutant at version, discovery and main to that observer reading zero. Alternatively, reclassify this mutant as unit-only or racy with no actual-consumer kill credit. Keep the fixture entry sentinel as supplementary evidence only, never as the binding kill observable for cancelled-then-cleaned spawns."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "72-91, 127-130, 362-365, 410-413, 458-460",
+            "problem": "The reviewed additional-control set is EMPTY. The control predicate is membership AND (invalid OR registry-forbidden), so it can only be true for names that registry validation already rejects at every non-constructor consumer: (a) own refs pass validate_environment_references (project.rs 460-481) before any 'owning control declaration' check; (b) caller keys hit the GIT_, RRX_, invalid and forbidden clauses before control(); (c) step-8 references must be registry-valid and not registry-forbidden, which already covers the GIT_ and control sub-clauses. The classifier only matters for excluding baseline controls from the DTO in the constructor. The design presents 'reject owning control declarations' and a single classifier for 'constructor, caller and references' as active checks. It does not mark those consumer clauses as structurally equivalent.",
+            "causal_scenario": "The implementer compiles mutants that delete control() from the own-ref, caller or reference paths, or delete the step-8 GIT_ clause. Every test passes because these are equivalent mutants. They are then either reported as unexplained survivors or folded into the claimed 'constructor filtering/control' coverage. Reviewers may also assume an independent own-control rejection exists that has no reachable distinguishing input.",
+            "required_fix": "State that, with EMPTY additions, the control classifier is significant only for constructor DTO exclusion of baseline controls. Mark the own-ref, caller and reference control clauses, and the step-8 GIT_/syntax duplicates, as structurally equivalent with no mutant credit. Keep a structural assertion that EMPTY additions keep them subsumed, and reopen classification and mutant planning if any addition is introduced."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "437-440, 444-446, 466-469",
+            "problem": "A reintroduced roster-equality mutant at start, checkpoint or resume can only be killed if the irrelevant foreign change lands after ScopeSnapshot::capture and before a later recheck. The design says irrelevant roster changes 'permit actual initial/checkpoint/resume controls' but does not fix the injection window per consumer. Checkpoint gets no new hook, and its only recheck sits between Reservation::persist and BeforeCheckpointCommit (session.rs 1171-1181).",
+            "causal_scenario": "An irrelevant foreign registration is injected at BeforeStarting or before checkpoint() is called. Both the capture and the recheck see the same roster, so the reintroduced roster equality passes. The checkpoint mutant survives while the mutant list records coverage.",
+            "required_fix": "Pin each window. Start/resume: the initial-selection hook or a pre-exec hook, which precedes the pre-dispatch recheck. Checkpoint: the existing BeforeInitialPersist gate, which is after capture and before recheck. Require each roster-equality mutant to die on that windowed actual-consumer positive."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "312-316, 444-446",
+            "problem": "A relevant foreign declaration or own caller-key removal made before checkpoint should be refused at resume's initial selection, before Starting/Git. That yields exact RestoredBeforeAdmission with no new Session, audit or Git effect. The verification bullet only requires that 'resume fails pre-exec'. That weaker condition is also met when the resume initial check is omitted, because the version pre-exec CAS then refuses after Starting is published and ambient Git has run.",
+            "causal_scenario": "Mutant: the resume-path initial check is omitted. Starting is persisted, Git preflight runs with the ambient helper environment, and the version CAS refuses with no native entry. A test asserting only 'fails pre-exec / no native exec' passes, so the resume initial-check omission survives.",
+            "required_fix": "Require the resume negatives to assert the exact initial-refusal shape: unchanged persisted Session version and events, RestoredBeforeAdmission, no Git or version sentinel, and the opaque InvalidConfiguration kind. Bind the resume-path initial-check omission mutant to that assertion."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "52-58, 184-193, 398-401",
+            "problem": "Raw OS-string values are retained in the adapter and shared handles. The design does not forbid Debug, Display or Serialize on the frozen snapshot holder or on CodexAdapter. The proposed bounds observable (new() must fail) is naturally written with unwrap_err(). That requires CodexAdapter: Debug, and on unexpected success it prints the Ok value.",
+            "causal_scenario": "An implementer derives Debug to make unwrap_err() compile in the LC_ bounds test. A lazy-bounds mutant makes new() succeed, and the panic message prints every frozen value. In production, any later {:?} logging of the adapter would emit real credentials.",
+            "required_fix": "Specify that the frozen snapshot type and CodexAdapter have no Debug, Display or Serialize, or only a redacting Debug that reports name counts. Require tests to use match or is_err with boolean kind checks, never value-bearing assert diagnostics."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "241-254",
+            "problem": "bounded_git computes its 5-second deadline before the call and checks it only before command setup (preparation.rs 272-277). The new synchronous Immediate-transaction CAS sits after that check and can block up to the SQLite busy_timeout (5s). The design allows only the cancellation check between a successful CAS and spawn, so an already-expired deadline cannot stop the spawn.",
+            "causal_scenario": "1. Another writer holds the SQLite write lock for about 5s. 2. The version pre-exec CAS succeeds just after the deadline. 3. The native --version child is spawned with the selected environment. 4. timeout_at fires immediately and the child is killed. The result is a pointless selected-environment exec and a Timeout first cause.",
+            "required_fix": "Allow a pure local deadline recheck (no await, no Store access) after a successful CAS and before spawn, or compute the version deadline after the CAS. Record it as the only other permitted local check alongside cancellation."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "169-177",
+            "problem": "Removing pub fn native_environment from pub mod policy breaks the public API at workspace version 0.1.0. Under Cargo semver, removal within 0.1.x breaks ^0.1 dependents. The design calls this an intentional pre-1.0 break but does not record publishing status, the version bump, or a changelog/README note.",
+            "causal_scenario": "If rrx is published or consumed by version range, a 0.1.x release without the function silently breaks external builds that resolve ^0.1.",
+            "required_fix": "State whether rrx is published. If it is publishable, require a minor bump (0.2.0) and a changelog/README migration note. If it is not, say so explicitly in the compatibility section."
+          }
+        ],
+        "limitations": [
+          "No tools were available. Every statement is based only on the supplied public excerpts at f0fc37c; no repository, Git, CI or native operation was performed.",
+          "codex/session.rs after line 1950 (supervise, answer_approval, ApprovalAuthority, remaining unit tests) is omitted. I cannot independently confirm there is no other selected-environment exec or Store/watch publication consumer, or that the eighteen-call new() inventory is complete beyond the excerpts.",
+          "crate::adapter::cleanup_group/ProcessGroup and crate::git::executor_reserved are omitted. Post-spawn kill timing is inferred from call order, and the reservation effects of clearing the discovery PID are not verified.",
+          "CLI source, README, other integration tests and CodexAdapter::new call sites outside session.rs and codex_unavailable.rs are omitted, so the public-helper consumer inventory cannot be confirmed as exhaustive.",
+          "Cargo.lock and dependency feature unification (for example serde_json preserve_order) are not supplied. The lexical-order claim is assessed only as specified, not as built.",
+          "No native Codex evidence was supplied (effective config/read shapes, default/built-in provider fields, environment consumption, hook/MCP behavior). Native defaults, auth, hook conformance and provenance remain OPEN and are not assessed.",
+          "Verification records, branch-only factual commits, the Goal and any peer reviews are excluded from this packet. No Rust implementation of the proposal exists to review.",
+          "Issue6 requirements after line 154, the master design outside lines 410-510, and the remaining Grok and project.rs source are omitted. Conformance is assessed only against the excerpts provided."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 187775,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 85277,
+        "output_tokens_details": {
+          "thinking_tokens": 81310
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 187775,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 85277,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 187775,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 187775
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 85277,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 187775,
+          "webSearchRequests": 0,
+          "costUSD": 3.20818,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 81310,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 3.20818,
+      "duration_api_ms": 796053,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    },
+    {
+      "head": "f0fc37c1999ff536edabc88ba805672195309dae",
+      "section": "B6",
+      "native_session": "e0a06552-a81c-4fe1-8b92-84ac28bdf717",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "425-440, 444-446, 466-469",
+            "problem": "The 'reintroduced roster equality at ... checkpoint' mutant is claimed killed, but no proposed scenario puts a foreign roster change inside checkpoint's own capture-to-recheck window. In current prepare_checkpoint, ScopeSnapshot::capture runs at session.rs:1107 and the only recheck at :1179. The new hooks exist only in prepare_launch (the initial-selection hook) and at native exec sites, and checkpoint has no native exec. The checkpoint scenarios are worded 'before checkpoint', and 'irrelevant roster changes permit ... checkpoint controls' names no window. Issue51 acceptance requires irrelevant changes made after the snapshot to still permit checkpoint. Start and resume are covered because the pre-exec hooks run between the first recheck (:1415) and the second recheck (:1594). Checkpoint is not covered.",
+            "causal_scenario": "The implementer injects the irrelevant or relevant foreign change before calling checkpoint, which is before capture. A mutant that keeps Store::projects() in ScopeSnapshot and compares it in recheck then sees the same roster on both reads. The checkpoint positive passes and the mutant survives. Alternatively, credit is taken from a start/resume test that does not exercise checkpoint's recheck. Either way, Issue51's requirement that a post-snapshot irrelevant change still permits checkpoint has no actual-consumer evidence.",
+            "required_fix": "Specify that checkpoint's irrelevant and relevant foreign roster changes are made through a second Store connection at the existing BeforeInitialPersist gate in prepare_checkpoint, which is after capture and before verify_git_preparing/recheck. Assert that checkpoint commits with identical own-scope event kinds and counts compared with the unchanged control. Bind the checkpoint roster-equality mutant to that test. Also state explicitly which window serves start and resume: an injection before the second recheck via the pre-exec hooks, or the initial-selection hook."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "245-251, 268-271, 460-463",
+            "problem": "The Failing branch of the pre-exec primitive is not classified as unreachable from actual consumers, but it cannot be reached there. bounded_git (preparation.rs:271) and launch_preparing (transport.rs:148) call preparation.check() on entry. The only other concurrent actors that latch state are stop() and CallerGuard, and both latch Cancelled, never Failing. The design names only Consumed and CheckpointCommitted as UNIT-ONLY. The generic phrase 'non-reachable phase branches unit-only' leaves the Failing guard ambiguous.",
+            "causal_scenario": "A mutant that omits only the Failing guard, or splits the Cancelled/Failing arm, survives every actual-consumer test. The entry check masks it, yet it could be reported as covered by the same extra-write evidence that kills the Cancelled-guard omission.",
+            "required_fix": "State explicitly that the pre-exec primitive's Failing rejection is UNIT-ONLY, masked by the entry preparation.check() at both exec sites. Mutate the Cancelled and Failing guards separately, with actual-consumer credit given only to Cancelled."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "52-58, 184-192, 398-401",
+            "problem": "The design keeps frozen credential-bearing values privately inside CodexAdapter and its owned handles. It does not prohibit Debug or Display on the adapter or the selection container, and it does not constrain how the new public-new bounds child observes construction refusal. In Rust, Result::unwrap_err on AdapterResult<CodexAdapter> requires CodexAdapter: Debug.",
+            "causal_scenario": "To assert the over-256-byte LC_ refusal, an implementer adds #[derive(Debug)] to CodexAdapter or to the frozen-snapshot type and calls unwrap_err. Later, a panic message, a tracing call or an assertion diagnostic formats an adapter in a real runtime and prints OPENAI_API_KEY or other frozen values. This violates the no-value-printing rule of Issue51 requirement 8.",
+            "required_fix": "Require that the frozen and selected value containers implement neither Debug nor Display, or only a redacting impl that prints names or counts but never values. Require tests to observe construction outcomes with match or .err(), comparing only kind and message."
+          }
+        ],
+        "limitations": [
+          "Manual read-only review of the supplied excerpts only; no tools, execution, mutation runs or repository queries were performed.",
+          "session.rs after line 1950 is omitted: supervise, answer_approval, ApprovalAuthority use, bootstrap_fixture, the synthetic native child body and the remaining tests. Other consumers of ScopeSnapshot.projects, the fixture child's environment dependencies under synthetic-only iterator input, and other CodexAdapter constructions outside the eighteen listed calls cannot be verified.",
+          "CLI sources and other crate modules were not supplied. The claim that no other source consumes rrx::codex::policy::native_environment or constructs CodexAdapter is accepted from the proposal, not independently verified.",
+          "No native config/read output for default or built-in providers was supplied. Whether the effective config reports built-in provider entries is unknown. If it does, the deterministic step-9 rule (absent or excluded references refuse, including optional header references) could refuse ordinary default-provider operation. The proposal correctly leaves this OPEN; nothing here qualifies native default, auth or custom-provider compatibility.",
+          "crate::git::executor_reserved, schema.sql and the full native RPC implementation were not supplied. The interaction of pre-exec Session rewrites with reservation predicates is assessed only from the excerpts shown.",
+          "Tokio worker scheduling for synchronous blocking test hooks (multi_thread, two or more workers) cannot be verified here. The proposal's finite-deadline, fail-closed rendezvous bounds this to harness failure, not false acceptance.",
+          "The shared Git environment and ownership residual, managed ownership, settlement, the ordinary EMPTY availability gate and broader native workload/auth acceptance are excluded as already-open producer work, per the request."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 187768,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 76281,
+        "output_tokens_details": {
+          "thinking_tokens": 73996
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 187768,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 76281,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 187768,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 187768
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 76281,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 187768,
+          "webSearchRequests": 0,
+          "costUSD": 3.0282039999999997,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 73996,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 3.0282039999999997,
+      "duration_api_ms": 703788,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    }
+  ]
+}

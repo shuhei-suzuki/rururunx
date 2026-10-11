@@ -1,0 +1,119 @@
+{
+  "run_id": 37262331244,
+  "trigger_head": "98aeab5c3c8858ed4c88ba6a787efe2904b13333",
+  "actual_checkout": "ae63dc8e4e9f5c38b9b627a35ff689d9a231596c",
+  "actual_parents": [
+    "26f3a48fedce976b353a6a9fa899bc6fb13ca72a",
+    "98aeab5c3c8858ed4c88ba6a787efe2904b13333"
+  ],
+  "actual_tree": "3ca09f0f4691d90031fc6c77e05c74337eb032e0",
+  "reviewed_head_tree": "82382e9febb67be792ba7627d3b2c2d309fa79a7",
+  "all_blobs_equal": false,
+  "changed_paths": [
+    "doc/verification/issue-67-merged-status.json",
+    "doc/verification/issue-67.md"
+  ],
+  "current_review_source_paths": 29,
+  "changed_review_inputs": [],
+  "both_jobs": "Ubuntu success; Mac failure",
+  "cause": "UNKNOWN",
+  "no_rerun": true,
+  "jobs": [
+    {
+      "name": "check (ubuntu-latest)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run dtolnay/rust-toolchain@1.91.1",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo fmt --all -- --check",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo test --locked --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo build --locked --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo build --locked --release --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "check (macos-latest)",
+      "conclusion": "failure",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run dtolnay/rust-toolchain@1.91.1",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo fmt --all -- --check",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo test --locked --workspace",
+          "conclusion": "failure"
+        },
+        {
+          "name": "Run cargo build --locked --workspace",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run cargo build --locked --release --workspace",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "first_failure_facts": [
+    "Mac Grok integration13pass/2fail/2ignored30.91s; stop-after-dispatch receipt reconciliation uncertainty true.",
+    "schema_required Lost vs Failed: actual inspection deadline353890us,stdout0bytes/statuspending,inspector killWaitreaped."
+  ]
+}

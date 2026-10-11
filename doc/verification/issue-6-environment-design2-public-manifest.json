@@ -1,0 +1,152 @@
+{
+  "head": "9884ec3cd69353fb158bb27772d7585a3af0af9b",
+  "files": [
+    {
+      "path": "doc/design/issue-6-environment-design.md",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/doc/design/issue-6-environment-design.md",
+      "http_status": 200,
+      "bytes": 16106,
+      "sha256": "4e98c270acff5c620f6b6982232fdfacbf2df22dc512739abc26f96a588b522a",
+      "selection": "FULL FILE"
+    },
+    {
+      "path": "doc/requirements/issue-6-requirements.md",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/doc/requirements/issue-6-requirements.md",
+      "http_status": 200,
+      "bytes": 47767,
+      "sha256": "6f2cb65ed843e455756546cdc89e9ad50dcccdb7734e27fbcb82d2d2bdf560cf",
+      "selection": "FULL FILE"
+    },
+    {
+      "path": "doc/requirements/issue-51-requirements.md",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/doc/requirements/issue-51-requirements.md",
+      "http_status": 200,
+      "bytes": 16141,
+      "sha256": "3fdac288e9e0b4b3923dc5e4b93fe2c4d2500db22d6e0257a3f4a13c71d9d102",
+      "selection": "FULL FILE"
+    },
+    {
+      "path": "doc/design/issue-51-design.md",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/doc/design/issue-51-design.md",
+      "http_status": 200,
+      "bytes": 28565,
+      "sha256": "e120bbd65e07186581838892a022ec9c1064a916c9c228953f0c602498b78373",
+      "selection": "FULL FILE"
+    },
+    {
+      "path": "doc/design/master/agent-adapter.md",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/doc/design/master/agent-adapter.md",
+      "http_status": 200,
+      "bytes": 25881,
+      "sha256": "3fc427c0982924e2eeab7e286c7bb0f64372cde03f6d47917b57326f90e32e62",
+      "selection": "FULL FILE"
+    },
+    {
+      "path": "crates/rrx/src/codex/availability.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/codex/availability.rs",
+      "http_status": 200,
+      "bytes": 5826,
+      "sha256": "735d30dba73765f87dc9bdb61401836790edf5b83445d88b5cb2a5fb5ddcba49",
+      "selection": "EXPLICIT EXCERPT lines 1-100; omitted remaining file lines"
+    },
+    {
+      "path": "crates/rrx/src/codex/session.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/codex/session.rs",
+      "http_status": 200,
+      "bytes": 289549,
+      "sha256": "d646f28b703659cbe2dd52a66a2356e4c740c46046f8ffa3288d8883e8544cac",
+      "selection": "EXPLICIT EXCERPT lines 1-2688; omitted remaining file lines"
+    },
+    {
+      "path": "crates/rrx/src/codex/ownership.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/codex/ownership.rs",
+      "http_status": 200,
+      "bytes": 36326,
+      "sha256": "93c1218162146faef93b8b293b1c7e097da4627def6053e39d7e766873f67bd1",
+      "selection": "EXPLICIT EXCERPT lines 1-605; omitted remaining file lines"
+    },
+    {
+      "path": "crates/rrx/src/codex/policy.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/codex/policy.rs",
+      "http_status": 200,
+      "bytes": 33553,
+      "sha256": "4e4574b0a0c584606a51817dfc12e98c94b380d24c10fc8dcfee4b9ec1088672",
+      "selection": "EXPLICIT EXCERPT lines 1-517; omitted remaining file lines"
+    },
+    {
+      "path": "crates/rrx/src/codex/preparation.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/codex/preparation.rs",
+      "http_status": 200,
+      "bytes": 19147,
+      "sha256": "0c73e0ae95903ccf6bd95af63d39439968c0794a3fc9fe621382c4261bb033dc",
+      "selection": "EXPLICIT EXCERPT lines 1-416; omitted remaining file lines"
+    },
+    {
+      "path": "crates/rrx/src/codex/transport.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/codex/transport.rs",
+      "http_status": 200,
+      "bytes": 32750,
+      "sha256": "3af3e277ce27d2aacd7048cb07f467115fd2ba78159c79740494b4ad0d8e1368",
+      "selection": "EXPLICIT EXCERPT lines 1-577; omitted remaining file lines"
+    },
+    {
+      "path": "crates/rrx/src/codex/attempt.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/codex/attempt.rs",
+      "http_status": 200,
+      "bytes": 15362,
+      "sha256": "540c3ac1f93e732a749438d63f85c92f7fc183b1cd667d11423f0c22540ea844",
+      "selection": "EXPLICIT EXCERPT lines 1-334; omitted remaining file lines"
+    },
+    {
+      "path": "crates/rrx/src/state/environment.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/state/environment.rs",
+      "http_status": 200,
+      "bytes": 5783,
+      "sha256": "784247ef59d3b9aa58896cfb0c493dc5a813bccd28cdb555549f48c39510cfe3",
+      "selection": "FULL FILE"
+    },
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/state/mod.rs",
+      "http_status": 200,
+      "bytes": 67724,
+      "sha256": "d0f0aa341f2f14adbb53cea41968f2c6c9b8cf1506e0756fc9babe82f7268b38",
+      "selection": "FULL FILE"
+    },
+    {
+      "path": "crates/rrx/src/project.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/project.rs",
+      "http_status": 200,
+      "bytes": 24159,
+      "sha256": "2118a0cb8b6ecf27f8ae7a1b571a52a24ac356ba3764c3318a36946e1bb5ead5",
+      "selection": "EXPLICIT EXCERPT lines 382-485; omitted remaining file lines"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/environment.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/adapter/grok/environment.rs",
+      "http_status": 200,
+      "bytes": 2919,
+      "sha256": "5b34b689c6d0f4a6b1a291d6355da233d8bcb95d683f0cf68bbc2fbfb5209995",
+      "selection": "FULL FILE"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/mod.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/adapter/grok/mod.rs",
+      "http_status": 200,
+      "bytes": 80917,
+      "sha256": "f76cbb2d37ba4d6d6cf38291804cff2e6cd456184a8e663ab5a5d387150c588b",
+      "selection": "EXPLICIT EXCERPT lines 132-168; omitted remaining file lines"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/mod.rs",
+      "public_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/9884ec3cd69353fb158bb27772d7585a3af0af9b/crates/rrx/src/adapter/grok/mod.rs",
+      "http_status": 200,
+      "bytes": 80917,
+      "sha256": "f76cbb2d37ba4d6d6cf38291804cff2e6cd456184a8e663ab5a5d387150c588b",
+      "selection": "EXPLICIT EXCERPT lines 346-386; omitted remaining file lines"
+    }
+  ],
+  "packet_bytes": 470502,
+  "packet_sha256": "130ee40168eda89d3cb9277f865ed2e5dcc1295b776f7f968bd9557a827f1c91",
+  "peer_findings_supplied": false
+}

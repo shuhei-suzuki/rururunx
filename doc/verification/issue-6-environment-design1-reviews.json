@@ -1,0 +1,280 @@
+{
+  "scope": "Design1 textual proposal only; not source/native qualification",
+  "head": "62647029c235820b77f4d25ee912b66f8ff40871",
+  "independent_peer_free": true,
+  "native_defaults_and_rules_preserved": true,
+  "zero_operation_tools": true,
+  "reports": [
+    {
+      "head": "62647029c235820b77f4d25ee912b66f8ff40871",
+      "section": "A1",
+      "native_session": "369d484e-67fe-4ca1-9a9f-af5744d099c2",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "severity": "high",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "62-68, 98-111 (consumer: crates/rrx/src/codex/session.rs 1406-1606)",
+            "problem": "The only transactional environment decision is placed at the consumed-input/checkpoint/resume admission CAS, with no await between it and the component dispatch (turn/start) boundary. The initial decision is a non-transactional check that runs before any process effect. In the actual Codex consumer, the selected credential environment reaches native executable execs well before that boundary: the native --version probe (session.rs:1444-1454), the discovery app-server (1458-1467, config/read), and the re-exec'd main server (1505-1514). The main server then runs config/read, account/read (native auth), environment/status, thread/start or thread/resume (native history load) and MCP inventory. Awaits separate all of these from the initial check: persist, verify_git_preparing, executable metadata and RPCs. The adopted Issue51 contract (requirement 6) makes final admission the last state check before actual child exec/spawn, 'including resume initialize/authenticate/load, not merely prompt dispatch'.",
+            "causal_scenario": "A's initial check passes. During the verify_git_preparing await, a second Store connection registers Project B declaring OPENAI_API_KEY. That name is retained in A's frozen baseline and is undeclared by A. A then execs the Codex version probe, discovery server and main server with OPENAI_API_KEY, and runs account/read, thread/resume and any native startup hooks under that credential. Only the later turn/start CAS denies. The revocation is ignored across three execs plus native authentication and history load. The design's own 'second Store replacement windows before initial/final admission' fixtures would observe the revoked canary in child process sentinels.",
+            "required_fix": "Define an exact pre-exec fence. Immediately before each native executable exec that receives the selected environment (version probe, discovery server, main/resume server), run put_session_with_environment_if_current on the reservation Session as the last state check, with no await between commit and spawn. It takes the captured P/G/T versions, exact nullable lock versions and the retained DTO. Keep the dispatch-time environment CAS as the consumed-input fence. Enumerate every current Session publication site and its resulting guard: persist 1410/1471/1518/1589/1627, admit_dispatch 1499, checkpoint 1203, approval 2124/2126, and Drop publication. Add second-connection relevant-change fixtures placed immediately before each exec that assert no child spawn or canary. Add a compiled mutant removing each pre-exec fence."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "98-104, 128-130 (contract: doc/requirements/issue-51-requirements.md 125-152; doc/design/issue-51-design.md 167-176; consumer: crates/rrx/src/codex/session.rs 1197-1209)",
+            "problem": "The design applies the environment-aware CAS at checkpoint and tests initial/final admission windows for checkpoint. Codex checkpoint selects no environment values and execs no native process. The DTO source for checkpoint is undefined: the design says 'same preparation/attempt that selected its values', but no checkpoint attempt selects values. The adopted Issue51 contract states that checkpoint 'does not inspect foreign roster changes or confer environment authority'. It also states that caller keys removed before the latest checkpoint are rejected at resume, not at checkpoint. The design's own lines 72-73 say foreign roster edits are not a stop cause for own-scope operations.",
+            "causal_scenario": "A's own Project drops a caller key retained in entry.request, or a foreign Project registers a relevant baseline name. A's explicit higher-version checkpoint, which is an own-scope publication, then fails with the opaque environment category. This correlates A's checkpoint outcome with foreign state, contrary to the adopted contract. Alternatively, an implementer builds a checkpoint DTO from stale caller keys, and checkpoint/resume error precedence diverges from Issue51.",
+            "required_fix": "Keep checkpoint commit on the existing own-scope exact CAS (put_session_if_current) with no environment decision, matching Issue51 requirement 7. Evaluate environment authority only at resume pre-exec and dispatch admission, against the checkpointed own Project. Add a test: a relevant foreign change, or own caller-key removal, before checkpoint still lets checkpoint commit, and resume then fails opaquely before any native exec. If stricter checkpoint semantics are intended, document them as a reviewed contract divergence with an explicit DTO derivation."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "77-89 (consumer: crates/rrx/src/codex/policy.rs 404-491; session.rs 1484-1514)",
+            "problem": "'A required reference outside that explicit selection fails Unsupported' contradicts 'A reference name alone does not prove that an environment value is required'. The only available signal is effective config/read env_key/env_http_headers names, which the design says are not provenance and must not be used to infer required/missing auth semantics. The refusal trigger is therefore undefined. An implementation will either infer requiredness from names, or never trigger and silently remove a value the user's runtime supplied. The design also does not state that the re-exec'd main server uses exactly the discovery selection.",
+            "causal_scenario": "The user runtime supplies MY_PROVIDER_KEY, which is outside the Codex whitelist, and the native config selects a provider with env_key MY_PROVIDER_KEY. Current code restores it from all of vars_os; the new frozen selection drops it. If refusal is name-inferred, an optional header reference also refuses a working configuration. If refusal never fires, the native child runs without the variable and native authentication silently changes. Lines 83-84 forbid exactly that outcome.",
+            "required_fix": "Specify a deterministic, value-free trigger that does not infer requiredness. At construction, record the name-only set of ambient variables excluded from the frozen baseline. After discovery, fail Unsupported before re-exec only if an effective provider reference name was present in the runtime but excluded by the adapter's filtering. Names absent from the runtime remain native semantics. Never add or restore a value, and reuse the identical selected environment for discovery and main server. Add fixtures for excluded-present, absent and already-selected names, plus a mutant that restores provider values, all through the actual consumer."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "40-41, 113-120 (contract: doc/requirements/issue-51-requirements.md 173-178)",
+            "problem": "Component fixtures receive an explicit synthetic baseline 'as data'. The design does not require that input to flow through the same construction capture, whitelist filter, control classifier, OS-string handling and bounds that production new() uses. It also does not require a sanitized re-exec of the real constructor. The adopted Issue51 acceptance requires a 'reviewed injection path actually used by new()' or sanitized test-binary re-exec, with no ambient credential capture.",
+            "causal_scenario": "A regression in construction broadens the frozen baseline to all ambient variables or misclassifies a control. Every component test still passes because fixtures substitute the baseline after or beside new(). Meanwhile new() reads developer/CI ambient credentials into adapter memory during tests. A missed substitution on any cloned handle (owned_handles) could forward them to a fake child.",
+            "required_fix": "Route public new() through a private constructor that consumes an environment iterator. Production passes vars_os(); fixtures pass synthetic pairs, so the identical filter, classifier and bounds run on test input. Add at least one env_clear sanitized re-exec test of the real new() that fails closed unless every captured value is an expected synthetic marker. Require compiled mutants of the construction filter/classifier to die on actual-consumer canary assertions."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "42-50 (consumer: crates/rrx/src/codex/policy.rs 359-396)",
+            "problem": "The current Codex child environment does not forward USER or LOGNAME (whitelist at policy.rs:368-395). 'Preserve ... OS login identity / trusted USER/LOGNAME' is therefore either an unstated whitelist broadening, which contradicts 'documented exactly', or a control classification for names Codex never passes. USER and LOGNAME are registry-valid. Rejecting them as own control references would be a blanket own-Project rejection; Issue51 design lines 185-187 treat such declarations as metadata for other providers.",
+            "causal_scenario": "Project A declares USER for a Generic or Claude workflow, and Codex admission rejects A even though Codex never forwards USER. Alternatively, the implementation silently adds USER/LOGNAME to the native child and changes hook behavior without a recorded compatibility impact.",
+            "required_fix": "State explicitly whether USER/LOGNAME enter the frozen child baseline, with a compatibility analysis. Restrict control-based own-reference rejection to names actually present in Codex's forwarded baseline, mirroring Grok's control(key) requiring baseline_key(key)."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "48-52, 57-58, 65-66 (contract: doc/design/issue-51-design.md 178-200; crates/rrx/src/state/environment.rs 24-44)",
+            "problem": "Two classification and error points are imprecise. First, Codex whitelist prefixes and suffixes (LC_, XDG_, CODEX_, *_PROXY) can admit syntactically registry-invalid names. The design says such 'unsupported names fail', so any such ambient name would make the DTO constructor bail for every launch. Issue51 instead classifies them as unownable global controls that are preserved and excluded from the DTO. Second, undeclared caller keys only 'fail explicitly', with no binding to the single fixed opaque InvalidConfiguration category that Issue51 requires for undeclared, foreign-only and baseline-conflict failures. The current code returns OwnershipMismatch or InvalidInput for these cases.",
+            "causal_scenario": "A host variable such as XDG_A-B disables every Codex admission regardless of Projects. Error kinds also diverge between the adapter-local undeclared check and the Store EnvironmentAuthority mapping, contrary to the adopted contract.",
+            "required_fix": "Classify baseline-admitted names that fail environment_name_valid as controls, per Issue51, or document fail-closed as a reviewed divergence with a test. Specify that undeclared, foreign-only, caller-control and baseline-conflict failures, local and transactional, map to the same fixed opaque InvalidConfiguration category."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "126-127 (contract: crates/rrx/src/state/environment.rs 60-93)",
+            "problem": "'Irrelevant foreign body corruption ... do not affect own capture/selection' conflicts with the existing Store contract, which denies A when any foreign row is invalid JSON or lacks an array environment_refs. The verification text does not separate malformed non-reference fields (eligible) from body-level or reference-level corruption (opaque deny).",
+            "causal_scenario": "A fixture corrupts a foreign body to invalid JSON and expects eligibility. The test fails against the Store, and an implementer weakens unknown-authority denial in the adapter to make it pass.",
+            "required_fix": "Specify that foreign valid JSON with malformed non-reference fields, and lifecycle or version changes, remain eligible. Invalid JSON bodies, missing or non-array environment_refs, and non-string elements deny opaquely. Exercise both through the actual consumer."
+          }
+        ],
+        "limitations": [
+          "Purely textual review of the supplied public bytes; no tools, builds, tests, mutation runs or repository operations were performed.",
+          "crates/rrx/src/codex/transport.rs (exact NativeServer::launch_preparing spawn site), preparation.rs (bounded_git, Preparation::consume/checkpoint behavior on CAS failure) and attempt.rs were omitted. The precise no-await spawn placement and preservation of consumed-input facts under environment denial cannot be verified.",
+          "The remaining Store implementation (put_session, projects(), guard_record_tx, write_record_tx, StateGuardError display) and adapter.rs state_error were not supplied.",
+          "Other Codex modules and tests that may consume ScopeSnapshot.projects, native_environment or provider_environment were not supplied, so completeness of the consumer enumeration is unverified.",
+          "No master design, verification records, Issue51 acceptance evidence or CI results were supplied. The merged status of the Issue51 contract is taken from the provided documents only.",
+          "Installed native Codex behavior (which variables it reads, built-in provider env_key defaults, startup hook timing) was not evaluated. Exposure reasoning is based solely on the adapter call sequence, and no reference-origin provenance or required/missing auth semantics was inferred from config names."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 122299,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 37589,
+        "output_tokens_details": {
+          "thinking_tokens": 32924
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 122299,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 37589,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 122299,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 122299
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 37589,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 122299,
+          "webSearchRequests": 0,
+          "costUSD": 1.7306119999999998,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 32924,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 1.7306119999999998,
+      "duration_api_ms": 348267,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    },
+    {
+      "head": "62647029c235820b77f4d25ee912b66f8ff40871",
+      "section": "B1",
+      "native_session": "d6bfbe7e-d0f5-4f09-ad75-dc64cfccab0d",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "severity": "high",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "62-67, 100-106, 128-130",
+            "problem": "The only transactional environment decision is at input admission: the turn/start consumed-input CAS (session.rs 478-507, 1597-1605). Initial selection is a non-transactional check_environment_admission that runs before Git preflight. The selected environment, including frozen credential values, reaches native execs only later: the Codex --version probe (session.rs 1436-1454), the discovery app-server (1458-1467), and the policy re-exec (1505-1514), which is followed by account/read, hook/MCP startup and thread/start or thread/resume. All of these come after awaited Git and filesystem preflight (1412-1435) and after discovery shutdown, with no environment recheck. This contradicts the adopted Issue51 boundary (requirement 6): final admission must be the last state check before actual child exec, including resume initialize/authenticate/load, not merely prompt dispatch.",
+            "causal_scenario": "1. A's initial check passes; its retained OPENAI_API_KEY is undeclared by any Project. 2. During verify_git_preparing, a second Store connection registers Project B declaring OPENAI_API_KEY. 3. A execs codex --version, the discovery server and the policy server with OPENAI_API_KEY. 4. Native startup hooks/MCP, account/read and thread/resume run with the now B-scoped credential. 5. Only the later turn/start CAS denies. No-dispatch assertions pass even though the credential already reached A's workload. A mutant that omits initial selection is likewise caught only at dispatch.",
+            "required_fix": "Define the final environment fence as a current, existing-API decision made immediately before every native exec that receives the selected environment: the version probe, the discovery server and the policy re-exec, including on resume. The preferred form is put_session_with_environment_if_current with own P/G/T, exact nullable locks, Session version and the retained DTO. Allow only a cancellation check, and no await, between that commit and spawn. Keep the consumed-input CAS at turn/start. State the non-retroactive window after each spawn explicitly. Add second-Store replacement tests between the initial check and each first exec that assert no fake-child spawn or environment canary. Add a compiled mutant that removes the pre-exec fence."
+          },
+          {
+            "severity": "high",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "77-89, 131-133",
+            "problem": "Lines 83-84 make a 'required reference outside that explicit selection' fail Unsupported. Lines 86-89 state that a reference name never proves a value is required and that missing/optional semantics remain native. The selector's only input is the set of effective config/read names (env_key, env_http_headers). The refusal rule therefore either infers requiredness from config names, which the design itself forbids, or is undefined. The verification bullet checks only that no value is added, not which outcome occurs.",
+            "causal_scenario": "A synthetic selected provider names an env_key or env_http_headers variable that is absent from the frozen selection, or present only in the ambient non-whitelisted environment that current provider_environment restores. One implementation refuses Unsupported before re-exec. Another proceeds, and native either fails after input consumption or silently omits an optional header. Both satisfy the written tests ('no arbitrary value added'). Native auth/provider preservation and failure ordering are therefore undetermined, and a previously restored custom-provider key is silently dropped or becomes a post-dispatch failure.",
+            "required_fix": "Replace 'required reference' with a deterministic, value-free rule that makes no requiredness claim. For example: every name referenced by the selected provider's env_key/env_http_headers that is absent from the frozen private selection, or is a control or invalid name, refuses UnsupportedCapability after discovery shutdown and before policy re-exec and any input consumption. Record this as an unproven configuration route, not an authentication determination. Names already in the selection pass unchanged, and no value is ever added. Alternatively, state explicitly that absent names proceed unchanged with native-owned behavior. Specify outcome, error kind and ordering separately for absent, ambient-only, selected and control names, each with a synthetic test and a restoration mutant."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "30-31, 100-104, 128-130",
+            "problem": "Checkpoint publication is listed as lacking the environment decision, and the fix applies the environment-aware CAS at 'fresh input/checkpoint/resume admission'. The adopted Issue51 contract (requirements 6-7; design 167-176) says otherwise. Checkpoint publishes fresh input under own guards only; it confers no environment authority and inspects no foreign references. Resume evaluates live references at its own pre-spawn admission. A checkpoint attempt also selects no values, so 'the private DTO with the same preparation/attempt that selected its values' does not exist for it. Reusing the predecessor's DTO would cross attempts.",
+            "causal_scenario": "After a terminal Session, either Project B declares a name in A's frozen baseline, or A's checkpoint refreshes its own Project without a previously used caller key. Under the proposal, the checkpoint CAS (session.rs 1197-1209) fails opaquely and the higher-version input is never published. Under Issue51, checkpoint succeeds and resume denies. Tests on 'checkpoint and resume windows' pass either way, and an effect-free publication becomes foreign-reference dependent.",
+            "required_fix": "State that checkpoint keeps the own-scope exact put_session_if_current, with the roster comparison removed, and confers no environment authority. The environment decision belongs only to the resume attempt's own selection and its pre-exec and final admission. If a deviation from Issue51 is intended, justify it, define the per-attempt DTO source, and specify expected checkpoint and resume outcomes for a foreign declaration and for own-ref removal before and after checkpoint."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "40-58",
+            "problem": "The control/ordinary partition of the Codex whitelist is not enumerated. Specific gaps: (a) 'The existing registry control classifier' does not exist as such. The registry exposes only valid/forbidden predicates; Grok's control() is gated on Grok's baseline and carries its own addition. (b) USER/LOGNAME are absent from the current native_environment whitelist (policy.rs 368-395). 'Preserve OS login identity' therefore either newly adds them to the child baseline, contradicting 'whitelist documented exactly' with no impact entry, or merely rejects registry-valid own declarations. (c) Precedence is unstated for names that are both whitelisted and ordinary (LANG, TERM, LC_*): 'caller value allowed' versus 'exact frozen value required'. (d) Handling is unstated for syntactically invalid whitelisted names under the LC_/XDG_/CODEX_/*_PROXY prefixes, which EnvironmentAdmission::new rejects. (e) No structural drift test is listed, although Issue51 requirement 3 requires one.",
+            "causal_scenario": "Each of these implementations is consistent with the text, and none is caught by the listed tests: one rejects a declared caller LANG that was previously allowed; one adds USER/LOGNAME to every child; one fails CodexAdapter::new because an ambient 'LC_foo.bar' is not registry-valid; one rejects a Project that declares USER only for another provider.",
+            "required_fix": "Enumerate the exact predicate: (1) baseline membership, with the whitelist unchanged and an explicit statement of whether USER/LOGNAME are members; (2) control = member AND (syntactically invalid OR registry-forbidden OR finite additions); (3) the finite additions list; (4) the ordinary set and the Issue51 OR rule; (5) syntactically invalid whitelisted names as unownable controls rather than a constructor failure; (6) whether own declarations of non-baseline additions are rejected. Add a structural test asserting the additions exactly and OPENAI_API_KEY, XAI_API_KEY and ANTHROPIC_API_KEY as non-controls. Add an impact entry for any change to the child environment."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "115-120",
+            "problem": "The 'explicit private synthetic baseline input' seam is not required to pass through the constructor's capture, classification, control exclusion, bounds and OS-string freeze. Issue51 acceptance required either sanitized re-exec or a reviewed injection path actually used by new(), with fail-closed synthetic-marker checks.",
+            "causal_scenario": "A cfg(test) setter overwrites the frozen map after new(). Component tests then pass even if the constructor still strips foreign-declared credentials, misclassifies a control, mishandles bounds, or reads vars_os at launch instead of construction, because no test reaches that code. Real ambient credentials are also still captured into test memory.",
+            "required_fix": "Require the seam to feed the identical construction routine: for example, a private constructor taking an explicit (OsString, OsString) iterator that new() also uses over vars_os, or sanitized test-binary re-exec under env_clear. Add fail-closed checks that every captured value is an expected synthetic marker, and allow no value-printing diagnostics. Add constructor-level mutants (classification, bounds, capture site) that must die in actual-consumer tests."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "121-136",
+            "problem": "The causal mutant set covers only omission of selection or the final CAS, plus arbitrary restoration. It omits the Codex-side operators that decide what the shared Store evaluates: DTO baseline and caller population, the exact-frozen-value check for non-ordinary caller keys, the control predicate, construction-time freeze, and reintroduced raw-roster equality. Issue51 required a compiled roster-equality mutant per boundary that dies on the irrelevant-change positive.",
+            "causal_scenario": "A mutant that builds the DTO with an empty baseline, or drops caller names, still calls both checks but makes them vacuous. Mutants that revert to launch-time vars_os or restore the roster comparison change behavior. None of these is listed, so test gaps stay hidden and the 'finite causal verification' claim is unsupported.",
+            "required_fix": "List compiled actual-consumer mutants for: DTO baseline population, DTO caller population, the exact-value caller check, control classification, construction-time freeze, and roster-equality reintroduction (one per start, checkpoint and resume boundary). For each, name the specific canary, spawn or Store assertion that must kill it. Record masked or redundant survivors honestly."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "34-36, 54-67, 77-84",
+            "problem": "Only shared behavior is declared unchanged; there is no inventory of the Codex-visible changes:\n- own-declared arbitrary caller keys with any value, currently passed by native_environment, become rejected;\n- foreign-declared baseline credentials switch from silent stripping to refusal;\n- provider env_key/header restoration is removed;\n- own invalid refs (currently InvalidInput) and undeclared caller keys (currently OwnershipMismatch) move to the opaque InvalidConfiguration category;\n- baseline capture moves from launch to construction.\nExisting LaunchRequest.environment producers (Workflow forwarding, direct component callers and fixtures) are not enumerated.",
+            "causal_scenario": "Existing component tests that pass declared caller values, rely on strip semantics, or assert the old error kinds will flip. Without a pre-declared list, intended flips cannot be distinguished from regressions. An implementer may then weaken assertions or reintroduce passthrough to make them pass.",
+            "required_fix": "Add an impact-analysis section that lists:\n- each changed Codex behavior, with old and new outcome and error kind;\n- every current producer and consumer of the caller map or ambient baseline;\n- the intended test migrations;\n- the areas expected to be unaffected, each with its basis."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "66-68, 126-127",
+            "problem": "'Irrelevant foreign body corruption ... do[es] not affect own capture/selection' conflicts with the existing Store contract. A foreign body that is invalid JSON, or that lacks an array environment_refs, is unknown reference authority and denies A (environment.rs 70-75).",
+            "causal_scenario": "A test that corrupts a foreign body into invalid JSON and expects eligibility fails against the existing Store. Fixing that by changing Store semantics or loosening the assertion would weaken unknown-authority denial.",
+            "required_fix": "Define 'irrelevant corruption' as malformed non-reference fields inside valid JSON with a string-array environment_refs. List invalid-JSON bodies, missing or non-array refs, and non-string elements as unknown-authority denial cases."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "62-64",
+            "problem": "The initial decision's position relative to the Starting reservation write (reservation.persist(), session.rs 1410) is unspecified. 'Before any component process/model effect' permits placing it after the Starting publication.",
+            "causal_scenario": "If a deterministic own-control or foreign-conflict refusal is placed after persist(), a fresh launch persists a Starting then Failed Session, or a resume restores via publication, and emits a codex.preparation.finished audit. Placed before, the result is FreshUnpublished or RestoredBeforeAdmission before any work. Outcomes and audit counts therefore vary by implementation.",
+            "required_fix": "Place selection and the initial Store decision in the synchronous pre-reservation context: after ScopeSnapshot::capture and the resume currency checks, and before the Starting write. State the resulting Outcome and audit expectations."
+          }
+        ],
+        "limitations": [
+          "Manual read-only review with no tools: nothing was compiled, executed, mutated or diffed, and the byte-provenance claims were accepted as stated.",
+          "Several sources were not supplied: preparation.rs, attempt.rs, transport.rs, protocol.rs, adapter.rs, crate::git::native_environment, Store guard_record_tx and the StateGuardError Display text. As a result I could not verify: env_clear at native exec; whether USER/LOGNAME reach children today; cancellation and first-cause semantics of preparation.consume and checkpoint; and the exact opacity of the EnvironmentAuthority message.",
+          "Existing Codex and Issue51 tests, the Issue51 verification record, the master design and WorkflowEngine source were not supplied. Producer and fixture inventories, mutant baselines and current caller-environment usage were therefore not verified.",
+          "No native Codex config/read semantics for model_providers env_key/env_http_headers optionality were supplied. The provider-reference finding requires a deterministic rule and does not assume either native semantic.",
+          "Excerpts beyond the labeled line spans (remaining Store, availability and Grok code) were not reviewed."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 122305,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 42448,
+        "output_tokens_details": {
+          "thinking_tokens": 37050
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 122305,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 42448,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 122305,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 122305
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 42448,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 122305,
+          "webSearchRequests": 0,
+          "costUSD": 1.82784,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 37050,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 1.82784,
+      "duration_api_ms": 394182,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    }
+  ]
+}

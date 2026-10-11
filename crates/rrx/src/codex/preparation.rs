@@ -1,7 +1,6 @@
 //! Private preparation cancellation. Owned children remain outside cancellable
 //! waits so cancellation cannot replace verified cleanup with future destruction.
 use std::{
-    ffi::OsString,
     path::Path,
     process::Stdio,
     sync::{Arc, Mutex, atomic::AtomicBool},
@@ -180,6 +179,34 @@ impl Preparation {
             }
         }
     }
+    /// Last selected exec admission: publication must remain in Preparing.
+    pub(super) fn before_exec<T>(
+        &self,
+        publish: impl FnOnce() -> AdapterResult<T>,
+    ) -> AdapterResult<T> {
+        let mut admission = self
+            .admission
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "native preparation cause poisoned"))?;
+        match &*admission {
+            Admission::Preparing => {}
+            Admission::Cancelled => return Err(Cause::Cancelled.error()),
+            Admission::Failing(cause) => return Err(cause.error()),
+            _ => {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native attempt already admitted",
+                ));
+            }
+        }
+        match publish() {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                *admission = Admission::Failing(Cause::Failed(error.kind, error.message.clone()));
+                Err(error)
+            }
+        }
+    }
     fn commit<T>(
         &self,
         checkpoint: Option<u64>,
@@ -261,7 +288,8 @@ pub(super) async fn bounded_git(
     executable: &Path,
     cwd: &Path,
     args: &[String],
-    environment: Vec<(OsString, OsString)>,
+    environment: super::environment::ExecEnvironment<'_>,
+    mut before_spawn: Option<super::environment::SpawnBoundary<'_>>,
     deadline: tokio::time::Instant,
     uncertain: Arc<AtomicBool>,
     preparation: &Preparation,
@@ -269,6 +297,9 @@ pub(super) async fn bounded_git(
     availability.require()?;
     availability.record(super::availability::Site::GitExecution);
     preparation.check()?;
+    environment
+        .require_boundary(before_spawn.is_some())
+        .map_err(|error| preparation.failed(error))?;
     if tokio::time::Instant::now() >= deadline {
         return Err(preparation.failed(failure(
             ErrorKind::Timeout,
@@ -280,17 +311,36 @@ pub(super) async fn bounded_git(
         .args(args)
         .current_dir(cwd)
         .env_clear()
-        .envs(environment)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .process_group(0);
+    environment.apply(&mut command);
+    if !environment.selected() {
+        before_spawn = None;
+    }
+    if let Some(boundary) = before_spawn.as_mut() {
+        boundary.admit()?;
+    }
+    // The original deadline includes CAS time; no restart or extension.
+    if tokio::time::Instant::now() >= deadline {
+        return Err(preparation.failed(failure(
+            ErrorKind::Timeout,
+            "Git ownership preflight timed out",
+        )));
+    }
     // No await occurs between the cancellation check and taking child ownership.
     preparation.check()?;
+    if let Some(boundary) = &before_spawn {
+        boundary.spawn_attempt();
+    }
     let child = command.spawn().map_err(|error| {
         preparation.failed(failure(ErrorKind::ProcessFailure, error.to_string()))
     })?;
+    if let Some(boundary) = &before_spawn {
+        boundary.spawned();
+    }
     let mut child =
         ProcessGroup::new(child, uncertain).map_err(|error| preparation.failed(error))?;
     let mut stdout = tokio::spawn(read_output(
@@ -419,6 +469,77 @@ mod tests {
     use super::*;
     use std::sync::atomic::Ordering;
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn selected_exec_budget_includes_synchronous_admission_without_spawn() {
+        use super::super::environment::{
+            ExecEnvironment, ExecSite, Selection, SpawnBoundary, TestHooks,
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let preparation = Preparation::new();
+        let selection = Selection::fixture_empty();
+        let hooks = Arc::new(TestHooks::default());
+        let uncertain = Arc::new(AtomicBool::new(false));
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let mut admitted = false;
+        let mut admission = || {
+            admitted = true;
+            // Consume the caller's unchanged budget inside the real callback.
+            // The fixture does not change the production deadline or restart it.
+            while tokio::time::Instant::now() <= deadline {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(())
+        };
+        let result = bounded_git(
+            &crate::codex::availability::component_availability(),
+            Path::new("/bin/sh"),
+            directory.path(),
+            &["-c".into(), "printf synthetic".into()],
+            ExecEnvironment::Selected(&selection),
+            Some(SpawnBoundary::new(&mut admission).traced(hooks.clone(), 1, ExecSite::Version)),
+            deadline,
+            uncertain.clone(),
+            &preparation,
+        )
+        .await;
+        assert!(admitted);
+        assert!(matches!(result, Err(ref error) if error.kind == ErrorKind::Timeout));
+        assert!(hooks.counts(1, ExecSite::Version) == (0, 0));
+        assert!(!uncertain.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn ambient_git_ignores_selected_admission_and_trace() {
+        use super::super::environment::{ExecEnvironment, ExecSite, SpawnBoundary, TestHooks};
+        let directory = tempfile::tempdir().unwrap();
+        let preparation = Preparation::new();
+        let hooks = Arc::new(TestHooks::default());
+        let uncertain = Arc::new(AtomicBool::new(false));
+        let mut called = false;
+        let mut admission = || {
+            called = true;
+            Err(failure(
+                ErrorKind::InvalidConfiguration,
+                "synthetic selected refusal",
+            ))
+        };
+        let result = bounded_git(
+            &crate::codex::availability::component_availability(),
+            Path::new("/bin/sh"),
+            directory.path(),
+            &["-c".into(), "printf synthetic".into()],
+            ExecEnvironment::Ambient(Vec::new()),
+            Some(SpawnBoundary::new(&mut admission).traced(hooks.clone(), 1, ExecSite::Version)),
+            tokio::time::Instant::now() + Duration::from_secs(5),
+            uncertain.clone(),
+            &preparation,
+        )
+        .await;
+        assert!(matches!(result, Ok(ref output) if output == "synthetic"));
+        assert!(!called && hooks.counts(1, ExecSite::Version) == (0, 0));
+        assert!(!uncertain.load(Ordering::SeqCst));
+    }
+
     #[tokio::test]
     async fn cancelled_git_wait_reaps_owned_group_and_keeps_cancellation_cause() {
         let directory = tempfile::tempdir().unwrap();
@@ -441,7 +562,8 @@ mod tests {
                         "rrx-owned-fixture".into(),
                         ready.to_str().unwrap().into(),
                     ],
-                    Vec::new(),
+                    super::super::environment::ExecEnvironment::Ambient(Vec::new()),
+                    None,
                     tokio::time::Instant::now() + Duration::from_secs(5),
                     uncertain,
                     &preparation,
@@ -507,7 +629,8 @@ mod tests {
                 "rrx-owned-fixture".into(),
                 marker.to_str().unwrap().into(),
             ],
-            Vec::new(),
+            super::super::environment::ExecEnvironment::Ambient(Vec::new()),
+            None,
             tokio::time::Instant::now() + Duration::from_secs(5),
             uncertain.clone(),
             &preparation,

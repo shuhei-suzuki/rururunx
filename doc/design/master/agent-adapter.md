@@ -469,7 +469,10 @@ The candidate Source A implementation advertises an EMPTY Codex capability set.
 Probe and every new public launch/structured/resume/checkpoint/attach/approval
 route return UnsupportedCapability with the fixed reason `native workload
 ownership and dispatch producer unavailable`, before registry/Store access or
-Git/filesystem/native/discovery work. Protocol and transport are module-private;
+Git/filesystem/native/discovery work. The bounded synchronous own-Project
+`environment_candidates` names-only Store inspection is an explicit pure metadata
+exception: no foreign inventory, values, activity, Git or native reads; it grants
+no operational authority. Protocol and transport are module-private;
 external callers receive no raw server, socket or RPC dispatch path. Both native
 examples immediately refuse before creating any fixture. Generic factory/config
 integration and earlier Workflow capture/reservation are separate open consumers.
@@ -498,6 +501,42 @@ effort have not been changed. Whole-workload containment/settlement, actual owni
 19/58/60/14 producers, decision CWD, configuration provenance, native Task attachment,
 approval broker, both-host provider and four-plus concurrency acceptance remain
 mandatory/open. See [issue design](../issue-6-design.md).
+
+### Codex environment admission component
+
+The adapter freezes `vars_os` once through the same private iterator constructor as
+synthetic fixtures, with raw values and non-formatting private holders. Membership
+keeps the existing whitelist, LC_/XDG_/CODEX_ and proxy suffix; non-UTF8 names and all
+GIT_ names are excluded first. USER/LOGNAME remain excluded. Registry-forbidden or
+invalid admitted names are controls; the additional control set is EMPTY. Every
+retained non-control baseline name participates in existing names-only admission,
+including locale/terminal and API keys. Caller ordinary locale/terminal/TZ values
+may differ; non-ordinary values must exactly equal their intentional frozen value.
+Constructor/name DTO bounds reject without truncation.
+Malformed raw OS pairs refuse construction before membership filtering, even for
+otherwise excluded names, as a conservative compatibility limitation; arbitrary
+host/native-default compatibility remains unqualified. Owning declared candidate
+metadata is available without launch readiness, including inactive Projects.
+
+Initial admission precedes Starting/Git. Version, discovery and main selected execs
+use last exact Session/P/G/T/nullable-lock plus environment CAS, publishing their
+version/watch/Control together under Store; they remain Preparing. Consumed input
+uses its own environment-aware CAS. SQLite and exec are not atomic and later edits
+do not revoke an already-selected child. Checkpoint is own-only and still executes
+the separate ambient Git preflight; it is not credential-free or effect-free.
+Scope snapshots retain own authority only, never full foreign Project bodies.
+
+Both effective config consumers validate selected-provider reference shape/count/
+name/presence before policy/auth/history/inference. No config name supplies host
+value provenance, and no absent value is restored. Missing selected references
+refuse Unsupported; optional/custom/default compatibility remains unqualified.
+The public legacy stripping/restoration helper is removed; README records the
+pre-publication API migration and future breaking-release compatibility gate.
+Finite production source independently qualified at `798ee3e`; the finite
+test/evidence follow-up qualified at `6affb4f`. Current custody composition has its
+own checks and review gate. EMPTY remains
+first on operational routes; no constructor, DTO, callback or synthetic control
+creates native workload, managed setup, cleanup/settlement or provenance readiness.
 
 ### Private preparation job custody (Issue #19)
 

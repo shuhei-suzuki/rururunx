@@ -1,0 +1,211 @@
+{
+  "head": "798ee3e99730a8915dc72d7333de14cf83229ba3",
+  "scope": "Finite independent native source delta, no whole-gate/merge/native-readiness credit",
+  "actual_tools_closed_exit0": [
+    27153,
+    21880
+  ],
+  "independence": "Findings read only after BOTH original handles closed, no peer findings supplied",
+  "reports": [
+    {
+      "head": "798ee3e99730a8915dc72d7333de14cf83229ba3",
+      "section": "A2",
+      "native_session": "00e5631f-5d03-49d1-852b-5402487e8fe0",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "severity": "low",
+            "file": "doc/verification/issue-6-environment-source1-low-controls.json",
+            "lines": "29-60 (related code: crates/rrx/src/codex/session.rs:1468-1483, 1532-1616; crates/rrx/src/codex/environment_controls.rs:42-134)",
+            "problem": "E19, E20 and E21 are classified as 'actual' controls. No production caller can reach the guarded branches. prepare_launch always builds the launch Reservation with environment Some(...) (session.rs:1473) and always passes Some(boundary) with ExecEnvironment::Selected at all three exec sites (session.rs:1535-1616). The only Reservation built with environment None is the checkpoint Reservation (session.rs:1227), and it never calls admit_dispatch or before_exec. These kills therefore come from direct-helper or defensive guard controls on synthetic inputs: a fixture Reservation with environment forced to None, and helpers called with a None boundary. They do not come from the public start/resume consumer. The design's convention (issue-6-environment-design.md:296-308) gives such non-reachable branches unit-only credit, not actual-consumer credit.",
+            "causal_scenario": "A later aggregate mutation or acceptance summary counts E19-E21 as actual-consumer kills on the public launch path. That overstates the public-path evidence for the missing-selection and missing-callback guards. Those guards protect only against future internal miswiring that current production cannot produce.",
+            "required_fix": "Relabel E19-E21 in the verification record as direct-helper/defensive guard controls with no public-start actual-consumer credit. Keep the existing kill evidence. No production code change is required."
+          },
+          {
+            "severity": "low",
+            "file": "crates/rrx/src/codex/environment_controls.rs",
+            "lines": "136-202 (notably 179 and 185-200)",
+            "problem": "In the ExecSite::Initial iteration, the assertion `environment_hooks.total(site) == (0, 0)` is vacuous. ExecSite::Initial is never traced; spawn counters exist only for Version, Discovery and Main SpawnBoundary instances. The Initial case also does not assert the deterministic FreshUnpublished outcome or the registry-entry removal promised by the design (issue-6-environment-design.md:234-238). The Session-record equality, unchanged session.saved events, GitExecution site 0 and absent version-entry assertions do already establish no-publication and no-effect, so this is test precision only.",
+            "causal_scenario": "A reader treats line 179 as spawn-counter evidence for the initial refusal. A future mutant that published an outcome other than FreshUnpublished, but produced no Session write, Git exec or version entry, would not be distinguished by this test.",
+            "required_fix": "For the Initial case, replace the vacuous counter check with a check that all three exec sites report (0, 0). Also assert that the fresh registry entry is removed, or that the captured control finished as FreshUnpublished with a StateConflict cause."
+          }
+        ],
+        "limitations": [
+          "This was a manual, read-only review with no tools. Nothing was compiled, executed or mutated. All test, mutant, CI and byte-provenance facts are taken from the supplied public records and were not reproduced.",
+          "The review covers the finite 98aeab5..798ee3e delta plus the supplied full current Codex/Store/environment files. Omitted material was not reviewed: unchanged Grok, Generic, inspection, project and Workflow bodies and tests, policy.rs after line 348, the remainder of adapter.rs, issue-6 requirements after line 160, and master sections outside the excerpt.",
+          "The full DEFAULT debug run FAILED (283 pass / 4 fail / 24 ignored) and the full Release run FAILED (280 pass / 7 fail / 24 ignored). Cause is UNKNOWN, and later integration and doctest targets did not execute. This approval covers the finite code delta only. It is not whole-head, default-gate or merge acceptance, and it does not waive those failed gates, which remain blockers to their own acceptance.",
+          "The delta changes only Codex-private modules (environment.rs, environment_controls.rs, preparation.rs, session.rs, transport.rs) and the issue design doc. Shared Store, project registry and Grok sources are unchanged in the delta, so no direct code path from this delta to the recorded Grok assertion failures, Git ownership Timeout or watchdog observations was found. Load or timing interaction can be neither established nor excluded.",
+          "Verified in the delta: Selected helpers without a callback refuse with StateConflict before spawn and before private IPC directory creation, and Ambient helpers are unchanged. The missing-selection check now precedes the dispatch_intent mutation, which removes a latent path where finish_preparation_error could have persisted an unadmitted consumed intent. The own-first caller error order now has a distinguishing case. Initial-selection own edits yield StateConflict via the reread, and own edits at each exec CAS yield transactional StateConflict ahead of the environment decision.",
+          "The initial reread uses separate autocommit SQLite reads. Under concurrent edits, choosing between stale-kind and opaque refusal is not deterministic; this was accepted per Design7 and not treated as a defect.",
+          "Constructor raw-pair refusal (for example, a vars_os name with a leading '=') is reviewed as the documented conservative compatibility limitation. It is not native-default compatibility.",
+          "Ordinary Codex availability remains EMPTY. environment_candidates was reviewed only as the documented pure, nonoperational own-metadata exception.",
+          "Plain Git preflight and checkpoint still use the unselected ambient environment from git::native_environment. That #51/#60 residual, shared Git ownership, Stage B/F1, platform and native-profile compatibility, and the #19/#58/#14 producers all remain OPEN.",
+          "All controls use synthetic fixtures. No native model, tool, auth, default-provider or custom-provider compatibility is established. Effective-config reference names are not treated as origin or provenance evidence.",
+          "The README migration note is present. The future 0.2.0-or-higher breaking-release compatibility gate remains open, and no publishing action was assessed."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 363984,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 29057,
+        "output_tokens_details": {
+          "thinking_tokens": 26883
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 363984,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 29057,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 363984,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 363984
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 29057,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 363984,
+          "webSearchRequests": 0,
+          "costUSD": 3.4934519999999996,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 26883,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 3.4934519999999996,
+      "duration_api_ms": 279210,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-source-review"
+    },
+    {
+      "head": "798ee3e99730a8915dc72d7333de14cf83229ba3",
+      "section": "B2",
+      "native_session": "8835cb22-3561-4435-8c7c-a12b2332d60f",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "severity": "low",
+            "file": "crates/rrx/src/codex/environment_controls.rs",
+            "lines": "359-413 (public_constructor_raw_child); design doc/design/issue-6-environment-design.md 214-217",
+            "problem": "The env-cleared child calls the real public CodexAdapter::new, and later with_environment, without first doing the exact permitted synthetic OS-name/value check that the design requires ('Before either constructor, check the exact permitted synthetic OS-name/value pairs with boolean-only failures'). Issue51 acceptance also requires failing closed before capture unless every captured value is an expected synthetic marker. The child only reads its two locator variables through var_os and never checks the full captured set.",
+            "causal_scenario": "Suppose an environment entry reaches the env_clear'd child that the parent did not set, for example through a platform or loader injection or a future edit to the parent command. The constructor freezes it into the baseline, and the candidate and value assertions can still pass. The control then neither proves that only known synthetic markers were captured nor fails before capture. Stdio is null and the assertions are boolean-only, so nothing is printed or written. This is a gap in what the verification proves, not a value leak.",
+            "required_fix": "Before each constructor call in the child, enumerate the OS environment and compare names and values by equality only against the exact permitted set for that mode: HOME, PATH, RRX_RAW_CTOR_FIXTURE, the raw OPENAI_API_KEY marker, and the LC_ name containing byte 0xFF; in bounds mode also RRX_RAW_CTOR_BOUNDS and the long LC_ name. On mismatch, fail with a fixed value-free message and write nothing. Alternatively, amend the design with a recorded rationale for dropping the requirement."
+          },
+          {
+            "severity": "low",
+            "file": "crates/rrx/src/codex/session.rs",
+            "lines": "485-495 (admit_dispatch missing-selection guard); compare preparation.rs 300-302, transport.rs 151-153, session.rs 545-551; test environment_controls.rs 66-69",
+            "problem": "The relocated missing-selection guard returns StateConflict without latching the attempt's first cause under the admission mutex. The analogous guards do latch: the Selected-helper missing-callback refusal latches through preparation.failed, and the missing selection inside before_exec latches through the closure error. The new unit test explicitly pins Admission::Preparing after this refusal. Intent preservation and the absence of any Store write are correct.",
+            "causal_scenario": "This path is reachable only on an internal invariant violation. prepare_launch always sets Some(selection), and the checkpoint reservation with None never dispatches. If the invariant were violated, a concurrent stop that took the admission mutex between admit_dispatch returning and the outer setup map_err(preparation.failed) would relabel the first cause as Cancelled. No consumption, dispatch_intent change, Store write or grant can result.",
+            "required_fix": "Optional consistency fix: return self.attempt.preparation.failed(error) from this guard, so it moves Preparing to Failing(StateConflict) under the mutex. Keep the unchanged-Session, version and event assertions, and change the Preparing assertion to Failing. Alternatively, record in the design that this is a non-latching defensive refusal."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "3 (status line); amended 65-69, 158-164, 242-252, 478-479",
+            "problem": "The status line still says Design7 was independently qualified (two approve, 0 CHM), but this delta changes normative Design7 text. The changes are: whole-constructor refusal for malformed raw pairs; the initial own-snapshot reread now returns StateConflict, replacing the earlier opaque-category statement; StateConflict for a Selected helper with no callback; and the ordering of the missing-selection guard. Nothing marks which paragraphs are post-qualification amendments made during the source phase.",
+            "causal_scenario": "A later reader or gate treats the amended StateConflict precedence and the raw-pair refusal limitation as Design7-qualified authority. In fact they were introduced, or brought into line with code, only inside this source delta.",
+            "required_fix": "Mark the amended paragraphs, or the status line, as source-phase amendments at this head that are covered by source review rather than by the earlier Design7 qualification. Alternatively, record them as a separate design delta."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/master/agent-adapter.md",
+            "lines": "449-460 (Codex environment admission component)",
+            "problem": "The master text describing current state omits that the constructor refuses the whole adapter when any raw pair is malformed (a name containing NUL or '=', or a value containing NUL). The refusal happens before filtering, so it applies even to pairs that would otherwise be discarded. The master only mentions the DTO bounds. Design lines 65-69 call this an explicit conservative compatibility limitation, and lines 531-535 require the master to carry the frozen/filter facts and their limits.",
+            "causal_scenario": "On Unix, vars_os can return a name with a leading '=' if the process was exec'd with such an entry. In that case CodexAdapter::new fails opaquely, while the master, as the authoritative current-state document, attributes constructor failure only to the name/byte bounds.",
+            "required_fix": "Add one present-tense master sentence: malformed raw OS pairs refuse construction before membership filtering, as a conservative compatibility limitation, with no claim of arbitrary-host or native-default support."
+          }
+        ],
+        "limitations": [
+          "Manual read-only review of the supplied bytes only. Nothing was compiled, executed or mutated, and no repository or network access was available. Public-blob byte equality, the 'all current Rust bytes same' claim for 1718f7c\u2192798ee3e, and the recorded pass/fail counts are taken from the requester and were not independently verified.",
+          "The E19/E20/E21 mutant records list source_head 6ac8cc4. Their applicability to 798ee3e depends on the asserted Rust byte identity, which cannot be checked here. Reasoning about the mutants is limited to tracing whether each test would distinguish the described mutation; it does: E19 by Session equality, E20 by the Ok-version panic, and E21 by panicking after actual shutdown.",
+          "Full default debug FAILED (283 pass / 4 Grok fail) and release FAILED (280 pass / 7 Grok fail). The later integration and doctest targets never ran. This review does not attribute a cause to those failures, does not waive them, and gives no whole-workspace acceptance; they remain blockers to their own gates. The failing Grok test sources and logs were not supplied.",
+          "Several files were explicit excerpts or omitted: policy.rs after line 348, the rest of adapter.rs and inspection.rs, the rest of project.rs, git.rs, domain.rs, workflow.rs, state/schema.sql, state/native_dispatch_tests, and the Grok adapter and tests. Conclusions about those areas are limited to the visible call sites.",
+          "The finite classification test samples the LC_/XDG_/CODEX_/*_PROXY families. It does not exhaustively prove that no ownable prefix member can become a control; the requester's disclaimer that the table earns no mutant credit is accepted.",
+          "The initial selection uses separate autocommit Store reads: the count and list queries and the own reread. They are not an atomic fence. This review relies on the transactional version, discovery, main and consumed CASes as the actual fences, as designed.",
+          "The ambient Git preflight helper environment and ownership (#51/#60), shared Git ownership, Stage B and F1 workload ownership, platform and native Codex compatibility, the optional, custom and default provider configuration, native-origin provenance, and multi-Project, four-plus-Task and three-agent acceptance were not assessed. All remain OPEN. Ordinary availability remains EMPTY, and the synthetic controls are not native acceptance.",
+          "The Design7 qualification evidence and earlier reviewer findings were not supplied. The amended design text was assessed only as part of this source delta.",
+          "The pre-1.0 public API removal and the future 0.2 release-compatibility gate were not independently checked against crates.io or the release workflow."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 363988,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 43372,
+        "output_tokens_details": {
+          "thinking_tokens": 40602
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 363988,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 43372,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 363988,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 363988
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 43372,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 363988,
+          "webSearchRequests": 0,
+          "costUSD": 3.779784,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 40602,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 3.779784,
+      "duration_api_ms": 413547,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-source-review"
+    }
+  ]
+}

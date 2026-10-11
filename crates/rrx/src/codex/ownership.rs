@@ -59,7 +59,6 @@ impl ProcessOwnership {
 #[derive(Clone)]
 pub(super) struct ScopeSnapshot {
     pub project: Project,
-    pub projects: Vec<Project>,
     pub goal: Option<Goal>,
     pub task: Option<Task>,
     locks: Vec<Record>,
@@ -68,6 +67,15 @@ pub(super) struct ScopeSnapshot {
 
 pub(super) fn state_error(error: anyhow::Error) -> crate::adapter::AdapterError {
     use crate::state::StateGuardError;
+    if matches!(
+        error.downcast_ref::<StateGuardError>(),
+        Some(StateGuardError::EnvironmentAuthority)
+    ) {
+        return failure(
+            ErrorKind::InvalidConfiguration,
+            "native environment authority unavailable",
+        );
+    }
     let kind = match error.downcast_ref::<StateGuardError>() {
         Some(StateGuardError::WorktreeLocked) => ErrorKind::Locked,
         Some(StateGuardError::ExecutorReserved | StateGuardError::SnapshotChanged { .. }) => {
@@ -285,7 +293,6 @@ impl ScopeSnapshot {
             }
         }
         Ok(Self {
-            projects: store.projects().map_err(state_error)?,
             project,
             goal,
             task,
@@ -301,7 +308,7 @@ impl ScopeSnapshot {
         request: &LaunchRequest,
         agent: &str,
     ) -> AdapterResult<()> {
-        self.recheck_authority(store, request, agent, true)
+        self.recheck_authority(store, request, agent)
     }
 
     /// Credentials are already scoped in a running child. An approval must
@@ -312,7 +319,7 @@ impl ScopeSnapshot {
         request: &LaunchRequest,
         agent: &str,
     ) -> AdapterResult<()> {
-        self.recheck_authority(store, request, agent, false)
+        self.recheck_authority(store, request, agent)
     }
 
     fn recheck_authority(
@@ -320,7 +327,6 @@ impl ScopeSnapshot {
         store: &SharedStore,
         request: &LaunchRequest,
         agent: &str,
-        environment_roster: bool,
     ) -> AdapterResult<()> {
         let next = Self::capture(store, request, agent, &self.availability)?;
         if self.goal.as_ref().map(|g| g.version) != next.goal.as_ref().map(|g| g.version)
@@ -335,12 +341,6 @@ impl ScopeSnapshot {
                     .iter()
                     .map(|r| (r.id, r.version))
                     .collect::<Vec<_>>()
-            || (environment_roster
-                && serde_json::to_value(&self.projects).map_err(|_| {
-                    failure(ErrorKind::StateFailure, "Project serialization failed")
-                })? != serde_json::to_value(&next.projects).map_err(|_| {
-                    failure(ErrorKind::StateFailure, "Project serialization failed")
-                })?)
         {
             return Err(failure(
                 ErrorKind::StateConflict,
@@ -406,7 +406,8 @@ impl ScopeSnapshot {
                     &executable,
                     &cwd,
                     &args,
-                    crate::git::native_environment(),
+                    super::environment::ExecEnvironment::Ambient(crate::git::native_environment()),
+                    None,
                     deadline,
                     flag,
                     preparation,
