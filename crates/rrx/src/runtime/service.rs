@@ -32,14 +32,6 @@ impl Runtime {
                 hook();
             }
         }
-        let issue87_step = |label: &str, at: std::time::Instant| {
-            if at.elapsed() > std::time::Duration::from_millis(500) {
-                crate::issue87_trace::mark(&format!(
-                    "observe_drivers step {label} took {:?}",
-                    at.elapsed()
-                ));
-            }
-        };
         let at = std::time::Instant::now();
         let pending = self._drivers.observe_finished()?;
         issue87_step("observe_finished", at);
@@ -109,7 +101,7 @@ impl Runtime {
                 if runtime.stopping.load(Ordering::SeqCst) {
                     return Ok(());
                 }
-                crate::issue87_trace::stage(runtime.owner.state_path(), "attention");
+                issue87_stage(runtime.owner.state_path(), "attention");
                 let (next, more) = runtime
                     .owner
                     .store
@@ -123,7 +115,7 @@ impl Runtime {
                 sequence = next;
                 #[cfg(test)]
                 let issue87_attention = issue87_sweep.elapsed();
-                crate::issue87_trace::stage(runtime.owner.state_path(), "phases+success");
+                issue87_stage(runtime.owner.state_path(), "phases+success");
                 let pending = runtime.phases.reconcile_pending()?;
                 let nonsuccess_pending = runtime.phase_dispatcher.reconcile_nonsuccess()?;
                 let (success_actions, success_releases, mut success_pending) =
@@ -153,17 +145,17 @@ impl Runtime {
                 }
                 #[cfg(test)]
                 let issue87_phases = issue87_sweep.elapsed();
-                crate::issue87_trace::stage(runtime.owner.state_path(), "preparations");
+                issue87_stage(runtime.owner.state_path(), "preparations");
                 let preparations = runtime.phase_dispatcher.reconcile_preparations()?;
                 #[cfg(test)]
                 let issue87_preparations = issue87_sweep.elapsed();
-                crate::issue87_trace::stage(runtime.owner.state_path(), "observe_drivers");
+                issue87_stage(runtime.owner.state_path(), "observe_drivers");
                 let driver_pending = runtime.observe_task_drivers()?;
                 #[cfg(test)]
                 let issue87_drivers = issue87_sweep.elapsed();
                 // A refusal after reservation ends only this saved-cursor
                 // sweep. Its retained claim/closure owns the outcome.
-                crate::issue87_trace::stage(runtime.owner.state_path(), "admit_ready_tasks");
+                issue87_stage(runtime.owner.state_path(), "admit_ready_tasks");
                 let claims = if more {
                     0
                 } else {
@@ -185,7 +177,7 @@ impl Runtime {
                     ));
                 }
                 let issue87_root = runtime.owner.state_path().to_path_buf();
-                crate::issue87_trace::stage(&issue87_root, "preparation confirm");
+                issue87_stage(&issue87_root, "preparation confirm");
                 let wake = runtime.wake.clone();
                 drop(runtime);
                 // Only the selected custody Arcs remain: one admission try and
@@ -202,7 +194,7 @@ impl Runtime {
                 }
                 // A wake is only a hint. Every sweep reloads durable rows; full,
                 // lost or duplicated hints cannot ratify a launch or claim.
-                crate::issue87_trace::stage(&issue87_root, "idle wait");
+                issue87_stage(&issue87_root, "idle wait");
                 tokio::select! {
                     ()=wake.notified()=>{},
                     ()=tokio::time::sleep(delay)=>{},
@@ -256,3 +248,22 @@ impl Runtime {
         Ok(())
     }
 }
+
+// TEMPORARY Issue #87 measurement helpers (no-ops outside tests).
+#[cfg(test)]
+fn issue87_step(label: &str, at: std::time::Instant) {
+    if at.elapsed() > std::time::Duration::from_millis(500) {
+        crate::issue87_trace::mark(&format!(
+            "observe_drivers step {label} took {:?}",
+            at.elapsed()
+        ));
+    }
+}
+#[cfg(not(test))]
+fn issue87_step(_: &str, _: std::time::Instant) {}
+#[cfg(test)]
+fn issue87_stage(root: &std::path::Path, label: &str) {
+    crate::issue87_trace::stage(root, label);
+}
+#[cfg(not(test))]
+fn issue87_stage(_: &std::path::Path, _: &str) {}
