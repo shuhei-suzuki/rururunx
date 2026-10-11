@@ -25,6 +25,7 @@ run() {
     grep -E "^test .*$t \.\.\. " "$out/$name.log" | sed "s/^/  $name: /" | tee -a "$out/summary.txt"
   done
   grep -E '^    [a-z0-9_:]+$' "$out/$name.log" | sed "s/^/  FAILED $name: /" | tee -a "$out/summary.txt"
+  grep -E 'sweep stage now|observe_drivers step|service sweep body|bootstrap initialize timed out|rpc response .* timed out' "$out/$name.log" | head -60 | sed "s/^/  STALL $name: /" | tee -a "$out/summary.txt"
 }
 if [ "${ISSUE87_PLAN:-full}" = control ]; then
   CA4I=(ca4i_whole_registry_counts_actual_held_plan_across_two_pages)

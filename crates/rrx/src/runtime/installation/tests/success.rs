@@ -76,12 +76,14 @@ pub(super) fn release_unit(f: &ControlFixture, unit: &crate::execution::Executio
     std::fs::write(profile.output.join("fixture-release"), "release").unwrap();
 }
 pub(super) async fn wait_normal_bound(f: &ControlFixture, task: &Task) {
-    wait_for(
-        || links(f, task).first().map(String::as_str) == Some("session_bound"),
-        "SETUP: normal Bound absent",
-        60,
-    )
-    .await;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
+    while links(f, task).first().map(String::as_str) != Some("session_bound") {
+        if tokio::time::Instant::now() >= deadline {
+            crate::issue87_trace::dump_stage(f.owner.state_path());
+            panic!("SETUP: normal Bound absent");
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
 }
 
 /// SC1: the full SAME-operation chain, held start -> normal Bound -> owned
