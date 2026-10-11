@@ -411,6 +411,12 @@ impl TransportHandoff {
             );
             child.handoff = Handoff::Accepted;
         }
+        #[cfg(test)]
+        crate::issue87_trace::mark(&format!(
+            "start path: handoff accepted on {:?} unit {}",
+            std::thread::current().id(),
+            custody.plan.unit().id
+        ));
         custody.changed.notify_waiters();
         custody.plan.prepared().actor.release_gate();
         Ok(())
@@ -782,8 +788,26 @@ impl NativeSessions {
             f.effort.map(str::to_owned),
             profile,
         ));
+        #[cfg(test)]
+        let issue87_wait = std::time::Instant::now();
+        #[cfg(test)]
+        crate::issue87_trace::mark(&format!(
+            "start path: handoff wait begins on {:?} unit {issue87_unit}",
+            std::thread::current().id()
+        ));
+        #[cfg(test)]
+        let issue87_watch = crate::issue87_trace::watch(
+            format!("handoff wait unit {issue87_unit}"),
+            Duration::from_secs(7),
+        );
         let _ = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
+                #[cfg(test)]
+                crate::issue87_trace::mark(&format!(
+                    "start path: handoff wait polled after {:?} on {:?} unit {issue87_unit}",
+                    issue87_wait.elapsed(),
+                    std::thread::current().id()
+                ));
                 let changed = custody.changed.notified();
                 let done = {
                     let child = custody
@@ -799,6 +823,8 @@ impl NativeSessions {
             }
         })
         .await;
+        #[cfg(test)]
+        drop(issue87_watch);
         let handoff = custody
             .child
             .lock()
