@@ -1,6 +1,6 @@
 # rururunx Product Requirements
 
-**Version:** 0.8
+**Version:** 0.9
 **Status:** Draft
 **Project:** rururunx
 **CLI:** `rrx`
@@ -37,6 +37,7 @@ rururunx automates that supervision layer while preserving native agent behavior
 11. **High-performance runtime** — the MVP core runtime is implemented in **Rust** and must minimize orchestration overhead, idle resource usage, and process-management latency.
 12. **Goal-oriented autonomy** — rururunx owns long-running Goals above Tasks so the runtime can continue selecting, scheduling, and verifying work until explicit completion criteria are satisfied.
 13. **Multi-project by default** — one rururunx Runtime can supervise multiple repositories/projects, Goals, and Tasks concurrently while strictly isolating project rules, context, worktrees, credentials, and state.
+14. **Own execution before effects** — every runtime/Agent workload must enter an exact Execution Domain before external execution; cleanup settlement is distinct from execution success, and unsupported containment/delegation fails closed.
 
 ## 4. MVP success definition
 
@@ -53,6 +54,7 @@ Work is classified so optional features do not delay the core runtime.
 **MVP Core / release-blocking**
 
 - Rust runtime, durable state, Git/worktree safety, and Project isolation
+- Execution Domain ownership/containment, platform-specific Strong backends, delegated-operation settlement, and Task-local cancellation (#75/#76/#77/#78)
 - Claude Code, Codex, and Grok native adapters
 - QUICK / STANDARD / STRICT workflow execution with risk-based escalation
 - configurable Review Engine and cross-agent Approval Broker
@@ -81,6 +83,8 @@ Optional work may land before MVP if it does not delay or destabilize the core p
 Implementation priority is:
 
 ```text
+Execution Domain contract/backends (#75/#76/#77/#78)
+  ↓
 Native adapters (#5/#6/#7)
   ↓
 Workflow Engine (#8)
@@ -184,6 +188,23 @@ Capabilities may include:
 ### Workflow
 
 Required phases, gates, reviewer policy, and escalation behavior for a Task.
+
+### Execution Domain
+
+A durable Project/Goal/Task/attempt-scoped ownership boundary for externally executing work.
+
+An Execution Domain contains at least:
+
+- stable domain ID and exact attempt scope
+- execution profile and selected platform backend
+- backend identity established before external effects
+- revocation/lifecycle state
+- execution outcome independent from cleanup outcome
+- cleanup evidence/reference
+- links to persistent delegated operations
+- owner epoch for restart fencing
+
+Strong profiles must contain every reachable local execution path and govern or pre-effect block persistent external delegation. Native/Compatibility profiles remain separately qualified and must not inherit Strong guarantees from PID/process-group cleanup alone. See Issue #75 and the Execution Domain master design.
 
 ### Approval Request
 
