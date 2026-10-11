@@ -1293,6 +1293,15 @@ fn persist_saved_terminal(
     u64,
 )> {
     if let Some(phase) = phase {
+        // ISSUE87 causal control only: delay the terminal commit (and so the
+        // owner revoke) in a filtered serial run.
+        #[cfg(test)]
+        if let Some(ms) = std::env::var("ISSUE87_TERMINAL_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+        {
+            std::thread::sleep(std::time::Duration::from_millis(ms));
+        }
         let original = phase.terminal_plan(owner, terminal)?;
         let first = owner
             .store

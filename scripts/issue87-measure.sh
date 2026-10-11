@@ -27,6 +27,13 @@ if [ "${ISSUE87_PLAN:-full}" = control ]; then
   for d in 0 500 1000; do
     ISSUE87_GIT_GATE_DELAY_MS=$d run "control-ca4i-serial-delay$d" --test-threads=1 "${CA4I[@]}"
   done
+elif [ "${ISSUE87_PLAN:-full}" = control2 ]; then
+  SC7=(sc7_codex_ordinary_failure_installs_no_settlement)
+  for d in 0 10000; do
+    ISSUE87_TERMINAL_DELAY_MS=$d run "control-sc7-serial-delay$d" --test-threads=1 "${SC7[@]}"
+  done
+elif [ "${ISSUE87_PLAN:-full}" = t24 ]; then
+  for i in 1 2; do run "parallel-t24-$i" --test-threads=24; done
 elif [ "${ISSUE87_PLAN:-full}" = t12x2 ]; then
   for i in 1 2 3 4; do run "parallel-t12-$i" --test-threads=12; done
 else
