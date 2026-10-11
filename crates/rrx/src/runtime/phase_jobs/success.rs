@@ -430,6 +430,11 @@ impl Job {
                         plan
                     }
                     Err(_cause) => {
+                        #[cfg(test)]
+                        crate::issue87_trace::mark(&format!(
+                            "normal plan refused task {}: {_cause:#}",
+                            self.allocation.facts().scope.task_id
+                        ));
                         self.success_retry()?;
                         return Ok(Turn::Taken("normal plan refused"));
                     }
@@ -458,7 +463,14 @@ impl Job {
             Ok(()) => {
                 self.set_observation(InvocationObservation::Bound)?;
             }
-            Err(_cause) => self.success_retry()?,
+            Err(_cause) => {
+                #[cfg(test)]
+                crate::issue87_trace::mark(&format!(
+                    "binding write refused task {}: {_cause:#}",
+                    self.allocation.facts().scope.task_id
+                ));
+                self.success_retry()?
+            }
         }
         Ok(Turn::Taken(if plan.is_late() {
             "late bind"

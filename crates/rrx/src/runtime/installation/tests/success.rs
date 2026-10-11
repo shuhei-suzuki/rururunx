@@ -80,6 +80,11 @@ pub(super) async fn wait_normal_bound(f: &ControlFixture, task: &Task) {
     while links(f, task).first().map(String::as_str) != Some("session_bound") {
         if tokio::time::Instant::now() >= deadline {
             crate::issue87_trace::dump_stage(f.owner.state_path());
+            crate::issue87_trace::mark(&format!(
+                "Bound wait expired; turns={:?} jobs={:?}",
+                f.runtime.phase_jobs.observed_success_turns(),
+                f.runtime.phase_jobs.observed_jobs()
+            ));
             panic!("SETUP: normal Bound absent");
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
