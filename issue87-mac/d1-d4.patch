@@ -1,0 +1,143 @@
+From 9d5027ec6ac9f7d48c2ced108b21f859fca15afb Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 11 Oct 2026 11:07:21 +0000
+Subject: [PATCH 1/2] test(issue-87): D1 CA4i progress-stall bound, D2 SC7
+ window from the terminal, D3 SC10 per-Task bootstrap release
+
+CA4i: the owner-wide Git gate prepares the 128 claims one at a time with no
+total deadline by design, so setup fails only when neither the claim count nor
+the S1 count advances for 30 s, instead of a fixed 120 s total.
+
+SC7: the 8 s settlement-poll window starts when the non-success terminal has
+been committed and the owner revoked, not when the start task finishes.
+
+SC10: each peer's bootstrap is released at its own Task's Bound instead of
+after the last Task's, so another Task's bind latency no longer counts against
+the 30 s native bootstrap deadline. Completions are still released together.
+
+No production code, timeout or ownership semantics change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WkCYCfQN5ESKshajCzXndN
+---
+ .../installation/tests/activation/pages.rs    | 23 ++++++++++++++++---
+ .../src/runtime/installation/tests/success.rs | 11 +++++++--
+ 2 files changed, 29 insertions(+), 5 deletions(-)
+
+diff --git a/crates/rrx/src/runtime/installation/tests/activation/pages.rs b/crates/rrx/src/runtime/installation/tests/activation/pages.rs
+index 450960c..d202fe2 100644
+--- a/crates/rrx/src/runtime/installation/tests/activation/pages.rs
++++ b/crates/rrx/src/runtime/installation/tests/activation/pages.rs
+@@ -63,9 +63,26 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
+             Some(seams),
+         );
+         f.runtime.start().await.unwrap();
+-        let setup_end = tokio::time::Instant::now() + Duration::from_secs(120);
++        // The owner-wide Git gate prepares the 128 claims one at a time, with
++        // no total deadline by design (#87). Setup fails only when neither the
++        // claim count nor the S1 count advances for SETUP_STALL.
++        const SETUP_STALL: Duration = Duration::from_secs(30);
++        let mut last_counts = (0, 0);
++        let mut stall_end = tokio::time::Instant::now() + SETUP_STALL;
++        let mut sample = tokio::time::Instant::now();
+         let mut progress = tokio::time::Instant::now();
+         while observations.lock().unwrap().len() != 128 {
++            if tokio::time::Instant::now() >= sample {
++                let counts = (
++                    count(&f, "task_drivers"),
++                    observations.lock().unwrap().len(),
++                );
++                if counts != last_counts {
++                    last_counts = counts;
++                    stall_end = tokio::time::Instant::now() + SETUP_STALL;
++                }
++                sample = tokio::time::Instant::now() + Duration::from_secs(1);
++            }
+             if tokio::time::Instant::now() >= progress {
+                 let exits = f.runtime._drivers.pending_exits().unwrap();
+                 let labels = exits.iter().map(|e| e.label()).collect::<Vec<_>>();
+@@ -80,7 +97,7 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
+                 );
+                 progress = tokio::time::Instant::now() + Duration::from_secs(10);
+             }
+-            if tokio::time::Instant::now() >= setup_end {
++            if tokio::time::Instant::now() >= stall_end {
+                 let claims = count(&f, "task_drivers");
+                 let s1 = observations.lock().unwrap().len();
+                 let unfinished = f.runtime._drivers.observe_finished().unwrap();
+@@ -91,7 +108,7 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
+                 eprintln!("CA4i controlled setup shutdown: {shutdown:?}");
+                 finish(f).await;
+                 panic!(
+-                    "SETUP: fewer than 128 genuine retained S1 preparations; claims={claims} S1={s1} unfinished={unfinished}"
++                    "SETUP: genuine retained S1 preparations stalled for {SETUP_STALL:?} before 128; claims={claims} S1={s1} unfinished={unfinished}"
+                 );
+             }
+             tokio::time::sleep(Duration::from_millis(20)).await;
+diff --git a/crates/rrx/src/runtime/installation/tests/success.rs b/crates/rrx/src/runtime/installation/tests/success.rs
+index 65a2898..6ca7afd 100644
+--- a/crates/rrx/src/runtime/installation/tests/success.rs
++++ b/crates/rrx/src/runtime/installation/tests/success.rs
+@@ -348,15 +348,18 @@ async fn sc7_ordinary_failure(provider: &str) {
+     wait_normal_bound(&f, task).await;
+     let marked = stored_task(&f, task);
+     release_completion(&f, task);
++    // The window starts at the non-success terminal: the saved terminal is
++    // committed and the owner revoked. Until then a live owner costs no
++    // turn by design, so the start task's `finished` is too early (#87).
+     wait_for(
+         || {
+             f.runtime
+                 .phase_jobs
+                 .observed_jobs()
+                 .iter()
+-                .any(|j| j.finished)
++                .any(|j| j.owner_live == Some(false))
+         },
+-        "SETUP: ordinary-failure job did not finish",
++        "SETUP: ordinary-failure terminal not observed",
+         60,
+     )
+     .await;
+@@ -1617,6 +1620,10 @@ async fn sc10_four_projects_close_independently() {
+     f.runtime.start().await.unwrap();
+     for task in &tasks {
+         wait_normal_bound(&f, task).await;
++        // Release this peer's bootstrap at its own Bound. Holding it until
++        // the last Task is Bound would charge other Tasks' bind latency to
++        // its 30 s native bootstrap deadline (#87). Completions stay held.
++        release_bootstrap(&f, task);
+     }
+     let marked: Vec<_> = tasks.iter().map(|t| stored_task(&f, t)).collect();
+     for task in &tasks {
+-- 
+2.43.0
+
+
+From a58534e8cf86ed5f3cb87ee9e42eda31b2ab7f5b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 11 Oct 2026 23:29:41 +0000
+Subject: [PATCH 2/2] build(issue-87): D4 compile the bundled SQLite without
+ allocator statistics
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WkCYCfQN5ESKshajCzXndN
+---
+ .cargo/config.toml | 5 +++++
+ 1 file changed, 5 insertions(+)
+ create mode 100644 .cargo/config.toml
+
+diff --git a/.cargo/config.toml b/.cargo/config.toml
+new file mode 100644
+index 0000000..b9b81bb
+--- /dev/null
++++ b/.cargo/config.toml
+@@ -0,0 +1,5 @@
++[env]
++# The bundled SQLite (libsqlite3-sys) otherwise takes one process-global mutex
++# on every allocation and free to keep memory statistics, which rrx never
++# reads. Under parallel load that mutex blocks Tokio workers (Issue #87, D4).
++LIBSQLITE3_FLAGS = "-DSQLITE_DEFAULT_MEMSTATUS=0"
+-- 
+2.43.0
+
