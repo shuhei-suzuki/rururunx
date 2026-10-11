@@ -1,0 +1,34 @@
+# TEMPORARY Issue #87 measurement. Removed before the fix PR is proposed.
+name: Issue 87 measure
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        ref: [head, baseline-1c08445]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Keep the measurement script, then select the ref
+        run: |
+          cp scripts/issue87-measure.sh "$RUNNER_TEMP/measure.sh"
+          if [ "${{ matrix.ref }}" = baseline-1c08445 ]; then git checkout --detach 1c08445341d1ff06905a7c28d82f4207d04fa3d2; fi
+          git log -1 --format='measured ref %H %s'
+      - uses: dtolnay/rust-toolchain@1.91.1
+      - run: cargo test --locked -p rrx --lib --no-run
+      - name: Measure
+        run: bash "$RUNNER_TEMP/measure.sh" "$RUNNER_TEMP/logs"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue87-${{ matrix.os }}-${{ matrix.ref }}
+          path: ${{ runner.temp }}/logs

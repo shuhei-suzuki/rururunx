@@ -62,6 +62,7 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
             })),
             Some(seams),
         );
+        crate::issue87_trace::mark(&format!("CA4i one_held={one_held} start"));
         f.runtime.start().await.unwrap();
         let setup_end = tokio::time::Instant::now() + Duration::from_secs(120);
         let mut progress = tokio::time::Instant::now();
@@ -78,6 +79,7 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
                     count(&f, "execution_units"),
                     precommit_calls.load(Ordering::SeqCst)
                 );
+                crate::issue87_trace::mark("CA4i progress line above");
                 progress = tokio::time::Instant::now() + Duration::from_secs(10);
             }
             if tokio::time::Instant::now() >= setup_end {
@@ -96,6 +98,7 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
+        crate::issue87_trace::mark(&format!("CA4i one_held={one_held} S1=128 reached"));
         assert_eq!(
             count(&f, "task_drivers"),
             128,

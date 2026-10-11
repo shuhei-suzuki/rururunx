@@ -71,6 +71,8 @@ impl Runtime {
         pending.bind_claim(&claim)?;
         let runtime = Arc::downgrade(self);
         pending.spawn(move |lifetime,ack| Box::pin(async move {
+            #[cfg(test)]
+            let issue87_spawned=std::time::Instant::now();
             {
                 let runtime=runtime.upgrade().ok_or_else(||anyhow::anyhow!("Runtime ended before Driver startup"))?;
                 let _admission=tokio::select! {
@@ -84,7 +86,13 @@ impl Runtime {
                 lifetime.activate(ack,&claim)?;
                 // Runtime and Store guards end BEFORE Source/helper awaits.
             }
+            #[cfg(test)]
+            let issue87_task=claim.task().id;
+            #[cfg(test)]
+            if issue87_spawned.elapsed()>Duration::from_millis(500) { crate::issue87_trace::mark(&format!("driver {issue87_task} startup admission waited {:?}",issue87_spawned.elapsed())); }
             let result=drive(claim,lifetime).await;
+            #[cfg(test)]
+            crate::issue87_trace::mark(&format!("driver {issue87_task} drive returned after {:?} ok={}",issue87_spawned.elapsed(),result.is_ok()));
             #[cfg(test)]
             if let Err(error)=&result { eprintln!("actual retained Driver outcome: {error:#}"); }
             result
@@ -115,6 +123,8 @@ async fn drive(claim: PendingDriverClaim, lifetime: WorkerLifetime) -> Result<()
         ()=lifetime.cancelled()=>return Err(anyhow::anyhow!("Task Driver cancelled before Source preparation")),
         result=sources.prepare_driven(task,&provider,&lifetime)=>{result?;}
     }
+    #[cfg(test)]
+    crate::issue87_trace::mark(&format!("driver {task} prepared"));
     tokio::select! {
         biased;
         ()=lifetime.cancelled()=>return Err(anyhow::anyhow!("Task Driver cancelled before Workflow initialization")),

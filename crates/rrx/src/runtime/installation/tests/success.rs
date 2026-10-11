@@ -344,10 +344,13 @@ async fn sc7_ordinary_failure(provider: &str) {
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
+    crate::issue87_trace::mark(&format!("SC7 {provider} start"));
     f.runtime.start().await.unwrap();
     wait_normal_bound(&f, task).await;
+    crate::issue87_trace::mark(&format!("SC7 {provider} normal bound"));
     let marked = stored_task(&f, task);
     release_completion(&f, task);
+    crate::issue87_trace::mark(&format!("SC7 {provider} completion released"));
     wait_for(
         || {
             f.runtime
@@ -360,6 +363,7 @@ async fn sc7_ordinary_failure(provider: &str) {
         60,
     )
     .await;
+    crate::issue87_trace::mark(&format!("SC7 {provider} job finished"));
     // Give the Root sweep and the Driver several passes.
     // Wake the service far more often than 5 s: only the job's own re-poll
     // rule, not the service cadence, may bound the settlement polls.
@@ -379,6 +383,10 @@ async fn sc7_ordinary_failure(provider: &str) {
         .filter(|(_, label)| *label == "settlement poll")
         .count();
     let bound = polled.elapsed().as_secs().div_ceil(5) as usize + 1;
+    crate::issue87_trace::mark(&format!(
+        "SC7 {provider} window end: polls={polls} turns={:?} jobs={jobs:?}",
+        f.runtime.phase_jobs.observed_success_turns()
+    ));
     assert!(
         (1..=bound).contains(&polls),
         "SC5(c) {provider}: {polls} settlement polls, bound {bound}"
@@ -415,7 +423,8 @@ async fn sc7_ordinary_failure(provider: &str) {
         marked.version,
         "SC7 {provider}: Task unchanged"
     );
-    let _ = f.runtime.shutdown().await;
+    let issue87_shutdown = f.runtime.shutdown().await;
+    crate::issue87_trace::mark(&format!("SC7 {provider} shutdown {issue87_shutdown:?}"));
     finish(f).await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -1614,18 +1623,32 @@ async fn sc10_four_projects_close_independently() {
         &["worker", "worker-codex", "worker", "worker-codex"],
     )
     .await;
+    crate::issue87_trace::mark("SC10 start");
     f.runtime.start().await.unwrap();
     for task in &tasks {
         wait_normal_bound(&f, task).await;
+        crate::issue87_trace::mark(&format!("SC10 {} normal bound", task.id));
     }
     let marked: Vec<_> = tasks.iter().map(|t| stored_task(&f, t)).collect();
     for task in &tasks {
         release_completion(&f, task);
     }
+    crate::issue87_trace::mark("SC10 completions released");
     let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
     for task in &tasks {
+        let mut issue87_seen = Vec::new();
         while links(&f, task).last().map(String::as_str) != Some("phase_closed") {
+            let issue87_links = links(&f, task);
+            if issue87_links != issue87_seen {
+                crate::issue87_trace::mark(&format!("SC10 {} links {issue87_links:?}", task.id));
+                issue87_seen = issue87_links;
+            }
             if tokio::time::Instant::now() > deadline {
+                crate::issue87_trace::mark(&format!(
+                    "SC10 timeout; turns={:?} shutdown={:?}",
+                    f.runtime.phase_jobs.observed_success_turns(),
+                    f.runtime.shutdown().await
+                ));
                 let (_, snapshot) = workflow(&f, task);
                 panic!(
                     "SC10: Task {} did not close; links {:?}; attempt {:?}; jobs {:?}",
@@ -1641,6 +1664,7 @@ async fn sc10_four_projects_close_independently() {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }
+    crate::issue87_trace::mark("SC10 all closed");
     for (task, marked) in tasks.iter().zip(&marked) {
         assert_eq!(
             links(&f, task),

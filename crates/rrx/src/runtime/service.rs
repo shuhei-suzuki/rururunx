@@ -70,13 +70,16 @@ impl Runtime {
         let running = self.running.clone();
         running.store(true, Ordering::SeqCst);
         *slot = Some(tokio::spawn(async move {
+            let issue87_result = async move {
             let _running = Running(running);
             let mut sequence = 0;
             let mut backoff = 0;
             loop {
                 let Some(runtime) = retained.upgrade() else {
-                    return Ok(());
+                    return Ok::<(), anyhow::Error>(());
                 };
+                #[cfg(test)]
+                let issue87_sweep = std::time::Instant::now();
                 #[cfg(test)]
                 super::stop::park::wait(runtime.owner.state_path());
                 if runtime.stopping.load(Ordering::SeqCst) {
@@ -137,6 +140,13 @@ impl Runtime {
                         || claims > 0,
                     &mut backoff,
                 );
+                #[cfg(test)]
+                if issue87_sweep.elapsed() > Duration::from_millis(1000) {
+                    crate::issue87_trace::mark(&format!(
+                        "service sweep body took {:?} (pending={pending} nonsuccess={nonsuccess_pending} success={success_pending} drivers={driver_pending} claims={claims})",
+                        issue87_sweep.elapsed()
+                    ));
+                }
                 let wake = runtime.wake.clone();
                 drop(runtime);
                 // Only the selected custody Arcs remain: one admission try and
@@ -159,6 +169,13 @@ impl Runtime {
                 }
                 sequence = 0;
             }
+            }
+            .await;
+            #[cfg(test)]
+            if let Err(error) = &issue87_result {
+                crate::issue87_trace::mark(&format!("service loop exited with error: {error:#}"));
+            }
+            issue87_result
         }));
         Ok(())
     }
