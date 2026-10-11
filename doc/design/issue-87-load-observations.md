@@ -160,6 +160,34 @@ The macOS SC10 failure (run 1) is a different mode from the one D3 fixes: `SETUP
 - **SC7 (c3) and 12 other single-Task tests ("pattern P")**: four gate holds after `driver … prepared` (the last 4–9 s), then about 30 s with no gate activity and an idle sweep. Then `native rpc response 1 timed out (30 s)`, the owner is revoked with no settlement, and the test fails `SETUP: normal Bound absent` or `normal write not reached`. The test holds the peer's bootstrap until Bound, so the 30 s production deadline measures the time from bootstrap start to Bound. What delays Bound here is **not yet known**: it is not the gate and not the sweep.
 - Every one of these failures is on the GitHub macOS runner (3 vCPU) with 12 test threads. `runtime::installation` setup failures of the same two shapes also hit tests outside #87 (`sc1`, `sc4`, `sc8`, `br1`, `sc11n`, `fm_rb`, `ca1`/`ca3`/`ca4d`, among others).
 
+## 6b. D4 — the macOS start stall (proposal, needs owner approval before code)
+
+**Where the time goes** (start-path marks, commit `64aa2e8`, run 38147169094, 9 macOS t12 runs; 28 stalled units). Gate → spawn → `initialize` sent is always under 2 s. Transport admission takes µs, with no registration retry. The Core accepts the handoff *before* it sends `initialize` and wakes the start task. The start task's 5 s handoff wait then does not resume for 30–36 s. It resumes only after the 30 s rpc or bootstrap deadline has revoked the owner, so `start_phase` returns late, the bind is refused ("lacks genuine live registration") and the test reports `normal Bound absent` or `normal write not reached`. The unanswered `initialize` is a consequence, not a cause: the fixture holds `initialize` until the test sees Bound.
+
+**What the workers are doing** (commit `f23e781`/`9a4efb4`: a 7 s watchdog on the handoff wait runs macOS `sample` on the test process). In every stall, most busy tokio workers and test threads are blocked in `__psynch_mutexwait` on one pthread mutex. 426 of 447 sampled mutex waits enter through `sqlite3_mutex_enter`. The callers are `sqlite3Malloc` (≈300), `sqlite3_free` (≈90) and `pcache1` (≈30). This is SQLite's process-global allocator mutex (`mem0.mutex`). The bundled SQLite takes it on every allocation and free because memory statistics are on by default (`SQLITE_DEFAULT_MEMSTATUS=1`). With 12 test processes' worth of Store work in one process on 3 vCPUs, every Store call queues on it, and tokio workers block synchronously inside Store calls.
+
+**Inferred, not directly observed:** the start task is woken by the Core's `accept()` on the Core's worker, which puts it in that worker's non-stealable LIFO slot. It stays there while that worker is blocked in Store work. Why the resume coincides with the revoke is not established.
+
+**Causal control** (commit `9a4efb4`, run 38154132010; same code, only the SQLite build flag differs):
+
+| macOS runner, t12 | runs | handoff stalls ≥7 s | rpc/bootstrap 30 s timeouts | CA4i / SC7 codex / SC10 | `runtime::installation` failures | run time |
+| --- | --- | --- | --- | --- | --- | --- |
+| default (`MEMSTATUS=1`) | 6 | 18 | 12 | 6/6, 6/6, **5/6** | 11 (Bound/normal-write/timeout shapes) | 553–773 s |
+| `LIBSQLITE3_FLAGS=-DSQLITE_DEFAULT_MEMSTATUS=0` | 9 | **0** | **0** | 9/9, 9/9, 9/9 | 3, none of these shapes: 2× `os error 35` (EF1, #89), 1× helper qualification failed | 483–608 s |
+
+**Change.** Add `.cargo/config.toml` with `[env] LIBSQLITE3_FLAGS = "-DSQLITE_DEFAULT_MEMSTATUS=0"`, so the bundled SQLite (`libsqlite3-sys` build script) is compiled without allocator statistics. This covers builds and tests, CI and local, on both OSes.
+- **Production effect:** SQLite no longer keeps memory statistics. rrx calls none of `sqlite3_memory_used`, `sqlite3_status` or the soft or hard heap limits (grep: none). SQLite's own documentation recommends `MEMSTATUS=0` for performance.
+- **What it does not change:** no timeout, ownership, auth, CAS, marker, #19 or process-custody check, and no test.
+- **Limit:** the setting applies to builds run inside this workspace (`cargo build`, `cargo test`, `cargo install --path`). An explicitly set `LIBSQLITE3_FLAGS` in the environment takes precedence.
+
+**Rejected alternative:** `sqlite3_config(SQLITE_CONFIG_MEMSTATUS, 0)` at startup. It needs `unsafe` FFI, and the workspace forbids `unsafe_code`.
+
+**Not in D4 (recorded):** Store calls block tokio workers synchronously, which exposes a task in a worker's LIFO slot to that block. D4 removes the cross-thread convoy that made those blocks last tens of seconds. It does not restructure Store access.
+
+**Verification.**
+- **m8 (D4 reverted):** this is the default row above, measured. Expected: handoff stalls return.
+- **After approval:** at the final head, run macOS t12 ×9 and macOS default threads ×10. Expected: 0 handoff stalls and CA4i/SC7/SC10 all pass. Then run the owner's Mac ×10.
+
 ## 7. Verification plan
 
 `cargo fmt --all -- --check`, `cargo clippy --locked --workspace --all-targets -- -D warnings` and `cargo test --locked --workspace` on Linux (non-root) and macOS through CI. In addition, the macOS parallel rrx lib at the default thread count 10 times and with `--test-threads=12` 3 times at the fixed head, recording CA4i/SC7/SC10 results and refs here. On the owner's Mac (18 threads) this needs `ulimit -n 10240` in that shell (§8).
