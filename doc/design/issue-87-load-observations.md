@@ -175,5 +175,6 @@ Recorded for triage, not addressed here:
 - `c_s1e2_bind_replaces_known_leftovers_and_refuses_foreign` (`control endpoint already published`, EAGAIN)
 - Docker cleanup tests, `sc9d`/`sc4n` setup
 - `retained_inspection_inflight_…` (`ParseLength { len: 0 }`)
+- `codex::session::tests::custody_mechanics::queued_revoked_create_retires_before_actor_error_and_removes_no_work_entry` (`owned mechanical observation did not arrive`, `codex/custody_tests.rs:63`), macOS regular CI on `91ce59f`, 1 of 807
 - Owner's Mac, default `ulimit -n` 256 with 18 test threads: 530 tests fail with `Too many open files`. A developer-environment limit, not #87; with `ulimit -n 10240` there were no EMFILE errors in 5 runs
 - Owner's Mac with 10240, run 1: `grok::environment_tests` ×5 (`watchdog_expired` ≈60 s; #89 item 3 family), `docker_filter_and_operation_identity_are_independently_checked`, `ca3b_original_composition_cross_pairs_refuse_before_store` (`original marker and Bound absent`)
