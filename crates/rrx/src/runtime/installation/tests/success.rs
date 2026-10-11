@@ -526,7 +526,9 @@ fn write_pause_keeps_a_release_before_arrival() {
     });
     let outcome = returned.recv_timeout(Duration::from_secs(5));
     if outcome.is_err() {
-        // Reclaim the parked thread before failing; the join is then bounded.
+        // A parked arrival waits only for state 2; releasing again wakes it,
+        // so the join below returns once the thread is scheduled. The 5 s
+        // bound is on the arrival, not on `join` itself.
         pause.release();
     }
     arrival.join().unwrap();
@@ -618,9 +620,10 @@ enum Sc3pOrder {
     TerminalFirst,
 }
 
-/// SC3-P: a Goal change through the existing lifecycle writer while the normal
-/// write is held makes that write refuse and every later plan refuse on the
-/// original parent projection: zero links, no frame refresh. The Core terminal
+/// SC3-P: a Goal Pause through the existing lifecycle writer while the normal
+/// write is held makes that held write and every later normal plan refuse:
+/// zero links, no frame refresh. Which planner conjunct refuses first is not
+/// pinned here; several independently refuse after the Pause. The Core terminal
 /// that the paused Goal causes is held until a later plan has been refused
 /// while the owner is live, then observed to complete.
 async fn sc3p_parent_change(provider: &str, order: Sc3pOrder) {
