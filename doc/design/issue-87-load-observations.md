@@ -119,9 +119,37 @@ The three knobs (an extra gate hold, a terminal delay, a completion-release dela
 | m2 D1 without the stall bound (wait unbounded) | C87-2 does not finish (job timeout) |
 | m3 D2 reverted (window from `finished`) | C87-3 FAIL |
 | m4 production: `settlement_turn` returns `Skipped` for a revoked owner without a settlement | D2 SC7 FAIL with 0 polls. This shows D2 still detects a real missing poll |
-| m5 production: `binding_turn` skips the unbound settlement poll | D2 SC7 FAIL (whichever path the provider takes) |
+| m5 production: `binding_turn` skips the unbound settlement poll | D2 SC7 FAIL (whichever path the provider takes). Measured: survives, see results below |
 | m6 D3 reverted (shared bootstrap release) | C87-6 FAIL |
 | m7 production: `settlement_turn` never installs the continuation (always `settlement poll`) | D3 SC10 FAIL (`did not close`). This shows D3 still detects a Task that really cannot close |
+
+### Results at the D1–D3 head (`3428dc9`, Issue 87 measure run 38134685896, plan `verify`, both OSes identical)
+
+| Run | Linux | macOS |
+| --- | --- | --- |
+| CA4i, SC7 codex/claude, SC10 unchanged inputs, serial | pass (127 s) | pass |
+| C87-1 gate +1000 ms | pass (327 s) | pass (364 s) |
+| C87-2 10th lease never ends | FAIL in 46 s (stall bound) | FAIL in 48 s |
+| C87-3 / C87-4 terminal +10 s | pass / pass | pass / pass |
+| C87-6 release +35 s | pass (49 s) | pass (54 s) |
+| m1 fixed 120 s, gate +1000 ms | FAIL (124 s) | FAIL (128 s) |
+| m2 unbounded, 10th lease never ends | does not finish (`timeout 600`, exit 124) | not run (no `timeout`/`gtimeout` on the runner) |
+| m3 window from `finished`, terminal +10 s | FAIL: 0 polls, `owner_live: Some(true)` at window end | same |
+| m4 `settlement_turn` skips without a settlement | FAIL both providers: 0 polls, `owner_live: Some(false)` | same |
+| m5 `binding_turn` skips the unbound poll | **survives** (both providers pass) | survives |
+| m6 shared bootstrap release, +35 s | FAIL `did not close`, `settled: Some(false)` | same |
+| m7 continuation never installed | FAIL `did not close`, `settled: Some(true)`, settlement polls only | same |
+
+m5 survives because SC7's Task is Bound (`observation: Bound` in every snapshot), so its turns go through `settlement_turn`, never the unbound branch of `binding_turn`. SC7 therefore does not cover that branch; the expectation in §6 was wrong. m4 is the mutant that shows D2 still detects a missing poll. Rust CI (fmt, clippy `-D warnings`, test) on `3428dc9`: green on both OSes (run 38134685906).
+
+### Parallel runs at the D1–D3 head (`--test-threads=12`)
+
+| Job | CA4i | SC7 codex | SC10 | other failures |
+| --- | --- | --- | --- | --- |
+| Linux ×4 | 4/4 | 4/4 | 4/4 | run 3: `cli::endpoint` ×2 (EAGAIN, §8) |
+| macOS runner ×3 | 3/3 | 3/3 | **2/3** | §8 |
+
+The macOS SC10 failure (run 1) is a different mode from the one D3 fixes: `SETUP: normal Bound absent` after the 60 s `wait_normal_bound`. No production deadline fired in SC10. The four units kept taking the gate (holds of 1.4–9.9 s, waits up to 13 s), but no Task was Bound within 60 s. In the same run, single-Task tests that also hold the peer's bootstrap until Bound failed when the 30 s bootstrap deadline fired before Bound (`sc4_codex`, `sc4n_codex`, `scr_codex`; `sc4_claude` in run 3). And `ca6` (run 2) recorded one service sweep body blocked for 40.5 s inside `observe_task_drivers`. Since Bound is written by a sweep, a sweep blocked for that long explains both the missing Bound and the expired bootstrap deadline. This is a hypothesis under measurement: commit `2b47305` adds step timings inside `observe_task_drivers` and dumps the sweep's current stage when the Bound wait fails. Nothing is changed for it until the cause is shown.
 
 ## 7. Verification plan
 
