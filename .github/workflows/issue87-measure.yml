@@ -24,7 +24,8 @@ jobs:
           if [ "${{ matrix.ref }}" = baseline-1c08445 ]; then git checkout --detach 1c08445341d1ff06905a7c28d82f4207d04fa3d2; fi
           git log -1 --format='measured ref %H %s'
       - uses: dtolnay/rust-toolchain@1.91.1
-      - run: cargo test --locked -p rrx --lib --no-run
+      - run: cargo build --locked --workspace
+      - run: cargo test --locked --workspace --no-run
       - name: Measure
         run: bash "$RUNNER_TEMP/measure.sh" "$RUNNER_TEMP/logs"
       - if: always()

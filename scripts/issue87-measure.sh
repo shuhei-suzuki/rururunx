@@ -11,7 +11,11 @@ run() {
   cargo test --locked -p rrx --lib -- "$@" >"$out/$name.log" 2>&1
   local code=$?
   echo "RUN $name exit=$code seconds=$(( $(date +%s) - start )) args=$*" | tee -a "$out/summary.txt"
-  grep -E '^test result:' "$out/$name.log" | tee -a "$out/summary.txt"
+  # Re-executed child test binaries print their own "test result" lines;
+  # only the last one belongs to the harness run.
+  grep -E '^test result:' "$out/$name.log" | tail -1 | tee -a "$out/summary.txt"
+  grep -nE 'error(\[|:)|signal|SIG[A-Z]+|abort|process didn.t exit|^failures:' "$out/$name.log" | head -20 | sed "s/^/  DIAG $name: /" | tee -a "$out/summary.txt"
+  tail -8 "$out/$name.log" | sed "s/^/  TAIL $name: /" | tee -a "$out/summary.txt"
   for t in "${TARGETS[@]}"; do
     grep -E "^test .*$t \.\.\. " "$out/$name.log" | sed "s/^/  $name: /" | tee -a "$out/summary.txt"
   done
