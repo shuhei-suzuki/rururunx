@@ -10,11 +10,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-latest, ref: head, plan: t12x3, shard: a }
-          - { os: macos-latest, ref: head, plan: t12x3, shard: b }
-          - { os: macos-latest, ref: head, plan: t12x3, shard: c }
+          - { os: macos-latest, ref: head, plan: t12x3, shard: a, sqlite: "" }
+          - { os: macos-latest, ref: head, plan: t12x3, shard: b, sqlite: "" }
+          # Control: SQLite's process-global allocation-statistics mutex off.
+          - { os: macos-latest, ref: head, plan: t12x3, shard: c-memstatus0, sqlite: "-DSQLITE_DEFAULT_MEMSTATUS=0" }
+          - { os: macos-latest, ref: head, plan: t12x3, shard: d-memstatus0, sqlite: "-DSQLITE_DEFAULT_MEMSTATUS=0" }
+          - { os: macos-latest, ref: head, plan: t12x3, shard: e-memstatus0, sqlite: "-DSQLITE_DEFAULT_MEMSTATUS=0" }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 340
+    env:
+      LIBSQLITE3_FLAGS: ${{ matrix.sqlite }}
     steps:
       - uses: actions/checkout@v4
         with:

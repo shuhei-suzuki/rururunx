@@ -79,15 +79,48 @@ pub(crate) fn watch(label: String, after: std::time::Duration) -> Watch {
         });
     Watch(done)
 }
-/// One line per sampled thread: its deepest frame and deepest rrx frame.
+/// One line per busy sampled thread: its deepest call path, leaf first.
 fn condense_sample(text: &str) -> Vec<String> {
-    let mut out = vec![];
-    type Thread = (String, (usize, String), (usize, String));
-    fn flush(t: Option<Thread>, out: &mut Vec<String>) {
-        if let Some((name, leaf, rrx)) = t {
-            out.push(format!("{name} | leaf: {} | rrx: {}", leaf.1, rrx.1));
+    fn short(frame: &str) -> String {
+        let name = frame.split("  (in ").next().unwrap_or(frame).trim();
+        let name = match name.rfind("::h") {
+            Some(i) if name.len() - i == 19 => &name[..i],
+            _ => name,
+        };
+        let place = frame
+            .split_whitespace()
+            .rev()
+            .find(|t| t.contains(".rs:"))
+            .unwrap_or("");
+        let name: String = name.chars().take(110).collect();
+        if place.is_empty() {
+            name
+        } else {
+            format!("{name} @{place}")
         }
     }
+    struct Thread {
+        name: String,
+        path: Vec<(usize, String)>,
+        best: (usize, Vec<String>),
+    }
+    fn flush(t: Option<Thread>, out: &mut Vec<String>) {
+        let Some(t) = t else { return };
+        let leaf = t.best.1.first().cloned().unwrap_or_default();
+        if [
+            "__psynch_cvwait",
+            "kevent",
+            "__semwait_signal",
+            "semaphore_timedwait_trap",
+        ]
+        .iter()
+        .any(|idle| leaf.starts_with(idle))
+        {
+            return;
+        }
+        out.push(format!("{} :: {}", t.name, t.best.1.join(" < ")));
+    }
+    let mut out = vec![];
     let mut thread: Option<Thread> = None;
     for line in text.lines() {
         if line.starts_with("Total number in stack") {
@@ -96,18 +129,29 @@ fn condense_sample(text: &str) -> Vec<String> {
         let body = line.trim_start_matches(|c: char| " +!:|".contains(c));
         let depth = line.len() - body.len();
         let frame = body.split_once(' ').map_or(body, |(_, rest)| rest).trim();
-        let frame: String = frame.chars().take(170).collect();
         if body.contains("Thread_") && depth <= 6 {
             flush(thread.take(), &mut out);
-            thread = Some((frame, (0, String::new()), (0, String::new())));
+            thread = Some(Thread {
+                name: frame.chars().take(80).collect(),
+                path: vec![],
+                best: (0, vec![]),
+            });
             continue;
         }
-        if let Some((_, leaf, rrx)) = thread.as_mut() {
-            if depth > leaf.0 {
-                *leaf = (depth, frame.clone());
+        if let Some(t) = thread.as_mut() {
+            while t.path.last().is_some_and(|(d, _)| *d >= depth) {
+                t.path.pop();
             }
-            if frame.contains("rrx::") && depth > rrx.0 {
-                *rrx = (depth, frame);
+            t.path.push((depth, short(frame)));
+            if depth > t.best.0 {
+                let chain = t
+                    .path
+                    .iter()
+                    .rev()
+                    .take(18)
+                    .map(|(_, f)| f.clone())
+                    .collect();
+                t.best = (depth, chain);
             }
         }
     }
