@@ -383,6 +383,25 @@ async fn sc7_ordinary_failure(provider: &str) {
         .filter(|(_, label)| *label == "settlement poll")
         .count();
     let bound = polled.elapsed().as_secs().div_ceil(5) as usize + 1;
+    if polls == 0 {
+        // ISSUE87 measurement only: when does the owner stop being live?
+        let issue87_after = std::time::Instant::now();
+        while issue87_after.elapsed() < Duration::from_secs(90)
+            && f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .any(|j| j.owner_live == Some(true))
+        {
+            f.runtime.wake.notify_one();
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        crate::issue87_trace::mark(&format!(
+            "SC7 {provider} owner_live cleared {:?} after window end; turns now {:?}",
+            issue87_after.elapsed(),
+            f.runtime.phase_jobs.observed_success_turns()
+        ));
+    }
     crate::issue87_trace::mark(&format!(
         "SC7 {provider} window end: polls={polls} turns={:?} jobs={jobs:?}",
         f.runtime.phase_jobs.observed_success_turns()

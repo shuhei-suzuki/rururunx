@@ -21,14 +21,18 @@ run() {
   done
   grep -E '^    [a-z0-9_:]+$' "$out/$name.log" | sed "s/^/  FAILED $name: /" | tee -a "$out/summary.txt"
 }
-for i in 1 2 3; do run "parallel-default-$i"; done
-for i in 1 2 3; do run "parallel-t12-$i" --test-threads=12; done
-for i in 1 2 3; do run "serial-targets-$i" --test-threads=1 "${TARGETS[@]}"; done
+if [ "${ISSUE87_PLAN:-full}" = t12x2 ]; then
+  for i in 1 2; do run "parallel-t12-$i" --test-threads=12; done
+else
+  for i in 1 2 3; do run "parallel-default-$i"; done
+  for i in 1 2 3; do run "parallel-t12-$i" --test-threads=12; done
+  for i in 1 2 3; do run "serial-targets-$i" --test-threads=1 "${TARGETS[@]}"; done
+fi
 echo "===== failure sections ====="
 for f in "$out"/*.log; do
   if grep -q '^failures:' "$f"; then
     echo "##### $(basename "$f")"
-    sed -n '/^failures:$/,$p' "$f" | grep -vE '^test .* \.\.\. ok$' | head -400
+    sed -n '/^failures:$/,$p' "$f" | grep -vE '^test .* \.\.\. ok$' | grep -vE 'startup admission waited|drive returned after|^actual retained Driver outcome: Task Driver cancelled' | head -1500
   fi
 done
 echo "===== summary ====="
