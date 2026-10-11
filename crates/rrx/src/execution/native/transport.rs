@@ -10,7 +10,7 @@ enum Creation {
     ReturnedChild,
     SpawnErr(&'static str),
 }
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Handoff {
     None,
     Offered,
@@ -560,8 +560,21 @@ impl NativeSessions {
         preparation.retain_transport(custody.clone(), &prepared)?;
         let launch = plan.launch().clone();
         let mut backoff = 100u64;
+        #[cfg(test)]
+        let issue87_unit = plan.unit().id;
+        #[cfg(test)]
+        crate::issue87_trace::mark(&format!(
+            "start path: transport planned unit {issue87_unit}"
+        ));
         let (admission, known) = loop {
+            #[cfg(test)]
+            let issue87_enter = std::time::Instant::now();
             let admission = launch.admission().enter(launch.clone()).await?;
+            #[cfg(test)]
+            crate::issue87_trace::mark(&format!(
+                "start path: transport admission entered after {:?} unit {issue87_unit}",
+                issue87_enter.elapsed()
+            ));
             admission.validate_for(&launch)?;
             prepared.actor.validate_open()?;
             ensure!(
@@ -610,7 +623,11 @@ impl NativeSessions {
                     break (admission, known);
                 }
                 Ok(None) => anyhow::bail!("SAME transport registration images diverged; Held"),
-                Err(_) => {
+                Err(_issue87_error) => {
+                    #[cfg(test)]
+                    crate::issue87_trace::mark(&format!(
+                        "start path: transport registration failed, backoff {backoff} ms unit {issue87_unit}: {_issue87_error:#}"
+                    ));
                     *custody
                         .registration_uncertain
                         .lock()
@@ -657,6 +674,10 @@ impl NativeSessions {
             }
         }
         drop(admission);
+        #[cfg(test)]
+        crate::issue87_trace::mark(&format!(
+            "start path: native spawn done (open={open}) unit {issue87_unit}"
+        ));
         // Every subsequent local is child-free; no await until Core owns child.
         let pipes = {
             let mut child = custody
@@ -783,6 +804,10 @@ impl NativeSessions {
             .lock()
             .map_err(|_| anyhow::anyhow!("transport child poisoned"))?
             .handoff;
+        #[cfg(test)]
+        crate::issue87_trace::mark(&format!(
+            "start path: handoff {handoff:?} unit {issue87_unit}"
+        ));
         // Offered has no factual settlement yet. The SAME retained custody
         // records it on a later wake; timeout is not a lost-ownership inference.
         if handoff != Handoff::Offered {

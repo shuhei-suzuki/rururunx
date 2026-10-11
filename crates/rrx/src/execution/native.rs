@@ -263,6 +263,8 @@ impl NativeSessions {
             .begin_phase_preparation(launch, custody.clone())
             .await?;
         #[cfg(test)]
+        crate::issue87_trace::mark("start path: phase preparation done");
+        #[cfg(test)]
         self.observe_preparation(PreparationObservation::BeforeTransport)
             .await;
         self.start_prepared_transport(&custody, prepared).await
@@ -2145,6 +2147,11 @@ impl Core {
         profile: &resources::ResourceProfile,
     ) -> Result<(WorkOutcome, Disposition, Option<Value>)> {
         self.authority()?;
+        #[cfg(test)]
+        crate::issue87_trace::mark(&format!(
+            "start path: codex initialize sent unit {}",
+            self.unit.id
+        ));
         let init=self.boot_call("initialize",json!({"clientInfo":{"name":"rururunx","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}}),None).await?;
         crate::codex::managed::initialization(&init)
             .context(NativeFailure::UnsupportedCapability)?;
@@ -2296,6 +2303,11 @@ impl Core {
     ) -> Result<(WorkOutcome, Disposition, Option<Value>)> {
         self.authority()?;
         let initialize = claude_wire::control("initialize", "rrx-initialize");
+        #[cfg(test)]
+        crate::issue87_trace::mark(&format!(
+            "start path: claude initialize sent unit {}",
+            self.unit.id
+        ));
         if self.phase.is_some() {
             self.send_effect(&initialize, None, "native_setup").await?;
         } else {
