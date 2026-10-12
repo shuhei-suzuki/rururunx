@@ -232,6 +232,11 @@ async fn stopped_with(
     .await;
     let config = f.runtime.config.clone();
     let state = f.owner.state_path().to_path_buf();
+    // The Core terminal is caused by the shutdown, not by anything before it.
+    assert!(
+        !terminal.0.reached(),
+        "SETUP: the Core terminal was reached before shutdown"
+    );
     let stopped = f.runtime.shutdown().await;
     // Joined supervisor and zero Drivers, Native work still owned: the only
     // custody owner left is the Runtime's phase jobs.
@@ -273,6 +278,10 @@ async fn stopped_with(
         ..
     } = f;
     drop(runtime);
+    // Postcondition: in this fixture the Runtime drop ends the custody at once
+    // (the phase jobs are its last strong owner once the start task finished).
+    // The wait is what makes the refusal below certain if any other strong
+    // holder were still alive; do not remove it.
     wait_for(
         || custody.upgrade().is_none(),
         "SETUP: the original preparation custody did not end with the Runtime",
