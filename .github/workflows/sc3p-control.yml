@@ -27,7 +27,8 @@ jobs:
           if [ "${{ matrix.arm }}" = d4-off ]; then echo "LIBSQLITE3_FLAGS=" >> "$GITHUB_ENV"; fi
       - run: cargo test --locked -p rrx --lib --no-run
       - name: Confirm the arm (D4 guard test)
-        run: cargo test --locked -p rrx --lib -- --exact state::sqlite_build_tests::bundled_sqlite_keeps_no_allocator_statistics || echo "ARM CHECK: guard failed (expected for d4-off)"
+        run: |
+          cargo test --locked -p rrx --lib -- --exact state::sqlite_build_tests::bundled_sqlite_keeps_no_allocator_statistics || echo "ARM CHECK: guard failed (expected for d4-off)"
       - name: Five parallel runs at the default thread count
         run: |
           set +e
