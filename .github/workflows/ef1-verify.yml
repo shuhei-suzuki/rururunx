@@ -11,7 +11,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest]
-        mode: [stress, m1-no-pause-site, m3-no-hold, m4-no-custody-wait]
+        mode: [m4b-custody-held-across-release]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 240
     steps:
@@ -31,6 +31,9 @@ jobs:
             m3-no-hold)
               perl -0pi -e 's/(let terminal = Release\(WritePause::arm_at\(task\.id, CORE_TERMINAL\)\);)/$1\n    terminal.0.release();/' $f
               grep -n "terminal.0.release();" $f ;;
+            m4b-custody-held-across-release)
+              perl -0pi -e 's/drop\(runtime\);\n    wait_for\(\s*\|\| custody\.upgrade\(\)\.is_none\(\),/let _keep = custody.upgrade().expect("MUTANT: custody alive before the Runtime drop");\n    drop(runtime);\n    wait_for(\n        || true,/' $f
+              grep -n "_keep" $f ;;
             m4-no-custody-wait)
               perl -0pi -e 's/wait_for\(\s*\|\| custody\.upgrade\(\)\.is_none\(\),/let _keep = custody.upgrade();\n    wait_for(\n        || true,/' $f
               grep -n "_keep" $f ;;
