@@ -205,6 +205,22 @@ async fn ef1(provider: &str) {
     let conn = crate::state::current_test_writer(&state).unwrap();
     let sid = session_id(&conn, &task);
     let (before_record, before) = session(&conn, &sid);
+    // MEASUREMENT ONLY (Issue #89 CI triage, never merged): why the Session
+    // is already terminal after the setup shutdown.
+    if !matches!(before.state, SessionState::Starting | SessionState::Running) {
+        let task_id = task.id.to_string();
+        for (table, rows) in dump(&conn) {
+            for row in rows
+                .iter()
+                .filter(|row| row.contains(&sid) || row.contains(&task_id))
+            {
+                eprintln!(
+                    "EF1_TRACE {table}: {}",
+                    row.chars().take(700).collect::<String>()
+                );
+            }
+        }
+    }
     assert!(
         matches!(before.state, SessionState::Starting | SessionState::Running),
         "SETUP: EF1 {provider}: open Session, got {:?}",
