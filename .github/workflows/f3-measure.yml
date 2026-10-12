@@ -1,0 +1,46 @@
+# MEASUREMENT ONLY (Issue #89 F3). Never merged.
+name: Issue 89 F3 measure
+on:
+  push:
+    branches: [claude/issue89-f3-measure]
+permissions:
+  contents: read
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, mode: default, runs: 4 }
+          - { os: macos-latest, mode: default, runs: 4 }
+          - { os: macos-latest, mode: serial, runs: 1 }
+          - { os: ubuntu-latest, mode: default, runs: 3 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.91.1
+      - run: cargo build --locked --workspace
+      - run: cargo test --locked -p rrx --no-run
+      - name: rrx tests (${{ matrix.mode }}) x${{ matrix.runs }}
+        shell: bash
+        run: |
+          mkdir -p out
+          threads=""; [ "${{ matrix.mode }}" = serial ] && threads="--test-threads=1"
+          for i in $(seq 1 ${{ matrix.runs }}); do
+            RRX_F3_TRACE_FILE="$PWD/out/f3-$i.txt" cargo test --locked -p rrx --no-fail-fast -- $threads > out/run-$i.log 2>&1 || echo "run $i failed" >> out/summary.txt
+          done
+      - name: Report
+        if: always()
+        shell: bash
+        run: |
+          touch out/summary.txt
+          echo "== ${{ matrix.os }} ${{ matrix.mode }}"
+          echo "== failed runs"; cat out/summary.txt
+          echo "== F3_TRACE lines (all, incl. tests that expect a refusal)"; cat out/f3-*.txt 2>/dev/null | wc -l; cat out/f3-*.txt 2>/dev/null | cut -c1-400 | head -80
+          echo "== inspection timeouts in failures"; grep -h "inspection timed out" out/run-*.log | grep -o "inspection_facts{[^}]*}" | sed -E 's/(observation_us|spawn_us|cleanup_us)=[0-9]+/\1=N/g' | sort | uniq -c | head -20 || true
+          echo "== observation_us values"; grep -ho "observation_us=[0-9]*" out/run-*.log | sort | uniq -c | head -40 || true
+          echo "== failing tests"; grep -h "^---- " out/run-*.log | sort | uniq -c | sort -rn | head -40 || true
+          echo "== results"; for f in out/run-*.log; do echo "$f: $(grep -h '^test result' "$f" | grep -v ' 0 passed; 0 failed' | tr '\n' ' ' | cut -c1-600)"; done

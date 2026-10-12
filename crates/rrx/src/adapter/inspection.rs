@@ -312,29 +312,88 @@ fn complete_recorded(
     };
     let mut stdout = setup(stdout, Framing::StdoutBudget, StreamKind::Stdout)?;
     let mut stderr = setup(stderr, Framing::StderrBudget, StreamKind::Stderr)?;
-    loop {
-        facts.deadline(deadline, Site::LoopDeadline, StreamKind::None)?;
-        let stdout_progress = stdout.drain_recorded(deadline, facts, StreamKind::Stdout)?;
-        let stderr_progress = stderr.drain_recorded(deadline, facts, StreamKind::Stderr)?;
-        inspector.observe(facts)?;
-        facts.deadline(deadline, Site::AfterStatusDeadline, StreamKind::None)?;
-        if stdout.eof
-            && stderr.eof
-            && let Some(exit) = inspector.exit
-        {
-            return Ok(Frame {
-                #[cfg(test)]
-                command: None,
-                stdout: stdout.bytes,
-                stderr: stderr.bytes,
-                exit,
-            });
+    // MEASUREMENT ONLY (Issue #89 F3, never merged): where the observer's time
+    // went when the deadline refuses.
+    let spawned_at = deadline - BUDGET;
+    let mut iterations = 0u32;
+    let mut first_loop_us: Option<u128> = None;
+    let mut max_oversleep_us = 0u128;
+    let mut sleeps = 0u32;
+    let mut last_progress_us = 0u128;
+    let result = (|| -> io::Result<Frame> {
+        loop {
+            iterations += 1;
+            first_loop_us.get_or_insert(spawned_at.elapsed().as_micros());
+            facts.deadline(deadline, Site::LoopDeadline, StreamKind::None)?;
+            let stdout_progress = stdout.drain_recorded(deadline, facts, StreamKind::Stdout)?;
+            let stderr_progress = stderr.drain_recorded(deadline, facts, StreamKind::Stderr)?;
+            if stdout_progress || stderr_progress {
+                last_progress_us = spawned_at.elapsed().as_micros();
+            }
+            inspector.observe(facts)?;
+            facts.deadline(deadline, Site::AfterStatusDeadline, StreamKind::None)?;
+            if stdout.eof
+                && stderr.eof
+                && let Some(exit) = inspector.exit
+            {
+                return Ok(Frame {
+                    #[cfg(test)]
+                    command: None,
+                    stdout: stdout.bytes.clone(),
+                    stderr: stderr.bytes.clone(),
+                    exit,
+                });
+            }
+            // No sleep while data flows; keep the unchanged native polling boundary.
+            if !stdout_progress && !stderr_progress {
+                let requested = facts.idle(deadline);
+                let before = Instant::now();
+                std::thread::sleep(requested);
+                sleeps += 1;
+                max_oversleep_us =
+                    max_oversleep_us.max(before.elapsed().saturating_sub(requested).as_micros());
+            }
         }
-        // No sleep while data flows; keep the unchanged native polling boundary.
-        if !stdout_progress && !stderr_progress {
-            std::thread::sleep(facts.idle(deadline));
+    })();
+    if result.is_err() {
+        // Was the inspector already finished? Bytes or EOF still waiting at refusal.
+        let ready = |file: &mut File| {
+            let mut buf = [0u8; 8192];
+            match file.read(&mut buf) {
+                Ok(0) => "eof".to_string(),
+                Ok(n) => format!("{n}b"),
+                Err(e) => format!("{:?}", e.kind()),
+            }
+        };
+        let out = if stdout.eof {
+            "eof-seen".to_string()
+        } else {
+            ready(&mut stdout.file)
+        };
+        let err = if stderr.eof {
+            "eof-seen".to_string()
+        } else {
+            ready(&mut stderr.file)
+        };
+        let exited = inspector.exit.is_some();
+        let line = format!(
+            "F3_TRACE refused_at_us={} iterations={iterations} first_loop_us={first_loop_us:?} sleeps={sleeps} max_oversleep_us={max_oversleep_us} last_progress_us={last_progress_us} stdout_ready={out} stderr_ready={err} exit_seen={exited} stdout_bytes={} thread={:?}",
+            spawned_at.elapsed().as_micros(),
+            stdout.bytes.len(),
+            std::thread::current().name(),
+        );
+        eprintln!("{line}");
+        if let Some(path) = std::env::var_os("RRX_F3_TRACE_FILE")
+            && let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+        {
+            use std::io::Write;
+            let _ = writeln!(file, "{line}");
         }
     }
+    result
 }
 
 pub(super) fn inspect(
