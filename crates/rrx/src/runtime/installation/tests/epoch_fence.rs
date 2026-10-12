@@ -205,6 +205,33 @@ async fn ef1(provider: &str) {
     let conn = crate::state::current_test_writer(&state).unwrap();
     let sid = session_id(&conn, &task);
     let (before_record, before) = session(&conn, &sid);
+    // MEASUREMENT ONLY (Issue #89 CI triage, never merged): the audit kinds
+    // after the Session intent, for passing and failing setups alike.
+    {
+        let mut statement = conn
+            .prepare("SELECT sequence, kind, at FROM audit ORDER BY sequence")
+            .unwrap();
+        let rows: Vec<(i64, String, i64)> = statement
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        drop(statement);
+        let start = rows
+            .iter()
+            .position(|(_, kind, _)| kind == "execution.session_intent")
+            .unwrap_or(0);
+        let t0 = rows.get(start).map_or(0, |row| row.2);
+        let tail: Vec<String> = rows[start..]
+            .iter()
+            .map(|(_, kind, at)| format!("{kind}@{}", at - t0))
+            .collect();
+        eprintln!(
+            "EF1_TAIL {provider} state={:?} tail={}",
+            before.state,
+            tail.join(",")
+        );
+    }
     // MEASUREMENT ONLY (Issue #89 CI triage, never merged): why the Session
     // is already terminal after the setup shutdown.
     if !matches!(before.state, SessionState::Starting | SessionState::Running) {

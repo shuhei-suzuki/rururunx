@@ -21,13 +21,14 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@1.91.1
+      - run: cargo build --locked --workspace
       - run: cargo test --locked -p rrx --lib --no-run
       - name: Reopen-heavy tests, serial, repeated
         shell: bash
         run: |
           mkdir -p out
           for i in $(seq 1 40); do
-            cargo test --locked -p rrx --lib runtime::installation::tests::epoch_fence -- --test-threads=1 > out/ef-$i.log 2>&1 || echo "ef run $i failed" >> out/summary.txt
+            cargo test --locked -p rrx --lib runtime::installation::tests::epoch_fence -- --test-threads=1 --nocapture > out/ef-$i.log 2>&1 || echo "ef run $i failed" >> out/summary.txt
           done
           for i in $(seq 1 10); do
             cargo test --locked -p rrx --lib runtime::installation::tests::fm_rb -- --test-threads=1 > out/fmrb-$i.log 2>&1 || echo "fm_rb run $i failed" >> out/summary.txt
@@ -48,6 +49,8 @@ jobs:
           echo "== failed runs"; cat out/summary.txt
           echo "== FLOCK_TRACE lines"; grep -h "FLOCK_TRACE" out/*.log || echo "none"
           echo "== failing tests"; grep -h -A12 "^---- " out/*.log | grep -v "EF1_TRACE" | grep -v "ISSUE87" | cut -c1-400 || true
-          echo "== EF1_TRACE lines"; grep -h "EF1_TRACE" out/*.log | cut -c1-800 || echo "none"
+          echo "== EF1_TAIL (state, kinds only) counts"; grep -h "EF1_TAIL" out/ef-*.log | sed -E 's/@[0-9-]+//g' | sort | uniq -c | cut -c1-900 || true
+          echo "== EF1_TAIL with times"; grep -h "EF1_TAIL" out/ef-*.log | cut -c1-900 || true
+          echo "== EF1_TRACE line count"; cat out/*.log | grep -c "EF1_TRACE" || true
           echo "== tails of lib runs"; for f in out/lib-*.log; do echo "--- $f"; grep -v " ok$" "$f" | grep -A12 "^---- \|^test result" | grep -v ISSUE87 | tail -60 | cut -c1-400; done
           echo "== results"; for f in out/*.log; do echo "$f: $(grep -h '^test result' "$f" | tr '\n' ' ')"; done
