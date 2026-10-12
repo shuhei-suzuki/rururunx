@@ -25,7 +25,9 @@ jobs:
           # An explicitly set LIBSQLITE3_FLAGS, even empty, takes precedence
           # over .cargo/config.toml [env]; empty means no extra defines.
           if [ "${{ matrix.arm }}" = d4-off ]; then echo "LIBSQLITE3_FLAGS=" >> "$GITHUB_ENV"; fi
-      - run: cargo test --locked -p rrx --lib --no-run
+      # Same preparation as the measure workflow: some tests run workspace binaries.
+      - run: cargo build --locked --workspace
+      - run: cargo test --locked --workspace --no-run
       - name: Confirm the arm (D4 guard test)
         run: |
           cargo test --locked -p rrx --lib -- --exact state::sqlite_build_tests::bundled_sqlite_keeps_no_allocator_statistics || echo "ARM CHECK: guard failed (expected for d4-off)"
@@ -40,4 +42,5 @@ jobs:
             grep -E '^test result:' run$i.log | tail -1
             grep -E '^test .*sc3p_(codex|claude)_parent_change_during_hold_refuses_binding \.\.\. ' run$i.log
             grep -E '^    [a-z0-9_:]+$' run$i.log | sed "s/^/  FAILED: /"
+            if [ "$code" != 0 ]; then tail -15 run$i.log | sed "s/^/  TAIL: /"; fi
           done
