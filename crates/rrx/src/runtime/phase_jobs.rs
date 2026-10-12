@@ -369,6 +369,20 @@ impl PhaseJobs {
     pub(super) fn observed_turns(&self) -> Vec<(OperationId, u8)> {
         self.closure_turns.lock().unwrap().clone()
     }
+    /// The preparation custody of the job of `unit`, observed weakly. It fails
+    /// to upgrade exactly when `NativePreparationActor::validate_original`
+    /// starts refusing that job's writes. Nongrant: no strong edge is kept.
+    #[cfg(test)]
+    pub(super) fn observed_preparation(
+        &self,
+        unit: crate::execution::UnitId,
+    ) -> Option<Weak<NativePreparationCustody>> {
+        let entries = self.entries.lock().unwrap();
+        entries
+            .values()
+            .find(|entry| entry.job.allocation.facts().unit_id == unit)
+            .map(|entry| Arc::downgrade(&entry.job.state.lock().unwrap().preparation))
+    }
     /// Nongrant observations from existing entries, never constructors.
     #[cfg(test)]
     pub(super) fn observed_jobs(&self) -> Vec<ObservedJob> {
