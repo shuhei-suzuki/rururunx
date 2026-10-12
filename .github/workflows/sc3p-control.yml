@@ -1,0 +1,42 @@
+# TEMPORARY Issue #87/#89 control: does D4 change how often SC3-P fails?
+# Same commit; the only difference between arms is LIBSQLITE3_FLAGS.
+name: SC3-P D4 control
+on:
+  push:
+    branches: [claude/issue87-sc3p-control]
+permissions:
+  contents: read
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        arm: [d4-on, d4-off]
+        shard: [a, b]
+    runs-on: macos-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.91.1
+      - name: Select the arm
+        run: |
+          # An explicitly set LIBSQLITE3_FLAGS, even empty, takes precedence
+          # over .cargo/config.toml [env]; empty means no extra defines.
+          if [ "${{ matrix.arm }}" = d4-off ]; then echo "LIBSQLITE3_FLAGS=" >> "$GITHUB_ENV"; fi
+      - run: cargo test --locked -p rrx --lib --no-run
+      - name: Confirm the arm (D4 guard test)
+        run: cargo test --locked -p rrx --lib -- --exact state::sqlite_build_tests::bundled_sqlite_keeps_no_allocator_statistics || echo "ARM CHECK: guard failed (expected for d4-off)"
+      - name: Five parallel runs at the default thread count
+        run: |
+          set +e
+          for i in 1 2 3 4 5; do
+            start=$(date +%s)
+            cargo test --locked -p rrx --lib > run$i.log 2>&1
+            code=$?
+            echo "RUN ${{ matrix.arm }}-${{ matrix.shard }}-$i exit=$code seconds=$(( $(date +%s) - start ))"
+            grep -E '^test result:' run$i.log | tail -1
+            grep -E '^test .*sc3p_(codex|claude)_parent_change_during_hold_refuses_binding \.\.\. ' run$i.log
+            grep -E '^    [a-z0-9_:]+$' run$i.log | sed "s/^/  FAILED: /"
+          done
