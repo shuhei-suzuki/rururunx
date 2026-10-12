@@ -990,11 +990,6 @@ impl PhaseJobs {
                 },
             });
             let refused = outcome.is_err();
-            #[cfg(test)]
-            crate::issue87_trace::mark(&format!(
-                "start path: start_phase returned refused={refused} operation {:?}",
-                job.allocation.facts().operation_id
-            ));
             let (observation, binding) = match &outcome {
                 Ok(RetainedStart::Launched { binding, .. }) => {
                     (InvocationObservation::Binding, Some(binding.clone()))
@@ -1016,12 +1011,6 @@ impl PhaseJobs {
                 // Both the actual proof and handle are already retained. No
                 // fallible planning or Store access can consume their sole owner.
                 let result = job.bind_returned(binding);
-                #[cfg(test)]
-                crate::issue87_trace::mark(&format!(
-                    "start path: normal bind ok={} operation {:?}",
-                    result.is_ok(),
-                    job.allocation.facts().operation_id
-                ));
                 let observation = if result.is_ok() {
                     InvocationObservation::Bound
                 } else {

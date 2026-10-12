@@ -263,8 +263,6 @@ impl NativeSessions {
             .begin_phase_preparation(launch, custody.clone())
             .await?;
         #[cfg(test)]
-        crate::issue87_trace::mark("start path: phase preparation done");
-        #[cfg(test)]
         self.observe_preparation(PreparationObservation::BeforeTransport)
             .await;
         self.start_prepared_transport(&custody, prepared).await
@@ -939,7 +937,7 @@ impl Lines {
         self.response(id).await
     }
     async fn response(&mut self, id: u64) -> Result<Value> {
-        let issue87_response = tokio::time::timeout(Duration::from_secs(30),async {loop {
+        tokio::time::timeout(Duration::from_secs(30),async {loop {
             let value=self.line().await?;crate::codex::managed::frame(&value)?;
             if value.get("method").is_none() && value["id"]==id {
                 if value.get("error").is_some() {
@@ -950,12 +948,7 @@ impl Lines {
             if value.get("id").is_some() && value.get("method").is_some(){
                 self.send(&json!({"id":value["id"],"error":{"code":-32601,"message":"No native turn established"}})).await?;
             }else{self.queue(value)?;}
-        }}).await;
-        #[cfg(test)]
-        if issue87_response.is_err() {
-            crate::issue87_trace::mark(&format!("native rpc response {id} timed out (30 s)"));
-        }
-        issue87_response?
+        }}).await?
     }
 }
 /// A private scoped dispatch boundary. The ledger stores a digest, never the
@@ -1300,15 +1293,6 @@ fn persist_saved_terminal(
     u64,
 )> {
     if let Some(phase) = phase {
-        // ISSUE87 causal control only: delay the terminal commit (and so the
-        // owner revoke) in a filtered serial run.
-        #[cfg(test)]
-        if let Some(ms) = std::env::var("ISSUE87_TERMINAL_DELAY_MS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-        {
-            std::thread::sleep(std::time::Duration::from_millis(ms));
-        }
         let original = phase.terminal_plan(owner, terminal)?;
         let first = owner
             .store
@@ -1349,11 +1333,6 @@ fn persist_saved_terminal(
         } else {
             phase.owner.project(&session, version)?;
             phase.owner.revoke();
-            #[cfg(test)]
-            crate::issue87_trace::mark(&format!(
-                "native terminal committed and owner revoked (no settlement) unit {}",
-                unit.id
-            ));
         }
         return Ok((unit, receipt, session, version));
     }
@@ -2147,11 +2126,6 @@ impl Core {
         profile: &resources::ResourceProfile,
     ) -> Result<(WorkOutcome, Disposition, Option<Value>)> {
         self.authority()?;
-        #[cfg(test)]
-        crate::issue87_trace::mark(&format!(
-            "start path: codex initialize sent unit {}",
-            self.unit.id
-        ));
         let init=self.boot_call("initialize",json!({"clientInfo":{"name":"rururunx","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}}),None).await?;
         crate::codex::managed::initialization(&init)
             .context(NativeFailure::UnsupportedCapability)?;
@@ -2303,11 +2277,6 @@ impl Core {
     ) -> Result<(WorkOutcome, Disposition, Option<Value>)> {
         self.authority()?;
         let initialize = claude_wire::control("initialize", "rrx-initialize");
-        #[cfg(test)]
-        crate::issue87_trace::mark(&format!(
-            "start path: claude initialize sent unit {}",
-            self.unit.id
-        ));
         if self.phase.is_some() {
             self.send_effect(&initialize, None, "native_setup").await?;
         } else {
@@ -2318,7 +2287,7 @@ impl Core {
         let session = self.session.id;
         let phase = self.phase.as_ref().map(|phase| phase.owner.clone());
         let mut fence = tokio::time::interval(Duration::from_millis(100));
-        let issue87_bootstrap = tokio::time::timeout(Duration::from_secs(30),async {
+        tokio::time::timeout(Duration::from_secs(30),async {
             loop {tokio::select! {
                 frame=self.wire.line()=>{
                     let frame=frame?;
@@ -2333,15 +2302,7 @@ impl Core {
                 },
                 _=fence.tick()=>{actual_native_authority(&owner,&pinned,session,phase.as_ref())?;}
             }}Ok::<_,anyhow::Error>(())
-        }).await;
-        #[cfg(test)]
-        if issue87_bootstrap.is_err() {
-            crate::issue87_trace::mark(&format!(
-                "claude bootstrap initialize timed out (30 s) unit {}",
-                self.unit.id
-            ));
-        }
-        issue87_bootstrap??;
+        }).await??;
         self.authority()?;
         self.send_effect(&json!({"type":"user","session_id":self.native,"parent_tool_use_id":null,"message":{"role":"user","content":input.payload}}),None,"native_input").await?;
         let mut state = claude_wire::RunState::default();

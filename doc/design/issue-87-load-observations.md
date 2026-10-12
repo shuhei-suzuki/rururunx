@@ -160,7 +160,7 @@ The macOS SC10 failure (run 1) is a different mode from the one D3 fixes: `SETUP
 - **SC7 (c3) and 12 other single-Task tests ("pattern P")**: four gate holds after `driver … prepared` (the last 4–9 s), then about 30 s with no gate activity and an idle sweep. Then `native rpc response 1 timed out (30 s)`, the owner is revoked with no settlement, and the test fails `SETUP: normal Bound absent` or `normal write not reached`. The test holds the peer's bootstrap until Bound, so the 30 s production deadline measures the time from bootstrap start to Bound. What delays Bound here is **not yet known**: it is not the gate and not the sweep.
 - Every one of these failures is on the GitHub macOS runner (3 vCPU) with 12 test threads. `runtime::installation` setup failures of the same two shapes also hit tests outside #87 (`sc1`, `sc4`, `sc8`, `br1`, `sc11n`, `fm_rb`, `ca1`/`ca3`/`ca4d`, among others).
 
-## 6b. D4 — the macOS start stall (proposal, needs owner approval before code)
+## 6b. D4 — the macOS start stall (approved by the owner 2026-10-11)
 
 **Where the time goes** (start-path marks, commit `64aa2e8`, run 38147169094, 9 macOS t12 runs; 28 stalled units). Gate → spawn → `initialize` sent is always under 2 s. Transport admission takes µs, with no registration retry. The Core accepts the handoff *before* it sends `initialize` and wakes the start task. The start task's 5 s handoff wait then does not resume for 30–36 s. It resumes only after the 30 s rpc or bootstrap deadline has revoked the owner, so `start_phase` returns late, the bind is refused ("lacks genuine live registration") and the test reports `normal Bound absent` or `normal write not reached`. The unanswered `initialize` is a consequence, not a cause: the fixture holds `initialize` until the test sees Bound.
 
@@ -187,6 +187,17 @@ The macOS SC10 failure (run 1) is a different mode from the one D3 fixes: `SETUP
 **Verification.**
 - **m8 (D4 reverted):** this is the default row above, measured. Expected: handoff stalls return.
 - **After approval:** at the final head, run macOS t12 ×9 and macOS default threads ×10. Expected: 0 handoff stalls and CA4i/SC7/SC10 all pass. Then run the owner's Mac ×10.
+- **Guard:** `state::sqlite_build_tests::bundled_sqlite_keeps_no_allocator_statistics` reads `PRAGMA compile_options` and requires `DEFAULT_MEMSTATUS=0`. Removing `.cargo/config.toml` (or overriding `LIBSQLITE3_FLAGS` without the define) fails it, so the m8 regression is caught on every OS without a load run.
+
+### Results with D1–D4 (`753b6cc`, Issue 87 measure run 38184507761)
+
+| macOS runner | runs | handoff stalls ≥7 s | rpc/bootstrap 30 s timeouts | CA4i / SC7 codex / SC10 | `Bound absent` / `normal write not reached` | run time |
+| --- | --- | --- | --- | --- | --- | --- |
+| t12 (shards a–c) | 9 | **0** | **0** | 9/9, 9/9, 9/9 | 0 | 392–599 s |
+| default threads (shards d, e) | 10 | pending | pending | pending | pending | pending |
+| owner's Mac, 18 threads, `ulimit -n 10240` | 10 | — | — | run 1: all pass (452 s; before D4 600–840 s); rest pending | — | — |
+
+Every t12 run still exits 101, on tests outside #87 only (§8): Grok `environment_tests` (`watchdog_expired` ≈60 s, #89 item 3 family) in all 9 runs, `fm_rb`/`ef1` `another Runtime owns this state root` (`os error 35`), `ef3`/`ef4`, Docker cleanup, `retained_inspection_*`, and one Grok-adjacent `native process inspection timed out` (#89 item 3).
 
 ## 7. Verification plan
 
@@ -195,7 +206,7 @@ The macOS SC10 failure (run 1) is a different mode from the one D3 fixes: `SETUP
 ## 8. Seen in the same runs, outside #87
 
 Recorded for triage, not addressed here:
-- `sc3p_*` (#89 item 1)
+- `sc3p_*` (#89 item 1). With D1–D4, `sc3p_codex_parent_change_during_hold_refuses_binding` failed regular macOS CI twice on `753b6cc` (run 38184507808, both attempts) and passed all 9 t12 measure runs. Shape: the held normal write is refused as required (zero links, unbound), then the native terminal and owner revoke land ≈40 ms later, so every later success turn is `unbound settlement poll` and the test's third assertion (a later `normal plan refused`) has no live owner to plan against. Before D4 it failed regular macOS CI once on `d49a803` and on PR #88 (run 38047969550). Whether D4 changes its frequency is being measured.
 - Grok `watchdog_expired` ≈60 s (#89 item 3 family)
 - `fm_d2_committed_source_631_codex_quick_front` (`EOF while parsing a value` reading `fixture-native-input.json`)
 - `ca1`/`ca2` (`original marker and Bound absent`)

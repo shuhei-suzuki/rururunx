@@ -6,6 +6,8 @@ mod native_dispatch_tests;
 #[cfg(test)]
 mod read_index_tests;
 mod runtime;
+#[cfg(test)]
+mod sqlite_build_tests;
 pub(crate) use environment::EnvironmentAdmission;
 pub use runtime::driver::ProjectLimitUnsupported;
 pub(crate) use runtime::driver::{

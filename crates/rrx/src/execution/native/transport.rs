@@ -10,7 +10,7 @@ enum Creation {
     ReturnedChild,
     SpawnErr(&'static str),
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Handoff {
     None,
     Offered,
@@ -411,12 +411,6 @@ impl TransportHandoff {
             );
             child.handoff = Handoff::Accepted;
         }
-        #[cfg(test)]
-        crate::issue87_trace::mark(&format!(
-            "start path: handoff accepted on {:?} unit {}",
-            std::thread::current().id(),
-            custody.plan.unit().id
-        ));
         custody.changed.notify_waiters();
         custody.plan.prepared().actor.release_gate();
         Ok(())
@@ -566,21 +560,8 @@ impl NativeSessions {
         preparation.retain_transport(custody.clone(), &prepared)?;
         let launch = plan.launch().clone();
         let mut backoff = 100u64;
-        #[cfg(test)]
-        let issue87_unit = plan.unit().id;
-        #[cfg(test)]
-        crate::issue87_trace::mark(&format!(
-            "start path: transport planned unit {issue87_unit}"
-        ));
         let (admission, known) = loop {
-            #[cfg(test)]
-            let issue87_enter = std::time::Instant::now();
             let admission = launch.admission().enter(launch.clone()).await?;
-            #[cfg(test)]
-            crate::issue87_trace::mark(&format!(
-                "start path: transport admission entered after {:?} unit {issue87_unit}",
-                issue87_enter.elapsed()
-            ));
             admission.validate_for(&launch)?;
             prepared.actor.validate_open()?;
             ensure!(
@@ -629,11 +610,7 @@ impl NativeSessions {
                     break (admission, known);
                 }
                 Ok(None) => anyhow::bail!("SAME transport registration images diverged; Held"),
-                Err(_issue87_error) => {
-                    #[cfg(test)]
-                    crate::issue87_trace::mark(&format!(
-                        "start path: transport registration failed, backoff {backoff} ms unit {issue87_unit}: {_issue87_error:#}"
-                    ));
+                Err(_) => {
                     *custody
                         .registration_uncertain
                         .lock()
@@ -680,10 +657,6 @@ impl NativeSessions {
             }
         }
         drop(admission);
-        #[cfg(test)]
-        crate::issue87_trace::mark(&format!(
-            "start path: native spawn done (open={open}) unit {issue87_unit}"
-        ));
         // Every subsequent local is child-free; no await until Core owns child.
         let pipes = {
             let mut child = custody
@@ -788,26 +761,8 @@ impl NativeSessions {
             f.effort.map(str::to_owned),
             profile,
         ));
-        #[cfg(test)]
-        let issue87_wait = std::time::Instant::now();
-        #[cfg(test)]
-        crate::issue87_trace::mark(&format!(
-            "start path: handoff wait begins on {:?} unit {issue87_unit}",
-            std::thread::current().id()
-        ));
-        #[cfg(test)]
-        let issue87_watch = crate::issue87_trace::watch(
-            format!("handoff wait unit {issue87_unit}"),
-            Duration::from_secs(7),
-        );
         let _ = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
-                #[cfg(test)]
-                crate::issue87_trace::mark(&format!(
-                    "start path: handoff wait polled after {:?} on {:?} unit {issue87_unit}",
-                    issue87_wait.elapsed(),
-                    std::thread::current().id()
-                ));
                 let changed = custody.changed.notified();
                 let done = {
                     let child = custody
@@ -823,17 +778,11 @@ impl NativeSessions {
             }
         })
         .await;
-        #[cfg(test)]
-        drop(issue87_watch);
         let handoff = custody
             .child
             .lock()
             .map_err(|_| anyhow::anyhow!("transport child poisoned"))?
             .handoff;
-        #[cfg(test)]
-        crate::issue87_trace::mark(&format!(
-            "start path: handoff {handoff:?} unit {issue87_unit}"
-        ));
         // Offered has no factual settlement yet. The SAME retained custody
         // records it on a later wake; timeout is not a lost-ownership inference.
         if handoff != Handoff::Offered {

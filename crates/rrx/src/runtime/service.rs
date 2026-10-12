@@ -32,30 +32,17 @@ impl Runtime {
                 hook();
             }
         }
-        let at = std::time::Instant::now();
         let pending = self._drivers.observe_finished()?;
-        issue87_step("observe_finished", at);
-        let at = std::time::Instant::now();
-        let plans = self._drivers.pending_preparations()?;
-        issue87_step("pending_preparations", at);
-        for plan in plans {
+        for plan in self._drivers.pending_preparations()? {
             // Held advances do not detach jobs, release capacity or authorize a
             // retry. Stop/panic/uncertain rows keep the SAME plan in slot custody.
-            let at = std::time::Instant::now();
-            let mut store = self
-                .owner
+            self.owner
                 .store
                 .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            issue87_step("store lock (preparation)", at);
-            let at = std::time::Instant::now();
-            store.reconcile_driver_preparation(&plan)?;
-            issue87_step("reconcile_driver_preparation", at);
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .reconcile_driver_preparation(&plan)?;
         }
-        let at = std::time::Instant::now();
-        let exits = self._drivers.pending_exits()?;
-        issue87_step("pending_exits", at);
-        for exit in exits {
+        for exit in self._drivers.pending_exits()? {
             let publication = self
                 .owner
                 .store
@@ -64,10 +51,7 @@ impl Runtime {
                 .record_driver_exit(&exit)?;
             self._drivers.acknowledge_exit(&exit, &publication)?;
         }
-        let at = std::time::Instant::now();
-        let retained = self._drivers.retained_preparations()?;
-        issue87_step("retained_preparations", at);
-        Ok(pending + retained)
+        Ok(pending + self._drivers.retained_preparations()?)
     }
     /// Start exactly once on the existing owner. Missing native binding stays a
     /// named durable hold; the service does not instantiate another owner epoch.
@@ -86,22 +70,18 @@ impl Runtime {
         let running = self.running.clone();
         running.store(true, Ordering::SeqCst);
         *slot = Some(tokio::spawn(async move {
-            let issue87_result = async move {
             let _running = Running(running);
             let mut sequence = 0;
             let mut backoff = 0;
             loop {
                 let Some(runtime) = retained.upgrade() else {
-                    return Ok::<(), anyhow::Error>(());
+                    return Ok(());
                 };
-                #[cfg(test)]
-                let issue87_sweep = std::time::Instant::now();
                 #[cfg(test)]
                 super::stop::park::wait(runtime.owner.state_path());
                 if runtime.stopping.load(Ordering::SeqCst) {
                     return Ok(());
                 }
-                issue87_stage(runtime.owner.state_path(), "attention");
                 let (next, more) = runtime
                     .owner
                     .store
@@ -113,9 +93,6 @@ impl Runtime {
                         sequence,
                     )?;
                 sequence = next;
-                #[cfg(test)]
-                let issue87_attention = issue87_sweep.elapsed();
-                issue87_stage(runtime.owner.state_path(), "phases+success");
                 let pending = runtime.phases.reconcile_pending()?;
                 let nonsuccess_pending = runtime.phase_dispatcher.reconcile_nonsuccess()?;
                 let (success_actions, success_releases, mut success_pending) =
@@ -143,19 +120,10 @@ impl Runtime {
                         }
                     }
                 }
-                #[cfg(test)]
-                let issue87_phases = issue87_sweep.elapsed();
-                issue87_stage(runtime.owner.state_path(), "preparations");
                 let preparations = runtime.phase_dispatcher.reconcile_preparations()?;
-                #[cfg(test)]
-                let issue87_preparations = issue87_sweep.elapsed();
-                issue87_stage(runtime.owner.state_path(), "observe_drivers");
                 let driver_pending = runtime.observe_task_drivers()?;
-                #[cfg(test)]
-                let issue87_drivers = issue87_sweep.elapsed();
                 // A refusal after reservation ends only this saved-cursor
                 // sweep. Its retained claim/closure owns the outcome.
-                issue87_stage(runtime.owner.state_path(), "admit_ready_tasks");
                 let claims = if more {
                     0
                 } else {
@@ -169,15 +137,6 @@ impl Runtime {
                         || claims > 0,
                     &mut backoff,
                 );
-                #[cfg(test)]
-                if issue87_sweep.elapsed() > Duration::from_millis(1000) {
-                    crate::issue87_trace::mark(&format!(
-                        "service sweep body took {:?} (pending={pending} nonsuccess={nonsuccess_pending} success={success_pending} drivers={driver_pending} claims={claims}) cumulative: attention {issue87_attention:?} phases+success {issue87_phases:?} preparations {issue87_preparations:?} observe_drivers {issue87_drivers:?}",
-                        issue87_sweep.elapsed()
-                    ));
-                }
-                let issue87_root = runtime.owner.state_path().to_path_buf();
-                issue87_stage(&issue87_root, "preparation confirm");
                 let wake = runtime.wake.clone();
                 drop(runtime);
                 // Only the selected custody Arcs remain: one admission try and
@@ -194,20 +153,12 @@ impl Runtime {
                 }
                 // A wake is only a hint. Every sweep reloads durable rows; full,
                 // lost or duplicated hints cannot ratify a launch or claim.
-                issue87_stage(&issue87_root, "idle wait");
                 tokio::select! {
                     ()=wake.notified()=>{},
                     ()=tokio::time::sleep(delay)=>{},
                 }
                 sequence = 0;
             }
-            }
-            .await;
-            #[cfg(test)]
-            if let Err(error) = &issue87_result {
-                crate::issue87_trace::mark(&format!("service loop exited with error: {error:#}"));
-            }
-            issue87_result
         }));
         Ok(())
     }
@@ -248,22 +199,3 @@ impl Runtime {
         Ok(())
     }
 }
-
-// TEMPORARY Issue #87 measurement helpers (no-ops outside tests).
-#[cfg(test)]
-fn issue87_step(label: &str, at: std::time::Instant) {
-    if at.elapsed() > std::time::Duration::from_millis(500) {
-        crate::issue87_trace::mark(&format!(
-            "observe_drivers step {label} took {:?}",
-            at.elapsed()
-        ));
-    }
-}
-#[cfg(not(test))]
-fn issue87_step(_: &str, _: std::time::Instant) {}
-#[cfg(test)]
-fn issue87_stage(root: &std::path::Path, label: &str) {
-    crate::issue87_trace::stage(root, label);
-}
-#[cfg(not(test))]
-fn issue87_stage(_: &std::path::Path, _: &str) {}

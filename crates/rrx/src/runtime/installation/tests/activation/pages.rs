@@ -62,7 +62,6 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
             })),
             Some(seams),
         );
-        crate::issue87_trace::mark(&format!("CA4i one_held={one_held} start"));
         f.runtime.start().await.unwrap();
         // The owner-wide Git gate prepares the 128 claims one at a time, with
         // no total deadline by design (#87). Setup fails only when neither the
@@ -71,7 +70,6 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
         let mut last_counts = (0, 0);
         let mut stall_end = tokio::time::Instant::now() + SETUP_STALL;
         let mut sample = tokio::time::Instant::now();
-        let issue87_setup_end = tokio::time::Instant::now() + Duration::from_secs(120);
         let mut progress = tokio::time::Instant::now();
         while observations.lock().unwrap().len() != 128 {
             if tokio::time::Instant::now() >= sample {
@@ -97,17 +95,9 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
                     count(&f, "execution_units"),
                     precommit_calls.load(Ordering::SeqCst)
                 );
-                crate::issue87_trace::mark("CA4i progress line above");
                 progress = tokio::time::Instant::now() + Duration::from_secs(10);
             }
-            let issue87_expired = if crate::issue87_trace::mutant("m1") {
-                tokio::time::Instant::now() >= issue87_setup_end
-            } else if crate::issue87_trace::mutant("m2") {
-                false
-            } else {
-                tokio::time::Instant::now() >= stall_end
-            };
-            if issue87_expired {
+            if tokio::time::Instant::now() >= stall_end {
                 let claims = count(&f, "task_drivers");
                 let s1 = observations.lock().unwrap().len();
                 let unfinished = f.runtime._drivers.observe_finished().unwrap();
@@ -123,7 +113,6 @@ async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        crate::issue87_trace::mark(&format!("CA4i one_held={one_held} S1=128 reached"));
         assert_eq!(
             count(&f, "task_drivers"),
             128,

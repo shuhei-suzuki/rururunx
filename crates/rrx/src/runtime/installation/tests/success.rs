@@ -76,19 +76,12 @@ pub(super) fn release_unit(f: &ControlFixture, unit: &crate::execution::Executio
     std::fs::write(profile.output.join("fixture-release"), "release").unwrap();
 }
 pub(super) async fn wait_normal_bound(f: &ControlFixture, task: &Task) {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
-    while links(f, task).first().map(String::as_str) != Some("session_bound") {
-        if tokio::time::Instant::now() >= deadline {
-            crate::issue87_trace::dump_stage(f.owner.state_path());
-            crate::issue87_trace::mark(&format!(
-                "Bound wait expired; turns={:?} jobs={:?}",
-                f.runtime.phase_jobs.observed_success_turns(),
-                f.runtime.phase_jobs.observed_jobs()
-            ));
-            panic!("SETUP: normal Bound absent");
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+    wait_for(
+        || links(f, task).first().map(String::as_str) == Some("session_bound"),
+        "SETUP: normal Bound absent",
+        60,
+    )
+    .await;
 }
 
 /// SC1: the full SAME-operation chain, held start -> normal Bound -> owned
@@ -351,31 +344,25 @@ async fn sc7_ordinary_failure(provider: &str) {
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
-    crate::issue87_trace::mark(&format!("SC7 {provider} start"));
     f.runtime.start().await.unwrap();
     wait_normal_bound(&f, task).await;
-    crate::issue87_trace::mark(&format!("SC7 {provider} normal bound"));
     let marked = stored_task(&f, task);
     release_completion(&f, task);
-    crate::issue87_trace::mark(&format!("SC7 {provider} completion released"));
     // The window starts at the non-success terminal: the saved terminal is
     // committed and the owner revoked. Until then a live owner costs no
     // turn by design, so the start task's `finished` is too early (#87).
     wait_for(
         || {
-            f.runtime.phase_jobs.observed_jobs().iter().any(|j| {
-                if crate::issue87_trace::mutant("m3") {
-                    j.finished
-                } else {
-                    j.owner_live == Some(false)
-                }
-            })
+            f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .any(|j| j.owner_live == Some(false))
         },
         "SETUP: ordinary-failure terminal not observed",
         60,
     )
     .await;
-    crate::issue87_trace::mark(&format!("SC7 {provider} job finished"));
     // Give the Root sweep and the Driver several passes.
     // Wake the service far more often than 5 s: only the job's own re-poll
     // rule, not the service cadence, may bound the settlement polls.
@@ -395,29 +382,6 @@ async fn sc7_ordinary_failure(provider: &str) {
         .filter(|(_, label)| *label == "settlement poll")
         .count();
     let bound = polled.elapsed().as_secs().div_ceil(5) as usize + 1;
-    if polls == 0 {
-        // ISSUE87 measurement only: when does the owner stop being live?
-        let issue87_after = std::time::Instant::now();
-        while issue87_after.elapsed() < Duration::from_secs(90)
-            && f.runtime
-                .phase_jobs
-                .observed_jobs()
-                .iter()
-                .any(|j| j.owner_live == Some(true))
-        {
-            f.runtime.wake.notify_one();
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        crate::issue87_trace::mark(&format!(
-            "SC7 {provider} owner_live cleared {:?} after window end; turns now {:?}",
-            issue87_after.elapsed(),
-            f.runtime.phase_jobs.observed_success_turns()
-        ));
-    }
-    crate::issue87_trace::mark(&format!(
-        "SC7 {provider} window end: polls={polls} turns={:?} jobs={jobs:?}",
-        f.runtime.phase_jobs.observed_success_turns()
-    ));
     assert!(
         (1..=bound).contains(&polls),
         "SC5(c) {provider}: {polls} settlement polls, bound {bound}"
@@ -454,8 +418,7 @@ async fn sc7_ordinary_failure(provider: &str) {
         marked.version,
         "SC7 {provider}: Task unchanged"
     );
-    let issue87_shutdown = f.runtime.shutdown().await;
-    crate::issue87_trace::mark(&format!("SC7 {provider} shutdown {issue87_shutdown:?}"));
+    let _ = f.runtime.shutdown().await;
     finish(f).await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -1654,48 +1617,22 @@ async fn sc10_four_projects_close_independently() {
         &["worker", "worker-codex", "worker", "worker-codex"],
     )
     .await;
-    crate::issue87_trace::mark("SC10 start");
     f.runtime.start().await.unwrap();
-    // ISSUE87 causal control only: release each peer's bootstrap as soon as
-    // its own Task is bound, and/or delay the shared completion release.
     for task in &tasks {
         wait_normal_bound(&f, task).await;
-        crate::issue87_trace::mark(&format!("SC10 {} normal bound", task.id));
         // Release this peer's bootstrap at its own Bound. Holding it until
         // the last Task is Bound would charge other Tasks' bind latency to
         // its 30 s native bootstrap deadline (#87). Completions stay held.
-        if !crate::issue87_trace::mutant("m6") {
-            release_bootstrap(&f, task);
-            crate::issue87_trace::mark(&format!("SC10 {} bootstrap released", task.id));
-        }
-    }
-    if let Some(ms) = std::env::var("ISSUE87_SC10_RELEASE_DELAY_MS")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-    {
-        crate::issue87_trace::mark(&format!("SC10 delaying completion release {ms} ms"));
-        tokio::time::sleep(Duration::from_millis(ms)).await;
+        release_bootstrap(&f, task);
     }
     let marked: Vec<_> = tasks.iter().map(|t| stored_task(&f, t)).collect();
     for task in &tasks {
         release_completion(&f, task);
     }
-    crate::issue87_trace::mark("SC10 completions released");
     let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
     for task in &tasks {
-        let mut issue87_seen = Vec::new();
         while links(&f, task).last().map(String::as_str) != Some("phase_closed") {
-            let issue87_links = links(&f, task);
-            if issue87_links != issue87_seen {
-                crate::issue87_trace::mark(&format!("SC10 {} links {issue87_links:?}", task.id));
-                issue87_seen = issue87_links;
-            }
             if tokio::time::Instant::now() > deadline {
-                crate::issue87_trace::mark(&format!(
-                    "SC10 timeout; turns={:?} shutdown={:?}",
-                    f.runtime.phase_jobs.observed_success_turns(),
-                    f.runtime.shutdown().await
-                ));
                 let (_, snapshot) = workflow(&f, task);
                 panic!(
                     "SC10: Task {} did not close; links {:?}; attempt {:?}; jobs {:?}",
@@ -1711,7 +1648,6 @@ async fn sc10_four_projects_close_independently() {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }
-    crate::issue87_trace::mark("SC10 all closed");
     for (task, marked) in tasks.iter().zip(&marked) {
         assert_eq!(
             links(&f, task),

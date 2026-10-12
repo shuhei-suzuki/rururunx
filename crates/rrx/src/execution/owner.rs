@@ -34,17 +34,6 @@ pub(crate) struct GitLease {
     pub(crate) id: OperationId,
     unit: UnitId,
     _guard: tokio::sync::OwnedMutexGuard<()>,
-    #[cfg(test)]
-    issue87_acquired: std::time::Instant,
-}
-#[cfg(test)]
-impl Drop for GitLease {
-    fn drop(&mut self) {
-        let held = self.issue87_acquired.elapsed();
-        if held > std::time::Duration::from_millis(300) {
-            crate::issue87_trace::mark(&format!("git_gate held {held:?} unit {}", self.unit));
-        }
-    }
 }
 
 /// Covers async preparation abandonment; it never adopts another Session or
@@ -366,46 +355,11 @@ impl RuntimeOwner {
             ensure!(lease.unit == unit, "Git reentry belongs to another unit");
             return Ok(lease);
         }
-        #[cfg(test)]
-        let issue87_wait = std::time::Instant::now();
         let guard = self.git_gate.clone().lock_owned().await;
-        #[cfg(test)]
-        if issue87_wait.elapsed() > std::time::Duration::from_millis(300) {
-            crate::issue87_trace::mark(&format!(
-                "git_gate waited {:?} unit {unit}",
-                issue87_wait.elapsed()
-            ));
-        }
-        // ISSUE87 causal control only: lengthen every gate hold by a fixed
-        // amount (set by the measurement script for a filtered serial run).
-        #[cfg(test)]
-        if let Some(ms) = std::env::var("ISSUE87_GIT_GATE_DELAY_MS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-        {
-            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
-        }
-        // ISSUE87 causal control only: the Nth gate lease never ends.
-        #[cfg(test)]
-        if let Some(n) = std::env::var("ISSUE87_GIT_GATE_HANG_NTH")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-        {
-            static ISSUE87_LEASES: std::sync::atomic::AtomicUsize =
-                std::sync::atomic::AtomicUsize::new(0);
-            if ISSUE87_LEASES.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1 == n {
-                crate::issue87_trace::mark(&format!(
-                    "git_gate lease {n} never ends (control) unit {unit}"
-                ));
-                std::future::pending::<()>().await;
-            }
-        }
         let lease = Arc::new(GitLease {
             id: OperationId::new(),
             unit,
             _guard: guard,
-            #[cfg(test)]
-            issue87_acquired: std::time::Instant::now(),
         });
         let mut leases = self
             .git_leases
