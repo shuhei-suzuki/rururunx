@@ -176,7 +176,21 @@ async fn bound_and_stopped(
     }
     let config = f.runtime.config.clone();
     let state = f.owner.state_path().to_path_buf();
-    let _ = f.runtime.shutdown().await;
+    // MEASUREMENT ONLY (Issue #89 EF1 triage, never merged): shutdown timing.
+    let ms = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis())
+    };
+    eprintln!("EF1_STOP begin {provider} at={}", ms());
+    let stopped = f.runtime.shutdown().await;
+    eprintln!(
+        "EF1_STOP end {provider} at={} result={}",
+        ms(),
+        stopped
+            .as_ref()
+            .map_or_else(|e| format!("err: {e:#}"), |_| "ok".to_string())
+    );
     let ControlFixture {
         _dir,
         owner,
@@ -193,6 +207,7 @@ async fn bound_and_stopped(
         );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
+    eprintln!("EF1_STOP custody-dropped {provider} at={}", ms());
     drop(owner);
     (_dir, state, config, task)
 }
@@ -227,7 +242,7 @@ async fn ef1(provider: &str) {
             .map(|(_, kind, at)| format!("{kind}@{}", at - t0))
             .collect();
         eprintln!(
-            "EF1_TAIL {provider} state={:?} tail={}",
+            "EF1_TAIL {provider} state={:?} t0={t0} tail={}",
             before.state,
             tail.join(",")
         );

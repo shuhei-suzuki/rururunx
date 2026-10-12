@@ -1282,7 +1282,53 @@ fn clear_saved_terminal(
     }
     Ok(())
 }
+// MEASUREMENT ONLY (Issue #89 EF1 triage, never merged): which call site
+// persists a Core terminal, when, and whether it commits.
+#[track_caller]
 fn persist_saved_terminal(
+    owner: &RuntimeOwner,
+    phase: Option<&Arc<phase_protocol::PhaseActor>>,
+    terminal: &Arc<NativeTerminal>,
+) -> Result<(
+    ExecutionUnit,
+    native_result::NativeResultReceipt,
+    Session,
+    u64,
+)> {
+    #[cfg(test)]
+    let site = std::panic::Location::caller().line();
+    #[cfg(test)]
+    let trace = std::env::var_os("RRX_EF1_TRACE").is_some();
+    #[cfg(test)]
+    let ms = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis())
+    };
+    #[cfg(test)]
+    if trace {
+        eprintln!(
+            "EF1_CORE enter site={site} phase={} at={} live={:?}",
+            phase.is_some(),
+            ms(),
+            phase.map(|p| p.owner.is_live())
+        );
+    }
+    let result = persist_saved_terminal_inner(owner, phase, terminal);
+    #[cfg(test)]
+    if trace {
+        eprintln!(
+            "EF1_CORE exit site={site} at={} result={}",
+            ms(),
+            match &result {
+                Ok(_) => "committed".to_string(),
+                Err(e) => format!("refused: {e:#}"),
+            }
+        );
+    }
+    result
+}
+fn persist_saved_terminal_inner(
     owner: &RuntimeOwner,
     phase: Option<&Arc<phase_protocol::PhaseActor>>,
     terminal: &Arc<NativeTerminal>,

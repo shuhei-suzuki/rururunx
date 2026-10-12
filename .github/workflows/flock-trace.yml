@@ -23,23 +23,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.91.1
       - run: cargo build --locked --workspace
       - run: cargo test --locked -p rrx --lib --no-run
-      - name: Reopen-heavy tests, serial, repeated
+      - name: EF tests, serial, repeated, Core terminal trace
         shell: bash
+        env:
+          RRX_EF1_TRACE: "1"
         run: |
           mkdir -p out
           for i in $(seq 1 40); do
             cargo test --locked -p rrx --lib runtime::installation::tests::epoch_fence -- --test-threads=1 --nocapture > out/ef-$i.log 2>&1 || echo "ef run $i failed" >> out/summary.txt
-          done
-          for i in $(seq 1 10); do
-            cargo test --locked -p rrx --lib runtime::installation::tests::fm_rb -- --test-threads=1 > out/fmrb-$i.log 2>&1 || echo "fm_rb run $i failed" >> out/summary.txt
-            cargo test --locked -p rrx --lib execution::owner::tests > out/owner-$i.log 2>&1 || echo "owner run $i failed" >> out/summary.txt
-            cargo test --locked -p rrx --lib execution::cleanup::tests > out/cleanup-$i.log 2>&1 || echo "cleanup run $i failed" >> out/summary.txt
-          done
-      - name: Full lib, default threads, x3
-        shell: bash
-        run: |
-          for i in 1 2 3; do
-            env -u RRX_FLOCK_TRACE cargo test --locked -p rrx --lib > out/lib-$i.log 2>&1 || echo "lib run $i failed" >> out/summary.txt
           done
       - name: Report
         if: always()
@@ -47,11 +38,11 @@ jobs:
         run: |
           touch out/summary.txt
           echo "== failed runs"; cat out/summary.txt
-          echo "== FLOCK_TRACE lines"; grep -h "FLOCK_TRACE" out/*.log || echo "none"
-          echo "== failing tests"; grep -h -A12 "^---- " out/*.log | grep -v "EF1_TRACE" | grep -v "ISSUE87" | cut -c1-400 || true
-          echo "== EF1_TAIL (state, kinds only) counts"; grep -h "EF1_TAIL" out/ef-*.log | sed -E 's/@[0-9-]+//g' | sort | uniq -c | cut -c1-900 || true
-          echo "== EF1_TAIL with times"; grep -h "EF1_TAIL" out/ef-*.log | cut -c1-900 || true
-          echo "== panics"; grep -h -A2 "panicked at" out/*.log | grep -v "EF1_TRACE\|ISSUE87" | cut -c1-400 | sort | uniq -c | sort -rn | head -60 || true
-          echo "== EF1_TRACE line count"; cat out/*.log | grep -c "EF1_TRACE" || true
-          echo "== tails of lib runs"; for f in out/lib-*.log; do echo "--- $f"; grep -v " ok$" "$f" | grep -A12 "^---- \|^test result" | grep -v ISSUE87 | tail -60 | cut -c1-400; done
+          echo "== EF1_CORE shapes (site, phase, live, result)"; grep -h "EF1_CORE" out/ef-*.log | sed -E 's/at=[0-9]+ //' | sort | uniq -c | cut -c1-500 || true
+          echo "== per-setup sequences (ef1 only)"
+          for f in out/ef-*.log; do
+            echo "--- $f"
+            grep -E "^test |EF1_STOP|EF1_CORE|EF1_TAIL" "$f" | grep -B8 "EF1_TAIL" | cut -c1-700
+          done
+          echo "== failing tests"; grep -h -A6 "^---- " out/*.log | grep -v "EF1_TRACE\|EF1_CORE\|EF1_STOP" | cut -c1-300 | sort | uniq -c | sort -rn | head -40 || true
           echo "== results"; for f in out/*.log; do echo "$f: $(grep -h '^test result' "$f" | tr '\n' ' ')"; done
