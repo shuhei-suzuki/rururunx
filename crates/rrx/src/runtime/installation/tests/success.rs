@@ -348,15 +348,18 @@ async fn sc7_ordinary_failure(provider: &str) {
     wait_normal_bound(&f, task).await;
     let marked = stored_task(&f, task);
     release_completion(&f, task);
+    // The window starts at the non-success terminal: the saved terminal is
+    // committed and the owner revoked. Until then a live owner costs no
+    // turn by design, so the start task's `finished` is too early (#87).
     wait_for(
         || {
             f.runtime
                 .phase_jobs
                 .observed_jobs()
                 .iter()
-                .any(|j| j.finished)
+                .any(|j| j.owner_live == Some(false))
         },
-        "SETUP: ordinary-failure job did not finish",
+        "SETUP: ordinary-failure terminal not observed",
         60,
     )
     .await;
@@ -1615,10 +1618,16 @@ async fn sc10_four_projects_close_independently() {
     )
     .await;
     f.runtime.start().await.unwrap();
+    let mut marked = Vec::new();
     for task in &tasks {
         wait_normal_bound(&f, task).await;
+        // The baseline is read while this Task's bootstrap is still held.
+        marked.push(stored_task(&f, task));
+        // Release this peer's bootstrap at its own Bound. Holding it until
+        // the last Task is Bound would charge other Tasks' bind latency to
+        // its 30 s native bootstrap deadline (#87). Completions stay held.
+        release_bootstrap(&f, task);
     }
-    let marked: Vec<_> = tasks.iter().map(|t| stored_task(&f, t)).collect();
     for task in &tasks {
         release_completion(&f, task);
     }

@@ -1,0 +1,221 @@
+# Issue 87: CA4i, SC10 and SC7 under parallel load — design delta (for review before code)
+
+Paths are relative to `crates/rrx/src`. Base: `main` `c75b3f0`. Measurements ran on draft PR #90 (trace and workflow only, not for merge) and on the owner's Mac. This delta changes no production code. It changes only what three tests observe, when they start observing, and (SC10) when the test releases its fixture peers.
+
+## 0. Measurement summary
+
+Command: `cargo test --locked -p rrx --lib -- [--test-threads=N]` after `cargo build --locked --workspace`, on GitHub-hosted ubuntu-latest (4 vCPU, non-root) and macos-latest (arm64, 3 vCPU). `--test-threads=12` is the load amplifier: on a 3–4 vCPU runner it is close to the thread-per-core ratio of a 10–12 core Mac running the default.
+
+| Run | Ref | OS | Mode | CA4i | SC7 codex | SC10 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 38098194595 | `1c08445` | Linux | default ×3 / t12 ×3 / serial ×3 | pass / **fail 3** / pass | pass / **fail 3** / pass | pass |
+| 38098194595 | head | Linux | same | pass / **fail 3** / pass | pass / **fail 3** / pass | pass |
+| 38098194595 | `1c08445` | macOS | same | pass / **fail 3** / pass | pass | pass |
+| 38098194595 | head | macOS | same | pass / **fail 3** / pass | pass | pass |
+| 38102140447 | head | Linux | t12 ×2 | **fail 2** | pass | pass |
+| 38103458272 | head | Linux | t12 ×4 | **fail 4** | **fail 4** | pass |
+| 38105816181 | head | Linux | t24 ×2 | **fail 2** | **fail 2** (and SC7 claude) | **fail 2** (setup, §3) |
+
+Baseline and head behave the same, so none of the three is an S4 regression.
+
+**Owner's Mac** (MacBook Pro M5 Max, 18 CPUs, so 18 test threads by default), measurement head `aa4034a`, default `cargo test --locked -p rrx --lib`:
+
+| Runs | Open-file limit | Result |
+| --- | --- | --- |
+| 5 | `ulimit -n` 256 (macOS default) | every run: 530 of 834 tests fail with `Too many open files` (EMFILE), SC10 among them at Runtime build. Not the #87 failure; see §8 |
+| 5 | `ulimit -n 10240` | 11, 7, 9, 5 and 6 failures (598–841 s). **SC10 fails in 4 of 5** with the Issue's message. Run 1 also fails CA4i (`S1=35`) and SC7 claude and codex (`0 settlement polls, bound 3`) |
+| 3 | 10240, SC10 alone, `--test-threads=1` | 3 of 3 pass |
+
+## 1. CA4i — cause
+
+**What it waits on.** `activation/pages.rs` claims 128 Tasks and waits for 128 S1 activation-hook observations within a fixed 120 s from `start()`.
+
+**Where the time goes** (trace inside the CA4i section, Linux t12, 38102140447). Every claim is made within 4 service sweeps. Each preparation then takes the owner-wide Git gate (`RuntimeOwner::git_gate`, `execution/owner.rs`, taken by `git_lease` in `AttemptManager::prepare_inner`). The 67 and 65 gate holds never overlap. They follow each other 0.1–0.3 s apart, with a median hold of 1.55 s (0.53–2.44 s), and the wait grows linearly in FIFO order to 68–69 s. `driver … prepared` events arrive one at a time with a median gap of 1.8 s (1.7 s on macOS). Under that load, 128 preparations need ≈ 230 s, and S1 stops at 49–65 when the 120 s deadline expires. Every preparation that reached the gate completed. No context-slot (`bounded_fs`) timeout was seen, and the service loop never exited.
+
+**Causal control (measured).** CA4i was run alone in serial (`--test-threads=1`) with a test-only extra hold inside the gate (38103458272):
+
+| Extra hold per gate lease | Result |
+| --- | --- |
+| 0 ms | pass, 90.8 s |
+| 500 ms | pass, 205.9 s |
+| 1000 ms | **fail**: `claims=128 S1=96 unfinished=128`, preparations 1.19 s apart |
+
+So the failure follows exactly from serialized gate throughput × 128 against a fixed total. Lock contention and a stalled queue are ruled out by the non-overlapping, steadily advancing holds.
+
+**Production semantics.** The single Git gate is a deliberate owner-wide serialization. It is FIFO, has no deadline, and every waiter eventually runs. This delta does not change it. A Runtime with many simultaneously admitted Tasks prepares them one at a time; that is a throughput property, not a liveness defect.
+
+**Also observed, not changed.** A service sweep that claims 32 Tasks holds `control_admission` for 5–11 s (32 evaluations of 0.11–0.50 s each). Newly spawned Drivers wait for it at startup for 2–10 s. This delays starts but loses nothing. It is outside #87 and noted here for the owner.
+
+## 2. SC7 — cause
+
+**What it waits on.** `success.rs` `sc7_ordinary_failure` releases the completion. It then waits for `observed_jobs().any(|j| j.finished)` and from that moment observes 8 s for 1..=bound settlement polls.
+
+**The anchor is not the terminal.** `ObservedJob::finished` is `JoinHandle::is_finished` of the phase job's start task (`runtime/phase_jobs.rs`, spawned in the launch path). That task ends after launch and the normal bind, before the completion is even released. In every failure, `job finished` and `completion released` carry the same timestamp. The non-success terminal comes later: the fixture answers, `persist_saved_terminal` (`execution/native.rs`) commits it and revokes the owner. Until then the owner is live, and `settlement_turn`/`binding_turn` return `Skipped` by design ("a live owner costs no turn").
+
+| Run | release → owner revoked | window length | revoked after window end |
+| --- | --- | --- | --- |
+| t12-1 | 8.80 s | 8.03 s | 0.76 s |
+| t12-2 | 12.08 s | 8.01 s | 4.07 s |
+| t12-3 | 9.35 s | 9.36 s | ≈0 |
+| t12-4 | 9.96 s | 8.03 s | 1.97 s |
+| t24 codex | 38.2 s, 29.2 s | 8 s | 30.2 s, 21 s |
+| t24 claude | 13.2 s, 12.3 s | 8 s | ≈5 s |
+
+Every failure has `turns=[]`, `owner_live: Some(true)` and `settled: Some(false)` at window end, and the owner clears just after. In serial the terminal follows the release within milliseconds.
+
+**Causal control (measured, 38105816181).** SC7 codex was run alone in serial with a test-only delay before the terminal commit. With 0 ms it passes (10.1 s). With 10 000 ms it **fails**: `SC5(c) codex: 0 settlement polls, bound 3`, the owner is revoked 10.7 s after release, and it clears 12.7 s after the window end.
+
+**Production semantics.** The production Root behaves as designed: no conclusion while the owner is live, then a settlement poll at most every 5 s. The test's window simply starts before the event it is about.
+
+## 3. SC10 — cause
+
+**What it waits on.** `success.rs` `sc10_four_projects_close_independently` starts four Tasks (two Claude, two Codex) in four Projects. It waits for each Task's normal Bound **in turn**, and only then writes `fixture-bootstrap-release` and `fixture-release` for all four (`release_completion`). It then gives all four Tasks 120 s to close.
+
+**The bootstrap hold is shared across Tasks.** In commit mode the fixture peer holds its bootstrap reply (Claude `control_response` to `initialize`, Codex `initialize` result) until `fixture-bootstrap-release` exists (`runtime/installation/tests.rs` `fixture_mode`). The Runtime waits at most 30 s for that reply (`execution/native.rs`: the Claude initialize handshake and `Lines::response`). Normal Bound happens before the reply, so a Task can be Bound while its bootstrap is still held. Because the test releases every bootstrap only after the **last** Task is Bound, each Task's bootstrap wait is as long as the spread between its own `initialize` and the last Task's Bound.
+
+**What happens under load** (owner's Mac, run 1, trace inside the SC10 section). The four Tasks reach Bound at t=361.6, 362.1, 386.7 and 387.1 s, so the spread is 25.5 s. One Task's peer had sent `initialize` earlier. At t=384.4, 2.7 s before the shared release at t=387.1, its unit records `native terminal committed and owner revoked (no settlement)`. From then on every success turn for it is a `settlement poll` (25 of them, every 5 s), and the Task never closes. The other three close normally. The panic shows `links ["session_bound"]`, `owner_live: Some(false)`, `settled: Some(false)`, `success_attention: "owned success settlement not observed"`. In serial, all four Bound within ≈4 s, far below 30 s.
+
+**Causal control (measured, 38129592262, Linux and macOS identical).** SC10 alone, `--test-threads=1`, with a test-only delay between "all four Bound" and the completion release:
+
+| Delay before release | Bootstrap release | Result |
+| --- | --- | --- |
+| 0 | shared (unchanged test) | pass (14 s Linux, 19 s macOS) |
+| 25 s | shared | pass (39 s) |
+| 35 s | shared | **fail**: all four Tasks log `claude bootstrap initialize timed out (30 s)` or `native rpc response 1 timed out (30 s)`, then `native terminal committed and owner revoked (no settlement)`, then only `settlement poll`; `SC10: Task … did not close` |
+| 35 s | **per Task, right after its own Bound** | pass (49 s) |
+
+So the failure follows exactly from holding a Task's bootstrap past the production 30 s bootstrap deadline. The shared release turns another Task's bind latency into this Task's bootstrap wait. Releasing each bootstrap at its own Bound removes the failure even with the same 35 s delay before the completion release.
+
+**Production semantics.** The 30 s bootstrap deadline is a production startup bound: a native peer that does not answer `initialize` within 30 s is failed. That is correct behavior, and the Root correctly reaches no success for a non-success terminal. This delta does not change it.
+
+## 4. Delta
+
+| Item | Change |
+| --- | --- |
+| **D1 (CA4i)** | `activation/pages.rs` setup wait. Replace the fixed 120 s total (`setup_end`) with a progress bound. The wait fails when neither the claim count nor the S1 count has advanced for `SETUP_STALL` = 30 s. The snapshot, controlled shutdown and panic text are kept, and the panic names the stall. **Why this is the right bound:** the production gate has no total deadline by design. What the test can soundly assert is that each claimed preparation keeps reaching S1, which is a per-step liveness property. The longest gap measured between progress steps is ≈10.7 s (from `start()` to the first S1 under t12, Linux). Between S1 steps it is ≤3.4 s (t12) and 1.19 s (the +1000 ms control). 30 s is about 3× the longest gap and still catches a stalled queue, worker or gate. The later waits in CA4i are unchanged |
+| **D2 (SC7)** | `success.rs` `sc7_ordinary_failure`: the window starts at the non-success terminal. Replace the wait for `j.finished` with a wait (same 60 s SETUP bound, label `SETUP: ordinary-failure terminal not observed`) for `owner_live == Some(false)` on the job's binding owner. This is the moment `persist_saved_terminal` has committed the terminal and revoked the owner. The 8 s window, the bound formula and every assertion (1..=bound polls, the attention text, no gate link, never success-closed, Task version unchanged) are unchanged. Both `sc7_claude` and `sc7_codex` use this function |
+| **D3 (SC10)** | `success.rs` `sc10_four_projects_close_independently`: right after each Task's own `wait_normal_bound`, write that Task's `fixture-bootstrap-release` only. The shared completion release after all four are Bound (`release_completion`, which also writes `fixture-release`), the `marked` snapshot, the 120 s close bound and every assertion are unchanged. **Why this is sound:** the bootstrap hold exists only to keep a peer from progressing before its own normal Bound (`fixture_mode`: "Hold only the external protocol peer's bootstrap, after a real spawn"). Once that Task is Bound, the hold has done its job. Holding it longer only ties this Task to the 30 s bootstrap deadline through other Tasks' bind latency. The peer still waits for `fixture-release` before it commits or completes, so the four completions are still released together. The control's per-Task run passed with the same `marked`-version assertion, so bootstrap progress does not move the Task version. `sc10_cross_project_quota_drift_replans_from_fresh_images` already releases each bootstrap at its own Bound with the existing `release_bootstrap` helper; D3 reuses it |
+
+No auth/CAS/owner/marker/#19/process-custody check changes. No test is skipped, ignored or deleted. No production timeout or ownership behavior changes.
+
+## 5. Controls (to run after approval)
+
+| Control | Expectation |
+| --- | --- |
+| C87-1 | CA4i alone in serial with +1000 ms per gate lease: unchanged test FAIL (measured); with D1, PASS |
+| C87-2 | CA4i with one gate lease that never ends (the 10th): with D1 it FAILs with the stall message within ≈30 s of the stall. It neither hangs nor passes |
+| C87-3 | SC7 codex alone in serial with the terminal commit delayed 10 s: unchanged FAIL (measured); with D1/D2, PASS |
+| C87-4 | Same for SC7 claude |
+| C87-5 | Linux t12 ×4 and macOS t12 ×3 at the fixed head: CA4i and SC7 0 failures |
+| C87-6 | SC10 alone in serial with the completion release delayed 35 s: unchanged FAIL (measured, both OSes); with D3, PASS |
+
+The three knobs (an extra gate hold, a terminal delay, a completion-release delay) are test-only. **Q1 for the owner:** (a) keep them on the measurement branch only, with the controls recorded here as runs (the default proposed), or (b) add them in-tree as `cfg(test)` seams with the controls as ignored-by-default tests.
+
+## 6. Mutants (each restored)
+
+| Mutant | Expected detection |
+| --- | --- |
+| m1 D1 reverted (fixed 120 s total) | C87-1 FAIL |
+| m2 D1 without the stall bound (wait unbounded) | C87-2 does not finish (job timeout) |
+| m3 D2 reverted (window from `finished`) | C87-3 FAIL |
+| m4 production: `settlement_turn` returns `Skipped` for a revoked owner without a settlement | D2 SC7 FAIL with 0 polls. This shows D2 still detects a real missing poll |
+| m5 production: `binding_turn` skips the unbound settlement poll | D2 SC7 FAIL (whichever path the provider takes). Measured: survives, see results below |
+| m6 D3 reverted (shared bootstrap release) | C87-6 FAIL |
+| m7 production: `settlement_turn` never installs the continuation (always `settlement poll`) | D3 SC10 FAIL (`did not close`). This shows D3 still detects a Task that really cannot close |
+
+### Results at the D1–D3 head (`3428dc9`, Issue 87 measure run 38134685896, plan `verify`, both OSes identical)
+
+| Run | Linux | macOS |
+| --- | --- | --- |
+| CA4i, SC7 codex/claude, SC10 unchanged inputs, serial | pass (127 s) | pass |
+| C87-1 gate +1000 ms | pass (327 s) | pass (364 s) |
+| C87-2 10th lease never ends | FAIL in 46 s (stall bound) | FAIL in 48 s |
+| C87-3 / C87-4 terminal +10 s | pass / pass | pass / pass |
+| C87-6 release +35 s | pass (49 s) | pass (54 s) |
+| m1 fixed 120 s, gate +1000 ms | FAIL (124 s) | FAIL (128 s) |
+| m2 unbounded, 10th lease never ends | does not finish (`timeout 600`, exit 124) | not run (no `timeout`/`gtimeout` on the runner) |
+| m3 window from `finished`, terminal +10 s | FAIL: 0 polls, `owner_live: Some(true)` at window end | same |
+| m4 `settlement_turn` skips without a settlement | FAIL both providers: 0 polls, `owner_live: Some(false)` | same |
+| m5 `binding_turn` skips the unbound poll | **survives** (both providers pass) | survives |
+| m6 shared bootstrap release, +35 s | FAIL `did not close`, `settled: Some(false)` | same |
+| m7 continuation never installed | FAIL `did not close`, `settled: Some(true)`, settlement polls only | same |
+
+m5 survives because SC7's Task is Bound (`observation: Bound` in every snapshot), so its turns go through `settlement_turn`, never the unbound branch of `binding_turn`. SC7 therefore does not cover that branch; the expectation in §6 was wrong. m4 is the mutant that shows D2 still detects a missing poll. Rust CI (fmt, clippy `-D warnings`, test) on `3428dc9`: green on both OSes (run 38134685906).
+
+### Parallel runs at the D1–D3 head (`--test-threads=12`)
+
+| Job | CA4i | SC7 codex | SC10 | other failures |
+| --- | --- | --- | --- | --- |
+| Linux ×4 | 4/4 | 4/4 | 4/4 | run 3: `cli::endpoint` ×2 (EAGAIN, §8) |
+| macOS runner ×3 | 3/3 | 3/3 | **2/3** | §8 |
+
+The macOS SC10 failure (run 1) is a different mode from the one D3 fixes: `SETUP: normal Bound absent` after the 60 s `wait_normal_bound`. No production deadline fired in SC10. The four units kept taking the gate (holds of 1.4–9.9 s, waits up to 13 s), but no Task was Bound within 60 s. In the same run, single-Task tests that also hold the peer's bootstrap until Bound failed when the 30 s bootstrap deadline fired before Bound (`sc4_codex`, `sc4n_codex`, `scr_codex`; `sc4_claude` in run 3). And `ca6` (run 2) recorded one service sweep body blocked for 40.5 s inside `observe_task_drivers`. Since Bound is written by a sweep, a sweep blocked for that long explains both the missing Bound and the expired bootstrap deadline. Measured next (commit `dde1463`, run 38138100807, three macOS jobs × 3 runs at t12):
+
+| | CA4i | SC7 codex | SC10 |
+| --- | --- | --- | --- |
+| macOS runner, 9 runs | 9/9 | 8/9 | 6/9 |
+
+- **The blocked-sweep hypothesis is refuted as the common cause.** When a Bound wait failed, the sweep's recorded stage was `idle wait` (0.3–4.8 s) in every case that recorded one. A sweep body blocked for tens of seconds was seen once more (40.1 s in `observe_task_drivers`, `ca4d`), not in SC10 or SC7.
+- **SC10 (b2, b3, c1)**: no deadline fired. The four units take the owner-wide gate in turn, with holds of 1.5–9.4 s and waits of 5–17 s. The first Task's own gate steps then need longer than the fixed 60 s `wait_normal_bound`. This is the same structure as CA4i before D1: a fixed total window over a serialized gate.
+- **SC7 (c3) and 12 other single-Task tests ("pattern P")**: four gate holds after `driver … prepared` (the last 4–9 s), then about 30 s with no gate activity and an idle sweep. Then `native rpc response 1 timed out (30 s)`, the owner is revoked with no settlement, and the test fails `SETUP: normal Bound absent` or `normal write not reached`. The test holds the peer's bootstrap until Bound, so the 30 s production deadline measures the time from bootstrap start to Bound. What delays Bound here is **not yet known**: it is not the gate and not the sweep.
+- Every one of these failures is on the GitHub macOS runner (3 vCPU) with 12 test threads. `runtime::installation` setup failures of the same two shapes also hit tests outside #87 (`sc1`, `sc4`, `sc8`, `br1`, `sc11n`, `fm_rb`, `ca1`/`ca3`/`ca4d`, among others).
+
+## 6b. D4 — the macOS start stall (approved by the owner 2026-10-11)
+
+**Where the time goes** (start-path marks, commit `64aa2e8`, run 38147169094, 9 macOS t12 runs; 28 stalled units). Gate → spawn → `initialize` sent is always under 2 s. Transport admission takes µs, with no registration retry. The Core accepts the handoff *before* it sends `initialize` and wakes the start task. The start task's 5 s handoff wait then does not resume for 30–36 s. It resumes only after the 30 s rpc or bootstrap deadline has revoked the owner, so `start_phase` returns late, the bind is refused ("lacks genuine live registration") and the test reports `normal Bound absent` or `normal write not reached`. The unanswered `initialize` is a consequence, not a cause: the fixture holds `initialize` until the test sees Bound.
+
+**What the workers are doing** (commit `f23e781`/`9a4efb4`: a 7 s watchdog on the handoff wait runs macOS `sample` on the test process). In every stall, most busy tokio workers and test threads are blocked in `__psynch_mutexwait` on one pthread mutex. 426 of 447 sampled mutex waits enter through `sqlite3_mutex_enter`. The callers are `sqlite3Malloc` (≈300), `sqlite3_free` (≈90) and `pcache1` (≈30). This is SQLite's process-global allocator mutex (`mem0.mutex`). The bundled SQLite takes it on every allocation and free because memory statistics are on by default (`SQLITE_DEFAULT_MEMSTATUS=1`). With 12 test processes' worth of Store work in one process on 3 vCPUs, every Store call queues on it, and tokio workers block synchronously inside Store calls.
+
+**Inferred, not directly observed:** the start task is woken by the Core's `accept()` on the Core's worker, which puts it in that worker's non-stealable LIFO slot. It stays there while that worker is blocked in Store work. Why the resume coincides with the revoke is not established.
+
+**Causal control** (commit `9a4efb4`, run 38154132010; same code, only the SQLite build flag differs):
+
+| macOS runner, t12 | runs | handoff stalls ≥7 s | rpc/bootstrap 30 s timeouts | CA4i / SC7 codex / SC10 | `runtime::installation` failures | run time |
+| --- | --- | --- | --- | --- | --- | --- |
+| default (`MEMSTATUS=1`) | 6 | 18 | 12 | 6/6, 6/6, **5/6** | 11 (Bound/normal-write/timeout shapes) | 553–773 s |
+| `LIBSQLITE3_FLAGS=-DSQLITE_DEFAULT_MEMSTATUS=0` | 9 | **0** | **0** | 9/9, 9/9, 9/9 | 3, none of these shapes: 2× `os error 35` (EF1, #89), 1× helper qualification failed | 483–608 s |
+
+**Change.** Add `.cargo/config.toml` with `[env] LIBSQLITE3_FLAGS = "-DSQLITE_DEFAULT_MEMSTATUS=0"`, so the bundled SQLite (`libsqlite3-sys` build script) is compiled without allocator statistics. This covers builds and tests, CI and local, on both OSes.
+- **Production effect:** SQLite no longer keeps memory statistics. rrx calls none of `sqlite3_memory_used`, `sqlite3_status` or the soft or hard heap limits (grep: none). SQLite's own documentation recommends `MEMSTATUS=0` for performance.
+- **What it does not change:** no timeout, ownership, auth, CAS, marker, #19 or process-custody check, and no test.
+- **Limit:** the setting applies to builds run inside this workspace (`cargo build`, `cargo test`, `cargo install --path`). An explicitly set `LIBSQLITE3_FLAGS` in the environment takes precedence.
+
+**Rejected alternative:** `sqlite3_config(SQLITE_CONFIG_MEMSTATUS, 0)` at startup. It needs `unsafe` FFI, and the workspace forbids `unsafe_code`.
+
+**Not in D4 (recorded):** Store calls block tokio workers synchronously, which exposes a task in a worker's LIFO slot to that block. D4 removes the cross-thread convoy that made those blocks last tens of seconds. It does not restructure Store access.
+
+**Verification.**
+- **m8 (D4 reverted):** this is the default row above, measured. Expected: handoff stalls return.
+- **After approval:** at the final head, run macOS t12 ×9 and macOS default threads ×10. Expected: 0 handoff stalls and CA4i/SC7/SC10 all pass. Then run the owner's Mac ×10.
+- **Guard:** `state::sqlite_build_tests::bundled_sqlite_keeps_no_allocator_statistics` reads `PRAGMA compile_options` and requires `DEFAULT_MEMSTATUS=0`. Removing `.cargo/config.toml` (or overriding `LIBSQLITE3_FLAGS` without the define) fails it, so the m8 regression is caught on every OS without a load run.
+
+### Results with D1–D4 (`753b6cc`, Issue 87 measure run 38184507761)
+
+| macOS runner | runs | handoff stalls ≥7 s | rpc/bootstrap 30 s timeouts | CA4i / SC7 codex / SC10 | `Bound absent` / `normal write not reached` | run time |
+| --- | --- | --- | --- | --- | --- | --- |
+| t12 (shards a–c) | 9 | **0** | **0** | 9/9, 9/9, 9/9 | 0 | 392–599 s |
+| default threads (shards d, e) | 10 | **0** | **0** | 10/10, 10/10, 10/10 | 0 | 547–840 s |
+| owner's Mac, 18 threads, `ulimit -n 10240` (D1–D4 patch on `c75b3f0`) | 10 | — | — | 10/10, 10/10 (and SC7 claude 10/10), 10/10 | — | 352–471 s (before D4: 598–841 s, SC10 failed 4 of 5) |
+
+At default threads, 8 of 10 runs pass the whole `rrx` lib (807/807); the other two each fail one test, `sc3p_codex` (shard d run 2) and `sc3p_claude` (shard d run 3) (§8). Regular CI on the reduced branch (`137e827`, run 38189123132): Linux green; macOS 807/808 on the first attempt (Grok `…_do_not_revoke_checkpoint`, `watchdog_expired`, #89 item 3) and green on the one re-run, with `sc3p_*` and the guard test passing in both. On the owner's Mac every run fails 7–12 tests, all outside #87: Grok `environment_tests` ×4 and two Docker cleanup tests in all 10, and others that vary (`ef1`/`ef4`, `fm_rb`, `codex::session`, `retained_inspection_*`, `sc3`/`sc3p`/`sc11`/`sc11n`, `rn_h1`).
+
+Every t12 run still exits 101, on tests outside #87 only (§8): Grok `environment_tests` (`watchdog_expired` ≈60 s, #89 item 3 family) in all 9 runs, `fm_rb`/`ef1` `another Runtime owns this state root` (`os error 35`), `ef3`/`ef4`, Docker cleanup, `retained_inspection_*`, and one Grok-adjacent `native process inspection timed out` (#89 item 3).
+
+## 7. Verification plan
+
+`cargo fmt --all -- --check`, `cargo clippy --locked --workspace --all-targets -- -D warnings` and `cargo test --locked --workspace` on Linux (non-root) and macOS through CI. In addition, the macOS parallel rrx lib at the default thread count 10 times and with `--test-threads=12` 3 times at the fixed head, recording CA4i/SC7/SC10 results and refs here. On the owner's Mac (18 threads) this needs `ulimit -n 10240` in that shell (§8).
+
+## 8. Seen in the same runs, outside #87
+
+Recorded for triage, not addressed here:
+- `sc3p_*` (#89 item 1). With D1–D4, `sc3p_codex_parent_change_during_hold_refuses_binding` failed regular macOS CI twice on `753b6cc` (run 38184507808, both attempts) and passed all 9 t12 measure runs. Shape: the held normal write is refused as required (zero links, unbound), then the native terminal and owner revoke land ≈40 ms later, so every later success turn is `unbound settlement poll` and the test's third assertion (a later `normal plan refused`) has no live owner to plan against. With D4 it also failed in 2 of 10 default-thread measure runs (codex once, claude once, same shape), 0 of 9 t12 runs, 0 of 2 regular CI attempts on `137e827`, and 2 of 10 runs on the owner's Mac (claude run 6, codex run 7). Before D4 it failed regular macOS CI once on `d49a803` (about 1 in 10 attempts on this branch) and on PR #88 (run 38047969550). These counts come from different runners and loads, so a same-commit control was run (`5d664e9` plus a measure-only workflow, branch `claude/issue87-sc3p-control` at `0e38d14`, run 38201573209; macOS, default threads, 10 runs per arm; the d4-off arm sets `LIBSQLITE3_FLAGS=` and its guard test fails in every run, confirming the arm). `sc3p_claude` failed in 2 of 10 runs with D4 and 1 of 10 without, with the same shape (`unbound settlement poll` twice, `Goal inactive`); `sc3p_codex` passed all 20. So SC3-P occurs without D4 and is not caused by it; 2/10 against 1/10 does not show a frequency change either way (Fisher exact p = 1.0), and this sample cannot exclude a small one. Run time per `rrx` lib run: D4 on 543–737 s (median 636), D4 off 690–975 s (median 918). Other failures in the control: Grok `environment_tests` (D4 on ×2), `ef1_codex_managed_session_fenced_lost_exactly` (D4 on ×1), `fm_d2_committed_source_631_codex_standard_front` (D4 off ×1, `EOF while parsing a value`); CA4i/SC7/SC10 passed in all 20.
+- Grok `watchdog_expired` ≈60 s (#89 item 3 family)
+- `fm_d2_committed_source_631_codex_quick_front` (`EOF while parsing a value` reading `fixture-native-input.json`)
+- `ca1`/`ca2` (`original marker and Bound absent`)
+- `fm_rb … another Runtime owns this state root`
+- `c_s1e2_bind_replaces_known_leftovers_and_refuses_foreign` (`control endpoint already published`, EAGAIN)
+- Docker cleanup tests, `sc9d`/`sc4n` setup
+- `retained_inspection_inflight_…` (`ParseLength { len: 0 }`)
+- `codex::session::tests::custody_mechanics::queued_revoked_create_retires_before_actor_error_and_removes_no_work_entry` (`owned mechanical observation did not arrive`, `codex/custody_tests.rs:63`), macOS regular CI on `91ce59f`, 1 of 807
+- Owner's Mac, default `ulimit -n` 256 with 18 test threads: 530 tests fail with `Too many open files`. A developer-environment limit, not #87; with `ulimit -n 10240` there were no EMFILE errors in 5 runs
+- Owner's Mac with 10240, run 1: `grok::environment_tests` ×5 (`watchdog_expired` ≈60 s; #89 item 3 family), `docker_filter_and_operation_identity_are_independently_checked`, `ca3b_original_composition_cross_pairs_refuse_before_store` (`original marker and Bound absent`)
