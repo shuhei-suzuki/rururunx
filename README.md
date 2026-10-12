@@ -346,6 +346,11 @@ cargo build --locked --release --workspace
 cargo install --locked --path crates/rrx
 ```
 
+Builds run from this checkout read `.cargo/config.toml`, which compiles the bundled
+SQLite without allocator statistics (Issue #87). `cargo install --git`, use as a
+dependency of another workspace, or an explicitly set `LIBSQLITE3_FLAGS` do not
+apply it; such a build is correct but slower under parallel load.
+
 MVP hosts: macOS and Linux. Cargo produces the local `rrx` binary; prebuilt release
 packaging is not available yet. Native agents keep their own installation,
 authentication, hooks and permission settings.

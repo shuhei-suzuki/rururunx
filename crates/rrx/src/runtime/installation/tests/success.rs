@@ -1618,14 +1618,16 @@ async fn sc10_four_projects_close_independently() {
     )
     .await;
     f.runtime.start().await.unwrap();
+    let mut marked = Vec::new();
     for task in &tasks {
         wait_normal_bound(&f, task).await;
+        // The baseline is read while this Task's bootstrap is still held.
+        marked.push(stored_task(&f, task));
         // Release this peer's bootstrap at its own Bound. Holding it until
         // the last Task is Bound would charge other Tasks' bind latency to
         // its 30 s native bootstrap deadline (#87). Completions stay held.
         release_bootstrap(&f, task);
     }
-    let marked: Vec<_> = tasks.iter().map(|t| stored_task(&f, t)).collect();
     for task in &tasks {
         release_completion(&f, task);
     }
