@@ -1,0 +1,49 @@
+# TEMPORARY Issue #89 SC3P-OP-F1 measurement: does a NativeSessions::status
+# reconcile reach persist_saved_terminal while SC3-P holds CORE_TERMINAL?
+# Never merged.
+name: F1 measure
+on:
+  push:
+    branches: [claude/issue89-f1-measure]
+permissions:
+  contents: read
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        shard: [a, b]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.91.1
+      - run: cargo build --locked --workspace
+      - run: cargo test --locked --workspace --no-run
+      - name: Focused SC3-P x10 and full rrx lib x3
+        run: |
+          set +e
+          export RRX_F1PROBE="$PWD/f1probe.txt"
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            echo "=== focused $i" >> f1probe.txt
+            cargo test --locked -p rrx --lib sc3p_ > focused$i.log 2>&1
+            echo "FOCUSED ${{ matrix.os }}-${{ matrix.shard }}-$i exit=$?"
+            grep -E '^test .*sc3p.* \.\.\. ' focused$i.log
+            grep -E 'panicked at|^SC3-P' focused$i.log | head -6
+          done
+          for i in 1 2 3; do
+            echo "=== full $i" >> f1probe.txt
+            start=$(date +%s)
+            cargo test --locked -p rrx --lib > full$i.log 2>&1
+            code=$?
+            echo "FULL ${{ matrix.os }}-${{ matrix.shard }}-$i exit=$code seconds=$(( $(date +%s) - start ))"
+            grep -E '^test result:' full$i.log | tail -1
+            grep -E '^test .*sc3p.* \.\.\. ' full$i.log
+            grep -E '^    [a-z0-9_:]+$' full$i.log | sed "s/^/  FAILED: /"
+            grep -E -A3 'sc3p.*panicked at' full$i.log | head -12
+          done
+          echo "---- probe file"
+          cat f1probe.txt

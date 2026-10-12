@@ -690,7 +690,15 @@ impl NativeSessions {
             .clone();
         if let Some(proof) = frozen.as_ref() {
             status.observed_work = Some(proof.receipt.observed_work);
+            #[cfg(test)]
+            let f1_task = phase
+                .as_ref()
+                .and_then(|p| p.owner.allocation().facts().scope.task_id);
+            #[cfg(test)]
+            crate::runtime::count(f1_task, "f1 status reconcile");
             if persist_saved_terminal(&self.owner, phase.as_ref(), proof).is_ok() {
+                #[cfg(test)]
+                crate::runtime::count(f1_task, "f1 status reconciled");
                 clear_saved_terminal(&pending, proof)?;
                 reconciled = true;
                 status.diagnostic = None;
@@ -1293,6 +1301,11 @@ fn persist_saved_terminal(
     u64,
 )> {
     if let Some(phase) = phase {
+        #[cfg(test)]
+        crate::runtime::count(
+            phase.owner.allocation().facts().scope.task_id,
+            "f1 core terminal arrival",
+        );
         #[cfg(test)]
         crate::runtime::pause_at(
             phase.owner.allocation().facts().scope.task_id,

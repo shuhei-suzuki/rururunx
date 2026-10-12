@@ -609,6 +609,24 @@ async fn sc3p_wait(f: &ControlFixture, mut condition: impl FnMut() -> bool, labe
     }
 }
 
+/// MEASUREMENT ONLY (Issue #89 SC3P-OP-F1): appends one line per checkpoint
+/// to the file named by RRX_F1PROBE.
+fn f1_probe(f: &ControlFixture, task: &Task, session: &str, unit: crate::execution::UnitId, provider: &str, at: &str) {
+    use crate::runtime::phase_jobs::counted;
+    let Ok(path) = std::env::var("RRX_F1PROBE") else { return };
+    let line = format!(
+        "F1PROBE provider={provider} at={at} arrivals={} status_reconcile={} status_reconciled={} core_done={} refused={}\n",
+        counted(task.id, "f1 core terminal arrival"),
+        counted(task.id, "f1 status reconcile"),
+        counted(task.id, "f1 status reconciled"),
+        sc3p_core_terminal_done(f, session, unit),
+        sc3p_refused(f),
+    );
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
+    file.write_all(line.as_bytes()).unwrap();
+}
+
 /// SC3-P order: which hold the control releases first.
 #[derive(Clone, Copy, PartialEq)]
 enum Sc3pOrder {
@@ -687,6 +705,8 @@ async fn sc3p_parent_change(provider: &str, order: Sc3pOrder) {
         )
         .await;
     }
+    let order_name = if order == Sc3pOrder::TerminalFirst { "T" } else { "P" };
+    f1_probe(&f, task, &session, unit, provider, &format!("{order_name}-before-write-release"));
     pause.0.release();
     sc3p_wait(
         &f,
@@ -694,6 +714,7 @@ async fn sc3p_parent_change(provider: &str, order: Sc3pOrder) {
         &format!("SC3-P {provider}: a later normal plan refuses while the owner is live"),
     )
     .await;
+    f1_probe(&f, task, &session, unit, provider, &format!("{order_name}-refused-before-terminal-release"));
     terminal.0.release();
     sc3p_wait(
         &f,
@@ -706,6 +727,7 @@ async fn sc3p_parent_change(provider: &str, order: Sc3pOrder) {
         f.runtime.wake.notify_one();
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
+    f1_probe(&f, task, &session, unit, provider, &format!("{order_name}-end"));
     let jobs = f.runtime.phase_jobs.observed_jobs();
     assert!(
         links(&f, task).is_empty(),
