@@ -182,6 +182,7 @@ async fn bound_and_stopped(
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_millis())
     };
+    let entered = crate::execution::native::EF1_CORE_ENTERED.load(std::sync::atomic::Ordering::SeqCst);
     eprintln!("EF1_STOP begin {provider} at={}", ms());
     let stopped = f.runtime.shutdown().await;
     eprintln!(
@@ -191,6 +192,24 @@ async fn bound_and_stopped(
             .as_ref()
             .map_or_else(|e| format!("err: {e:#}"), |_| "ok".to_string())
     );
+    // MEASUREMENT ONLY: with RRX_EF1_WAIT_CORE, keep the Runtime (and so the
+    // preparation custody) alive until the Core reaches its terminal call, to
+    // show that shutdown alone triggers it.
+    if std::env::var_os("RRX_EF1_WAIT_CORE").is_some() {
+        let start = ms();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while crate::execution::native::EF1_CORE_ENTERED.load(std::sync::atomic::Ordering::SeqCst) == entered
+            && tokio::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        let reached = crate::execution::native::EF1_CORE_ENTERED.load(std::sync::atomic::Ordering::SeqCst) != entered;
+        eprintln!(
+            "EF1_WAIT {provider} core_entered_before_drop={reached} waited_ms={}",
+            ms() - start
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
     let ControlFixture {
         _dir,
         owner,

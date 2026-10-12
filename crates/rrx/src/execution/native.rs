@@ -1284,6 +1284,9 @@ fn clear_saved_terminal(
 }
 // MEASUREMENT ONLY (Issue #89 EF1 triage, never merged): which call site
 // persists a Core terminal, when, and whether it commits.
+#[cfg(test)]
+pub(crate) static EF1_CORE_ENTERED: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 #[track_caller]
 fn persist_saved_terminal(
     owner: &RuntimeOwner,
@@ -1305,6 +1308,8 @@ fn persist_saved_terminal(
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_millis())
     };
+    #[cfg(test)]
+    EF1_CORE_ENTERED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     #[cfg(test)]
     if trace {
         eprintln!(
