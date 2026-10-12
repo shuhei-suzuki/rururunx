@@ -26,10 +26,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p out
-          for i in $(seq 1 15); do
+          for i in $(seq 1 20); do
             cargo test --locked -p rrx --lib runtime::installation::tests::epoch_fence -- --test-threads=1 > out/ef-$i.log 2>&1 || echo "ef run $i failed" >> out/summary.txt
             cargo test --locked -p rrx --lib runtime::installation::tests::fm_rb -- --test-threads=1 > out/fmrb-$i.log 2>&1 || echo "fm_rb run $i failed" >> out/summary.txt
-            cargo test --locked -p rrx --lib execution::owner execution::cleanup > out/owner-$i.log 2>&1 || echo "owner/cleanup run $i failed" >> out/summary.txt
+            cargo test --locked -p rrx --lib execution::owner::tests > out/owner-$i.log 2>&1 || echo "owner run $i failed" >> out/summary.txt
+            cargo test --locked -p rrx --lib execution::cleanup::tests > out/cleanup-$i.log 2>&1 || echo "cleanup run $i failed" >> out/summary.txt
           done
       - name: Full lib, default threads, x2
         shell: bash
@@ -45,4 +46,5 @@ jobs:
           echo "== failed runs"; cat out/summary.txt
           echo "== FLOCK_TRACE lines"; grep -h "FLOCK_TRACE" out/*.log || echo "none"
           echo "== failing tests"; grep -h -A3 "^---- " out/*.log | grep -v "ISSUE87" | cut -c1-400 || true
+          echo "== tails of lib runs"; for f in out/lib-*.log out/owner-1.log; do echo "--- $f"; grep -v " ok$" "$f" | tail -40 | cut -c1-400; done
           echo "== results"; for f in out/*.log; do echo "$f: $(grep -h '^test result' "$f" | tr '\n' ' ')"; done
