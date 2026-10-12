@@ -222,8 +222,13 @@ fn lock_state_root(state: &Path) -> Result<LockedStateRoot> {
         .mode(0o600)
         .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
         .open(&lock_path)?;
-    rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)
-        .context("another Runtime owns this state root")?;
+    let flocked = rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive);
+    // MEASUREMENT ONLY (Issue #89 CI triage, never merged): attribute a refusal.
+    #[cfg(test)]
+    if flocked.is_err() && std::env::var_os("RRX_FLOCK_TRACE").is_some() {
+        flock_trace(&lock, &lock_path);
+    }
+    flocked.context("another Runtime owns this state root")?;
     // Rust File::open uses close-on-exec; verify rather than inheriting authority into a CLI.
     ensure!(
         rustix::io::fcntl_getfd(&lock)?.contains(rustix::io::FdFlags::CLOEXEC),
@@ -239,6 +244,42 @@ fn lock_state_root(state: &Path) -> Result<LockedStateRoot> {
         lock,
         database_file,
     })
+}
+
+/// MEASUREMENT ONLY (Issue #89 CI triage, never merged): who holds the
+/// owner lock when this process's own reopen is refused, and how long until
+/// it clears. Children of this process still showing the test binary's name
+/// are forks that have not reached `exec` (and so still share the flock).
+#[cfg(test)]
+fn flock_trace(lock: &std::fs::File, lock_path: &Path) {
+    let me = std::process::id().to_string();
+    let run = |program: &str, args: &[&str]| {
+        std::process::Command::new(program)
+            .args(args)
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_else(|e| format!("<{program}: {e}>"))
+    };
+    let children: Vec<String> = run("ps", &["-A", "-o", "pid=,ppid=,stat=,etime=,comm="])
+        .lines()
+        .filter(|line| line.split_whitespace().nth(1) == Some(me.as_str()))
+        .map(|line| line.trim().to_owned())
+        .collect();
+    let path = lock_path.to_string_lossy().into_owned();
+    let holders = run("lsof", &["-n", "-F", "pc", "--", &path]).replace('\n', " ");
+    let started = std::time::Instant::now();
+    let mut cleared = None;
+    while started.elapsed() < std::time::Duration::from_secs(5) {
+        if rustix::fs::flock(lock, rustix::fs::FlockOperation::NonBlockingLockExclusive).is_ok() {
+            cleared = Some(started.elapsed());
+            let _ = rustix::fs::flock(lock, rustix::fs::FlockOperation::Unlock);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    eprintln!(
+        "FLOCK_TRACE self={me} lock={path} children_at_refusal={children:?} lsof_holders=[{holders}] cleared_after={cleared:?}"
+    );
 }
 
 /// S3 D7 (R3.5): the offline writer's hold on a state root. It takes the
