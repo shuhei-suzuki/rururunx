@@ -226,7 +226,7 @@ fn lock_state_root(state: &Path) -> Result<LockedStateRoot> {
     // MEASUREMENT ONLY (Issue #89 CI triage, never merged): attribute a refusal.
     #[cfg(test)]
     if flocked.is_err() && std::env::var_os("RRX_FLOCK_TRACE").is_some() {
-        flock_trace(&lock, &lock_path);
+        flock_trace(&lock_path);
     }
     flocked.context("another Runtime owns this state root")?;
     // Rust File::open uses close-on-exec; verify rather than inheriting authority into a CLI.
@@ -247,11 +247,12 @@ fn lock_state_root(state: &Path) -> Result<LockedStateRoot> {
 }
 
 /// MEASUREMENT ONLY (Issue #89 CI triage, never merged): who holds the
-/// owner lock when this process's own reopen is refused, and how long until
-/// it clears. Children of this process still showing the test binary's name
-/// are forks that have not reached `exec` (and so still share the flock).
+/// owner lock when this process's own reopen is refused. It never takes the
+/// lock itself, so a test that expects the refusal sees the same outcome.
+/// Children of this process still showing the test binary's name are forks
+/// that have not reached `exec` (and so still share the flock).
 #[cfg(test)]
-fn flock_trace(lock: &std::fs::File, lock_path: &Path) {
+fn flock_trace(lock_path: &Path) {
     let me = std::process::id().to_string();
     let run = |program: &str, args: &[&str]| {
         std::process::Command::new(program)
@@ -267,18 +268,8 @@ fn flock_trace(lock: &std::fs::File, lock_path: &Path) {
         .collect();
     let path = lock_path.to_string_lossy().into_owned();
     let holders = run("lsof", &["-n", "-F", "pc", "--", &path]).replace('\n', " ");
-    let started = std::time::Instant::now();
-    let mut cleared = None;
-    while started.elapsed() < std::time::Duration::from_secs(5) {
-        if rustix::fs::flock(lock, rustix::fs::FlockOperation::NonBlockingLockExclusive).is_ok() {
-            cleared = Some(started.elapsed());
-            let _ = rustix::fs::flock(lock, rustix::fs::FlockOperation::Unlock);
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(2));
-    }
     eprintln!(
-        "FLOCK_TRACE self={me} lock={path} children_at_refusal={children:?} lsof_holders=[{holders}] cleared_after={cleared:?}"
+        "FLOCK_TRACE self={me} lock={path} children_at_refusal={children:?} lsof_holders=[{holders}]"
     );
 }
 

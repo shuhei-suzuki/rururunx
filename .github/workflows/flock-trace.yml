@@ -32,10 +32,10 @@ jobs:
             cargo test --locked -p rrx --lib execution::owner::tests > out/owner-$i.log 2>&1 || echo "owner run $i failed" >> out/summary.txt
             cargo test --locked -p rrx --lib execution::cleanup::tests > out/cleanup-$i.log 2>&1 || echo "cleanup run $i failed" >> out/summary.txt
           done
-      - name: Full lib, default threads, x2
+      - name: Full lib, default threads, x3
         shell: bash
         run: |
-          for i in 1 2; do
+          for i in 1 2 3; do
             cargo test --locked -p rrx --lib > out/lib-$i.log 2>&1 || echo "lib run $i failed" >> out/summary.txt
           done
       - name: Report
@@ -45,6 +45,6 @@ jobs:
           touch out/summary.txt
           echo "== failed runs"; cat out/summary.txt
           echo "== FLOCK_TRACE lines"; grep -h "FLOCK_TRACE" out/*.log || echo "none"
-          echo "== failing tests"; grep -h -A3 "^---- " out/*.log | grep -v "ISSUE87" | cut -c1-400 || true
+          echo "== failing tests"; grep -h -A12 "^---- " out/*.log | grep -v "ISSUE87" | cut -c1-400 || true
           echo "== tails of lib runs"; for f in out/lib-*.log out/owner-1.log; do echo "--- $f"; grep -v " ok$" "$f" | tail -40 | cut -c1-400; done
           echo "== results"; for f in out/*.log; do echo "$f: $(grep -h '^test result' "$f" | tr '\n' ' ')"; done
