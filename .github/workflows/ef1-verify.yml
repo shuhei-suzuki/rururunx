@@ -1,0 +1,64 @@
+# MEASUREMENT ONLY (Issue #89 EF1 verification). Never merged.
+name: Issue 89 EF1 verify
+on:
+  push:
+    branches: [claude/issue89-ef1-verify]
+permissions:
+  contents: read
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        mode: [stress, m1-no-pause-site, m3-no-hold, m4-no-custody-wait]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.91.1
+      - name: Apply mutant
+        shell: bash
+        run: |
+          set -e
+          f=crates/rrx/src/runtime/installation/tests/epoch_fence.rs
+          case "${{ matrix.mode }}" in
+            m1-no-pause-site)
+              perl -0pi -e 's/\s*#\[cfg\(test\)\]\s*crate::runtime::pause_at\(\s*phase\.owner\.allocation\(\)\.facts\(\)\.scope\.task_id,\s*crate::runtime::CORE_TERMINAL,\s*\);//' crates/rrx/src/execution/native.rs
+              ! grep -n "CORE_TERMINAL" crates/rrx/src/execution/native.rs ;;
+            m3-no-hold)
+              perl -0pi -e 's/(let terminal = Release\(WritePause::arm_at\(task\.id, CORE_TERMINAL\)\);)/$1\n    terminal.0.release();/' $f
+              grep -n "terminal.0.release();" $f ;;
+            m4-no-custody-wait)
+              perl -0pi -e 's/wait_for\(\s*\|\| custody\.upgrade\(\)\.is_none\(\),/let _keep = custody.upgrade();\n    wait_for(\n        || true,/' $f
+              grep -n "_keep" $f ;;
+          esac
+          git diff --stat
+      - run: cargo build --locked --workspace
+      - run: cargo test --locked -p rrx --lib --no-run
+      - name: EF serial x40 (stress) or x3 (mutants)
+        shell: bash
+        run: |
+          mkdir -p out
+          n=40; [ "${{ matrix.mode }}" = stress ] || n=3
+          for i in $(seq 1 $n); do
+            cargo test --locked -p rrx --lib runtime::installation::tests::epoch_fence -- --test-threads=1 > out/ef-$i.log 2>&1 || echo "ef run $i failed" >> out/summary.txt
+          done
+      - name: Full lib x2 (stress only)
+        if: matrix.mode == 'stress'
+        shell: bash
+        run: |
+          for i in 1 2; do
+            cargo test --locked -p rrx --lib > out/lib-$i.log 2>&1 || echo "lib run $i failed" >> out/summary.txt
+          done
+      - name: Report
+        if: always()
+        shell: bash
+        run: |
+          touch out/summary.txt
+          echo "== mode ${{ matrix.mode }}"
+          echo "== failed runs"; cat out/summary.txt
+          echo "== failing tests and panics"; grep -h -A4 "^---- \|panicked at" out/*.log | cut -c1-300 | sort | uniq -c | sort -rn | head -40 || true
+          echo "== results"; for f in out/*.log; do echo "$f: $(grep -h '^test result' "$f" | tr '\n' ' ')"; done
