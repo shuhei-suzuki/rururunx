@@ -40,7 +40,7 @@ fn recording_fixture(provider: &str) -> ControlFixture {
             "while not os.path.exists(os.path.join(os.environ[\"RRX_OUTPUT_DIR\"], \"fixture-bootstrap-release\")): time.sleep(0.02)",
             1,
         );
-        let record = "    value = json.loads(line)\n    if value.get('method') == 'turn/start' or value.get('type') == 'user':\n        with open(os.path.join(os.environ['RRX_OUTPUT_DIR'], 'fixture-native-input.json'), 'w') as recorded:\n            json.dump(value, recorded)\n";
+        let record = crate::execution::native::tests::RECORD_NATIVE_INPUT;
         assert!(source.contains("    value = json.loads(line)\n"));
         let source = source.replacen("    value = json.loads(line)\n", record, 1);
         std::fs::write(

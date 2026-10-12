@@ -174,14 +174,13 @@ assert 'RRX_UNIT_ID' not in os.environ and 'RRX_RUNTIME_SOCKET' not in os.enviro
 assert os.environ['GIT_NO_LAZY_FETCH'] == '1' and os.environ['GIT_NO_REPLACE_OBJECTS'] == '1'
 unit, = db.execute('SELECT body FROM execution_units WHERE id=?', (effect['unit_id'],)).fetchone()
 assert operation != json.loads(unit)['cookie']
-pathlib.Path({marker}).write_text(operation)
-db.close()
+{publish}db.close()
 if {sleep}: time.sleep(30)
 os.execv({git}, [{git}] + sys.argv[1:])
 "#,
             python = python.display(),
             database = serde_json::to_string(database.to_str().unwrap()).unwrap(),
-            marker = serde_json::to_string(marker.to_str().unwrap()).unwrap(),
+            publish = publish_marker(&serde_json::to_string(marker.to_str().unwrap()).unwrap()),
             git = serde_json::to_string(git.to_str().unwrap()).unwrap(),
             sleep = if sleep { "True" } else { "False" }
         ),
@@ -190,6 +189,47 @@ os.execv({git}, [{git}] + sys.argv[1:])
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
     program
 }
+/// Python lines that publish the operation id at the path expression `marker`.
+/// The id is written whole under a sibling name and renamed into place, so
+/// `marker_ready` never parses a partial id (Issue #89 F2).
+fn publish_marker(marker: &str) -> String {
+    format!(
+        "marker = pathlib.Path({marker})\npartial = marker.with_name(marker.name + '.partial')\npartial.write_text(operation)\nos.replace(partial, marker)\n"
+    )
+}
+
+/// F2 control: with `Path.write_text` writing half, pausing 1 s, then the
+/// rest, the previous in-place marker exposes a partial id to a reader that
+/// parses it as soon as it can be read; `publish_marker` never does.
+#[test]
+fn retained_marker_is_never_partial() {
+    use crate::execution::native::tests::publication_exposes_partial;
+    let operation = OperationId::new();
+    let prelude = format!(
+        "import os, pathlib, time\ndef write_text(self, text):\n    with open(self, 'w') as out:\n        out.write(text[:len(text) // 2])\n        out.flush()\n        time.sleep(1)\n        out.write(text[len(text) // 2:])\npathlib.Path.write_text = write_text\noperation = '{operation}'\n"
+    );
+    let path = "os.path.join(os.environ['RRX_OUTPUT_DIR'], 'marker')";
+    let id = |bytes: &[u8]| {
+        std::str::from_utf8(bytes)
+            .ok()
+            .and_then(|text| text.parse::<OperationId>().ok())
+            .is_some_and(|parsed| parsed == operation)
+    };
+    assert!(
+        publication_exposes_partial(
+            &prelude,
+            &format!("pathlib.Path({path}).write_text(operation)\n"),
+            "marker",
+            id
+        ),
+        "CONTROL: the in-place marker exposes a partial id"
+    );
+    assert!(
+        !publication_exposes_partial(&prelude, &publish_marker(path), "marker", id),
+        "the marker is published whole"
+    );
+}
+
 async fn marker_ready(marker: &Path) -> OperationId {
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         loop {

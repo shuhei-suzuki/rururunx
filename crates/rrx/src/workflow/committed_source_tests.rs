@@ -159,7 +159,7 @@ impl Fixture {
         let program = execution::native::tests::program(dir.path(), provider);
         let script = std::fs::read_to_string(&program).unwrap();
         // Record actual outgoing native bytes before the fixture's optional scenario rewrite.
-        let record = "    value = json.loads(line)\n    if value.get('method') == 'turn/start' or value.get('type') == 'user':\n        with open(os.path.join(os.environ['RRX_OUTPUT_DIR'], 'fixture-native-input.json'), 'w') as recorded:\n            json.dump(value, recorded)\n";
+        let record = execution::native::tests::RECORD_NATIVE_INPUT;
         assert!(script.contains("    value = json.loads(line)\n"));
         std::fs::write(
             &program,
