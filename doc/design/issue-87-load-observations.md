@@ -194,8 +194,10 @@ The macOS SC10 failure (run 1) is a different mode from the one D3 fixes: `SETUP
 | macOS runner | runs | handoff stalls ≥7 s | rpc/bootstrap 30 s timeouts | CA4i / SC7 codex / SC10 | `Bound absent` / `normal write not reached` | run time |
 | --- | --- | --- | --- | --- | --- | --- |
 | t12 (shards a–c) | 9 | **0** | **0** | 9/9, 9/9, 9/9 | 0 | 392–599 s |
-| default threads (shards d, e) | 10 | pending | pending | pending | pending | pending |
-| owner's Mac, 18 threads, `ulimit -n 10240` | 10 | — | — | run 1: all pass (452 s; before D4 600–840 s); rest pending | — | — |
+| default threads (shards d, e) | 10 | **0** | **0** | 10/10, 10/10, 10/10 | 0 | 547–840 s |
+| owner's Mac, 18 threads, `ulimit -n 10240` (D1–D4 patch on `c75b3f0`) | 10 | — | — | 10/10, 10/10 (and SC7 claude 10/10), 10/10 | — | 352–471 s (before D4: 598–841 s, SC10 failed 4 of 5) |
+
+At default threads, 8 of 10 runs pass the whole `rrx` lib (807/807); the other two each fail one test, `sc3p_codex` (shard d run 2) and `sc3p_claude` (shard d run 3) (§8). Regular CI on the reduced branch (`137e827`, run 38189123132): Linux green; macOS 807/808 on the first attempt (Grok `…_do_not_revoke_checkpoint`, `watchdog_expired`, #89 item 3) and green on the one re-run, with `sc3p_*` and the guard test passing in both. On the owner's Mac every run fails 7–12 tests, all outside #87: Grok `environment_tests` ×4 and two Docker cleanup tests in all 10, and others that vary (`ef1`/`ef4`, `fm_rb`, `codex::session`, `retained_inspection_*`, `sc3`/`sc3p`/`sc11`/`sc11n`, `rn_h1`).
 
 Every t12 run still exits 101, on tests outside #87 only (§8): Grok `environment_tests` (`watchdog_expired` ≈60 s, #89 item 3 family) in all 9 runs, `fm_rb`/`ef1` `another Runtime owns this state root` (`os error 35`), `ef3`/`ef4`, Docker cleanup, `retained_inspection_*`, and one Grok-adjacent `native process inspection timed out` (#89 item 3).
 
@@ -206,7 +208,7 @@ Every t12 run still exits 101, on tests outside #87 only (§8): Grok `environmen
 ## 8. Seen in the same runs, outside #87
 
 Recorded for triage, not addressed here:
-- `sc3p_*` (#89 item 1). With D1–D4, `sc3p_codex_parent_change_during_hold_refuses_binding` failed regular macOS CI twice on `753b6cc` (run 38184507808, both attempts) and passed all 9 t12 measure runs. Shape: the held normal write is refused as required (zero links, unbound), then the native terminal and owner revoke land ≈40 ms later, so every later success turn is `unbound settlement poll` and the test's third assertion (a later `normal plan refused`) has no live owner to plan against. Before D4 it failed regular macOS CI once on `d49a803` and on PR #88 (run 38047969550). Whether D4 changes its frequency is being measured.
+- `sc3p_*` (#89 item 1). With D1–D4, `sc3p_codex_parent_change_during_hold_refuses_binding` failed regular macOS CI twice on `753b6cc` (run 38184507808, both attempts) and passed all 9 t12 measure runs. Shape: the held normal write is refused as required (zero links, unbound), then the native terminal and owner revoke land ≈40 ms later, so every later success turn is `unbound settlement poll` and the test's third assertion (a later `normal plan refused`) has no live owner to plan against. With D4 it also failed in 2 of 10 default-thread measure runs (codex once, claude once, same shape), 0 of 9 t12 runs, 0 of 2 regular CI attempts on `137e827`, and 2 of 10 runs on the owner's Mac (claude run 6, codex run 7). Before D4 it failed regular macOS CI once on `d49a803` (about 1 in 10 attempts on this branch) and on PR #88 (run 38047969550). These counts come from different runners and loads, so they do not show whether D4 changes its frequency; that needs a same-commit control (D4 on/off, default threads).
 - Grok `watchdog_expired` ≈60 s (#89 item 3 family)
 - `fm_d2_committed_source_631_codex_quick_front` (`EOF while parsing a value` reading `fixture-native-input.json`)
 - `ca1`/`ca2` (`original marker and Bound absent`)
