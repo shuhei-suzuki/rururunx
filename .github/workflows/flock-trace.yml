@@ -51,6 +51,7 @@ jobs:
           echo "== failing tests"; grep -h -A12 "^---- " out/*.log | grep -v "EF1_TRACE" | grep -v "ISSUE87" | cut -c1-400 || true
           echo "== EF1_TAIL (state, kinds only) counts"; grep -h "EF1_TAIL" out/ef-*.log | sed -E 's/@[0-9-]+//g' | sort | uniq -c | cut -c1-900 || true
           echo "== EF1_TAIL with times"; grep -h "EF1_TAIL" out/ef-*.log | cut -c1-900 || true
+          echo "== panics"; grep -h -A2 "panicked at" out/*.log | grep -v "EF1_TRACE\|ISSUE87" | cut -c1-400 | sort | uniq -c | sort -rn | head -60 || true
           echo "== EF1_TRACE line count"; cat out/*.log | grep -c "EF1_TRACE" || true
           echo "== tails of lib runs"; for f in out/lib-*.log; do echo "--- $f"; grep -v " ok$" "$f" | grep -A12 "^---- \|^test result" | grep -v ISSUE87 | tail -60 | cut -c1-400; done
           echo "== results"; for f in out/*.log; do echo "$f: $(grep -h '^test result' "$f" | tr '\n' ' ')"; done
