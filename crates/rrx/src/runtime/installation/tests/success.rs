@@ -509,11 +509,125 @@ async fn sc2_codex_late_binding_after_settlement_closes_once() {
     sc2_late("codex").await;
 }
 
-/// SC3-P: a Goal change through the existing lifecycle writer while the normal
-/// write is held makes that write refuse and every later plan refuse on the
-/// original parent projection: zero links, no frame refresh.
-async fn sc3p_parent_change(provider: &str) {
-    use crate::runtime::phase_jobs::WritePause;
+/// A pause released before its site is reached never parks the arrival: the
+/// release stands, and `reached` stays false. The order is fixed by the test
+/// alone (release, then arrival on a plain thread), not by runtime timing.
+#[test]
+fn write_pause_keeps_a_release_before_arrival() {
+    use crate::runtime::phase_jobs::{WritePause, pause_at};
+    const SITE: &str = "release before arrival";
+    let task = crate::domain::TaskId::new();
+    let pause = WritePause::arm_at(task, SITE);
+    pause.release();
+    let (done, returned) = std::sync::mpsc::channel();
+    let arrival = std::thread::spawn(move || {
+        pause_at(Some(task), SITE);
+        let _ = done.send(());
+    });
+    let outcome = returned.recv_timeout(Duration::from_secs(5));
+    if outcome.is_err() {
+        // A parked arrival waits only for state 2; releasing again wakes it,
+        // so the join below returns once the thread is scheduled. The 5 s
+        // bound is on the arrival, not on `join` itself.
+        pause.release();
+    }
+    arrival.join().unwrap();
+    assert!(
+        outcome.is_ok(),
+        "an arrival after the release stayed parked for 5 s"
+    );
+    assert!(!pause.reached(), "an arrival after the release never parks");
+}
+
+/// The one managed Session of a Task and its Unit, selected exactly.
+fn sc3p_target(f: &ControlFixture, task: &Task) -> (String, crate::execution::UnitId) {
+    let raw = raw(f);
+    let mut statement = raw
+        .prepare(
+            "SELECT o.allocated_session_id, u.unit_id FROM managed_phase_owners o \
+             JOIN session_units u ON u.session_id=o.allocated_session_id WHERE o.task_id=?1",
+        )
+        .unwrap();
+    let mut rows: Vec<(String, String)> = statement
+        .query_map([task.id.to_string()], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(
+        rows.len(),
+        1,
+        "SETUP: one managed Session for the Task: {rows:?}"
+    );
+    let (session, unit) = rows.remove(0);
+    (session, unit.parse().unwrap())
+}
+
+/// The Task's Core terminal has completed: its Session left Starting/Running
+/// and the job of its Unit reports the owner revoked. Before shutdown the only
+/// revoke on this path is the Core's terminal transaction.
+fn sc3p_core_terminal_done(
+    f: &ControlFixture,
+    session: &str,
+    unit: crate::execution::UnitId,
+) -> bool {
+    let body: String = raw(f)
+        .query_row("SELECT body FROM records WHERE id=?1", [session], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let record: crate::domain::Record = serde_json::from_str(&body).unwrap();
+    let state: crate::domain::Session = serde_json::from_value(record.data).unwrap();
+    let jobs: Vec<_> = f
+        .runtime
+        .phase_jobs
+        .observed_jobs()
+        .into_iter()
+        .filter(|j| j.unit == unit)
+        .collect();
+    assert!(jobs.len() <= 1, "one job per Unit: {jobs:?}");
+    !matches!(
+        state.state,
+        crate::domain::SessionState::Starting | crate::domain::SessionState::Running
+    ) && jobs.first().is_some_and(|j| j.owner_live == Some(false))
+}
+
+fn sc3p_refused(f: &ControlFixture) -> bool {
+    f.runtime
+        .phase_jobs
+        .observed_success_turns()
+        .iter()
+        .any(|(_, l)| *l == "normal plan refused")
+}
+
+/// Wakes the Root sweep until `condition` holds; panics at the deadline.
+async fn sc3p_wait(f: &ControlFixture, mut condition: impl FnMut() -> bool, label: &str) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    while !condition() {
+        assert!(std::time::Instant::now() < deadline, "{label}");
+        f.runtime.wake.notify_one();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// SC3-P order: which hold the control releases first.
+#[derive(Clone, Copy, PartialEq)]
+enum Sc3pOrder {
+    /// Release the normal write right after the Pause; the Core terminal may
+    /// arrive before or after its hold is released.
+    WriteAfterPause,
+    /// SC3-P/T: the Core terminal is reached while the normal write is still
+    /// held, the failing CI order. It stays held until the refusal.
+    TerminalFirst,
+}
+
+/// SC3-P: a Goal Pause through the existing lifecycle writer while the normal
+/// write is held makes that held write and every later normal plan refuse:
+/// zero links, no frame refresh. Which planner conjunct refuses first is not
+/// pinned here; several independently refuse after the Pause. The Core terminal
+/// that the paused Goal causes is held until a later plan has been refused
+/// while the owner is live, then observed to complete.
+async fn sc3p_parent_change(provider: &str, order: Sc3pOrder) {
+    use crate::runtime::phase_jobs::{CORE_TERMINAL, WritePause};
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
@@ -528,8 +642,10 @@ async fn sc3p_parent_change(provider: &str) {
         }
     }
     let pause = Release(WritePause::arm(task.id));
+    let terminal = Release(WritePause::arm_at(task.id, CORE_TERMINAL));
     f.runtime.start().await.unwrap();
     wait_for(|| pause.0.reached(), "SETUP: normal write not reached", 60).await;
+    let (session, unit) = sc3p_target(&f, task);
     // The existing lifecycle writer's Pause. (Resume of a prepared Goal is
     // unavailable, so no legitimate writer leaves a Running Goal with only a
     // changed projection; the paused-state refusal and the projection check
@@ -563,7 +679,28 @@ async fn sc3p_parent_change(provider: &str) {
             "SETUP: legitimate Goal writer refused: {changed:?}"
         );
     }
+    if order == Sc3pOrder::TerminalFirst {
+        sc3p_wait(
+            &f,
+            || terminal.0.reached(),
+            "SETUP: SC3-P/T Core terminal not reached while the write is held",
+        )
+        .await;
+    }
     pause.0.release();
+    sc3p_wait(
+        &f,
+        || sc3p_refused(&f),
+        &format!("SC3-P {provider}: a later normal plan refuses while the owner is live"),
+    )
+    .await;
+    terminal.0.release();
+    sc3p_wait(
+        &f,
+        || sc3p_core_terminal_done(&f, &session, unit),
+        &format!("SC3-P {provider}: the Core terminal completes after its hold"),
+    )
+    .await;
     let started = std::time::Instant::now();
     while started.elapsed() < Duration::from_secs(6) {
         f.runtime.wake.notify_one();
@@ -588,11 +725,19 @@ async fn sc3p_parent_change(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc3p_claude_parent_change_during_hold_refuses_binding() {
-    sc3p_parent_change("claude").await;
+    sc3p_parent_change("claude", Sc3pOrder::WriteAfterPause).await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc3p_codex_parent_change_during_hold_refuses_binding() {
-    sc3p_parent_change("codex").await;
+    sc3p_parent_change("codex", Sc3pOrder::WriteAfterPause).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc3p_t_claude_terminal_before_turn_still_refuses_binding() {
+    sc3p_parent_change("claude", Sc3pOrder::TerminalFirst).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sc3p_t_codex_terminal_before_turn_still_refuses_binding() {
+    sc3p_parent_change("codex", Sc3pOrder::TerminalFirst).await;
 }
 
 /// SC-U (SC-FIX-M01): a genuine evaluation failure after the SAME claim's

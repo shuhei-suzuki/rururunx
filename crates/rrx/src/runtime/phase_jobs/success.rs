@@ -736,6 +736,9 @@ pub(crate) const OWNER_IMMEDIATE_LINKED: &str = "owner immediate linked";
 pub(crate) const OWNER_PLANNING: &str = "owner planning";
 #[cfg(test)]
 pub(crate) const QUOTA_APPLY: &str = "quota apply";
+/// The Core's terminal transaction of a managed phase, before its Store lock.
+#[cfg(test)]
+pub(crate) const CORE_TERMINAL: &str = "core terminal";
 /// Test-only async hold of one settled helper capture of a Task: the helper
 /// stays in flight while its fence keeps ticking. Parks and resumes only.
 #[cfg(test)]
@@ -842,7 +845,13 @@ pub(crate) fn pause_at(task: Option<crate::domain::TaskId>, site: &'static str) 
             .map(|index| pauses.remove(index).1)
     };
     let Some(pause) = pause else { return };
-    *pause.state.lock().unwrap() = 1;
+    {
+        // A release that came before arrival stands; arrival never undoes it.
+        let mut state = pause.state.lock().unwrap();
+        if *state == 0 {
+            *state = 1;
+        }
+    }
     pause.changed.notify_all();
     let wait = || {
         let mut state = pause.state.lock().unwrap();

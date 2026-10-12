@@ -1293,6 +1293,11 @@ fn persist_saved_terminal(
     u64,
 )> {
     if let Some(phase) = phase {
+        #[cfg(test)]
+        crate::runtime::pause_at(
+            phase.owner.allocation().facts().scope.task_id,
+            crate::runtime::CORE_TERMINAL,
+        );
         let original = phase.terminal_plan(owner, terminal)?;
         let first = owner
             .store
