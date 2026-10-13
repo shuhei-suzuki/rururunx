@@ -169,11 +169,11 @@ pub(super) fn poll_read(
     // A successful nonblocking read attempt, including WouldBlock, is required
     // before an EOF reader deadline can become a causal delayed-EOF witness.
     // Poll timeout alone neither proves EOF nor permits a blocking read.
-    let flags = match rustix::io::fcntl_getfl(&file) {
+    let flags = match rustix::fs::fcntl_getfl(&file) {
         Ok(flags) => flags,
         Err(error) => return ReadOutcome::error(Operation::Configure, error.into()),
     };
-    if let Err(error) = rustix::io::fcntl_setfl(&file, flags | rustix::io::OFlags::NONBLOCK) {
+    if let Err(error) = rustix::fs::fcntl_setfl(&file, flags | rustix::fs::OFlags::NONBLOCK) {
         return ReadOutcome::error(Operation::Configure, error.into());
     }
     let deadline = Instant::now() + Duration::from_secs(2);
