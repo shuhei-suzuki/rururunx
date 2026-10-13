@@ -144,6 +144,18 @@ fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
+/// When the setup lets the Core write the terminal that the setup shutdown
+/// causes (Issue #89 EF1).
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum CoreTerminal {
+    /// After the original preparation custody has ended, as when the owner
+    /// process dies: the write is refused and the Session stays open.
+    AfterCustody,
+    /// CONTROL: while the Runtime, and so the custody, is still held: the
+    /// write commits within the old epoch.
+    WhileCustodyHeld,
+}
+
 /// A genuinely bound managed Session: accepted Goal, installed issuer,
 /// normal Bound, then shutdown and release of the old owner custody.
 async fn bound_and_stopped(
@@ -154,6 +166,32 @@ async fn bound_and_stopped(
     crate::config::Config,
     Task,
 ) {
+    stopped_with(provider, CoreTerminal::AfterCustody).await
+}
+
+/// The setup shutdown stops the bound Native Session, and its Core then
+/// persists a terminal. That write commits only while the job's original
+/// preparation custody lives; the custody is owned by the Runtime's phase
+/// jobs and ends when the Runtime is dropped, not at shutdown or Driver exit.
+/// The Core is held at `CORE_TERMINAL` (before any Store lock) until the
+/// order under test is established, so the outcome is decided by that order
+/// and not by scheduling.
+async fn stopped_with(
+    provider: &str,
+    order: CoreTerminal,
+) -> (
+    tempfile::TempDir,
+    std::path::PathBuf,
+    crate::config::Config,
+    Task,
+) {
+    use crate::runtime::phase_jobs::{CORE_TERMINAL, WritePause};
+    struct Release(Arc<WritePause>);
+    impl Drop for Release {
+        fn drop(&mut self) {
+            self.0.release();
+        }
+    }
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
@@ -161,32 +199,98 @@ async fn bound_and_stopped(
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = tasks[0].clone();
+    let terminal = Release(WritePause::arm_at(task.id, CORE_TERMINAL));
     f.runtime.start().await.unwrap();
-    {
-        let conn = raw(&f);
+    let conn = raw(&f);
+    wait_for(
+        || {
+            links(&conn, &task).first().map(String::as_str)
+                == Some("rrx.private.workflow.session_bound")
+        },
+        "SETUP: normal Bound absent",
+        60,
+    )
+    .await;
+    let unit: crate::execution::UnitId = unit_id(&conn, &session_id(&conn, &task)).parse().unwrap();
+    let custody = f
+        .runtime
+        .phase_jobs
+        .observed_preparation(unit)
+        .expect("SETUP: the bound job retains its preparation custody");
+    // The job's start task holds its own custody clone until it returns.
+    wait_for(
+        || {
+            f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .any(|job| job.unit == unit && job.finished)
+        },
+        "SETUP: the bound job's start task did not finish",
+        60,
+    )
+    .await;
+    let config = f.runtime.config.clone();
+    let state = f.owner.state_path().to_path_buf();
+    // The Core terminal is caused by the shutdown, not by anything before it.
+    assert!(
+        !terminal.0.reached(),
+        "SETUP: the Core terminal was reached before shutdown"
+    );
+    let stopped = f.runtime.shutdown().await;
+    // Joined supervisor and zero Drivers, Native work still owned: the only
+    // custody owner left is the Runtime's phase jobs.
+    assert_eq!(
+        stopped
+            .as_ref()
+            .err()
+            .and_then(crate::runtime::stop::pending_site),
+        Some(crate::runtime::stop::ShutdownSite::AcceptedOriginals),
+        "SETUP: shutdown outcome {stopped:?}"
+    );
+    wait_for(
+        || terminal.0.reached(),
+        "SETUP: the Core terminal was not reached after shutdown",
+        60,
+    )
+    .await;
+    if order == CoreTerminal::WhileCustodyHeld {
+        terminal.0.release();
         wait_for(
             || {
-                links(&conn, &task).first().map(String::as_str)
-                    == Some("rrx.private.workflow.session_bound")
+                conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM audit WHERE kind='execution.native_result' AND task_id=?1)",
+                    [task.id.to_string()],
+                    |r| r.get::<_, bool>(0),
+                )
+                .unwrap()
             },
-            "SETUP: normal Bound absent",
+            "CONTROL: the Core terminal did not commit while the custody was held",
             60,
         )
         .await;
     }
-    let config = f.runtime.config.clone();
-    let state = f.owner.state_path().to_path_buf();
-    let _ = f.runtime.shutdown().await;
+    drop(conn);
     let ControlFixture {
         _dir,
         owner,
         runtime,
         ..
     } = f;
-    let weak = Arc::downgrade(&runtime);
     drop(runtime);
+    // Postcondition: in this fixture the Runtime drop ends the custody at once
+    // (the phase jobs are its last strong owner once the start task finished).
+    // The wait is what makes the refusal below certain if any other strong
+    // holder were still alive; do not remove it.
+    wait_for(
+        || custody.upgrade().is_none(),
+        "SETUP: the original preparation custody did not end with the Runtime",
+        10,
+    )
+    .await;
+    drop(terminal);
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
-    while weak.upgrade().is_some() || Arc::strong_count(&owner) > 1 {
+    while Arc::strong_count(&owner) > 1 {
         assert!(
             tokio::time::Instant::now() < deadline,
             "SETUP: the old owner custody did not drop"
@@ -194,7 +298,28 @@ async fn bound_and_stopped(
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     drop(owner);
+    if order == CoreTerminal::AfterCustody {
+        let conn = crate::state::current_test_writer(&state).unwrap();
+        let open = session(&conn, &session_id(&conn, &task)).1.state;
+        assert!(
+            matches!(open, SessionState::Starting | SessionState::Running),
+            "SETUP: {provider}: the Session stays open after the old owner, got {open:?}"
+        );
+    }
     (_dir, state, config, task)
+}
+
+/// CONTROL for the EF setup: a Core terminal released while the custody is
+/// still held commits within the old epoch, so the Session is no longer open
+/// and the EF premise is lost. Ordering alone decides it.
+async fn ef_setup_control(provider: &str) {
+    let (_dir, state, _, task) = stopped_with(provider, CoreTerminal::WhileCustodyHeld).await;
+    let conn = crate::state::current_test_writer(&state).unwrap();
+    let closed = session(&conn, &session_id(&conn, &task)).1.state;
+    assert!(
+        !matches!(closed, SessionState::Starting | SessionState::Running),
+        "CONTROL {provider}: a terminal committed under custody closes the Session, got {closed:?}"
+    );
 }
 
 /// EF1 + EF2 + EF4 (Lost re-fence): the managed Session is fenced `Lost`
@@ -455,6 +580,14 @@ async fn ef1(provider: &str) {
         "EF4 {provider}: one re-fence at its epoch instant, permit revoked: {seen:?}"
     );
     drop(owner);
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn ef_setup_control_claude_terminal_under_custody_closes_the_session() {
+    ef_setup_control("claude").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn ef_setup_control_codex_terminal_under_custody_closes_the_session() {
+    ef_setup_control("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ef1_claude_managed_session_fenced_lost_exactly() {
