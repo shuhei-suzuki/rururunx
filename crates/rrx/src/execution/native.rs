@@ -716,7 +716,38 @@ impl NativeSessions {
         status.cleanup = unit.cleanup;
         status.wait_reason = unit.wait_reason;
         if reconciled {
-            updater.send_modify(|current| current.clone_from(&status));
+            let proof = frozen
+                .as_ref()
+                .context("reconciled native terminal absent")?;
+            updater.send_modify(|current| {
+                // Store-derived fields and the SAME confirmed private terminal
+                // outrank the early watch snapshot. Preserve the Core's latest
+                // metrics/pending/diagnostic publication rather than replaying
+                // that snapshot over it.
+                current.authority = status.authority.clone();
+                current.session = status.session.clone();
+                current.work = status.work;
+                current.disposition = status.disposition;
+                current.cleanup = status.cleanup;
+                current.wait_reason = status.wait_reason;
+                current.receipt = status.receipt;
+                current.result = status.result.clone();
+                current.observed_work = Some(proof.receipt.observed_work);
+                current.failure = if status.disposition == Disposition::Cancelled {
+                    None
+                } else {
+                    proof.failure
+                };
+                if let Some(failure) = current.failure {
+                    current.diagnostic = Some(failure.diagnostic());
+                } else if matches!(
+                    current.diagnostic,
+                    Some("native terminal pending persistence" | "terminal persistence conflict")
+                ) {
+                    current.diagnostic = None;
+                }
+                status.clone_from(current);
+            });
         }
         Ok(status)
     }
