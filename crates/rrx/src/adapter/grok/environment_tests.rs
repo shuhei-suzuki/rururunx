@@ -29,7 +29,7 @@ async fn isolated_with(name: &str, extras: &[(String, String)], omit_ssl: bool) 
     }
     command.envs(extras.iter().cloned());
     let mut child = ProcessGroup::new(
-        rrx_spawn_hygiene::spawn_std(command).unwrap(),
+        rrx_spawn_hygiene::spawn_tokio(command).unwrap(),
         Arc::new(AtomicBool::new(false)),
     )
     .unwrap();

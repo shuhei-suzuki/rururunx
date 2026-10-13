@@ -136,7 +136,7 @@ fn destructive_private_controls_leave_fresh_production_pool_unchanged() {
         if cfg!(target_os = "macos") { 45 } else { 42 },
         "audit inventory changed; verify all private carriers before updating it"
     );
-    let mut command = command();
+    let command = command();
     // Actual std Child is held before inspecting its group. This fixture is a
     // test-process boundary; it grants no production/workload settlement proof.
     let mut child = rrx_spawn_hygiene::spawn_std(command).unwrap();

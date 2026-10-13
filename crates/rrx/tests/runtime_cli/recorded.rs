@@ -628,12 +628,14 @@ async fn recorded_proposal_maximum_escapes_and_legacy_consumers_remain_readable(
         );
     }
     assert!(
-        !f.command()
-            .args(["goal", "tasks", goal, "--project", "one"])
-            .output()
-            .unwrap()
-            .status
-            .success()
+        !rrx_spawn_hygiene::output_std({
+            let mut command = f.command();
+            command.args(["goal", "tasks", goal, "--project", "one"]);
+            command
+        })
+        .unwrap()
+        .status
+        .success()
     );
     assert_eq!(rows(&f.state), before);
     let small = f.cli_json(&["goal", "small\u{7f}\u{9b}é", "--project", "one", "--json"]);

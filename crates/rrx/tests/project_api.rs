@@ -158,12 +158,12 @@ impl Fixture {
             self.bin.display(),
             std::env::var("PATH").unwrap_or_default()
         );
-        let out = self
-            .command(&self.base)
-            .env("PATH", path)
-            .args(["daemon", verb, "--json"])
-            .output()
-            .unwrap();
+        let out = rrx_spawn_hygiene::output_std({
+            let mut command = self.command(&self.base);
+            command.env("PATH", path).args(["daemon", verb, "--json"]);
+            command
+        })
+        .unwrap();
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| {
             panic!(
                 "daemon {verb}: {}{}",
@@ -356,13 +356,15 @@ fn c_s3b_offline_write_holds_the_owner_lock_until_its_last_write() {
         f.bin.display(),
         std::env::var("PATH").unwrap_or_default()
     );
-    let mut writer = f
-        .command(&f.base)
-        .env("PATH", path)
-        .args(["project", "add", f.a.to_str().unwrap()])
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut writer = rrx_spawn_hygiene::spawn_std({
+        let mut command = f.command(&f.base);
+        command
+            .env("PATH", path)
+            .args(["project", "add", f.a.to_str().unwrap()])
+            .stdout(std::process::Stdio::piped());
+        command
+    })
+    .unwrap();
     f.wait_held(&f.a);
     assert!(f.state.exists(), "SETUP: the Store was not opened yet");
     let busy = f.daemon("start");

@@ -162,12 +162,15 @@ async fn installed_docker_routing_worker() {
         .envs(profile.environment(&unit.cookie, owner.ipc_path()).unwrap())
         .env("DOCKER_HOST", "unix:///fixture-different.sock");
     assert!(
-        !tokio::time::timeout(Duration::from_secs(15), host.output())
-            .await
-            .unwrap()
-            .unwrap()
-            .status
-            .success()
+        !tokio::time::timeout(
+            Duration::from_secs(15),
+            rrx_spawn_hygiene::output_tokio(host)
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .status
+        .success()
     );
     assert!(read()["calls"].as_array().unwrap().is_empty());
     let mut matching = Command::new(&shim);

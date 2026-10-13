@@ -58,17 +58,20 @@ impl Fixture {
         let root = self.dir.path().join(name);
         std::fs::create_dir(&root).unwrap();
         assert!(
-            Command::new("git")
-                .args(["init", "--initial-branch=main", "--quiet"])
-                .arg(&root)
-                .status()
-                .unwrap()
-                .success()
+            rrx_spawn_hygiene::status_std({
+                let mut command = Command::new("git");
+                command
+                    .args(["init", "--initial-branch=main", "--quiet"])
+                    .arg(&root);
+                command
+            })
+            .unwrap()
+            .success()
         );
         assert!(
-            Command::new("git")
-                .current_dir(&root)
-                .args([
+            rrx_spawn_hygiene::status_std({
+                let mut command = Command::new("git");
+                command.current_dir(&root).args([
                     "-c",
                     "user.name=Fixture",
                     "-c",
@@ -77,11 +80,12 @@ impl Fixture {
                     "--allow-empty",
                     "--quiet",
                     "-m",
-                    "initial"
-                ])
-                .status()
-                .unwrap()
-                .success()
+                    "initial",
+                ]);
+                command
+            })
+            .unwrap()
+            .success()
         );
         let out = rrx_spawn_hygiene::output_std({
             let mut command = self.command();
@@ -338,7 +342,16 @@ async fn compiled_service_goal_pages_routing_and_reads_preserve_all_rows() {
             "ffffffff-ffff-ffff-ffff-ffffffffffff",
         ],
     ] {
-        assert!(!f.command().args(args).output().unwrap().status.success());
+        assert!(
+            !rrx_spawn_hygiene::output_std({
+                let mut command = f.command();
+                command.args(args);
+                command
+            })
+            .unwrap()
+            .status
+            .success()
+        );
     }
     assert!(
         client::request(

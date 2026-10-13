@@ -158,14 +158,14 @@ fn readme_configuration_example_is_valid() {
         .unwrap();
     let path = fixture.write("example.toml", toml);
     assert!(
-        rrx()
-            .arg("--config")
-            .arg(path)
-            .arg("config-check")
-            .output()
-            .unwrap()
-            .status
-            .success()
+        rrx_spawn_hygiene::output_std({
+            let mut command = rrx();
+            command.arg("--config").arg(path).arg("config-check");
+            command
+        })
+        .unwrap()
+        .status
+        .success()
     );
 }
 

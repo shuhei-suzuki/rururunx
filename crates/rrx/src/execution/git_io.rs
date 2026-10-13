@@ -206,7 +206,7 @@ impl UnitGit {
                     self.driver.as_ref(),
                 )?;
             }
-            match process::OwnedProcess::spawn(&mut command) {
+            match process::OwnedProcess::spawn(command) {
                 Ok(child) => child,
                 Err(e) => {
                     store.reconcile_managed_effect(

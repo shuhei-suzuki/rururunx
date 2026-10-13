@@ -14,7 +14,6 @@ pub(super) enum Stage {
     Reap,
     Gate,
     Lost,
-    Unestablished,
     Finished,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,7 +43,7 @@ pub(super) enum Action {
 // observation is permanent; neither later empty reads nor a deadline restores it.
 pub(super) fn decide(stage: Stage, observation: Observation, group: bool, expired: bool) -> Action {
     match stage {
-        Stage::Observe | Stage::Unestablished => match observation {
+        Stage::Observe => match observation {
             Observation::Error => Action::Hold,
             Observation::Exited if group => Action::FinalGroup,
             Observation::Exited => Action::Reap,
@@ -236,7 +235,7 @@ impl WorkerGroupOwner {
                 self.diagnostic();
                 last_diagnostic = Instant::now();
             }
-            if matches!(self.stage, Stage::Observe | Stage::Unestablished) {
+            if self.stage == Stage::Observe {
                 self.check_group();
                 observation = self.observe();
                 if observation == Observation::Exited {

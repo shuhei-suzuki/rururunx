@@ -393,7 +393,9 @@ Cloud execution, web dashboards, and long-term memory are outside MVP and should
 ## 12. Implemented Rust foundation
 
 Rust 2024 / minimum Rust 1.91 is the core standard; development and CI pin 1.91.1.
-The Cargo workspace contains `crates/rrx` with a library and a CLI binary.
+The Cargo workspace contains `crates/rrx` with a library and a CLI binary,
+`crates/rrx-process-tracker` for cooperative discovery, and
+`crates/rrx-spawn-hygiene` for consuming process launch boundaries.
 Implemented library modules are `config`, `domain`, and `state`; CLI help and config validation
 do not construct an async runtime or start native agents.
 

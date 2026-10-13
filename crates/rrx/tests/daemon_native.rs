@@ -132,12 +132,13 @@ impl Lane {
             ],
         ] {
             assert!(
-                Command::new("git")
-                    .current_dir(&root)
-                    .args(args)
-                    .status()
-                    .unwrap()
-                    .success()
+                rrx_spawn_hygiene::status_std({
+                    let mut command = Command::new("git");
+                    command.current_dir(&root).args(args);
+                    command
+                })
+                .unwrap()
+                .success()
             );
         }
         let out = rrx_spawn_hygiene::output_std({

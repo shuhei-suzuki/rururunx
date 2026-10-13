@@ -604,12 +604,13 @@ mod tests {
         // rustix::mkfifoat is not exposed on Apple targets. The standard OS
         // fixture utility creates only this test-owned FIFO, without shell eval.
         assert!(
-            std::process::Command::new("/usr/bin/mkfifo")
-                .args(["-m", "600"])
-                .arg(&path)
-                .status()
-                .unwrap()
-                .success()
+            rrx_spawn_hygiene::status_std({
+                let mut command = std::process::Command::new("/usr/bin/mkfifo");
+                command.args(["-m", "600"]).arg(&path);
+                command
+            })
+            .unwrap()
+            .success()
         );
         let (tx, rx) = std::sync::mpsc::channel();
         // The watchdog belongs to the actual caller. A wrong open may block this

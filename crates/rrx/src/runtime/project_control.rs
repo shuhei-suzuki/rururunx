@@ -700,12 +700,13 @@ mod tests {
             ][..],
         ] {
             assert!(
-                std::process::Command::new("git")
-                    .current_dir(&repo)
-                    .args(args)
-                    .status()
-                    .unwrap()
-                    .success()
+                rrx_spawn_hygiene::status_std({
+                    let mut command = std::process::Command::new("git");
+                    command.current_dir(&repo).args(args);
+                    command
+                })
+                .unwrap()
+                .success()
             );
         }
         let runtime = Arc::new(runtime(dir.path()));

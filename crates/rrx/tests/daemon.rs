@@ -285,12 +285,13 @@ fn owner_lock_fifo_is_a_typed_probe_error_for_every_command() {
     let lock = f.root().join("owner.lock");
     std::fs::remove_file(&lock).unwrap();
     assert!(
-        Command::new("/usr/bin/mkfifo")
-            .args(["-m", "600"])
-            .arg(&lock)
-            .status()
-            .unwrap()
-            .success()
+        rrx_spawn_hygiene::status_std({
+            let mut command = Command::new("/usr/bin/mkfifo");
+            command.args(["-m", "600"]).arg(&lock);
+            command
+        })
+        .unwrap()
+        .success()
     );
     for verb in ["status", "start", "stop"] {
         let mut child = rrx_spawn_hygiene::spawn_std({
@@ -392,11 +393,13 @@ fn c_s1e2_daemon_start_replaces_known_leftovers_only() {
     // A crash leaves the protocol-4 descriptor behind.
     let pid = f.service_pid();
     assert!(
-        Command::new("kill")
-            .args(["-9", &pid.to_string()])
-            .status()
-            .unwrap()
-            .success()
+        rrx_spawn_hygiene::status_std({
+            let mut command = Command::new("kill");
+            command.args(["-9", &pid.to_string()]);
+            command
+        })
+        .unwrap()
+        .success()
     );
     let deadline = Instant::now() + Duration::from_secs(30);
     while f.status()["status"] != "discovery_unavailable" {

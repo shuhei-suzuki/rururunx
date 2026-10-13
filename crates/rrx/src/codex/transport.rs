@@ -110,7 +110,7 @@ impl NativeServer {
             .map_err(|error| failure(ErrorKind::LaunchFailure, error.to_string()))?;
         let socket_binding = SocketBinding::capture(&socket)?;
         drop(listener);
-        let child = rrx_spawn_hygiene::spawn_std({
+        let child = rrx_spawn_hygiene::spawn_tokio({
             let mut command = Command::new("/bin/sleep");
             command
                 .arg("30")
@@ -200,7 +200,7 @@ impl NativeServer {
             .kill_on_drop(true)
             .process_group(0);
         preparation.check()?;
-        let child = rrx_spawn_hygiene::spawn_std(command).map_err(|_| {
+        let child = rrx_spawn_hygiene::spawn_tokio(command).map_err(|_| {
             preparation.failed(failure(
                 ErrorKind::LaunchFailure,
                 "native Codex app-server could not start",

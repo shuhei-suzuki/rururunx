@@ -1238,7 +1238,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         #[cfg(test)]
         if let Some(hook)=actor.entry.after_environment_admission.clone(){hook(actor.entry.clone()).await?;}
         if actor.stopped(){return Err(failure(ErrorKind::ProcessFailure,"native stop before spawn"));}
-        let child=ProcessGroup::new(rrx_spawn_hygiene::spawn_std(command).map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group(OwnershipStage::NativeChild))?;
+        let child=ProcessGroup::new(rrx_spawn_hygiene::spawn_tokio(command).map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group(OwnershipStage::NativeChild))?;
         #[cfg(all(test,target_os="macos"))]
         let child = { let mut child = child; child.inspection_plan = actor.entry.process_inspection.clone(); child };
         actor.session.pid=child.child.id();process=Some(child);

@@ -75,17 +75,20 @@ impl Fixture {
         let root = self.directory.path().join(name);
         std::fs::create_dir(&root).unwrap();
         assert!(
-            Command::new("git")
-                .args(["init", "--quiet", "--initial-branch=main"])
-                .arg(&root)
-                .status()
-                .unwrap()
-                .success()
+            rrx_spawn_hygiene::status_std({
+                let mut command = Command::new("git");
+                command
+                    .args(["init", "--quiet", "--initial-branch=main"])
+                    .arg(&root);
+                command
+            })
+            .unwrap()
+            .success()
         );
         assert!(
-            Command::new("git")
-                .current_dir(&root)
-                .args([
+            rrx_spawn_hygiene::status_std({
+                let mut command = Command::new("git");
+                command.current_dir(&root).args([
                     "-c",
                     "user.name=Fixture",
                     "-c",
@@ -94,11 +97,12 @@ impl Fixture {
                     "--allow-empty",
                     "--quiet",
                     "-m",
-                    "initial"
-                ])
-                .status()
-                .unwrap()
-                .success()
+                    "initial",
+                ]);
+                command
+            })
+            .unwrap()
+            .success()
         );
         let output = rrx_spawn_hygiene::output_std({
             let mut command = self.command();
@@ -659,11 +663,13 @@ async fn hostile_typed_inputs_refuse_without_publication_or_git_effects() {
     std::os::unix::fs::symlink(&objective, &symlink).unwrap();
     let fifo = f.directory.path().join("fifo");
     assert!(
-        Command::new("mkfifo")
-            .arg(&fifo)
-            .status()
-            .unwrap()
-            .success()
+        rrx_spawn_hygiene::status_std({
+            let mut command = Command::new("mkfifo");
+            command.arg(&fifo);
+            command
+        })
+        .unwrap()
+        .success()
     );
     for path in [symlink, fifo] {
         let began = Instant::now();

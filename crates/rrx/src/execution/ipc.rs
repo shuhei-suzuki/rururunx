@@ -383,7 +383,7 @@ async fn execute(
     // Only the admitted live same-unit hook chain may restore a native candidate
     // index. Arbitrary inherited Git namespace overrides remain removed.
     command.envs(&grant.environment);
-    let mut child = process::OwnedProcess::spawn(&mut command)?;
+    let mut child = process::OwnedProcess::spawn(command)?;
     let stdout = child.child.stdout.take();
     let drain = tokio::spawn(async move {
         match stdout {

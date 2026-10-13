@@ -351,7 +351,7 @@ impl GitFixture {
         let mut command =
             super::super::super::results::git_command_for(&self.root, &self.git).unwrap();
         // Hermetic attribute/config sources are test isolation only.
-        rrx_spawn_hygiene::output_std({
+        rrx_spawn_hygiene::output_tokio({
             command
                 .args(action.argv(revision).unwrap())
                 .env_clear()

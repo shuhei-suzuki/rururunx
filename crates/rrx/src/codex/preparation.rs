@@ -288,7 +288,7 @@ pub(super) async fn bounded_git(
         .process_group(0);
     // No await occurs between the cancellation check and taking child ownership.
     preparation.check()?;
-    let child = rrx_spawn_hygiene::spawn_std(command).map_err(|error| {
+    let child = rrx_spawn_hygiene::spawn_tokio(command).map_err(|error| {
         preparation.failed(failure(ErrorKind::ProcessFailure, error.to_string()))
     })?;
     let mut child =

@@ -781,7 +781,7 @@ impl AgentAdapter for GenericCliAdapter {
                 // PTY handling is a separate native capability, never simulated with pipes.
                 command.process_group(0);
                 command.as_std_mut().arg0(&self.command[0]);
-                rrx_spawn_hygiene::spawn_std(command)
+                rrx_spawn_hygiene::spawn_tokio(command)
                     .map_err(|e| error(ErrorKind::LaunchFailure, e.to_string()))
             }
             .await;
