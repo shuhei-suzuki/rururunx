@@ -27,6 +27,12 @@ struct Fixture {
     writers: Vec<Witness>,
 }
 
+fn nonnegative<T: TryInto<u128>>(value: T, field: &str) -> Result<u128, String> {
+    value
+        .try_into()
+        .map_err(|_| format!("negative or out-of-range writer {field}"))
+}
+
 impl Fixture {
     fn new() -> Result<Self, String> {
         let mut fds = Vec::new();
@@ -60,8 +66,8 @@ impl Fixture {
             let stat = rustix::fs::fstat(fd).map_err(|e| format!("writer fstat: {e}"))?;
             let witness = Witness {
                 fd: fd.as_raw_fd(),
-                device: u128::from(stat.st_dev),
-                inode: u128::from(stat.st_ino),
+                device: nonnegative(stat.st_dev, "device")?,
+                inode: nonnegative(stat.st_ino, "inode")?,
             };
             println!(
                 "P4API WITNESS fd={} flags=0 device={} inode={}",
@@ -247,6 +253,9 @@ fn api_status_tokio() {
 
 #[test]
 fn report_observation_errors_are_no_result() {
+    assert!(nonnegative(-1_i32, "device").is_err());
+    assert_eq!(nonnegative(0_i32, "device"), Ok(0));
+    assert_eq!(nonnegative(u64::MAX, "inode"), Ok(u128::from(u64::MAX)));
     let fixture = Fixture {
         _fds: vec![],
         writers: [4, 6, 8, 9]
