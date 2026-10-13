@@ -61,6 +61,19 @@
       "effort_requested": "high",
       "result_sha256": "7a59495cceae2b982a04d8551698b5d082aa9256dceaac8fa6d023a9a55e0187",
       "edits": 42
+    },
+    {
+      "phase": "R6 local repair imported draft",
+      "fixed_head": "0fadf545c45558a05d89377bcb073009875bdb01",
+      "scope": "Sol bounded repair after verified R5 findings and local factual corrections",
+      "applied": true,
+      "model_requested": "gpt-6.1-sol",
+      "model_match": "unreported",
+      "effort_requested": "high",
+      "effort_observed": null,
+      "result_sha256": "7c161a2635aececb8f45332d2fc5656bbe1626a0809e24db9f5900794ddd5117",
+      "edits": 14,
+      "kind": "dedicated read-only author; not independent review or owner approval"
     }
   ],
   "independent_review_round_3": {
@@ -90,6 +103,39 @@
     },
     "progress": "https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6140066238",
     "result_record": "saved privately with bytes/hash and public ID/title/Severity/Status summary"
+  },
+  "independent_review_round_5": {
+    "fixed_head": "0fadf545c45558a05d89377bcb073009875bdb01",
+    "sol": {
+      "decision": "APPROVE",
+      "confirmed_required": 0,
+      "model_evidence": "fixed argv request; served model unreported",
+      "observed_model": "unreported",
+      "observed_effort": "unreported"
+    },
+    "opus": {
+      "decision": "REQUEST CHANGES",
+      "confirmed_required": 2,
+      "confirmed_required_ids": [
+        "R5-O-01",
+        "R5-O-02"
+      ],
+      "runner_status": "ok",
+      "model_match": "match",
+      "observed_model": "claude-opus-5-5",
+      "observed_effort": "unreported"
+    },
+    "kind": "orchestrator-verified R5 facts; CLI completion is separate from review decision; not both approved",
+    "repair": {
+      "state": "imported draft; independent repair-diff verification pending",
+      "author_family": "Sol",
+      "independent_reviewer_family": "Opus",
+      "review_scope": "repair diff only; preserve two-family independent review conditions; do not repeat unchanged full-text Sol R5 review",
+      "state_updater": "orchestrator after application"
+    },
+    "whole_owner_design_approval": "pending",
+    "implementation_ledger_fixture_linux_macos_live": "not_completed",
+    "progress": "https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6142182746"
   },
   "scope_decisions": {
     "runtime_merge": "included by owner",
