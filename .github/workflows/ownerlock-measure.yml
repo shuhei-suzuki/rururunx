@@ -55,7 +55,7 @@ jobs:
           grep -ho "FLOCK_TRACE kind=[a-z]* test=[^ ]*" out/*.log | sort | uniq -c | sort -rn || true
           echo "== failing tests"; grep -h "^---- " out/*.log | sort | uniq -c | sort -rn | head -40 || true
           echo "== panics (first 25 lines of each)"
-          for f in out/*.log; do
+          for f in $(ls out/*.log 2>/dev/null); do
             awk -v f="$f" '/^---- /{n=25; print "### " f} n>0 {print; n--}' "$f" | cut -c1-1500
           done
           echo "== FLOCK_TRACE lines of failing tests"
