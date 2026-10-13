@@ -33,7 +33,20 @@ async fn isolated_with(name: &str, extras: &[(String, String)], omit_ssl: bool) 
     let stdout = tokio::spawn(read_git_output(child.child.stdout.take().unwrap()));
     let stderr = tokio::spawn(read_git_output(child.child.stderr.take().unwrap()));
     let observation_started = std::time::Instant::now();
-    let observed = tokio::time::timeout(Duration::from_secs(60), child.observe_exit()).await;
+    // MEASUREMENT ONLY (Issue #89 F4): note the 60 s crossing with a process
+    // snapshot, then keep observing up to 300 s to see the whole child duration.
+    let mut observed = tokio::time::timeout(Duration::from_secs(60), child.observe_exit()).await;
+    let crossed_60s = observed.is_err();
+    if crossed_60s {
+        let pgid = child.child.id().unwrap_or(0).to_string();
+        let ps = std::process::Command::new("/bin/ps")
+            .args(["-o", "pid,ppid,pgid,stat,time,etime,command", "-g", &pgid])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).replace('\n', " | "))
+            .unwrap_or_default();
+        f4_trace(&format!("F4_SNAPSHOT name={name} ps=[{ps}]"));
+        observed = tokio::time::timeout(Duration::from_secs(240), child.observe_exit()).await;
+    }
     let observation_elapsed_ms = observation_started.elapsed().as_millis();
     let observation = match &observed {
         Ok(Ok(())) => "exit_observed",
@@ -44,11 +57,41 @@ async fn isolated_with(name: &str, extras: &[(String, String)], omit_ssl: bool) 
     let exit = child.reap().await.unwrap();
     let stdout = String::from_utf8(stdout.await.unwrap().unwrap()).unwrap();
     let stderr = String::from_utf8(stderr.await.unwrap().unwrap()).unwrap();
+    let stages: Vec<&str> = stderr
+        .lines()
+        .filter(|line| line.starts_with("grok_environment_progress"))
+        .collect();
+    f4_trace(&format!(
+        "F4_TRACE name={name} observation={observation} elapsed_ms={observation_elapsed_ms} crossed_60s={crossed_60s} exit={exit} stages=[{}]",
+        stages.join(" | ")
+    ));
     assert!(
         observed.is_ok() && exit.success(),
         "synthetic environment child failed; observation={observation}; observation_elapsed_ms={observation_elapsed_ms}; reaped_exit={exit}; {stdout}; {stderr}"
     );
     assert_child_completed(&stdout, &stderr, name);
+}
+/// MEASUREMENT ONLY (Issue #89 F4).
+fn f4_trace(line: &str) {
+    eprintln!("{line}");
+    if let Ok(path) = std::env::var("RRX_F4_TRACE_FILE") {
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = writeln!(file, "{line}");
+        }
+    }
+}
+/// MEASUREMENT ONLY (Issue #89 F4): milliseconds since the child's first progress line.
+fn f4_ms() -> u128 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_millis()
 }
 async fn terminal(adapter: &GrokAdapter, fixture: &Fixture, session: &Session) -> SessionStatus {
     let mut watch = adapter.subscribe(session.into()).unwrap();
@@ -1045,7 +1088,10 @@ async fn irrelevant(boundary: usize, name: &str) {
     let mut control = None;
     let mut checkpoint_control = None;
     for kind in 0..9 {
-        eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=fixture");
+        eprintln!(
+            "grok_environment_progress ms={} boundary={boundary} case={kind} stage=fixture",
+            f4_ms()
+        );
         let mut fixture = Fixture::new();
         let initial_refs: &[&str] = if kind == 7 {
             &["FOREIGN_ABSENT_NATIVE_NAME"]
@@ -1066,9 +1112,15 @@ async fn irrelevant(boundary: usize, name: &str) {
         } else {
             adapter.before_environment_admission = Some(hook);
         }
-        eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=start");
+        eprintln!(
+            "grok_environment_progress ms={} boundary={boundary} case={kind} stage=start",
+            f4_ms()
+        );
         let first = fixture.start(&adapter).await.unwrap();
-        eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=terminal");
+        eprintln!(
+            "grok_environment_progress ms={} boundary={boundary} case={kind} stage=terminal",
+            f4_ms()
+        );
         let mut status = terminal(&adapter, &fixture, &first).await;
         assert!(
             adapter.transport_succeeded(&status),
@@ -1082,7 +1134,10 @@ async fn irrelevant(boundary: usize, name: &str) {
             input.payload = "explicit fresh continuation".into();
             active.store(boundary == 1, Ordering::SeqCst);
             let lower = receipt_support::watermark(&fixture.store, &fixture.request.scope).unwrap();
-            eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=checkpoint");
+            eprintln!(
+                "grok_environment_progress ms={} boundary={boundary} case={kind} stage=checkpoint",
+                f4_ms()
+            );
             adapter
                 .checkpoint((&first).into(), input.clone())
                 .await
@@ -1109,10 +1164,14 @@ async fn irrelevant(boundary: usize, name: &str) {
             }
             active.store(boundary == 2, Ordering::SeqCst);
             fixture.request.input = input;
-            eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=resume");
+            eprintln!(
+                "grok_environment_progress ms={} boundary={boundary} case={kind} stage=resume",
+                f4_ms()
+            );
             let second = fixture.resume(&adapter, (&first).into(), 2).await.unwrap();
             eprintln!(
-                "grok_environment_progress boundary={boundary} case={kind} stage=resumed_terminal"
+                "grok_environment_progress ms={} boundary={boundary} case={kind} stage=resumed_terminal",
+                f4_ms()
             );
             status = terminal(&adapter, &fixture, &second).await;
             assert!(
@@ -1135,9 +1194,15 @@ async fn irrelevant(boundary: usize, name: &str) {
         } else {
             control = Some(kinds);
         }
-        eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=release");
+        eprintln!(
+            "grok_environment_progress ms={} boundary={boundary} case={kind} stage=release",
+            f4_ms()
+        );
         adapter.release((&first).into()).unwrap();
-        eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=finished");
+        eprintln!(
+            "grok_environment_progress ms={} boundary={boundary} case={kind} stage=finished",
+            f4_ms()
+        );
     }
     child_completed(name);
 }

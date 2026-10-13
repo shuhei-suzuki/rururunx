@@ -1,0 +1,50 @@
+# MEASUREMENT ONLY (Issue #89 F4). Never merged.
+name: Issue 89 F4 measure
+on:
+  push:
+    branches: [claude/issue89-f4-measure]
+permissions:
+  contents: read
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, scope: full, runs: 4 }
+          - { os: macos-latest, scope: full, runs: 4 }
+          - { os: macos-latest, scope: env, runs: 8 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.91.1
+      - run: cargo build --locked --workspace
+      - run: cargo test --locked -p rrx --no-run
+      - name: rrx tests (${{ matrix.scope }}) x${{ matrix.runs }}
+        shell: bash
+        run: |
+          mkdir -p out
+          filter=""; [ "${{ matrix.scope }}" = env ] && filter="adapter::grok::environment_tests"
+          for i in $(seq 1 ${{ matrix.runs }}); do
+            start=$(date +%s)
+            RRX_F4_TRACE_FILE="$PWD/out/f4-$i.txt" cargo test --locked -p rrx --lib --no-fail-fast -- $filter > out/run-$i.log 2>&1 || echo "run $i failed" >> out/summary.txt
+            echo "run $i wall_s=$(( $(date +%s) - start )) load=$(sysctl -n vm.loadavg 2>/dev/null)" >> out/summary.txt
+          done
+      - name: Report
+        if: always()
+        shell: bash
+        run: |
+          touch out/summary.txt
+          echo "== ${{ matrix.os }} ${{ matrix.scope }}"
+          cat out/summary.txt
+          echo "== F4_TRACE count"; cat out/f4-*.txt 2>/dev/null | grep -c F4_TRACE || true
+          echo "== crossed 60 s"; cat out/f4-*.txt 2>/dev/null | grep -c "crossed_60s=true" || true
+          echo "== elapsed_ms per test (name elapsed crossed observation)"
+          cat out/f4-*.txt 2>/dev/null | grep F4_TRACE | sed -E 's/.*name=([^ ]+) observation=([^ ]+) elapsed_ms=([0-9]+) crossed_60s=([a-z]+).*/\3 \1 \4 \2/' | sort -n | tail -40 || true
+          echo "== traces that crossed 60 s (full)"
+          cat out/f4-*.txt 2>/dev/null | grep -E "crossed_60s=true|F4_SNAPSHOT" | cut -c1-6000 || true
+          echo "== failing tests"; grep -h "^---- " out/run-*.log | sort | uniq -c | sort -rn | head -40 || true
+          echo "== results"; for f in out/run-*.log; do echo "$f: $(grep -h '^test result' "$f" | grep -v ' 0 passed; 0 failed' | tr '\n' ' ' | cut -c1-400)"; done
