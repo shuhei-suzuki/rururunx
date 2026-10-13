@@ -216,7 +216,7 @@ fn expect_spawn_err(
     // This worker has no other child. Observation only; no wait-any reap or
     // SIGCHLD ignore can steal another owner's leader.
     match rustix::process::waitid(
-        rustix::process::WaitId::Pgid(rustix::process::getpgrp()),
+        rustix::process::WaitId::Pgid(Some(rustix::process::getpgrp())),
         rustix::process::WaitIdOptions::EXITED
             | rustix::process::WaitIdOptions::NOWAIT
             | rustix::process::WaitIdOptions::NOHANG,

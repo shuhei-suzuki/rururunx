@@ -4,6 +4,10 @@
 use std::io;
 use std::process::Command;
 
+#[cfg(target_os = "macos")]
+#[link(name = "proc")]
+unsafe extern "C" {}
+
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 

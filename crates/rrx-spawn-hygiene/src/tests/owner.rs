@@ -140,7 +140,7 @@ impl WorkerGroupOwner {
             trace: vec![],
             status: None,
         };
-        owner.pid = Pid::from_raw(owner.child.id() as i32).filter(|p| p.as_raw() > 1);
+        owner.pid = Pid::from_raw(owner.child.id() as i32).filter(|p| p.as_raw_pid() > 1);
         owner.check_group();
         Ok(owner)
     }
