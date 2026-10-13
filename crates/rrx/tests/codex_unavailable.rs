@@ -32,6 +32,7 @@ async fn ordinary_empty_library_child() {
         std::fs::read_to_string(directory.join("identity")).unwrap(),
         "main".into(),
     );
+    project.environment_refs = vec!["OPENAI_API_KEY".into()];
     store.put_project(&mut project).unwrap();
     let scope = Scope::project(project.id);
     let request = LaunchRequest {
@@ -85,6 +86,11 @@ async fn ordinary_empty_library_child() {
         .unwrap()
         .with_runtime_broker(),
     );
+    assert!(
+        adapter.environment_candidates(request.project.id).unwrap()
+            == std::collections::BTreeSet::from(["OPENAI_API_KEY".into()])
+    );
+    assert_eq!(snapshot(&store, &scope), before);
     let unknown = SessionRef {
         execution: None,
         id: SessionId::new(),
@@ -311,6 +317,7 @@ fn ordinary_library_refuses_in_scoped_child_with_effect_reaching_input() {
         .env("HOME", &home)
         .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
         .env("RRX_EMPTY_FIXTURE", &directory)
+        .env("OPENAI_API_KEY", "synthetic-marker")
         .spawn()
         .unwrap();
     let pid = rustix::process::Pid::from_raw(child.id() as i32).unwrap();

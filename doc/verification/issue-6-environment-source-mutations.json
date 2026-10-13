@@ -1,0 +1,181 @@
+{
+  "source_head": "69801b2040f5363749ce5aff8265af0f8779e6fb",
+  "scope": "Private archive causal controls; no clean-head/native/cohort acceptance",
+  "mutants": [
+    {
+      "id": "E01",
+      "classification": "actual public constructor raw-OS capture",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "bb0dc9bcd27c9501ad0deb016c10fc7c5dce61cad3159f47d2fb8cad133a0d50"
+    },
+    {
+      "id": "E02",
+      "classification": "unit constructor membership",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "da5a8828b2ee17e4254b62741336b9e3980990246b2eccda2b2355726ad4077f"
+    },
+    {
+      "id": "E03",
+      "classification": "actual public constructor control DTO exclusion",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "da5a8828b2ee17e4254b62741336b9e3980990246b2eccda2b2355726ad4077f"
+    },
+    {
+      "id": "E04",
+      "classification": "actual initial admission",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "da5a8828b2ee17e4254b62741336b9e3980990246b2eccda2b2355726ad4077f"
+    },
+    {
+      "id": "E05",
+      "classification": "actual pre-exec names-only CAS",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "bb0dc9bcd27c9501ad0deb016c10fc7c5dce61cad3159f47d2fb8cad133a0d50"
+    },
+    {
+      "id": "E06",
+      "classification": "actual consuming wire admission",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "bb0dc9bcd27c9501ad0deb016c10fc7c5dce61cad3159f47d2fb8cad133a0d50"
+    },
+    {
+      "id": "E07",
+      "classification": "actual discovery config order",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "bb0dc9bcd27c9501ad0deb016c10fc7c5dce61cad3159f47d2fb8cad133a0d50"
+    },
+    {
+      "id": "E08",
+      "classification": "actual main config order",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "bb0dc9bcd27c9501ad0deb016c10fc7c5dce61cad3159f47d2fb8cad133a0d50"
+    },
+    {
+      "id": "E09",
+      "classification": "actual version final cancellation",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "b100b6a7b314326be3ac3f5bce860d2613023c849647e07d3c6476aab80ab76c"
+    },
+    {
+      "id": "E10",
+      "classification": "actual server final cancellation; first failing server site only",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "480d8e769a7c2ec98f72cf5bc9427c7e6cff371ccfff46080d54149d36f18e6c"
+    },
+    {
+      "id": "E11",
+      "classification": "actual version pre-exec CAS omission after independent foreign edit",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "bb0dc9bcd27c9501ad0deb016c10fc7c5dce61cad3159f47d2fb8cad133a0d50"
+    },
+    {
+      "id": "E12",
+      "classification": "actual discovery pre-exec CAS omission after independent foreign edit",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "bb0dc9bcd27c9501ad0deb016c10fc7c5dce61cad3159f47d2fb8cad133a0d50"
+    },
+    {
+      "id": "E13",
+      "classification": "actual main pre-exec CAS omission after independent foreign edit",
+      "compiled": true,
+      "assertion_failed": true,
+      "source_restored": true,
+      "sha256": "bb0dc9bcd27c9501ad0deb016c10fc7c5dce61cad3159f47d2fb8cad133a0d50"
+    },
+    {
+      "id": "E14",
+      "classification": "actual selected helper post-admission deadline",
+      "compiled": true,
+      "assertion_failed": true,
+      "exit_code": 101,
+      "source_restored": true,
+      "sha256": "ed785f30f85c246e6105fc842dd0994853050ce501155cdf46c4d8c8f46bbc36"
+    },
+    {
+      "id": "E15",
+      "classification": "actual ambient helper Some-only admission",
+      "compiled": true,
+      "assertion_failed": true,
+      "exit_code": 101,
+      "source_restored": true,
+      "sha256": "ed785f30f85c246e6105fc842dd0994853050ce501155cdf46c4d8c8f46bbc36"
+    },
+    {
+      "id": "E16",
+      "classification": "actual selected pre-CAS cancelled guard extra publication",
+      "compiled": true,
+      "assertion_failed": true,
+      "exit_code": 101,
+      "source_restored": true,
+      "sha256": "ed785f30f85c246e6105fc842dd0994853050ce501155cdf46c4d8c8f46bbc36"
+    },
+    {
+      "id": "E17",
+      "classification": "actual resume initial refusal before Starting and Git",
+      "compiled": true,
+      "assertion_failed": true,
+      "exit_code": 101,
+      "source_restored": true,
+      "sha256": "da5a8828b2ee17e4254b62741336b9e3980990246b2eccda2b2355726ad4077f"
+    },
+    {
+      "id": "E18",
+      "classification": "actual checkpoint roster capture/recheck",
+      "compiled": true,
+      "assertion_failed": true,
+      "exit_code": 101,
+      "source_restored": true,
+      "sha256": "fd89183bd48aea5dc0668cdfec9c25370272d9e87d925e84efa00e017726a20f"
+    }
+  ],
+  "restored_control": {
+    "passed": 9,
+    "failed": 0,
+    "ignored": 1,
+    "seconds": 5.71,
+    "test_result_observed": true,
+    "original_tool_handle_recovered": false,
+    "whole_wrapper_cleanup_claim": false
+  },
+  "limits": [
+    "E02 constructor membership is unit-only.",
+    "E10 final server cancellation independently failed at Discovery; Main is not separately credited.",
+    "Consumed, CheckpointCommitted and Failing pre-exec guards have unit controls only.",
+    "Restoration matches five archived production source hashes; private archive is not the complete clean source tree.",
+    "Counters and direct selected-group cleanup are not whole native workload settlement.",
+    "Full-roster equality E18 independently failed at checkpoint; distinct start/resume kills are not credited."
+  ],
+  "additional_source_head": "9eeeb2073251d7fec37ae3949b654df053c382d4",
+  "additional_restored_control": {
+    "passed": 116,
+    "failed": 0,
+    "ignored": 2,
+    "seconds": 65.31,
+    "original_tool_exit": 0,
+    "scope": "archived affected Codex restoration; not clean-head acceptance"
+  }
+}

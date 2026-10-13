@@ -1,0 +1,231 @@
+{
+  "head": "98aeab5c3c8858ed4c88ba6a787efe2904b13333",
+  "scope": "STRICT finite existing51 environment component only; no native/whole gates",
+  "reviews": [
+    {
+      "head": "98aeab5c3c8858ed4c88ba6a787efe2904b13333",
+      "section": "A1",
+      "native_session": "4860d69c-d5d2-4d46-8a55-2402f5c06cd7",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "severity": "low",
+            "file": "crates/rrx/src/codex/environment.rs; doc/design/issue-6-environment-design.md",
+            "lines": "environment.rs 157-177 and unit control 450-453; design 153-156, 231-236, 464-465",
+            "problem": "The source and the qualified Design7 text disagree about an own edit that lands after capture and before the initial selection. The design says such a rejecting edit (a removed caller ref, or a current invalid own ref) refuses with the opaque InvalidConfiguration category. The source instead rereads the own Project when the initial Store decision fails. If that row differs from request.project, it returns StateConflict ('native Project snapshot changed before environment admission'). The unit control asserts StateConflict. Neither the issue design nor master section 16 records this precedence.",
+            "causal_scenario": "A second-connection writer, inside the Initial hook window, removes an own caller-declared key from the owning Project. check_environment_admission fails because caller is not a subset of own. The reread sees a changed own row, so start/resume returns StateConflict, not the documented opaque InvalidConfiguration. The documented acceptance ('Initial rejecting own edits after capture refuse before publication with the observed opaque category') cannot hold as written. No foreign data leaks, and the refusal still happens before publication.",
+            "required_fix": "Pick one behavior and make the design, master and tests agree. Either record the own-reread StateConflict precedence and its non-atomic race limits in the issue design and master section 16, or remove the reread. Then add an actual-consumer control at the Initial hook with a rejecting own edit. It should assert the chosen kind, no Session or audit publication, and no Git/version entry."
+          },
+          {
+            "severity": "low",
+            "file": "crates/rrx/src/codex/session.rs",
+            "lines": "490-502 (admit_dispatch)",
+            "problem": "admit_dispatch writes a new consumed dispatch_intent into self.session before it resolves self.environment. If the environment is missing, it returns early through '?'. That path skips the previous-intent rollback in the Err branch, and preparation.consume is never entered.",
+            "causal_scenario": "Production launch reservations always carry Some(selection), so this path is unreachable today. A future refactor could let a Reservation with environment None reach dispatch, for example reuse of the checkpoint Reservation shape. In that case the caller latches StateConflict. finish_preparation_error then builds its status from self.session and persists a Failed Session whose recovery.dispatch_intent says consumed=true, origin runtime. No consumption CAS or turn/start wire happened, so later recovery reads a false consumed-input record.",
+            "required_fix": "Resolve the selection (or fail) before mutating recovery.dispatch_intent, or restore previous_intent on the missing-selection path. Add a unit control that runs admit_dispatch with environment None and asserts the intent is unchanged and nothing is persisted."
+          },
+          {
+            "severity": "low",
+            "file": "crates/rrx/src/codex/preparation.rs; crates/rrx/src/codex/transport.rs; crates/rrx/src/codex/environment.rs",
+            "lines": "preparation.rs 316-322; transport.rs 200-206; environment.rs 261-279",
+            "problem": "ExecEnvironment::Selected and the optional SpawnBoundary are passed separately. Neither the type nor a runtime check requires a boundary when the selected environment is applied. Selected with None spawns with the private selected values and runs no last exact Session/P/G/T/lock/environment CAS.",
+            "causal_scenario": "All three current production sites (version, discovery, main) pass Some(boundary). A future caller of bounded_git or launch_preparing that supplies ExecEnvironment::Selected(&selection) with before_spawn None would launch a child carrying the selected credentials. It would skip the pre-exec fence, the Preparing-only guard and the publication. Nothing fails closed, and no existing control detects it.",
+            "required_fix": "Make the boundary mandatory for selected execs. Either carry it inside the Selected variant, or return a fixed StateConflict before spawn when environment.selected() is true and before_spawn is None. Add a unit control for that combination with zero spawn counters."
+          },
+          {
+            "severity": "low",
+            "file": "crates/rrx/src/codex/environment.rs",
+            "lines": "81-92 (FrozenEnvironment::new)",
+            "problem": "The NUL and '=' name check and the NUL value check run on every OS pair before UTF-8, GIT_ and baseline membership filtering. A non-baseline entry can therefore reject construction of the whole adapter. This is outside the design's filter order (discard non-UTF-8 and GIT_ names, then apply membership). It also conflicts with the stated intent not to reject an entire host for a name no valid Project can own.",
+            "causal_scenario": "A parent execs rrx with an environ entry such as '=X=1'. execve permits this, and std::env::vars_os parses the name as '=X'. The name is not a baseline member and would otherwise be discarded. CodexAdapter::new nonetheless fails opaquely with InvalidConfiguration, so the runtime cannot construct the adapter. The outcome fails closed but is an unnecessary availability refusal.",
+            "required_fix": "Apply the '=' and NUL rejection only to names that pass UTF-8, non-GIT_ and baseline_key membership (and their values), or skip non-retained malformed entries. Add a synthetic iterator control in which a non-baseline '=X' entry constructs successfully and a retained baseline name containing '=' still refuses."
+          }
+        ],
+        "limitations": [
+          "Manual read-only review of the supplied public bytes at 98aeab5 only. Nothing was compiled, executed or mutated. Omitted session tests after line 2792, protocol tests, Generic lifecycle and inspection tests, and full Workflow production were not reviewed. Constructor migrations in those omitted tests are unverified.",
+          "The supplied full environment_controls.rs does not contain several actual-consumer controls that Design7 requires. (1) Own-ref or own-version edits at each of the version, discovery and main PRE-CAS hooks, asserting transactional StateConflict and coherent versions. (2) A resume-window irrelevant foreign change injected after resume capture; only the start Initial window and the checkpoint window are covered, so the resume roster-equality mutant binding is unproven. (3) An Initial-window rejecting own edit at the actual consumer. (4) A neutral or enlarging own edit that passes initial selection and then fails at the post-Git recheck or first CAS. (5) A comparison of own-scope event kinds and counts against an unchanged-reference control for start and checkpoint. If these exist in omitted tests, they were not reviewed.",
+          "The main post-CAS PID-None observer reads through the adapter's shared Store connection, not a second connection, and does not assert the persisted record version. The constructor re-exec children do not pre-check the exact permitted synthetic OS name/value pairs before constructing, which the design asks for. Both children use env_clear with known synthetic values.",
+          "Gate status. Affected debug ran at 7bc, not the current head. Affected release ran at 9ee. The fmt/Clippy/build head is unspecified. The full default workspace FAILED in debug (3 Grok failures) and release (7 Grok failures) with unknown cause and no rerun. No whole-gate, CI, both-OS checkout or native acceptance is established.",
+          "Mutation credit. Main final-cancellation has no separate mutation credit, although the post-CAS real-stop counter assertion appears to distinguish it. Consumed, CheckpointCommitted and Failing rejection in before_exec are unit-only. The archived E01-E18 mutation evidence could not be independently re-verified.",
+          "admit_dispatch's consumed-input CAS does not publish watch or Control under the Store guard. This is pre-existing behavior outside this component's pre-exec publication contract. status/current() can observe a Store/watch mismatch between consumption and turn acknowledgement.",
+          "Plain Git preflight and checkpoint still use crate::git::native_environment(), which carries all ambient pairs except nine Git routing names, including foreign-declared credentials. That #51/#60 residual remains OPEN and is not credential isolation.",
+          "Constructor bounds cover only the non-control DTO projection. Control members (CODEX_*, *_PROXY, invalid LC_/XDG_ names) are retained and passed through without a count or size bound. This matches the design text but is not a total environment bound.",
+          "environment_candidates accepts any ProjectId, including foreign Projects. Binding it to an operator is caller-owned. Declared names are already registry-visible, and no values are returned.",
+          "SQLite CAS and OS exec are not atomic. Selected children already spawned are not retroactively fenced. Native provenance, default and custom provider compatibility, Stage B platform acceptance, workload custody, cleanup and settlement remain OPEN. Shared Store, Grok, ProcessGroup and inspection authorities were treated as comparison evidence only."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 261845,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 55971,
+        "output_tokens_details": {
+          "thinking_tokens": 52806
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 261845,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 55971,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 261845,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 261845
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 55971,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 261845,
+          "webSearchRequests": 0,
+          "costUSD": 3.21462,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 52806,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 3.21462,
+      "duration_api_ms": 526370,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-source-review"
+    },
+    {
+      "head": "98aeab5c3c8858ed4c88ba6a787efe2904b13333",
+      "section": "B1",
+      "native_session": "5cafc182-cf12-43bf-bd9d-4464bf1bbac3",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "severity": "low",
+            "file": "crates/rrx/src/codex/environment.rs",
+            "lines": "81-92",
+            "problem": "FrozenEnvironment::new rejects the whole constructor when any pair has '=' in its name or NUL in its value. This check runs before the non-UTF-8, GIT_ and membership filters, so it also fires for names Codex would discard. The design (lines 65-72, 80) filters first and says not to reject an entire host for a name no valid Project can own.",
+            "causal_scenario": "On Unix, Rust's vars_os splits each environ entry at the first '=' after byte 0. A parent that execs rrx with an envp entry such as '=foo=bar' yields the name '=foo'. CodexAdapter::new then fails with opaque InvalidConfiguration, even though '=foo' is not a baseline member and could never be selected, owned or passed to a child. The NUL-value branch cannot be reached from vars_os; only injected iterators can trigger it.",
+            "required_fix": "Run the name/value well-formedness checks only on pairs that pass the UTF-8, GIT_ and baseline_key filters. Non-member pairs should be skipped. Alternatively, record and justify whole-host rejection in the design and master text. Add a constructor control with a non-member '='-bearing name."
+          },
+          {
+            "severity": "low",
+            "file": "crates/rrx/src/codex/session.rs",
+            "lines": "490-502, 522-535",
+            "problem": "admit_dispatch writes a consumed dispatch_intent into self.session first, and only then returns early with '?' if self.environment is None. That early return skips the Err-arm rollback, so the in-memory Session keeps a consumed:true intent that was never admitted.",
+            "causal_scenario": "If a Reservation reaches dispatch with environment None, finish_preparation_error copies self.session into the published or persisted status. The durable Session would then claim a consumed intent with no CAS behind it, and inference_started stays false. No current path triggers this: prepare_launch always sets Some, and checkpoint Reservations never dispatch. It is a latent ordering defect in code this component changed.",
+            "required_fix": "Resolve the environment before mutating session.recovery['dispatch_intent'], or route the missing-environment error through the same rollback as the CAS error."
+          },
+          {
+            "severity": "low",
+            "file": "crates/rrx/src/codex/environment.rs",
+            "lines": "460-475",
+            "problem": "The 'combined invalid own reference plus malformed caller' unit control does not distinguish the two orderings. The cloned caller map's lexically first key is A_UNSUPPORTED, which already fails as InvalidConfiguration. So own-first and caller-first ordering return the same kind.",
+            "causal_scenario": "Suppose a mutant moves validate_environment_references after the caller loop. It still returns InvalidConfiguration (from A_UNSUPPORTED) for the 'malformed' request and survives this test. The precedence required by design line 146 is therefore not pinned.",
+            "required_fix": "Use a caller map whose first failing key yields InvalidInput (for example only GIT_DIR, or COLORTERM plus GIT_DIR) combined with an invalid own reference. Own-first must then return InvalidConfiguration and caller-first InvalidInput. Confirm by mutation."
+          },
+          {
+            "severity": "low",
+            "file": "crates/rrx/src/codex/environment.rs",
+            "lines": "21-53, 340-403",
+            "problem": "The structural classification/drift assertion required by the design is missing. Design lines 87-100 and 446-449 and Issue51 requirement 3 require asserting:\n- every named whitelist routing/identity member, CODEX_* and *_PROXY are controls;\n- XAI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, LANG, TERM, LC_* and XDG_CONFIG_DIRS/XDG_DATA_DIRS are non-control;\n- the additional control set is EMPTY.\nbaseline_key and control are private to this file, and the full file shows only HOME, LC_BAD-NAME, XDG_CONFIG_DIRS and OPENAI_API_KEY being classified.",
+            "causal_scenario": "A future edit could widen baseline_key or add a control branch, for example reclassifying XAI_API_KEY or XDG_DATA_DIRS. That would silently change foreign-conflict and DTO membership. No in-file structural test would fail, and the equivalence that the design relies on to deny independent mutant credit would go unchecked.",
+            "required_fix": "Add a table-driven unit test in environment.rs. It should cover every whitelist name and representative prefix/suffix members, assert control()/non-control against the design table, and assert that no control-true name is registry-valid and non-forbidden."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "233-235, 464-465",
+            "problem": "The decision record says rejecting own edits made after capture at the initial-selection window 'refuse opaquely' / 'with the observed opaque category'. The implementation (environment.rs:157-176) instead rereads the own Project on any refusal and returns StateConflict whenever it changed, and its unit test (environment.rs:450-451) asserts StateConflict. The master section does not reconcile the two. No actual-consumer initial-hook own-edit control is shown.",
+            "causal_scenario": "A reviewer or Workflow consumer relying on the design will expect InvalidConfiguration for a removed caller ref at that window, but receives StateConflict. Both kinds are refused before publication and neither leaks foreign data, so this does not affect safety. It does mean the STRICT decision record misstates the implemented error contract.",
+            "required_fix": "Update the issue design (and master, if relevant) to state the own-reread StateConflict promotion and its non-atomic limits, or align the code with the stated opaque category. Add an actual-consumer Initial-hook own-edit control asserting the chosen kind and no publication."
+          }
+        ],
+        "limitations": [
+          "Static manual review only. Nothing was compiled, executed or mutated. Reported test passes, Clippy/fmt/build results and the E01-E18 mutation outcomes are taken as supplied, not reproduced.",
+          "The full default workspace debug (3 Grok failures) and release (7 Grok failures) runs failed with unknown cause. No whole-gate or regression claim can be made from the supplied evidence.",
+          "session.rs tests after line 2792 are omitted except the listed excerpts. I could not verify that all eighteen unit-test constructor calls migrated to the injected iterator, or that no in-process test still calls CodexAdapter::new over ambient credentials.",
+          "policy.rs beyond line 348 is omitted. I could not verify that no residual native_environment/provider_environment definition, second whitelist or legacy strip/restore test survives. Only the production body excerpt confirms their absence from the public surface.",
+          "Actual-consumer controls required by the design are not present in the shown sources:\n- own-reference edits at each Version/Discovery/Main pre-CAS hook asserting transactional StateConflict and coherent versions;\n- own caller-key removal before checkpoint followed by resume initial refusal;\n- an own change after checkpoint keeping StateConflict;\n- an irrelevant foreign change inside resume's own capture-to-recheck window, so no resume-specific roster-equality mutant credit is evidenced;\n- foreign-only LANG/TERM/LC_*/XDG_* conflicts and a shared LANG with own ordinary override reaching the selected child;\n- explicit 'still Preparing' assertions after each successful pre-exec CAS.",
+          "The real-stop control does not assert the Cancelled first-cause kind or the Control published snapshot; it checks registry/watch, Store and events. The Main post-CAS PID-None hook reads the adapter's shared Store connection rather than a second connection and does not pin the CAS version.",
+          "Store-level Issue51 regressions (cross-connection reference visibility, invalid/non-array/non-string foreign refs, long roster ordering) are assumed from merged Issue51 and are not reproduced here.",
+          "Native config/read shapes, built-in/default provider references, optional or absent env_key behavior, custom-provider compatibility and effective-layer provenance remain OPEN. Synthetic RPC peers prove only component wiring.",
+          "The shared Git preflight still runs with the ambient native_environment (all pairs except nine routing names) before selected execs. That #51/#60 ownership and credential-isolation residual is outside this component and remains OPEN.",
+          "The Tokio spawn-error/ProcessGroup wrapping gap (#60), whole-workload/detached-cohort settlement, managed #19/#58/#14 producers, both-host native acceptance and ordinary EMPTY availability are unchanged and not assessed as ready.",
+          "Workflow production is omitted except caller-map forwarding. Caller-map producer behavior beyond that excerpt is not verified."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 261849,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 55102,
+        "output_tokens_details": {
+          "thinking_tokens": 51945
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 261849,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 55102,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 261849,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 261849
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 55102,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 261849,
+          "webSearchRequests": 0,
+          "costUSD": 3.197272,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 51945,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 3.197272,
+      "duration_api_ms": 527288,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-source-review"
+    }
+  ]
+}

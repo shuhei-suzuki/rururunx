@@ -1,0 +1,341 @@
+{
+  "source_head": "6802da94bd5d8286d3b89a0d14f31a66db26ef1e",
+  "docs_composed_head": "70da390ec01e71bc08cb7259b1289ede4d824a79",
+  "scope": "Finite environment/custody composition, no native activation. Source bytes unchanged by later two-doc main composition.",
+  "build_provenance": {
+    "head": "6802da94bd5d8286d3b89a0d14f31a66db26ef1e",
+    "tree": "ab05ac6680e22b750fa42429ca8605f06fc755af",
+    "target_dir": "/private/tmp/rururunx-issue6-env-680-current-target",
+    "compiler_manifest_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/Cargo.toml",
+    "compiler_source_path": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/src/lib.rs",
+    "fresh": false,
+    "executable": "/private/tmp/rururunx-issue6-env-680-current-target/debug/deps/rrx-c8478e6c49df54d8",
+    "binary_sha256": "7c8941954bb1a31550e2c401b2f9d578d31d3d91f1079d9c269fd0b7f3d6fca4",
+    "binary_bytes": 39963432,
+    "binary_mtime": 1791180553.0400608,
+    "binary_current_source_root_present": true,
+    "binary_archive_source_root_present": false,
+    "log_sha256": "5b6ed365b6d3fc39bbb84463d72de71cdb587de16bd22b6906b810e50a24547f",
+    "log_bytes": 101781
+  },
+  "prior_shared_target_setup": {
+    "requested_head": "6802da94bd5d8286d3b89a0d14f31a66db26ef1e",
+    "restored_environment_result": "FAILED; exact requested source-to-binary binding unqualified because sharedtarget and CargoFresh",
+    "binary_sha256": "420771defa625b225e0e1af049b99ee342a38713a09cd99a596095f2b10850fd",
+    "binary_mtime": 1791180264.0303156,
+    "binary_bytes": 39967224,
+    "source_roots": {
+      "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-6-env/crates/rrx/src/codex/session.rs": {
+        "mtime": 1791179912.6220963,
+        "sha256": "a807eaf41b3962a7803851c10aad023c811a3582b4710bb6968ce45d403b5501"
+      },
+      "/private/tmp/rururunx-issue6-env-680-sensitivity/crates/rrx/src/codex/session.rs": {
+        "mtime": 1791180312.3512568,
+        "sha256": "a807eaf41b3962a7803851c10aad023c811a3582b4710bb6968ce45d403b5501"
+      }
+    },
+    "dep_info_sha256": "5adf9f9e5141ff151941e8a30a9cc91353814ddbce3ea9a421ba9e9466712d82",
+    "dep_info_paths": "relative crates/rrx paths; does not disambiguate archive vs currentWT",
+    "fingerprint": {
+      "rustc": 16243257175721966122,
+      "features": "[]",
+      "declared_features": "[]",
+      "target": 14009079977928023729,
+      "profile": 12923197090139833262,
+      "path": 6535882493714978787,
+      "deps": [
+        [
+          2145939652136225981,
+          "tokio",
+          false,
+          8365706323155255505
+        ],
+        [
+          3646101781514403606,
+          "rustix",
+          false,
+          11001727181817965731
+        ],
+        [
+          4878511589877685828,
+          "rusqlite",
+          false,
+          15710729099717962298
+        ],
+        [
+          5330460842384404171,
+          "serde_json",
+          false,
+          3976091891069386419
+        ],
+        [
+          6444209561448300374,
+          "futures_util",
+          false,
+          17524359065473158856
+        ],
+        [
+          6557439603276904804,
+          "serde",
+          false,
+          11510840160949684874
+        ],
+        [
+          6945626851654637542,
+          "tokio_tungstenite",
+          false,
+          6086253027924650813
+        ],
+        [
+          8699875171042161596,
+          "clap",
+          false,
+          8175889417215580398
+        ],
+        [
+          9723370144619655183,
+          "tempfile",
+          false,
+          16434423633371006498
+        ],
+        [
+          9857275760291862238,
+          "sha2",
+          false,
+          13368052220975981376
+        ],
+        [
+          10364619138950789809,
+          "anyhow",
+          false,
+          15715687914873661704
+        ],
+        [
+          15609422047640926750,
+          "toml",
+          false,
+          11377411262495107542
+        ],
+        [
+          17753314117166137240,
+          "uuid",
+          false,
+          15936309088261486198
+        ]
+      ],
+      "local": [
+        {
+          "CheckDepInfo": {
+            "dep_info": "debug/.fingerprint/rrx-c8478e6c49df54d8/dep-test-lib-rrx",
+            "checksum": false
+          }
+        }
+      ],
+      "rustflags": [],
+      "config": 2069994364910194474,
+      "compile_kind": 0
+    },
+    "binary_contains_current_source_root": false,
+    "binary_contains_archive_source_root": true,
+    "limits": [
+      "No native/backend/cleanup credit, cannot yet certify exact executable build-root.",
+      "Earlier proper focusedmodule pass occurred before privatearchive used target; sensitivity failures refer privatecompiledmutants.",
+      "Restoredcustody targetedpass and restoredenvironment failure requestedcurrentWT but CargoFresh; both setup observations unqualified for cleancurrenthead acceptance."
+    ]
+  },
+  "focused": {
+    "environment": {
+      "passed": 11,
+      "failed": 0,
+      "ignored": 1,
+      "seconds": 5.01,
+      "owned_tool": 44302,
+      "exit": 0,
+      "log": {
+        "sha256": "5b6ed365b6d3fc39bbb84463d72de71cdb587de16bd22b6906b810e50a24547f",
+        "bytes": 101781
+      }
+    },
+    "custody": {
+      "passed": 20,
+      "failed": 0,
+      "seconds": 2.48,
+      "owned_tool": 52179,
+      "exit": 0,
+      "log": {
+        "sha256": "71dd641689d8852c77a44151406d6783686cfe33344c3406cbc12c25958c12c8",
+        "bytes": 99578
+      }
+    }
+  },
+  "full_debug": {
+    "owned_tool": 56483,
+    "exit": 0,
+    "top_level_rust_passed": 418,
+    "nested_ordinary_child_passed": 1,
+    "doctests_passed": 2,
+    "top_level_ignored": 27,
+    "raw_result_aggregate_passed_including_child_and_docs": 421,
+    "library": {
+      "passed": 307,
+      "failed": 0,
+      "ignored": 24
+    },
+    "all_targets_executed": true,
+    "log": {
+      "sha256": "9b6310f2636e05b82ced847d3ac9cd7fb5afd95a80414a40f1cc8e6b5977e076",
+      "bytes": 49125
+    }
+  },
+  "full_release": {
+    "owned_tool": 31001,
+    "exit": 101,
+    "elapsed_seconds": 173.24,
+    "library": {
+      "passed": 299,
+      "failed": 8,
+      "ignored": 24,
+      "seconds": 58.05
+    },
+    "codex_within_failed_library": {
+      "passed": 139,
+      "failed": 0,
+      "ignored": 2
+    },
+    "later_integration_and_doctest_targets_executed": false,
+    "failure_names": [
+      "adapter::grok::environment_tests::environment_initial_selection_drives_real_canary_and_rejection_consumers",
+      "adapter::grok::environment_tests::live_reference_change_rejects_actual_resume_before_spawn",
+      "adapter::grok::environment_tests::owning_reference_change_after_snapshot_rejects_resume",
+      "adapter::grok::environment_tests::owning_reference_change_after_snapshot_rejects_start",
+      "adapter::grok::environment_tests::owning_reference_refresh_and_existing_consultant_reservation_guards_remain_required",
+      "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint",
+      "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume",
+      "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_start"
+    ],
+    "observations": [
+      "Git ownership preflight Timeout before native group/dispatch, nondispatched/not_attempted receipts.",
+      "Own-start/refresh consumer assertions failed. No failure-time source/hostload cause is established."
+    ],
+    "cause": "UNKNOWN",
+    "log": {
+      "sha256": "6a862d46d43f97779fcb6750701deeeb580a2489e775c318625372df4e2c5b42",
+      "bytes": 51674
+    }
+  },
+  "quality": {
+    "workspace_fmt": {
+      "exit": 0,
+      "log": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    "included_environment_fmt": {
+      "exit": 0,
+      "log": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    "additional_unchanged_custody_standalone_fmt": {
+      "exit": 1,
+      "log": {
+        "sha256": "f153dc5dfdd0ef27e6e13a2c5514113fb870a39b9967bbc6182947b91b39b047",
+        "bytes": 5344
+      },
+      "qualification": "Additional advisory standalone check, inherited main9d file identical; standard cargo fmt all check passed. Source left untouched."
+    },
+    "clippy_alltargets_deny_warnings": {
+      "exit": 0,
+      "owned_tool": 53256,
+      "log": {
+        "sha256": "ab35e06d41640f8501ffcd127862b298fd127dfa8aa2ebe48ae8ed06fc98c6fb",
+        "bytes": 2644
+      }
+    },
+    "build_debug": {
+      "exit": 0,
+      "log": {
+        "sha256": "2461b00c8697c4189b2de92ca6fb05b5d72273c78a0a47b1ce4e83ccca077b70",
+        "bytes": 72
+      }
+    },
+    "build_release": {
+      "exit": 0,
+      "log": {
+        "sha256": "f18e8aa44b81e7d9d1663536017be739eb80ede7041400fe06bf4e1c755d3d59",
+        "bytes": 62
+      }
+    }
+  },
+  "sensitivity": {
+    "head": "6802da94bd5d8286d3b89a0d14f31a66db26ef1e",
+    "mutants": [
+      {
+        "id": "custody",
+        "head": "5f08e2ea31104d31fcd8f99bd473e0a9fa18b491",
+        "compiled": true,
+        "exit_code": 101,
+        "intended_assertion": "native Codex executable unavailable",
+        "patch_sha256": "7406959d0edc5d9653019d98b57c67ddb24b575b74f9b250bb8540dc00625a31",
+        "log_sha256": "146515f0c755481c55d9712e11ebffa5604bab6c109f7ed2b04a517fef1f368d",
+        "log_bytes": 1244,
+        "credit": "Finite integration sensitivity of existing owned_handles boundary family, not new native/full guarantees."
+      },
+      {
+        "id": "environment",
+        "head": "f1dbcc3b5a58f75acb04a31aa0fc45e028a303b3",
+        "compiled": true,
+        "exit_code": 101,
+        "intended_assertion": "assertion failed: matches!(result, Err(ref error) if error.kind == ErrorKind::StateConflict)",
+        "patch_sha256": "bdb10d8f915b28f252eed26131610647de5753777d52394231ec9485f4705d0b",
+        "log_sha256": "4ff3550a4a37588be5c6df0083720b5f43a83cde8c35be10f26dc520b998316d",
+        "log_bytes": 1239,
+        "credit": "Finite integration sensitivity of existing owned_handles boundary family, not new native/full guarantees."
+      }
+    ],
+    "restored_private_tree": "ab05ac6680e22b750fa42429ca8605f06fc755af",
+    "clean_current_tree": "ab05ac6680e22b750fa42429ca8605f06fc755af",
+    "restoration_proof": "Full tree equality. Shared-target requested restore results unqualified; corrected dedicatedtarget modules include BOTH actual mutation consumers and passed.",
+    "setup_failure_record": "/private/tmp/rururunx-issue6-env-680-shared-target-setup.json",
+    "dedicated_binary_binding": "/private/tmp/rururunx-issue6-env-680-dedicated-build-binding.json",
+    "limits": [
+      "No native model/tools/auth inference or whole-cohort/resource-settlement proof.",
+      "No old failed default gate cause/exoneration claim.",
+      "Production activation stillNone and availabilityEMPTY."
+    ]
+  },
+  "static_composition_reviews": {
+    "head": "6802da94bd5d8286d3b89a0d14f31a66db26ef1e",
+    "root": {
+      "verdict": "APPROVE",
+      "findings": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      }
+    },
+    "independent_peer": {
+      "verdict": "APPROVE",
+      "findings": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "risk": "STRICT",
+      "confidence": 0.94
+    },
+    "condition": "current full D/R, quality and final bothOS exact-tree CI; Release condition NOT met."
+  },
+  "limits": [
+    "No original default deadlines/concurrency/latches changed. Full modes each first once on actual newly composed source and independent dedicated target.",
+    "Old full failed heads and wrong-build restored observations retained; no retrospective cause/exoneration or samefailedhead retry.",
+    "Ordinary availabilityEMPTY, custody selectionNone/FactoryCreate test-only. No native profile/backend, all-resource custody/settlement or wholeIssue6/MVP readiness.",
+    "Old issue6 held worktree/wrappers remain separately retained and not released by these fixture commands.",
+    "All local owned commands closed; no implication of complete escaped native workload cleanup.",
+    "Current Release gate failed; no merge approval. Final composed head CI remains pending."
+  ]
+}

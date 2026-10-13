@@ -1,0 +1,266 @@
+{
+  "scope": "Design2 textual proposal only; not source/native qualification",
+  "head": "9884ec3cd69353fb158bb27772d7585a3af0af9b",
+  "independent_peer_free": true,
+  "native_defaults_and_rules_preserved": true,
+  "zero_operation_tools": true,
+  "reports": [
+    {
+      "head": "9884ec3cd69353fb158bb27772d7585a3af0af9b",
+      "section": "A2",
+      "native_session": "89b99c82-27c3-48b8-8bf5-e7f76c5f7fdf",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "11-13, 57-74, 76-84, 94-111",
+            "problem": "Codex's retained baseline membership includes LANG and TERM, the LC_ prefix (for example LC_ALL and LC_CTYPE when set) and non-forbidden XDG_ names. Under the proposed control predicate these names are registry-valid non-controls, so they enter the DTO baseline. Store `evaluate` then denies A whenever any other Project declares one of them and A does not. Applicable Projects include any provider and any lifecycle state. Issue51 caller eligibility requires an owning declaration to pass an ordinary value. So a Project that declares LANG, TERM, LC_ALL or LC_CTYPE, only to pass its own ordinary locale or terminal value, revokes Codex for every non-declaring Project. This applies on any host where that variable is set, which is nearly universal for LANG and TERM. Current code only strips such names. The intentional-change table frames the change only as 'Foreign-only retained credential silently stripped'. The authority paragraph cites only Issue51 requirements 3 and 6–8, not the requirement 2/4/5 interaction that causes this. No test covers it. Grok's baseline excludes ordinary keys, so the same declaration is harmless for Grok. That makes this an undeclared cross-provider availability change.",
+            "causal_scenario": "The frozen host baseline contains LANG=en_US.UTF-8 and TERM=xterm-256color. Project B, a Grok Project, declares LANG so Workflow can pass B's own locale. Project A declares no refs and starts Codex. The initial `check_environment_admission` streams B's ref LANG: it is valid, present in the Codex DTO baseline, and not in A's own refs. The check returns EnvironmentAuthority, which surfaces as opaque InvalidConfiguration. Every A start and resume fails until B removes LANG or A co-declares it. Current main strips LANG from A's child and launches.",
+            "required_fix": "Explicitly decide and document the outcome for non-credential baseline names that overlap the ordinary caller keys, plus other registry-valid non-credential whitelist names such as LC_ and XDG_. Option (a): declare this as an intentional availability limitation. Add it to the compatibility table, the master doc and operator guidance (co-declare in every Codex Project, or unset the host variable). Add actual-consumer tests showing that a foreign LANG/TERM declaration denies A, while a shared declaration and an own ordinary override succeed. Option (b): adopt a separately reviewed classification change, such as removing ordinary caller names from Codex baseline membership so they are caller-supplied only, declared as a native-defaults compatibility delta. Never silently strip. Cite Issue51 requirements 2/4/5 alongside 3/6–8."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "121-136",
+            "problem": "The pre-exec CAS must run under the attempt's admission mutex but must leave Admission::Preparing intact on success. The only existing Preparation helpers are `consume`, which latches Consumed, `checkpoint`, which latches CheckpointCommitted, and `publish`, which preserves Preparing and latches Failing on error. The design says only that 'the admission/cancellation critical section preserves the existing first-cause rules' and does not name the latch.",
+            "causal_scenario": "An implementer wraps the version or discovery pre-exec CAS in `consume`. `stop()` then sees `consumed()==true` and sends a stop through the supervisor channel instead of cancelling preparation. The later `admit_dispatch` fails with 'native attempt already admitted', so no turn/start can be consumed, and the outcome and cause become misattributed.",
+            "required_fix": "Specify `publish`-style latch semantics for every pre-exec CAS: short-circuit on Cancelled/Failing, run the CAS, latch Failing on error, and keep Preparing on success. Add a test or mutant showing that a stop after a successful pre-exec CAS still cancels preparation and that the later consumed CAS still succeeds."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "133-135, 205-208",
+            "problem": "The design forbids any await or new observer between a successful CAS and spawn. Verification nevertheless requires 'A stop after CAS before spawn causes no child', and no cfg(test) seam is defined in that window inside `bounded_git` or `launch_preparing`. The Issue51 precedent defined an explicit test-only after-admission hook before the final stop load.",
+            "causal_scenario": "With no seam, the stop-after-CAS fixture can only inject a stop before the CAS, or by calling `preparation.cancel()` directly instead of the real `adapter.stop()` consumer. Either way the claimed exact boundary goes unexercised, and a mutant that removes the post-CAS cancellation check could survive.",
+            "required_fix": "Define a cfg(test)-only hook that runs after the callback's CAS returns and before the existing `preparation.check()`/spawn, at all three exec sites. It must drive the actual `adapter.stop()` without deadlocking the current-thread runtime. State that production has no await in this window, and bind a check-removal mutant to the no-child sentinel."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "94-111, 121-127, 141-143",
+            "problem": "Each pre-exec CAS writes the unchanged reservation Session through `write_record_tx`. That bumps the Session record version and appends a `session.saved` audit event: up to three extra writes and events per fresh or resume attempt. The compatibility table and the text ('only the named exec and consumed-input boundaries add environment checks'; existing facts 'remain unchanged') do not declare these additional scoped publications.",
+            "causal_scenario": "Existing component tests that pin Session record versions or audit sequences shift for unrelated reasons, masking the branch they target. Reviewers may also read 'does not publish consumed input' as 'no publication', and miss that every pre-exec CAS is a durable Store write.",
+            "required_fix": "List the additional `session.saved` writes in the intentional-change table, with the test migration. Assert that they carry a null dispatch_intent, preserve Session content, and are identical in kind and count under irrelevant foreign roster changes."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "171-188",
+            "problem": "The deterministic provider-reference refusal is evaluated only against the discovery server's `config/read`. The main server's own effective `config/read` (current session.rs 1519-1526) is not rechecked, so the rule is not bound to the configuration the consuming process actually loaded. Separately, 'explicit selected-provider reference' is undefined under `includeLayers:false`. No evidence shows whether the default native effective configuration surfaces the selected built-in provider's optional env_http_headers or env_key names. If it does, the rule refuses the default native configuration.",
+            "causal_scenario": "First case: a configuration layer changes between discovery and main, and the main server selects a provider whose referenced variable is absent from the selection. It runs unrefused, contrary to the stated deterministic rule. Second case: the default `config/read` lists the default provider's optional header variable names, which are absent from the whitelist. Every default launch is then refused with UnsupportedCapability.",
+            "required_fix": "Apply the same reference predicate to the main server's effective config before input consumption, failing before turn/start with factual cleanup. Record names-only installed evidence of the default effective `config/read` output. Then declare explicitly whether default-provider references fall under the refusal as an accepted component limitation, without inferring origin."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "11-13, 86-92",
+            "problem": "Issue51 requirement 1 requires an explicit Project-scoped operator diagnostic, because baseline conflicts are deliberately opaque. Codex introduces its own frozen baseline with a different name set (OPENAI_/XAI_/ANTHROPIC_ keys, LANG, TERM, LC_, XDG_). It neither defines a Codex-runtime candidate inspection, for example the existing `Store::environment_candidates` with the Codex DTO, nor explicitly defers one.",
+            "causal_scenario": "Project B declares ANTHROPIC_API_KEY for Claude, and every Codex launch for Project A fails opaquely. The operator has no scoped way to learn which of B's own declarations intersect the Codex baseline, or which remedy applies (clear or reactivate the refs, or remove the variable and reconstruct the adapter).",
+            "required_fix": "Specify an explicit Project-scoped Codex inspection that reuses `environment_candidates` with the Codex frozen DTO, never invoked from another Project's rejection, with a regression test. Alternatively, record an explicit deferral to a tracked issue and state the operator remedy."
+          }
+        ],
+        "limitations": [
+          "Manual read-only review: no tool execution, compilation, test run or mutation was performed. All findings are based solely on the supplied bytes.",
+          "Codex tests, fixtures and fake native children are not supplied. It cannot be verified whether current fixtures pass reserved RRX_ keys, arbitrary declared caller keys or ambient credentials, or how the test migration will behave.",
+          "domain.rs (Project serialization) is not supplied. It cannot be confirmed that environment_refs is always serialized as an array. If it is skipped when empty, Store evaluate would deny every Project.",
+          "The contents of `crate::git::native_environment()` are not supplied. It cannot be verified that plain Git preflight children receive no credential-bearing names outside the DTO.",
+          "protocol.rs, adapter.rs (state_error and shared helpers), workflow.rs, and the omitted portions of availability.rs, project.rs and grok/mod.rs are not supplied.",
+          "No installed native `config/read` or `account/read` output is supplied. Whether default effective configuration lists selected-provider env references is unknown.",
+          "The branch's factual verification records are intentionally omitted, so no implementation or acceptance evidence is assessed. The review covers the proposal only and does not approve native, backend, ownership or settlement readiness."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 181944,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 56429,
+        "output_tokens_details": {
+          "thinking_tokens": 52764
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 181944,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 56429,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 181944,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 181944
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 56429,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 181944,
+          "webSearchRequests": 0,
+          "costUSD": 2.5845719999999996,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 52764,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 2.5845719999999996,
+      "duration_api_ms": 540736,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    },
+    {
+      "head": "9884ec3cd69353fb158bb27772d7585a3af0af9b",
+      "section": "B2",
+      "native_session": "8d072a7b-9832-4957-9acc-1779068473b2",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "57-63, 65-74, 83-84, 96-105, 198-200",
+            "problem": "The DTO is built from the non-control Codex baseline, and that baseline holds more than credentials. Under the stated predicate it also includes LANG, TERM, every registry-valid LC_* name (including LC_ALL and LC_CTYPE, which are also Issue51 ordinary caller keys) and registry-valid XDG_* names (for example XDG_CONFIG_DIRS, XDG_DATA_DIRS, XDG_SESSION_*). It also includes OPENAI_API_KEY, XAI_API_KEY and ANTHROPIC_API_KEY. Store evaluate() refuses A whenever another Project declares a retained DTO name that A does not declare. The compatibility table describes this only as 'Foreign-only retained credential silently stripped'. The verification list covers only API-key collisions. The multi-Project availability consequence for routine locale and terminal declarations is never analyzed, although Issue51 requirement 5 requires that availability limit to be stated.",
+            "causal_scenario": "The host has LANG=en_US.UTF-8 and TERM set. Project B (Grok or Codex) declares LANG and TERM so its caller can pass ordinary own values, which Issue51 explicitly supports. Project A declares neither. A's Codex start builds a DTO whose baseline contains LANG and TERM. check_environment_admission sees B's foreign declaration and returns EnvironmentAuthority, so A is refused opaquely before persist. Today's code silently strips LANG and TERM and launches with native defaults. Under the design, every non-declaring Project's Codex becomes unavailable once any Project scopes locale or terminal values. The same happens when a Claude Project declares ANTHROPIC_API_KEY. Both cases bear directly on the #16 configuration of two or more Projects using all three agents.",
+            "required_fix": "Enumerate the exact DTO membership classes: LANG, TERM, registry-valid LC_*, registry-valid XDG_*, the three API keys, and any other admitted non-control names. State as an explicit compatibility outcome that a foreign declaration of ANY retained non-control baseline name, not only a credential, refuses non-declaring Projects. Document the Issue51 requirement 5 operator remedies: co-declare as genuinely shared, or remove the variable from the runtime environment and reconstruct. Do not reclassify these names as controls, because that would refuse legitimate own ordinary caller values. Add actual-consumer cases: (1) a foreign-only LANG declaration denies A before any effect; (2) a shared LANG declaration with A's own ordinary override passes A's override value. Bind a compiled mutant to these cases."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "171-180, 215-217",
+            "problem": "The design applies the reference rule only to the discovery server's config/read; session.rs 1472-1490 is the only provider evaluation. The main/policy server re-reads config at session.rs 1519-1526. There, DecisionPolicy::verify_configuration checks only web_search, features, MCP and the permission profile; it never re-derives the selected provider or its env_key and env_http_headers names. So the 'deterministic' refusal is not bound to the configuration the main server actually consumes. It runs against a different process's read.",
+            "causal_scenario": "Discovery reads a configuration whose selected provider has no references, or only selected ones, and passes. Before or during the main re-exec, a user, project or managed configuration layer changes. The main server now resolves a custom provider whose env_key names an ambient-only excluded variable or an absent name. verify_configuration still passes. account/read, thread/start (with history load and hooks) and the environment-aware consumed CAS all succeed, because that name is not a DTO member. turn/start is then dispatched under exactly the unproven configuration route the design says is always refused.",
+            "required_fix": "Apply the identical pure reference rule to the main server's config/read result before account/read and thread start, and before input consumption. Alternatively, require exact equality between discovery and main of the selected provider identity and its complete reference-name set. On mismatch, refuse with UnsupportedCapability after actual main-server cleanup, with no consumed publication. Add a fake whose second config/read selects a different provider, plus an identical-config control. Add a compiled mutant that removes the main-side check and is killed on the model-frame and consumed-publication facts."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "171-188, 215-217",
+            "problem": "The rule says every explicit selected-provider reference must be syntactically supported, non-control and already present in the selection. That is not precise enough to be deterministic or bounded. (a) It does not say how these cases are handled: an absent or null model_provider; a selected id missing from model_providers; built-in or defaulted provider entries; non-object settings; non-string env_key or header values. Nor does it say whether malformed shapes stay ParseFailure (current behavior) or become UnsupportedCapability. (b) 'Syntactically supported' names neither the current 128-byte predicate nor the registry predicate. (c) The heading says 'bounded', but no count or byte bound on extracted references is given. (d) Absent optional references refuse, so the outcome for the native default configuration depends on a config/read shape the design never establishes.",
+            "causal_scenario": "Suppose the installed effective config reports the default or an explicitly named built-in provider with optional env_http_headers names outside the Codex whitelist, such as organization or project header variables that are normally unset. Then every default-configured launch is refused after discovery. That permanently blocks required native Codex, contrary to Issue6 requirement 3, which keeps native provider selection and defaults authoritative. A different reading of 'explicit' would instead pass. Two implementations of this text can therefore disagree on the same native config. The verification list's 'absent' case cannot tell a default-provider regression apart from the intended custom-provider limitation.",
+            "required_fix": "Define the exact extraction. Say how the selected id is resolved. State explicitly whether an absent, null or unknown provider yields zero references or a refusal. List which fields are read and how built-in or defaulted entries are treated. Also define:\n- the exact name predicate and length limit\n- a finite count and byte bound, with deterministic Unsupported on overflow\n- the error kind for each malformed shape\n\nRecord installed config/read evidence for the no-model_provider shape and the default-provider shape, or carry it as an explicit open gate. Add actual-consumer cases for default-provider pass or refuse and for malformed shapes, alongside the custom-provider limitation case."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "106-111, 121-136",
+            "problem": "The pre-exec CAS is described only as 'the admission/cancellation critical section'. The design names neither the Preparation primitive nor the Admission state after a successful CAS. Preparation::commit (used by consume and checkpoint) moves Preparing to Consumed. Separately, the design omits that each pre-exec CAS bumps the Session version and appends an extra session.saved audit event (write_record_tx), while also stating that existing audit and consumed-input facts remain unchanged.",
+            "causal_scenario": "Suppose the CAS is implemented with consume(). The version-exec CAS then latches Consumed. A later stop() finds cancel() returning false (session.rs 1741) and only queues the supervision stop channel, which nothing polls during preparation. Preparation therefore continues to the main exec, and admit_dispatch fails with 'native attempt already admitted' (StateConflict) as its first cause. Independently, existing audit-sequence assertions change because of three undeclared session.saved events.",
+            "required_fix": "Name a non-consuming admission-mutex primitive with Preparation::publish semantics: refuse if Cancelled or Failing, latch Failing on error, and leave Preparing on success. State that Admission remains Preparing after every pre-exec CAS, and specify the exact watch and attempt.publish update. Add the extra session.saved events and version bumps to the compatibility table. In the actual consumer, assert that a stop after a successful pre-exec CAS still cancels, and that admit_dispatch is the only transition to Consumed."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "128-134, 205-208",
+            "problem": "'A stop after CAS before spawn causes no child' requires injecting a stop between a successful CAS and the existing preparation.check(), where the design forbids any await. The design does not define this test seam. Its own no-await rule rules out an awaitable hook. A synchronous hook on current-thread fixtures cannot let the real async stop() run. The Issue51 design hit the same constraint and specified the mechanism explicitly.",
+            "causal_scenario": "An implementer will likely either call preparation.cancel() directly from a cfg(test) hook, which copies stop logic rather than exercising the real consumer, or insert an await between CAS and spawn for the test, which changes the production window. In both cases the claimed boundary proof is either not earned or the boundary itself is weakened.",
+            "required_fix": "Specify a cfg(test) synchronous post-CAS hook that runs on a multi-thread runtime. It should rendezvous with a concurrently running real adapter.stop(), wait only for the Preparation cancellation state, and then return to the unchanged check-then-spawn sequence. Assert the stop outcome, the absence of an entry sentinel, and coherent Store and watch state. If only direct cancel() credit is achievable, record that honestly."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "49-63, 83-84, 94-105",
+            "problem": "'Retains the current Codex whitelist' omits two current filter rules: every GIT_* name is excluded before the whitelist is applied (policy.rs 365), and non-UTF-8 names are dropped (policy.rs 362). Meanwhile, values are now kept as OsString. The compatibility table also does not record that public new(), which today never reads the environment, can now fail with the opaque environment category, for example on a bounds overflow or a valid member name longer than 256 bytes.",
+            "causal_scenario": "Without the retained GIT_ exclusion, a host name like GIT_PROXY matches the case-insensitive *_PROXY suffix and becomes a forwarded global control. A non-UTF-8 name compared lossily could match the LC_, XDG_ or CODEX_ prefixes. Separately, an example or caller constructing CodexAdapter on a host with an oversized whitelisted name now gets InvalidConfiguration from new(). It no longer reaches the fixed UnsupportedCapability refusal, which is an undocumented public-API change.",
+            "required_fix": "State the full ordered membership predicate: a UTF-8 name is required, GIT_* is excluded, then the whitelist, prefixes, suffix and USER/LOGNAME apply. Cover it with structural tests. Add the new() failure mode to the compatibility table. Add a test showing that ordinary EMPTY refusal still holds after a successful construction."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "9-19, 86-92",
+            "problem": "The design cites 'Issue51 requirements 3 and 6-8' as its authority, but it actually consumes requirements 1 (name-only inventory and bounds), 4 (foreign retained-baseline refusal without stripping) and 5 (frozen baseline and the availability limit). It also adopts the opaque refusal without providing, or explicitly deferring, the paired Project-scoped candidate inspection that requirement 1 assigns to the runtime that owns the frozen baseline.",
+            "causal_scenario": "A's Codex is refused opaquely because Project B declares LANG or OPENAI_API_KEY. Neither name is in Grok's frozen baseline, so the existing Grok candidate inspection reports nothing. No Codex-owned inspection exists. The declaring Project's operator therefore has no supported, state-only way to find the conflicting own declaration, and the opaque category is not operable.",
+            "required_fix": "Correct the cited requirement set. Then do one of two things: specify an explicit Codex-runtime Project-scoped inspection over Store::environment_candidates with the Codex DTO (state-only, own data only, never triggered by another Project's refusal), or record its deferral as an explicit open gate."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "1-7, 226-231",
+            "problem": "The design does not name the master design sections it will update in the implementation PR. Under the project's two-layer documentation rule, agent-adapter.md section 16 (Codex component boundary) and the environment-admission content need current-state updates for the Codex baseline, its controls, the DTO, the pre-exec fences and the reference limitation.",
+            "causal_scenario": "The implementation merges with the master design still describing Codex as stripping foreign references and restoring provider values. Later reviewers and the #16 dogfood integration would then work from a stale 'current truth'.",
+            "required_fix": "List the master design target sections and the facts each will state, written as current-state text without issue history. Include them in the implementation PR scope."
+          }
+        ],
+        "limitations": [
+          "Static manual review of the supplied bytes only. Nothing was executed: no compile, test, mutation or CI check.",
+          "crate::git::native_environment() was not supplied. I cannot confirm that the plain-Git preflight environment carries no non-control name another Project could declare; the design asserts this without evidence in the packet.",
+          "The domain::Project definition and its serialization were not supplied. If environment_refs can be absent or skipped when empty, Store refs() denies A for every such foreign row. That would be existing Issue51 Store behavior, but it would also bound Codex availability.",
+          "No installed Codex config/read evidence was supplied, either for the default provider or for an explicitly named built-in provider. Finding 3 is therefore stated conditionally.",
+          "Not supplied: protocol.rs (NativeRpc framing and size bounds), the remaining lines of session.rs, availability.rs and Grok, all tests and TestGates beyond the excerpt, Workflow, the examples, and the omitted verification records.",
+          "Approval of the Issue51 requirements and design is taken as stated in the supplied documents. No other reviewer assessment or private finding was available."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 181937,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 60740,
+        "output_tokens_details": {
+          "thinking_tokens": 55627
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 181937,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 60740,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 181937,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 181937
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 60740,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 181937,
+          "webSearchRequests": 0,
+          "costUSD": 2.6707359999999998,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 55627,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 2.6707359999999998,
+      "duration_api_ms": 585877,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    }
+  ]
+}

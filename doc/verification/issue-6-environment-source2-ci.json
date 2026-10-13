@@ -1,0 +1,31 @@
+{
+  "run_id": 37265698116,
+  "trigger_head": "798ee3e99730a8915dc72d7333de14cf83229ba3",
+  "actual_checkout_both_os": "66e962c851f3622e2587147aced5b6a0eaed6240",
+  "parents": [
+    "26f3a48fedce976b353a6a9fa899bc6fb13ca72a",
+    "798ee3e99730a8915dc72d7333de14cf83229ba3"
+  ],
+  "actual_tree": "20417a9a998e2e74079be4f8e0745c8013996932",
+  "head_tree": "20417a9a998e2e74079be4f8e0745c8013996932",
+  "all_current_blob_entries_equal": true,
+  "complete_blob_count": 301,
+  "review_input_paths_equal": 31,
+  "review_packet_head": "798ee3e99730a8915dc72d7333de14cf83229ba3",
+  "jobs": [
+    {
+      "name": "check (macos-latest)",
+      "conclusion": "success"
+    },
+    {
+      "name": "check (ubuntu-latest)",
+      "conclusion": "success"
+    }
+  ],
+  "all_steps_both_os_success": true,
+  "local_debug_release_failures_retained": true,
+  "limits": [
+    "Actual same-tree CI success is not native Stage B/backend, all resource cleanup or whole MVP proof.",
+    "Historical capture-time observation: Source2 native code verdicts were still pending when this CI provenance was captured; later completed verdicts are recorded separately in source2-reviews."
+  ]
+}

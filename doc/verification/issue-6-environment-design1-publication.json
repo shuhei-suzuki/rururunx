@@ -1,0 +1,21 @@
+{
+  "head": "62647029c235820b77f4d25ee912b66f8ff40871",
+  "base": "47830b0ab97a095d0c387089bf5442452e060572",
+  "branch": "feature/issue-6-env",
+  "scope": "one proposed design doc145lines; no production source edits",
+  "repository_public": true,
+  "first_push": {
+    "exit_code": 1,
+    "remote_result": "remote rejected (failed)",
+    "exact_ref_after_failure": "absent",
+    "exact_commit_after_failure_http": 422,
+    "no_native_review_from_failure": true
+  },
+  "same_normal_retry": {
+    "exit_code": 0,
+    "remote_head_verified": true,
+    "no_force": true
+  },
+  "old_worktree": "retained under historical owned-harness hold; no cleanup/deletion claim",
+  "availability": "EMPTY"
+}

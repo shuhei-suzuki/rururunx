@@ -1,6 +1,5 @@
 //! A private native server process. Runtime scope/prepared-input checks belong to
 //! the AgentAdapter before launch; this transport never adopts an existing daemon.
-use std::ffi::OsString;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
@@ -134,18 +133,24 @@ impl NativeServer {
             pid,
         })
     }
+    // Keep existing ownership/preparation inputs explicit at this private effect boundary.
+    #[allow(clippy::too_many_arguments)]
     pub(super) async fn launch_preparing(
         availability: &Availability,
         executable: &Path,
         workspace: &Path,
         policy: Option<&DecisionPolicy>,
-        environment: Vec<(OsString, OsString)>,
+        environment: super::environment::ExecEnvironment<'_>,
+        mut before_spawn: Option<super::environment::SpawnBoundary<'_>>,
         uncertain: Arc<AtomicBool>,
         preparation: &Preparation,
     ) -> AdapterResult<Self> {
         availability.require()?;
         availability.record(Site::Transport);
         preparation.check()?;
+        environment
+            .require_boundary(before_spawn.is_some())
+            .map_err(|error| preparation.failed(error))?;
         if !executable.is_absolute() || !workspace.is_absolute() || workspace.to_str().is_none() {
             return Err(failure(
                 ErrorKind::InvalidConfiguration,
@@ -190,19 +195,31 @@ impl NativeServer {
             .arg(format!("unix://{}", socket.display()))
             .current_dir(workspace)
             .env_clear()
-            .envs(environment)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .process_group(0);
+        environment.apply(&mut command);
+        if !environment.selected() {
+            before_spawn = None;
+        }
+        if let Some(boundary) = before_spawn.as_mut() {
+            boundary.admit()?;
+        }
         preparation.check()?;
+        if let Some(boundary) = &before_spawn {
+            boundary.spawn_attempt();
+        }
         let child = command.spawn().map_err(|_| {
             preparation.failed(failure(
                 ErrorKind::LaunchFailure,
                 "native Codex app-server could not start",
             ))
         })?;
+        if let Some(boundary) = &before_spawn {
+            boundary.spawned();
+        }
         let mut process =
             ProcessGroup::new(child, uncertain).map_err(|error| preparation.failed(error))?;
         let pid = process.child.id().expect("validated owned child PID");
@@ -703,7 +720,11 @@ mod tests {
                     &executable,
                     &cwd,
                     None,
-                    vec![("RRX_FIXTURE_READY".into(), ready.into_os_string())],
+                    super::super::environment::ExecEnvironment::Ambient(vec![(
+                        "RRX_FIXTURE_READY".into(),
+                        ready.into_os_string(),
+                    )]),
+                    None,
                     uncertain,
                     &preparation,
                 )

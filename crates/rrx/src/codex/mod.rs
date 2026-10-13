@@ -2,6 +2,7 @@
 mod attempt;
 mod availability;
 mod custody;
+mod environment;
 mod ownership;
 mod preparation;
 mod session;

@@ -1,0 +1,244 @@
+{
+  "scope": "Design5 textual proposal only; pair not qualified, not source/native qualification",
+  "head": "55369e9dbf5701d8a0ca0ba74c18481bbbbd163b",
+  "independent_peer_free": true,
+  "native_defaults_and_rules_preserved": true,
+  "zero_operation_tools": true,
+  "reports": [
+    {
+      "head": "55369e9dbf5701d8a0ca0ba74c18481bbbbd163b",
+      "section": "A5",
+      "native_session": "e4704e4e-8f6f-49a5-8c49-9ed940d760b0",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "287-298, 300-324, 331-337, 400-407",
+            "problem": "The ordered first-failure reference procedure is pinned only internally. Its position at each actual consumer, relative to the existing checks on the same config['config'] value, is never stated. At discovery (session.rs 1479-1483), DecisionPolicy::from_native/for_executor already rejects a non-object config with its own ParseFailure. It also rejects executor sandbox/approval/reviewer shapes (UnsupportedCapability/ParseFailure), and all of this runs where provider_environment currently runs. At main (session.rs 1519-1526), verify_configuration runs right after config/read and returns UnsupportedCapability for a non-object or most malformed configs. The design says only 'before account/read'. As a result, step 1 and the cross-check precedence between policy and predicate are undefined or masked at the actual consumers. This contradicts 'apply this ordered FIRST-FAILURE procedure at both actual config consumers', 'Cover EVERY extraction procedure branch' at the actual consumer, and 'no masked/redundant credit'.",
+            "causal_scenario": "The fixture's discovery config/read returns config: []. from_native fails with 'native configuration unavailable' before the predicate runs, so a mutant that deletes predicate step 1 survives at the discovery consumer. At main, if the implementer keeps the predicate after verify_configuration, a non-object config yields UnsupportedCapability instead of step 1's ParseFailure. Separately, take an Executor discovery config with an unsupported approval_policy plus an unpermitted env_key. It returns the policy refusal or the reference refusal depending on an unspecified placement. Two conforming implementations can therefore produce different first failures, and check-order mutant kills cannot be bound to an exact consumer/error as required.",
+            "required_fix": "Pin the exact insertion point at each consumer. For example: discovery after config/read and after/before DecisionPolicy construction; main immediately after config/read and before/after verify_configuration. Add any resulting precedence change versus current behavior to the intentional-change table. Explicitly list which predicate branches are subsumed at which consumer (e.g. step 1 at discovery is masked by from_native's object check) and give those branches unit-only credit. Add at least one combined policy-invalid plus reference-invalid actual-consumer case per consumer."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "132-137, 197-201, 382-387",
+            "problem": "The design correctly says the initial scope capture and the initial environment decision are separate SQLite reads, and it claims a causal test: 'Initial rejecting own edits after capture refuse before publication with the observed opaque category'. However, that window lies entirely inside the synchronous context closure in prepare_launch (session.rs 1275-1389): capture, resume currency, selection, then the initial Store check. No hook is specified there. Existing gates cannot reach it: BeforeStarting runs before capture, and BeforeInitialPersist runs after the whole closure. The PRE-CAS/post-CAS hooks exist only at the exec sites. So the claimed initial-separate-read observable cannot be produced deterministically.",
+            "causal_scenario": "Try to test removal of an own caller key after capture. If the edit is injected at BeforeStarting, capture sees request.project != persisted and returns StateConflict, not the opaque environment refusal. If it is injected at BeforeInitialPersist, the initial check has already passed, so Starting is published, Git runs, and the post-Git recheck returns StateConflict. Neither reproduces 'opaque refusal before publication'. A mutant that reorders the initial check before capture, or that swaps which read observes own refs, is not bound by any deterministic test.",
+            "required_fix": "Specify a cfg(test)-only synchronous hook between own scope/resume currency validation and the initial Store decision. It must run outside the Store mutex, perform edits only via a second Store connection, and contain no await. Bind the claimed opaque pre-publication outcome, and the complementary BeforeInitialPersist StateConflict path, to it. Alternatively, withdraw the claim and keep only the reachable complementary path."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "84-92, 118-125",
+            "problem": "Codex caller eligibility includes 'owning-declared' and is checked per key after that key's syntax, which makes undeclared-ordinary-before-GIT_ an InvalidConfiguration. The text instead says traversal is done 'as the existing Grok loop does'. Grok's loop (grok/environment.rs 48-72) does not check declaration in-loop; declaration is enforced afterward by Store evaluate (caller subset of own). The only worked example, A_UNDECLARED before GIT_DIR, uses a name that is unsupported regardless of declaration, so it does not distinguish the two orders. The position of the 128-caller-name DTO bound relative to the per-key loop is also unstated.",
+            "causal_scenario": "Caller map {COLORTERM: 'x' (ordinary, undeclared by the owner), GIT_DIR: 'y'}. Design5's per-key rule returns InvalidConfiguration at COLORTERM; a Grok-equivalent implementation returns InvalidInput at GIT_DIR. Both satisfy the stated example. A mutant that moves the declaration check after the loop survives. A 200-entry eligible map with a GIT_ key at position 150 is similarly order-ambiguous between the per-key InvalidInput and the bound's InvalidConfiguration.",
+            "required_fix": "State explicitly that the owning-declaration check is part of in-loop per-key eligibility, and drop or qualify the Grok equivalence claim. Add a distinguishing example and test (undeclared COLORTERM before GIT_DIR). Pin whether the caller count/byte bound is evaluated before or after the per-key traversal."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "72-82, 94-99, 366-368",
+            "problem": "Issue51 requirement 3, which Design5 adopts, requires a reviewed finite set of additional runtime controls with a structural drift assertion. Design5's predicate (membership AND (invalid OR registry-forbidden)) implicitly has an empty addition set, but this is never stated. It also never reviews registry-valid routing names admitted by Codex prefixes, such as XDG_CONFIG_DIRS and XDG_DATA_DIRS (config/data search paths). The drift test covers only named whitelist members, CODEX_* and *_PROXY.",
+            "causal_scenario": "A Project for any provider declares XDG_CONFIG_DIRS. Every non-declaring Codex Project whose frozen baseline contains it is refused. In effect, a foreign declaration revokes a global config-search routing value for A, which requirement 3 forbids for controls, while A itself may own it. Whether this is intended non-control behavior is an undocumented classification. A later addition or removal would face no exact-set drift check.",
+            "required_fix": "Explicitly enumerate the Codex finite control additions (possibly empty), with a rationale for prefix-admitted registry-valid routing names (XDG_*_DIRS) and LC_* names. Add a structural test asserting that exact set, plus examples of non-control credentials (the three API keys) and routing names."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "207-216, 389-393",
+            "problem": "Pre-exec publication says to update reservation version, Control's published snapshot and watch 'coherently'. It does not require that watch/Control publication happens while the Store guard taken for the CAS is still held, which is what persist_unchecked does (session.rs 527-543). current()/status (session.rs 967-986) compares persisted against watch under the Store lock. Separately, the verification asks to assert 'verified-dead discovery PID None in the main pre-exec event', but the session.saved audit payload (state/mod.rs 1335) has no pid field.",
+            "causal_scenario": "Suppose the pre-exec primitive releases the Store guard and only then sends the watch. A concurrent status() can acquire the Store in between, see persisted version N+1 against watch N, and return a spurious StateConflict 'changed outside its owned supervisor'. A test written against the audit event cannot observe the PID clear, so a mutant that keeps the reaped discovery PID in the main pre-exec write survives an event-only assertion.",
+            "required_fix": "Require reservation version, watch and Control publication to be updated under the same Store guard as the successful CAS, mirroring persist_unchecked. Bind the PID-clear assertion to the persisted record or watch read at the main post-CAS hook rather than to the session.saved event."
+          }
+        ],
+        "limitations": [
+          "Manual read-only review of the supplied excerpts only; no tool, repository, build, test or mutation operation was performed.",
+          "session.rs after line 1950 (supervise, answer_approval, ApprovalAuthority bodies) is omitted except for test excerpts. I could not confirm that supervisor/approval paths never perform a new selected-environment exec and use only recheck_scope.",
+          "Other crates/rrx/tests files, other codex module test sections and docs/README are omitted. The claimed complete inventory of policy::native_environment consumers and CodexAdapter::new call sites is accepted from the packet (18 session.rs excerpts plus 2 external), not independently verified.",
+          "adapter ProcessGroup/cleanup_group implementations are omitted. The claim that verified discovery shutdown clears its uncertainty flag before the main pre-exec CAS was assessed only from call structure.",
+          "The full native RPC implementation and real native config/read shapes are omitted. The reported-reference predicate was assessed only as component logic; no native default/built-in/custom-provider conformance or auth semantics are inferred.",
+          "Issue6 requirements beyond line 154, master sections outside 410-510, and Grok/project.rs remainders are omitted. Consistency with those sections was not checked.",
+          "No assessment is made of the already-open shared Git ambient-environment/ownership residual (#51/#60), F1 workload ownership, or native MVP acceptance, which the proposal explicitly leaves open."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 186170,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 74072,
+        "output_tokens_details": {
+          "thinking_tokens": 70422
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 186170,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 74072,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 186170,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 186170
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 74072,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 186170,
+          "webSearchRequests": 0,
+          "costUSD": 2.97124,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 70422,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 2.97124,
+      "duration_api_ms": 698728,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    },
+    {
+      "head": "55369e9dbf5701d8a0ca0ba74c18481bbbbd163b",
+      "section": "B5",
+      "native_session": "59578c0e-51f9-483a-9c11-2b21ef50c56c",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "222-229, 409-419",
+            "problem": "The new pre-exec primitive guard is listed as a compiled actual-consumer mutant target ('Preparing-only phase guard omission'). The guard returns StateConflict for Consumed/CheckpointCommitted and the latched cause for Cancelled/Failing. No specified actual consumer reaches any non-Preparing branch. prepare_launch only consumes in admit_dispatch, after all three exec sites. prepare_checkpoint never calls bounded_git(--version) or launch_preparing. So Consumed/CheckpointCommitted cannot occur at a pre-exec site. Cancelled is reachable only through a concurrent stop inside the synchronous window between the entry preparation.check() in bounded_git/launch_preparing and the primitive. The PRE-CAS hook is specified to perform only second-Store edits, and the stop rendezvous is specified only for the post-CAS hook. 'Unit and actual caller controls prove the phase guard' therefore has no actual-caller scenario.",
+            "causal_scenario": "A mutant deletes the guard so the CAS closure always runs. Every specified actual test sees Preparing at the primitive, so behavior is identical: pre-CAS second-Store edits, post-CAS real stop, and the matching controls. Even under a concurrent stop, the unchanged final preparation.check() still prevents spawn. The only difference is one extra session.saved/version increment, which no specified assertion checks. The mutant survives at every actual consumer while the design claims it is killed. The gate is then either unsatisfiable or invites unearned kill credit.",
+            "required_fix": "Classify the Consumed/CheckpointCommitted branch as unit-only, with no actual-consumer credit. For the Cancelled branch, add an actual-consumer control at each of the three exec sites. In it, the PRE-CAS hook (outside the admission and Store mutexes, multi-thread rendezvous) drives the real adapter.stop() until cancellation is visible. Then assert: no pre-exec session.saved or Session version increment, unchanged watch and Control published snapshot, Cancelled first cause, and no entry sentinel. Bind the guard-omission mutant to that extra-write assertion, or remove it from the actual-consumer list."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "132-137, 195-201, 381-386",
+            "problem": "The design requires an actual test that 'initial rejecting own edits after capture refuse before publication with the observed opaque category'. ScopeSnapshot::capture and the new initial Store decision both run inside prepare_launch's synchronous context closure, and no seam between them is specified. The existing gates straddle the window. TestPoint::BeforeStarting runs before capture, so an own edit there is caught by capture's exact Project comparison as StateConflict. TestPoint::BeforeInitialPersist runs after the closure, so the initial check has already passed. Async TestGates cannot be awaited inside the synchronous closure. The separate-read precision claim (opaque refusal before any Starting/audit publication) is therefore not causally verifiable as specified.",
+            "causal_scenario": "An implementer injects an own caller-key removal at BeforeStarting and gets StateConflict. Injecting at BeforeInitialPersist instead yields Starting publication, Git, and then a post-Git StateConflict or a first pre-exec CAS refusal. Neither run demonstrates the claimed window outcome: fixed InvalidConfiguration with FreshUnpublished/RestoredBeforeAdmission and zero session.saved/audit/sentinel. The required evidence for the initial-read precision is either missing or misattributed.",
+            "required_fix": "Specify a cfg(test)-only synchronous hook inside the context closure. It runs after capture and resume-currency validation, before Store::check_environment_admission, outside the SharedStore mutex, and edits only through a second connection. Pin the expected outcomes for each edit class. A removed caller key or invalid own refs gives the fixed opaque InvalidConfiguration with no publication. A neutral or enlarging edit passes the initial check, then gets StateConflict at the post-Git recheck. Otherwise, remove this case from the required test list and keep the claim as an untested non-guarantee."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "300-308, 331-337, 400-407",
+            "problem": "Placement of the reference predicate relative to the existing DecisionPolicy work is unspecified, while every extraction branch must be covered at the actual consumer. If the predicate stays where provider_environment runs today, step 1 (non-object config gives ParseFailure) is masked at both consumers. At discovery, DecisionPolicy::from_native/for_executor already returns ParseFailure for a non-object config. At main, policy.verify_configuration returns UnsupportedCapability for a non-object effective config, before account/read.",
+            "causal_scenario": "A mutant deletes step 1. A non-object discovery config still fails, via the policy's own ParseFailure. A non-object main config still fails as Unsupported in verify_configuration. Actual-consumer tests pass, so step 1 has no actual-consumer coverage, contrary to the plan.",
+            "required_fix": "Pin the placement, choosing one of two options. Option 1: run the predicate before DecisionPolicy derivation at discovery and before verify_configuration at main, and record the changed error/message precedence. Option 2: declare step 1 masked at actual consumers, with unit-only coverage and no actual-consumer credit. Also state the order relative to policy errors for combined cases."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "84-90, 118-131",
+            "problem": "Per-key caller eligibility is defined to include 'owning-declared', yet the traversal is said to work 'as the existing Grok loop does'. That Grok loop (adapter/grok/environment.rs select) checks only syntax and shape per key, and defers ownership to the Store decision after the loop. For an undeclared but shape-eligible key that sorts before a GIT_/NUL key, the two readings give different kinds. The pinned example uses A_UNDECLARED, which fails on shape under both readings, so it does not discriminate.",
+            "causal_scenario": "Take the caller map {COLORTERM (undeclared), GIT_DIR}. A Grok-faithful implementation returns InvalidInput. An implementation following the eligibility definition returns InvalidConfiguration. Both satisfy the stated A_UNDECLARED/Z_UNDECLARED tests, so the declared intentional error-kind change is not deterministic across implementations.",
+            "required_fix": "State explicitly whether ownership against request.project is part of the per-key loop or deferred to the post-loop Store decision. Correct the Grok comparison to match. Add a discriminating case where an undeclared ordinary or whitelisted key precedes a GIT_/NUL key."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "209-212, 389-393",
+            "problem": "The design requires asserting 'verified-dead discovery PID None in the main pre-exec event'. The session.saved evidence emitted by write_record_tx carries only state, agent, provider, role, native_ref and dispatch_intent. It has no pid. The persisted pid is then overwritten by the plain persist that follows main spawn.",
+            "causal_scenario": "A mutant omits clearing reservation.session.pid before the main pre-exec CAS. The CAS-written record and watch then advertise the reaped discovery PID. An event-based assertion still passes, and the later main-PID persist hides the defect.",
+            "required_fix": "At the main post-CAS hook, read the persisted Session record at the CAS version through the second connection. Also read the watch and Control published snapshot, and assert pid None in all of them. Add the pid-clear omission as a bound actual-consumer mutant."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "238-246",
+            "problem": "The cfg(test) pre-CAS and post-CAS hooks are synchronous. They block the worker thread that runs the owned preparation task while waiting for the concurrently driven stop to make cancellation visible. The design requires a 'multi-thread runtime' but pins neither the worker count nor block_in_place.",
+            "causal_scenario": "Consider a test runtime with a single worker, either explicit or a CPU-count default on a 1-vCPU runner. While the hook blocks that worker, the spawned stop task cannot run, cancellation never becomes visible, and the test hangs or times out. That run is a harness failure, not causal evidence.",
+            "required_fix": "Require flavor=\"multi_thread\" with an explicit worker_threads of at least 2, or wrap the hook wait in tokio::task::block_in_place. Bound every hook wait with a deadline that fails closed with a distinct harness error."
+          }
+        ],
+        "limitations": [
+          "Manual read-only review of the supplied packet only; no tools, builds, tests, mutants or repository operations were run, and no byte-level verification of the attachments was possible.",
+          "Supervisor/approval bodies after session.rs line 1950, the full native RPC implementation, and the generated synthetic_owned_native_rpc_child fixture body were omitted. The claim of exactly three selected-environment exec sites, and the removal of roster use in supervision, could not be independently verified.",
+          "CLI, README/docs and other provider consumers were not supplied. The absence of external callers of rrx::codex::policy::native_environment beyond the excerpts is taken from the proposal's inventory.",
+          "Issue6 requirements beyond line 154 and master agent-adapter.md outside lines 410-510 were omitted. Consistency with those sections was not assessed.",
+          "No native probe was supplied. Default/built-in effective config/read shapes and optional/custom-provider compatibility remain OPEN as the proposal states. The conservative refusal subset is not treated as native default/auth acceptance.",
+          "The ambient Git helper environment residual (#51/#60), F1 workload ownership, ordinary EMPTY availability and managed/Consult/IPC02 gates are explicitly OPEN and were not re-reviewed.",
+          "Cross-provider availability coupling is acknowledged by the proposal and by Issue51 requirement 5, and was not raised as a defect. Example: a Grok Project privately declaring XAI_API_KEY or LANG refuses non-declaring Codex Projects whose frozen baseline retains that name.",
+          "Tokio test-runtime default worker count and scheduler stealing behavior were not verified against the pinned tokio version."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 186163,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 78994,
+        "output_tokens_details": {
+          "thinking_tokens": 75364
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 186163,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 78994,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 186163,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 186163
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 78994,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 186163,
+          "webSearchRequests": 0,
+          "costUSD": 3.069624,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 75364,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 3.069624,
+      "duration_api_ms": 739552,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    }
+  ]
+}
