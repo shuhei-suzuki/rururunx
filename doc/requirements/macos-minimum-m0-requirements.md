@@ -1,14 +1,16 @@
 # macOS 最小一本道 M0: 要件
 
-状態: **DRAFT / A3 は旧 API の機能廃止として整理する方針に確定 / 両系の独立確認済み・オーナー設計承認前**。本番コード・テストは変更していない。
+状態: **DRAFT / A3 は旧 API の機能廃止として整理する方針に確定 / 両系の独立確認・オーナー設計承認済み、実装待ち**。本番コード・テストは変更していない。
+
+オーナー全体設計承認（2026-10-13）: 固定HEAD `c64130828453cb38b742c9b31d08d9e488e85ee1` の3文書を承認し、必須検証を維持してM0実装へ進むとの明示回答を取得した。A1／A2／A4／A5／A6を含む設計承認であり、実装・実CLI適合・controls／mutants・両OS／実Mac受入・実装レビュー・マージ条件の免除ではない。
 
 公開sourceのbaseline: `cb9c17e023601b3dbe721495bbdf50c9f65d92bb`。過去の修正入力: `d452675989df799d29931c7d4f19d73d6b387550`。前回の局所修正はclean固定HEAD `2c9fb68f6f6544ef9c8b3b53c7f936aec2e354e2`から設計草案へ取込済み。今回のR5後補修本文案の入力はclean固定HEAD `0fadf545c45558a05d89377bcb073009875bdb01`であり、設計草案へ取込済み・固定HEAD b746dfd4の補修diffはOpus承認済みである。baselineと各執筆入力HEADを混同しない。
 
 R5結果の事実転記: SolはAPPROVE（確認済required 0）。固定argvでの要求は記録されているがserved model／effortは未報告。OpusはREQUEST CHANGES（確認済required 2: R5-O-01／R5-O-02）、runner ok／model_match=match、報告モデルは`claude-opus-5-5`のみ、effortは未報告。CLI完了と本文の判定は別であり、両レビュー承認済みとはしない。今回の補修はSolが執筆し、指摘側Opusが修正diffだけを独立確認する。無変更範囲のSol R5全文レビューを重複させず、両系の独立レビュー条件は維持する。適用状態はorchestratorが事実転記した。全体オーナー設計承認・実装・台帳・fixture・Linux／macOS／live検証は未完了。
 
-R6局所補修の執筆・取込記録: 専用read-only Sol contextの14差分をorchestratorがsourceと照合して取込済み。要求モデルは`gpt-6.1-sol` / high、served model／effortは未報告。修正diffのOpus独立確認は完了、全体オーナー承認は未完了。[R5結果の公開記録](https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6142182746)、[R6開始記録](https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6142322693)。
+R6局所補修の執筆・取込記録: 専用read-only Sol contextの14差分をorchestratorがsourceと照合して取込済み。要求モデルは`gpt-6.1-sol` / high、served model／effortは未報告。修正diffのOpus独立確認と全体オーナー承認は完了。[R5結果の公開記録](https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6142182746)、[R6開始記録](https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6142322693)。
 
-R6独立確認結果の事実転記: 固定HEAD `b746dfd4c1c0de49fe07f173f40b2c236d2c97dd` の補修diffにOpusがAPPROVE（確認済み必須欠落0）。runner ok、model matchで`claude-opus-5-5`のみ報告、effort未報告。R5-O-01／R5-O-02は解消し、Sol R5の既承認範囲と今回の補修diff確認を合わせて扱えるとの判定。任意の検証補足は実装台帳で扱い、追加の必須設計条件やレビュー反復にはしない。レビュー後、#94のmain `b8344ab951fa24f545174917eee7be067284c625`へrebaseし、取込後HEAD `deb9909c661e98c12a7e7a8207c9eb6a80bad0d0`でも3文書のbyte不変を確認した。#94はマージ済み・同SHAの両OS CI成功であり、固定依頼文のOPEN記述は過去の状態。M0本番実装・M0検証・全体オーナー設計承認は未完了。[R6結果記録](https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6142873096)。
+R6独立確認結果の事実転記: 固定HEAD `b746dfd4c1c0de49fe07f173f40b2c236d2c97dd` の補修diffにOpusがAPPROVE（確認済み必須欠落0）。runner ok、model matchで`claude-opus-5-5`のみ報告、effort未報告。R5-O-01／R5-O-02は解消し、Sol R5の既承認範囲と今回の補修diff確認を合わせて扱えるとの判定。任意の検証補足は実装台帳で扱い、追加の必須設計条件やレビュー反復にはしない。レビュー後、#94のmain `b8344ab951fa24f545174917eee7be067284c625`へrebaseし、取込後HEAD `deb9909c661e98c12a7e7a8207c9eb6a80bad0d0`でも3文書のbyte不変を確認した。#94はマージ済み・同SHAの両OS CI成功であり、固定依頼文のOPEN記述は過去の状態。M0本番実装・M0検証は未完了。全体オーナー設計承認は下記の固定HEADで完了。[R6結果記録](https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6142873096)。
 
 既存本文の修正執筆履歴: Codex CLI に `gpt-6.1-sol` / high を固定 argv で要求。CLI の実使用モデルと effort は未報告（一致は未確認）。独立レビュアーの context は執筆へ流用していない。これは独立レビュー・実装・実機検証の証拠ではない。
 
@@ -22,7 +24,7 @@ Sol R4は正式なREQUEST CHANGES。Opus R4はCLI child exit 0でもmodelUsage�
 
 **macOS最小一本道M0：要件修正全文**
 
-今回のR5後補修本文案の入力HEADは `0fadf545c45558a05d89377bcb073009875bdb01`。前回の取込済み局所修正入力と公開sourceのbaselineは冒頭の別HEADである。本補修は設計草案へ取込済み・固定HEAD b746dfd4の補修diffはOpus承認済みである。状態は **DRAFT／両系の独立確認済み・オーナー設計承認前**。本稿は設計修正の執筆成果であり、レビュー票、承認、実装または検証結果ではない。実装、実CLI資格付け、macOS／Linux検証、CI、owner-run、オーナー設計承認はすべて未完了である。
+今回のR5後補修本文案の入力HEADは `0fadf545c45558a05d89377bcb073009875bdb01`。前回の取込済み局所修正入力と公開sourceのbaselineは冒頭の別HEADである。本補修は設計草案へ取込済み・固定HEAD b746dfd4の補修diffはOpus承認済みである。状態は **DRAFT／両系の独立確認・オーナー設計承認済み、実装待ち**。本稿は設計修正の執筆成果であり、レビュー票、承認、実装または検証結果ではない。実装、実CLI資格付け、macOS／Linux検証、CI、owner-runはすべて未完了である。オーナー設計承認は下記の固定HEADで完了した。
 
 M0は#5/#6のSTRICT互換変更、M1は#95、M2は#12、M3は#9、M4は#13、M5は#16に対応する。M0の実Mac受入前にM1へ進まない。M4のruntime自動mergeとpublic `shuhei-suzuki/rrx-e2e-sandbox` の作成・使用は決定済みであり、再承認事項にしない。
 

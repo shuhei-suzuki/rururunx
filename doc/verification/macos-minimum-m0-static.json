@@ -39,7 +39,7 @@
     "result_sha256": "6cb43097f9f4c4cf3c6ec0d515577e7ba5b3e45e2d8a90256df7bd4374667373",
     "kind": "historical dedicated design repair author; see design_repair_history for subsequent authors; not independent review"
   },
-  "status": "DRAFT; legacy retirement direction approved; independent two-family design coverage complete through Sol R5 plus Opus R6 repair diff; whole M0 owner approval pending; M0 production unchanged",
+  "status": "M0 design independently reviewed and owner-approved on c6413082; implementation and required validation pending; M0 production unchanged",
   "design_repair_history": [
     {
       "phase": "R4 repair after R3 reviews",
@@ -133,7 +133,7 @@
       "review_scope": "repair diff only; preserve two-family independent review conditions; do not repeat unchanged full-text Sol R5 review",
       "state_updater": "orchestrator after application"
     },
-    "whole_owner_design_approval": "pending",
+    "whole_owner_design_approval": "approved on c64130828453cb38b742c9b31d08d9e488e85ee1",
     "implementation_ledger_fixture_linux_macos_live": "not_completed",
     "progress": "https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6142182746"
   },
@@ -3414,7 +3414,7 @@
       "R6-O-N4"
     ],
     "progress": "https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6142873096",
-    "whole_owner_design_approval": "pending",
+    "whole_owner_design_approval": "approved on c64130828453cb38b742c9b31d08d9e488e85ee1",
     "implementation_or_live_qualification": false
   },
   "upstream_integration_after_round_6": {
@@ -3426,6 +3426,20 @@
     "linux": "success",
     "macos": "success",
     "not_m0_validation": true
+  },
+  "whole_m0_owner_design_approval": {
+    "fixed_head": "c64130828453cb38b742c9b31d08d9e488e85ee1",
+    "date": "2026-10-13",
+    "decision": "approve fixed M0 design and proceed to implementation while preserving mandatory validation",
+    "decision_ids": [
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "A5",
+      "A6"
+    ],
+    "implementation_live_or_merge_waiver": false
   },
   "schema_contract_catalog": {
     "kind": "offline public observation only; source-local refs resolve through local_definition_digests into shared_definitions; not a runtime validator",
