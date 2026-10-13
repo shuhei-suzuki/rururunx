@@ -39,11 +39,12 @@
     "result_sha256": "6cb43097f9f4c4cf3c6ec0d515577e7ba5b3e45e2d8a90256df7bd4374667373",
     "kind": "dedicated design repair author; not independent review"
   },
-  "status": "DRAFT; revised author proposal, A3 unresolved, independent revised-diff verification and owner approval pending; production unchanged",
+  "status": "DRAFT; owner chose legacy launch feature retirement; revised-diff independent review and whole M0 owner design approval pending; production unchanged",
   "scope_decisions": {
     "runtime_merge": "included by owner",
     "rate_limit_event": "startup decoder selfcheck; strictly parse if emitted; do not certify unobserved event",
-    "test_repository": "owner authorized public shuhei-suzuki/rrx-e2e-sandbox creation and use; created README only"
+    "test_repository": "owner authorized public shuhei-suzuki/rrx-e2e-sandbox creation and use; created README only",
+    "legacy_api": "owner chose legacy launch feature retirement 2026-10-13; shared safety cases retain current managed-path coverage; Reviewer real positives M3; no skip/ignore/safety relaxation"
   },
   "schema_inspection": {
     "kind": "offline static observation; not live qualification",

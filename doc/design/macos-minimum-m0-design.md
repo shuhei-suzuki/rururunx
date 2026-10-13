@@ -1,6 +1,6 @@
 # macOS 最小一本道 M0: capability probe 設計案
 
-状態: **DRAFT / A3 の旧 API 方針が未確定 / 修正差分の独立確認・オーナー設計承認前**。本番コード・テストは変更していない。
+状態: **DRAFT / A3 は旧 API の機能廃止として整理する方針に確定 / 修正差分の独立確認・オーナー設計承認前**。本番コード・テストは変更していない。
 
 基準の公開 main: `cb9c17e023601b3dbe721495bbdf50c9f65d92bb`。本修正の入力 HEAD: `d452675989df799d29931c7d4f19d73d6b387550`。
 
@@ -124,7 +124,7 @@ Codexは`232+Version1+Schema1+Handshake1+Git13=248`。Claudeは`237+Version1+Git
 
 同じbudget定数をVersion intent、metadata helper、Git reserve、Probe intent、Prepared、registration、setup/input consumerへ渡す。byte reserveは追加helperの最大imageも含む。
 
-境界positiveとB+1 negativeは実installed producerが生成する履歴で検査する。`vec![row; N]`やSQL seedだけでは予算契約の正例にならない。Reviewerの実producer未接続は§11の未達に含む。
+境界positiveとB+1 negativeは実installed producerが生成する履歴で検査する。`vec![row; N]`やSQL seedだけでは予算契約の正例にならない。M0 は現に提供する Executor の実 producer で境界を検証する。Reviewer の同一予算政策は純粋計算として照合するが、実 Reviewer helper 鎖の境界合格は M3 で検証する。純粋計算を実 Reviewer 起動の成功証明としない。
 
 ### 6. Claude Probeとstrict wire
 
@@ -247,7 +247,7 @@ rrx側に`CodexWireContractV1`を定義し、typed decoder、schema gate、S/P�
 
 optional fieldもpresentなら型検査する。特にthreadName、projectId、turnId、error、reason、details、targetItemId、environmentIdなどのnullableとoptionalを混同しない。
 
-補助型は、今回の固定公開structureの同名definitionを開発時根拠として、rrxの有限型へ個別に転記する。転記範囲は上表、11 server request、送信6 method、7 responseから到達する**宣言済みproperty／required／enum／型／数値域の全閉包**であり、requiredだけの投影に縮めない。出所definition→rrx型→decoder→consumer対応表を実装成果物に含める。runtime生成schemaをvalidatorとして実行する方式は禁止する。
+補助型は、今回の固定公開structureの同名definitionを開発時根拠として、rrxの有限型へ個別に転記する。転記範囲は上表、11 server request、送信6 method、6 responseから到達する**宣言済みproperty／required／enum／型／数値域の全閉包**であり、requiredだけの投影に縮めない。出所definition→rrx型→decoder→consumer対応表を実装成果物に含める。runtime生成schemaをvalidatorとして実行する方式は禁止する。
 
 内部discriminatorは少なくとも次を有限化する。
 
@@ -359,19 +359,19 @@ Native programはcanonical path、dev／ino／size／mtime／ctime、SHA-256をV
 
 監査は有限語彙、method件数、digest、nullable観測状態だけ。account本文、codexHome、nonce、canary本文、raw frame、stderrを保存しない。版数はexit 0、完全捕捉、256 bytes以下、単一行、制御文字なし。安全に記録できない文字列はdigestを記録し、版数値によって不合格にしない。
 
-### 11. Legacyとcollectorの完了境界
+### 11. Legacy と collector の提供範囲（オーナー方向決定の転記）
 
-L1の入口拒否予定はNativeSessions legacy start、NativeAdapter start、Codex legacy startであり、helper／Session生成前にCapabilityUnavailableを返す。しかしcoverage保存が成立するまでL1を完成・承認可能とは扱わない。
+2026-10-13、オーナーは「旧 API を廃止扱いで整理」を選択した。これは M0 の設計全体承認・実装承認・レビュー完了ではない。
 
-必須台帳は各test IDについて、旧producer／consumer／検出する副作用・権限・custody、移植／残置／削除、理由、移植先実producer、positive／negative assertionを記録する。87件はsession 60、custody 20、ownership 7として照合する。その他Native／adapter／workflow対象も別集計する。移植N＋残置M＋削除Kが対象件数と一致し、未分類0を要求する。
+旧起動経路は helper／Session／NativeInput の生成前に CapabilityUnavailable を返す。NativeSessions の legacy start、NativeAdapter の旧 start_managed 経路、Codex legacy transport を対象とする。resume/checkpoint 等も、旧 transport の新規起動・新しいモデル入力を生む consumer を列挙して同じ提供範囲を守る。型名や start だけを閉じ、別 consumer から旧モデル実行に届く抜け道を残さない。
 
-現行installedレーンには最初のExecutorを通るpositiveがある。一方、Reviewer実Gitキャンセル、immutable review、resume／checkpoint等にはM0のSC-Nまでの鎖では生成できない経路がある。例は`codex/session.rs`の`actual_registered_review_git_cancel_reaps_owned_hook_before_failed_without_native_spawn`と、Nativeの`readonly_review_profile_is_selected_in_the_actual_fixture_launch`。synthetic入力をauthority代替として移植したことにしない。
+共有する auth／owner／CAS／marker／quota／permission／process custody 機構は、現在提供する本番の管理経路で維持・検証する。status/cancel/cleanup 等の consumer を調べ、現在提供する経路の停止や custody 保持まで削除しない。旧機能固有で到達先が廃止されるコード・テストは、機能廃止の差分として明示して整理する。テストを skip/ignore して CI を緑にする方法ではない。
 
-custody mechanical／parser単体の残置候補はあるが、public入口拒否で到達不能になる鎖を残しただけではproduction coverage維持にならない。**L1の全positive移植とReviewer境界producerは限定未達として残る。PR2〜4のない現行範囲で埋まったとは認定しない。**
+台帳は各 test ID の旧 producer／consumer、検出する安全性・機能、移植／残置／機能廃止に伴う削除、理由、現在の代替 producer と assertion を記録する。N＋M＋K が対象数と一致し、未分類0を要求する。旧 standalone Codex の87件（session60/custody20/ownership7）とその他 Native/adapter/workflow の対象を実装差分で照合する。共有ケースは拒否テストだけで代替しない。機能廃止に伴う削除は、機能を維持したことや元の正常系を実行したことの証拠に数えない。
 
-collectorはvalidated itemを受ける。id／type／text欠落など前段でProtocolErrorになる枝は削除・再配置し、到達不能コードを隠さない。phase欠落／null、非final、非対応delivery、質問付きmessage、複数final、内容改変、overflowは回答usabilityの業務判定として残す。
+M0 の実 Actor 経路は最初の Executor までで、旧 Reviewer/resume 等の本番実行機能を提供しない。Reviewer の Source-owned snapshot/lease、offer、保持と正常系は M3 の実装・受入条件に残す。M0 の pure parser／予算政策／metadata 検証を Reviewer 起動・レビュー成功に数えない。M3 で機能を提供する前に、その実 producer を通る正常系と攻撃系を検証する。
 
-既存synthetic childの私的wrapperが`--exact … --ignored`で実childを起動するpositiveを保持する。test本体をskipする許可にはしない。
+collector は validated item を受ける。id/type/text の malformed は前段で ProtocolError とし、到達不能となる枝を隠さず整理する。phase absent/null、非final、非対応delivery、質問付きmessage、複数final、内容改変、overflowは回答 usability の業務判定に残す。維持する synthetic child wrapper が必要な実 child を起動する positive も確認し、test 本体の skip と混同しない。
 
 ### 12. Fixture、因果検証、owner-run
 
@@ -387,12 +387,12 @@ sourceには入力HEAD d4526759のstatic資料のSHA-256
 | Schema | 実fileの枝複製・削除、required追加、型・nullable・enum・数値域・ref先改変、無関係同名property、未解決／循環ref。 |
 | R1 | 合法empty／usable window／wrongtypeを区別。foreign rate先drop、unknownをAvailable／not_observed化、selfcheck呼出し除去mutant。vector mutationは試験用authority seamを作らずsource差分として実施。 |
 | Quota | Wait、普通Admit、recovery Admitそれぞれのモデル入力数、lease／probe ownership／期限／CAS、観測非更新。 |
-| Budget | 実producerによる全provider×roleの境界／+1、Git13→9仮定mutant、Probe末尾省略mutant。Reviewer未接続は未完了。 |
+| Budget | M0 が提供する Executor の実 producer の境界／+1、Git13→9仮定mutant、Probe末尾省略mutant。Reviewer は純粋政策の照合と実起動証明を区別し、本番 helper 鎖は M3 で検証。 |
 | IPC | Claude ProbeとCodex Schema／Handshakeそれぞれ、shim呼出し、Grant0、helper以外効果追加0。 |
 | Custody | stop／Drop／panic／forced deathの別期待、stdin close、tail打切り、reap不明をConfirmed化するmutant。 |
 | Migration/path | new、v1〜9、v10、v11、current、同時initializer、guard欠落・旧reference新表混入、alias traversal／symlink／ownership／境界cleanup。 |
 | Consumer | RuntimeMetadata／ShutdownSite wire、型付きinstallation refusal、collector usability、synthetic child実呼出し。 |
-| Legacy | 完全台帳と移植positive。入口拒否だけのtestへの置換では合格しない。 |
+| Legacy | 機能廃止・残置・移植の完全台帳、旧入口と他 consumer の起動／入力0、共有する安全性ケースの実管理経路での positive。拒否だけを共有ケースの検証としない。 |
 
 本番負例はbaseline差分とterminal disposition、登録前負例はAC-08、SはUnit0を検査する。
 
@@ -406,7 +406,7 @@ owner-runは設計承認・実装後、新しいrun ID／状態directory、実�
 |---|---|---|
 | A1 | quota Admit後、準備ごとのClaude canary 1turn。費用・履歴・既存hook・quota消費、Known failureの明示retry帰結を含む。 | 未承認 |
 | A2 | Probeの専用UUID、固定文面、Executor plan mode、tool／権限応答なし。既定modeや隔離を証明しない。 | 未承認 |
-| A3 | legacy入口拒否とpositive coverage維持の一体変更。 | **限定争点未解決。現行M0でReviewer等のproducer不足。完成案ではない。** |
+| A3 | 旧起動 API の機能廃止、不要コード・固有テストの理由付き整理、共有安全性の実管理経路での検証。Reviewer 本番正常系は M3。 | オーナー方向決定済み（2026-10-13）。台帳・差分・必須レビューと設計全体承認は未完了。 |
 | A4 | S全alias gate、版12 migration、有限journal／unknown上限、安全なdigest path、停止wire変更。 | 未承認 |
 | A5 | 本番strict decoder、finite item／notification／nested variant、UUID改変拒否、rate解析不能終端。 | 未承認 |
 | A6 | schemaの未知method／member／discriminatorで起動前拒否。raw hash pinなし。CLI拡張時は契約見直しまでBLOCKED。 | 未承認 |
@@ -419,7 +419,7 @@ R1、M4 runtime merge、public sandboxの作成・使用は決定済み。執筆
 | --- | --- | --- |
 | 許可根拠 | 単一の厳密版数 | 実観測。番号は記録のみ |
 | 版数検査の消費者 | phase 4、legacy 3 | すべて削除 |
-| legacy 経路 | ピンの下で起動 | A3 未確定。旧 API の機能廃止か全経路への probe 配線かを確定する |
+| legacy 経路 | ピンの下で起動 | 旧起動 API を機能廃止として整理し、起動前に CapabilityUnavailable。共有安全性検証は現行の管理経路で維持 |
 | 起動時 | 何もしない | 層 S（非モデル、拒否専用） |
 | 準備の helper | Version＋Git×13 | Codex は＋Schema＋Handshake、Claude は admission 後に Probe |
 | 登録前の観測 | `--version` | 握手、Claude の `system/init`／`result`、Codex の schema 構造 |
@@ -431,4 +431,4 @@ R1、M4 runtime merge、public sandboxの作成・使用は決定済み。執筆
 
 ### 15. この稿の完了境界
 
-A3 の記述は未解決の旧案であり、旧 API の廃止・テスト削除・機能維持のいずれも承認済みではない。M0 の対象として現に提供する振る舞いと、廃止する振る舞い、M3 で新たに提供する Reviewer の振る舞いを区別して、必要な安全性検証を具体化する。Scope の訂正は独立確認とオーナー設計承認へ戻す。
+A3 の方向はオーナーが旧 API の機能廃止として確定した。具体的な削除・残置・移植台帳、共有安全性ケースの代替検証、修正差分の独立確認、M0 設計全体承認は未完了である。M0 で現に提供する振る舞い、廃止する振る舞い、M3 で新たに提供する Reviewer を区別して確認する。

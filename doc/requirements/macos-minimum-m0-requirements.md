@@ -1,6 +1,6 @@
 # macOS 最小一本道 M0: 要件
 
-状態: **DRAFT / A3 の旧 API 方針が未確定 / 修正差分の独立確認・オーナー設計承認前**。本番コード・テストは変更していない。
+状態: **DRAFT / A3 は旧 API の機能廃止として整理する方針に確定 / 修正差分の独立確認・オーナー設計承認前**。本番コード・テストは変更していない。
 
 基準の公開 main: `cb9c17e023601b3dbe721495bbdf50c9f65d92bb`。本修正の入力 HEAD: `d452675989df799d29931c7d4f19d73d6b387550`。
 
@@ -42,7 +42,7 @@ Codexモデル実行、2run、#10の権限応答資格付け、#14の自動復�
 | AC-08 | **登録前拒否**ではSession、native invocation、native input/setup/permission、transport登録、IPC Grant、および当該helper以外の効果追加が0。S／installation拒否ではUnitも0。Pでは既存Preparing Unitとhelper行の存在を許容し、terminal dispositionを検査する。 |
 | AC-09 | Native programのidentityを各Native helper／transport spawn直前に検査する。CLIをexecしないGit helperはそのCLI hash再計算の対象外とし、既存Git sealを維持する。 |
 | AC-10 | intent先行、SAME actor／custody、epoch、CAS、Confirmed／Unknown settlementを維持する。probe合格はpermission・ownership・quota・Session authorityを発行しない。 |
-| AC-11 | legacy入口拒否とpositive coverage移植を一体で完了する。全対象テストの移植／残置／削除台帳、件数、理由、producer、assertion、対応controlを必須成果物とする。削除や拒否への置換だけをcoverage維持としない。現行M0で維持できない範囲はBLOCKEDとする。 |
+| AC-11 | 旧起動 API は機能廃止として起動前に拒否する（オーナー方向決定 2026-10-13）。対象 test の移植／残置／機能廃止に伴う削除を ID・件数・理由・旧 consumer・現在の代替 coverage で記録する。共有する wire/quota/auth/permission/custody の安全性ケースは、現在提供する本番の管理経路で検証する。削除や拒否への置換だけで共有ケースを検証済みとしない。旧 Reviewer 等の実行機能を M0 が提供したとは扱わず、Reviewer 本番正常系は M3 の受入条件とする。 |
 | AC-12 | 旧profile／`cli_version`ありの宣言をinstallationで型付き拒否し、新規Unit・Heldは0。既存Frameの旧宣言拒否は別契約であり、Preparing UnitがHeldになる場合を含む。 |
 | AC-13 | owner-run実Mac、1 Project／1 Active Task／QUICK、Claude Executor＋Codex Reviewer設定の**1run**で、全aliasのS、Claude P、Worktree→Implement成功、SC-N停止を確認する。CLI番号は観測値として出力する。 |
 | AC-14 | 失敗runは不合格として状態を保持し、同じ状態ディレクトリの再実行を拒否する。Known不合格とUnknownを混同せず、#14の復旧は実装しない。 |
@@ -64,7 +64,7 @@ Sの保証は「rrxがモデル入力を送らないこと」である。CLIや�
 - Claude canaryを含む一括設計承認が得られない。
 - Sの実argv／空cwd／停止方式が成立しない、またはrrxがモデル入力を送らなければ成立しない。
 - 実frame／schemaが有限契約の表外、または構造不適合。
-- legacyの副作用・権限・custody検出範囲を現行producerで維持できない。
+- 現在提供する管理経路の共有安全性ケースの検出範囲を維持できない。旧機能の廃止そのものと未検証の安全性を混同しない。
 - 必須検証・レビュー・両OSの結果が欠ける。
 
 未証明事項はCodexモデル経路・review実行・承認・error分類・sandbox実効、Claudeの権限往復・既定permission mode・未着runのrate event、escaped descendants、wrapper内部identityである。静的schema適合やsynthetic positiveでlive成功を証明したとは扱わない。
