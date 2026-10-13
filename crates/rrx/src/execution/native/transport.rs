@@ -641,7 +641,7 @@ impl NativeSessions {
                 && matches!(child.cell, process::NativeChildCell::Empty)
             {
                 child.creation = Creation::Attempted;
-                match command.spawn() {
+                match rrx_spawn_hygiene::spawn_std(command) {
                     Ok(process) => {
                         child.cell.adopt(process);
                         child.creation = Creation::ReturnedChild;

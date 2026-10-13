@@ -453,11 +453,12 @@ impl ControlFixture {
                 "fixture",
             ],
         ] {
-            let output = std::process::Command::new("git")
-                .current_dir(&self.project.root)
-                .args(args)
-                .output()
-                .unwrap();
+            let output = rrx_spawn_hygiene::output_std({
+                let mut command = std::process::Command::new("git");
+                command.current_dir(&self.project.root).args(args);
+                command
+            })
+            .unwrap();
             assert!(
                 output.status.success(),
                 "isolated Git fixture must be valid: {}",

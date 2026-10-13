@@ -927,15 +927,18 @@ fn store_initial_none_to_some_and_same_uuid_lifecycle_pid_update_remain_valid() 
 fn actual_old10(path: &Path) {
     let executable = std::env::var_os("RRX_BINDING10_OLD_STORE_HARNESS")
         .expect("actual compiled00df historical Store harness required");
-    let output = std::process::Command::new(executable)
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = std::process::Command::new(executable);
+        command
         .args([
             "state::managed_binding::schema_tests::historical_store_harness_initializes_actual00df",
             "--exact",
             "--ignored",
         ])
-        .env("RRX_BINDING10_OLD_STORE_PATH", path)
-        .output()
-        .unwrap();
+        .env("RRX_BINDING10_OLD_STORE_PATH", path);
+        command
+    })
+    .unwrap();
     assert!(
         output.status.success(),
         "actual old Store producer failed: {}",

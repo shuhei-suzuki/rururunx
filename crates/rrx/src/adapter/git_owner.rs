@@ -1331,7 +1331,7 @@ fn native_worker(
                         .stderr(Stdio::piped())
                         .process_group(0);
                     let mut native = record.native.lock().unwrap();
-                    let child = command.spawn();
+                    let child = rrx_spawn_hygiene::spawn_std(command);
                     let result = match child {
                         Ok(child) => {
                             native.child = Some(child); // Anchor before binding/stdio/wrapping.

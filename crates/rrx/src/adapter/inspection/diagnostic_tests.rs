@@ -197,14 +197,17 @@ fn setup_read_and_allocation_injections_preserve_reached_measurements() {
 
 #[test]
 fn settled_child_status_error_is_relinquishment_not_cleanup_authority() {
-    let child = std::process::Command::new("/bin/sh")
-        .args(["-c", ":"])
-        .env_clear()
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let child = rrx_spawn_hygiene::spawn_std({
+        let mut command = std::process::Command::new("/bin/sh");
+        command
+            .args(["-c", ":"])
+            .env_clear()
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        command
+    })
+    .unwrap();
     let mut inspector = Inspector {
         child,
         unreaped: true,
@@ -247,14 +250,17 @@ fn settled_child_status_error_is_relinquishment_not_cleanup_authority() {
 #[test]
 fn actual_inner_read_errno_is_preserved_and_outer_rendering_is_value_free() {
     let directory = tempfile::tempdir().unwrap();
-    let child = std::process::Command::new("/bin/sh")
-        .args(["-c", ":"])
-        .env_clear()
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let child = rrx_spawn_hygiene::spawn_std({
+        let mut command = std::process::Command::new("/bin/sh");
+        command
+            .args(["-c", ":"])
+            .env_clear()
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        command
+    })
+    .unwrap();
     let mut inspector = Inspector {
         child,
         unreaped: true,

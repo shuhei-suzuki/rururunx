@@ -634,7 +634,7 @@ impl NativeSessions {
         // One-shot state records attempted creation even when spawn gives no
         // handle. The command is fixed and no API can retry this producer.
         helper.state().attempted = true;
-        let spawned = command.spawn();
+        let spawned = rrx_spawn_hygiene::spawn_std(command);
         if let Ok(child) = spawned {
             // FIRST action after spawn success is the infallible custody move.
             helper.raw().adopt(child);
@@ -837,7 +837,7 @@ mod git_serialization_tests {
             .process_group(0)
             .kill_on_drop(true);
         let mut raw = process::RetainedRawProcess::default();
-        raw.adopt(command.spawn().unwrap());
+        raw.adopt(rrx_spawn_hygiene::spawn_std(command).unwrap());
         raw.qualify().unwrap();
         raw
     }

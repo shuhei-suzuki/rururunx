@@ -31,8 +31,11 @@ async fn sanitized(name: &str, expected_failure: bool) {
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .process_group(0);
-    let mut child =
-        ProcessGroup::new(command.spawn().unwrap(), Arc::new(AtomicBool::new(false))).unwrap();
+    let mut child = ProcessGroup::new(
+        rrx_spawn_hygiene::spawn_tokio(command).unwrap(),
+        Arc::new(AtomicBool::new(false)),
+    )
+    .unwrap();
     let stdout = tokio::spawn(read_git_output(child.child.stdout.take().unwrap()));
     let stderr = tokio::spawn(read_git_output(child.child.stderr.take().unwrap()));
     let observed = tokio::time::timeout(Duration::from_secs(60), child.observe_exit()).await;

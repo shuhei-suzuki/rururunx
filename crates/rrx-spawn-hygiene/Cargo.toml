@@ -1,0 +1,18 @@
+[package]
+name = "rrx-spawn-hygiene"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "Fail-closed child descriptor hygiene at the process spawn boundary"
+
+[dependencies]
+libc.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+rustix = { workspace = true, features = ["event", "pipe"] }
+
+[lints.rust]
+unsafe_code = "deny"

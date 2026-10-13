@@ -16,11 +16,12 @@ use tempfile::TempDir;
 #[path = "support/legacy.rs"]
 mod legacy;
 fn git(root: &Path, args: &[&str]) {
-    let out = Command::new("git")
-        .current_dir(root)
-        .args(args)
-        .output()
-        .unwrap();
+    let out = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("git");
+        command.current_dir(root).args(args);
+        command
+    })
+    .unwrap();
     assert!(
         out.status.success(),
         "{args:?}: {}",
@@ -65,13 +66,16 @@ impl Fixture {
         }
     }
     fn cli(&self, cwd: &Path, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_rrx"))
-            .current_dir(cwd)
-            .arg("--state")
-            .arg(&self.db)
-            .args(args)
-            .output()
-            .unwrap()
+        rrx_spawn_hygiene::output_std({
+            let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+            command
+                .current_dir(cwd)
+                .arg("--state")
+                .arg(&self.db)
+                .args(args);
+            command
+        })
+        .unwrap()
     }
     fn good(&self, args: &[&str]) -> String {
         let out = self.cli(&self.root, args);
@@ -534,14 +538,17 @@ fn removal_checks_live_goals_tasks_sessions_and_locks_under_store_transaction() 
 #[test]
 fn git_routing_env_does_not_redirect_registry_to_other_project() {
     let f = Fixture::new();
-    let out = Command::new(env!("CARGO_BIN_EXE_rrx"))
-        .arg("--state")
-        .arg(&f.db)
-        .args(["project", "add", f.a.to_str().unwrap()])
-        .env("GIT_DIR", f.b.join(".git"))
-        .env("GIT_WORK_TREE", &f.b)
-        .output()
-        .unwrap();
+    let out = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+        command
+            .arg("--state")
+            .arg(&f.db)
+            .args(["project", "add", f.a.to_str().unwrap()])
+            .env("GIT_DIR", f.b.join(".git"))
+            .env("GIT_WORK_TREE", &f.b);
+        command
+    })
+    .unwrap();
     assert!(
         out.status.success(),
         "{}",
@@ -575,7 +582,7 @@ fn relative_path_cannot_replace_native_git_and_global_git_config_remains_authori
             .arg(&f.db)
             .args(["project", "add"])
             .arg(&f.a);
-        cmd.output().unwrap()
+        rrx_spawn_hygiene::output_std(cmd).unwrap()
     };
     let normal = run(None);
     assert!(
@@ -611,25 +618,28 @@ fn global_default_state_and_help_config_check_are_independent_of_cwd() {
     let home = f.root.join("home");
     std::fs::create_dir(&home).unwrap();
     for cwd in [&f.a, &f.b] {
-        let out = Command::new(env!("CARGO_BIN_EXE_rrx"))
-            .current_dir(cwd)
-            .env_remove("RRX_STATE_PATH")
-            .env("XDG_STATE_HOME", &home)
-            .args(["project", "add", cwd.to_str().unwrap()])
-            .output()
-            .unwrap();
+        let out = rrx_spawn_hygiene::output_std({
+            let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+            command
+                .current_dir(cwd)
+                .env_remove("RRX_STATE_PATH")
+                .env("XDG_STATE_HOME", &home)
+                .args(["project", "add", cwd.to_str().unwrap()]);
+            command
+        })
+        .unwrap();
         assert!(out.status.success());
     }
     let store = Store::open(&home.join("rururunx/state.sqlite3")).unwrap();
     assert_eq!(store.projects().unwrap().len(), 2);
     let untouched = f.root.join("must-not-exist/state.db");
     for command in ["--help", "--version", "config-check"] {
-        let out = Command::new(env!("CARGO_BIN_EXE_rrx"))
-            .arg("--state")
-            .arg(&untouched)
-            .arg(command)
-            .output()
-            .unwrap();
+        let out = rrx_spawn_hygiene::output_std({
+            let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+            command.arg("--state").arg(&untouched).arg(command);
+            command
+        })
+        .unwrap();
         assert!(out.status.success());
         assert!(!untouched.parent().unwrap().exists());
     }
@@ -810,14 +820,17 @@ fn blocked_cwd_and_missing_git_never_infer_or_rebind_foreign_sources() {
     let mut store = Store::open(&f.db).unwrap();
     let a = f.add(&mut store, &f.a);
     let b = f.add(&mut store, &f.b);
-    let out = Command::new(env!("CARGO_BIN_EXE_rrx"))
-        .current_dir(&f.root)
-        .arg("--state")
-        .arg(&f.db)
-        .args(["project", "list"])
-        .env("PATH", "")
-        .output()
-        .unwrap();
+    let out = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+        command
+            .current_dir(&f.root)
+            .arg("--state")
+            .arg(&f.db)
+            .args(["project", "list"])
+            .env("PATH", "");
+        command
+    })
+    .unwrap();
     assert!(!out.status.success());
     assert_eq!(
         store.project(a.id).unwrap().unwrap().state,
@@ -957,14 +970,17 @@ fn invalid_xdg_state_directory_falls_back_to_absolute_home() {
     let home = f.root.join("isolated-home");
     std::fs::create_dir(&home).unwrap();
     for xdg in ["", "relative"] {
-        let out = Command::new(env!("CARGO_BIN_EXE_rrx"))
-            .current_dir(&f.root)
-            .env_remove("RRX_STATE_PATH")
-            .env("XDG_STATE_HOME", xdg)
-            .env("HOME", &home)
-            .args(["project", "list"])
-            .output()
-            .unwrap();
+        let out = rrx_spawn_hygiene::output_std({
+            let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+            command
+                .current_dir(&f.root)
+                .env_remove("RRX_STATE_PATH")
+                .env("XDG_STATE_HOME", xdg)
+                .env("HOME", &home)
+                .args(["project", "list"]);
+            command
+        })
+        .unwrap();
         assert!(
             out.status.success(),
             "{}",

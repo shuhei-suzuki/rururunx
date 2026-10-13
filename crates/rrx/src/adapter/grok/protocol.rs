@@ -446,9 +446,9 @@ mod cancellation_tests {
         let directory = tempfile::tempdir().unwrap();
         let ready = directory.path().join("ready");
         let go = directory.path().join("go");
-        let mut child = tokio::process::Command::new("python3")
+        let mut child = rrx_spawn_hygiene::spawn_tokio({ let mut command = tokio::process::Command::new("python3"); command
             .args(["-u", "-c", "import sys,time,pathlib\nsys.stdout.write('{\"jsonrpc\":\"2.0\",');sys.stdout.flush();pathlib.Path(sys.argv[1]).touch()\nwhile not pathlib.Path(sys.argv[2]).exists():time.sleep(0.001)\nprint('\"id\":1,\"result\":{}}')"])
-            .arg(&ready).arg(&go).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).kill_on_drop(true).spawn().unwrap();
+            .arg(&ready).arg(&go).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).kill_on_drop(true); command }).unwrap();
         let mut rpc = Rpc::new(child.stdin.take().unwrap(), child.stdout.take().unwrap());
         tokio::time::timeout(Duration::from_secs(5), async {
             while !ready.exists() {

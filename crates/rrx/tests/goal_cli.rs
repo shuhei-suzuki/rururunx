@@ -55,7 +55,12 @@ impl Fixture {
         command
     }
     fn output(&self, args: &[&str]) -> Output {
-        self.command().args(args).output().unwrap()
+        rrx_spawn_hygiene::output_std({
+            let mut command = self.command();
+            command.args(args);
+            command
+        })
+        .unwrap()
     }
     fn json(&self, args: &[&str]) -> Value {
         let output = self.output(args);
@@ -95,13 +100,15 @@ impl Fixture {
                 .unwrap()
                 .success()
         );
-        let output = self
-            .command()
-            .args(["project", "add"])
-            .arg(root)
-            .args(["--name", name])
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = self.command();
+            command
+                .args(["project", "add"])
+                .arg(root)
+                .args(["--name", name]);
+            command
+        })
+        .unwrap();
         assert!(output.status.success());
         String::from_utf8(output.stdout)
             .unwrap()
@@ -113,12 +120,15 @@ impl Fixture {
     }
     async fn start(&mut self) {
         self.child = Some(
-            self.command()
-                .arg("serve")
-                .stdout(Stdio::null())
-                .stderr(Stdio::inherit())
-                .spawn()
-                .unwrap(),
+            rrx_spawn_hygiene::spawn_std({
+                let mut command = self.command();
+                command
+                    .arg("serve")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::inherit());
+                command
+            })
+            .unwrap(),
         );
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
@@ -209,9 +219,11 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         if let Some(mut child) = self.child.take() {
             // Graceful signal preserves owned IPC cleanup even on assertion failure.
-            let _ = Command::new("/bin/kill")
-                .args(["-TERM", &child.id().to_string()])
-                .status();
+            let _ = rrx_spawn_hygiene::status_std({
+                let mut command = Command::new("/bin/kill");
+                command.args(["-TERM", &child.id().to_string()]);
+                command
+            });
             let deadline = Instant::now() + Duration::from_secs(15);
             while child.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
                 std::thread::sleep(Duration::from_millis(20));

@@ -35,7 +35,12 @@ fn rrx() -> Command {
 fn help_version_and_config_check_have_no_runtime_side_effects() {
     let fixture = Fixture::new();
     for option in ["--help", "--version", "config-check"] {
-        let output = rrx().current_dir(&fixture.0).arg(option).output().unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = rrx();
+            command.current_dir(&fixture.0).arg(option);
+            command
+        })
+        .unwrap();
         assert!(output.status.success());
         assert!(!output.stdout.is_empty());
         assert_eq!(std::fs::read_dir(&fixture.0).unwrap().count(), 0);
@@ -46,12 +51,15 @@ fn help_version_and_config_check_have_no_runtime_side_effects() {
 fn missing_explicit_config_is_an_error_with_and_without_subcommand() {
     let fixture = Fixture::new();
     for args in [vec!["config-check"], vec![]] {
-        let output = rrx()
-            .arg("--config")
-            .arg(fixture.0.join("missing.toml"))
-            .args(args)
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = rrx();
+            command
+                .arg("--config")
+                .arg(fixture.0.join("missing.toml"))
+                .args(args);
+            command
+        })
+        .unwrap();
         assert!(!output.status.success());
         assert!(String::from_utf8_lossy(&output.stderr).contains("cannot read config"));
     }
@@ -66,14 +74,17 @@ fn project_file_overrides_project_fields_and_preserves_global_limits() {
     assert_eq!(config.minimum_workflow, rrx::config::WorkflowClass::Strict);
     assert_eq!(config.agents["codex"].model.as_deref(), Some("new"));
     assert_eq!(config.agents["codex"].command, ["codex", "exec"]);
-    let output = rrx()
-        .arg("--config")
-        .arg(global)
-        .arg("--project-config")
-        .arg(project)
-        .arg("config-check")
-        .output()
-        .unwrap();
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = rrx();
+        command
+            .arg("--config")
+            .arg(global)
+            .arg("--project-config")
+            .arg(project)
+            .arg("config-check");
+        command
+    })
+    .unwrap();
     assert!(
         output.status.success(),
         "{}",
@@ -99,12 +110,12 @@ fn invalid_configs_fail_through_actual_loader_with_source_path() {
         "[agents.codex]\nmodel = ' '",
     ] {
         let path = fixture.write("invalid.toml", input);
-        let output = rrx()
-            .arg("--config")
-            .arg(&path)
-            .arg("config-check")
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = rrx();
+            command.arg("--config").arg(&path).arg("config-check");
+            command
+        })
+        .unwrap();
         assert!(!output.status.success(), "accepted {input}");
         assert!(String::from_utf8_lossy(&output.stderr).contains("invalid.toml"));
     }
@@ -117,12 +128,15 @@ fn invalid_configs_fail_through_actual_loader_with_source_path() {
         "[agents.unknown]\nmodel = 'x'",
     ] {
         let path = fixture.write("project.toml", input);
-        let output = rrx()
-            .arg("--project-config")
-            .arg(path)
-            .arg("config-check")
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = rrx();
+            command
+                .arg("--project-config")
+                .arg(path)
+                .arg("config-check");
+            command
+        })
+        .unwrap();
         assert!(!output.status.success(), "accepted {input}");
         assert!(String::from_utf8_lossy(&output.stderr).contains("project.toml"));
     }
@@ -166,7 +180,12 @@ fn c_s2d_limits_other_than_one_are_refused_without_state() {
         vec!["--config".into(), global.clone(), "config-check".into()],
         vec!["--project-config".into(), overlay, "config-check".into()],
     ] {
-        let output = rrx().args(&args).output().unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = rrx();
+            command.args(&args);
+            command
+        })
+        .unwrap();
         assert!(!output.status.success(), "{args:?}");
         assert!(
             String::from_utf8_lossy(&output.stderr)
@@ -179,14 +198,17 @@ fn c_s2d_limits_other_than_one_are_refused_without_state() {
     // D2 (Sol 6071558338 M1): a CLI 0 is refused typed like 2, before the
     // state directory or database is created.
     for requested in ["0", "2"] {
-        let output = rrx()
-            .arg("--state")
-            .arg(&state)
-            .args(["project", "add"])
-            .arg(&fixture.0)
-            .args(["--max-tasks", requested])
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = rrx();
+            command
+                .arg("--state")
+                .arg(&state)
+                .args(["project", "add"])
+                .arg(&fixture.0)
+                .args(["--max-tasks", requested]);
+            command
+        })
+        .unwrap();
         assert!(!output.status.success(), "--max-tasks {requested}");
         assert!(
             String::from_utf8_lossy(&output.stderr)

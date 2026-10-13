@@ -140,13 +140,15 @@ impl Lane {
                     .success()
             );
         }
-        let out = self
-            .command()
-            .args(["project", "add"])
-            .arg(&root)
-            .args(["--name", "lane"])
-            .output()
-            .unwrap();
+        let out = rrx_spawn_hygiene::output_std({
+            let mut command = self.command();
+            command
+                .args(["project", "add"])
+                .arg(&root)
+                .args(["--name", "lane"]);
+            command
+        })
+        .unwrap();
         assert!(
             out.status.success(),
             "{}",
@@ -154,11 +156,12 @@ impl Lane {
         );
     }
     fn daemon(&self, verb: &str) -> Value {
-        let out = self
-            .command()
-            .args(["daemon", verb, "--json"])
-            .output()
-            .unwrap();
+        let out = rrx_spawn_hygiene::output_std({
+            let mut command = self.command();
+            command.args(["daemon", verb, "--json"]);
+            command
+        })
+        .unwrap();
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| {
             panic!(
                 "daemon {verb}: {}{}",
@@ -169,12 +172,15 @@ impl Lane {
     }
     async fn run_serve(&mut self) {
         self.serve = Some(
-            self.command()
-                .arg("serve")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .unwrap(),
+            rrx_spawn_hygiene::spawn_std({
+                let mut command = self.command();
+                command
+                    .arg("serve")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null());
+                command
+            })
+            .unwrap(),
         );
         let deadline = Instant::now() + Duration::from_secs(30);
         while !matches!(
@@ -355,7 +361,11 @@ impl Drop for Lane {
             let _ = child.kill();
             let _ = child.wait();
         }
-        let _ = self.command().args(["daemon", "stop"]).output();
+        let _ = rrx_spawn_hygiene::output_std({
+            let mut command = self.command();
+            command.args(["daemon", "stop"]);
+            command
+        });
     }
 }
 
@@ -394,11 +404,14 @@ async fn c_s1f_native_success_and_refusal_equal_under_serve_and_daemon() {
 
 /// The detached service of a lane, found only to inspect it.
 fn service_pid(state: &Path) -> i32 {
-    let output = Command::new("pgrep")
-        .arg("-f")
-        .arg(format!("{} --config .* serve --detached", state.display()))
-        .output()
-        .unwrap();
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("pgrep");
+        command
+            .arg("-f")
+            .arg(format!("{} --config .* serve --detached", state.display()));
+        command
+    })
+    .unwrap();
     let pids: Vec<i32> = String::from_utf8_lossy(&output.stdout)
         .split_whitespace()
         .map(|p| p.parse().unwrap())
@@ -407,10 +420,12 @@ fn service_pid(state: &Path) -> i32 {
     pids[0]
 }
 fn parent_of(pid: i32) -> Option<i32> {
-    let output = Command::new("ps")
-        .args(["-o", "ppid=", "-p", &pid.to_string()])
-        .output()
-        .ok()?;
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("ps");
+        command.args(["-o", "ppid=", "-p", &pid.to_string()]);
+        command
+    })
+    .ok()?;
     String::from_utf8_lossy(&output.stdout).trim().parse().ok()
 }
 fn sid(pid: i32) -> i32 {
@@ -449,20 +464,23 @@ print("closed", flush=True)
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn c_s1a_daemon_survives_invoker_group_and_terminal() {
     let mut lane = Lane::new("2.1.294");
-    let mut invoker = Command::new("/usr/bin/python3")
-        .arg("-c")
-        .arg(INVOKER)
-        .arg(env!("CARGO_BIN_EXE_rrx"))
-        .arg("--state")
-        .arg(&lane.state)
-        .arg("--config")
-        .arg(&lane.config)
-        .args(["daemon", "start", "--json"])
-        .current_dir(&lane.base)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut invoker = rrx_spawn_hygiene::spawn_std({
+        let mut command = Command::new("/usr/bin/python3");
+        command
+            .arg("-c")
+            .arg(INVOKER)
+            .arg(env!("CARGO_BIN_EXE_rrx"))
+            .arg("--state")
+            .arg(&lane.state)
+            .arg("--config")
+            .arg(&lane.config)
+            .args(["daemon", "start", "--json"])
+            .current_dir(&lane.base)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped());
+        command
+    })
+    .unwrap();
     let mut lines = BufReader::new(invoker.stdout.take().unwrap()).lines();
     let header = lines.next().unwrap().unwrap();
     let mut header = header.split_whitespace().map(|v| v.parse::<i32>().unwrap());

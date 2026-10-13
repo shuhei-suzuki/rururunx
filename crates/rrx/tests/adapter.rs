@@ -20,13 +20,16 @@ struct Fixture {
     branch: String,
 }
 fn git(cwd: &Path, args: &[&str]) {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .output()
-        .unwrap();
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("git");
+        command
+            .args(args)
+            .current_dir(cwd)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE");
+        command
+    })
+    .unwrap();
     assert!(
         output.status.success(),
         "{}",
@@ -353,10 +356,12 @@ async fn stop_reaps_child_and_descendants_and_is_idempotent() {
         SessionState::Stopped
     );
     // A killed descendant may briefly be a zombie pending the host's init reaper.
-    let output = Command::new("ps")
-        .args(["-o", "stat=", "-p", &descendant.to_string()])
-        .output()
-        .unwrap();
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("ps");
+        command.args(["-o", "stat=", "-p", &descendant.to_string()]);
+        command
+    })
+    .unwrap();
     let state = String::from_utf8_lossy(&output.stdout);
     assert!(
         state.trim().is_empty() || state.trim().starts_with('Z'),
@@ -562,10 +567,12 @@ async fn immediate_stop_and_adapter_drop_do_not_leave_running_children() {
 }
 
 fn assert_process_dead(pid: i32) {
-    let output = Command::new("ps")
-        .args(["-o", "stat=", "-p", &pid.to_string()])
-        .output()
-        .unwrap();
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("ps");
+        command.args(["-o", "stat=", "-p", &pid.to_string()]);
+        command
+    })
+    .unwrap();
     let state = String::from_utf8_lossy(&output.stdout);
     let alive = !state.trim().is_empty() && !state.trim().starts_with('Z');
     // Clean a failed regression's known fixture child before asserting, so mutations

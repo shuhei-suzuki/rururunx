@@ -1095,15 +1095,18 @@ async fn c_s3a_project_status_projects_sessions_without_native_ref_or_pid() {
     let rrx = |args: Vec<String>| {
         let (state, config) = (state.clone(), config.clone());
         async move {
-            tokio::process::Command::new(env!("CARGO_BIN_EXE_rrx"))
-                .arg("--state")
-                .arg(&state)
-                .arg("--config")
-                .arg(&config)
-                .args(args)
-                .output()
-                .await
-                .unwrap()
+            rrx_spawn_hygiene::output_tokio({
+                let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_rrx"));
+                command
+                    .arg("--state")
+                    .arg(&state)
+                    .arg("--config")
+                    .arg(&config)
+                    .args(args);
+                command
+            })
+            .await
+            .unwrap()
         }
     };
     let allow: std::collections::BTreeSet<&str> = [

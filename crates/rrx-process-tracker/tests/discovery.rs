@@ -14,14 +14,17 @@ impl Drop for OwnedChild {
 }
 fn child(root: &std::path::Path, name: &str, cookie: &str) -> OwnedChild {
     OwnedChild(
-        Command::new(std::env::current_exe().unwrap())
-            .args(["--ignored", "--exact", "owned_cookie_worker", "--nocapture"])
-            .env("RRX_PROCESS_COOKIE", cookie)
-            .env("RRX_TRACKER_TEST_READY", root.join(name))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap(),
+        rrx_spawn_hygiene::spawn_std({
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command
+                .args(["--ignored", "--exact", "owned_cookie_worker", "--nocapture"])
+                .env("RRX_PROCESS_COOKIE", cookie)
+                .env("RRX_TRACKER_TEST_READY", root.join(name))
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            command
+        })
+        .unwrap(),
     )
 }
 fn ready(root: &std::path::Path, name: &str) {

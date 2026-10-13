@@ -651,13 +651,16 @@ pub(super) mod tests {
         pub(in crate::codex) request: LaunchRequest,
     }
     fn git(root: &Path, args: &[&str]) -> String {
-        let output = Command::new("/usr/bin/git")
-            .current_dir(root)
-            .args(args)
-            .env_clear()
-            .envs(crate::git::native_environment())
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = Command::new("/usr/bin/git");
+            command
+                .current_dir(root)
+                .args(args)
+                .env_clear()
+                .envs(crate::git::native_environment());
+            command
+        })
+        .unwrap();
         assert!(
             output.status.success(),
             "{}",

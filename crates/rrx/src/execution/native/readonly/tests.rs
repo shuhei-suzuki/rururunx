@@ -326,17 +326,20 @@ impl GitFixture {
         f
     }
     fn setup(&self, args: &[&str]) -> std::process::Output {
-        let out = std::process::Command::new(&self.git)
-            .current_dir(&self.root)
-            .args(args)
-            .env_clear()
-            .env("PATH", "/usr/bin:/bin")
-            .env("HOME", &self.home)
-            .env("XDG_CONFIG_HOME", &self.home)
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", self.home.join("config"))
-            .output()
-            .unwrap();
+        let out = rrx_spawn_hygiene::output_std({
+            let mut command = std::process::Command::new(&self.git);
+            command
+                .current_dir(&self.root)
+                .args(args)
+                .env_clear()
+                .env("PATH", "/usr/bin:/bin")
+                .env("HOME", &self.home)
+                .env("XDG_CONFIG_HOME", &self.home)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", self.home.join("config"));
+            command
+        })
+        .unwrap();
         assert!(
             out.status.success(),
             "primitive Git setup failed: {:?}",
@@ -348,21 +351,23 @@ impl GitFixture {
         let mut command =
             super::super::super::results::git_command_for(&self.root, &self.git).unwrap();
         // Hermetic attribute/config sources are test isolation only.
-        command
-            .args(action.argv(revision).unwrap())
-            .env_clear()
-            .env("PATH", "/usr/bin:/bin")
-            .env("HOME", &self.home)
-            .env("XDG_CONFIG_HOME", &self.home)
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", self.home.join("config"))
-            .env("GIT_OPTIONAL_LOCKS", "0")
-            .env("GIT_NO_REPLACE_OBJECTS", "1")
-            .env("GIT_NO_LAZY_FETCH", "1")
-            .stdin(Stdio::null())
-            .output()
-            .await
-            .unwrap()
+        rrx_spawn_hygiene::output_std({
+            command
+                .args(action.argv(revision).unwrap())
+                .env_clear()
+                .env("PATH", "/usr/bin:/bin")
+                .env("HOME", &self.home)
+                .env("XDG_CONFIG_HOME", &self.home)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", self.home.join("config"))
+                .env("GIT_OPTIONAL_LOCKS", "0")
+                .env("GIT_NO_REPLACE_OBJECTS", "1")
+                .env("GIT_NO_LAZY_FETCH", "1")
+                .stdin(Stdio::null());
+            command
+        })
+        .await
+        .unwrap()
     }
     fn revision(&self) -> String {
         line(&self.setup(&["rev-parse", "HEAD"]).stdout)

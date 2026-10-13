@@ -17,13 +17,13 @@ use tokio::process::Command;
 mod legacy;
 
 async fn git(path: &Path, args: &[&str]) -> String {
-    let output = Command::new("/usr/bin/git")
-        .current_dir(path)
-        .args(args)
-        .kill_on_drop(true)
-        .output()
-        .await
-        .unwrap();
+    let output = rrx_spawn_hygiene::output_tokio({
+        let mut command = Command::new("/usr/bin/git");
+        command.current_dir(path).args(args).kill_on_drop(true);
+        command
+    })
+    .await
+    .unwrap();
     assert!(
         output.status.success(),
         "{}",
@@ -55,10 +55,13 @@ async fn managed(
         .env_remove("GIT_INDEX_FILE")
         .env_remove("RRX_GIT_GATE_TOKEN")
         .kill_on_drop(true);
-    tokio::time::timeout(Duration::from_secs(20), command.output())
-        .await
-        .expect("managed Git must terminate")
-        .unwrap()
+    tokio::time::timeout(
+        Duration::from_secs(20),
+        rrx_spawn_hygiene::output_tokio(command),
+    )
+    .await
+    .expect("managed Git must terminate")
+    .unwrap()
 }
 
 #[tokio::test]

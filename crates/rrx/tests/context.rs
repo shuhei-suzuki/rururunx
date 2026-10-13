@@ -15,11 +15,12 @@ use tempfile::TempDir;
 mod legacy;
 
 fn git(root: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .current_dir(root)
-        .args(args)
-        .output()
-        .unwrap();
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("git");
+        command.current_dir(root).args(args);
+        command
+    })
+    .unwrap();
     assert!(
         output.status.success(),
         "Git {args:?}: {}",

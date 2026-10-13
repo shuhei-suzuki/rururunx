@@ -1238,7 +1238,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         #[cfg(test)]
         if let Some(hook)=actor.entry.after_environment_admission.clone(){hook(actor.entry.clone()).await?;}
         if actor.stopped(){return Err(failure(ErrorKind::ProcessFailure,"native stop before spawn"));}
-        let child=ProcessGroup::new(command.spawn().map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group(OwnershipStage::NativeChild))?;
+        let child=ProcessGroup::new(rrx_spawn_hygiene::spawn_std(command).map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group(OwnershipStage::NativeChild))?;
         #[cfg(all(test,target_os="macos"))]
         let child = { let mut child = child; child.inspection_plan = actor.entry.process_inspection.clone(); child };
         actor.session.pid=child.child.id();process=Some(child);
@@ -1601,8 +1601,11 @@ mod registry_tests {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .process_group(0);
-        let mut child =
-            ProcessGroup::new(command.spawn().unwrap(), Arc::new(AtomicBool::new(false))).unwrap();
+        let mut child = ProcessGroup::new(
+            rrx_spawn_hygiene::spawn_tokio(command).unwrap(),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .unwrap();
         let stdout = tokio::spawn(read_git_output(child.child.stdout.take().unwrap()));
         let stderr = tokio::spawn(read_git_output(child.child.stderr.take().unwrap()));
         let observed = tokio::time::timeout(Duration::from_secs(60), child.observe_exit()).await;
@@ -1635,12 +1638,15 @@ mod registry_tests {
         assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
         for unknown in [false, true] {
             let (_temp, store, project, task, worktree) = super::super::tests::preflight_fixture();
-            let revision = std::process::Command::new("/usr/bin/git")
-                .args(["rev-parse", "HEAD"])
-                .current_dir(&worktree)
-                .env_clear()
-                .output()
-                .unwrap();
+            let revision = rrx_spawn_hygiene::output_std({
+                let mut command = std::process::Command::new("/usr/bin/git");
+                command
+                    .args(["rev-parse", "HEAD"])
+                    .current_dir(&worktree)
+                    .env_clear();
+                command
+            })
+            .unwrap();
             assert!(revision.status.success());
             let mut request = super::super::tests::fixture_request(project, &task, worktree);
             request.input.revision = String::from_utf8(revision.stdout)
@@ -1804,14 +1810,17 @@ mod registry_tests {
         });
         let mut files = ScopedFiles::new(worktree.clone(), &request.project).unwrap();
         files.fail_sync = true;
-        let mut child = tokio::process::Command::new("/bin/cat")
-            .env_clear()
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .kill_on_drop(true)
-            .spawn()
-            .unwrap();
+        let mut child = rrx_spawn_hygiene::spawn_tokio({
+            let mut command = tokio::process::Command::new("/bin/cat");
+            command
+                .env_clear()
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .kill_on_drop(true);
+            command
+        })
+        .unwrap();
         let rpc = Rpc::new(child.stdin.take().unwrap(), child.stdout.take().unwrap());
         let mut actor = Actor {
             store: store.clone(),

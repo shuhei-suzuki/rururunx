@@ -113,7 +113,7 @@ fn destructive_private_controls_leave_fresh_production_pool_unchanged() {
     let mut listing = tempfile::tempfile().unwrap();
     let mut inventory = command();
     inventory.arg("--list").stdout(listing.try_clone().unwrap());
-    let mut child = inventory.spawn().unwrap(); // Actual Child before observation.
+    let mut child = rrx_spawn_hygiene::spawn_std(inventory).unwrap(); // Actual Child before observation.
     assert!(wait_audit_child(&mut child, deadline).success());
     std::io::Seek::rewind(&mut listing).unwrap();
     let mut bounded = std::io::Read::take(&mut listing, 65537);
@@ -139,7 +139,7 @@ fn destructive_private_controls_leave_fresh_production_pool_unchanged() {
     let mut command = command();
     // Actual std Child is held before inspecting its group. This fixture is a
     // test-process boundary; it grants no production/workload settlement proof.
-    let mut child = command.spawn().unwrap();
+    let mut child = rrx_spawn_hygiene::spawn_std(command).unwrap();
     assert!(wait_audit_child(&mut child, deadline).success());
 }
 
@@ -924,17 +924,20 @@ fn blocked_owning_child_wait_freezes_then_same_jobs_settle_late() {
         "adapter::git_owner::tests::owned_alternate_group_fixture_child".to_owned(),
         "--nocapture".to_owned(),
     ];
-    let child = StdCommand::new(&executable)
-        .args(&args)
-        .env_clear()
-        .env("RRX_GIT_OWNER_FIXTURE_MODE", "anchor")
-        .env("RRX_GIT_OWNER_FIXTURE_ROOT", directory.path())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .unwrap();
+    let child = rrx_spawn_hygiene::spawn_std({
+        let mut command = StdCommand::new(&executable);
+        command
+            .args(&args)
+            .env_clear()
+            .env("RRX_GIT_OWNER_FIXTURE_MODE", "anchor")
+            .env("RRX_GIT_OWNER_FIXTURE_ROOT", directory.path())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0);
+        command
+    })
+    .unwrap();
     let anchor = AlternateFixture {
         child,
         root: directory.path().to_owned(),

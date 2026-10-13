@@ -14,6 +14,7 @@ libc.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+rrx-spawn-hygiene = { path = "../rrx-spawn-hygiene", version = "0.1.0" }
 
 # Public libproc/sysctl FFI is confined to the macOS module. The rrx crate
 # continues to inherit the workspace unsafe_code=forbid setting.

@@ -231,7 +231,7 @@ pub(crate) struct CommandCapture {
 impl OwnedProcess {
     pub(crate) fn spawn(command: &mut Command) -> Result<Self> {
         command.process_group(0).kill_on_drop(true);
-        let child = command.spawn().context("spawn owned command")?;
+        let child = rrx_spawn_hygiene::spawn_std(command).context("spawn owned command")?;
         let pid = Pid::from_raw(child.id().context("missing owned child identity")? as i32)
             .context("invalid owned child identity")?;
         Ok(Self {
@@ -445,7 +445,7 @@ mod retained_raw_tests {
         let mut command = Command::new("/bin/sleep");
         command.arg("30").process_group(0).kill_on_drop(true);
         let mut custody = RetainedRawProcess::default();
-        let child = command.spawn().unwrap();
+        let child = rrx_spawn_hygiene::spawn_std(command).unwrap();
         custody.adopt(child);
         assert!(custody.has_child());
         assert!(custody.pid.is_none());
@@ -459,7 +459,7 @@ mod retained_raw_tests {
         let mut command = Command::new("/bin/sleep");
         command.arg("30").process_group(0).kill_on_drop(true);
         let mut custody = RetainedRawProcess::default();
-        let child = command.spawn().unwrap();
+        let child = rrx_spawn_hygiene::spawn_std(command).unwrap();
         custody.adopt(child);
         custody.qualify().unwrap();
         assert!(custody.pid.is_some());
@@ -488,7 +488,7 @@ mod native_child_cell_tests {
             .process_group(0)
             .kill_on_drop(true);
         let mut cell = NativeChildCell::Empty;
-        let child = command.spawn().unwrap();
+        let child = rrx_spawn_hygiene::spawn_std(command).unwrap();
         cell.adopt(child);
         cell
     }

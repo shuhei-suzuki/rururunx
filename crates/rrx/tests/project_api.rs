@@ -21,11 +21,12 @@ use std::{
 };
 
 fn git(root: &Path, args: &[&str]) {
-    let out = Command::new("git")
-        .current_dir(root)
-        .args(args)
-        .output()
-        .unwrap();
+    let out = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("git");
+        command.current_dir(root).args(args);
+        command
+    })
+    .unwrap();
     assert!(
         out.status.success(),
         "{args:?}: {}",
@@ -79,11 +80,13 @@ impl Fixture {
         std::fs::create_dir(&bin).unwrap();
         let log = base.join("daemon-git.log");
         let real = String::from_utf8(
-            Command::new("sh")
-                .args(["-c", "command -v git"])
-                .output()
-                .unwrap()
-                .stdout,
+            rrx_spawn_hygiene::output_std({
+                let mut command = Command::new("sh");
+                command.args(["-c", "command -v git"]);
+                command
+            })
+            .unwrap()
+            .stdout,
         )
         .unwrap();
         // Fails with a secret-looking stderr while `<repo>/.git/rrx-fail`
@@ -129,7 +132,12 @@ impl Fixture {
         command
     }
     fn cli(&self, cwd: &Path, args: &[&str]) -> Output {
-        self.command(cwd).args(args).output().unwrap()
+        rrx_spawn_hygiene::output_std({
+            let mut command = self.command(cwd);
+            command.args(args);
+            command
+        })
+        .unwrap()
     }
     fn ok(&self, cwd: &Path, args: &[&str]) -> String {
         let out = self.cli(cwd, args);

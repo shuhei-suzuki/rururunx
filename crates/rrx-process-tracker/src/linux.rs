@@ -218,18 +218,21 @@ mod tests {
         let marker = root.path().join("ready");
         let value = format!("tracker-nondumpable-{}", std::process::id());
         let mut child = OwnedChild(
-            Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--ignored",
-                    "--exact",
-                    "linux::tests::nondumpable_identity_worker",
-                ])
-                .env("RRX_TRACKER_IDENTITY_READY", &marker)
-                .env("RRX_PROCESS_COOKIE", &value)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .unwrap(),
+            rrx_spawn_hygiene::spawn_std({
+                let mut command = Command::new(std::env::current_exe().unwrap());
+                command
+                    .args([
+                        "--ignored",
+                        "--exact",
+                        "linux::tests::nondumpable_identity_worker",
+                    ])
+                    .env("RRX_TRACKER_IDENTITY_READY", &marker)
+                    .env("RRX_PROCESS_COOKIE", &value)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null());
+                command
+            })
+            .unwrap(),
         );
         let at = Instant::now();
         while !marker.exists() {

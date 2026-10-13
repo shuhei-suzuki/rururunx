@@ -232,14 +232,17 @@ async fn ordinary_empty_library_child() {
 }
 
 fn fixture_git(root: &Path, home: &Path, args: &[&str]) -> String {
-    let output = Command::new("/usr/bin/git")
-        .args(args)
-        .current_dir(root)
-        .env_clear()
-        .env("HOME", home)
-        .env("PATH", "/usr/bin:/bin")
-        .output()
-        .unwrap();
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("/usr/bin/git");
+        command
+            .args(args)
+            .current_dir(root)
+            .env_clear()
+            .env("HOME", home)
+            .env("PATH", "/usr/bin:/bin");
+        command
+    })
+    .unwrap();
     assert!(output.status.success(), "synthetic Git setup failed");
     String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
@@ -300,19 +303,22 @@ fn ordinary_library_refuses_in_scoped_child_with_effect_reaching_input() {
     }
     // No parent environment mutation. This finite test child is the actual owner;
     // any gate mutant's Git sentinel is awaited/cleaned by the real library helper.
-    let mut child = Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "ordinary_empty_library_child",
-            "--ignored",
-            "--nocapture",
-        ])
-        .env_clear()
-        .env("HOME", &home)
-        .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
-        .env("RRX_EMPTY_FIXTURE", &directory)
-        .spawn()
-        .unwrap();
+    let mut child = rrx_spawn_hygiene::spawn_std({
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "ordinary_empty_library_child",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env_clear()
+            .env("HOME", &home)
+            .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+            .env("RRX_EMPTY_FIXTURE", &directory);
+        command
+    })
+    .unwrap();
     let pid = rustix::process::Pid::from_raw(child.id() as i32).unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     let mut timed_out = false;

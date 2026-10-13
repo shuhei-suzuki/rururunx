@@ -82,7 +82,12 @@ impl Fixture {
         before
     }
     fn plain(&self, args: &[&str]) -> String {
-        let out = self.command().args(args).output().unwrap();
+        let out = rrx_spawn_hygiene::output_std({
+            let mut command = self.command();
+            command.args(args);
+            command
+        })
+        .unwrap();
         assert!(
             out.status.success(),
             "{}",
@@ -598,7 +603,7 @@ async fn recorded_proposal_maximum_escapes_and_legacy_consumers_remain_readable(
             if json {
                 command.arg("--json");
             }
-            let out = command.output().unwrap();
+            let out = rrx_spawn_hygiene::output_std(command).unwrap();
             assert!(
                 out.status.success(),
                 "genuine c979 legacy consumer refused valid proposal"
@@ -836,17 +841,20 @@ async fn recorded_new_cli_refuses_old_service_without_downgrade_or_writes() {
     let mut f = Fixture::new();
     let project = f.project("one");
     f.child = Some(
-        Command::new(binary)
-            .arg("--state")
-            .arg(&f.state)
-            .arg("--config")
-            .arg(&f.config)
-            .arg("serve")
-            .current_dir(f.dir.path())
-            .stdout(Stdio::null())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .unwrap(),
+        rrx_spawn_hygiene::spawn_std({
+            let mut command = Command::new(binary);
+            command
+                .arg("--state")
+                .arg(&f.state)
+                .arg("--config")
+                .arg(&f.config)
+                .arg("serve")
+                .current_dir(f.dir.path())
+                .stdout(Stdio::null())
+                .stderr(Stdio::inherit());
+            command
+        })
+        .unwrap(),
     );
     let until = Instant::now() + Duration::from_secs(10);
     loop {
@@ -863,18 +871,19 @@ async fn recorded_new_cli_refuses_old_service_without_downgrade_or_writes() {
     let goal = f.create(project, 1).await;
     let before = f.idle().await;
     for verb in ["status", "tasks"] {
-        let out = f
-            .command()
-            .args([
+        let out = rrx_spawn_hygiene::output_std({
+            let mut command = f.command();
+            command.args([
                 "goal",
                 verb,
                 &goal.to_string(),
                 "--project",
                 "one",
                 "--json",
-            ])
-            .output()
-            .unwrap();
+            ]);
+            command
+        })
+        .unwrap();
         assert!(
             !out.status.success(),
             "new CLI must not silently downgrade old service"
