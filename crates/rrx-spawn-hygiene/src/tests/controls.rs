@@ -106,8 +106,10 @@ fn inheritance(cloexec: bool, high: bool) -> Result<(), String> {
         // the harness keep their existing limits and concurrency unchanged.
         use rustix::process::{Resource, getrlimit, setrlimit};
         let mut limit = getrlimit(Resource::Nofile);
+        println!("P4C LIMIT before={limit:?}");
         limit.current = Some(limit.current.unwrap_or(1024).min(1024));
         setrlimit(Resource::Nofile, limit).map_err(|e| format!("SETUP setrlimit {e}"))?;
+        println!("P4C LIMIT after={:?}", getrlimit(Resource::Nofile));
         let target = i32::try_from(
             getrlimit(Resource::Nofile)
                 .current

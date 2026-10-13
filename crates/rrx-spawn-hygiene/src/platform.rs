@@ -29,23 +29,30 @@ pub(super) fn install_with_options(command: &mut Command, options: Options) -> i
     // io::Error. It allocates no memory, opens no descriptors, and takes no locks.
     unsafe {
         command.pre_exec(move || {
-            #[cfg(test)]
-            if let Some(errno) = options.errno {
-                return Err(io::Error::from_raw_os_error(errno));
-            }
-            #[cfg(not(test))]
-            let _ = &options;
-            if libc::syscall(
+            let result = libc::syscall(
                 libc::SYS_close_range,
                 3u32,
                 u32::MAX,
                 libc::CLOSE_RANGE_CLOEXEC,
-            ) == 0
-            {
+            );
+            let errno = if result == -1 {
+                io::Error::last_os_error()
+                    .raw_os_error()
+                    .unwrap_or(libc::EIO)
+            } else {
+                0
+            };
+            // Test injection replaces the raw operation result, then flows
+            // through the exact production success/error decision below.
+            #[cfg(test)]
+            let (result, errno) = options.errno.map_or((result, errno), |errno| (-1, errno));
+            #[cfg(not(test))]
+            let _ = &options;
+            if result == 0 {
                 Ok(())
             } else {
                 // No scanning fallback: failure must prevent exec.
-                Err(io::Error::last_os_error())
+                Err(io::Error::from_raw_os_error(errno))
             }
         });
     }
@@ -137,13 +144,18 @@ pub(super) fn install_with_options(command: &mut Command, options: Options) -> i
                 if fd < 3 {
                     continue;
                 }
-                #[cfg(test)]
-                if let Some(errno) = options.errno {
-                    return Err(io::Error::from_raw_os_error(errno));
-                }
                 let flags = libc::fcntl(fd, libc::F_GETFD);
+                let errno = if flags == -1 {
+                    io::Error::last_os_error()
+                        .raw_os_error()
+                        .unwrap_or(libc::EIO)
+                } else {
+                    0
+                };
+                #[cfg(test)]
+                let (flags, errno) = options.errno.map_or((flags, errno), |errno| (-1, errno));
                 if flags == -1 {
-                    let error = io::Error::last_os_error();
+                    let error = io::Error::from_raw_os_error(errno);
                     if error.raw_os_error() == Some(libc::EBADF) {
                         continue;
                     }
