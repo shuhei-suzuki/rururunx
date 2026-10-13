@@ -447,7 +447,7 @@ impl RunState {
             }
             Some(
                 "stream_event" | "tool_progress" | "tool_use_summary" | "auth_status"
-                | "rate_limit_event" | "control_request" | "control_response",
+                | "rate_limit_event" | "control_request",
             ) => {}
             _ => {
                 return Err(failure(

@@ -145,6 +145,21 @@ for line in sys.stdin:
         elif value["type"] == "user":
             send({"type": "system", "subtype": "init", "session_id": native, "cwd": os.getcwd(), "tools": ["Bash"], "mcp_servers": []})
             payload = value["message"]["content"]
+            if payload.startswith("m0-control-"):
+                if payload == "m0-control-request-input":
+                    send({"type":"control_request", "request_id":"m0-permission", "request":{"subtype":"can_use_tool", "tool_use_id":"m0-tool", "tool_name":"Bash", "input":{"command":"fixture no execution"}}})
+                    while not os.path.exists(os.path.join(os.environ["RRX_OUTPUT_DIR"], "fixture-control-release")): time.sleep(0.02)
+                elif payload.endswith("-response"):
+                    response = {"request_id":"rrx-initialize" if payload == "m0-control-initialize-response" else "unsolicited", "subtype":"error" if payload == "m0-control-error-response" else "success"}
+                    if response["subtype"] == "error": response["error"] = "fixture error"
+                    else: response["response"] = {}
+                    send({"type":"control_response", "response":response})
+                elif payload != "m0-control-success-input":
+                    raise RuntimeError("unknown M0 control fixture scenario")
+                # The same fully valid owned result follows every branch. A
+                # response accepted by mistake reaches real answer/Usage/confirm.
+                send({"type":"result", "session_id":native, "subtype":"success", "is_error":False, "result":"M0 validated answer", "usage":{"input_tokens":0}})
+                continue
             if payload.startswith("m0-rate-"):
                 send({"type":"rate_limit_event", "session_id":"foreign" if payload.endswith("-foreign") else native, "rate_limit_info":{"rateLimitType":"five_hour", "status":"allowed" if "-control-" in payload else "future_status"}})
                 send({"type":"result", "session_id":native, "subtype":"success", "is_error":False, "result":"M0 validated answer"})

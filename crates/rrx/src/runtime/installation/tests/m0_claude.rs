@@ -25,6 +25,16 @@ fn status(f: &ControlFixture, handle: &ManagedSessionRef) -> NativeStatus {
 }
 
 async fn run_scenario(scenario: &str, invalid: bool, work: WorkOutcome, unfinished: bool) {
+    run_scenario_until_receipt(scenario, invalid, work, unfinished, invalid).await;
+}
+
+async fn run_scenario_until_receipt(
+    scenario: &str,
+    invalid: bool,
+    work: WorkOutcome,
+    unfinished: bool,
+    await_failure: bool,
+) {
     let mut f = fixture_mode("claude", true, Some(scenario), |_| {});
     f.register_real_git_project();
     assert!(f.runtime.installed.is_ok());
@@ -44,11 +54,35 @@ async fn run_scenario(scenario: &str, invalid: bool, work: WorkOutcome, unfinish
         .find_map(|attempt| attempt.execution.clone())
         .unwrap();
     success::release_unit(&f, &unit);
+    if scenario == "m0-control-request-input" {
+        success::wait_for(
+            || {
+                status(&f, &handle)
+                    .pending
+                    .iter()
+                    .any(|p| p["request_id"] == "m0-permission")
+            },
+            "normal control request did not reach the real Pending consumer",
+            10,
+        )
+        .await;
+        let published = status(&f, &handle);
+        assert_eq!(published.pending.len(), 1);
+        assert_eq!(published.pending[0]["tool_use_id"], "m0-tool");
+        assert_eq!(published.pending[0]["tool_name"], "Bash");
+        assert!(published.pending[0].get("input").is_none());
+        assert!(published.pending[0]["operation_hash"].as_str().is_some());
+        assert!(published.receipt.is_none() && published.metrics.is_none());
+        let profile = crate::execution::resources::ResourceManager::new(f.owner.clone())
+            .profile(&unit)
+            .unwrap();
+        std::fs::write(profile.output.join("fixture-control-release"), "release").unwrap();
+    }
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     loop {
         let status = status(&f, &handle);
         if status.receipt.is_some()
-            && (!invalid || status.failure == Some(NativeFailure::ProtocolFailure))
+            && (!await_failure || status.failure == Some(NativeFailure::ProtocolFailure))
         {
             break;
         }
@@ -260,6 +294,22 @@ async fn run_scenario(scenario: &str, invalid: bool, work: WorkOutcome, unfinish
         10,
     )
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn o03_installed_normal_control_responses_fail_closed_and_requests_remain_consumed() {
+    for scenario in ["m0-control-success-input", "m0-control-request-input"] {
+        run_scenario(scenario, false, WorkOutcome::Success, false).await;
+    }
+    for scenario in [
+        "m0-control-success-response",
+        "m0-control-error-response",
+        "m0-control-initialize-response",
+    ] {
+        // Receipt is the causal barrier. Assert the actual failure immediately
+        // even if a source mutant accepted the response and completed instead.
+        run_scenario_until_receipt(scenario, true, WorkOutcome::Unknown, false, false).await;
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

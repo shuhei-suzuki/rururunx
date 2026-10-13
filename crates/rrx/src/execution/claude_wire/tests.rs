@@ -174,6 +174,46 @@ fn invocation_tokens_and_resumed_gauges_have_different_authority() {
 }
 
 #[test]
+fn normal_control_responses_are_rejected_while_bootstrap_and_requests_keep_their_consumers() {
+    let bootstrap = decode(json!({"type":"control_response","response":{"request_id":"rrx-initialize","subtype":"success","response":{}}})).unwrap();
+    assert_eq!(
+        control_result(&bootstrap, "rrx-initialize").unwrap(),
+        json!({})
+    );
+    assert_eq!(
+        control_result(&bootstrap, "other-request")
+            .unwrap_err()
+            .kind,
+        ErrorKind::ParseFailure
+    );
+    for response in [
+        bootstrap,
+        decode(json!({"type":"control_response","response":{"request_id":"unsolicited","subtype":"success","response":{}}})).unwrap(),
+        decode(json!({"type":"control_response","response":{"request_id":"unsolicited","subtype":"error","error":"fixture error"}})).unwrap(),
+    ] {
+        let mut state = RunState::default();
+        init(&mut state);
+        assert_eq!(
+            state.observe(&response, "n", Path::new("/owned"), false).unwrap_err().kind,
+            ErrorKind::ParseFailure,
+            "normal loop has no outstanding control response correlation"
+        );
+        assert!(state.initialized && state.result.is_none() && !state.complete());
+    }
+    let request = decode(json!({"type":"control_request","request_id":"req","request":{"subtype":"can_use_tool","tool_use_id":"use","tool_name":"Bash","input":{"command":"pwd"}}})).unwrap();
+    let mut state = RunState::default();
+    init(&mut state);
+    assert!(
+        state
+            .observe(&request, "n", Path::new("/owned"), false)
+            .unwrap()
+    );
+    assert_eq!(Pending::parse(&request, "n").unwrap().request_id, "req");
+    assert!(observe(&mut state, success("human"), false).unwrap());
+    assert!(state.complete());
+}
+
+#[test]
 fn exact_native_operation_reply_never_persists_grants() {
     let frame = decode(json!({"type":"control_request","request_id":"req","request":{"subtype":"can_use_tool","tool_use_id":"use","tool_name":"Bash","input":{"command":"pwd"}}})).unwrap();
     let p = Pending::parse(&frame, "native").unwrap();
