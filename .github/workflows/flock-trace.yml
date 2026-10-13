@@ -1,0 +1,60 @@
+# MEASUREMENT ONLY (Issue #89 CI triage). Lives on a measurement branch and is never merged.
+name: Issue 89 flock trace
+on:
+  push:
+    branches: [claude/project-thread-jzxouc]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  trace:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+    env:
+      RRX_FLOCK_TRACE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.91.1
+      - run: cargo build --locked --workspace
+      - run: cargo test --locked -p rrx --lib --no-run
+      - name: EF tests, serial, repeated, Core terminal trace
+        shell: bash
+        env:
+          RRX_EF1_TRACE: "1"
+        run: |
+          mkdir -p out
+          for i in $(seq 1 40); do
+            cargo test --locked -p rrx --lib runtime::installation::tests::epoch_fence -- --test-threads=1 --nocapture > out/ef-$i.log 2>&1 || echo "ef run $i failed" >> out/summary.txt
+          done
+      - name: EF tests with the Runtime kept until the Core enters, x20
+        shell: bash
+        env:
+          RRX_EF1_TRACE: "1"
+          RRX_EF1_WAIT_CORE: "1"
+        run: |
+          for i in $(seq 1 20); do
+            cargo test --locked -p rrx --lib runtime::installation::tests::epoch_fence -- --test-threads=1 --nocapture > out/wc-$i.log 2>&1 || echo "wc run $i failed" >> out/summary.txt
+          done
+      - name: Report
+        if: always()
+        shell: bash
+        run: |
+          touch out/summary.txt
+          echo "== failed runs"; cat out/summary.txt
+          echo "== EF1_CORE shapes (site, phase, live, result)"; grep -h "EF1_CORE" out/ef-*.log | sed -E 's/at=[0-9]+ //' | sort | uniq -c | cut -c1-500 || true
+          echo "== per-setup sequences (ef1 only)"
+          for f in out/ef-*.log; do
+            echo "--- $f"
+            grep -E "^test |EF1_STOP|EF1_CORE|EF1_TAIL" "$f" | grep -B8 "EF1_TAIL" | cut -c1-700
+          done
+          echo "== WAIT_CORE: EF1_WAIT"; grep -h "EF1_WAIT" out/wc-*.log | sed -E 's/waited_ms=([0-9]+)[0-9]{0}/&/' | cut -c1-200 | sort | uniq -c | sort -rn | head -40 || true
+          echo "== WAIT_CORE: EF1_TAIL states"; grep -ho "EF1_TAIL [a-z]* state=[A-Za-z]*" out/wc-*.log | sort | uniq -c || true
+          echo "== WAIT_CORE: EF1_CORE shapes"; grep -h "EF1_CORE" out/wc-*.log | sed -E 's/at=[0-9]+ //' | sort | uniq -c | cut -c1-300 || true
+          echo "== failing tests"; grep -h -A6 "^---- " out/*.log | grep -v "EF1_TRACE\|EF1_CORE\|EF1_STOP" | cut -c1-300 | sort | uniq -c | sort -rn | head -40 || true
+          echo "== results"; for f in out/*.log; do echo "$f: $(grep -h '^test result' "$f" | tr '\n' ' ')"; done

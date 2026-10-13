@@ -176,7 +176,40 @@ async fn bound_and_stopped(
     }
     let config = f.runtime.config.clone();
     let state = f.owner.state_path().to_path_buf();
-    let _ = f.runtime.shutdown().await;
+    // MEASUREMENT ONLY (Issue #89 EF1 triage, never merged): shutdown timing.
+    let ms = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis())
+    };
+    let entered = crate::execution::native::EF1_CORE_ENTERED.load(std::sync::atomic::Ordering::SeqCst);
+    eprintln!("EF1_STOP begin {provider} at={}", ms());
+    let stopped = f.runtime.shutdown().await;
+    eprintln!(
+        "EF1_STOP end {provider} at={} result={}",
+        ms(),
+        stopped
+            .as_ref()
+            .map_or_else(|e| format!("err: {e:#}"), |_| "ok".to_string())
+    );
+    // MEASUREMENT ONLY: with RRX_EF1_WAIT_CORE, keep the Runtime (and so the
+    // preparation custody) alive until the Core reaches its terminal call, to
+    // show that shutdown alone triggers it.
+    if std::env::var_os("RRX_EF1_WAIT_CORE").is_some() {
+        let start = ms();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while crate::execution::native::EF1_CORE_ENTERED.load(std::sync::atomic::Ordering::SeqCst) == entered
+            && tokio::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        let reached = crate::execution::native::EF1_CORE_ENTERED.load(std::sync::atomic::Ordering::SeqCst) != entered;
+        eprintln!(
+            "EF1_WAIT {provider} core_entered_before_drop={reached} waited_ms={}",
+            ms() - start
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
     let ControlFixture {
         _dir,
         owner,
@@ -193,6 +226,7 @@ async fn bound_and_stopped(
         );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
+    eprintln!("EF1_STOP custody-dropped {provider} at={}", ms());
     drop(owner);
     (_dir, state, config, task)
 }
@@ -205,6 +239,49 @@ async fn ef1(provider: &str) {
     let conn = crate::state::current_test_writer(&state).unwrap();
     let sid = session_id(&conn, &task);
     let (before_record, before) = session(&conn, &sid);
+    // MEASUREMENT ONLY (Issue #89 CI triage, never merged): the audit kinds
+    // after the Session intent, for passing and failing setups alike.
+    {
+        let mut statement = conn
+            .prepare("SELECT sequence, kind, at FROM audit ORDER BY sequence")
+            .unwrap();
+        let rows: Vec<(i64, String, i64)> = statement
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        drop(statement);
+        let start = rows
+            .iter()
+            .position(|(_, kind, _)| kind == "execution.session_intent")
+            .unwrap_or(0);
+        let t0 = rows.get(start).map_or(0, |row| row.2);
+        let tail: Vec<String> = rows[start..]
+            .iter()
+            .map(|(_, kind, at)| format!("{kind}@{}", at - t0))
+            .collect();
+        eprintln!(
+            "EF1_TAIL {provider} state={:?} t0={t0} tail={}",
+            before.state,
+            tail.join(",")
+        );
+    }
+    // MEASUREMENT ONLY (Issue #89 CI triage, never merged): why the Session
+    // is already terminal after the setup shutdown.
+    if !matches!(before.state, SessionState::Starting | SessionState::Running) {
+        let task_id = task.id.to_string();
+        for (table, rows) in dump(&conn) {
+            for row in rows
+                .iter()
+                .filter(|row| row.contains(&sid) || row.contains(&task_id))
+            {
+                eprintln!(
+                    "EF1_TRACE {table}: {}",
+                    row.chars().take(700).collect::<String>()
+                );
+            }
+        }
+    }
     assert!(
         matches!(before.state, SessionState::Starting | SessionState::Running),
         "SETUP: EF1 {provider}: open Session, got {:?}",
