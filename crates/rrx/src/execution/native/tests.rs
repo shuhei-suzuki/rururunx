@@ -18,11 +18,38 @@ pub(crate) fn program(root: &Path, provider: &str) -> std::path::PathBuf {
 /// sees the record exist never reads a partial body (Issue #89 F2).
 pub(crate) const RECORD_NATIVE_INPUT: &str = "    value = json.loads(line)\n    if value.get('method') == 'turn/start' or value.get('type') == 'user':\n        recorded = os.path.join(os.environ['RRX_OUTPUT_DIR'], 'fixture-native-input.json')\n        with open(recorded + '.partial', 'w') as partial:\n            json.dump(value, partial)\n        os.replace(recorded + '.partial', recorded)\n";
 
+/// Python for the controls' slowed writers: after the first half of a body is
+/// flushed, `pause()` signals `halfway` and waits (bounded) for the reader's
+/// `proceed`, so the reader always looks while the body is half written.
+pub(crate) const PAUSE_AT_HALF: &str = "import os, time\ndef pause():\n    base = os.environ['RRX_OUTPUT_DIR']\n    open(os.path.join(base, 'halfway'), 'w').close()\n    deadline = time.monotonic() + 10\n    while not os.path.exists(os.path.join(base, 'proceed')):\n        if time.monotonic() > deadline:\n            raise SystemExit('SETUP: proceed never came')\n        time.sleep(0.001)\n";
+
+/// Kills and reaps the control's writer if the control ends early.
+struct Writer(std::process::Child);
+impl Drop for Writer {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Waits, bounded, until `path` exists.
+fn appear(path: &Path, what: &str) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !path.exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "SETUP: {what} never appeared"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
 /// Runs `prelude` then `body` in the fixture Python with `RRX_OUTPUT_DIR` set
-/// to a fresh directory; as soon as `published` (relative to it) exists, reads
-/// it once, the way the tests' readers do. Returns whether that read was
-/// incomplete. The prelude slows the write so a half-written body stays
-/// visible for 1 s if the publication exposes one.
+/// to a fresh directory. The prelude's writer must call `pause()` (from
+/// `PAUSE_AT_HALF`) with half a body written. At that point the reader does
+/// what the tests' readers do: if `published` (relative to the directory)
+/// exists, it reads it once. Returns whether that read was incomplete; a body
+/// not yet published exposes nothing.
 pub(crate) fn publication_exposes_partial(
     prelude: &str,
     body: &str,
@@ -30,23 +57,30 @@ pub(crate) fn publication_exposes_partial(
     complete: impl Fn(&[u8]) -> bool,
 ) -> bool {
     let dir = tempfile::tempdir().unwrap();
-    let mut child = std::process::Command::new("/usr/bin/python3")
-        .arg("-c")
-        .arg(format!("{prelude}{body}"))
-        .env("RRX_OUTPUT_DIR", dir.path())
-        .spawn()
-        .unwrap();
+    let mut writer = Writer(
+        std::process::Command::new("/usr/bin/python3")
+            .arg("-c")
+            .arg(format!("{PAUSE_AT_HALF}{prelude}{body}"))
+            .env("RRX_OUTPUT_DIR", dir.path())
+            .spawn()
+            .unwrap(),
+    );
+    appear(&dir.path().join("halfway"), "the half-written body");
     let path = dir.path().join(published);
+    let partial = path.exists() && !complete(&std::fs::read(&path).unwrap());
+    std::fs::write(dir.path().join("proceed"), "").unwrap();
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    while !path.exists() {
+    let status = loop {
+        if let Some(status) = writer.0.try_wait().unwrap() {
+            break status;
+        }
         assert!(
             std::time::Instant::now() < deadline,
-            "SETUP: {published} never appeared"
+            "SETUP: the writer never finished"
         );
         std::thread::sleep(Duration::from_millis(1));
-    }
-    let partial = !complete(&std::fs::read(&path).unwrap());
-    assert!(child.wait().unwrap().success(), "SETUP: the writer failed");
+    };
+    assert!(status.success(), "SETUP: the writer failed");
     assert!(
         complete(&std::fs::read(&path).unwrap()),
         "SETUP: the finished record is whole"
@@ -54,12 +88,12 @@ pub(crate) fn publication_exposes_partial(
     partial
 }
 
-/// F2 control: with `json.dump` writing half, pausing 1 s, then the rest, the
-/// previous in-place record exposes a partial body to a reader that waits for
-/// the file to exist; `RECORD_NATIVE_INPUT` never does.
+/// F2 control: with `json.dump` writing half and holding there until the
+/// reader has looked, the previous in-place record exposes a partial body to a
+/// reader that waits for the file to exist; `RECORD_NATIVE_INPUT` never does.
 #[test]
 fn recorded_native_input_is_never_partial() {
-    const SLOW_DUMP: &str = "import json, os, time\ndef dump(value, out):\n    text = json.dumps(value)\n    out.write(text[:len(text) // 2])\n    out.flush()\n    time.sleep(1)\n    out.write(text[len(text) // 2:])\njson.dump = dump\nfor line in ['{\"type\": \"user\", \"message\": {\"content\": \"recorded\"}}']:\n";
+    const SLOW_DUMP: &str = "import json, os\ndef dump(value, out):\n    text = json.dumps(value)\n    out.write(text[:len(text) // 2])\n    out.flush()\n    pause()\n    out.write(text[len(text) // 2:])\njson.dump = dump\nfor line in ['{\"type\": \"user\", \"message\": {\"content\": \"recorded\"}}']:\n";
     const IN_PLACE: &str = "    value = json.loads(line)\n    if value.get('method') == 'turn/start' or value.get('type') == 'user':\n        with open(os.path.join(os.environ['RRX_OUTPUT_DIR'], 'fixture-native-input.json'), 'w') as recorded:\n            json.dump(value, recorded)\n";
     let json = |bytes: &[u8]| serde_json::from_slice::<serde_json::Value>(bytes).is_ok();
     assert!(

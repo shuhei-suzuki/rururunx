@@ -198,15 +198,15 @@ fn publish_marker(marker: &str) -> String {
     )
 }
 
-/// F2 control: with `Path.write_text` writing half, pausing 1 s, then the
-/// rest, the previous in-place marker exposes a partial id to a reader that
-/// parses it as soon as it can be read; `publish_marker` never does.
+/// F2 control: with `Path.write_text` writing half and holding there until the
+/// reader has looked, the previous in-place marker exposes a partial id to a
+/// reader that parses it as soon as it can be read; `publish_marker` never does.
 #[test]
 fn retained_marker_is_never_partial() {
     use crate::execution::native::tests::publication_exposes_partial;
     let operation = OperationId::new();
     let prelude = format!(
-        "import os, pathlib, time\ndef write_text(self, text):\n    with open(self, 'w') as out:\n        out.write(text[:len(text) // 2])\n        out.flush()\n        time.sleep(1)\n        out.write(text[len(text) // 2:])\npathlib.Path.write_text = write_text\noperation = '{operation}'\n"
+        "import os, pathlib\ndef write_text(self, text):\n    with open(self, 'w') as out:\n        out.write(text[:len(text) // 2])\n        out.flush()\n        pause()\n        out.write(text[len(text) // 2:])\npathlib.Path.write_text = write_text\noperation = '{operation}'\n"
     );
     let path = "os.path.join(os.environ['RRX_OUTPUT_DIR'], 'marker')";
     let id = |bytes: &[u8]| {
