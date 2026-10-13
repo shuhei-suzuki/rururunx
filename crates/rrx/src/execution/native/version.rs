@@ -576,7 +576,7 @@ impl NativeSessions {
         original: Arc<NativePreparationCustody>,
         actor: Arc<NativePreparationActor>,
         plan: Arc<NativeVersionHelperPlan>,
-        mut command: Command,
+        command: Command,
         lease: Option<Arc<owner::GitLease>>,
     ) -> Result<Arc<NativeVersionHelperCustody>> {
         ensure!(

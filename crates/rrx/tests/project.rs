@@ -635,9 +635,9 @@ fn global_default_state_and_help_config_check_are_independent_of_cwd() {
     let untouched = f.root.join("must-not-exist/state.db");
     for command in ["--help", "--version", "config-check"] {
         let out = rrx_spawn_hygiene::output_std({
-            let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
-            command.arg("--state").arg(&untouched).arg(command);
-            command
+            let mut spawn_command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+            spawn_command.arg("--state").arg(&untouched).arg(command);
+            spawn_command
         })
         .unwrap();
         assert!(out.status.success());
