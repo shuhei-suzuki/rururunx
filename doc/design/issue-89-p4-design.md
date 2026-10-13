@@ -100,8 +100,13 @@ remain in place, and optional unpolled Tokio controls are not made mandatory.
 
 Six V1 variants bypass prepare at one public API at a time, each paired with its
 own exact outer control and restored normal source. Dedicated targets and source/
-binary hashes are required. The new controls and mutants are pending execution;
-no additional cargo workload is started during the immutable initial M06 campaign.
+binary hashes are required. After the immutable initial M06 campaign finishes,
+fixed `149cf859` passes all 18 controls, fmt and workspace all-target Clippy. All
+six individual bypass mutants yield an actual failing assertion with complete
+custody, and all byte-identical source restoration pairs pass. A separate pure
+unknown/error report guard mutant is detected and restored. The initial Darwin
+signed st_dev compile failure is retained; a checked conversion refuses negative
+identities as SETUP. See the verification ledger for hashes and remaining gates.
 
 ## Controls and custody
 
@@ -148,6 +153,12 @@ has 186 pass, two Docker failures and one existing ignore; focused Docker replay
 is 11 pass on both P4 and fixed main. The first failures remain recorded and their
 frequency/cause is not certified. See [verification ledger](../verification/issue-89-p4.md).
 
-M06, V-F and independent implementation/security reviews remain parent-owned
-merge gates. Measurement uses a private instrumentation overlay so measurement-only
+M06's initial fixed-c3fb macOS 50 x 2 campaign passes its numerical conditions:
+100 observable attempts, no target failures or observable B_END, and all product
+runs PASS. Both private overlay copies are archived/hash-checked and removed.
+Later cfg(test)/document changes leave measured production and original binaries
+unchanged; measurement is not relabeled to a newer commit. The observer's extra
+children/scheduling/FD effects remain limitations. V-F and independent repair
+approval remain parent-owned merge gates; the separate EOF-reader classification
+finding is unresolved. Measurement uses a private overlay so measurement-only
 259a467 is not merged. No all-OS, process-death or full issue-completion claim is made.

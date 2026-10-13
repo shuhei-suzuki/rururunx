@@ -1,9 +1,10 @@
 # P4 local implementation verification
 
 Issue: <https://github.com/shuhei-suzuki/rururunx/issues/89>. Baseline:
-`b8344ab951fa24f545174917eee7be067284c625`. Final source checks use `9db35e5d`.
-This is partial issue work. Independent reviews, M06/V-F, owner approval and merge
-are not completed here. F1/F3/F4 remain under
+`b8344ab951fa24f545174917eee7be067284c625`. Original checks below preceded
+`c3fb1bea`; the per-entry-point repair checks use fixed `149cf859`.
+This is partial issue work. M06's initial campaign is complete; V-F, review repair
+approval, owner approval and merge are not completed here. F1/F3/F4 remain under
 [CI 品質の収束](https://claude.ai/code/session_018R7Q39hySMcnivGdtBcyJC).
 
 ## Results
@@ -20,6 +21,11 @@ are not completed here. F1/F3/F4 remain under
 | focused Docker default-parallel replay | P4 11 PASS; fixed main archive 11 PASS |
 | Linux C2d/V3 | NOT RUN on this macOS host |
 | Browser verification | NOT RUN; no UI/API response change |
+| Per-entry-point repair at 149cf859 | 18/18 crate tests PASS; default parallelism |
+| Repair fmt / workspace all-target Clippy -D warnings | PASS / PASS |
+| Six individual public prepare-bypass mutants | 6 detected with complete custody; 6 byte-identical source restoration pairs PASS |
+| Report unknown/error guard mutant | pure NoResult assertion detects; restored source/control PASS |
+| M06 initial macOS 50 x 2 at c3fb1bea | 100/100 PASS and observable; target failures/B_END/other failures/unobservable all 0 |
 
 The full execution failures are `docker_filter_and_operation_identity_are_independently_checked`
 (missing unregistered-own-volume) and `registered_docker_cleanup_preserves_three_sibling_units_and_known_work`
@@ -74,6 +80,65 @@ ESRCH, complete=true. V9 alone is registered as an intentional stop mutant;
 unregistered TIMEOUT, SETUP/NO_RESULT or unproved collection never count killed.
 OW1 pure mutants create no process; their failed assertions do not orphan workers.
 
+## Per-entry-point review repair verification
+
+Six new outer controls call spawn/output/status_std/tokio separately. Safe OwnedFd
+allocations occupy actual slots 3..9 before Tokio runtime construction. Four writer
+witnesses (4/6/8/9) have observed CLOEXEC=0 and writer-end device/inode identities;
+the three pipes are distinct and the safe duplicate matches its source writer.
+The child uses `/usr/bin/python3 -I -S` and observes all witnesses before opening
+its regular report. Bounded typed report errors are SETUP/NO_RESULT, never RESULT
+fail. Only a valid identical inherited writer report fails the control.
+
+The first compile at `fa291dc7` failed because Darwin's st_dev is signed i32.
+`149cf859` introduces a checked portable conversion, with negative identities
+classified SETUP and negative/zero/u64-max pure counterparts. The initial compile
+failure is retained. The fixed source is committed/clean before all tests.
+
+All 18 crate tests, fmt and workspace all-target Clippy pass on macOS. Six separate
+source copies each bypass prepare in just one public entry, preserving the original
+method delegation. Each exact control records a timely RESULT fail for inherited
+writer, an actual left-Fail/right-Pass assertion, and complete S1/S2/S4/S6/S7 custody.
+Each restored normal pair passes, with byte-identical source and complete recovery.
+No SETUP, NO_RESULT, unregistered TIMEOUT or incomplete recovery is counted killed.
+The seventh copy changes the common unknown/error report-token guard to Inherited;
+the pure parser's expected-NoResult assertion kills it without creating a process,
+and its restored normal pair passes. Existing inheritance/InnerOwner::close code is
+unchanged; the separate EOF-reader classification review finding remains unresolved.
+
+Every copy has its own target, compiled-source archives, source/actual binary SHA256,
+explicit cached scope, local commits and normal/mutant/restored raw logs. Normal and
+restored source inventories match exactly; their relinked binary SHA256 values differ
+and binary reproducibility is not claimed. The three compile/test phases and their
+actual observed behavior are retained. M0 verification was reported running in a
+different worktree/target; that concurrent load and nonsecret build settings are
+recorded. No test-threads override, watchdog or changed deadline is used.
+
+## M06 initial campaign
+
+Two independent git archive copies of fixed `c3fb1bea` (origin tree
+`4d385dbfd92464d24a6ff9c40fe3f9411881ae07`) receive the validated private overlay:
+143 project_api additions, no original deletions. Each overlay is committed clean
+before compiling in a fresh separate target. Both jobs run all project_api tests
+50 times with default parallelism under normal host permissions.
+
+All initial 100 attempts are retained; there is no rerun or supplemental attempt.
+All are PASS and observable, with exactly two trace records each (200 total).
+c_s3d4/m2_a failure attempts, observable B_END, unobservable attempts, other product
+failures and panic classifications are all zero. The initial inventory and source
+are consistent and M06's numerical conditions are met. Each job's 51 direct cargo
+children (compile plus 50 attempts) has matching retained-owner and wait/reap events.
+This proves direct cargo collection, not descendant process-group death. lsof's extra
+observer children, scheduling and the safe baseline output capture's FD effects
+remain measurement limitations.
+
+The M06 source stays c3fb throughout both jobs. Later commits change only cfg(test)
+fixtures and documents; the measured production files and the original worktree's
+existing binary inventory are unchanged. New tests build in a separate target, so
+this does not claim identical binaries between the instrumented measurement copies
+and the later repair build. The M06 evidence is bound to c3fb and its saved source/
+compiled-binary hashes, not relabeled as a fresh campaign at a newer commit.
+
 The initial V8 direct pure table is supplemented by the LISTFDS group harness.
 The initial V7 copy omitted README (used by include_str), so its restored all-target
 Clippy failed compilation. It is not used as a completed causal pair. V7-complete
@@ -99,10 +164,21 @@ Logs, hashes and audit records are preserved. The actual P4 worktree and branch
 remain for parent-owned independent review, CI/measurement, publication and merge;
 their cleanup occurs after merge. No root checkout or other agent worktree is removed.
 
+M06 evidence is saved under
+`.rrx/handoff-goal-20261013/p4-m06-initial-20261013/` (summary, complete-proof,
+required-artifacts and cleanup JSON; all-attempt archive; origin and transformed
+source archives; all raw logs/attempts/owner events and binary inventories).
+Both dedicated measurement copies/targets are removed after saved-source/hash/clean
+verification. Review-repair evidence is saved separately under
+`.rrx/handoff-goal-20261013/p4-api-verification-20261014/`, including the initial
+Darwin compile failure and seven restored source/control pairs. All seven private
+mutation copies and the dedicated normal verification target are removed after
+source/evidence archive and clean checks. Artifact destinations are retained.
+
 ## Remaining gates
 
-Linux C2d/V3, M06 macOS 50×2 with 100+ observable trials, V-F main/P4 Linux/macOS
-two jobs × eight repeats (including failure frequency), independent Sol/Opus
-implementation/security review, owner approval, PR publication/merge and worktree
+Linux C2d/V3, V-F main/P4 Linux/macOS two jobs × eight repeats (including failure
+frequency), the unresolved EOF-reader classification repair and independent
+Sol/Opus implementation/security repair approval, owner approval, PR publication/merge and worktree
 cleanup remain with the parent. Known Tokio post-spawn Err custody limitations
 remain unresolved by this fd boundary. Do not close issue 89 from this partial PR.
