@@ -39,7 +39,7 @@
     "result_sha256": "6cb43097f9f4c4cf3c6ec0d515577e7ba5b3e45e2d8a90256df7bd4374667373",
     "kind": "historical dedicated design repair author; see design_repair_history for subsequent authors; not independent review"
   },
-  "status": "DRAFT; owner chose legacy launch feature retirement; revised-diff independent review and whole M0 owner design approval pending; production unchanged",
+  "status": "DRAFT; legacy retirement direction approved; independent two-family design coverage complete through Sol R5 plus Opus R6 repair diff; whole M0 owner approval pending; M0 production unchanged",
   "design_repair_history": [
     {
       "phase": "R4 repair after R3 reviews",
@@ -127,7 +127,7 @@
     },
     "kind": "orchestrator-verified R5 facts; CLI completion is separate from review decision; not both approved",
     "repair": {
-      "state": "imported draft; independent repair-diff verification pending",
+      "state": "imported draft; independent Opus R6 repair-diff APPROVE on b746dfd4; whole owner approval pending",
       "author_family": "Sol",
       "independent_reviewer_family": "Opus",
       "review_scope": "repair diff only; preserve two-family independent review conditions; do not repeat unchanged full-text Sol R5 review",
@@ -3390,6 +3390,43 @@
     "progress": "https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6137767541"
   },
   "schema_contract_structure_note": "Offline public CLI-generated structure, only description/title/examples/$schema prose stripped. This is evidence for an independently authored rrx finite contract, not a live validator or successful model-path qualification.",
+  "independent_review_round_6": {
+    "fixed_head": "b746dfd4c1c0de49fe07f173f40b2c236d2c97dd",
+    "family": "Opus",
+    "decision": "APPROVE",
+    "confirmed_required": 0,
+    "closed_ids": [
+      "R5-O-01",
+      "R5-O-02"
+    ],
+    "runner_status": "ok",
+    "model_match": "match",
+    "observed_model": "claude-opus-5-5",
+    "observed_effort": "unreported",
+    "result_sha256": "c041389b040b950fb0aeb9415d1a73ab8eb5128daa893f3d45009cc627b75e22",
+    "scope": "repair diff only; combined with Sol R5 existing approved unchanged scope; not full unchanged rereview",
+    "optional_ids": [
+      "R6-O-N1",
+      "R6-O-N2"
+    ],
+    "limit_ids": [
+      "R6-O-N3",
+      "R6-O-N4"
+    ],
+    "progress": "https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6142873096",
+    "whole_owner_design_approval": "pending",
+    "implementation_or_live_qualification": false
+  },
+  "upstream_integration_after_round_6": {
+    "main": "b8344ab951fa24f545174917eee7be067284c625",
+    "head": "deb9909c661e98c12a7e7a8207c9eb6a80bad0d0",
+    "reviewed_doc_bytes_unchanged": true,
+    "pr_94": "MERGED",
+    "main_ci_run": 38371731854,
+    "linux": "success",
+    "macos": "success",
+    "not_m0_validation": true
+  },
   "schema_contract_catalog": {
     "kind": "offline public observation only; source-local refs resolve through local_definition_digests into shared_definitions; not a runtime validator",
     "source_schemas": {
