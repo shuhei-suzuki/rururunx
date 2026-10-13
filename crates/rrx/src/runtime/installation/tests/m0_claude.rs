@@ -33,6 +33,10 @@ async fn run_scenario(scenario: &str, invalid: bool, work: WorkOutcome, unfinish
     f.runtime.start().await.unwrap();
     success::wait_normal_bound(&f, task).await;
     let unit = success::bound_unit(&f, task);
+    // Weak observations borrow the genuine job originals without becoming
+    // their custody owner or fabricating authority from the copied Task/Unit.
+    let custody = f.runtime.phase_jobs.observed_preparation(unit.id).unwrap();
+    let allocation = Arc::downgrade(&f.runtime.phase_jobs.original_allocation(unit.id).unwrap());
     let (_, snapshot) = success::workflow(&f, task);
     let handle = snapshot
         .history
@@ -206,8 +210,51 @@ async fn run_scenario(scenario: &str, invalid: bool, work: WorkOutcome, unfinish
             );
         }
     }
-    f.runtime.shutdown().await.unwrap();
+    // These wire controls stop at the terminal consumer. They do not produce
+    // a committed Git artifact or the later M0 Task non-success closure.
+    // Terminal capture/confirm alone cannot retire accepted Source originals.
+    let stopped = f.runtime.shutdown().await;
+    assert_eq!(
+        stopped
+            .as_ref()
+            .err()
+            .and_then(crate::runtime::stop::pending_site),
+        Some(crate::runtime::stop::ShutdownSite::AcceptedOriginals),
+        "{scenario}: premature Source retirement or unexpected shutdown: {stopped:?}"
+    );
+    let jobs = f.runtime.phase_jobs.observed_jobs();
+    assert_eq!(
+        jobs.len(),
+        1,
+        "{scenario}: genuine job must remain retained"
+    );
+    assert_eq!(jobs[0].unit, unit.id, "{scenario}: retained job changed");
+    assert!(jobs[0].bound && !jobs[0].success_closed, "{scenario}");
+    assert!(
+        custody.upgrade().is_some(),
+        "{scenario}: custody ended at stop"
+    );
+    assert!(
+        std::sync::Weak::ptr_eq(
+            &custody,
+            &f.runtime.phase_jobs.observed_preparation(unit.id).unwrap()
+        ),
+        "{scenario}: original preparation custody replaced"
+    );
+    assert!(
+        std::sync::Weak::ptr_eq(
+            &allocation,
+            &Arc::downgrade(&f.runtime.phase_jobs.original_allocation(unit.id).unwrap())
+        ),
+        "{scenario}: original allocation replaced"
+    );
     finish(f).await;
+    success::wait_for(
+        || custody.upgrade().is_none() && allocation.upgrade().is_none(),
+        &format!("{scenario}: original custody/allocation survived Runtime drop"),
+        10,
+    )
+    .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
