@@ -44,16 +44,21 @@ async fn run_scenario(scenario: &str, invalid: bool, work: WorkOutcome, unfinish
         .find_map(|attempt| attempt.execution.clone())
         .unwrap();
     success::release_unit(&f, &unit);
-    success::wait_for(
-        || {
-            let status = status(&f, &handle);
-            status.receipt.is_some()
-                && (!invalid || status.failure == Some(NativeFailure::ProtocolFailure))
-        },
-        scenario,
-        60,
-    )
-    .await;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
+    loop {
+        let status = status(&f, &handle);
+        if status.receipt.is_some()
+            && (!invalid || status.failure == Some(NativeFailure::ProtocolFailure))
+        {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "{scenario}: terminal status {status:?}; jobs {:?}",
+            f.runtime.phase_jobs.observed_jobs()
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     let actual = status(&f, &handle);
     let usage = {
         let adapter = f
