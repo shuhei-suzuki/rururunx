@@ -208,8 +208,18 @@ impl ControlEndpoint {
         }
         owned_directory(&directory, true)?;
         let lock = private_file(&directory.join("endpoint.lock"), true)?;
-        rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)
-            .context("control endpoint already published")?;
+        let flocked =
+            rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive);
+        // MEASUREMENT ONLY (Issue #89 F1, never merged): attribute a refusal.
+        #[cfg(test)]
+        if flocked.is_err() {
+            crate::execution::owner::flock_trace(
+                "endpoint",
+                &directory.join("endpoint.lock"),
+                &lock,
+            );
+        }
+        flocked.context("control endpoint already published")?;
         let descriptor_path = directory.join("endpoint.json");
         if descriptor_path.symlink_metadata().is_ok() {
             // A stale descriptor is replaced only by the actual owner, and only

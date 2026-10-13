@@ -1,0 +1,65 @@
+# MEASUREMENT ONLY (Issue #89 F1). Lives on a measurement branch and is never merged.
+name: Issue 89 owner-lock (F1) measure
+on:
+  push:
+    branches: [claude/issue89-ownerlock-measure]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        shard: [1, 2]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+    env:
+      RRX_FLOCK_TRACE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.91.1
+      - run: cargo build --locked --workspace
+      - run: cargo test --locked -p rrx --no-run
+      - name: rrx lib (full, parallel) x4
+        shell: bash
+        run: |
+          mkdir -p out
+          for i in $(seq 1 4); do
+            start=$(date +%s)
+            cargo test --locked -p rrx --lib --no-fail-fast > out/full-$i.log 2>&1 || echo "full $i failed" >> out/summary.txt
+            echo "full $i wall_s=$(( $(date +%s) - start ))" >> out/summary.txt
+          done
+      - name: F1 tests (parallel among themselves) x20
+        shell: bash
+        run: |
+          for i in $(seq 1 20); do
+            cargo test --locked -p rrx --lib --no-fail-fast -- epoch_fence execution::owner execution::cleanup fm_rb cli::endpoint > out/focus-$i.log 2>&1 || echo "focus $i failed" >> out/summary.txt
+          done
+      - name: Report
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p out; touch out/summary.txt
+          echo "== ${{ matrix.os }} shard ${{ matrix.shard }}"; cat out/summary.txt
+          echo "== FLOCK_TRACE per (kind, test)"
+          grep -ho "FLOCK_TRACE kind=[a-z]* test=[^ ]*" out/*.log | sort | uniq -c | sort -rn || true
+          echo "== failing tests"; grep -h "^---- " out/*.log | sort | uniq -c | sort -rn | head -40 || true
+          echo "== panics (first 25 lines of each)"
+          for f in out/*.log; do
+            awk -v f="$f" '/^---- /{n=25; print "### " f} n>0 {print; n--}' "$f" | cut -c1-1500
+          done
+          echo "== FLOCK_TRACE lines of failing tests"
+          for t in $(grep -h "^---- " out/*.log | sed -E 's/^---- ([^ ]+) .*/\1/' | sort -u); do
+            grep -h "FLOCK_TRACE .*test=$t " out/*.log | cut -c1-3000 || true
+          done
+          echo "== results"; for f in out/*.log; do echo "$f: $(grep -h '^test result' "$f" | grep -v ' 0 passed; 0 failed' | tr '\n' ' ' | cut -c1-300)"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: f1-${{ matrix.os }}-${{ matrix.shard }}
+          path: out/
+          retention-days: 14

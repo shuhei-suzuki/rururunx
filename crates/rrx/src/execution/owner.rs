@@ -222,8 +222,13 @@ fn lock_state_root(state: &Path) -> Result<LockedStateRoot> {
         .mode(0o600)
         .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
         .open(&lock_path)?;
-    rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)
-        .context("another Runtime owns this state root")?;
+    let flocked = rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive);
+    // MEASUREMENT ONLY (Issue #89 F1, never merged): attribute a refusal.
+    #[cfg(test)]
+    if flocked.is_err() {
+        flock_trace("owner", &lock_path, &lock);
+    }
+    flocked.context("another Runtime owns this state root")?;
     // Rust File::open uses close-on-exec; verify rather than inheriting authority into a CLI.
     ensure!(
         rustix::io::fcntl_getfd(&lock)?.contains(rustix::io::FdFlags::CLOEXEC),
@@ -239,6 +244,60 @@ fn lock_state_root(state: &Path) -> Result<LockedStateRoot> {
         lock,
         database_file,
     })
+}
+
+/// MEASUREMENT ONLY (Issue #89 F1, never merged): who else has this lock
+/// file open when this process's own non-blocking `flock` is refused. It
+/// never takes the lock, so a test that expects the refusal sees the same
+/// outcome. Children of this process still showing the test binary's name
+/// are forks that have not reached `exec` (and so still share every flock
+/// this process holds). Active only with `RRX_FLOCK_TRACE` set.
+#[cfg(test)]
+pub(crate) fn flock_trace(kind: &str, lock_path: &Path, refused: &std::fs::File) {
+    use std::os::fd::AsRawFd;
+    if std::env::var_os("RRX_FLOCK_TRACE").is_none() {
+        return;
+    }
+    let at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    let me = std::process::id().to_string();
+    let test = std::thread::current()
+        .name()
+        .unwrap_or("<unnamed>")
+        .to_owned();
+    let run = |program: &str, args: &[&str]| {
+        std::process::Command::new(program)
+            .args(args)
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_else(|e| format!("<{program}: {e}>"))
+    };
+    let started = std::time::Instant::now();
+    let children: Vec<String> = run("ps", &["-A", "-o", "pid=,ppid=,stat=,etime=,comm="])
+        .lines()
+        .filter(|line| line.split_whitespace().nth(1) == Some(me.as_str()))
+        .map(|line| line.trim().to_owned())
+        .collect();
+    let ps_ms = started.elapsed().as_millis();
+    let path = lock_path.to_string_lossy().into_owned();
+    // p = pid, c = command, f = fd, l = lock status of that fd.
+    let holders = run("lsof", &["-n", "-F", "pcfl", "--", &path]).replace('\n', " ");
+    let lsof_ms = started.elapsed().as_millis();
+    // Linux only: the pid that placed the flock on this inode.
+    let inode = refused.metadata().map(|m| m.ino()).unwrap_or(0);
+    let proc_locks: Vec<String> = std::fs::read_to_string("/proc/locks")
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| line.contains(&format!(":{inode} ")))
+        .map(|line| line.trim().to_owned())
+        .collect();
+    eprintln!(
+        "FLOCK_TRACE kind={kind} test={test} self={me} at={at} refused_fd={} lock={path} \
+         children_at_refusal={children:?} ps_ms={ps_ms} lsof_ms={lsof_ms} \
+         lsof_holders=[{holders}] proc_locks={proc_locks:?}",
+        refused.as_raw_fd()
+    );
 }
 
 /// S3 D7 (R3.5): the offline writer's hold on a state root. It takes the
