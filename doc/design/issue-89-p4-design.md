@@ -20,7 +20,7 @@ original std/Tokio spawn/output/status method. Tokio output/status evaluate the
 original method synchronously before returning their future; using async fn would
 move spawn outside current caller locks. Stdio defaults/overrides, group,
 kill_on_drop, cancellation and Child adoption remain original. Unsafe operations
-are confined to the new crate's platform module (test FFI is test-only).
+are confined to the new crate's platform module; fixtures use safe rustix APIs.
 
 | Source | Sink | Safety rule |
 |---|---|---|
@@ -111,8 +111,14 @@ controls. Mutants deliberately entering permanent Held are not run.
 
 ## Verification state
 
-Initial source is committed; first all-target compile found Tokio import inference
-and borrowed OwnedProcess consumers, corrected before review. Final compile/fmt/
-clippy, controls/source mutants, regressions, M06, V-F and implementation reviews
-are not yet certified. Parent-owned measurement may use private instrumentation
-overlay so the measurement-only 259a467 source is not merged.
+Local macOS compilation, fmt, all-target Clippy, 11 new-crate controls, 91 related
+integration tests and tracker regression pass. V1/V2/V4/V5/V6/V7/V8/V9 and OW1
+gate/authority/classification source mutants are detected and restored controls
+pass. Linux C2d/V3 remain unexecuted locally. Initial full execution regression
+has 186 pass, two Docker failures and one existing ignore; focused Docker replay
+is 11 pass on both P4 and fixed main. The first failures remain recorded and their
+frequency/cause is not certified. See [verification ledger](../verification/issue-89-p4.md).
+
+M06, V-F and independent implementation/security reviews remain parent-owned
+merge gates. Measurement uses a private instrumentation overlay so measurement-only
+259a467 is not merged. No all-OS, process-death or full issue-completion claim is made.
