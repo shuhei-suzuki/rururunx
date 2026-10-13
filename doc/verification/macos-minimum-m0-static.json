@@ -37,9 +37,60 @@
     "effort_requested": "high",
     "effort_observed": null,
     "result_sha256": "6cb43097f9f4c4cf3c6ec0d515577e7ba5b3e45e2d8a90256df7bd4374667373",
-    "kind": "dedicated design repair author; not independent review"
+    "kind": "historical dedicated design repair author; see design_repair_history for subsequent authors; not independent review"
   },
   "status": "DRAFT; owner chose legacy launch feature retirement; revised-diff independent review and whole M0 owner design approval pending; production unchanged",
+  "design_repair_history": [
+    {
+      "phase": "R4 repair after R3 reviews",
+      "scope": "Sol: contract repair and restored sections; Opus: owner root; orchestrator combined dedicated author outputs",
+      "opus_model_reported": "claude-opus-5-5",
+      "opus_effort_reported": null,
+      "kind": "historical authorship transcribed from tracked design; not independent review"
+    },
+    {
+      "phase": "R5 local repair imported draft",
+      "fixed_head": "2c9fb68f6f6544ef9c8b3b53c7f936aec2e354e2",
+      "scope": "Sol repair purpose: shared metrics/root and orchestrator source-confirmed reference findings",
+      "applied": true,
+      "served_model_match": "not_certified",
+      "effort_observed": null,
+      "kind": "dedicated read-only author output imported by orchestrator; independent review and whole owner approval pending",
+      "model_requested": "gpt-6.1-sol",
+      "model_match": "unreported",
+      "effort_requested": "high",
+      "result_sha256": "7a59495cceae2b982a04d8551698b5d082aa9256dceaac8fa6d023a9a55e0187",
+      "edits": 42
+    }
+  ],
+  "independent_review_round_3": {
+    "sol_decision": "REQUEST CHANGES",
+    "opus_decision": "REQUEST CHANGES",
+    "evidence": "historical decisions transcribed from tracked design header; no new review or model-match attestation"
+  },
+  "independent_review_round_4": {
+    "fixed_head": "2c9fb68f6f6544ef9c8b3b53c7f936aec2e354e2",
+    "sol": {
+      "decision": "REQUEST CHANGES",
+      "standing": "formal change request",
+      "observed_model": "unreported",
+      "observed_effort": "unreported"
+    },
+    "opus": {
+      "cli_child_exit": 0,
+      "runner_exit": 9,
+      "runner_reason": "model_mismatch",
+      "model_usage_families": [
+        "Opus",
+        "Haiku"
+      ],
+      "standing": "unverified reference only; mandatory independent review incomplete",
+      "fallback_or_helper": "not_determined",
+      "approval_vote": false
+    },
+    "progress": "https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6140066238",
+    "result_record": "saved privately with bytes/hash and public ID/title/Severity/Status summary"
+  },
   "scope_decisions": {
     "runtime_merge": "included by owner",
     "rate_limit_event": "startup decoder selfcheck; strictly parse if emitted; do not certify unobserved event",

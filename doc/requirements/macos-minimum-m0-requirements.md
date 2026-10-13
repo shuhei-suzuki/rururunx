@@ -2,17 +2,21 @@
 
 状態: **DRAFT / A3 は旧 API の機能廃止として整理する方針に確定 / 修正差分の独立確認・オーナー設計承認前**。本番コード・テストは変更していない。
 
-公開sourceのbaseline: `cb9c17e023601b3dbe721495bbdf50c9f65d92bb`。前回修正の入力／review比較元: `d452675989df799d29931c7d4f19d73d6b387550`。今回の修正執筆入力はclean固定HEAD `b22f22a521424eefc3e61fb1a109bfc85965e5ef`。baselineと執筆入力HEADを混同しない。
+公開sourceのbaseline: `cb9c17e023601b3dbe721495bbdf50c9f65d92bb`。過去の修正入力: `d452675989df799d29931c7d4f19d73d6b387550`。今回の局所修正本文案の入力はclean固定HEAD `2c9fb68f6f6544ef9c8b3b53c7f936aec2e354e2`。局所修正本文は設計草案へ取込済み。独立レビュー・オーナー承認・実装検証は未完了。baselineと執筆入力HEADを混同しない。
 
-本文の修正執筆: Codex CLI に `gpt-6.1-sol` / high を固定 argv で要求。CLI の実使用モデルと effort は未報告（一致は未確認）。独立レビュアーの context は執筆へ流用していない。これは独立レビュー・実装・実機検証の証拠ではない。
+既存本文の修正執筆履歴: Codex CLI に `gpt-6.1-sol` / high を固定 argv で要求。CLI の実使用モデルと effort は未報告（一致は未確認）。独立レビュアーの context は執筆へ流用していない。これは独立レビュー・実装・実機検証の証拠ではない。
 
-前回の Sol/Opus 修正差分レビューはともに REQUEST CHANGES。今回の修正版は独立確認前であり、指摘を解消済み・close と認定しない。詳細レビューと指摘の突合は私的記録に保持する。[進捗](https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6137767541)
+執筆履歴の事実転記: R3後の専用2 contextでは契約補正・欠落節復元をSol、owner rootをOpusが担当し、orchestratorが結合した。Opusはclaude-opus-5-5を報告、effortは未報告。今回のSol R5局所修正で共有metrics／rootとsource照合済みのOpus参考差分をまとめ、42差分を照合して取り込んだ。これは独立レビューやserved model／effortの一致認定ではない。
+
+履歴転記: Sol／Opusのround 3修正差分レビューはともにREQUEST CHANGES。
+
+Sol R4は正式なREQUEST CHANGES。Opus R4はCLI child exit 0でもmodelUsageにOpus＋Haikuがあり、runner exit 9／model_mismatchで必須レビュー未完了。参考本文は承認・票に使わず、orchestratorのsource照合で確認した差分だけを局所補修する。修正後はmodel一致のOpus独立確認と全体オーナー承認が必要である。[R4結果の公開記録](https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6140066238)。
 
 オーナー確定事項（2026-10-13）: 番号 pin 撤廃と capability probe、R1（decoder selfcheck＋実 event strict、未観測は未証明）、M4 の runtime 自動 merge、public [rrx-e2e-sandbox](https://github.com/shuhei-suzuki/rrx-e2e-sandbox) の作成・使用。再承認を求める事項ではない。sandbox は初期 README のみで、fixture・CI・main 保護は未設定。
 
 **macOS最小一本道M0：要件修正全文**
 
-今回の執筆入力HEADは `b22f22a521424eefc3e61fb1a109bfc85965e5ef`。公開sourceのbaselineは冒頭の別HEADである。状態は **DRAFT／修正差分の独立確認・オーナー設計承認前**。本稿は設計修正の執筆成果であり、レビュー票、承認、実装または検証結果ではない。実装、実CLI資格付け、macOS／Linux検証、CI、owner-run、オーナー設計承認はすべて未完了である。
+今回の局所修正本文案の入力HEADは `2c9fb68f6f6544ef9c8b3b53c7f936aec2e354e2`。公開sourceのbaselineは冒頭の別HEADである。状態は **DRAFT／修正差分の独立確認・オーナー設計承認前**。本稿は設計修正の執筆成果であり、レビュー票、承認、実装または検証結果ではない。実装、実CLI資格付け、macOS／Linux検証、CI、owner-run、オーナー設計承認はすべて未完了である。
 
 M0は#5/#6のSTRICT互換変更、M1は#95、M2は#12、M3は#9、M4は#13、M5は#16に対応する。M0の実Mac受入前にM1へ進まない。M4のruntime自動mergeとpublic `shuhei-suzuki/rrx-e2e-sandbox` の作成・使用は決定済みであり、再承認事項にしない。
 
@@ -36,7 +40,7 @@ Codexモデル実行、2run、#10の権限応答資格付け、#14の自動復�
 | AC-02 | 設定された全Native aliasのS合格公開前はTask admission 0。1 aliasでもpending／refused／unknownなら全体を止める。Sが作るTask／Unit／Session／NativeInputは0。 |
 | AC-03 | SでClaude initialize、Codex schema・initialize・ChatGPT account・environment ready・rate metadataを確認する。SでClaude system-init／resultやCodexモデル経路を確認済みと記録しない。 |
 | AC-04 | PはSから独立したfreshなSAME actor観測。Claude canaryはquota Admit後、Session・NativeInput・transport登録前。Codexは同じ準備actorのSchema／Handshakeを必須とする。 |
-| AC-05 | envelope、method、payload、入れ子discriminatorを所有フィルタより前に検査する。未知・malformed・UUID内容改変を無視しない。正常なignored通知、foreign通知、合法toolの本番positiveを維持する。 |
+| AC-05 | envelope、method、payload、入れ子discriminatorを所有フィルタより前に検査する。未知variant・malformed・UUID内容改変を無視しない。正常ignored／foreign／合法toolのpositiveは設計§6・§7の有限受理構造内を母集団とする。既知frameの有界未宣言field保持、Codex closed object／判別keyの例外、Claude表外variant／blockの意図した拒否を設計§6・§7・A5に対応付け、追加field保持を未知variant受理へ広げない。 |
 | AC-06 | installationはdecoder selfcheck成功の証拠を必要とする。実rate eventの解析不能は終端エラー。未着、合法だがwindowなし、usableな観測を別々に記録する。 |
 | AC-07 | rrxのモデル入力は既存quota Admit後だけ。canary観測をquota観測としてpool／window／backoffへ反映しない。既存lease・probe ownership・期限・CAS bookkeepingは維持する。 |
 | AC-08 | **登録前拒否**ではSession、native invocation、native input/setup/permission、transport登録、IPC Grant、および当該helper以外の効果追加が0。S／installation拒否ではUnitも0。Pでは既存Preparing Unitとhelper行の存在を許容し、terminal dispositionを検査する。 |
