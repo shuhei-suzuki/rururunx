@@ -115,7 +115,7 @@ fn inheritance(cloexec: bool, high: bool) -> Result<(), String> {
                 .saturating_sub(1),
         )
         .map_err(|_| "SETUP fd limit")?;
-        write = rustix::io::fcntl_dupfd(&write, target)
+        write = rustix::io::fcntl_dupfd_cloexec(&write, target)
             .map_err(|e| format!("SETUP high dup fd={target}: {e}"))?;
     }
     rustix::io::fcntl_setfd(
