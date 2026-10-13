@@ -351,7 +351,7 @@ fn classify(stdout: &str, success: bool) -> Classification {
         [line] if line.starts_with("P4C SETUP fail") => Classification::Setup,
         ["P4C RESULT pass"] if success => Classification::Pass,
         [line] if line.starts_with("P4C RESULT fail:") => {
-            Classification::Fail(line[17..].to_owned())
+            Classification::Fail(line.trim_start_matches("P4C RESULT fail:").to_owned())
         }
         _ => Classification::NoResult,
     }

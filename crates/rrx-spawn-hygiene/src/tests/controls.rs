@@ -365,6 +365,7 @@ fn worker() {
         ),
         "C2f" => inheritance(false, true),
         "C2g" => stdio(),
+        "LISTFDS" => crate::tests::check_listfds(),
         "OW2" => leave_member(),
         _ => Err("SETUP unknown case".into()),
     };
@@ -392,7 +393,7 @@ fn leave_member() -> Result<(), String> {
     Ok(())
 }
 
-fn run(case: &str) {
+pub(super) fn run(case: &str) {
     let owner = WorkerGroupOwner::start(case)
         .unwrap_or_else(|error| panic!("P4C SETUP before child: {error}"));
     let report = owner.finish();
