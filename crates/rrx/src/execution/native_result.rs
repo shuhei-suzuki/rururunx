@@ -376,12 +376,13 @@ impl Collector {
     pub(super) fn confirm_complete(&mut self) {
         self.completed = true;
     }
-    pub(super) fn claude_redelivery(&mut self, frame: &serde_json::Value) {
+    pub(super) fn claude_redelivery(&mut self, result: &super::claude_wire::ValidatedClaudeResult) {
+        let frame = result.raw();
         if frame["uuid"]
             .as_str()
             .is_some_and(|id| self.claude_ids.contains_key(id))
         {
-            self.claude_terminal(frame);
+            self.claude_terminal(result);
         }
     }
     pub(super) fn wire_failed(&mut self, wire: &WireEvidence) {
@@ -548,7 +549,8 @@ impl Collector {
             );
         }
     }
-    pub(super) fn claude_terminal(&mut self, frame: &serde_json::Value) {
+    pub(super) fn claude_terminal(&mut self, result: &super::claude_wire::ValidatedClaudeResult) {
+        let frame = result.raw();
         if !self.event() {
             return;
         }

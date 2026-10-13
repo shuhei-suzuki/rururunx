@@ -145,12 +145,36 @@ for line in sys.stdin:
         elif value["type"] == "user":
             send({"type": "system", "subtype": "init", "session_id": native, "cwd": os.getcwd(), "tools": ["Bash"], "mcp_servers": []})
             payload = value["message"]["content"]
+            if payload.startswith("m0-rate-"):
+                send({"type":"rate_limit_event", "session_id":"foreign" if payload.endswith("-foreign") else native, "rate_limit_info":{"rateLimitType":"five_hour", "status":"allowed" if "-control-" in payload else "future_status"}})
+                send({"type":"result", "session_id":native, "subtype":"success", "is_error":False, "result":"M0 validated answer"})
+                continue
+            if payload.startswith("m0-wire-"):
+                branch = "error" if "-error-" in payload else "success"
+                frame = {"type":"result", "session_id":native, "subtype":"error_during_execution" if branch == "error" else "success", "is_error":branch == "error"}
+                if branch == "error": frame["errors"] = ["ordinary fixture failure"]
+                else: frame["result"] = "M0 validated answer"
+                if "-unfinished-" in payload:
+                    send({"type":"system", "subtype":"session_state_changed", "state":"running"})
+                    send({"type":"result", "session_id":native, "subtype":"success", "is_error":False, "result":"prior unfinished answer", "total_cost_usd":0.25})
+                # Paired control/negative differ in exactly this one field.
+                field = payload.rsplit("-", 1)[-1]
+                valid = "-control-" in payload
+                if field == "usage": frame["usage"] = {} if valid else "wrongtype"
+                elif field in ("input", "output", "read", "write"):
+                    key = {"input":"input_tokens", "output":"output_tokens", "read":"cache_read_input_tokens", "write":"cache_creation_input_tokens"}[field]
+                    frame["usage"] = {key:0 if valid else "wrongtype"}
+                elif field == "cost": frame["total_cost_usd"] = 0 if valid else -1
+                elif field == "duration": frame["duration_api_ms"] = 0 if valid else 0.5
+                else: raise RuntimeError("unknown M0 wire fixture scenario")
+                send(frame)
+                continue
             if payload.startswith("answer-"):
                 if payload in ("answer-changing-held","answer-sameuuid-changing-held","answer-identical-held"):
                     send({"type":"system","subtype":"session_state_changed","session_id":native,"state":"running"})
-                    a={"type":"result","session_id":native,"uuid":"answer-A","subtype":"success","is_error":False,"result":"APPROVE A"}
+                    a={"type":"result","session_id":native,"uuid":"12345678-1234-1234-1234-123456789abc","subtype":"success","is_error":False,"result":"APPROVE A"}
                     send(a)
-                    send(dict(a,uuid="answer-A" if payload=="answer-sameuuid-changing-held" else "answer-B",result="APPROVE A" if payload=="answer-identical-held" else "APPROVE B"))
+                    send(dict(a,uuid=a["uuid"] if payload=="answer-sameuuid-changing-held" else "12345678-1234-1234-1234-123456789abd",result="APPROVE A" if payload=="answer-identical-held" else "APPROVE B"))
                     send({"type":"system","subtype":"session_state_changed","session_id":native,"state":"idle"})
                     continue
                 frame = {"type":"result","session_id":native,"subtype":"success","is_error":payload == "answer-failed","result":"APPROVE actual answer"}
@@ -171,7 +195,7 @@ for line in sys.stdin:
                 else:
                     if payload == "authentication-structured":
                         send({"type":"assistant", "session_id":native, "parent_tool_use_id":None, "error":"authentication_failed", "message":{"role":"assistant","content":[]}})
-                    send({"type":"result", "session_id":native, "subtype":"error_during_execution", "is_error":True, "result":"Not logged in: PRIVATE_FIXTURE_ERROR_MUST_NOT_PERSIST" if payload == "authentication-terminal" else ""})
+                    send({"type":"result", "session_id":native, "subtype":"error_during_execution", "is_error":True, "errors":[], "result":"Not logged in: PRIVATE_FIXTURE_ERROR_MUST_NOT_PERSIST" if payload == "authentication-terminal" else ""})
             elif payload.startswith("capacity-"):
                 if payload == "capacity-unknown-window":
                     send({"type":"rate_limit_event", "session_id":native, "rate_limit_info":{"rateLimitType":"future_window", "status":"rejected"}})
@@ -180,13 +204,16 @@ for line in sys.stdin:
                     if payload == "capacity-background-control": assistant["parent_tool_use_id"] = "background-tool"
                     send(assistant)
                 if payload == "capacity-retry-success":
-                    send({"type":"result", "session_id":native, "subtype":"success", "is_error":False})
+                    send({"type":"result", "session_id":native, "subtype":"success", "is_error":False, "result":"fixture retry success"})
                 else:
-                    send({"type":"result", "session_id":native, "subtype":"error_max_turns" if payload == "capacity-cap-control" else "success" if payload == "capacity-http" else "error_during_execution", "is_error":True, "api_error_status":429 if payload == "capacity-http" else None})
+                    terminal = {"type":"result", "session_id":native, "subtype":"error_max_turns" if payload == "capacity-cap-control" else "success" if payload == "capacity-http" else "error_during_execution", "is_error":True, "api_error_status":429 if payload == "capacity-http" else None}
+                    if terminal["subtype"] == "success": terminal["result"] = "fixture capacity failure"
+                    else: terminal["errors"] = []
+                    send(terminal)
             elif payload.startswith("quota-"):
                 def quota(bucket, status, session=native, reset=None):
                     send({"type": "rate_limit_event", "session_id": session, "rate_limit_info": {"rateLimitType": bucket, "status": status, "resetsAt": int(time.time()) + 3600 if reset is None else reset}})
-                quota("future_window" if payload == "quota-unknown-held" else "five_hour", "rejected", "foreign" if payload in ("quota-foreign", "quota-foreign-held") else native, int(time.time()) - 1 if payload == "quota-live-recovery-held" else None)
+                quota("five_hour", "allowed" if payload == "quota-unknown-held" else "rejected", "foreign" if payload in ("quota-foreign", "quota-foreign-held") else native, int(time.time()) - 1 if payload == "quota-live-recovery-held" else None)
                 quota("five_hour" if payload == "quota-stale-available" else "seven_day", "allowed")
                 if payload.endswith("-held"):
                     # An ordinary permission notification is an ordered barrier:
@@ -197,11 +224,16 @@ for line in sys.stdin:
                         quota("five_hour", "allowed")
                         send({"type":"control_request", "request_id":"recovery-barrier", "request":{"subtype":"can_use_tool", "tool_use_id":"fixture-recovery-barrier", "tool_name":"Bash", "input":{"command":"echo fixture"}}})
                     while not os.path.exists(os.path.join(os.environ["RRX_OUTPUT_DIR"], "fixture-quota-release")): time.sleep(0.02)
+                if payload == "quota-unknown-held":
+                    # Keep the existing barrier/sibling coverage, then emit the
+                    # unknown enum. Strict rejection cannot become capacity.
+                    quota("future_window", "rejected")
+                    continue
                 if payload in ("quota-retry-success-held", "quota-live-recovery-held"):
                     send({"type":"result", "session_id":native, "subtype":"success", "is_error":False, "result":"fixture successful native retry"})
                     continue
                 subtype = "error_max_turns" if payload == "quota-budget-failure" else "error_during_execution"
-                send({"type": "result", "session_id": native, "subtype": subtype, "is_error": True})
+                send({"type": "result", "session_id": native, "subtype": subtype, "is_error": True, "errors": []})
             else:
                 complete(payload)
                 send({"type": "result", "session_id": native, "subtype": "success", "is_error": False, "result": "fixture complete"})

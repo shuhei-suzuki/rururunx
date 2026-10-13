@@ -2,7 +2,9 @@
 use crate::adapter::{AdapterError, AdapterResult, ErrorKind};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+mod decoded;
+pub(super) use decoded::{ValidatedClaudeFrame, ValidatedClaudeResult, decoder_selfcheck};
 
 pub(super) fn failure(kind: ErrorKind, message: impl Into<String>) -> AdapterError {
     AdapterError {
@@ -43,7 +45,8 @@ pub(super) fn control(subtype: &str, id: &str) -> Value {
     };
     json!({"type":"control_request","request_id":id,"request":request})
 }
-pub(super) fn control_result(message: &Value, id: &str) -> AdapterResult<Value> {
+pub(super) fn control_result(frame: &ValidatedClaudeFrame, id: &str) -> AdapterResult<Value> {
+    let message = frame.raw();
     if message["type"] != "control_response"
         || message["response"]["request_id"] != id
         || message["response"]["subtype"] != "success"
@@ -65,7 +68,8 @@ pub(super) struct Pending {
     pub hash: String,
 }
 impl Pending {
-    pub fn parse(message: &Value, native: &str) -> AdapterResult<Self> {
+    pub fn parse(frame: &ValidatedClaudeFrame, native: &str) -> AdapterResult<Self> {
+        let message = frame.raw();
         let request_id = bounded_id(&message["request_id"])?;
         let request = &message["request"];
         if request["subtype"] != "can_use_tool" || !request["input"].is_object() {
@@ -113,57 +117,71 @@ impl Pending {
         json!({"native_uuid":native,"request_id":self.request_id,"tool_use_id":self.tool_use_id,"tool_name":self.tool_name,"operation_hash":self.hash})
     }
 }
-#[derive(Clone, Default, Debug)]
-pub(super) struct Metrics {
-    pub input: Option<u64>,
-    pub output: Option<u64>,
-    pub cache_read: Option<u64>,
-    pub cache_write: Option<u64>,
-    pub cost: Option<f64>,
-    pub api_ms: Option<u64>,
-    pub cumulative_cost: Option<f64>,
-    pub cumulative_api_ms: Option<u64>,
+/// Validated telemetry only; neither metrics nor its absence grants execution.
+#[derive(Clone, Debug)]
+pub struct Metrics {
+    input: Option<u64>,
+    output: Option<u64>,
+    cache_read: Option<u64>,
+    cache_write: Option<u64>,
+    cost: Option<f64>,
+    api_ms: Option<u64>,
+    cumulative_cost: Option<f64>,
+    cumulative_api_ms: Option<u64>,
 }
 impl Metrics {
-    pub fn parse(result: &Value, previous: Option<&Self>, resumed: bool) -> AdapterResult<Self> {
-        // Optional telemetry is not terminal outcome authority. Invalid or
-        // omitted counters stay nullable, and cannot turn proven success into
-        // an unknown operation eligible for replay.
-        let counter = |key: &str| -> AdapterResult<Option<u64>> {
-            Ok(result
-                .get("usage")
-                .and_then(|u| u.get(key))
-                .and_then(Value::as_u64))
-        };
-        let cost = result
-            .get("total_cost_usd")
-            .and_then(Value::as_f64)
-            .filter(|n| n.is_finite() && *n >= 0.0);
-        let api_ms = result.get("duration_api_ms").and_then(Value::as_u64);
-        // This wire version does not report whether resumed gauges are
-        // cumulative or reset. Monotonicity cannot establish attribution.
+    pub(super) fn from_result(result: &ValidatedClaudeResult, resumed: bool) -> Self {
+        let telemetry = result.telemetry();
+        let cost = telemetry.cost.value();
+        let api_ms = telemetry.api_ms.value();
+        let usage = matches!(telemetry.usage, decoded::Presence::Value(()));
+        // This receive contract does not attribute resumed gauges to a phase.
+        // Monotonicity cannot establish whether gauges are cumulative or reset.
         // Retain actual raw gauges, but never invent a resumed phase delta.
-        let _ = previous;
         let delta_cost = (!resumed).then_some(cost).flatten();
         let delta_ms = (!resumed).then_some(api_ms).flatten();
-        Ok(Self {
-            input: counter("input_tokens")?,
-            output: counter("output_tokens")?,
-            cache_read: counter("cache_read_input_tokens")?,
-            cache_write: counter("cache_creation_input_tokens")?,
+        Self {
+            input: usage.then(|| telemetry.input.value()).flatten(),
+            output: usage.then(|| telemetry.output.value()).flatten(),
+            cache_read: usage.then(|| telemetry.cache_read.value()).flatten(),
+            cache_write: usage.then(|| telemetry.cache_write.value()).flatten(),
             cost: delta_cost,
             api_ms: delta_ms,
             cumulative_cost: cost,
             cumulative_api_ms: api_ms,
-        })
+        }
+    }
+    pub fn input(&self) -> Option<u64> {
+        self.input
+    }
+    pub fn output(&self) -> Option<u64> {
+        self.output
+    }
+    pub fn cache_read(&self) -> Option<u64> {
+        self.cache_read
+    }
+    pub fn cache_write(&self) -> Option<u64> {
+        self.cache_write
+    }
+    pub fn cost(&self) -> Option<f64> {
+        self.cost
+    }
+    pub fn api_ms(&self) -> Option<u64> {
+        self.api_ms
+    }
+    pub fn cumulative_cost(&self) -> Option<f64> {
+        self.cumulative_cost
+    }
+    pub fn cumulative_api_ms(&self) -> Option<u64> {
+        self.cumulative_api_ms
     }
 }
 #[derive(Default)]
 pub(super) struct RunState {
-    ids: BTreeSet<String>,
+    ids: BTreeMap<String, String>,
     tasks: BTreeSet<String>,
     pub initialized: bool,
-    pub result: Option<Value>,
+    pub result: Option<ValidatedClaudeResult>,
     state: Option<String>,
     injected_turn: bool,
     await_final_idle: bool,
@@ -175,22 +193,36 @@ pub(super) struct RunState {
 impl RunState {
     pub fn observe(
         &mut self,
-        message: &Value,
+        frame: &ValidatedClaudeFrame,
         native: &str,
         cwd: &std::path::Path,
         decision: bool,
     ) -> AdapterResult<bool> {
+        let message = frame.raw();
         if let Some(id) = message.get("uuid") {
             let id = bounded_id(id)?;
-            if !self.ids.insert(id) {
+            let signature = frame.digest();
+            if let Some(old) = self.ids.get(&id) {
+                if old != &signature {
+                    return Err(failure(
+                        ErrorKind::ParseFailure,
+                        "native UUID content changed",
+                    ));
+                }
                 return Ok(false);
             }
-            if self.ids.len() > 8192 {
+            if self.ids.len() >= 8192 {
                 return Err(failure(
                     ErrorKind::ParseFailure,
                     "native message count bound exceeded",
                 ));
             }
+            self.ids.insert(id, signature);
+        }
+        // A legal foreign rate event is ignored, but only after full decode and
+        // UUID-content validation. It never reaches the subscription pool.
+        if message["type"] == "rate_limit_event" && message["session_id"] != native {
+            return Ok(false);
         }
         if message.get("session_id").is_some_and(|id| id != native) {
             return Err(failure(
@@ -302,7 +334,7 @@ impl RunState {
                 }
                 if message["session_id"] == native
                     && message["parent_tool_use_id"].is_null()
-                    && (message["origin"].is_null() || message["origin"]["kind"] == "human")
+                    && frame.human_origin()
                 {
                     // This is a hint for a later owned terminal, not a terminal
                     // itself: the native CLI may retry this assistant error.
@@ -338,7 +370,7 @@ impl RunState {
                         "malformed native terminal",
                     ));
                 }
-                if !message["origin"].is_null() && message["origin"]["kind"] != "human" {
+                if !frame.human_origin() {
                     self.had_background |= self.result.is_some();
                     self.injected_turn = false;
                     self.failed_tasks |= subtype != Some("success") || is_error != Some(false);
@@ -402,13 +434,12 @@ impl RunState {
                         "native turn reported an unsuccessful terminal",
                     ));
                 }
-                self.result = Some(message.clone());
+                self.result = frame.result().cloned();
             }
             Some("user") => {
                 if self.result.is_some()
                     && message["parent_tool_use_id"].is_null()
-                    && !message["origin"].is_null()
-                    && message["origin"]["kind"] != "human"
+                    && !frame.human_origin()
                 {
                     self.had_background = true;
                     self.injected_turn = true;
@@ -416,7 +447,7 @@ impl RunState {
             }
             Some(
                 "stream_event" | "tool_progress" | "tool_use_summary" | "auth_status"
-                | "rate_limit_event",
+                | "rate_limit_event" | "control_request" | "control_response",
             ) => {}
             _ => {
                 return Err(failure(
@@ -462,205 +493,4 @@ fn capacity_text(text: &str) -> bool {
     .any(|s| lower.contains(s))
 }
 #[cfg(test)]
-mod tests {
-    use super::*;
-    /// Pin 2.1.294 (owner decision A1): exactly that first token qualifies.
-    #[test]
-    fn version_gate_accepts_only_the_exact_pinned_release() {
-        for ok in ["2.1.294 (Claude Code)", "2.1.294", "2.1.294\n"] {
-            assert!(verify_version(ok).is_ok(), "{ok:?}");
-        }
-        for refused in [
-            "2.1.283 (Claude Code)",
-            "2.1.293 (Claude Code)",
-            "2.1.2940 (Claude Code)",
-            "2.1.29",
-            "v2.1.294",
-            "",
-        ] {
-            assert!(verify_version(refused).is_err(), "{refused:?}");
-        }
-    }
-    #[test]
-    fn injected_failures_do_not_replace_human_proof_and_midturn_user_does_not_hang() {
-        let path = std::path::Path::new("/owned");
-        for injected in [
-            json!({"type":"result","session_id":"n","subtype":"error_during_execution","is_error":true,"origin":{"kind":"task-notification"}}),
-            json!({"type":"result","session_id":"n","origin":{"kind":"task-notification"}}),
-        ] {
-            let mut state = RunState::default();
-            state.observe(&json!({"type":"system","subtype":"init","session_id":"n","cwd":"/owned","tools":[],"mcp_servers":[]}),"n",path,false).unwrap();
-            state
-                .observe(
-                    &json!({"type":"user","origin":{"kind":"hook"},"parent_tool_use_id":null}),
-                    "n",
-                    path,
-                    false,
-                )
-                .unwrap();
-            state.observe(&json!({"type":"result","session_id":"n","subtype":"success","is_error":false,"result":"human"}),"n",path,false).unwrap();
-            assert!(
-                state.complete(),
-                "mid-turn feedback must not strand the owned input"
-            );
-            assert!(!state.observe(&json!({"type":"assistant","parent_tool_use_id":"subagent","message":{"content":[{"type":"text","text":"foreign"}]}}),"n",path,false).unwrap());
-            assert!(
-                state.complete(),
-                "nested output cannot create an untracked top-level turn"
-            );
-            state.observe(&json!({"type":"user","origin":{"kind":"task-notification"},"parent_tool_use_id":null}),"n",path,false).unwrap();
-            assert!(!state.complete());
-            if injected.get("subtype").is_some() {
-                assert!(!state.observe(&injected, "n", path, false).unwrap());
-                assert!(state.failed_tasks);
-                assert!(state.complete());
-            } else {
-                assert_eq!(
-                    state.observe(&injected, "n", path, false).unwrap_err().kind,
-                    ErrorKind::ParseFailure
-                );
-                assert!(!state.complete());
-            }
-            assert_eq!(state.result.as_ref().unwrap()["result"], "human");
-            assert!(state.had_background);
-        }
-    }
-    #[test]
-    fn injected_or_malformed_results_cannot_complete_the_owned_input() {
-        let path = std::path::Path::new("/owned");
-        let mut state = RunState::default();
-        state.observe(&json!({"type":"system","subtype":"init","session_id":"n","cwd":"/owned","tools":[],"mcp_servers":[]}),"n",path,true).unwrap();
-        for origin in ["task-notification", "mcp-channel", "peer"] {
-            assert!(!state.observe(&json!({"type":"result","session_id":"n","subtype":"success","is_error":false,"origin":{"kind":origin}}),"n",path,true).unwrap());
-            assert!(!state.complete());
-        }
-        for result in [
-            json!({"type":"result","session_id":"n"}),
-            json!({"type":"result","session_id":"n","subtype":"error_during_execution","is_error":false}),
-        ] {
-            assert_eq!(
-                state.observe(&result, "n", path, true).unwrap_err().kind,
-                ErrorKind::ParseFailure
-            );
-            assert!(!state.complete());
-        }
-        assert!(state.observe(&json!({"type":"result","session_id":"n","subtype":"success","is_error":false,"origin":{"kind":"human"}}),"n",path,true).unwrap());
-        assert!(state.complete());
-    }
-    #[test]
-    fn completed_background_injection_preserves_human_result_and_requires_final_idle() {
-        let path = std::path::Path::new("/owned");
-        let mut state = RunState::default();
-        state.observe(&json!({"type":"system","subtype":"init","session_id":"n","cwd":"/owned","tools":[],"mcp_servers":[]}), "n", path, false).unwrap();
-        state.observe(&json!({"type":"system","subtype":"task_started","task_id":"t","task_type":"local_agent"}), "n", path, false).unwrap();
-        state.observe(&json!({"type":"result","session_id":"n","subtype":"success","is_error":false,"result":"human"}), "n", path, false).unwrap();
-        state
-            .observe(
-                &json!({"type":"system","subtype":"session_state_changed","state":"idle"}),
-                "n",
-                path,
-                false,
-            )
-            .unwrap();
-        assert!(!state.complete());
-        state.observe(&json!({"type":"system","subtype":"task_notification","task_id":"t","status":"completed"}), "n", path, false).unwrap();
-        assert!(!state.complete());
-        assert!(!state.observe(&json!({"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"text","text":"injected"}]}}), "n", path, false).unwrap());
-        assert!(!state.observe(&json!({"type":"result","session_id":"n","subtype":"success","is_error":false,"origin":{"kind":"task-notification"},"result":"injected"}), "n", path, false).unwrap());
-        assert_eq!(state.result.as_ref().unwrap()["result"], "human");
-        state.observe(&json!({"type":"system","subtype":"task_notification","task_id":"foreign-peer","status":"failed"}), "n", path, false).unwrap();
-        assert!(!state.failed_tasks);
-        assert!(!state.complete());
-        state
-            .observe(
-                &json!({"type":"system","subtype":"session_state_changed","state":"idle"}),
-                "n",
-                path,
-                false,
-            )
-            .unwrap();
-        assert!(state.complete());
-    }
-    #[test]
-    fn invocation_tokens_and_resumed_gauges_have_different_authority() {
-        let a = Metrics::parse(&json!({"usage":{"input_tokens":2,"output_tokens":13,"cache_creation_input_tokens":11924,"cache_read_input_tokens":531},"total_cost_usd":0.0957662,"duration_api_ms":1585}),None,false).unwrap();
-        let b = Metrics::parse(&json!({"usage":{"input_tokens":2,"output_tokens":12,"cache_creation_input_tokens":351,"cache_read_input_tokens":12228},"total_cost_usd":0.1012678,"duration_api_ms":3094}),Some(&a),true).unwrap();
-        assert_eq!(
-            (b.input, b.output, b.cache_write, b.api_ms),
-            (Some(2), Some(12), Some(351), None)
-        );
-        assert_eq!(b.cost, None);
-        assert_eq!(b.cumulative_cost, Some(0.1012678));
-        assert_eq!(b.cumulative_api_ms, Some(3094));
-        let invalid = Metrics::parse(&json!({"usage":{"input_tokens":-1,"output_tokens":"13"},"total_cost_usd":-2,"duration_api_ms":"100"}), None, false).unwrap();
-        assert!(
-            invalid.input.is_none()
-                && invalid.output.is_none()
-                && invalid.cost.is_none()
-                && invalid.api_ms.is_none()
-        );
-        let reset = Metrics::parse(
-            &json!({"total_cost_usd":0,"duration_api_ms":1}),
-            Some(&b),
-            true,
-        )
-        .unwrap();
-        assert!(reset.input.is_none() && reset.cost.is_none() && reset.api_ms.is_none());
-    }
-    #[test]
-    fn exact_native_operation_reply_never_persists_grants() {
-        let p = Pending::parse(&json!({"request_id":"req","request":{"subtype":"can_use_tool","tool_use_id":"use","tool_name":"Bash","input":{"command":"pwd"}}}),"native").unwrap();
-        assert_eq!(
-            p.reply(true)["response"]["response"]["updatedInput"],
-            p.input
-        );
-        assert!(
-            p.reply(true)["response"]["response"]
-                .get("updatedPermissions")
-                .is_none()
-        );
-        assert!(p.public("native").get("input").is_none());
-        let mut other = p.clone();
-        other.tool_use_id = "different".into();
-        let q = Pending::parse(&json!({"request_id":"req","request":{"subtype":"can_use_tool","tool_use_id":other.tool_use_id,"tool_name":"Bash","input":p.input}}),"native").unwrap();
-        assert_ne!(p.hash, q.hash);
-    }
-    #[test]
-    fn background_agent_and_running_state_prevent_early_success() {
-        let mut s = RunState::default();
-        let path = std::path::Path::new("/owned");
-        s.observe(&json!({"type":"system","subtype":"init","session_id":"n","cwd":"/owned","tools":[],"mcp_servers":[]}),"n",path,true).unwrap();
-        s.observe(&json!({"type":"system","subtype":"task_started","task_id":"a","task_type":"local_agent"}),"n",path,false).unwrap();
-        s.observe(
-            &json!({"type":"result","session_id":"n","subtype":"success","is_error":false}),
-            "n",
-            path,
-            false,
-        )
-        .unwrap();
-        assert!(!s.complete());
-        s.observe(
-            &json!({"type":"system","subtype":"session_state_changed","state":"running"}),
-            "n",
-            path,
-            false,
-        )
-        .unwrap();
-        s.observe(
-            &json!({"type":"system","subtype":"task_notification","task_id":"a","status":"completed"}),
-            "n",
-            path,
-            false,
-        )
-        .unwrap();
-        assert!(!s.complete());
-        s.observe(
-            &json!({"type":"system","subtype":"session_state_changed","state":"idle"}),
-            "n",
-            path,
-            false,
-        )
-        .unwrap();
-        assert!(s.complete());
-    }
-}
+mod tests;

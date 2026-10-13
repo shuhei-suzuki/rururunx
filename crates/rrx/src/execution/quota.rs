@@ -171,62 +171,12 @@ pub(super) fn codex_capacity_error(error: &Value) -> bool {
     .any(|key| matches!(info[key]["httpStatusCode"].as_u64(), Some(429 | 503)))
 }
 
-/// Recognize a bounded plan window only. Missing/type-unknown fields stay unclassified.
+/// Compatibility projection of the shared strict Claude decoder. Malformed or
+/// unknown rate fields are errors, distinct from a legal non-rate frame.
 pub fn claude_window(value: &Value, at: i64) -> Result<Option<QuotaObservation>> {
-    if value["type"] != "rate_limit_event" {
-        return Ok(None);
-    }
-    let info = &value["rate_limit_info"];
-    let Some(bucket) = info["rateLimitType"].as_str() else {
-        return Ok(None);
-    };
-    if !matches!(
-        bucket,
-        "five_hour"
-            | "seven_day"
-            | "seven_day_opus"
-            | "seven_day_sonnet"
-            | "seven_day_overage_included"
-    ) {
-        return Ok(None);
-    }
-    let status = match info["status"].as_str() {
-        Some("rejected") => QuotaStatus::Exhausted,
-        Some("allowed" | "allowed_warning") => QuotaStatus::Available,
-        _ => return Ok(None),
-    };
-    let reset = match info.get("resetsAt") {
-        None | Some(Value::Null) => None,
-        Some(v) => Some(
-            v.as_i64()
-                .context("invalid Claude quota reset")?
-                .checked_mul(1000)
-                .context("quota reset overflow")?,
-        ),
-    };
-    let used = match info.get("utilization") {
-        None | Some(Value::Null) => None,
-        Some(v) => {
-            let n = v.as_f64().context("invalid Claude quota utilization")?;
-            ensure!(
-                n.is_finite() && (0.0..=1.0).contains(&n),
-                "invalid Claude quota utilization range"
-            );
-            Some(n * 100.0)
-        }
-    };
-    Ok(Some(QuotaObservation {
-        provider: "claude".into(),
-        account_key: "unknown".into(),
-        bucket: bucket.into(),
-        window_id: reset.map_or_else(|| format!("unknown-{bucket}"), |r| r.to_string()),
-        status,
-        used_percent: used,
-        resets_at: reset,
-        observed_at: at,
-        source_version: "Claude Code 2.1.294/rate_limit_event".into(),
-        confirmed_subscription: status == QuotaStatus::Exhausted,
-    }))
+    let checked = super::claude_wire::decoder_selfcheck()?;
+    let frame = super::claude_wire::ValidatedClaudeFrame::decode(value.clone(), &checked)?;
+    Ok(frame.rate().map(|rate| rate.observation(at)))
 }
 
 #[cfg(test)]
@@ -240,13 +190,13 @@ mod tests {
         ));
         assert!(
             claude_window(
-                &json!({"type":"system","subtype":"api_retry","status_code":429}),
+                &json!({"type":"system","subtype":"api_retry","attempt":1,"max_retries":2,"retry_delay_ms":0,"error_status":429,"status_code":429}),
                 1
             )
             .unwrap()
             .is_none()
         );
-        assert!(claude_window(&json!({"type":"rate_limit_event","rate_limit_info":{"status":"rejected","rateLimitType":"new_unknown"}}),1).unwrap().is_none());
+        assert!(claude_window(&json!({"type":"rate_limit_event","session_id":"native","rate_limit_info":{"status":"rejected","rateLimitType":"new_unknown"}}),1).is_err());
         assert!(codex_subscription_error(
             &json!({"codexErrorInfo":"usageLimitExceeded"})
         ));
@@ -268,7 +218,7 @@ mod tests {
         assert_eq!(negative[0].status, QuotaStatus::Unknown);
         assert_eq!(negative[0].used_percent, None);
         assert!(!negative[0].confirmed_subscription);
-        let c=claude_window(&json!({"type":"rate_limit_event","rate_limit_info":{"status":"rejected","rateLimitType":"five_hour","resetsAt":123}}),1).unwrap().unwrap();
+        let c=claude_window(&json!({"type":"rate_limit_event","session_id":"native","rate_limit_info":{"status":"rejected","rateLimitType":"five_hour","resetsAt":123}}),1).unwrap().unwrap();
         assert_eq!(c.used_percent, None);
         assert_eq!(c.status, QuotaStatus::Exhausted);
     }

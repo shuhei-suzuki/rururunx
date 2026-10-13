@@ -506,17 +506,16 @@ impl AgentAdapter for NativeAdapter {
             let handle = self.handle(&reference)?;
             let status = self.sessions.status(&handle).map_err(mapped)?;
             let metrics = status.metrics.as_ref();
-            let counter = |key: &str| metrics.and_then(|m| m[key].as_u64());
             Ok(Usage {
                 scope: status.session.scope.clone(),
                 session_id: status.session.id,
                 agent: self.name.clone(),
                 phase,
                 review_round,
-                input_tokens: counter("input"),
-                cached_input_tokens: counter("cache_read"),
-                output_tokens: counter("output"),
-                estimated_cost: metrics.and_then(|m| m["cost"].as_f64()),
+                input_tokens: metrics.and_then(|m| m.input()),
+                cached_input_tokens: metrics.and_then(|m| m.cache_read()),
+                output_tokens: metrics.and_then(|m| m.output()),
+                estimated_cost: metrics.and_then(|m| m.cost()),
                 context_pack_version: None,
                 context_pack_size: None,
                 repo_map_size: None,

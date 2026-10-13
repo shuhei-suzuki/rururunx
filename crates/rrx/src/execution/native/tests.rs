@@ -791,9 +791,9 @@ async fn authentication_and_unclassified_capacity_terminals_have_distinct_outcom
         (
             "claude",
             "unsupported-control",
-            Some(NativeFailure::UnsupportedCapability),
+            Some(NativeFailure::ProtocolFailure),
             WorkOutcome::Unknown,
-            Disposition::Refused,
+            Disposition::ProtocolError,
         ),
         (
             "codex",
@@ -819,9 +819,9 @@ async fn authentication_and_unclassified_capacity_terminals_have_distinct_outcom
         (
             "claude",
             "capacity-unknown-window",
-            None,
+            Some(NativeFailure::ProtocolFailure),
             WorkOutcome::Unknown,
-            Disposition::CapacityInterrupted,
+            Disposition::ProtocolError,
         ),
         (
             "claude",
@@ -1399,7 +1399,7 @@ async fn claude_live_quota_wait_is_scoped_preserves_input_and_keeps_sibling_runn
             "quota-unknown-held",
             false,
             WorkOutcome::Unknown,
-            Disposition::CapacityInterrupted,
+            Disposition::ProtocolError,
         ),
     ] {
         let (dir, owner, task) = results::tests::fixture_with_siblings(&["sibling"]).await;
@@ -1529,6 +1529,10 @@ async fn claude_live_quota_wait_is_scoped_preserves_input_and_keeps_sibling_runn
         let end = terminal(&sessions, &handle).await;
         assert_eq!(end.work, Some(work), "{payload}");
         assert_eq!(end.disposition, disposition, "{payload}");
+        if payload == "quota-unknown-held" {
+            assert_eq!(end.failure, Some(NativeFailure::ProtocolFailure));
+            assert!(end.pending.is_empty());
+        }
         {
             let store = owner.store.lock().unwrap();
             assert_eq!(
@@ -2184,7 +2188,16 @@ async fn native_claude_running_hold_does_not_replace_original_answer_with_later_
             _ => panic!("fixture launch"),
         };
         let status = terminal(&sessions, &handle).await;
-        assert_eq!(status.work, Some(WorkOutcome::Success));
+        if payload == "answer-sameuuid-changing-held" {
+            // The earlier answer is still running, not a captured successful
+            // NativeTerminal. UUID-content mutation must fail the Session.
+            assert_eq!(status.work, Some(WorkOutcome::Unknown));
+            assert_eq!(status.disposition, Disposition::ProtocolError);
+            assert_eq!(status.failure, Some(NativeFailure::ProtocolFailure));
+            assert!(status.metrics.is_none());
+        } else {
+            assert_eq!(status.work, Some(WorkOutcome::Success));
+        }
         let receipt = owner
             .store
             .lock()
@@ -2194,6 +2207,10 @@ async fn native_claude_running_hold_does_not_replace_original_answer_with_later_
         if payload == "answer-identical-held" {
             assert_eq!(receipt.acquisition, AcquisitionStatus::Complete);
             assert_eq!(receipt.text.as_deref(), Some("APPROVE A"));
+        } else if payload == "answer-sameuuid-changing-held" {
+            assert_eq!(receipt.acquisition, AcquisitionStatus::Partial);
+            assert!(receipt.text.is_none() && receipt.answer_sha256.is_none());
+            assert_eq!(receipt.prefix.unwrap().prefix, "APPROVE A");
         } else {
             assert_eq!(receipt.acquisition, AcquisitionStatus::Ambiguous);
             assert!(receipt.text.is_none() && receipt.answer_sha256.is_none());

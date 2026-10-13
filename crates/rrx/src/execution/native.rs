@@ -32,6 +32,7 @@ pub(crate) mod readonly;
 mod registration;
 pub(crate) mod transport;
 pub(crate) mod version;
+pub use super::claude_wire::Metrics as NativeMetrics;
 pub(crate) use phase_protocol::{
     ConsumedPhaseInput, NativePhaseBinding, NativePhaseSession, OwnedPhaseSettlement,
 };
@@ -73,7 +74,7 @@ pub struct NativeStatus {
     pub result: Option<Value>,
     pub receipt: Option<NativeResultId>,
     pub observed_work: Option<WorkOutcome>,
-    pub metrics: Option<Value>,
+    pub metrics: Option<NativeMetrics>,
     pub diagnostic: Option<&'static str>,
     pub failure: Option<NativeFailure>,
 }
@@ -1926,6 +1927,10 @@ impl Core {
         }
         if disposition == Disposition::Completed && work != WorkOutcome::Unknown {
             self.collector.confirm_complete();
+            #[cfg(test)]
+            if self.unit.provider == "claude" {
+                crate::runtime::count(self.unit.scope.task_id, "claude confirm_complete");
+            }
         }
         if failure == Some(NativeFailure::AuthenticationUnavailable) {
             self.collector.discard_sensitive();
@@ -2281,6 +2286,7 @@ impl Core {
         input: &PreparedInput,
     ) -> Result<(WorkOutcome, Disposition, Option<Value>)> {
         self.authority()?;
+        let decoder_checked = claude_wire::decoder_selfcheck()?;
         let initialize = claude_wire::control("initialize", "rrx-initialize");
         if self.phase.is_some() {
             self.send_effect(&initialize, None, "native_setup").await?;
@@ -2295,11 +2301,12 @@ impl Core {
         tokio::time::timeout(Duration::from_secs(30),async {
             loop {tokio::select! {
                 frame=self.wire.line()=>{
-                    let frame=frame?;
+                    let validated=claude_wire::ValidatedClaudeFrame::decode(frame?,&decoder_checked)?;
+                    let frame=validated.raw();
                     if frame["type"]=="control_response" {
-                        claude_wire::control_result(&frame,"rrx-initialize")?;break;
+                        claude_wire::control_result(&validated,"rrx-initialize")?;break;
                     }
-                    self.wire.queue(frame)?;
+                    self.wire.queue(frame.clone())?;
                 },
                 control=self.controls.recv()=>match control {
                     Some(Control::Approval {response,..})=>{let _=response.send(Err(anyhow::anyhow!("native input not established")));},
@@ -2313,18 +2320,21 @@ impl Core {
         let mut state = claude_wire::RunState::default();
         let mut pending = BTreeMap::<String, claude_wire::Pending>::new();
         let mut quota_buckets = std::collections::BTreeSet::new();
-        let mut unclassified_limit = false;
         let mut fence = tokio::time::interval(Duration::from_millis(100));
         loop {
             tokio::select! {
                 frame=self.wire.receive()=>{
-                    let frame=frame?;
-                    // Only this native Session's event may change its subscription pool.
-                    if frame["type"]=="rate_limit_event" && frame["session_id"]!=self.native {continue;}
-                    if frame["type"]=="rate_limit_event" && frame["session_id"]==self.native && frame["rate_limit_info"]["status"]=="rejected" && quota::claude_window(&frame,now_ms())?.is_none() {
-                        unclassified_limit=true;
+                    // Strict decode precedes every ownership filter and consumer.
+                    let validated=claude_wire::ValidatedClaudeFrame::decode(frame?,&decoder_checked)?;
+                    let frame=validated.raw();
+                    let seen=state.observe(&validated,&self.native,&self.unit.worktree,false);
+                    // A protocol/ownership failure cannot be used by any consumer.
+                    // ProcessFailure below is a fully decoded owned error result.
+                    if seen.as_ref().is_err_and(|e|e.kind!=ErrorKind::ProcessFailure) {
+                        return Err(seen.unwrap_err().into());
                     }
-                    if let Some(observation)=quota::claude_window(&frame,now_ms())? {
+                    if seen.as_ref().is_ok_and(|accepted|!*accepted) && frame["type"]!="result" {continue;}
+                    if let Some(observation)=validated.rate().map(|rate|rate.observation(now_ms())) {
                         quota_buckets.insert(observation.bucket.clone());
                         let probe=self.quota_probe()?;
                         self.observe_quota(&observation,probe && observation.status==QuotaStatus::Available)?;
@@ -2345,14 +2355,14 @@ impl Core {
                         }
                     }
                     if frame["type"]=="control_request"{
-                        self.authority()?;let permission=claude_wire::Pending::parse(&frame,&self.native)?;
+                        self.authority()?;let permission=claude_wire::Pending::parse(&validated,&self.native)?;
                         ensure!(pending.len()<64 && !pending.contains_key(&permission.request_id),"native permission duplicate/limit");
                         self.update.send_modify(|s|s.pending.push(permission.public(&self.native)));pending.insert(permission.request_id.clone(),permission);continue;
                     }
-                    let seen=state.observe(&frame,&self.native,&self.unit.worktree,false);
                     if frame["type"]=="result" && frame["session_id"]==self.native {
-                        if seen.as_ref().is_ok_and(|accepted|*accepted) {self.collector.claude_terminal(&frame);}
-                        else if seen.as_ref().is_ok_and(|accepted|!*accepted) {self.collector.claude_redelivery(&frame);}
+                        let result=validated.result().context("validated Claude result missing")?;
+                        if seen.as_ref().is_ok_and(|accepted|*accepted) {self.collector.claude_terminal(result);}
+                        else if seen.as_ref().is_ok_and(|accepted|!*accepted) {self.collector.claude_redelivery(result);}
                     }
                     if self.collector.overflowed() {return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));}
 
@@ -2361,11 +2371,11 @@ impl Core {
                         // bookkeeping. A quota-sensitive execution error remains
                         // Unknown if accepted bucket state cannot be read; an outage
                         // cannot invent work failure or subscription exhaustion.
-                        self.collector.claude_terminal(&frame);
+                        self.collector.claude_terminal(validated.result().context("validated Claude terminal missing")?);
                         let quota_sensitive=matches!(frame["subtype"].as_str(),Some("success"|"error_during_execution"));
                         let provisional=if quota_sensitive && !quota_buckets.is_empty() {
                             (WorkOutcome::Unknown,Disposition::Lost,None)
-                        } else if state.terminal_capacity || (unclassified_limit && quota_sensitive) {
+                        } else if state.terminal_capacity {
                             (WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)
                         } else {
                             (WorkOutcome::Failure,Disposition::Completed,None)
@@ -2375,19 +2385,18 @@ impl Core {
                         // Budget/turn/output caps remain work failures even during quota exhaustion.
                         let quota_exhausted=quota_sensitive && !quota_buckets.is_empty() && self.quota_windows()?.iter().any(|o|o.status==QuotaStatus::Exhausted && quota_buckets.contains(&o.bucket));
                         let observed=if quota_exhausted {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
-                            else if state.terminal_capacity || (unclassified_limit && quota_sensitive) {(WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)}
+                            else if state.terminal_capacity {(WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)}
                             else {(WorkOutcome::Failure,Disposition::Completed,None)};
                         self.observed_terminal=Some(observed);
-                        return Ok((observed.0,observed.1,if observed.0==WorkOutcome::Failure {Some(frame)} else {None}));
+                        return Ok((observed.0,observed.1,if observed.0==WorkOutcome::Failure {Some(frame.clone())} else {None}));
                     }
                     seen?;
                     if state.initialized && self.session.native_ref.is_none(){self.ack(self.native.clone())?;}
                     if state.complete(){
                         let result=state.result.take().context("native successful result missing")?;
-                        let metrics=claude_wire::Metrics::parse(&result,None,false)?;
-                        self.update.send_modify(|s|s.metrics=Some(json!({"input":metrics.input,"output":metrics.output,"cache_read":metrics.cache_read,"cache_write":metrics.cache_write,
-                            "cost":metrics.cost,"api_ms":metrics.api_ms,"cumulative_cost":metrics.cumulative_cost,"cumulative_api_ms":metrics.cumulative_api_ms})));
-                        return Ok((WorkOutcome::Success,Disposition::Completed,Some(result)));
+                        let metrics=claude_wire::Metrics::from_result(&result,false);
+                        self.update.send_modify(|s|s.metrics=Some(metrics.clone()));
+                        return Ok((WorkOutcome::Success,Disposition::Completed,Some(result.raw().clone())));
                     }
                 },
                 control=self.controls.recv()=>{match control {

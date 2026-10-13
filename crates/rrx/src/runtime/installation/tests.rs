@@ -15,6 +15,7 @@ mod activation;
 mod epoch_fence;
 mod fm_d2;
 mod fm_rb;
+mod m0_claude;
 mod nonsuccess;
 mod pin;
 mod preparation;
