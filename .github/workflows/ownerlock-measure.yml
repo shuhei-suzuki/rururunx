@@ -24,20 +24,26 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.91.1
       - run: cargo build --locked --workspace
       - run: cargo test --locked -p rrx --no-run
-      - name: rrx lib (full, parallel) x4
+      - name: Causal controls x20 (forked child parked before exec)
         shell: bash
         run: |
           mkdir -p out
-          for i in $(seq 1 4); do
+          for i in $(seq 1 20); do
+            cargo test --locked -p rrx --lib --no-fail-fast -- f1_control --test-threads=1 > out/control-$i.log 2>&1 || echo "control $i failed" >> out/summary.txt
+          done
+      - name: F1 tests (parallel among themselves) x30
+        shell: bash
+        run: |
+          for i in $(seq 1 30); do
+            cargo test --locked -p rrx --lib --no-fail-fast -- epoch_fence execution::owner execution::cleanup fm_rb cli::endpoint > out/focus-$i.log 2>&1 || echo "focus $i failed" >> out/summary.txt
+          done
+      - name: rrx lib (full, parallel) x2
+        shell: bash
+        run: |
+          for i in $(seq 1 2); do
             start=$(date +%s)
             cargo test --locked -p rrx --lib --no-fail-fast > out/full-$i.log 2>&1 || echo "full $i failed" >> out/summary.txt
             echo "full $i wall_s=$(( $(date +%s) - start ))" >> out/summary.txt
-          done
-      - name: F1 tests (parallel among themselves) x20
-        shell: bash
-        run: |
-          for i in $(seq 1 20); do
-            cargo test --locked -p rrx --lib --no-fail-fast -- epoch_fence execution::owner execution::cleanup fm_rb cli::endpoint > out/focus-$i.log 2>&1 || echo "focus $i failed" >> out/summary.txt
           done
       - name: Report
         if: always()

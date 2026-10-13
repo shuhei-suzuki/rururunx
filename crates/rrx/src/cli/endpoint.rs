@@ -500,6 +500,74 @@ mod tests {
             .unwrap();
     }
 
+    /// MEASUREMENT ONLY (Issue #89 F1, never merged): causal control. A
+    /// child forked while the endpoint lock is open keeps a copy of that open
+    /// file (and so its flock) until it reaches `exec`, close-on-exec or not.
+    /// With such a child parked before `exec`, rebinding right after the
+    /// endpoint drops is refused; once it has exec'd, the rebind succeeds.
+    /// Without the child, the immediate rebind succeeds.
+    fn f1_rebind_with_forked_child(fork: bool) -> (bool, bool) {
+        use std::io::Read;
+        use std::os::fd::AsRawFd;
+        use std::os::unix::process::CommandExt;
+        let dir = tempfile::tempdir().unwrap();
+        let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = runtime.enter();
+        let endpoint = ControlEndpoint::bind(owner.clone()).unwrap();
+        let (mut forked, forked_writer) = std::io::pipe().unwrap();
+        let (release_reader, release) = std::io::pipe().unwrap();
+        let spawner = fork.then(|| {
+            let forked_fd = forked_writer.as_raw_fd();
+            let release_fd = release_reader.as_raw_fd();
+            std::thread::spawn(move || {
+                let mut command = std::process::Command::new("/usr/bin/true");
+                // SAFETY: only raw read/write syscalls run between fork and exec.
+                unsafe {
+                    command.pre_exec(move || {
+                        let out = rustix::fd::BorrowedFd::borrow_raw(forked_fd);
+                        let input = rustix::fd::BorrowedFd::borrow_raw(release_fd);
+                        rustix::io::write(out, b"f")?;
+                        let mut byte = [0u8; 1];
+                        rustix::io::read(input, &mut byte)?;
+                        Ok(())
+                    });
+                }
+                let mut child = command.spawn().unwrap();
+                child.wait().unwrap()
+            })
+        });
+        if fork {
+            let mut byte = [0u8; 1];
+            forked.read_exact(&mut byte).unwrap();
+        }
+        drop(endpoint);
+        let refused_while_parked = ControlEndpoint::bind(owner.clone()).map(drop).is_err();
+        if fork {
+            use std::io::Write;
+            (&release).write_all(b"r").unwrap();
+        }
+        if let Some(spawner) = spawner {
+            assert!(spawner.join().unwrap().success());
+        }
+        drop((forked_writer, release, release_reader));
+        let refused_after = ControlEndpoint::bind(owner.clone()).map(drop).is_err();
+        (refused_while_parked, refused_after)
+    }
+
+    #[test]
+    fn f1_control_forked_child_before_exec_blocks_rebind() {
+        assert_eq!(f1_rebind_with_forked_child(true), (true, false));
+    }
+
+    #[test]
+    fn f1_control_without_child_rebind_succeeds() {
+        assert_eq!(f1_rebind_with_forked_child(false), (false, false));
+    }
+
     /// C-S1e2 / C-S4i (bind): the exclusive owner replaces a same-state
     /// protocol 1–4 leftover of the strict shape, never a foreign one.
     #[test]

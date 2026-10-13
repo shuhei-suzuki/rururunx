@@ -246,57 +246,88 @@ fn lock_state_root(state: &Path) -> Result<LockedStateRoot> {
     })
 }
 
-/// MEASUREMENT ONLY (Issue #89 F1, never merged): who else has this lock
-/// file open when this process's own non-blocking `flock` is refused. It
-/// never takes the lock, so a test that expects the refusal sees the same
-/// outcome. Children of this process still showing the test binary's name
-/// are forks that have not reached `exec` (and so still share every flock
-/// this process holds). Active only with `RRX_FLOCK_TRACE` set.
+/// MEASUREMENT ONLY (Issue #89 F1, never merged): who else holds this lock
+/// when this process's own non-blocking `flock` is refused. It never takes
+/// the lock and never spawns (a spawn would itself share every open lock
+/// file until its `exec`). On Linux it reads, in order and as fast as it can:
+/// `/proc/locks` for the inode, this process's own descriptors, and every
+/// child's `comm` and descriptors. A child still named like the test binary
+/// has not reached `exec`. Elsewhere it only records the refusal. Active
+/// only with `RRX_FLOCK_TRACE` set.
 #[cfg(test)]
 pub(crate) fn flock_trace(kind: &str, lock_path: &Path, refused: &std::fs::File) {
     use std::os::fd::AsRawFd;
     if std::env::var_os("RRX_FLOCK_TRACE").is_none() {
         return;
     }
-    let at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis());
-    let me = std::process::id().to_string();
+    let started = std::time::Instant::now();
+    let inode = refused.metadata().map(|m| m.ino()).unwrap_or(0);
     let test = std::thread::current()
         .name()
         .unwrap_or("<unnamed>")
         .to_owned();
-    let run = |program: &str, args: &[&str]| {
-        std::process::Command::new(program)
-            .args(args)
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-            .unwrap_or_else(|e| format!("<{program}: {e}>"))
-    };
-    let started = std::time::Instant::now();
-    let children: Vec<String> = run("ps", &["-A", "-o", "pid=,ppid=,stat=,etime=,comm="])
-        .lines()
-        .filter(|line| line.split_whitespace().nth(1) == Some(me.as_str()))
-        .map(|line| line.trim().to_owned())
-        .collect();
-    let ps_ms = started.elapsed().as_millis();
-    let path = lock_path.to_string_lossy().into_owned();
-    // p = pid, c = command, f = fd, l = lock status of that fd.
-    let holders = run("lsof", &["-n", "-F", "pcfl", "--", &path]).replace('\n', " ");
-    let lsof_ms = started.elapsed().as_millis();
-    // Linux only: the pid that placed the flock on this inode.
-    let inode = refused.metadata().map(|m| m.ino()).unwrap_or(0);
-    let proc_locks: Vec<String> = std::fs::read_to_string("/proc/locks")
-        .unwrap_or_default()
-        .lines()
-        .filter(|line| line.contains(&format!(":{inode} ")))
-        .map(|line| line.trim().to_owned())
-        .collect();
+    let me = std::process::id();
+    let mut facts: Vec<String> = Vec::new();
+    #[cfg(target_os = "linux")]
+    {
+        let us = |started: std::time::Instant| started.elapsed().as_micros();
+        let locks = std::fs::read_to_string("/proc/locks").unwrap_or_default();
+        let locks: Vec<&str> = locks
+            .lines()
+            .filter(|line| line.contains(&format!(":{inode} ")))
+            .map(str::trim)
+            .collect();
+        facts.push(format!("proc_locks@{}us={locks:?}", us(started)));
+        // Descriptors of `pid` that name this inode.
+        let fds_on = |pid: &str| -> Vec<String> {
+            let Ok(entries) = std::fs::read_dir(format!("/proc/{pid}/fd")) else {
+                return vec!["<unreadable>".into()];
+            };
+            entries
+                .flatten()
+                .filter(|e| std::fs::metadata(e.path()).is_ok_and(|m| m.ino() == inode))
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        };
+        facts.push(format!(
+            "self_fds@{}us={:?} refused_fd={}",
+            us(started),
+            fds_on("self"),
+            refused.as_raw_fd()
+        ));
+        let mut children: Vec<String> = Vec::new();
+        if let Ok(tasks) = std::fs::read_dir("/proc/self/task") {
+            for task in tasks.flatten() {
+                let listed =
+                    std::fs::read_to_string(task.path().join("children")).unwrap_or_default();
+                children.extend(listed.split_whitespace().map(str::to_owned));
+            }
+        }
+        let children: Vec<String> = children
+            .iter()
+            .map(|pid| {
+                let comm = std::fs::read_to_string(format!("/proc/{pid}/comm"))
+                    .unwrap_or_default()
+                    .trim()
+                    .to_owned();
+                format!("{pid}:{comm}:fds={:?}", fds_on(pid))
+            })
+            .collect();
+        facts.push(format!("children@{}us={children:?}", us(started)));
+        let later = std::fs::read_to_string("/proc/locks").unwrap_or_default();
+        let later: Vec<&str> = later
+            .lines()
+            .filter(|line| line.contains(&format!(":{inode} ")))
+            .map(str::trim)
+            .collect();
+        facts.push(format!("proc_locks_again@{}us={later:?}", us(started)));
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = (inode, refused.as_raw_fd());
     eprintln!(
-        "FLOCK_TRACE kind={kind} test={test} self={me} at={at} refused_fd={} lock={path} \
-         children_at_refusal={children:?} ps_ms={ps_ms} lsof_ms={lsof_ms} \
-         lsof_holders=[{holders}] proc_locks={proc_locks:?}",
-        refused.as_raw_fd()
+        "FLOCK_TRACE kind={kind} test={test} self={me} lock={} {}",
+        lock_path.display(),
+        facts.join(" ")
     );
 }
 
