@@ -61,8 +61,10 @@ uint16 value. UUID-content identity includes unknown exact numeric fields while
 normalizing key order and UUID spelling. The correlated bootstrap response checks
 optional session ownership and carries its UUID history into the same normal
 receive state; normal unsolicited control responses remain refused. The shared
-queue keeps its 128-frame/8-MiB limits and counts retained original bytes, including
-the Codex path. Value-only callers cannot recover upstream lost precision.
+queue keeps its 128-frame limit and the existing 8-MiB encoded-Value limit. An
+independent 8-MiB limit bounds retained original bytes, including the Codex path;
+dequeue releases both byte counts. Value-only callers cannot recover upstream
+lost precision.
 
 Each retry gets a new executor worktree, branch and resources. Accepted commit
 objects and hashed evidence are retained in independent Runtime storage. Each

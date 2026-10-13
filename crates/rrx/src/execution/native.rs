@@ -874,8 +874,9 @@ struct Lines {
     stdout: BufReader<ChildStdout>,
     partial: Vec<u8>,
     original: Option<Vec<u8>>,
-    queued: VecDeque<(Value, Vec<u8>)>,
+    queued: VecDeque<(Value, Vec<u8>, usize)>,
     queued_bytes: usize,
+    queued_original_bytes: usize,
     next: u64,
     limit: usize,
     evidence: Option<native_result::WireEvidence>,
@@ -889,6 +890,7 @@ impl Lines {
             original: None,
             queued: VecDeque::new(),
             queued_bytes: 0,
+            queued_original_bytes: 0,
             next: 1,
             limit,
             evidence: None,
@@ -985,8 +987,9 @@ impl Lines {
         }
     }
     async fn receive(&mut self) -> Result<Value> {
-        if let Some((value, bytes)) = self.queued.pop_front() {
-            self.queued_bytes -= bytes.len();
+        if let Some((value, bytes, encoded_bytes)) = self.queued.pop_front() {
+            self.queued_bytes -= encoded_bytes;
+            self.queued_original_bytes -= bytes.len();
             self.original = Some(bytes);
             Ok(value)
         } else {
@@ -994,12 +997,17 @@ impl Lines {
         }
     }
     fn queue(&mut self, value: Value) -> Result<()> {
-        let n = self.original()?.len();
+        let n = serde_json::to_vec(&value)?.len();
+        let original_n = self.original()?.len();
         ensure!(
             self.queued.len() < 128
                 && self
                     .queued_bytes
                     .checked_add(n)
+                    .is_some_and(|n| n <= 8 * 1024 * 1024)
+                && self
+                    .queued_original_bytes
+                    .checked_add(original_n)
                     .is_some_and(|n| n <= 8 * 1024 * 1024),
             "native startup queue too large"
         );
@@ -1007,8 +1015,9 @@ impl Lines {
             .original
             .take()
             .context("native original frame unavailable")?;
-        self.queued.push_back((value, bytes));
+        self.queued.push_back((value, bytes, n));
         self.queued_bytes += n;
+        self.queued_original_bytes += original_n;
         Ok(())
     }
     async fn call(&mut self, method: &str, params: Value) -> Result<Value> {

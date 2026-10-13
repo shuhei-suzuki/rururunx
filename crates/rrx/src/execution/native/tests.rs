@@ -2534,4 +2534,5 @@ async fn native_concurrent_terminal_retry_survives_supervisor_watch_publication(
 }
 
 mod confirmed_findings_tests;
+mod queue_budget_tests;
 mod terminal_lock_tests;
