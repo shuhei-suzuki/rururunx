@@ -45,6 +45,12 @@ or replacement closes both; the janitor cannot revoke finalization or dispose
 its inputs. Cleanup uncertainty does not turn known native work into failure.
 Unknown external effects remain subject to idempotent reconciliation.
 
+Status reconciliation retries only the retained private Native terminal. After
+receipt commit it publishes the terminal's failure category together with durable
+Unit/Session/result fields, while preserving the Core's latest metrics and pending
+observations. Cancellation keeps its failure override; a stale watch snapshot
+cannot erase a confirmed protocol failure or create new execution authority.
+
 Each retry gets a new executor worktree, branch and resources. Accepted commit
 objects and hashed evidence are retained in independent Runtime storage. Each
 reviewer/verifier receives a separate exact-SHA snapshot with read-only source and

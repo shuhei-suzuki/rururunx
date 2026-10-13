@@ -332,3 +332,12 @@ restart retains the existing conservative Unknown/no-replay behavior.
 ### Watch publication currency
 
 After a private terminal retry commits while the supervisor awaits hygiene, final watch publication and Drop reload the typed durable receipt. A stale local persistence error cannot erase its receipt ID/content projection. The causal fixture pauses publication after actual terminal capture and hygiene, reconciles via public status, then observes the supervisor watch without another status read. The scheduling barrier is test-only and is absent from production builds.
+
+Status retry also publishes the confirmed SAME private terminal's failure, with
+the existing cancellation override. It updates durable Unit/Session/result fields
+against the latest watch value and preserves Core metrics, pending observations
+and unrelated diagnostics. This avoids restoring the pre-terminal `failure=None`
+snapshot after a malformed-frame terminal has committed. The installed causal
+control fails only receipt persistence, retries the genuine captured protocol
+failure, and checks status and watch before and after Core publication; it creates
+no successful rows or replacement authority.
