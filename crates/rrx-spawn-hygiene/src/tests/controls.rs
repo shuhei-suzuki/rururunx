@@ -7,6 +7,7 @@ use crate::{
 use std::{
     io::{self, Read, Write},
     os::fd::OwnedFd,
+    os::unix::process::ExitStatusExt,
     process::{Child, Command, Stdio},
     sync::{
         Arc,
@@ -400,8 +401,12 @@ fn run(case: &str) {
         report.stdout, report.stderr
     );
     println!(
-        "P4C HARNESS case={case} classification={:?} complete={} trace={:?}",
-        report.classification, report.complete, report.trace
+        "P4C HARNESS case={case} classification={:?} complete={} signal={:?} stopped={} trace={:?}",
+        report.classification,
+        report.complete,
+        report.status.signal(),
+        report.stopped,
+        report.trace
     );
     assert!(report.complete, "delayed recovery is not a pass");
     assert_eq!(report.classification, Classification::Pass);
