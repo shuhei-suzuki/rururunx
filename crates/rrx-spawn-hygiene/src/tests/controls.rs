@@ -1,4 +1,11 @@
-use super::owner::{Classification, WorkerGroupOwner};
+use super::{
+    eof_observation::{
+        DeliveryAttempt, Fault, JoinedReader, LiveObservation, LivePoint, ReadOutcome, ReadPurpose,
+        ReaderExit, WorkerObservation, classify_inheritance, poll_read, receive_reader,
+        worker_input,
+    },
+    owner::{Classification, WorkerGroupOwner},
+};
 use crate::{
     output_std, output_tokio,
     platform::{self, Options},
@@ -19,30 +26,97 @@ use std::{
 
 struct InnerOwner {
     child: Child,
-    readers: Vec<JoinHandle<io::Result<bool>>>,
+    readers: Vec<JoinHandle<ReaderExit>>,
+    joined: Vec<JoinedReader>,
     cancel: Arc<AtomicBool>,
+    reaped: bool,
+    observation_lost: bool,
+    closed: bool,
 }
 impl InnerOwner {
     fn new(child: Child) -> Self {
         Self {
             child,
             readers: vec![],
+            joined: vec![],
             cancel: Arc::new(AtomicBool::new(false)),
+            reaped: false,
+            observation_lost: false,
+            closed: false,
         }
     }
-    fn close(&mut self) {
+
+    fn observe_live(&mut self, point: LivePoint, fault: Fault) -> LiveObservation {
+        match self.child.try_wait() {
+            Ok(Some(_)) => {
+                self.reaped = true;
+                LiveObservation::Exited
+            }
+            Ok(None) => fault.live_observation(point),
+            Err(error) => {
+                // A synthetic classification fault never changes custody.
+                // Actual loss of the Child observation cannot authorize cleanup.
+                self.observation_lost = true;
+                LiveObservation::Error(error.into())
+            }
+        }
+    }
+
+    fn wait(&mut self) -> io::Result<std::process::ExitStatus> {
+        match self.child.wait() {
+            Ok(status) => {
+                self.reaped = true;
+                Ok(status)
+            }
+            Err(error) => {
+                self.observation_lost = true;
+                Err(error)
+            }
+        }
+    }
+
+    fn hold(&self) -> ! {
+        // The existing outer worker owner remains responsible for containment.
+        // This owner neither returns nor signals/reaps after observation loss.
+        loop {
+            let _ = io::stderr().write_all(b"P4C HELD inner observation\n");
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    }
+
+    fn close(&mut self) -> &[JoinedReader] {
+        if self.closed {
+            return &self.joined;
+        }
+        if self.observation_lost {
+            self.hold();
+        }
         self.cancel.store(true, Ordering::Release);
         self.child.stdin.take();
-        let _ = self.child.kill();
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            match self.child.try_wait() {
-                Ok(Some(_)) => break,
-                _ if Instant::now() >= deadline => {
-                    let _ = io::stderr().write_all(b"P4C STALL inner reap\n");
-                    std::process::abort();
+        if !self.reaped {
+            if let Err(error) = self.child.kill()
+                && error.kind() == io::ErrorKind::PermissionDenied
+            {
+                self.observation_lost = true;
+                self.hold();
+            }
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                match self.child.try_wait() {
+                    Ok(Some(_)) => {
+                        self.reaped = true;
+                        break;
+                    }
+                    Err(_) => {
+                        self.observation_lost = true;
+                        self.hold();
+                    }
+                    Ok(None) if Instant::now() >= deadline => {
+                        let _ = io::stderr().write_all(b"P4C STALL inner reap\n");
+                        std::process::abort();
+                    }
+                    Ok(None) => std::thread::sleep(Duration::from_millis(10)),
                 }
-                _ => std::thread::sleep(Duration::from_millis(10)),
             }
         }
         for reader in self.readers.drain(..) {
@@ -54,51 +128,44 @@ impl InnerOwner {
                 }
                 std::thread::sleep(Duration::from_millis(10));
             }
-            let _ = reader.join();
+            self.joined.push(match reader.join() {
+                Ok(exit) => JoinedReader::Completed(exit),
+                Err(_) => JoinedReader::Panicked,
+            });
+        }
+        self.closed = true;
+        &self.joined
+    }
+
+    fn close_without_readers(&mut self) -> Result<(), String> {
+        let joined = self.close();
+        if joined.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("SETUP unexpected reader joins: {joined:?}"))
         }
     }
 }
 impl Drop for InnerOwner {
     fn drop(&mut self) {
+        // close is idempotent and retains every successful/panicked join.
+        // Inheritance inspects the retained results before emitting its marker.
         self.close();
     }
 }
 
-fn poll_read(mut file: std::fs::File, cancel: &AtomicBool, ready: bool) -> io::Result<bool> {
-    let deadline = Instant::now() + Duration::from_secs(2);
-    let mut bytes = Vec::new();
-    while !cancel.load(Ordering::Acquire) && Instant::now() < deadline {
-        let mut fds = [rustix::event::PollFd::new(
-            &file,
-            rustix::event::PollFlags::IN,
-        )];
-        let timeout = rustix::event::Timespec {
-            tv_sec: 0,
-            tv_nsec: 50_000_000,
-        };
-        match rustix::event::poll(&mut fds, Some(&timeout)) {
-            Err(rustix::io::Errno::INTR) => continue,
-            Err(error) => return Err(error.into()),
-            Ok(0) => continue,
-            Ok(_) => {}
-        }
-        let mut byte = [0u8; 1];
-        match file.read(&mut byte) {
-            Ok(0) => return Ok(!ready),
-            Ok(_) => {
-                bytes.push(byte[0]);
-                if ready && bytes == b"ready\n" {
-                    return Ok(true);
-                }
-            }
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-            Err(error) => return Err(error),
-        }
+fn inheritance(cloexec: bool, high: bool, fault: Fault) -> WorkerObservation {
+    match inheritance_observation(cloexec, high, fault) {
+        Ok(observation) => observation,
+        Err(reason) => WorkerObservation::Setup(reason),
     }
-    Ok(false)
 }
 
-fn inheritance(cloexec: bool, high: bool) -> Result<(), String> {
+fn inheritance_observation(
+    cloexec: bool,
+    high: bool,
+    fault: Fault,
+) -> Result<WorkerObservation, String> {
     let (read, mut write) = rustix::pipe::pipe().map_err(|e| format!("SETUP pipe {e}"))?;
     if high {
         // This dedicated worker normalizes its own soft limit to a realizable
@@ -139,55 +206,71 @@ fn inheritance(cloexec: bool, high: bool) -> Result<(), String> {
     .map_err(|e| format!("SETUP fd flags {e}"))?;
     let mut command = Command::new("/bin/sh");
     command
-        .args(["-c", "printf 'ready\\n'; read go"])
+        .args([
+            "-c",
+            match fault {
+                Fault::ReadyMissing => "printf 'wrong\\n'; read go",
+                Fault::ReadyDeadline => "read go",
+                Fault::ReadyClosed => "exec 1>&-; read go",
+                _ => "printf 'ready\\n'; read go",
+            },
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     // Inner children deliberately remain in the raw worker group. The outer
     // owner contains spawn itself, including a stalled pre_exec callback.
-    let mut owner = InnerOwner::new(spawn_std(command).map_err(|e| format!("spawn {e}"))?);
+    let mut owner = InnerOwner::new(spawn_std(command).map_err(|e| format!("SETUP spawn {e}"))?);
     let pid = rustix::process::Pid::from_raw(owner.child.id() as i32).ok_or("SETUP pid")?;
     let in_group = rustix::process::getpgid(Some(pid)) == Ok(rustix::process::getpgrp());
     let stdout = owner.child.stdout.take().ok_or("SETUP stdout")?;
     let ready = poll_read(
         std::fs::File::from(OwnedFd::from(stdout)),
         &owner.cancel,
-        true,
-    )
-    .map_err(|e| format!("ready {e}"))?;
-    let before = owner
-        .child
-        .try_wait()
-        .map_err(|e| format!("before {e}"))?
-        .is_none();
-    // Establish ready and liveness before closing the parent's writer, matching
-    // the causal control's observation order.
+        ReadPurpose::Ready,
+        fault,
+    );
+    let before = owner.observe_live(LivePoint::Before, fault);
+    // Keep the existing ready/before -> parent writer close -> EOF/after order.
     drop(write);
     let read = std::fs::File::from(read);
     let cancel = owner.cancel.clone();
     let (tx, rx) = std::sync::mpsc::channel();
+    // A finite transport-timeout control retains a sender while the actual
+    // reader completes without publishing. No timer or authority is added.
+    let keepalive = (fault == Fault::TransportTimeout).then(|| tx.clone());
     owner.readers.push(std::thread::spawn(move || {
-        let result = poll_read(read, &cancel, false);
-        let _ = tx.send(result.as_ref().copied().unwrap_or(false));
-        result
+        if fault == Fault::ReaderPanic {
+            panic!("synthetic EOF reader panic");
+        }
+        if fault == Fault::Cancel {
+            cancel.store(true, Ordering::Release);
+        }
+        let read = poll_read(read, &cancel, ReadPurpose::Eof, fault);
+        let delivery = if matches!(fault, Fault::Disconnect | Fault::TransportTimeout) {
+            drop(tx);
+            DeliveryAttempt::NotSent
+        } else {
+            match tx.send(read) {
+                Ok(()) => DeliveryAttempt::Sent,
+                Err(_) => DeliveryAttempt::Failed,
+            }
+        };
+        ReaderExit { read, delivery }
     }));
-    let eof = rx.recv_timeout(Duration::from_secs(2)).unwrap_or(false);
-    let after = owner
-        .child
-        .try_wait()
-        .map_err(|e| format!("after {e}"))?
-        .is_none();
-    owner.close();
-    if !in_group {
-        return Err("SETUP inner group".into());
-    }
-    if !ready || !before || !after {
-        return Err("SETUP child not live at observations".into());
-    }
-    if !eof {
-        return Err("inherited writer delayed EOF".into());
-    }
-    Ok(())
+    let transport = receive_reader(&rx, &owner.readers[0]);
+    drop(keepalive);
+    drop(rx);
+    let after = owner.observe_live(LivePoint::After, fault);
+    let joined = owner.close();
+    // Written only after inner recovery and all reader joins. These values are
+    // classification evidence, never process/group authority.
+    println!(
+        "P4C EOF observations ready={ready:?} before={before:?} after={after:?} transport={transport:?} joined={joined:?}"
+    );
+    Ok(classify_inheritance(
+        in_group, ready, before, after, transport, joined,
+    ))
 }
 
 #[allow(
@@ -209,7 +292,7 @@ fn expect_spawn_err(
             let mut owner = InnerOwner::new(child);
             let _ = io::stderr()
                 .write_all(format!("P4C UNEXPECTED_CHILD pid={}\n", owner.child.id()).as_bytes());
-            owner.close();
+            owner.close_without_readers()?;
             return Err("unexpected Child".into());
         }
     };
@@ -270,8 +353,8 @@ fn stdio() -> Result<(), String> {
         .ok_or("stderr absent")?
         .read_to_string(&mut stderr)
         .map_err(|e| e.to_string())?;
-    let status = owner.child.wait().map_err(|e| e.to_string())?;
-    owner.close();
+    let status = owner.wait().map_err(|e| format!("SETUP stdio wait {e}"))?;
+    owner.close_without_readers()?;
     if !status.success() || stdout != "out:hello" || stderr != "err" {
         return Err("stdio changed".into());
     }
@@ -336,12 +419,14 @@ fn worker() {
         super::api_wiring::run_worker(api, &directory);
         return;
     }
+    if let Some(input) = worker_input(&case) {
+        inheritance(input.cloexec, input.high, input.fault).emit();
+        return;
+    }
     let marker = directory.join("marker");
     let mut command = Command::new("/bin/sh");
     command.args(["-c", "touch \"$1\"", "p4"]).arg(&marker);
     let result = match case.as_str() {
-        "C1" => inheritance(false, false),
-        "C2a" => inheritance(true, false),
         "C2b" => expect_spawn_err(
             Command::new(directory.join("absent-program")),
             Options::default(),
@@ -376,7 +461,6 @@ fn worker() {
             libc::ENOBUFS,
             &marker,
         ),
-        "C2f" => inheritance(false, true),
         "C2g" => stdio(),
         "LISTFDS" => crate::tests::check_listfds(),
         "OW2" => leave_member(),

@@ -3,6 +3,8 @@ mod api_wiring;
 #[cfg(unix)]
 mod controls;
 #[cfg(unix)]
+mod eof_observation;
+#[cfg(unix)]
 mod owner;
 
 #[test]

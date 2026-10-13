@@ -347,7 +347,11 @@ impl Drop for WorkerGroupOwner {
 fn classify(stdout: &str, success: bool) -> Classification {
     let lines: Vec<_> = stdout
         .lines()
-        .filter(|line| line.starts_with("P4C RESULT ") || line.starts_with("P4C SETUP "))
+        .filter(|line| {
+            line.starts_with("P4C RESULT ")
+                || line.starts_with("P4C SETUP ")
+                || line.starts_with("P4C NO_RESULT ")
+        })
         .collect();
     match lines.as_slice() {
         [line] if line.starts_with("P4C SETUP fail") => Classification::Setup,
@@ -406,20 +410,41 @@ fn ow1_custody_table() {
         Classification::NoResult
     );
     assert_eq!(classify("P4C STALL\n", true), Classification::NoResult);
-    for class in [
-        Classification::Setup,
-        Classification::NoResult,
-        Classification::Timeout,
-    ] {
-        let report = Report {
-            classification: class,
-            complete: false,
-            trace: vec![],
-            status: ExitStatus::from_raw(libc::SIGKILL),
-            stopped: true,
-            stdout: String::new(),
-            stderr: String::new(),
-        };
-        assert!(!report.killed(true));
+    assert_eq!(
+        classify("P4C NO_RESULT reader panic\n", true),
+        Classification::NoResult
+    );
+    assert_eq!(
+        classify("P4C NO_RESULT reader panic\nP4C RESULT fail:broken\n", true),
+        Classification::NoResult
+    );
+    assert_eq!(
+        classify("P4C RESULT pass\nP4C NO_RESULT transport\n", true),
+        Classification::NoResult
+    );
+    for complete in [false, true] {
+        for class in [Classification::Setup, Classification::NoResult] {
+            let report = Report {
+                classification: class,
+                complete,
+                trace: vec![],
+                status: ExitStatus::from_raw(libc::SIGKILL),
+                stopped: true,
+                stdout: String::new(),
+                stderr: String::new(),
+            };
+            assert!(!report.killed(false));
+            assert!(!report.killed(true));
+        }
     }
+    let incomplete_timeout = Report {
+        classification: Classification::Timeout,
+        complete: false,
+        trace: vec![],
+        status: ExitStatus::from_raw(libc::SIGKILL),
+        stopped: true,
+        stdout: String::new(),
+        stderr: String::new(),
+    };
+    assert!(!incomplete_timeout.killed(true));
 }
