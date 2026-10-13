@@ -3141,7 +3141,7 @@
         "file": "ClientNotification.json",
         "bytes": 431,
         "sha256": "706cf248d75027c84a3c63348d0ed507182e8eba40069dd17541793de029145a",
-        "shape": "single object branch, not oneOf",
+        "shape": "oneOf with one object branch",
         "definition": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "oneOf": [

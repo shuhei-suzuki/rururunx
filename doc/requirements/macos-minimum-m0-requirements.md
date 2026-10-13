@@ -2,7 +2,7 @@
 
 状態: **DRAFT / A3 は旧 API の機能廃止として整理する方針に確定 / 修正差分の独立確認・オーナー設計承認前**。本番コード・テストは変更していない。
 
-基準の公開 main: `cb9c17e023601b3dbe721495bbdf50c9f65d92bb`。本修正の入力 HEAD: `d452675989df799d29931c7d4f19d73d6b387550`。
+公開sourceのbaseline: `cb9c17e023601b3dbe721495bbdf50c9f65d92bb`。前回修正の入力／review比較元: `d452675989df799d29931c7d4f19d73d6b387550`。今回の修正執筆入力はclean固定HEAD `b22f22a521424eefc3e61fb1a109bfc85965e5ef`。baselineと執筆入力HEADを混同しない。
 
 本文の修正執筆: Codex CLI に `gpt-6.1-sol` / high を固定 argv で要求。CLI の実使用モデルと effort は未報告（一致は未確認）。独立レビュアーの context は執筆へ流用していない。これは独立レビュー・実装・実機検証の証拠ではない。
 
@@ -12,7 +12,7 @@
 
 **macOS最小一本道M0：要件修正全文**
 
-基準HEADは `d452675989df799d29931c7d4f19d73d6b387550`。状態は **DRAFT／修正差分の独立確認・オーナー設計承認前**。本稿は設計修正の執筆成果であり、レビュー票、承認、実装または検証結果ではない。実装、実CLI資格付け、macOS／Linux検証、CI、owner-run、オーナー設計承認はすべて未完了である。
+今回の執筆入力HEADは `b22f22a521424eefc3e61fb1a109bfc85965e5ef`。公開sourceのbaselineは冒頭の別HEADである。状態は **DRAFT／修正差分の独立確認・オーナー設計承認前**。本稿は設計修正の執筆成果であり、レビュー票、承認、実装または検証結果ではない。実装、実CLI資格付け、macOS／Linux検証、CI、owner-run、オーナー設計承認はすべて未完了である。
 
 M0は#5/#6のSTRICT互換変更、M1は#95、M2は#12、M3は#9、M4は#13、M5は#16に対応する。M0の実Mac受入前にM1へ進まない。M4のruntime自動mergeとpublic `shuhei-suzuki/rrx-e2e-sandbox` の作成・使用は決定済みであり、再承認事項にしない。
 
@@ -46,7 +46,7 @@ Codexモデル実行、2run、#10の権限応答資格付け、#14の自動復�
 | AC-12 | 旧profile／`cli_version`ありの宣言をinstallationで型付き拒否し、新規Unit・Heldは0。既存Frameの旧宣言拒否は別契約であり、Preparing UnitがHeldになる場合を含む。 |
 | AC-13 | owner-run実Mac、1 Project／1 Active Task／QUICK、Claude Executor＋Codex Reviewer設定の**1run**で、全aliasのS、Claude P、Worktree→Implement成功、SC-N停止を確認する。CLI番号は観測値として出力する。 |
 | AC-14 | 失敗runは不合格として状態を保持し、同じ状態ディレクトリの再実行を拒否する。Known不合格とUnknownを混同せず、#14の復旧は実装しない。 |
-| AC-15 | M0差分でskip／ignore／直列化を追加せず、禁止されたauthority代替や死んだproducerを導入しない。既存synthetic childの`#[ignore]`は私的wrapperによる実行入口としてpositiveを維持する。 |
+| AC-15 | M0差分でskip／ignore／直列化を追加せず、禁止されたauthority代替や死んだproducerを導入しない。廃止台帳で残置／移植する既存synthetic childは、IDと実wrapperの対応を保存し、既存`#[ignore]`を必要な実childへ到達するwrapper入口としてpositive検証する。旧機能固有の理由付き削除を全旧positive維持と数えず、#19の既存機構・検査と共有安全性のcoverageを廃止で緩めない。 |
 | AC-16 | 実producerを通る境界positive／+1 negative、因果controls／mutants、独立実装・安全性レビュー、ubuntu／macosの必須CIを通す。 |
 
 本番Sessionでのstrict拒否はAC-08の累積0を要求しない。既存状態をbaselineとして、拒否後の新しい入力・権限応答・Grant・quota誤更新がないこと、および既存terminal契約に従うdispositionを検査する。

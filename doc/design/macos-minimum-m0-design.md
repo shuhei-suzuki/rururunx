@@ -2,11 +2,13 @@
 
 状態: **DRAFT / A3 は旧 API の機能廃止として整理する方針に確定 / 修正差分の独立確認・オーナー設計承認前**。本番コード・テストは変更していない。
 
-基準の公開 main: `cb9c17e023601b3dbe721495bbdf50c9f65d92bb`。本修正の入力 HEAD: `d452675989df799d29931c7d4f19d73d6b387550`。
+公開sourceのbaseline: `cb9c17e023601b3dbe721495bbdf50c9f65d92bb`。前回修正の入力／review比較元: `d452675989df799d29931c7d4f19d73d6b387550`。今回の修正執筆入力はclean固定HEAD `b22f22a521424eefc3e61fb1a109bfc85965e5ef`。baselineと執筆入力HEADを混同しない。
 
 本文の修正執筆: Codex CLI に `gpt-6.1-sol` / high を固定 argv で要求。CLI の実使用モデルと effort は未報告（一致は未確認）。独立レビュアーの context は執筆へ流用していない。これは独立レビュー・実装・実機検証の証拠ではない。
 
-前回の Sol/Opus 修正差分レビューはともに REQUEST CHANGES。今回の修正版は独立確認前であり、指摘を解消済み・close と認定しない。詳細レビューと指摘の突合は私的記録に保持する。[進捗](https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6137767541)
+今回の差分執筆は新規の専用2 context。契約補正と欠落節の復元は Sol、owner root 条件は Claude Code に `claude-opus-5-5` / high を要求した Opus が担当した。Opus は同モデルを報告し、effort は未報告。両出力の原文・hash・適用箇所を私的記録に保存し、orchestrator が全終了後に結合した。追加のモデル・承認情報は事実の転記であり、レビュー票ではない。
+
+前回の Sol/Opus 修正差分レビュー round 3 はともに REQUEST CHANGES。今回の修正版は独立確認前であり、指摘を解消済み・close と認定しない。詳細レビューと指摘の突合は私的記録に保持する。[進捗](https://github.com/shuhei-suzuki/rururunx/issues/16#issuecomment-6139076385)
 
 オーナー確定事項（2026-10-13）: 番号 pin 撤廃と capability probe、R1（decoder selfcheck＋実 event strict、未観測は未証明）、M4 の runtime 自動 merge、public [rrx-e2e-sandbox](https://github.com/shuhei-suzuki/rrx-e2e-sandbox) の作成・使用。再承認を求める事項ではない。sandbox は初期 README のみで、fixture・CI・main 保護は未設定。
 
@@ -41,11 +43,59 @@ S専用custodyは既存`RetainedRawProcess`を保持し、intent commit後にだ
 
 `RetainedRawProcess::pipes`は現在stdout／stderrだけを返すため、stdinを保持・一度だけcloseできる所有型へ拡張する。stdin、stdout、stderrの移動とclose責任をcustody内に一本化し、非同期taskがstdinを失って停止不能になる構造を作らない。
 
+**provider別S手順**
+
+Sはdaemon継承環境と専用の空cwdを使い、既存の設定・認証・hookを変更・省略しない。設定上のmodel／effortを記録するが、projectによる上書き、Unit環境overlay、実role別argvのP観測をSで済ませたことにしない。各stepは専用custody、intent先行、program identity再確認、§10の期限・捕捉・停止契約を使う。
+
+| provider | stepとargv／送信 | 合否・停止点 |
+|---|---|---|
+| Codex | Versionは`--version`。Schemaは`app-server generate-json-schema --experimental --out <new-dir>`。Handshakeは`command_argv(codex, Executor, model, effort, None)`の`app-server --listen stdio://`。 | Schema gate後、initialize→paramsなしinitialized→account/read（refreshToken=false）→environment/status（local ID）→account/rateLimits/read。chatgpt／ready／strict-valid rateを確認し、thread/start／turn/startを送らず停止。 |
+| Claude | Versionは`--version`。Handshake stepにinitialize観測を記録。`command_argv(claude, Executor, 設定model, 設定effort, fresh UUID)`の`-p --input-format stream-json --output-format stream-json --verbose --session-id <UUID> --permission-prompt-tool stdio --settings {"forceLoginMethod":"claudeai"}`に、存在するmodel／effortを既存の有界argv検査で付加する。 | 専用request IDのinitialize（既存hooks=null）だけ送信し、相関したsuccess control_responseを検査して停止。user／canary／権限応答は0。Sでsystem-init／resultを必須にも観測済みにもしない。 |
+
+Claudeはepoch・aliasごとのfresh session UUIDを用い、opaque request IDと区別する。SでReviewer用authorityを作らない。Codexは3step、ClaudeはVersion／Handshakeの2stepで、journalの96行上限を維持する。実argv／空cwd／停止が成立しなければBLOCKEDとし、モデル入力や設定迂回で成立させない。
+
 **path境界**
 
 raw aliasはpath成分に使わない。directoryはowner root配下の固定`startup`、rrx発行epoch ID、alias identityのdomain-separated SHA-256を小文字64hexにした名前から構成する。digest対象にはinstallation IDとaliasのUTF-8長・bytesを含め、曖昧な文字列連結をしない。
 
-rootから各成分をsymlink追跡なしで確認し、自uid所有、0700、通常directory、root配下を要求する。既存probe directoryは再利用せず拒否する。作成時のdirectory identityをcustodyが保持する。cleanupはrrxが当該runで作った同一directoryだけを、symlinkをたどらず有限件数で削除する。canonical path確認だけで途中のsymlink置換を安全と扱わない。境界を維持できなければ削除せず失敗を記録する。
+0700の保証は、Sがowner root直下に作る`startup`から始め、owner root自体には0700を要求しない。rootは`execution/owner.rs`の`lock_state_root`が通常の`create_dir_all`と`canonicalize`で用意するため、modeはumaskに従い（022なら0755）、既存stateのrootも同じである。rootに要求するのは、現行`cli/endpoint.rs`の`owned_execution_root`と同じ「自uid所有、通常directory、group／other書込みなし」とし、Sはpathではなく開いたdescriptorの`fstat`で確認する。満たさないrootは拒否し、rrxが`chmod`／`chown`で直さない。`startup`、epoch、alias digestの3成分は、symlink追跡なしで自uid所有、permission bitsが0700、通常directory、root descriptor配下であることを要求する。既存probe directoryは再利用せず拒否する。作成時のdirectory identityをcustodyが保持する。cleanupはrrxが当該runで作った同一directoryだけを、symlinkをたどらず有限件数で削除する。canonical path確認だけで途中のsymlink置換を安全と扱わない。境界を維持できなければ削除せず失敗を記録する。
+
+rootからの0700は、現行sourceが保証していない、本設計稿が書いた未実装の提案だった。現存するownerの安全条件は、`owner.lock`の排他lock（symlink拒否、`O_NOFOLLOW`、0600、close-on-exec）、state DBの単一linkとclose-on-exec、rootのcanonical化、上記のroot条件、および`daemon`／`control`をmode 0700で作りgroup／other権限なしを確認する扱いである。開始境界を`startup`へ置いても、これらは一つも変えない。rootがgroup／other書込み不可なら他uidはroot直下の成分を作成・改名・置換できず、`startup`が0700なら他uidはその配下を走査も読取りもできない。rootが0755のとき他uidに見えるのは`startup`という固定名までで、`units`等の既存成分と同じ露出である。producerを0700へ変える案は、既存の0755 rootをすべて拒否するか無断で`chmod`することになるため採らない。
+
+作成と確認はdescriptor相対で行い、root以降をpath文字列から再解決しない。開く際は`context.rs`の既存走査と同じ`O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC`を使う。
+
+1. `owner.root`を開いて`fstat`でroot条件を確認する。root descriptor相対の`owner.lock`が、`RuntimeOwner`の保持するlock descriptorと同じ`(dev, ino)`の通常fileであることも確認し、開いたdirectoryを排他lock保持中のrootに束縛する。
+2. `startup`は`mkdirat`（mode 0700）で作る。既に存在する場合は、開いたdescriptorが自uid・通常directory・0700のときだけ、epoch間で共有する親として使う。symlink、通常file、他uid、0700以外は拒否する。
+3. epoch成分は当該runが`mkdirat`（0700）で排他的に新規作成し、そのdescriptorを同じrunの全aliasで使う。既存は拒否する。
+4. alias成分は`mkdirat`（0700）で排他的に新規作成する。既存は所有者・mode・中身にかかわらず拒否する。同じrunの後続stepは保持descriptorを通じて同じalias成分を使い、これは再利用拒否の対象にしない。
+5. 新規成分は作成直後に開いて`fstat`し、自uid・通常directory・0700を確認して`(dev, ino)`を保持する。
+
+`mkdirat`のmodeは作成と同時に適用され、umaskはbitを削るだけなので、group／other bitは作成の瞬間から0であり、後追いの`chmod`を使わない。umaskが所有者bitを削った場合は0700の確認で拒否する。`mkdirat`から`openat`までの置換は、親descriptorがroot条件または0700を満たすことで他uidに対して閉じる。自uidは新規作成物の所有者となる実効uidで比較する。§8のSchema出力directoryも、検査済みdescriptorを親とする同じ新規作成規則で作る。
+
+workspaceは`unsafe_code = "forbid"`で、descriptorをchildのcwdとして渡す`fchdir`を使えない。childのcwdと§8の`--out`はpath文字列で渡すため、各spawn直前にroot descriptorから3成分を`fstatat(AT_SYMLINK_NOFOLLOW)`でたどり、`(dev, ino)`が保持値と一致することを再確認する。不一致ならspawnしない。
+
+cleanupは保持descriptor相対で行う。alias directoryの中身は保持descriptorから列挙して`unlinkat`で除去し、symlinkはlink自体だけを除去する。下位directoryは`O_NOFOLLOW`で開き、自uidかつ同一deviceのときだけ降りる。上限は§8の出力上限と同じ1024項目・深さ4とし、超過分は残して失敗を記録する。alias成分とepoch成分の`rmdir`は、当該runが作成したもので、親descriptor相対の名前が保持した`(dev, ino)`と一致するときだけ行う。`startup`、root、旧epochや他runの成分は、削除・再利用・mode変更のいずれもしない。
+
+この検査が保証しない範囲は、同一uidの別process、superuser、mode bitに現れない拡張ACL（継承ACLを含む）、およびchildへpathで渡すcwd／`--out`について再確認からchild側の解決までにroot祖先が置換される場合である。最後の一つは他uidがroot祖先へ書込める配置でだけ成立し、state DBのpathも同じ前提に立つ既存の限界である。M0はこれらを安全と表明しない。
+
+positive／negativeは次を母集団とし、§12 Migration/pathのsymlink／ownership／境界cleanupに対応させる。fixtureが自分で作ったdirectoryのmodeを設定することは、本番codeがrootを改変しないことと区別する。
+
+| 区分 | 入力 | 期待 |
+|---|---|---|
+| positive | 新規state。rootは`lock_state_root`が作成（umask 022で0755） | S続行。3成分は自uid・0700。root modeは不変。 |
+| positive | 既存rootが0755または0700 | 同上。 |
+| positive | 前epochが残した自uid・0700の`startup`と旧epoch成分 | `startup`を親として新epoch成分を作成。旧epoch成分は不変。 |
+| positive | 事前作成したrootに対し、umask 000の別processで起動 | 3成分は0700。通常の`create_dir_all`へ戻すmutantを落とす。 |
+| negative | rootがgroupまたはother書込み可（0775、0757、0777） | 型付き拒否。`startup`未作成、root modeは不変。 |
+| negative | root相対の`owner.lock`が保持lockと別inode | 拒否。 |
+| negative | 他uid所有のroot、または他uid所有の`startup` | 拒否。 |
+| negative | `startup`がroot外、またはroot内（例：`units`）を指すsymlink | 拒否、参照先は不変。root内向きはcanonical化＋prefix比較へ戻すmutantを落とす。 |
+| negative | `startup`が通常file、または自uidの0755 directory | 拒否、modeは不変。 |
+| negative | 同名のepoch成分またはalias成分が既存（directory、symlink） | 拒否、既存物は不変。 |
+| negative | 先行stepの後、後続stepのspawn前に、alias成分をsymlinkか別directoryへ置換 | 後続stepをspawnしない。置換物を削除しない。 |
+| negative | run中にalias成分を外部directoryへのsymlinkへ置換、または内部へ外向きsymlinkを置く | 置換先・参照先のfileは残る。alias内のlinkだけを除去し、不一致は失敗として記録。 |
+
+umaskはprocess全体の属性なので、test process内で変更せず別processの起動で与え、直列化を足さない。run中の置換は、test専用のseamやauthorityを足さず、同じaliasの先行step（Version）のsynthetic childが行う。他uid所有は非特権の実行では作れないため、root条件と0700条件を実descriptorの`fstat`に対する単一の述語とし、他uid所有の実在directoryのdescriptorで拒否を確認する（特権実行ではfixtureが`chown`して作る）。これはroot producerを通る負例には数えず、skipにもしない。Sのroot検査の因果は、control endpointを束縛しないRuntime起動で確認し、daemon経路で先に働く既存`ControlEndpoint::bind`の拒否と区別して記録する。
 
 `..`、slash、absolute形aliasはraw joinを復活させたmutantがroot外へ到達しないための負例とする。digest方式ではこれらのbytesから作られるpathもroot内に限定される。既存合法aliasのpositiveを維持する。
 
@@ -55,7 +105,7 @@ rootから各成分をsymlink追跡なしで確認し、自uid所有、0700、�
 
 intentは自instance／epoch一致と未存在キーを同一transactionで検査する。settlementはpendingからconfirmedまたはunknownへの、versionとbody完全一致CASだけを許可する。confirmedは物理的結果が既知という意味であり、protocol合格とは別である。
 
-aliasはinstallationあたり32、1 epochのstep行は96以下。全journal行は8192以下、unknown＋pendingの予約込みは4096以下とする。上限を超える新intent／spawnを拒否する。confirmedは64 epochより古いものだけ削除対象とし、unknownを自動削除しない。旧pendingはepoch fenceでunknownへ移す。保存失敗を成功へ反転しない。
+aliasはinstallationあたり32、1 epochのstep行は96以下。全journal行8192とunknown＋pending（予約込み）4096は独立upper boundsであり、両方の容量を使い切れる保証ではない。最大96行×64 epochのconfirmedだけで6144行となり、unknown等が4096未満でもtotal上限が先に効く。両上限をintent transactionで予約込み検査し、超過するintent／spawnを拒否する。既存epoch fence transaction内で旧pendingをunknownに移し、64 epochより古いconfirmedだけをpruneする。その結果に対して次epochの予約を評価する。unknownは自動削除しない。保存失敗を成功へ反転しない。prune後も上限ならBLOCKEDであり、上限増加・unknown破棄・再起動による解除を約束しない。
 
 再起動は新epochのfresh検査であり、旧unknownの復旧ではない。`oldEpochUnknown`件数をstatusに保持する。上限到達時は再起動だけでは解除されない。
 
@@ -103,7 +153,7 @@ table作成とguard設置を分離し、旧reference生成がcurrent installer�
 | task panic | 合格を公開しない。未settled intentを保持し、次epoch fenceでunknown。保持されたcustodyのhygiene／reap事実を別に記録する。 |
 | daemon forced death | 死んだdaemonがreapしたとは記録しない。再起動時のepoch fenceで旧pendingをunknownにする。子孫死亡の証明にしない。 |
 
-`RuntimeMetadata`のwire producer／consumerにstartup全体状態、alias別状態、oldEpochUnknown件数を追加する。`deny_unknown_fields`の型、CLI表示・deserialize testsを同時更新する。
+`RuntimeMetadata`のwire producer／consumerにstartup全体状態、alias別状態、oldEpochUnknown件数を追加する。producer／型／dispatchは`runtime/control.rs:337,753`、消費者は`main.rs:583`、`cli/daemon.rs:238`、`runtime/tests.rs:1304,1316`、`crates/rrx/tests/runtime_cli.rs:464`、`crates/rrx/tests/daemon_native.rs:182`。`ControlResponse`の`deny_unknown_fields`を維持し、CLI表示・deserialize testsを同時更新する。新旧wireの不一致は拒否し、新旧バイナリの混在互換を保証しない。DB v12と合わせて同じ契約のdaemon／CLIへ切り替える。
 
 `ShutdownSite`の追加は`runtime/stop.rs`、`runtime/control.rs`、`cli/daemon.rs`、`cli/daemon/tests.rs`まで配線し、「six」の注記も更新する。installation拒否理由を固定文へ潰す現行consumerは型付き分類を保つ形へ変更する。
 
@@ -138,32 +188,38 @@ nonceは`RRX-CANARY-`＋乱数32hex。成功は相関initialize応答→canary�
 
 Probe中のtool・権限要求・tool result・background task・注入turnは拒否し、応答しない。既存hook書込みや自動許可toolは検出以前に起きる可能性がある。plan modeを隔離証明としない。
 
-共通decoderはduplicate key、切れたJSON、型不正を拒否してから、次の有限構造を検査する。
+共通decoderはduplicate key、切れたJSON、型不正を拒否してから、次の有限構造を検査する。以下はrrxの受理契約であり、consumerの条件分岐をCLIの合法wire domainとみなさない。必須は欠落を拒否し、optionalは欠落を許し、nullableと書いたものだけnullを許す。文字列・ID・配列・JSONは既存上限内、数値は有限、計数／時間は非負で対象整数域への変換とoverflowを検査する。present wrong typeを`as_str/as_u64`失敗による欠落へ丸めず、分類／所有判断前にProtocolErrorとする。
 
-| frame | 必須構造／有限分岐 |
+公開型の根拠は依頼に固定された[Claude Agent SDK TypeScript資料](https://code.claude.com/docs/en/agent-sdk/typescript.md)の2026-10-13観測と、現`claude_wire.rs`の消費fieldを分けて用いる。公開型に掲載されたoptional stringをnullableへ拡大しない。公開固定factsで確認できないcontrol／session-state／origin等はrrx限定契約として明記し、資料不在をCLI仕様の断定で埋めない。SDKMessage全variantの追加をM0 scopeへ自動拡大しない。
+
+| frame | field・型・必須性と消費条件 |
 |---|---|
-| `system/init` | session ID、cwd文字列、tools配列、mcp_servers配列。各要素も所定の構造を検査する。 |
-| `session_state_changed` | state=`idle/running/requires_action`。 |
-| `task_started` | task_id、task_type=`local_agent/local_workflow`。 |
-| `task_notification` | task_id、status=`completed/failed/stopped`。 |
-| `task_updated` | task_id、patch object、patch.status=`completed/failed/stopped/killed`。 |
-| `api_retry` | retry情報の既知整数・文字列・nullable field。未知statusをcapacity成功証拠へ変換しない。 |
-| `assistant` | message object、content配列。textはtext文字列、thinkingはthinking文字列、tool_useはid/name文字列＋input object。 |
-| `user` | message object、role、content文字列または既知block配列。tool_resultはtool_use_idと型付きcontent、is_errorがあればboolean。 |
-| `result` | session ID、有限subtype、is_error boolean。成功resultは文字列。error subtypeは既存4種を保持し、未知subtypeは拒否。 |
-| `control_request` | request_id、request object、`can_use_tool`のtool_use_id/tool_name/input。 |
-| `control_response` | response object、相関request_id、success/error subtype、subtype別response／error構造。 |
-| `stream_event` | event objectと下記入れ子構造。 |
-| `tool_progress` | tool_use_id、tool_name、経過時間の有限非負数。 |
-| `tool_use_summary` | summary文字列、preceding tool ID配列。 |
-| `auth_status` | boolean状態、文字列配列、optional nullable error。 |
-| `rate_limit_event` | session IDと§9のrate構造。 |
+| `system/init` | 必須session_id:string、cwd:string、tools:string[]、mcp_servers:{name:string,status:string}[]。statusはstringであり未根拠のenumを作らない。identity／cwd一致とdecision時の空inventoryは業務条件。 |
+| `system/session_state_changed` | 必須state=`idle/running/requires_action`。 |
+| `system/task_started` | 必須task_id:string、description:string。optional task_type:string（null不可）。公開資料のlocal_bash／local_agent／remote_agentは例でありenumではない。現consumerのlocal_agent／local_workflowは追跡する条件でありwire domainではない。Probeはtask_started自体を拒否。 |
+| `system/task_notification` | 必須task_id:string、status=`completed/failed/stopped`、output_file:string、summary:string。optional usage:{total_tokens:number,tool_uses:number,duration_ms:number}（3field必須、有限非負、null不可）。本番は追跡済taskの終了だけを消費。 |
+| `system/task_updated` | 必須task_id:string、patch:object。patch.statusはoptional `pending/running/completed/failed/killed`（null不可）。optional description:string、end_time:number、total_paused_ms:number、error:string、is_backgrounded:booleanもnull不可。status欠落／pending／runningはwire合法で終了扱いしない。completed／failed／killedだけ終了消費し、stoppedをpatch.statusへ流用しない。 |
+| `system/api_retry` | rrx限定契約は必須attempt:uint64、max_retries:uint64、retry_delay_ms:uint64、error_status:nullまたはuint16。現quota fixtureのstatus_codeは追加fieldであり成功・capacity証拠にしない。公開固定factsはこのrowを資格付けておらず、実CLI適合は未証明。 |
+| `assistant` | 必須session_id:string、parent_tool_use_id:string/null、message:{role:`assistant`,content:typed block[]}。optional errorは下記12値、null不可。textは必須text:string、thinkingはthinking:string（signatureがあればstring）、tool_useはid/name:string＋input:object。parent／originがowned human条件に一致した場合だけ既存error hintを消費。 |
+| `user` | 必須message:{role:`user`,content:stringまたはtyped block[]}。配列要素はtext／tool_result。textはtext:string、tool_resultはtool_use_id:string、content:stringまたはtext block[]、optional is_error:boolean（null不可）。parent_tool_use_idがあればstring/null。これはrrx限定content集合であり公開SDKの全content domainを主張しない。parent／originのinjected判定は検査後。 |
+| `result` | 必須session_id:string、subtype=`success/error_during_execution/error_max_turns/error_max_budget_usd/error_max_structured_output_retries`、is_error:boolean。success枝はresult:string、optional api_error_status:number/null（rrxでは非負整数uint16へrefine）。error枝はerrors:string[]必須、resultがあればstring、api_error_statusがあれば同じrefinement。error枝のapi_error_status受理はrrx契約であり公開固定factsの保証としない。errorsは全要素を検査し、分類のtake(64)以前のmalformedを隠さない。成功・auth・capacityは検査後の業務条件。 |
+| `control_request` | 必須request_id:有界string、request:object、request.subtype=`can_use_tool`、tool_use_id/tool_name:string、input:object。未知subtype拒否。Probeは正常形でも拒否・応答0。 |
+| `control_response` | 必須response:object、response.request_id:有界string、response.subtype=`success/error`。success枝はresponse.response:object、error枝はresponse.error:string。相関IDは型検査後に完全一致。 |
+| `stream_event` | 必須event:object。parent_tool_use_idがあればstring/null。入れ子fieldは次段落の有限構造。 |
+| `tool_progress` | 必須tool_use_id:string、tool_name:string、parent_tool_use_id:string/null、elapsed_time_seconds:有限非負number。rrx受理契約であり今回の公開固定factsによる実CLI適合証明ではない。 |
+| `tool_use_summary` | 必須summary:string、preceding_tool_use_ids:string[]。 |
+| `auth_status` | 必須isAuthenticating:boolean、output:string[]、optional error:string（null不可）。 |
+| `rate_limit_event` | 必須session_id:string、rate_limit_info:§9の型付きobject。 |
 
-stream eventは`message_start/content_block_start/content_block_delta/content_block_stop/message_delta/message_stop/ping`だけを許可する。block開始には非負indexと型付きcontent_block、deltaには非負indexとdelta objectを要求する。delta.typeは`text_delta/thinking_delta/input_json_delta/signature_delta`で、それぞれtext／thinking／partial_json／signature文字列を要求する。message_startのmessage、message_deltaのdelta／usageも型付き検査し、単にevent.typeが既知という理由で通さない。
+全rowのtypeは表のtop type、system rowのsubtypeは表の名前を要求する。共通optional uuidはUUID、session_idはpresentなら有界string（init／assistant／result／rateでは必須）。optional originはnullまたはobjectで、非nullはkindを要求する。assistant.errorの12値は`authentication_failed/oauth_org_not_allowed/account_on_hold/billing_error/rate_limit/overloaded/invalid_request/model_not_found/server_error/max_output_tokens/cloud_credential_error/unknown`。現consumerがhint分類に使う4値とこのwire集合を混同しない。api_error_statusの公開numberに対するuint16 refinement、usageの非負性、配列上限はrrx契約でありlive適合は未証明。欠落とnullはdecoder上で別状態を保持する。
+
+stream eventは`message_start/content_block_start/content_block_delta/content_block_stop/message_delta/message_stop/ping`だけを許可する。全枝にevent.typeを要求する。block_startはindex:uint64とcontent_block（assistantと同じ3枝）、block_deltaはindex:uint64とdelta.type=`text_delta/thinking_delta/input_json_delta/signature_delta`、それぞれtext／thinking／partial_json／signature:string。block_stopはindex:uint64。message_start.messageは必須id:string、type=`message`、role=`assistant`、model:string、content:typed block[]、stop_reason:string/null、stop_sequence:string/null、usage:{input_tokens:uint64,output_tokens:uint64}。message_deltaは必須delta:{stop_reason:string/null,stop_sequence:string/null}とusage:{output_tokens:uint64}。usageのcache_read_input_tokens／cache_creation_input_tokensがあればuint64。message_stop／pingはtype以外の必須fieldなし。これはrrxの有限受理構造であり、今回の公開固定factsによる全stream variantの資格付けではない。構造が既知でもProbeのtool拒否を省略しない。
 
 origin.kindは`human/task-notification/hook/mcp-channel/peer`の有限集合とする。既知構造でもProbe consumerはhuman以外を成功証拠に使わない。このClaude集合はrrxの受理契約であり、対象CLIのlive観測済み集合ではない。表外実eventはvariant名だけを安全に記録して不合格とする。
 
 UUIDがあるframeはUUIDを解析して小文字hyphen形へ正規化する。JSON object keyを再帰的にsortし、array順序、文字列内容、absentとnullを保持してcanonical digestを計算する。未知fieldを削ってdigestを作らない。8192 UUID上限。構造検査後に重複照合し、同一UUID・同一内容だけをdedup、内容改変を拒否する。request IDなどopaque IDはUUIDへ変換しない。
+
+既知Claude frame内の未宣言fieldは有界strict JSONとして保持受理する。canonical digestに含め、authority／分類／回答には使用しない。既知fieldのwrong typeや未知type／subtype／block／delta／origin.kind／error enumを追加fieldとして逃がさない。将来追加fieldをconsumerで読むときは契約へ明示追加して検査する。追加fieldの正常形／過大・不正形／同UUIDでの改変をcontrolに含める。
 
 Claude rate eventはforeign sessionでもstrict decodeを先に行う。正常foreign eventだけを所有フィルタで除外し、quota更新しない。
 
@@ -245,21 +301,82 @@ rrx側に`CodexWireContractV1`を定義し、typed decoder、schema gate、S/P�
 | `windowsSandbox/setupCompleted` | mode:`elevated/unelevated`,success:b |
 | `account/login/completed` | success:b |
 
-optional fieldもpresentなら型検査する。特にthreadName、projectId、turnId、error、reason、details、targetItemId、environmentIdなどのnullableとoptionalを混同しない。
+optional fieldもpresentなら型検査する。特にthreadName、projectId、turnId、error、reason、details、targetItemId、environmentIdなどのnullableとoptionalを混同しない。以下の所有列を上のpayload表へmethodで自然結合し、全83methodがちょうど1区分に属することを検査する。列挙中のmethodはそれぞれ独立methodであり、prefixによる未知methodの受理ではない。
 
-補助型は、今回の固定公開structureの同名definitionを開発時根拠として、rrxの有限型へ個別に転記する。転記範囲は上表、11 server request、送信6 method、6 responseから到達する**宣言済みproperty／required／enum／型／数値域の全閉包**であり、requiredだけの投影に縮めない。出所definition→rrx型→decoder→consumer対応表を実装成果物に含める。runtime生成schemaをvalidatorとして実行する方式は禁止する。
+| method集合（件数） | 所有区分／キーと型 | S/P握手中 |
+|---|---|---|
+| error、thread/tokenUsage/updated、turn/diff/updated、turn/plan/updated、item/started、item/autoApprovalReview/started、item/autoApprovalReview/completed、autoApprovalReview/strictReviewRequired、item/completed、item/agentMessage/delta、item/plan/delta、item/commandExecution/outputDelta、item/commandExecution/terminalInteraction、item/fileChange/outputDelta、item/fileChange/patchUpdated、item/mcpToolCall/progress、item/reasoning/summaryTextDelta、item/reasoning/summaryPartAdded、item/reasoning/textDelta、thread/compacted、model/rerouted、model/verification、modelProvider/authRecoveryStarted、modelProvider/authRecoveryCompleted、turn/moderationMetadata、model/safetyBuffering/updated（26） | Thread＋Turn。params.threadId:string、params.turnId:stringとも必須。 | strict検査後に拒否 |
+| thread/status/changed、thread/archived、thread/deleted、thread/unarchived、thread/closed、thread/reverted、thread/name/updated、thread/attachment/updated、thread/goal/cleared、thread/queue/changed、thread/project/updated、thread/environment/connected、thread/environment/disconnected、thread/settings/updated、serverRequest/resolved、guardianWarning、thread/realtime/started、thread/realtime/itemAdded、thread/realtime/item/started、thread/realtime/item/transcript/delta、thread/realtime/item/completed、thread/realtime/transcript/delta、thread/realtime/transcript/done、thread/realtime/outputAudio/delta、thread/realtime/sdp、thread/realtime/error、thread/realtime/closed（27） | Thread。params.threadId:string必須。 | strict検査後に拒否 |
+| thread/goal/updated、hook/started、hook/completed（3） | Thread＋任意Turn。params.threadId:string必須、params.turnIdはoptional string/null。非nullだけ追加の所有比較。 | turnId欠落／nullでも拒否 |
+| thread/started（1） | Nested Thread。params.thread.id:string必須。Thread全体も検査。top-level threadId不在を全体通知としない。 | 拒否 |
+| turn/started、turn/completed（2） | Thread＋Nested Turn。params.threadId:string、params.turn.id:string必須。Turn全体も検査。 | 拒否 |
+| mcpServer/oauthLogin/completed、mcpServer/startupStatus/updated、warning（3） | Optional Thread。params.threadIdはoptional string/null。欠落／nullなら全体、非nullならThread。 | 欠落／nullなら正常全体通知として続行、非nullなら拒否 |
+| skills/changed、project/changed、command/exec/outputDelta、process/outputDelta、process/exited、mcpServer/event/stream/notification、account/updated、account/gatewayOAuth/changed、account/rateLimits/updated、app/list/updated、remoteControl/status/changed、externalAgentConfig/import/progress、externalAgentConfig/import/completed、fs/changed、deprecationNotice、configWarning、fuzzyFileSearch/sessionUpdated、fuzzyFileSearch/sessionCompleted、windows/worldWritableWarning、windowsSandbox/setupCompleted、account/login/completed（21） | Global。Thread／Turn所有キーなし。processHandle、processId、watchId、subscriptionId、sessionId等をNative Thread／Turn authorityへ変換しない。 | strict-validなら件数に算入して続行。rateは§9も適用 |
+
+本番では存在する所有キーをすべて比較し、foreignはpayload全体の検査後にだけ除外する。任意Turnが欠落／nullでもThread比較は省略しない。Global通知はwire合法性だけで入力・回答・権限authorityを発行しない。
+
+補助型は、固定HEADの公開static catalogでsource schemaごとの`local_definition_digests`から`shared_definitions`へ解決したdefinitionを開発時根拠にする。rrx予定型名とsource definition名は同名とは限らない。
+
+| source definition | rrx予定型 |
+|---|---|
+| GuardianApprovalReviewAction | GuardianAction |
+| GuardianApprovalReview | GuardianReview |
+| HookRunSummary | HookRun |
+| ThreadRealtimeItem | RealtimeItem |
+| ExternalAgentConfigImportTypeResult | ImportResult |
+| FuzzyFileSearchResult | SearchResult |
+| TurnPlanStep | PlanStep |
+| FunctionCallOutputBody | FunctionOutput |
+| RateLimitSnapshot | RateSnapshot |
+| FileSystemSpecialPath | SpecialPath |
+
+その他の同名型もsource schema名とdefinition名を明記する。転記範囲は上表、11 server request、送信6 method、6 responseから到達する**宣言済みproperty／required／enum／型／数値域の全閉包**であり、optional／nullable、配列要素、map値も含めてrequiredだけの投影に縮めない。出所definition→rrx型→decoder→consumer対応表を実装成果物に含める。static catalogは開発時の観測資料であり、runtime validatorの仕様生成器ではない。全JSON dump、runtime生成schemaからの型生成、schemaをvalidatorとして実行する方式でこの固定rrx契約を代替しない。
 
 内部discriminatorは少なくとも次を有限化する。
 
 - ThreadStatus：notLoaded／idle／systemError／active。activeはactiveFlags配列を要求。
-- GuardianAction：command／execve／writeStdin／applyPatchApproval。各枝のcommand、argv、cwd、processId、stdin、approvalId等を枝別検査。
+- GuardianActionは`GuardianApprovalReviewAction`の7枝。全枝でtypeを必須とし、枝別構造は次表に固定する。server request methodの`applyPatchApproval`を内部action tagとして受理しない。
+
+| type | 追加必須field | optional field |
+|---|---|---|
+| command | command:string、cwd:LegacyAppPathString、source=`shell/unifiedExec` | なし |
+| execve | argv:string[]、cwd:AbsolutePathBuf、program:string、source=`shell/unifiedExec` | なし |
+| writeStdin | approvalId:string、cwd:LegacyAppPathString、processId:string、stdin:string | なし |
+| applyPatch | cwd:LegacyAppPathString、files:LegacyAppPathString[] | なし |
+| networkAccess | host:string、port:uint16、protocol=`http/https/socks5Tcp/socks5Udp`、target:string | なし |
+| mcpToolCall | server:string、toolName:string | connectorId／connectorName／toolTitle:string/null |
+| requestPermissions | permissions:RequestPermissionProfile | reason:string/null |
+
+LegacyAppPathStringとAbsolutePathBufはsourceのstring形を保ち、後者には既存absolute-path業務条件を適用する。RequestPermissionProfileはtyped閉包を検査し、任意JSONへ落とさない。
 - GuardianReview status：inProgress／approved／denied／timedOut／aborted。
 - HookRun：eventName、executionMode、handlerType、scope、source、status、entries.kindの各有限enum。
 - FileSystemPath／SpecialPath、AskForApproval、SandboxPolicy、SessionSource／SubAgentSource：各oneOfのtagと枝別必須構造。
 - RealtimeItem：共通id／realtimeSessionIdに加え、realtimeSessionStarted／transcriptSegment／bemItemPromoted／realtimeSessionClosedの枝別構造。presentationのwholeItem／inlineMarkdown／inlineVisualizationも検査。
 - ImportResult、AppInfo、SearchResult、ThreadGoal、ThreadSettings、token usage、permission profile：配列要素・map値・nullable参照を再帰検査し、objectだけでは通さない。
 
-`OpaqueJson`は、固定契約が意図して任意JSONとするarguments、MCP params／meta／content要素／structuredContent、moderation metadata、realtime itemAdded.item、webSearch.results要素、outputSchema等の明示した位置だけに限定する。未知method・item.type・status・discriminatorをopaqueへ落とさない。opaqueもstrict JSONと既存size／depth上限の対象である。
+`OpaqueJson`の免責集合は次表で閉じる。位置はsource definitionのproperty pathであり、枝をまたいで拡大しない。任意JSON自身にはnullを含められるが、外側のtyped容器の型・required／optional／nullableは維持する。
+
+| source位置 | 外側の契約 |
+|---|---|
+| McpServerEventNotification.params | 必須任意JSON |
+| McpToolCallResult._meta、structuredContent | 各optional任意JSON |
+| McpToolCallResult.content[] | contentは必須array、各要素だけ任意JSON |
+| ThreadItem[type=mcpToolCall].arguments、ThreadItem[type=dynamicToolCall].arguments | 各枝で必須任意JSON |
+| ThreadItem[type=webSearch].results[] | resultsはoptional array/null、非null arrayの各要素だけ任意JSON |
+| ThreadRealtimeItemAddedNotification.item | 必須任意JSON。ThreadRealtimeItemのtyped枝とは別位置 |
+| TurnModerationMetadataNotification.metadata | 必須任意JSON |
+| DynamicToolCallParams.arguments | 必須任意JSON |
+| McpServerElicitationRequestParams[mode=openai/userVerification・form・openai/form・openaiForm・url]._meta | 5枝それぞれoptional任意JSON |
+| McpServerElicitationRequestParams[mode=openai/form・openaiForm].requestedSchema | この2枝だけ必須任意JSON |
+| DynamicToolNamespaceTool[type=function].inputSchema、DynamicToolSpec[type=function].inputSchema | それぞれoneOf/0の必須任意JSON |
+| InitializeCapabilities.extensionsのmap値 | extensionsはoptional object/null、値だけ任意JSON |
+| ThreadStartParams.configのmap値 | configはoptional object/null、値だけ任意JSON |
+| TurnStartParams.outputSchema | optional任意JSON（sourceは型なし`{}`） |
+| GetAccountRateLimitsResponse.rateLimitUpsell | optional任意JSON（sourceは型なし`{}`）。quota／可用性判断に使用しない |
+
+McpServerElicitationRequestParamsのmode=formではrequestedSchemaは必須`McpElicitationSchema`であり、型付きproperties／required／primitive schema閉包を検査する。mode=openai/userVerification／urlへrequestedSchemaの免責を追加しない。共通必須serverName／threadIdとoptional nullable turnIdも検査する。
+
+選択した10source schemaと到達definition閉包に明示された`true`／型なしschema位置について、この表との双方向集合一致を検査する。typed枝を免責へ広げず、欠落免責を暗黙追加しない。未知method・item.type・status・discriminatorをopaqueへ落とさない。opaqueもstrict JSONと既存byte／depth／nodes／文字列／容器上限の対象であり、構造外のauthority・業務成功証拠にしない。
 
 **ThreadItem全19枝**
 
@@ -290,7 +407,9 @@ UserInputはtext／image／localImage／audio／localAudio／skill／mention。t
 
 agentMessage.phaseはoptional nullable、presentならcommentary／final_answer。欠落／nullはwire合法だが回答承認には使わない。delivery／questionsもwire構造を検査した後、collectorの業務条件で採用可否を決める。
 
-本番処理順はstrict envelope→method→payload全構造→所有フィルタ→consumer。正常toolは構造検査後に回答から除外できる。malformed foreign frameはProtocolError。S/P握手では全server requestとthread系通知を拒否し、正常な全体通知とrate通知だけを数えて続行する。
+本番処理順はstrict envelope→method→payload全構造→所有フィルタ→consumer。正常toolは構造検査後に回答から除外できる。malformed foreign frameはProtocolError。S/P握手では全server requestをparams検査後に拒否し、通知は所有列の握手扱いを使う。正常なGlobal通知と、Optional ThreadでthreadId欠落／nullの通知だけを数えて続行する。
+
+既知Codex wire frame内の未宣言fieldは、Claudeと同じく有界strict JSONとして保持受理し、業務・authorityには使わない。既知fieldの不正型、未知method／tag／enum、branch不適合は拒否する。このwire追加field規則と、Schema gateで未知の宣言property／method／discriminatorを拒否する規則は別である。schemaのadditionalProperties未指定を、未知methodやtyped field不正を受理する根拠にしない。明示typed mapとOpaque位置以外に、新しい宣言propertyを自動追加しない。
 
 server requestは既知11種すべてのparamsを先に検査する。本番で対応する承認2種だけ既存ledgerへ渡し、残り9種は既存の非対応拒否を維持する。M0で権限応答能力を増やさない。
 
@@ -300,7 +419,11 @@ Schema helperは`app-server generate-json-schema --experimental --out <new-dir>`
 
 4 envelopeに加え、Initialize／Account／Rate／Environment／ThreadStart／TurnStart responseの生成ファイルを読み、§7のfinite contractと比較する。file名はfixture manifestで固定し、任意探索で同名definitionを拾わない。
 
-出力は自uidの新規0700 directory、symlink禁止、1024項目、16 MiB、深さ4、各読取file1 MiBまで。JSONは深さ64、262144 nodes、文字列64 KiB、object／array4096。local refは同一fileの`#/definitions/`のみ、ref深さ16・訪問512。循環・未解決・外部refを拒否する。
+生成schema filesのsinkは、自uidの新規0700 directory、symlink禁止、1024項目、総16 MiB、directory深さ4、各読取file1 MiBまで。JSONは深さ64、262144 nodes、文字列64 KiB、object／array4096。16 MiBは生成file総量の上限であり、process stdout＋stderrの64 KiB捕捉や準備aggregate8 MiBとは別sinkである。既存上限を増やさず、生成fileをprocess捕捉枠に混算しない。
+
+local refは同一fileの`#/definitions/`のみ。512は各source fileで解決・memo化する異なるdefinition target数の上限であり、再参照回数や非メモ化展開node数ではない。keyは検査済みfile identity＋definition名、memoは最大512 entry、現在の解決stack／ref深さは16までとする。stack内target再訪を循環として拒否し、completed memoへの再参照は512を再消費しない。比較側も既処理のschema-node／rrx-type対をmemo化し、全再参照・分岐の処理を含むwork-node数を各file262144以下に制限する。raw JSON node数とwork-node数を別々に検査し、memoによる無制限な反復処理を許さない。循環・未解決・外部refを拒否する。
+
+PのSchema出力先はSAME Unitの既存tmp直下にrrxが新規作成する専用childとする。既存pathを再利用せず、custodyは作成したdirectory identityとUnit／actorの対応を保持する。S/Pともcleanupは当該runで作成した同一directoryだけに限定する。Unknownや強制死では旧epoch／Unitの生成fileが残りうる。後続runで再利用・自動復旧・旧残骸の自動削除をせず、残存を未清掃として記録する。M0に追加cleanup工程を要求しない。
 
 **適合意味**
 
@@ -335,7 +458,21 @@ Claude decoderは`NotRateEvent／Classified／Unparseable`。bucketは既存5種
 
 Codexはresponse envelopeとsnapshotを分ける。rateLimits objectは必須。rateLimitsByLimitIdはoptional nullable typed map、最大32、keyは1〜128 bytes。両方presentなら両方を構造検査し、選択しない側のmalformedを隠さない。
 
-limitIdはabsent／nullなら既存fallback、present non-stringは拒否。rateLimitReachedType未知値を未到達へ変換しない。windowのusedPercentはint32であり、0〜100のschema制約を発明しない。negative値はusage unknown、100超は割合値を捏造せず既存exhaustion判断を維持する。既知credit／spend到達値をAvailableへ変換しない。
+limitIdはabsent／nullなら既存fallback、present non-stringは拒否。rateLimitReachedTypeのwire集合は下表の5値とoptional null。spendControlReachedはoptional boolean/null。未知enum／wrong typeを未到達へ変換しない。
+
+| rateLimitReachedType／到達条件 | quota分類 |
+|---|---|
+| rate_limit_reached | Exhausted、confirmed_subscription=true |
+| workspace_owner_credits_depleted | Unknown。これだけからsubscription exhaustionを発行せず、Availableにしない |
+| workspace_member_credits_depleted | Unknown。同上 |
+| workspace_owner_usage_limit_reached | Unknown。同上 |
+| workspace_member_usage_limit_reached | Unknown。同上 |
+| spendControlReached=true | Unknown。同上 |
+| enum欠落／null、spendControlReached欠落／null／false | それだけでは到達証拠なし。型付きwindowの既存分類へ進む |
+
+独立したusedPercent>=100のwindow証拠があれば、既存のExhausted／confirmed_subscription=trueを優先する。それ以外でcredit／spend到達があればUnknownを優先し、割合が小さいことからAvailableへ落とさない。上記分類は`state/execution/quotas.rs`と`native_phase/live_quota.rs`がExhaustedにconfirmed_subscriptionを要求する既存契約を保つ。windowが存在しない場合は観測windowを創作せず、metadataとして到達種別を記録してavailability unknownとする。
+
+windowのusedPercentはint32であり、0〜100のschema制約を発明しない。negative値はusage unknown、100超は割合値を捏造せず既存exhaustion判断を維持する。S/Pのこの分類結果はpoolへ反映せず、本番validated観測のconsumerと区別する。
 
 `{"rateLimits":{}}`、全window absent/null、合法な空mapはwire合法で、usable-window件数0、availability／usage unknown。これらをmalformedやAvailableにしない。metadata構造合格とusable-window観測を別記録し、既存quota policyを緩めない。wrongtyped snapshotは拒否する。
 
@@ -343,13 +480,40 @@ selfcheckはClaudeのbucket×status×optional項目、Codex snapshot／map、合
 
 `unclassified_limit`とそのcapacity／terminal分岐を廃止し、解析不能をProtocolErrorへ一本化する。既存terminal_capacityの意味をrate unknownで代用しない。
 
-quota Waitはcanary入力0、Parked。Admit後Known不合格は既存no-dispatch／no-Session／inventory一致／revoke条件を満たしたclosureでlease・自probe ownershipを解放し、必要な期限／CASを更新する。UnitはRetired／Refused、Taskは`explicit retry required`のWaiting。UnknownはHeld、leaseを勝手に解放しない。
+quota Waitはcanary入力0、Parked。Admit後Known不合格は既存`NativeQuotaClosurePlan`へ接続する。`state/execution/native_phase/quota.rs:1273-1439`の原本actor／owner一致、revoke、no-dispatch、no_registration、末尾inventory、readiness lineage、latest factual Unitの検査を維持し、Claudeでは既知Probe settlementを含むProbed末尾へ接続する。latest Unitはnongrant照合画像であり、Task.versionやDTOからauthorityを発行しない。
+
+| 項目 | before→after／CAS |
+|---|---|
+| own quota_waiters | 7列原本画像とUnit／provider／account=unknown／resume_state=preparingを確認し、存在すれば削除。absenceも原本に含める |
+| own quota_leases | 6列原本画像、Unit／provider／account／epoch一致を確認し、存在すればactiveを0。他列保持。未存在なら作成しない |
+| quota_pools.probe_unit | 自Unitを保持している場合だけnullへ。普通Admitで他Unit／nullなら保持 |
+| quota_pools.next_probe_at | 自probeを解放する場合だけ`max(before.next_probe_at, at.saturating_add(before.backoff))`へ。その他は保持 |
+| poolのprovider／account_key／backoff／last_role | 原本保持。canaryのrate／auth／capacity結果から書換えない |
+| readiness | 原本version+1、state=closed、既存`transition_readiness("closed", version, None, true)`の画像へ。overflow拒否 |
+| transaction | pool6列・waiter7列・lease6列の全before画像、Unit、readiness／inventoryを同一transactionで再確認し、既存binding permitで更新。planの既存5秒freshness検査を延長しない |
+| uncertain commit | 全after画像＋readinessならKnown、全before＋旧lineageならRolledBack、混在／照合不能ならHeld。部分成功をclosure完了にしない |
+
+UnitのRetired／RefusedとTaskの`explicit retry required` Waitingは、このnongrant closure結果から既存terminal処理で行う。普通Admitとrecovery Admitを別々に検査し、recoveryで自probeを保持する場合の機械的更新を含める。UnknownはHeld、leaseを勝手に解放しない。観測非反映はwindow／availability／usage／canary由来backoffの更新0であり、pool全write0ではない。
 
 普通Admitとrecovery Admitを別controlsで検査する。観測非更新のassertionはwindow／availability／usage／backoffのcanary反映0であり、quota_pools全write 0ではない。poolがcanary exhaustionを学習しないため後続TaskもAdmitされうることを明記し、M0で自動復旧を追加しない。
 
 ### 10. Terminal、tail、identity、監査
 
-helperはprotocol、stop方式、exit、pipe EOF、tail、signal、leader reapを別記録する。必須観測後にstdin close、5秒の自発終了猶予、必要ならgroup signal、2秒drain、10秒reap。期限を延ばして解決しない。
+helperはprotocol、stop方式、exit、pipe EOF、tail、signal、leader reapを別記録する。観測前にも有限deadlineを持ち、合法通知や再送で時計を更新しない。
+
+| 対象 | 観測開始からの期限 | stdout＋stderrの累積捕捉上限 |
+|---|---:|---:|
+| Version | spawnから30秒 | 64 KiB |
+| Schema process | spawnから60秒 | 64 KiB。生成filesの16 MiB枠とは別 |
+| Handshake | spawnから90秒、各相関応答はrequest送信から30秒 | 1 MiB |
+| Claude canary | user送信から120秒 | Probe枠に含める |
+| Claude Probe全体 | intent／custody開始から180秒、initialize応答は送信から30秒 | 4 MiB |
+| Git helper／batch | 現行各応答30秒／batch180秒 | 現行各action上限を維持 |
+| S全体 | custody登録から10分 | 全alias合計8 MiB。各helper上限も独立に適用 |
+
+入れ子deadlineは常に最も早い期限を使う。準備PではVersion／Schema／Handshake／Git／Probeのstdout＋stderrの全受信bytesを、既存`AGGREGATE_BYTES=8 MiB`へ一度だけ累積算入する。stderrを保存しなくても算入する。UUIDなし、同一UUID再送、foreign、ignored、合法tailもdedup／所有filter前に算入する。各helperは自身の上限とaggregate残量の小さい方で制限し、capture stateと固定size read bufferも有界にする。Sは全aliasで同じ8 MiB counterを共有し、予約・加算を競合時にも超過させない。PのHELPER_LIMIT=32、Sのstep上限96、既存line／JSON上限を維持する。生成schema filesは別sinkであり、この8 MiB捕捉counterへ混算しない。
+
+期限／byte超過では新しい送信・spawn・モデル入力を止め、合格を出さず既存停止手順へ進む。必須観測後もstdin close、5秒の自発終了猶予、必要ならgroup signal、2秒drain、10秒reapを適用する。親deadlineが先ならそこで切り、猶予でS／Probe上限を延長しない。両pipe EOFとleader reapが既知ならKnown不合格としてsettleし、どちらか不明ならUnknown。Sはadmission 0、Pは既存Known closureまたはUnknown Heldへ接続する。停止要求／shutdownの既存deadlineを延長しない。
 
 Confirmedは生成結果既知＋両pipe EOF＋leader reap既知。qualifiedはConfirmed＋protocol pass＋合法tail＋自発exit 0または猶予後signal。未知tail／partial JSON／自発nonzeroはKnown不合格。pipe／reap不明はUnknown。
 
@@ -357,7 +521,17 @@ Claude成功後の新規tail許容集合は、strict-validなrate event、auth_s
 
 Native programはcanonical path、dev／ino／size／mtime／ctime、SHA-256をVersion intent前に記録し、Native helper／transport前にhash、spawn直前にstatを再検査する。Git helperはCLI identityの再hash対象外。execとの非原子的な窓、wrapper内部、escaped descendantsは未証明として残す。
 
-監査は有限語彙、method件数、digest、nullable観測状態だけ。account本文、codexHome、nonce、canary本文、raw frame、stderrを保存しない。版数はexit 0、完全捕捉、256 bytes以下、単一行、制御文字なし。安全に記録できない文字列はdigestを記録し、版数値によって不合格にしない。
+監査は有限語彙、method件数、digest、nullable観測状態だけ。account本文、codexHome、nonce、canary本文、raw frame、stderrを保存しない。receiptは16項目以下、値128 bytes以下、既存private imageの8192 bytes上限を維持する。S bodyは4096 bytes以下。版数はexit 0、完全捕捉、256 bytes以下、単一行、制御文字なし。記録は96 bytes以下かつ`[A-Za-z0-9 ._()+/:-]`なら原文、それ以外はSHA-256とnonrecordableを記録する。記録可否を版数一致による合否へ変換しない。
+
+`source_version`はCLI番号を含まない契約ラベルへ統一する。`execution/quota.rs:146`は`codex/account.rateLimits`、同:227は`claude/rate_limit_event`、`execution/native.rs:2227,2248,2254`のusage-limit分類は`codex/usageLimitExceeded`とする。これらのラベルもauthorityではない。実際のCLI版数はVersion観測receiptへ別に記録し、quota DTOのsource_versionや保存済み旧ラベルからqualifyを再構成しない。
+
+### 10a. Profile／config移行
+
+新profile名を`rrx-native-probed-v1`へ固定し、settings=inheritedと既存hook宣言検査を維持する。新宣言はcli_versionキーの不在を要求する。`NativeCompatConfig`のdeny_unknown_fieldsを残したまま、廃止キーcli_versionだけはpresenceを識別できる移行用入力として認識し、存在すればnullを含めてinstallationで型付き拒否する。単純なfield削除で汎用unknown-fieldエラーへ落とさない。新宣言のcanonical画像はcli_versionを含めず、受理済みの新profile／settings／hook宣言からdigestを生成する。
+
+拒否位置は`AgentRegistry::from_managed_config`（adapter.rsの現managed registry組立て前）。旧profile／cli_versionありはInstallationRefusalの有限分類を保持し、helper／Task admission／新規Unit／Heldは0。`qualify_compat_static`のprofile検査は多層防御として残し、`qualified_profile()`と番号付きprofile比較は全consumerから撤廃する。
+
+切替の前提は進行中のmanaged Taskがないこと。既存Frameを新宣言へ書換えてauthorityを作らない。保持Frameが旧宣言なら、準備commit後の既存`compat.rs:91-100`の原本Frame／installed宣言digest照合で拒否し、Session／NativeInputを作らずPreparing UnitをHeldとする。installation拒否のUnit0とこのHeldを分けて検査する。
 
 ### 11. Legacy と collector の提供範囲（オーナー方向決定の転記）
 
@@ -367,9 +541,19 @@ Native programはcanonical path、dev／ino／size／mtime／ctime、SHA-256をV
 
 共有する auth／owner／CAS／marker／quota／permission／process custody 機構は、現在提供する本番の管理経路で維持・検証する。status/cancel/cleanup 等の consumer を調べ、現在提供する経路の停止や custody 保持まで削除しない。旧機能固有で到達先が廃止されるコード・テストは、機能廃止の差分として明示して整理する。テストを skip/ignore して CI を緑にする方法ではない。
 
-台帳は各 test ID の旧 producer／consumer、検出する安全性・機能、移植／残置／機能廃止に伴う削除、理由、現在の代替 producer と assertion を記録する。N＋M＋K が対象数と一致し、未分類0を要求する。旧 standalone Codex の87件（session60/custody20/ownership7）とその他 Native/adapter/workflow の対象を実装差分で照合する。共有ケースは拒否テストだけで代替しない。機能廃止に伴う削除は、機能を維持したことや元の正常系を実行したことの証拠に数えない。
+台帳は各test ID／example IDの旧producer／consumer、検出する安全性・機能、移植／残置／機能廃止に伴う削除、理由、現在の代替producerとassertionを記録する。N＋M＋Kが凍結した母集団と一致し、未分類0を要求する。87件（session60／custody20／ownership7）は既知subsetであり、whole standalone件数ではない。
 
-M0 の実 Actor 経路は最初の Executor までで、旧 Reviewer/resume 等の本番実行機能を提供しない。Reviewer の Source-owned snapshot/lease、offer、保持と正常系は M3 の実装・受入条件に残す。M0 の pure parser／予算政策／metadata 検証を Reviewer 起動・レビュー成功に数えない。M3 で機能を提供する前に、その実 producer を通る正常系と攻撃系を検証する。
+母集団は固定入力HEADの追跡sourceから、(1) standalone Codex全test module、(2) 現管理経路と共用するprotocol、(3) integration testsとexamples、(4) 旧入口または共有機構を消費するNative／adapter／workflow／runtime testsを列挙する規則で確定する。既知追加対象はtransport8、attempt4、preparation2、availability1、`crates/rrx/tests/codex_unavailable.rs`2、examples2、shared protocol16。これらを87件へ混ぜて移植済みとせず、ID重複を除いたunionと区分別件数を実装台帳で確定する。`execution/native/tests.rs`のstart_inner経由25件も分類対象にする。新規追加testは旧母集団と別列で数える。
+
+#19は`doc/design/master/agent-adapter.md:502-529`のprivate standalone selected componentとして、既存custody pool・ordinary選択None・cfg(test) factory・public availability EMPTYと既存検査を保持する。現Git／Native管理経路へ接続済みとは扱わず、起動しない既存部品のpositive／unknown保持／Drop検査として残置する。旧起動機能の廃止を#19維持条件の緩和へ拡張しない。共有安全性の管理経路への移植と、このselected componentの残置を別区分で記録する。実装分類で維持不能が確認された場合だけ、具体的根拠と影響を示してowner判断へ戻す。
+
+旧入口inventoryはNativeSessions.start→start_inner→start_legacy、NativeAdapter.start_managed→start_inner、CodexAdapter.start／start_structured→launch、resume→register_existing→spawn_launch、checkpoint→register_existing→spawn_checkpointを含む。Workflowの既存protected拒否を緩めない。全入口でhelper／Session／新しいNativeInput生成前に拒否する。launchだけの拒否ではresume／checkpointを閉じたことにならない。
+
+NativeSessionsのentries／starts／preparationsの3保持領域は、現installed transport／preparationも消費するため保持する。`native/transport.rs:532,696,748`、`native/preparation.rs:996,1024`、`native.rs:629,654,670,723,769`のstatus／照会／停止を台帳と影響範囲に含める。共有ケースは拒否テストだけで代替せず、旧機能固有の削除を元の正常系の実行証拠に数えない。
+
+M0の実Actor経路は最初のExecutorまでで、旧Reviewer／resume等の本番実行機能を提供しない。根拠は`execution/workflow_source/native_handoff.rs:467-505`のgeneration=1、最初のRunning Executor、先行Succeeded Issue／Worktreeのみというhard checkと、同:560のartifact=None、`runtime/phase_handoffs.rs:532`のoffer_first_executorである。`marker_plan.rs`のReviewer variantやprivate adapterの型対応はsource-owned Reviewer producerの発行証拠ではない。M0を通すためにReviewer authorityや新しい拒否入口を創作しない。
+
+ReviewerのSource-owned snapshot／lease、offer、保持と正常系はM3の実装・受入条件に残す。全role Git13の予算政策は純粋計算として照合し、M0のpure parser／予算政策／metadata検証をReviewer helper鎖の実境界合格やレビュー成功に数えない。M3で機能を提供する前に、その実producerを通る正常系と攻撃系を検証する。
 
 collector は validated item を受ける。id/type/text の malformed は前段で ProtocolError とし、到達不能となる枝を隠さず整理する。phase absent/null、非final、非対応delivery、質問付きmessage、複数final、内容改変、overflowは回答 usability の業務判定に残す。維持する synthetic child wrapper が必要な実 child を起動する positive も確認し、test 本体の skip と混同しない。
 
@@ -377,8 +561,11 @@ collector は validated item を受ける。id/type/text の malformed は前段
 
 CI schema positiveは今回提供された公開生成structureから、使用6 request、initialized、全83通知、全11 server request、6種responseとその到達definition閉包を保った有限縮約fixtureとする。合成の最小schemaだけで代替しない。
 
-sourceには入力HEAD d4526759のstatic資料のSHA-256
-`458d41061922f54a84817b6c9af7fb448dd7ce4ecdff74a40e4b611730b9c621`、今回追加提供されたstructureの出所を記録する。fixture実体のdigestは作成後に計算・保存する。今はfixture未作成でありdigest／適合結果を捏造しない。static.jsonの古いbaseline、空notification branch位置、ClientNotification／response欠落も補完対象とし、live各項目はnot_runを保持する。
+fixture sourceは固定HEAD `b22f22a521424eefc3e61fb1a109bfc85965e5ef`のstatic資料`/schema_contract_catalog`と、そのsource_schemasの対象root／local definition閉包に固定する。catalog subtreeの非循環digestは、JSON読取り後にPython `json.dumps(catalog, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`のUTF-8 bytesをSHA-256にする規則で`c44baad39a81231b2a1bd567b21ede7e7d155b08bf705df1ff8b087728944c7e`。これは取得済みcatalogの出所照合であり、未作成fixtureのdigestでもruntime hash pinでもない。
+
+catalogの10source／268共有definition、ClientNotification、6response、notification branch構造は既に補完済みであり、未作成とは扱わない。ClientNotificationはoneOfの1 object枝であるためschema_inspectionのshape文字列だけを訂正し、catalog本体は再生成・書換えしない。static.baselineは公開source baselineを指し、fixtureのauthor入力HEADとは別である。旧static全体digestを今回fixtureの出所として流用しない。
+
+fixture実体・縮約manifest・decoder対応表・適合結果は未作成／未検証。実体digestは作成後に計算・保存し、今は値や結果を捏造しない。live各項目はnot_runを保持する。
 
 | control群 | positive／negativeと必要mutant |
 |---|---|
@@ -394,11 +581,113 @@ sourceには入力HEAD d4526759のstatic資料のSHA-256
 | Consumer | RuntimeMetadata／ShutdownSite wire、型付きinstallation refusal、collector usability、synthetic child実呼出し。 |
 | Legacy | 機能廃止・残置・移植の完全台帳、旧入口と他 consumer の起動／入力0、共有する安全性ケースの実管理経路での positive。拒否だけを共有ケースの検証としない。 |
 
+上の11群を次の個別control／対応mutantで具体化する。各negativeは正常な対を同じproducerで通し、指定欠陥を1つだけ変える。mutantで別の拒否が残っても、対象検査へ実到達してその検査の欠落を検出することを要求する。
+
+| ID | positive／negativeと期待 | 落ちるべきmutant |
+|---|---|---|
+| S-1 | 全alias fresh合格／完了前Task投入・1alias拒否。未公開時admission0、status pending／refused | S gate除去 |
+| S-2 | Codexの相関した全応答、chatgpt、ready、合法empty rate／各応答欠落、ID違い、error、-32601、非chatgpt、非ready。欠陥alias拒否 | RPCをschemaだけで代替、相関比較除去、account／ready比較除去 |
+| S-3 | Claude相関initialize／未着、ID違い、error。user入力0、system-init／resultを観測済みにしない | initialize相関除去、未着を合格化 |
+| S-4 | stop／Drop／panic／forced death後の新epochを別検査。確認できたreap／joinだけ記録し、未知はpending／unknown、合格非公開 | Sをshutdown確認から除去、journalからpass復元、Drop／forced deathをreap済みにする |
+| S-5 | S合格でもP fresh検査必須。P欠落は拒否 | S合格によるP省略 |
+| CL-1 | P initialize成功／control_response欠落、相関ID違い、error。AC-08とterminal disposition | request ID相関除去 |
+| CL-2 | init後の結果／init未着でresult、session／cwd違い。init_missing／mismatch | init未着許可、identity比較除去 |
+| CL-3 | 成功・nonce完全一致／result未着、非成功、nonce1文字違い、包含だけ一致、余分な文 | nonceを包含比較、結果前の合格公開 |
+| CL-4 | 有限全row／未知top・system subtype・block・delta・origin・error値、required欠落、wrong type | 未知枝を通す、wrong typeを欠落化 |
+| CL-5 | 正常な同UUID同内容再送／同UUID内容改変。構造検査と累積bytesは再送にも適用 | UUID先drop、未知fieldをdigestから削除 |
+| CL-6 | 本番合法tool継続／Probe中can_use_tool・tool_use・tool_result・tool_progress・task。Probe拒否、応答0 | 本番consumerでProbeを代替、tool要求へ応答 |
+| CL-7 | rate未着、合法windowなし、usable／未知bucket・status、required欠落、wrong type、overflow。自／foreign双方 | foreign先drop、unknownをAvailable／not_observedへ変換 |
+| CL-8 | 合法tail／成功直後の未知frame、partial JSON、自発nonzero、late rejected。Known不合格またはpipe不明Unknown | 成功frameで読取り打切り |
+| CL-9 | EOF＋leader reap既知／pipe保持子孫、reap不明。後者Unknown／Held／lease保持 | reap不明をConfirmed、UnknownをRetired |
+| CX-1 | 固定source縮約／枝欠落・複製、method.enum複数、無関係な同名property | branch検査を文字列存在検査へ変更 |
+| CX-2 | local ref閉包／未解決・外部・循環、深さ・memo・work-node上限+1 | ref解決省略、memo／stack／work counter除去 |
+| CX-3 | 実送信6method＋initialized／送信キー未宣言、型不適合、required追加、read-only欠落 | schema省略、required／型比較除去 |
+| CX-4 | 全受信閉包／nested required・nullable・enum・数値域・ref先改変、未知method／宣言property、Opaque枝拡大 | 消費requiredだけの投影、typed枝をopaque化 |
+| CX-5 | 全所有区分の正常形／thread.startedのnested ID、turn.id、nullable turnId、任意threadId各状態、malformed foreign | top-levelキー有無だけで分類、所有filter先行 |
+| CX-6 | 握手Global通知／Thread通知・server request。両者ともpayload検査後の固有扱い | 握手所有区分除去、server request params検査省略 |
+| Q-1 | Wait／Admitの実producer。Waitはモデル入力0、Parked | Probeをquota admission前へ移動 |
+| Q-2 | 普通Admit／recovery AdmitのKnown canary失敗。§9の全before／after、pool自probe解放、期限、readiness CASと観測非反映 | closureからProbe末尾を除外、自probe／期限更新省略、before画像比較を1列除去 |
+| X-1 | 同一Native program／S合格後、各Native helper前、transport前にpath・stat・hash差替え。拒否後spawn0 | 束縛比較を各1点除去 |
+| X-2 | 現Git sealの正例と差替え負例。GitはCLI hash再検査の対象外 | CLI identityとGit sealを混同、Git seal比較除去 |
+| I-S | SのSchema／Handshakeからshim要求を実serverへ到達させる。SにはUnitなしなので有効managed contextなしの拒否、Grant0、helper外効果0。marker拒否とは記録しない | 到達確認／S Unit0検査除去 |
+| I-P | genuine SAME actor、現Unit／epoch／正しいcookieでshim要求をserverへ到達させ、cookie検査後にmarker-bound Driver拒否へ達した有限証跡を確認。Grant0、helper外効果0 | state/runtime/driver.rsのmarker-bound拒否除去。元の拒否境界消失を検出し、別の拒否や接続失敗でpassにしない |
+| M-1 | 新profile・cli_version不在／旧profile、キーあり（null含む）。型付きinstallation拒否、Unit0 | legacy宣言検査をhelper後へ移動、cli_version存在検査除去 |
+| M-2 | 新Frame宣言／旧保持Frame。digest拒否、Preparing Unit Held、Session0 | Frame digest比較除去 |
+| M-3 | 任意の合法な単一行版数で全検査通過→ExecutorのNativeInput。番号外だけで拒否しない | 旧版数一致・番号付きqualified_profile復活 |
+| MP-1 | new、v1〜9、v10、v11、current、同時initializer。旧版別layout、guard、旧binary open拒否 | 旧referenceへstartup混入、新表guard省略、v11をlegacy一般枝へ落とす |
+| MP-2 | 通常owner producerが作るroot（通常umaskで0755となる正例を含む）から新規private child0700を作成→S成功。root権限契約の変更は担当別差分で確定し、本表では変更しない。digest alias正例／raw traversal、symlink、他者所有、directory置換、当該run外cleanup | raw alias join、identity確認省略、symlink追跡、旧残骸まで削除 |
+| B-1 | Executor実producerのB境界／B+1と末尾。Reviewerは純粋政策照合だけ | Git13を9として計算、Probe末尾省略 |
+| R-1 | selfcheck全vector／source差分で1vector改変。installation拒否 | 成功token不要化、selfcheck呼出し除去 |
+| LG-1 | 本番の正常ignored／foreign／tool／追加field／task_type任意string／patch.status欠落／pending／running／各malformed対 | ignored検査省略、consumer条件をwire enumへ戻す、未知fieldの改変をdigestから除外 |
+| C-1 | Metadata／ShutdownSite／型付きrefusalのwireとcollector usability、台帳で維持するsynthetic child実wrapper | consumer配線欠落、正常child起動省略 |
+| L-1 | 全旧入口のhelper／Session／新入力0、#19残置検査、共有ケースの現管理producer positive、完全台帳 | 拒否をhelper後へ移動、resume／checkpoint抜け、共有保持領域削除 |
+| T-1 | 各deadlineの無応答、UUIDなし通知洪水、同UUID再送、stderrのみ、各byte境界／+1、残aggregate不足。有限停止とKnown／Unknownを別検査 | 通知でdeadline更新、dedup後だけ加算、stderr除外、捕捉枠をfile枠と混同 |
+
+I-Pは観測用の到達証跡だけを追加し、authority constructor、SQL成功seed、偽cookie／偽actorで到達を作らない。marker mutantは残る安全検査を解除してGrantを成功させる試験ではなく、genuine呼出しで対象拒否が失われたことを検出する。
+
 本番負例はbaseline差分とterminal disposition、登録前負例はAC-08、SはUnit0を検査する。
 
 両OSで既存CIのfmt、clippy、workspace test、debug／release buildを実施する。まずローカルでまとめて検証し、試行pushや根拠のないrerunをしない。実CLI資格付けをCI fixture結果で代替しない。
 
-owner-runは設計承認・実装後、新しいrun ID／状態directory、実設定のClaude Executor＋Codex Reviewer、1 Project／1 Active Task／QUICKで1runだけ行う。selfcheck→全S→Claude P→Worktree→Implement success→SC-Nを確認する。rateは`not_observed／empty_valid／usable`を明示し、未証明一覧を出力する。失敗runは保存・再利用拒否。既存のPASS時cleanup規則を維持し、追加cleanup工程を受入条件へ増やさない。
+owner-runは設計全体承認・実装・必要な検証後に実Macで1run行う。スクリプトは設定・認証・hookファイルを読まない。
+
+1. 新しいrun ID、状態directory、一時directoryを作る。既存なら起動前拒否し、前回状態を再利用しない。
+2. Claude／CodexのVersion観測と実行ファイルSHA-256を表示する。特定番号との一致を条件にしない。
+3. release buildと試験用Git repositoryを用意する。
+4. 新profile、実設定のClaude Executor＋Codex Reviewerでdaemonを起動する。
+5. selfcheckと全aliasのS合格を10分上限内で確認する。Sでモデル実行を確認済みにしない。
+6. 1 Project／1 Active Task／QUICKを投入する。
+7. Claude P receipt、Worktree gate、Implement work=success、SC-N Waiting、sessions=1、Unknown effects=0を確認する。Codex ReviewerはSのみで、review成功とは記録しない。
+8. daemonを停止し、PASS時だけ当該scriptが作成したdirectoryを既存規則で削除し、残存なしを確認する。
+
+出力は`M0 selfcheck=pass`、provider別startup passと観測版数／exe digest／実際に確認したstep、Claude preparation probe/init/result pass、rate=`not_observed/empty_valid/usable`、`M0 implement=success stop=SC-N sessions=1 unknown_effects=0`、`M0 RESULT=PASS`を持つ。未証明一覧にはCodex model methods／review／approval／error分類／sandbox実効、Claude permission roundtrip／既定mode、escaped descendants、wrapper内部identityを残し、rate未着ならclaude_rate_limit_eventも加える。static／synthetic合格をこれらのlive証明へ昇格しない。
+
+失敗時は有限stage／reason／unit=held|retired|noneと保持した状態・一時directoryを表示し、`M0 RESULT=FAIL`として保存する。失敗runは削除・再利用せず、原因確認後の再挑戦は新run IDで行う。保持directoryの削除はowner判断に残す。追加cleanup工程や2runをM0受入条件へ増やさない。
+
+### 12a. 影響範囲と競合順序
+
+実装着手前に固定sourceからconsumer inventoryを再照合し、並行担当の進捗を確認する。現在の担当完了を推測しない。producerのないmoduleを先に完成扱いにせず、承認後に実producerからconsumerまで接続する。
+
+| 変更／手段 | 影響consumerと対応 |
+|---|---|
+| helper変種・capture budget | `execution/native/readonly.rs`、`version.rs`、`preparation.rs:778`、`state/execution/native_phase/version.rs`。32本／8 MiB／Git13／各action上限、期限、settlement、capture境界fixtureを同時更新。既存上限は増やさない |
+| prefix／Probe末尾と行予算 | `native/budget.rs`、`prepared.rs`、`native/preparation.rs`、`state/execution/native_phase/version.rs:281-319,486-501,621-641,687-698,804-866`、registration／setup／input。Codex B232、Claude B237へ統一し、Reviewer9本の旧閾値・純粋testsも変更 |
+| profile／cli_version／qualified_profile廃止 | 公開source `config.rs`のNativeCompatConfig／canonical／tests、`adapter.rs`、`native/compat.rs:79-100,138-144,253`、`native/version.rs:94,138,150,156,202`、`state/execution/native_phase/version.rs:625`、installation宣言fixture。設定・Frame digest消費者も照合 |
+| Claude strict／rate／分類 | `execution/claude_wire.rs:176-429,467以降tests`、`execution/quota.rs:175-274`、`execution/native.rs:2320-2392`、collector、permission consumer、native_fixture.py。現as_str／as_u64／配列抽出前にvalidated型を要求 |
+| Codex finite契約・所有区分 | `execution/native.rs:939-952,2135,2204,2209-2264`、`codex/protocol.rs:105-165,1085-1093`、approval／collector、Schema／Handshake fixture。shared protocol16のcoverage保持 |
+| quota Known closure | `state/execution/native_phase/quota.rs`、preparation／readiness／no-dispatchの末尾consumer、`state/execution/quotas.rs`、`native_phase/live_quota.rs`。ordinary／recoveryの全画像CASと観測非反映を別assertionにする |
+| S gate・停止wire | `runtime/service.rs`、`runtime/admission.rs`、`runtime/installation.rs`、`runtime/stop.rs`、§4のRuntimeMetadata／ShutdownSite全consumer。start lock外実行、admission前提、停止／表示／deserializeを更新 |
+| migration v12 | `state/mod.rs`、`state/execution.rs`、`state/managed_binding/schema.rs`、§3のMUTABLE_TABLES全consumer。historical集合とcurrent集合を分離し、旧binary混在不可を確認 |
+| 旧入口廃止 | §11の全入口、standalone／Native／adapter／workflow tests、examples、既存protected拒否。entries／starts／preparationsと現status／cancelは保持 |
+| 共通fixture | `execution/native/native_fixture.py`、installation tests／pin／success／activation/composition、`crates/rrx/tests/daemon_native.rs`。S・P helper・本番Sessionを区別し、BOOTSTRAP_CASEの失敗がSession前へ移る期待を更新。旧最小payloadやUUIDを新strict正例の証拠として流用しない |
+
+| 競合所有集合 | 編集順序 |
+|---|---|
+| #93: `execution/native/tests.rs`、`runtime/installation/tests/fm_d2.rs` | 移植／旧宣言変更が必要。担当進捗と保存済み変更を確認し、#93の取り込み後に編集 |
+| #93: `execution/results/tests/retained_tests.rs`、`workflow/committed_source_tests.rs` | この修正では編集予定なし。参照／coverage影響が確認されたら担当と調整 |
+| #94: `runtime/phase_jobs.rs`、`runtime/installation/tests/epoch_fence.rs` | phase_jobs自体の契約変更は予定しない。S gateでepoch_fence fixture前提が変わるため担当進捗を確認し、必要差分は取り込み順を調整 |
+| F3: `adapter/inspection.rs`、`inspection/diagnostics.rs` | 編集予定なし。共有refusal型の参照は確認 |
+| P4: `crates/rrx/tests/project_api.rs`、production側未確定集合 | 編集予定なし。production集合が確定するまで無影響を断言しない |
+| 上記外のfixture／installation／daemon tests | sourceと消費者を再照合して編集。並行worktreeの未保存変更を上書きしない |
+
+修正手段自体の影響も検査する。登録前CLI本起動は継承設定・hook・MCP・履歴・IPC環境を消費し、Claude canaryは実quotaと費用を消費する。ProbeをAdmit後に置くためpre-Session lease／same-Unit gateの保持時間が延びるが、§10の有限上限内とする。strict化は本番Sessionにも作用し、未適合eventを終端させる。schema免責集合、行・byte閾値、argv本数、UUID／path形はそれを数えるfixtureも更新する。marker authority、既存transport登録手順、Core／terminalの契約を緩める変更は予定しないが、共有consumerの回帰検証を省略しない。
+
+### 12b. セキュリティ自己点検
+
+| 面 | 維持する対策・検証と限界 |
+|---|---|
+| CLI偽装／入力 | strict JSON、有限method／variant、分類前のfield型検査、相関ID、nonce完全一致、UUID内容digest、成功後tail、deadline／累積bytes。追加fieldからauthorityを作らない |
+| canary副作用 | Admit後だけ送信、Executor plan mode、tool／権限要求で拒否、応答0。既存hookや自動許可toolの開始を隔離したとは保証しない |
+| helper IPC | SはUnitなし、Pはgenuine contextからmarker-bound拒否へ実到達。cookie失敗／接続失敗をmarker検査の証明にしない |
+| S流用／権限 | freshメモリ公開だけ、journalからpass復元しない。Sは拒否専用でP／Prepared／permission／Session authorityを発行しない |
+| filesystem／process | raw aliasを使わず、private child identityと限定cleanup、intent先行custody、stdin保持、EOF／leader reap／joinの実観測。root境界は担当別修正を含めて独立確認する。canonical pathだけ、Drop、forced deathから全子孫死亡を推定しない |
+| quota／CAS | SAME actor原本、epoch、revoke、no_registration、末尾inventory、全before／after画像、既存freshness。canary観測非反映と機械的closure更新を分離 |
+| 秘密のsink | frame／account／codexHome／nonce／stderrを永続化せず、有限receipt・件数・digestのみ。file／capture／JSONの既存上限維持 |
+| legacy／#19 | 起動・新入力前拒否、全consumer台帳、共有3保持領域と停止保持、#19既存部品・検査保持。削除や拒否だけで共有安全性のpositiveを代替しない |
+
+S custodyは自journalのintent／settlementだけ、P SAME actorは既存Admit／CASの範囲でhelperとnongrant closureだけを扱う。S観測のGit／Prepared消費、別actor・CLI peerによるsettlement、revoke済みactorによる新spawn、Probe中のpermission応答は不可。revoke後も既存原本で物理結果を記録することと、新しい実行許可を分ける。ownerの設定選択・一括設計承認、adminのstatus／stopはprobe成功から新authorityを得ない。別Task／Project、同uid別process、unauthにも強制pass・再判定入口を作らない。
+
+source→sinkはVersion stdout→有界観測receipt、wire→validated frame→有限件数／分類、schema files→有限形状比較／digest、program→stat／SHA-256、nonce→メモリ比較だけとする。設定／allocationからargv・環境へ渡す既存境界検査を維持する。helperは利用者の継承権限で動き、exec直前の窓、wrapper内部、escaped descendantsは未証明のままである。
 
 ### 13. 一括有限承認表
 
@@ -407,9 +696,9 @@ owner-runは設計承認・実装後、新しいrun ID／状態directory、実�
 | A1 | quota Admit後、準備ごとのClaude canary 1turn。費用・履歴・既存hook・quota消費、Known failureの明示retry帰結を含む。 | 未承認 |
 | A2 | Probeの専用UUID、固定文面、Executor plan mode、tool／権限応答なし。既定modeや隔離を証明しない。 | 未承認 |
 | A3 | 旧起動 API の機能廃止、不要コード・固有テストの理由付き整理、共有安全性の実管理経路での検証。Reviewer 本番正常系は M3。 | オーナー方向決定済み（2026-10-13）。台帳・差分・必須レビューと設計全体承認は未完了。 |
-| A4 | S全alias gate、版12 migration、有限journal／unknown上限、安全なdigest path、停止wire変更。 | 未承認 |
-| A5 | 本番strict decoder、finite item／notification／nested variant、UUID改変拒否、rate解析不能終端。 | 未承認 |
-| A6 | schemaの未知method／member／discriminatorで起動前拒否。raw hash pinなし。CLI拡張時は契約見直しまでBLOCKED。 | 未承認 |
+| A4 | S全alias gate、版12 migration、有限deadline／capture、journalの独立upper boundsと上限時BLOCKED、confirmedの限定prune／unknown保持、安全なprivate path、停止wire変更と新旧混在不可。上限の容量を使い切れる保証や旧残骸の自動cleanupは含まない。 | 未承認。owner root契約の担当別修正も合わせて独立確認後に全体承認 |
+| A5 | 本番strict decoder、finite item／notification／nested variant、分類fieldの型・optional／nullableとwire domain／消費条件の分離、83method所有区分、UUID改変拒否、rate解析不能終端。既知frameの未宣言fieldは有界保持受理し業務非使用、未知variantは拒否。公開未確認のrrx限定集合と数値refinementのlive適合は未証明。 | 未承認。追加field方針を含め独立確認後に全体承認 |
+| A6 | schemaの未知method／宣言property／discriminatorで起動前拒否。明示Opaque集合とtyped mapだけを例外にし、枝別免責を拡大しない。wire frameの未宣言field保持とは別契約。static catalogは開発時根拠でありruntime仕様生成器ではない。raw hash pinなし。未適合CLI拡張は契約見直しまでBLOCKED。 | 未承認。独立確認後に全体承認 |
 
 R1、M4 runtime merge、public sandboxの作成・使用は決定済み。執筆者は今後の実装者・レビュアーを承認しない。
 
