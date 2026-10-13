@@ -181,6 +181,8 @@ pub struct NativeSessions {
     preparations: Mutex<BTreeMap<UnitId, Weak<NativePreparationCustody>>>,
     #[cfg(test)]
     preparation_observer: Mutex<Option<PreparationObserver>>,
+    #[cfg(test)]
+    status_observer: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
 }
 /// Timing only: the observer receives no actor, proof, owner or allocation.
 #[cfg(test)]
@@ -198,6 +200,18 @@ type PreparationObserver = Arc<
         + Sync,
 >;
 impl NativeSessions {
+    /// Scheduling only: no proof, actor, owner or allocation is supplied.
+    #[cfg(test)]
+    pub(crate) fn set_status_observer(&self, observer: Option<Arc<dyn Fn() + Send + Sync>>) {
+        *self.status_observer.lock().unwrap() = observer;
+    }
+    #[cfg(test)]
+    fn observe_status(&self) {
+        let observer = self.status_observer.lock().unwrap().clone();
+        if let Some(observer) = observer {
+            observer();
+        }
+    }
     #[cfg(test)]
     pub(crate) fn set_preparation_observer(&self, observer: Option<PreparationObserver>) {
         *self.preparation_observer.lock().unwrap() = observer;
@@ -225,6 +239,8 @@ impl NativeSessions {
             preparations: Mutex::new(BTreeMap::new()),
             #[cfg(test)]
             preparation_observer: Mutex::new(None),
+            #[cfg(test)]
+            status_observer: Mutex::new(None),
         })
     }
     pub async fn start(
@@ -669,7 +685,7 @@ impl NativeSessions {
         Ok(self.entry(handle)?.0)
     }
     pub fn status(&self, handle: &ManagedSessionRef) -> Result<NativeStatus> {
-        let mut status = self.entry(handle)?.0.borrow().clone();
+        let source = self.entry(handle)?.0;
         let (pending, updater, phase) = {
             let entries = self
                 .entries
@@ -689,19 +705,27 @@ impl NativeSessions {
             .lock()
             .map_err(|_| anyhow::anyhow!("native terminal poisoned"))?
             .clone();
-        if let Some(proof) = frozen.as_ref() {
-            status.observed_work = Some(proof.receipt.observed_work);
-            if persist_saved_terminal(&self.owner, phase.as_ref(), proof).is_ok() {
-                clear_saved_terminal(&pending, proof)?;
-                reconciled = true;
-                status.diagnostic = None;
-            }
+        if let Some(proof) = frozen.as_ref()
+            && persist_saved_terminal(&self.owner, phase.as_ref(), proof).is_ok()
+        {
+            clear_saved_terminal(&pending, proof)?;
+            reconciled = true;
         }
+        #[cfg(test)]
+        self.observe_status();
         let store = self
             .owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+        // Core's terminal publication also holds Store while updating watch.
+        // Read watch here, including when no retained terminal was observed,
+        // so a publication between the retained-terminal read and Store read
+        // supplies the observations used with these durable fields.
+        let mut status = source.borrow().clone();
+        if let Some(proof) = frozen.as_ref() {
+            status.observed_work = Some(proof.receipt.observed_work);
+        }
         let unit = store.execution_unit(handle.unit)?;
         if let Some((session, _)) = store.session(handle.session)? {
             status.session = session;
@@ -715,6 +739,9 @@ impl NativeSessions {
         status.disposition = unit.disposition;
         status.cleanup = unit.cleanup;
         status.wait_reason = unit.wait_reason;
+        if status.disposition == Disposition::Cancelled {
+            status.failure = None;
+        }
         if reconciled {
             let proof = frozen
                 .as_ref()
@@ -846,7 +873,8 @@ struct Lines {
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
     partial: Vec<u8>,
-    queued: VecDeque<Value>,
+    original: Option<Vec<u8>>,
+    queued: VecDeque<(Value, Vec<u8>)>,
     queued_bytes: usize,
     next: u64,
     limit: usize,
@@ -858,6 +886,7 @@ impl Lines {
             stdin,
             stdout: BufReader::new(stdout),
             partial: vec![],
+            original: None,
             queued: VecDeque::new(),
             queued_bytes: 0,
             next: 1,
@@ -876,7 +905,13 @@ impl Lines {
         self.stdin.flush().await?;
         Ok(())
     }
+    fn original(&self) -> Result<&[u8]> {
+        self.original
+            .as_deref()
+            .context("native original frame unavailable")
+    }
     async fn line(&mut self) -> Result<Value> {
+        self.original = None;
         loop {
             let chunk = self.stdout.fill_buf().await?;
             if chunk.is_empty() {
@@ -939,25 +974,40 @@ impl Lines {
                         category: category.into(),
                     });
                 }
-                return decoded.map_err(anyhow::Error::from);
+                return match decoded {
+                    Ok(value) => {
+                        self.original = Some(bytes);
+                        Ok(value)
+                    }
+                    Err(error) => Err(anyhow::Error::from(error)),
+                };
             }
         }
     }
     async fn receive(&mut self) -> Result<Value> {
-        if let Some(value) = self.queued.pop_front() {
-            self.queued_bytes -= serde_json::to_vec(&value)?.len();
+        if let Some((value, bytes)) = self.queued.pop_front() {
+            self.queued_bytes -= bytes.len();
+            self.original = Some(bytes);
             Ok(value)
         } else {
             self.line().await
         }
     }
     fn queue(&mut self, value: Value) -> Result<()> {
-        let n = serde_json::to_vec(&value)?.len();
+        let n = self.original()?.len();
         ensure!(
-            self.queued.len() < 128 && self.queued_bytes + n <= 8 * 1024 * 1024,
+            self.queued.len() < 128
+                && self
+                    .queued_bytes
+                    .checked_add(n)
+                    .is_some_and(|n| n <= 8 * 1024 * 1024),
             "native startup queue too large"
         );
-        self.queued.push_back(value);
+        let bytes = self
+            .original
+            .take()
+            .context("native original frame unavailable")?;
+        self.queued.push_back((value, bytes));
         self.queued_bytes += n;
         Ok(())
     }
@@ -2318,6 +2368,9 @@ impl Core {
     ) -> Result<(WorkOutcome, Disposition, Option<Value>)> {
         self.authority()?;
         let decoder_checked = claude_wire::decoder_selfcheck()?;
+        // Bootstrap history belongs to this same Session receive state. It
+        // does not establish init, input consumption, or preparation authority.
+        let mut state = claude_wire::RunState::default();
         let initialize = claude_wire::control("initialize", "rrx-initialize");
         if self.phase.is_some() {
             self.send_effect(&initialize, None, "native_setup").await?;
@@ -2332,12 +2385,14 @@ impl Core {
         tokio::time::timeout(Duration::from_secs(30),async {
             loop {tokio::select! {
                 frame=self.wire.line()=>{
-                    let validated=claude_wire::ValidatedClaudeFrame::decode(frame?,&decoder_checked)?;
-                    let frame=validated.raw();
-                    if frame["type"]=="control_response" {
-                        claude_wire::control_result(&validated,"rrx-initialize")?;break;
+                    let value=frame?;
+                    let validated=claude_wire::ValidatedClaudeFrame::decode_bytes(self.wire.original()?,&decoder_checked)?;
+                    if validated.raw()["type"]=="control_response" {
+                        state.initialize_response(&validated,&self.native,"rrx-initialize")?;break;
                     }
-                    self.wire.queue(frame.clone())?;
+                    // Queue the original parsed image and its original bytes;
+                    // UUID normalization/re-encoding must not replace provenance.
+                    self.wire.queue(value)?;
                 },
                 control=self.controls.recv()=>match control {
                     Some(Control::Approval {response,..})=>{let _=response.send(Err(anyhow::anyhow!("native input not established")));},
@@ -2348,15 +2403,16 @@ impl Core {
         }).await??;
         self.authority()?;
         self.send_effect(&json!({"type":"user","session_id":self.native,"parent_tool_use_id":null,"message":{"role":"user","content":input.payload}}),None,"native_input").await?;
-        let mut state = claude_wire::RunState::default();
         let mut pending = BTreeMap::<String, claude_wire::Pending>::new();
         let mut quota_buckets = std::collections::BTreeSet::new();
         let mut fence = tokio::time::interval(Duration::from_millis(100));
         loop {
             tokio::select! {
                 frame=self.wire.receive()=>{
-                    // Strict decode precedes every ownership filter and consumer.
-                    let validated=claude_wire::ValidatedClaudeFrame::decode(frame?,&decoder_checked)?;
+                    // Strict decode and exact numeric provenance precede every
+                    // ownership filter and consumer, including queued frames.
+                    let _=frame?;
+                    let validated=claude_wire::ValidatedClaudeFrame::decode_bytes(self.wire.original()?,&decoder_checked)?;
                     let frame=validated.raw();
                     let seen=state.observe(&validated,&self.native,&self.unit.worktree,false);
                     // A protocol/ownership failure cannot be used by any consumer.

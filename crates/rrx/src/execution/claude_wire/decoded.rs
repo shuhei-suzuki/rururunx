@@ -4,6 +4,7 @@ use super::{LINE_LIMIT, failure};
 use crate::adapter::{AdapterResult, ErrorKind};
 use crate::execution::{native_result::digest, strict_json};
 use serde_json::{Map, Value, json};
+mod original;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Presence<T> {
@@ -37,6 +38,7 @@ pub(super) struct Telemetry {
 pub(in crate::execution) struct ValidatedClaudeResult {
     raw: Value,
     telemetry: Telemetry,
+    api_error_status: Presence<u16>,
 }
 impl ValidatedClaudeResult {
     pub(in crate::execution) fn raw(&self) -> &Value {
@@ -45,6 +47,9 @@ impl ValidatedClaudeResult {
     pub(super) fn telemetry(&self) -> &Telemetry {
         &self.telemetry
     }
+    pub(super) fn api_error_status(&self) -> Presence<u16> {
+        self.api_error_status
+    }
 }
 
 pub(in crate::execution) struct ValidatedClaudeFrame {
@@ -52,22 +57,32 @@ pub(in crate::execution) struct ValidatedClaudeFrame {
     result: Option<ValidatedClaudeResult>,
     human_origin: bool,
     rate: Option<ValidatedRate>,
+    content_digest: String,
 }
 impl ValidatedClaudeFrame {
-    /// `Lines` already checks original bytes for duplicate keys and budgets.
-    /// Recheck bounds here so all other producers (including future S/P) have
-    /// the same bounded contract. This cannot detect duplicates lost upstream;
-    /// byte producers must use strict_json::decode on the original bytes first.
+    /// Value producers are checked against their supplied representation.
+    /// This entry cannot recover numbers or duplicates already lost upstream.
     pub(in crate::execution) fn decode(value: Value, _: &DecoderChecked) -> AdapterResult<Self> {
         Self::decode_contract(value)
     }
+    /// Byte producers must use this entry on the actual original frame. The
+    /// checked marker remains nongrant decoder evidence, not owner authority.
+    pub(in crate::execution) fn decode_bytes(
+        bytes: &[u8],
+        _: &DecoderChecked,
+    ) -> AdapterResult<Self> {
+        Self::decode_contract_bytes(bytes)
+    }
     fn decode_contract(value: Value) -> AdapterResult<Self> {
         let bytes = serde_json::to_vec(&value).map_err(|_| rejected())?;
-        let mut raw = strict_json::decode(&bytes, limits()).map_err(|_| rejected())?;
+        Self::decode_contract_bytes(&bytes)
+    }
+    fn decode_contract_bytes(bytes: &[u8]) -> AdapterResult<Self> {
+        let (mut raw, numbers) = original::decode(bytes, limits()).map_err(|_| rejected())?;
         let object = object_value(&raw)?;
         let kind = string(required(object, "type")?)?.to_owned();
         optional(object, "session_id", false, id)?;
-        let human_origin = origin(object.get("origin"))?;
+        let human_origin = origin(object.get("origin"), &numbers["origin"])?;
         if let Some(uuid) = object.get("uuid") {
             let uuid = uuid::Uuid::parse_str(string(uuid)?).map_err(|_| rejected())?;
             raw["uuid"] = Value::String(uuid.hyphenated().to_string());
@@ -78,7 +93,7 @@ impl ValidatedClaudeFrame {
         let mut result = None;
         let mut rate = None;
         match kind.as_str() {
-            "system" => system(object)?,
+            "system" => system(object, &numbers)?,
             "assistant" => {
                 id(required(object, "session_id")?)?;
                 nullable(required(object, "parent_tool_use_id")?, id)?;
@@ -138,16 +153,16 @@ impl ValidatedClaudeFrame {
                     strings(required(object, "errors")?)?;
                     optional(object, "result", false, |value| string(value).map(|_| ()))?;
                 }
-                optional(object, "api_error_status", true, |value| {
-                    u16::try_from(uint(value)?)
+                let api_error_status = presence(object.get("api_error_status"), |value| {
+                    u16::try_from(uint(value, &numbers["api_error_status"])?)
                         .map_err(|_| rejected())
-                        .map(|_| ())
                 })?;
                 // structured_output is bounded opaque JSON, including null.
                 // The whole-value strict budget check above covers this sink.
                 result = Some(ValidatedClaudeResult {
                     raw: raw.clone(),
-                    telemetry: telemetry(object)?,
+                    telemetry: telemetry(object, &numbers)?,
+                    api_error_status,
                 });
             }
             "control_request" => {
@@ -176,7 +191,7 @@ impl ValidatedClaudeFrame {
             }
             "stream_event" => {
                 optional(object, "parent_tool_use_id", true, id)?;
-                stream(object_value(required(object, "event")?)?)?;
+                stream(object_value(required(object, "event")?)?, &numbers["event"])?;
             }
             "tool_progress" => {
                 for key in ["tool_use_id", "tool_name"] {
@@ -202,11 +217,14 @@ impl ValidatedClaudeFrame {
             }
             _ => return Err(rejected()),
         }
+        let canonical = original::canonical(&raw, &numbers).map_err(|_| rejected())?;
+        let content_digest = digest(&serde_json::to_vec(&canonical).map_err(|_| rejected())?);
         Ok(Self {
             raw,
             result,
             human_origin,
             rate,
+            content_digest,
         })
     }
     pub(in crate::execution) fn raw(&self) -> &Value {
@@ -222,25 +240,10 @@ impl ValidatedClaudeFrame {
         self.rate.as_ref()
     }
     pub(in crate::execution) fn digest(&self) -> String {
-        digest(&serde_json::to_vec(&canonical(&self.raw)).expect("bounded Value encoding"))
+        self.content_digest.clone()
     }
 }
 
-fn canonical(value: &Value) -> Value {
-    match value {
-        Value::Object(object) => {
-            let mut keys = object.keys().collect::<Vec<_>>();
-            keys.sort();
-            Value::Object(
-                keys.into_iter()
-                    .map(|key| (key.clone(), canonical(&object[key])))
-                    .collect(),
-            )
-        }
-        Value::Array(values) => Value::Array(values.iter().map(canonical).collect()),
-        _ => value.clone(),
-    }
-}
 fn limits() -> strict_json::Limits {
     strict_json::Limits {
         frame_bytes: LINE_LIMIT,
@@ -285,17 +288,8 @@ fn enumeration<'a>(value: &'a Value, allowed: &[&str]) -> AdapterResult<&'a str>
         Err(rejected())
     }
 }
-fn uint(value: &Value) -> AdapterResult<u64> {
-    if let Some(n) = value.as_u64() {
-        return Ok(n);
-    }
-    // JSON number includes integral floats. Casting is checked before Rust's
-    // saturating float conversion; 2^64 is never accepted as u64::MAX.
-    let n = value.as_f64().ok_or_else(rejected)?;
-    if !n.is_finite() || n < 0.0 || n.fract() != 0.0 || n >= 18_446_744_073_709_551_616.0 {
-        return Err(rejected());
-    }
-    Ok(n as u64)
+fn uint(value: &Value, numbers: &Value) -> AdapterResult<u64> {
+    original::uint(value, numbers).ok_or_else(rejected)
 }
 fn nonnegative(value: &Value) -> AdapterResult<f64> {
     value
@@ -332,13 +326,17 @@ fn presence<T>(
         Some(value) => Ok(Presence::Value(parse(value)?)),
     }
 }
-fn telemetry(object: &Map<String, Value>) -> AdapterResult<Telemetry> {
+fn telemetry(object: &Map<String, Value>, numbers: &Value) -> AdapterResult<Telemetry> {
     let usage = presence(object.get("usage"), |value| object_value(value).map(|_| ()))?;
     let counters = match usage {
         Presence::Value(()) => object.get("usage").and_then(Value::as_object),
         _ => None,
     };
-    let counter = |key| presence(counters.and_then(|object| object.get(key)), uint);
+    let counter = |key: &str| {
+        presence(counters.and_then(|object| object.get(key)), |value| {
+            uint(value, &numbers["usage"][key])
+        })
+    };
     Ok(Telemetry {
         usage,
         input: counter("input_tokens")?,
@@ -346,10 +344,12 @@ fn telemetry(object: &Map<String, Value>) -> AdapterResult<Telemetry> {
         cache_read: counter("cache_read_input_tokens")?,
         cache_write: counter("cache_creation_input_tokens")?,
         cost: presence(object.get("total_cost_usd"), nonnegative)?,
-        api_ms: presence(object.get("duration_api_ms"), uint)?,
+        api_ms: presence(object.get("duration_api_ms"), |value| {
+            uint(value, &numbers["duration_api_ms"])
+        })?,
     })
 }
-fn origin(value: Option<&Value>) -> AdapterResult<bool> {
+fn origin(value: Option<&Value>, numbers: &Value) -> AdapterResult<bool> {
     let object = match value {
         None | Some(Value::Null) => return Ok(true),
         Some(value) => object_value(value)?,
@@ -379,7 +379,7 @@ fn origin(value: Option<&Value>) -> AdapterResult<bool> {
                 optional(object, key, false, |value| string(value).map(|_| ()))?;
             }
             optional(object, "verifiedPeerPid", false, |value| {
-                uint(value).map(|_| ())
+                uint(value, &numbers["verifiedPeerPid"]).map(|_| ())
             })?;
         }
         "task-notification" => {
@@ -395,7 +395,7 @@ fn origin(value: Option<&Value>) -> AdapterResult<bool> {
     Ok(kind == "human")
 }
 
-fn system(object: &Map<String, Value>) -> AdapterResult<()> {
+fn system(object: &Map<String, Value>, numbers: &Value) -> AdapterResult<()> {
     match string(required(object, "subtype")?)? {
         "init" => {
             id(required(object, "session_id")?)?;
@@ -459,10 +459,10 @@ fn system(object: &Map<String, Value>) -> AdapterResult<()> {
         }
         "api_retry" => {
             for key in ["attempt", "max_retries", "retry_delay_ms"] {
-                uint(required(object, key)?)?;
+                uint(required(object, key)?, &numbers[key])?;
             }
             nullable(required(object, "error_status")?, |value| {
-                u16::try_from(uint(value)?)
+                u16::try_from(uint(value, &numbers["error_status"])?)
                     .map(|_| ())
                     .map_err(|_| rejected())
             })?;
@@ -520,7 +520,7 @@ fn block(value: &Value, set: BlockSet) -> AdapterResult<()> {
     }
     Ok(())
 }
-fn stream(object: &Map<String, Value>) -> AdapterResult<()> {
+fn stream(object: &Map<String, Value>, numbers: &Value) -> AdapterResult<()> {
     match string(required(object, "type")?)? {
         "message_start" => {
             let message = object_value(required(object, "message")?)?;
@@ -532,21 +532,25 @@ fn stream(object: &Map<String, Value>) -> AdapterResult<()> {
             for key in ["stop_reason", "stop_sequence"] {
                 nullable(required(message, key)?, |value| string(value).map(|_| ()))?;
             }
-            stream_usage(required(message, "usage")?, true)?;
+            stream_usage(
+                required(message, "usage")?,
+                &numbers["message"]["usage"],
+                true,
+            )?;
         }
         "message_delta" => {
             let delta = object_value(required(object, "delta")?)?;
             for key in ["stop_reason", "stop_sequence"] {
                 nullable(required(delta, key)?, |value| string(value).map(|_| ()))?;
             }
-            stream_usage(required(object, "usage")?, false)?;
+            stream_usage(required(object, "usage")?, &numbers["usage"], false)?;
         }
         "content_block_start" => {
-            uint(required(object, "index")?)?;
+            uint(required(object, "index")?, &numbers["index"])?;
             block(required(object, "content_block")?, BlockSet::Assistant)?;
         }
         "content_block_delta" => {
-            uint(required(object, "index")?)?;
+            uint(required(object, "index")?, &numbers["index"])?;
             let delta = object_value(required(object, "delta")?)?;
             let key = match string(required(delta, "type")?)? {
                 "text_delta" => "text",
@@ -558,21 +562,26 @@ fn stream(object: &Map<String, Value>) -> AdapterResult<()> {
             string(required(delta, key)?)?;
         }
         "content_block_stop" => {
-            uint(required(object, "index")?)?;
+            uint(required(object, "index")?, &numbers["index"])?;
         }
         "message_stop" | "ping" => {}
         _ => return Err(rejected()),
     }
     Ok(())
 }
-fn stream_usage(value: &Value, input: bool) -> AdapterResult<()> {
+fn stream_usage(value: &Value, numbers: &Value, input: bool) -> AdapterResult<()> {
     let object = object_value(value)?;
-    uint(required(object, "output_tokens")?)?;
+    uint(
+        required(object, "output_tokens")?,
+        &numbers["output_tokens"],
+    )?;
     if input {
-        uint(required(object, "input_tokens")?)?;
+        uint(required(object, "input_tokens")?, &numbers["input_tokens"])?;
     }
     for key in ["cache_read_input_tokens", "cache_creation_input_tokens"] {
-        optional(object, key, false, |value| uint(value).map(|_| ()))?;
+        optional(object, key, false, |value| {
+            uint(value, &numbers[key]).map(|_| ())
+        })?;
     }
     Ok(())
 }
@@ -708,5 +717,7 @@ pub(in crate::execution) fn decoder_selfcheck() -> AdapterResult<DecoderChecked>
     Ok(DecoderChecked { _private: () })
 }
 
+#[cfg(test)]
+mod precision_tests;
 #[cfg(test)]
 mod tests;

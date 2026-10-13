@@ -191,15 +191,8 @@ pub(super) struct RunState {
     assistant_error: Option<String>,
 }
 impl RunState {
-    pub fn observe(
-        &mut self,
-        frame: &ValidatedClaudeFrame,
-        native: &str,
-        cwd: &std::path::Path,
-        decision: bool,
-    ) -> AdapterResult<bool> {
-        let message = frame.raw();
-        if let Some(id) = message.get("uuid") {
+    fn remember(&mut self, frame: &ValidatedClaudeFrame) -> AdapterResult<bool> {
+        if let Some(id) = frame.raw().get("uuid") {
             let id = bounded_id(id)?;
             let signature = frame.digest();
             if let Some(old) = self.ids.get(&id) {
@@ -218,6 +211,45 @@ impl RunState {
                 ));
             }
             self.ids.insert(id, signature);
+        }
+        Ok(true)
+    }
+    /// Only the bootstrap receive loop has this request correlation. Absence
+    /// of optional session_id remains valid; presence must name this Session.
+    pub fn initialize_response(
+        &mut self,
+        frame: &ValidatedClaudeFrame,
+        native: &str,
+        request: &str,
+    ) -> AdapterResult<Value> {
+        let response = control_result(frame, request)?;
+        if frame.raw().get("session_id").is_some_and(|id| id != native) {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "foreign native bootstrap response",
+            ));
+        }
+        self.remember(frame)?;
+        Ok(response)
+    }
+    pub fn observe(
+        &mut self,
+        frame: &ValidatedClaudeFrame,
+        native: &str,
+        cwd: &std::path::Path,
+        decision: bool,
+    ) -> AdapterResult<bool> {
+        let message = frame.raw();
+        // Preserve O03 even when this is an identical redelivery of a UUID
+        // remembered by bootstrap: the normal loop has no response correlator.
+        if message["type"] == "control_response" {
+            return Err(failure(
+                ErrorKind::ParseFailure,
+                "unsupported native output frame",
+            ));
+        }
+        if !self.remember(frame)? {
+            return Ok(false);
         }
         // A legal foreign rate event is ignored, but only after full decode and
         // UUID-content validation. It never reaches the subscription pool.
@@ -403,11 +435,17 @@ impl RunState {
                                     || lower.contains("invalid api key")
                             });
                     let api_failure = matches!(subtype, Some("success" | "error_during_execution"));
+                    let api_status = frame
+                        .result()
+                        .ok_or_else(|| {
+                            failure(ErrorKind::ParseFailure, "validated native terminal missing")
+                        })?
+                        .api_error_status();
                     self.terminal_capacity = api_failure
                         && (matches!(
                             self.assistant_error.as_deref(),
                             Some("billing_error" | "rate_limit" | "server_error")
-                        ) || matches!(message["api_error_status"].as_u64(), Some(429 | 503))
+                        ) || matches!(api_status, decoded::Presence::Value(429 | 503))
                             || message
                                 .get("result")
                                 .and_then(Value::as_str)
@@ -425,7 +463,7 @@ impl RunState {
                             || (api_failure
                                 && (self.assistant_error.as_deref()
                                     == Some("authentication_failed")
-                                    || message["api_error_status"] == 401))
+                                    || matches!(api_status, decoded::Presence::Value(401))))
                         {
                             ErrorKind::AuthenticationUnavailable
                         } else {

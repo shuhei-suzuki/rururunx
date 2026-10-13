@@ -47,9 +47,22 @@ Unknown external effects remain subject to idempotent reconciliation.
 
 Status reconciliation retries only the retained private Native terminal. After
 receipt commit it publishes the terminal's failure category together with durable
-Unit/Session/result fields, while preserving the Core's latest metrics and pending
-observations. Cancellation keeps its failure override; a stale watch snapshot
-cannot erase a confirmed protocol failure or create new execution authority.
+Unit/Session/result fields. Watch is read after the retained-terminal retry and
+while holding Store, including the path with no retained terminal. A Core
+publication before that Store observation supplies the returned failure,
+diagnostic, metrics and pending observations. Cancellation keeps its failure
+override. This read creates no execution authority and does not replace the
+retained original or its compare-clear checks.
+
+Claude byte ingress retains original frame bytes through the shared startup
+queue. Claude-local numeric validation checks integer decimal/exponent values
+before precision can be lost, and API-status classification consumes the checked
+uint16 value. UUID-content identity includes unknown exact numeric fields while
+normalizing key order and UUID spelling. The correlated bootstrap response checks
+optional session ownership and carries its UUID history into the same normal
+receive state; normal unsolicited control responses remain refused. The shared
+queue keeps its 128-frame/8-MiB limits and counts retained original bytes, including
+the Codex path. Value-only callers cannot recover upstream lost precision.
 
 Each retry gets a new executor worktree, branch and resources. Accepted commit
 objects and hashed evidence are retained in independent Runtime storage. Each
