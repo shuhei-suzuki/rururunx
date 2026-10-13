@@ -586,11 +586,8 @@ pub(in crate::execution) struct ValidatedRate {
     utilization: Presence<f64>,
 }
 impl ValidatedRate {
-    pub(in crate::execution) fn observation(
-        &self,
-        at: i64,
-    ) -> crate::execution::quota::QuotaObservation {
-        use crate::execution::quota::{QuotaObservation, QuotaStatus};
+    pub(in crate::execution) fn observation(&self, at: i64) -> crate::execution::QuotaObservation {
+        use crate::execution::{QuotaObservation, QuotaStatus};
         let reset = self.reset_ms.value();
         QuotaObservation {
             provider: "claude".into(),
