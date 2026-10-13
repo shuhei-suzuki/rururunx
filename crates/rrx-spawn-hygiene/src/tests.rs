@@ -1,4 +1,6 @@
 #[cfg(unix)]
+mod api_wiring;
+#[cfg(unix)]
 mod controls;
 #[cfg(unix)]
 mod owner;

@@ -46,6 +46,12 @@ returns, saving errno or EIO; full capacity is ENOBUFS. fcntl sets CLOEXEC rathe
 than closing fd. Linux GNU uses SYS_close_range(3,u32::MAX,CLOEXEC), failing closed
 on ENOSYS/EINVAL and any other errno. Unsupported targets refuse with ENOSYS.
 
+The v3-approved Linux support baseline is GNU/glibc >= 2.34 and kernel >= 5.11:
+[close_range history and CLOEXEC availability](https://man7.org/linux/man-pages/man2/close_range.2.html).
+The source uses a raw syscall, not the glibc wrapper; no runtime glibc version
+rejection is implemented. Musl/other targets and blocked/unavailable syscall
+environments fail closed. README and master describe those current facts.
+
 pre_exec forces std's fork path; V-F measures performance/frequency consequences.
 Hygiene cannot prove process death. Tokio build_child registration Err after std
 spawn can still leave a child. Existing uncertainty/Unknown/Lost logic stays in
@@ -73,6 +79,29 @@ inspection/owner/watchdog/timeout/environment semantics belong to
 NativeSessions status, Claude decoding, metrics and M0 logic are unchanged; shared
 files receive only Command migration. RRX_P4_CASE/RRX_P4_DIR are private test worker
 inputs and confer no authority. No schema/UI/runtime response/production env change.
+
+## First implementation review: per-entry-point controls
+
+P4-I-M01 adds six separate controls for the six safe public APIs. Each runs under
+the existing WorkerGroupOwner and calls that public API directly. Before creating
+the Tokio runtime, safe OwnedFd allocations reserve slots 3..9; four owned writer
+witnesses have CLOEXEC cleared and their own fstat device/inode recorded. No dup2
+overwrites an existing fd. A finite Python probe runs with `-I -S`, validates its
+typed argv, and fstats all witnesses before opening its regular-file report.
+This makes output/status a completed child-side observation rather than live EOF.
+
+The bounded UTF-8 TSV report must match the complete unique slot set, process
+group observation, legal tokens and successful child exit. Only a valid report
+of an identical inherited writer yields RESULT fail. Setup, read, launch/wait,
+malformed report and observation failures yield SETUP or NO_RESULT; they never
+kill a mutant. The existing inheritance reader and InnerOwner::close are
+unchanged; I89-P4-IMPL-M01 is a separate repair. Stdio/cancel/kill_on_drop controls
+remain in place, and optional unpolled Tokio controls are not made mandatory.
+
+Six V1 variants bypass prepare at one public API at a time, each paired with its
+own exact outer control and restored normal source. Dedicated targets and source/
+binary hashes are required. The new controls and mutants are pending execution;
+no additional cargo workload is started during the immutable initial M06 campaign.
 
 ## Controls and custody
 

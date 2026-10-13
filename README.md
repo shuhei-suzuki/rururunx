@@ -355,6 +355,13 @@ MVP hosts: macOS and Linux. Cargo produces the local `rrx` binary; prebuilt rele
 packaging is not available yet. Native agents keep their own installation,
 authentication, hooks and permission settings.
 
+Process launch on Linux is supported on GNU/glibc targets with glibc >= 2.34
+and kernel >= 5.11. The descriptor boundary uses the raw `close_range` syscall
+with `CLOSE_RANGE_CLOEXEC`; blocked or unavailable syscalls fail closed without a
+fallback. Linux musl and other unsupported targets refuse launch with `ENOSYS`.
+This is the approved support baseline, not a runtime glibc version check.
+[`CLOSE_RANGE_CLOEXEC` requires Linux 5.11](https://man7.org/linux/man-pages/man2/close_range.2.html).
+
 Configuration uses TOML. Inputs are explicit during bootstrap:
 
 ```bash

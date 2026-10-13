@@ -9,6 +9,14 @@ without fallback; macOS validates a complete aligned libproc list and refuses
 malformed/full lists or fcntl failures. Unsupported targets refuse launch. The
 rrx crate continues to forbid unsafe code.
 
+The Linux support baseline is GNU/glibc >= 2.34 with kernel >= 5.11.
+`CLOSE_RANGE_CLOEXEC` was added in
+[Linux 5.11](https://man7.org/linux/man-pages/man2/close_range.2.html).
+The implementation calls the raw syscall, so it does not check the running glibc
+version or depend on its `close_range` wrapper. Blocked/unavailable syscalls keep
+their error and refuse launch; Linux musl and other unsupported targets return
+`ENOSYS` without fallback.
+
 The six functions delegate to their corresponding original methods. Tokio
 output/status spawn synchronously before returning the future. Stdio defaults,
 cancellation, kill_on_drop, process group, original locks and immediate Child

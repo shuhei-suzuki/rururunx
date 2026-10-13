@@ -332,6 +332,10 @@ fn worker() {
         return;
     };
     let directory = std::path::PathBuf::from(std::env::var_os("RRX_P4_DIR").unwrap());
+    if let Some(api) = case.strip_prefix("API_") {
+        super::api_wiring::run_worker(api, &directory);
+        return;
+    }
     let marker = directory.join("marker");
     let mut command = Command::new("/bin/sh");
     command.args(["-c", "touch \"$1\"", "p4"]).arg(&marker);
