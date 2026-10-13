@@ -202,8 +202,10 @@ impl WorkerGroupOwner {
             result.map_err(|error| error.raw_os_error().unwrap_or(libc::EIO)),
         );
         if accepted {
-            self.trace
-                .push(if final_signal { "S4:accepted" } else { "S3:ok" });
+            if final_signal || !self.stopped {
+                self.trace
+                    .push(if final_signal { "S4:accepted" } else { "S3:ok" });
+            }
             if !final_signal {
                 self.stopped = true;
             }
@@ -350,7 +352,7 @@ fn classify(stdout: &str, success: bool) -> Classification {
     match lines.as_slice() {
         [line] if line.starts_with("P4C SETUP fail") => Classification::Setup,
         ["P4C RESULT pass"] if success => Classification::Pass,
-        [line] if line.starts_with("P4C RESULT fail:") => {
+        [line] if success && line.starts_with("P4C RESULT fail:") => {
             Classification::Fail(line.trim_start_matches("P4C RESULT fail:").to_owned())
         }
         _ => Classification::NoResult,
@@ -375,7 +377,7 @@ fn ow1_custody_table() {
     assert_eq!(decide(Observe, Error, true, true), Hold);
     assert_eq!(decide(Stage::Reap, Error, true, true), Hold);
     assert_eq!(decide(Observe, Running, false, true), StopLeader);
-    assert_ne!(decide(Observe, Exited, false, false), FinalGroup);
+    assert_eq!(decide(Observe, Exited, false, false), Action::Reap);
     assert_eq!(decide(Stage::Reap, Reaped, false, true), Hold);
     assert_ne!(decide(Gate, Empty, false, true), Finish);
     // macOS S4 EPERM can authorize reap but cannot bypass S7. S3 EPERM
@@ -387,6 +389,23 @@ fn ow1_custody_table() {
     assert_eq!(decide(FinalSignal, accepted, true, false), Action::Reap);
     assert_eq!(decide(Gate, Remaining, true, true), ReadGroup);
     assert_eq!(decide(FinalSignal, Error, true, true), FinalGroup);
+    assert_eq!(
+        classify("P4C RESULT fail:broken\n", false),
+        Classification::NoResult
+    );
+    assert_eq!(
+        classify("P4C RESULT pass\n", false),
+        Classification::NoResult
+    );
+    assert_eq!(
+        classify("P4C RESULT fail:broken\n", true),
+        Classification::Fail("broken".into())
+    );
+    assert_eq!(
+        classify("P4C RESULT pass\nP4C RESULT pass\n", true),
+        Classification::NoResult
+    );
+    assert_eq!(classify("P4C STALL\n", true), Classification::NoResult);
     for class in [
         Classification::Setup,
         Classification::NoResult,
