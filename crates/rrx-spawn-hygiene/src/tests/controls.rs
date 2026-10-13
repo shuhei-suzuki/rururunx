@@ -6,7 +6,7 @@ use crate::{
 };
 use std::{
     io::{self, Read, Write},
-    os::fd::OwnedFd,
+    os::fd::{AsRawFd, OwnedFd},
     os::unix::process::ExitStatusExt,
     process::{Child, Command, Stdio},
     sync::{
@@ -120,6 +120,13 @@ fn inheritance(cloexec: bool, high: bool) -> Result<(), String> {
         .map_err(|_| "SETUP fd limit")?;
         write = rustix::io::fcntl_dupfd_cloexec(&write, target)
             .map_err(|e| format!("SETUP high dup fd={target}: {e}"))?;
+        if write.as_raw_fd() != target {
+            return Err(format!(
+                "SETUP high fd differs: expected {target}, got {}",
+                write.as_raw_fd()
+            ));
+        }
+        println!("P4C FD high={target}");
     }
     rustix::io::fcntl_setfd(
         &write,
@@ -141,7 +148,6 @@ fn inheritance(cloexec: bool, high: bool) -> Result<(), String> {
     let mut owner = InnerOwner::new(spawn_std(command).map_err(|e| format!("spawn {e}"))?);
     let pid = rustix::process::Pid::from_raw(owner.child.id() as i32).ok_or("SETUP pid")?;
     let in_group = rustix::process::getpgid(Some(pid)) == Ok(rustix::process::getpgrp());
-    drop(write);
     let stdout = owner.child.stdout.take().ok_or("SETUP stdout")?;
     let ready = poll_read(
         std::fs::File::from(OwnedFd::from(stdout)),
@@ -154,6 +160,9 @@ fn inheritance(cloexec: bool, high: bool) -> Result<(), String> {
         .try_wait()
         .map_err(|e| format!("before {e}"))?
         .is_none();
+    // Establish ready and liveness before closing the parent's writer, matching
+    // the causal control's observation order.
+    drop(write);
     let read = std::fs::File::from(read);
     let cancel = owner.cancel.clone();
     let (tx, rx) = std::sync::mpsc::channel();
