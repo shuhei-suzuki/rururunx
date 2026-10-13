@@ -40,6 +40,12 @@ pub(super) enum Action {
 }
 
 // Pure decisions are separate from the owner executing them. A failed authority
+fn signal_accepted(macos: bool, final_signal: bool, result: Result<(), i32>) -> bool {
+    result.is_ok()
+        || (final_signal && (result == Err(libc::ESRCH) || (macos && result == Err(libc::EPERM))))
+}
+
+// Pure decisions are separate from the owner executing them. A failed authority
 // observation is permanent; neither later empty reads nor a deadline restores it.
 pub(super) fn decide(stage: Stage, observation: Observation, group: bool, expired: bool) -> Action {
     match stage {
@@ -77,6 +83,8 @@ pub(super) struct Report {
     pub trace: Vec<&'static str>,
     pub status: ExitStatus,
     pub stopped: bool,
+    pub stdout: String,
+    pub stderr: String,
 }
 impl Report {
     pub fn killed(&self, registered_stop: bool) -> bool {
@@ -188,15 +196,11 @@ impl WorkerGroupOwner {
         } else {
             self.child.kill()
         };
-        let accepted = result.is_ok()
-            || (final_signal
-                && matches!(
-                    result.as_ref().err().and_then(io::Error::raw_os_error),
-                    Some(libc::ESRCH)
-                ))
-            || (final_signal
-                && cfg!(target_os = "macos")
-                && result.as_ref().err().and_then(io::Error::raw_os_error) == Some(libc::EPERM));
+        let accepted = signal_accepted(
+            cfg!(target_os = "macos"),
+            final_signal,
+            result.map_err(|error| error.raw_os_error().unwrap_or(libc::EIO)),
+        );
         if accepted {
             self.trace
                 .push(if final_signal { "S4:accepted" } else { "S3:ok" });
@@ -314,8 +318,8 @@ impl WorkerGroupOwner {
         let classification = if self.timeout {
             Classification::Timeout
         } else {
-            match stdout {
-                Ok(text) => classify(&text, status.success()),
+            match &stdout {
+                Ok(text) => classify(text, status.success()),
                 Err(_) => Classification::NoResult,
             }
         };
@@ -325,6 +329,9 @@ impl WorkerGroupOwner {
             trace: self.trace.clone(),
             status,
             stopped: self.stopped,
+            stdout: stdout.unwrap_or_else(|error| format!("unreadable stdout: {error}")),
+            stderr: std::fs::read_to_string(self.directory.path().join("stderr"))
+                .unwrap_or_else(|error| format!("unreadable stderr: {error}")),
         }
     }
 }
@@ -373,6 +380,9 @@ fn ow1_custody_table() {
     assert_ne!(decide(Gate, Empty, false, true), Finish);
     // macOS S4 EPERM can authorize reap but cannot bypass S7. S3 EPERM
     // is never stop success; non-macOS S4 EPERM never authorizes reap.
+    assert!(signal_accepted(true, true, Err(libc::EPERM)));
+    assert!(!signal_accepted(true, false, Err(libc::EPERM)));
+    assert!(!signal_accepted(false, true, Err(libc::EPERM)));
     let accepted = Observation::Accepted;
     assert_eq!(decide(FinalSignal, accepted, true, false), Action::Reap);
     assert_eq!(decide(Gate, Remaining, true, true), ReadGroup);
@@ -388,6 +398,8 @@ fn ow1_custody_table() {
             trace: vec![],
             status: ExitStatus::from_raw(libc::SIGKILL),
             stopped: true,
+            stdout: String::new(),
+            stderr: String::new(),
         };
         assert!(!report.killed(true));
     }

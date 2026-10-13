@@ -1,5 +1,3 @@
-#![allow(unsafe_code)]
-
 use super::owner::{Classification, WorkerGroupOwner};
 use crate::{
     output_std, output_tokio,
@@ -8,7 +6,7 @@ use crate::{
 };
 use std::{
     io::{self, Read, Write},
-    os::fd::{AsRawFd, OwnedFd},
+    os::fd::OwnedFd,
     process::{Child, Command, Stdio},
     sync::{
         Arc,
@@ -101,35 +99,34 @@ fn poll_read(mut file: std::fs::File, cancel: &AtomicBool, ready: bool) -> io::R
 
 fn inheritance(cloexec: bool, high: bool) -> Result<(), String> {
     let (read, mut write) = rustix::pipe::pipe().map_err(|e| format!("SETUP pipe {e}"))?;
-    // SAFETY: each fcntl refers to a live owned descriptor; successful dup owns
-    // a fresh descriptor. No ownership is taken for failed calls.
-    unsafe {
-        if high {
-            let mut limit = libc::rlimit {
-                rlim_cur: 0,
-                rlim_max: 0,
-            };
-            if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) != 0 {
-                return Err("SETUP rlimit".into());
-            }
-            let target =
-                i32::try_from(limit.rlim_cur.saturating_sub(1)).map_err(|_| "SETUP fd limit")?;
-            let fd = libc::fcntl(write.as_raw_fd(), libc::F_DUPFD, target);
-            if fd < 0 {
-                return Err("SETUP high dup".into());
-            }
-            use std::os::fd::FromRawFd;
-            write = OwnedFd::from_raw_fd(fd);
-        }
-        if libc::fcntl(
-            write.as_raw_fd(),
-            libc::F_SETFD,
-            if cloexec { libc::FD_CLOEXEC } else { 0 },
-        ) != 0
-        {
-            return Err("SETUP fd flags".into());
-        }
+    if high {
+        // This dedicated worker normalizes its own soft limit to a realizable
+        // fixture size. Some macOS launchers advertise an enormous soft limit
+        // beyond the kernel's actual usable descriptor table. Other tests and
+        // the harness keep their existing limits and concurrency unchanged.
+        use rustix::process::{Resource, getrlimit, setrlimit};
+        let mut limit = getrlimit(Resource::Nofile);
+        limit.current = Some(limit.current.unwrap_or(1024).min(1024));
+        setrlimit(Resource::Nofile, limit).map_err(|e| format!("SETUP setrlimit {e}"))?;
+        let target = i32::try_from(
+            getrlimit(Resource::Nofile)
+                .current
+                .ok_or("SETUP unlimited fd")?
+                .saturating_sub(1),
+        )
+        .map_err(|_| "SETUP fd limit")?;
+        write = rustix::io::fcntl_dupfd(&write, target)
+            .map_err(|e| format!("SETUP high dup fd={target}: {e}"))?;
     }
+    rustix::io::fcntl_setfd(
+        &write,
+        if cloexec {
+            rustix::io::FdFlags::CLOEXEC
+        } else {
+            rustix::io::FdFlags::empty()
+        },
+    )
+    .map_err(|e| format!("SETUP fd flags {e}"))?;
     let mut command = Command::new("/bin/sh");
     command
         .args(["-c", "printf 'ready\\n'; read go"])
@@ -396,6 +393,10 @@ fn run(case: &str) {
     let owner = WorkerGroupOwner::start(case)
         .unwrap_or_else(|error| panic!("P4C SETUP before child: {error}"));
     let report = owner.finish();
+    println!(
+        "P4C WORKER stdout={} stderr={}",
+        report.stdout, report.stderr
+    );
     println!(
         "P4C HARNESS case={case} classification={:?} complete={} trace={:?}",
         report.classification, report.complete, report.trace

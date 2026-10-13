@@ -90,7 +90,7 @@ pub(super) fn install_with_options(command: &mut Command, options: Options) -> i
         }));
     }
     let record = size_of::<libc::proc_fdinfo>();
-    if record != 8 || probe as usize % record != 0 {
+    if record != 8 || !(probe as usize).is_multiple_of(record) {
         return Err(io::Error::from_raw_os_error(libc::EIO));
     }
     let cap = (probe as usize / record)
