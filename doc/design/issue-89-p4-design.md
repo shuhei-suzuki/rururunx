@@ -276,7 +276,8 @@ changed there. Tests stay parallel (no test-threads override).
 
 ## macOS F1 mechanism and focused frequency controls
 
-Status: designed, not run. Requires a design review before any harness exists.
+Status: designed, not run. Revised after confirmed design findings; requires
+design review before any harness exists.
 The final macOS V-F (main 16 / P4 16) stays INCONCLUSIVE and unchanged. It
 had 0/16 qualified attempts per variant. A read-only source join found 24 F1
 positives in 10 main attempts and none in P4. Not observing F1 in P4 does not
@@ -418,21 +419,23 @@ Steps:
    which shows that exec happened. Join the spawner thread and take the Child.
 9. While the child is still alive (blocked on stdin), call
    `RuntimeOwner::open` once and record the outcome and epoch.
-10. Drop the new owner, close the child's stdin, wait/reap it and record the
-    exit status.
+10. Drop the new owner. Write one line `Q\n` to the child's stdin and then
+    close it, so `read -r line` succeeds and the child exits 0. Wait/reap it
+    and record the exit status.
 11. Only then evaluate:
     - step 7 refused with os35, and the before/after snapshots and epoch are
       equal;
     - step 9 acquired, with epoch exactly E+1;
     - the child exited 0.
 
-On failure the gate is released and stdin closed first. The child is waited.
-If it is still alive after the bound, it is killed and reaped, and the run is
-NO_RESULT.
+On failure: release the gate, write the line `Q\n`, close stdin, then wait.
+If the child is still alive after the bound, it is killed and reaped, and the
+run is NO_RESULT.
 
 Negative control N: identical, except no gate is registered. `spawn_std`
 returns after exec, the child reports `R`, the owner is dropped and EBADF is
-confirmed. Reopen while the child is alive must acquire with E+1.
+confirmed. Reopen while the child is alive must acquire with E+1. The child
+then gets `Q\n` and a closed stdin like step 10, and must exit 0.
 
 Mutants, each run before MC results count:
 
@@ -479,10 +482,14 @@ Block procedure:
 1. Open the owner (labelled SETUP open, not counted).
 2. Start M spawners. Each loops over:
    build the shape → spawn (stdio null) → `wait()` → require exit 0.
-   It counts spawned, reaped, spawn errors and wait errors.
-3. For each of 100 iterations:
+   It counts spawned, reaped, spawn errors and wait errors. It also keeps a
+   completed-cycle counter, incremented only after spawn + reap + exit 0.
+3. For each of 100 counted iterations:
    - take the owner's Weak, drop the sole Arc and wait (bounded) for expiry;
-   - call `RuntimeOwner::open` once, without blocking.
+   - wait (bounded) until every spawner has completed at least one new cycle
+     since the reference point: the end of the previous counted iteration,
+     the block's SETUP open, or the last resume, whichever is latest;
+   - only then call `RuntimeOwner::open` once, without blocking.
 
    Outcomes:
 
@@ -490,7 +497,7 @@ Block procedure:
    |---|---|---|
    | Acquired | Epoch is exactly previous+1 (otherwise SETUP) | Becomes the owner for the next iteration |
    | RefusedOs35 | The MC classifier returns RefusedOs35 | Counted, and the iteration ends |
-   | SETUP/NO_RESULT | Any other error, an expiry overrun, or a spawner error in the iteration | Iteration ends |
+   | SETUP/NO_RESULT | Any other error, an expiry or load-wait overrun, or a spawner error in the iteration | Iteration ends |
 
 4. Recovery after a refusal or SETUP:
    - raise the pause flag;
@@ -502,6 +509,7 @@ Block procedure:
 
    If the RECOVERY open is refused, that refusal is not a counted F1. The
    block's remaining iterations are NO_RESULT and the anomaly is recorded.
+   In P4 arms, those iterations count against P4 in the decision rule.
 5. At block end, stop and join the spawners. Spawned must equal reaped;
    otherwise the whole block is NO_RESULT.
 
@@ -511,7 +519,9 @@ Records per block:
 - `sysctl vm.loadavg` before and after;
 - counts of Acquired, RefusedOs35 and SETUP/NO_RESULT;
 - RECOVERY outcomes;
-- spawned, reaped, spawn-error and wait-error counts.
+- spawned, reaped, spawn-error and wait-error counts;
+- per counted iteration, each spawner's completed-cycle delta from the
+  reference point to the open.
 
 ### Pre-registered decision rule
 This rule is fixed before any FC run and cannot be edited afterwards. The
@@ -522,9 +532,14 @@ Acquired) over qualified iterations. Apply a one-sided Fisher exact test
 (hypergeometric P(X >= P4 refusals), with fixed margins) at alpha 0.05. There
 is no multiplicity correction; this deliberately leans toward STOP.
 
+Missing iterations are never counted in P4's favour. STOP uses observed
+qualified counts only. NOT_OBSERVED_HIGHER treats every P4 SETUP/NO_RESULT
+iteration as a refusal and main's as not.
+
 - STOP (P4 higher): any shape has P4 > main with p < 0.05.
 - NOT_OBSERVED_HIGHER: only if all of these hold:
-  - P4 count <= main count for every shape;
+  - for every shape, P4 RefusedOs35 + P4 SETUP/NO_RESULT <= main
+    RefusedOs35;
   - SETUP/NO_RESULT <= 2% of iterations in every arm;
   - main-S1 has at least 1 refusal (power check).
 - INCONCLUSIVE: anything else, including P4 > main with p >= 0.05.
