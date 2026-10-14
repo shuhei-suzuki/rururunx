@@ -273,3 +273,273 @@ changed there. Tests stay parallel (no test-threads override).
 - Still needs a concrete decision: the final PR merge (owner); any future Linux
   hygiene, or resolving the GNU STOP (this Issue's deferred scope); any change to the V-F
   predicate once classification has started.
+
+## macOS F1 mechanism and focused frequency controls
+
+Status: designed, not run. Requires a design review before any harness exists.
+The final macOS V-F (main 16 / P4 16) stays INCONCLUSIVE and unchanged. It
+had 0/16 qualified attempts per variant. A read-only source join found 24 F1
+positives in 10 main attempts and none in P4. Not observing F1 in P4 does not
+show a zero rate.
+
+### Purpose and owner decision
+The P4 merge condition blocks merge on a higher macOS F1 frequency, and an
+unknown never counts as no increase. On 2026-10-15 the owner decided to settle
+this gate with two synthetic controls on final source:
+(1) a deterministic mechanism control (MC), and (2) a focused, pre-registered
+frequency control (FC). Both run outside the scope of the original 32
+attempts.
+
+F1 is `RuntimeOwner::open` refusing because
+`flock(owner.lock, LOCK_EX|LOCK_NB)` returns WouldBlock
+(`execution/owner.rs:225`, macOS errno 35). Every observed site is a test
+restart in the same process:
+- `runtime/tests.rs:520` (13 positives);
+- two sites in `installation/tests/epoch_fence.rs` (8 and 3 positives).
+
+Each restart drops the owner, waits for the Weak to expire and reopens. The
+lock and DB descriptors are verified CLOEXEC (owner.rs:199-201, 227-231).
+
+Hypothesis H (unproven): a child forked by a sibling thread keeps a duplicate
+of the owner-lock open file description from fork until exec closes CLOEXEC
+descriptors. A same-process reopen inside that window is refused with os35.
+
+Std 1.91.1 (`sys/process/unix/unix.rs`) uses `posix_spawn` unless one of these
+shapes forces fork+exec:
+- uid/gid/groups/chroot is set;
+- `env_saw_path() && !program_is_path()`;
+- there are non-empty pre_exec closures;
+- on Apple, cwd is set and the program path is relative;
+- setsid is requested (non-Linux-gnu).
+
+`process_group` uses POSIX_SPAWN_SETPGROUP and does not force fork. Main has no
+pre_exec (rrx forbids `unsafe`), so on main only those shapes fork. P4 adds a
+closure to every spawn, so on macOS every P4 spawn forks and the hygiene
+callback runs inside the fork-to-exec window. P4 can therefore widen exposure:
+more spawn shapes fork, and the window is longer. P4 does not keep any
+descriptor past exec.
+
+The controls do not prove:
+- the natural F1 frequency on main or P4;
+- which holder caused the original F1s;
+- the root cause of every main F1;
+- process-group or descendant death;
+- Linux behaviour (full Linux P4 stays deferred).
+
+### Production lock/fencing impact
+Refusal happens in `lock_state_root` before `Store::open`. The only non-test
+openers are `cli/service.rs:91` (Runtime service) and `cli/project.rs:57`
+(offline `OwnerLock::exclusive`). Every other `RuntimeOwner::open` is in a
+`cfg(test)` module or an integration test.
+
+| Path | When the extra holder matters | Outcome |
+|---|---|---|
+| Same-process reopen | Only tests today; no production code reopens in-process | os35 refusal |
+| Offline `OwnerLock` | Only after the daemon's owner is gone; while the daemon lives it holds the lock anyway | `owner busy`, `EXIT_ROUTING_REFUSED` |
+| Daemon restart (new process) | The old process's last forked child has not reached exec yet | `OwnerBusy` from `open_owner` |
+
+A refusal fails closed:
+- the error is typed busy (WOULDBLOCK in the chain);
+- `begin_execution_epoch` is not reached, so no epoch is issued;
+- no Store is opened and no state is written;
+- rrx adds no retry, and this design adds none.
+
+Fencing and CAS see no new owner. P4 does not hold the lock past exec:
+- hygiene only sets CLOEXEC on fd >= 3 and closes nothing;
+- the lock is already CLOEXEC, so exec closes it;
+- exec failure and callback failure both end in the child's `_exit`, which also
+  closes it.
+
+The extra exposure is bounded by each child's fork-to-exec time. If either
+control shows that a contract must change, work stops and a concrete diff goes
+to the owner. Examples are retention past exec, or a busy-retry or lock
+contract change.
+
+### Hard constraints
+- Nothing changes in production code, permission, ownership, CAS, marker,
+  fencing or lock.
+- Forbidden: retries that hide a refusal, timeout-only extensions, and skipping,
+  ignoring or serializing existing tests.
+- Also forbidden: test-only permission constructors, an SQL success seed,
+  Task.version as authority, and warning suppression.
+- Measurement code lives only in private copies under the repository root's
+  ignored `.rrx/`, in `.rrx/p4-f1-controls-20261015/{main,p4}`.
+  - Each copy is extracted from a tracked `git archive` of main
+    `b8344ab951fa24f545174917eee7be067284c625` or P4 `44405c93`.
+  - The exact SHA and the archive sha256 are recorded at creation.
+  - Each copy has its own target dir. Copies are never merged.
+- Any `unsafe` pre_exec gate lives in a local, unpublished dev-only crate inside
+  the P4 copy, added only as an rrx dev-dependency of that copy. rrx keeps
+  `unsafe` forbidden.
+- Copies build warning-free. Copy-local manifest and lockfile changes are
+  recorded by hash.
+- Every child is waited and reaped before any assertion or result.
+- These are SETUP/NO_RESULT, never a causal pass or kill: wait errors, FD-slot
+  reuse, missing observations, bound overruns and panics.
+- The original 32 attempts and their unknowns stay unchanged.
+- The old GNU fixture `.rrx/p4-f1-causal-fixture-20261014` (old sources,
+  `Some(11)` fixed, gate before hygiene) is not reused or restarted.
+
+### MC: mechanism control (P4 copy, macOS only)
+MC is one integration-test function in the P4 copy, invoked with `--exact`.
+No other test thread in the binary forks, so no other test's children inherit
+the owner lock. Default parallelism is unchanged (no `--test-threads`). Each
+case uses a fresh temp state. Every wait has a fixed bound; an overrun is
+NO_RESULT.
+
+Steps:
+1. Classifier controls. C0+: hold `OwnerLock::exclusive(state)`, then
+   `RuntimeOwner::open(state)`. The classifier must return RefusedOs35: a
+   `rustix::io::Errno` in the chain with raw value 35. C0−: make `owner.lock`
+   a symlink. `open` must refuse, and the classifier must return NotOs35.
+2. Open a real `RuntimeOwner` (epoch E). Find the parent's lock descriptor by
+   `F_GETPATH`. Exactly one fd must resolve to the canonical `owner.lock`;
+   otherwise SETUP.
+3. Create two CLOEXEC pipes: `entered` and `gate`. Build a std `Command` for
+   `/bin/sh -c 'printf R; read -r line'` with stdin and stdout piped. Register
+   the caller gate closure through the dev-only crate. In the child it calls
+   `write(entered, 1 byte)` and then a blocking `read(gate, 1 byte)`. Both calls
+   are async-signal-safe. A short or failed write or read returns an error, so
+   spawn fails (SETUP).
+4. Call `rrx_spawn_hygiene::spawn_std(command)` on a dedicated thread. Std
+   returns only after exec, so this thread blocks. pre_exec closures run in
+   registration order: the caller gate runs before P4's hygiene callback.
+   Hygiene only sets CLOEXEC, so retention through hygiene is unchanged.
+5. The test thread reads the `entered` byte. Without it, the result is SETUP.
+6. Drop the sole owner `Arc` synchronously and confirm the Weak has expired.
+   `F_GETFD` on the recorded fd must give EBADF. A valid fd means FD-slot reuse
+   (SETUP).
+7. Take a logical snapshot through a read-only SQLite connection that does not
+   use `Store::open`: tables, their rows in rowid order, and the epoch.
+   Call `RuntimeOwner::open(same path)` once and record the outcome. Take the
+   snapshot again.
+8. Release the gate by writing one byte (dropping the parent's write end is not
+   enough, because the child holds a copy). Read the child's `R` from stdout,
+   which shows that exec happened. Join the spawner thread and take the Child.
+9. While the child is still alive (blocked on stdin), call
+   `RuntimeOwner::open` once and record the outcome and epoch.
+10. Drop the new owner, close the child's stdin, wait/reap it and record the
+    exit status.
+11. Only then evaluate:
+    - step 7 refused with os35, and the before/after snapshots and epoch are
+      equal;
+    - step 9 acquired, with epoch exactly E+1;
+    - the child exited 0.
+
+On failure the gate is released and stdin closed first. The child is waited.
+If it is still alive after the bound, it is killed and reaped, and the run is
+NO_RESULT.
+
+Negative control N: identical, except no gate is registered. `spawn_std`
+returns after exec, the child reports `R`, the owner is dropped and EBADF is
+confirmed. Reopen while the child is alive must acquire with E+1.
+
+Mutants, each run before MC results count:
+
+| Mutant | Required outcome |
+|---|---|
+| Gate disabled (closure returns at once) | Step-7 refusal assertion fails |
+| Classifier accepts any error, not only os35 | C0− fails |
+| Same-bytes restoration | Full MC passes |
+
+A kill counts only if a compiled assertion in a binary bound to source and
+binary hashes fails, and the same-bytes restored binary then passes.
+
+MC runs 10 gated cases and 10 N cases in one invocation:
+- MECHANISM_SHOWN: all 20 are qualified and all agree with the expectations
+  above;
+- NOT_SHOWN: a qualified gated case acquires at step 7;
+- otherwise NO_RESULT.
+
+### FC: focused frequency control (main and P4 copies)
+Each copy gets one measurement-only integration test target with identical
+source, except for the spawn line:
+- main: plain `std::process::Command::spawn`;
+- P4: `rrx_spawn_hygiene::spawn_std`.
+
+Each target is built once with `cargo test --no-run` and the same profile in
+both copies (`--release` is not required). The binary sha256 is recorded.
+Test functions `fc_s1` and `fc_s2` are selected with `--exact`. One invocation
+runs one block of 100 iterations for one arm. Default parallelism is unchanged.
+
+Child shapes, run as separate arms:
+- S1: `env_clear()` + `env("PATH", "/usr/bin:/bin")` + bare program `true`.
+  It forks on both copies.
+- S2: absolute `/usr/bin/true`, with no env change. It uses posix_spawn on
+  main and fork on P4. macOS posix_spawn still copies the descriptor table
+  in-kernel before closing CLOEXEC descriptors, so S2-main is a comparison arm,
+  not a zero control.
+
+Fixed values: K = 400 iterations per arm, M = 8 spawner threads. The arms are
+main-S1, main-S2, P4-S1 and P4-S2, giving 16 blocks. The order is fixed before
+the start and alternates copies (ABAB): in each of rounds 1-4, run main-S1,
+P4-S1, main-S2, P4-S2. All runs use the same Mac, as idle as possible.
+
+Block procedure:
+1. Open the owner (labelled SETUP open, not counted).
+2. Start M spawners. Each loops over:
+   build the shape → spawn (stdio null) → `wait()` → require exit 0.
+   It counts spawned, reaped, spawn errors and wait errors.
+3. For each of 100 iterations:
+   - take the owner's Weak, drop the sole Arc and wait (bounded) for expiry;
+   - call `RuntimeOwner::open` once, without blocking.
+
+   Outcomes:
+
+   | Outcome | When | Effect |
+   |---|---|---|
+   | Acquired | Epoch is exactly previous+1 (otherwise SETUP) | Becomes the owner for the next iteration |
+   | RefusedOs35 | The MC classifier returns RefusedOs35 | Counted, and the iteration ends |
+   | SETUP/NO_RESULT | Any other error, an expiry overrun, or a spawner error in the iteration | Iteration ends |
+
+4. Recovery after a refusal or SETUP:
+   - raise the pause flag;
+   - wait (bounded) until every spawner has reaped its in-flight child and
+     parked;
+   - run one RECOVERY open, which is never counted (the counted attempt is not
+     retried);
+   - resume the spawners.
+
+   If the RECOVERY open is refused, that refusal is not a counted F1. The
+   block's remaining iterations are NO_RESULT and the anomaly is recorded.
+5. At block end, stop and join the spawners. Spawned must equal reaped;
+   otherwise the whole block is NO_RESULT.
+
+Records per block:
+- copy SHA, archive, source and binary hashes;
+- argv, start/end time, macOS and toolchain version;
+- `sysctl vm.loadavg` before and after;
+- counts of Acquired, RefusedOs35 and SETUP/NO_RESULT;
+- RECOVERY outcomes;
+- spawned, reaped, spawn-error and wait-error counts.
+
+### Pre-registered decision rule
+This rule is fixed before any FC run and cannot be edited afterwards. The
+section hash is recorded before block 1.
+
+For each shape, build a 2×2 table: copy (P4, main) × outcome (RefusedOs35,
+Acquired) over qualified iterations. Apply a one-sided Fisher exact test
+(hypergeometric P(X >= P4 refusals), with fixed margins) at alpha 0.05. There
+is no multiplicity correction; this deliberately leans toward STOP.
+
+- STOP (P4 higher): any shape has P4 > main with p < 0.05.
+- NOT_OBSERVED_HIGHER: only if all of these hold:
+  - P4 count <= main count for every shape;
+  - SETUP/NO_RESULT <= 2% of iterations in every arm;
+  - main-S1 has at least 1 refusal (power check).
+- INCONCLUSIVE: anything else, including P4 > main with p >= 0.05.
+
+STOP and INCONCLUSIVE keep P4 unmergeable and are reported to the owner.
+NOT_OBSERVED_HIGHER is a synthetic-load finding. The owner uses it together
+with the MC verdict to decide the gate; it is not proof of no natural increase.
+FC runs whatever the MC verdict is, and neither control alone authorizes merge.
+
+### Review and records
+- This design is reviewed by the non-writing family (Sol, high). Zero confirmed
+  mandatory findings are required before harness work.
+- The harness is implemented by Sol (high). Its source is reviewed before runs.
+- Results go into `doc/verification/issue-89-p4.md`, in a new section separate
+  from the 32-attempt V-F.
+- Private evidence (raw logs, hashes, archives) is kept under `.rrx/`.
+- Measurement copies are removed only after their hashes and archives are
+  verified, and are never merged.
