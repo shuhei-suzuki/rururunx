@@ -508,17 +508,19 @@ pub(super) fn worker_input(case: &str) -> Option<WorkerInput> {
         fault,
     };
     match case {
+        #[cfg(target_os = "macos")]
         "C1" => return Some(regular(false, false, Fault::None)),
         "C2a" => return Some(regular(true, false, Fault::None)),
+        #[cfg(target_os = "macos")]
         "C2f" => return Some(regular(false, true, Fault::None)),
         _ => {}
     }
     for control in CONTROLS {
         if case == control.fault_case {
-            return Some(regular(false, false, control.fault));
+            return Some(regular(cfg!(target_os = "linux"), false, control.fault));
         }
         if case == control.normal_case {
-            return Some(regular(false, false, Fault::None));
+            return Some(regular(cfg!(target_os = "linux"), false, Fault::None));
         }
     }
     None

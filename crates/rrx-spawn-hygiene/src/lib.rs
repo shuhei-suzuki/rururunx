@@ -1,6 +1,8 @@
 //! Safe, consuming process launch boundaries.
 //!
-//! Descriptors above stderr are marked CLOEXEC in the forked child, never closed.
+//! On macOS, descriptors above stderr are marked CLOEXEC in the forked child,
+//! never closed. Linux adds no hygiene callback and delegates unchanged; other
+//! targets refuse launch with ENOSYS.
 //! The original std/Tokio operation retains its stdio, cancellation, and Child
 //! ownership semantics. Existing Tokio failures after std spawn may still leave
 //! a child: this boundary does not change or resolve that upstream limitation.

@@ -1,11 +1,31 @@
 # P4 local implementation verification
 
+## Current macOS First implementation state
+
+The platform amendment approved at `aed6f6b4` is implemented, with verification
+and independent implementation reviews NOT RUN on this new source. macOS keeps
+its existing backend; Linux every target_env uses an untouched Command/no-op
+install with no additional hygiene callback, syscall or probe. Other targets
+retain ENOSYS. Six consuming signatures and existing caller migrations remain.
+Linux six-API controls compare fully validated original/wrapped descriptor
+reports with all four known original writers inherited; Linux EOF pairs use a
+test-owned CLOEXEC baseline. Mac-only callback/list/injection controls are cfg
+scoped. No test serialization, timeout extension, skip/ignore or warning
+suppression is introduced.
+
+The final macOS M06/V-F and safety/CI/review/owner gates remain unqualified.
+Historical checks and failed attempts below retain their original source scope.
+GNU C2d/V3/V-F and forced-fork evidence are deferred history under the platform
+amendment, not current Linux hygiene or qualification. The historical macOS
+UNKNOWN comparison is not reclassified; macOS attribution remains unresolved.
+
 Issue: <https://github.com/shuhei-suzuki/rururunx/issues/89>. Baseline:
 `b8344ab951fa24f545174917eee7be067284c625`. Original checks below preceded
 `c3fb1bea`; the per-entry-point repair checks use fixed `149cf859`.
 This is partial issue work. M06's initial campaign and both V-F executions are
-complete; V-F acceptance remains unmet (GNU observed F1 increase and macOS
-INCONCLUSIVE attribution). Review repair approval, owner approval and merge
+complete; their historical V-F acceptance was unmet (GNU observed F1 increase
+and macOS INCONCLUSIVE attribution). The macOS First scope above defers the GNU
+qualification; final-source acceptance, owner approval and merge
 remain separate gates. F1/F3/F4 remain under
 [CI 品質の収束](https://claude.ai/code/session_018R7Q39hySMcnivGdtBcyJC).
 

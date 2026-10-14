@@ -3,24 +3,19 @@
 ## Process launch boundary
 
 All std/Tokio Command spawn/output/status paths consume their configured Command
-through `rrx-spawn-hygiene`. The boundary marks inherited fd >= 3 CLOEXEC before
-exec, preserving stdio and std's error pipe. Linux GNU uses close_range CLOEXEC
-without fallback; macOS validates a complete aligned libproc list and refuses
-malformed/full lists or fcntl failures. Unsupported targets refuse launch. The
-rrx crate continues to forbid unsafe code.
-
-The Linux support baseline is GNU/glibc >= 2.34 with kernel >= 5.11.
-`CLOSE_RANGE_CLOEXEC` was added in
-[Linux 5.11](https://man7.org/linux/man-pages/man2/close_range.2.html).
-The implementation calls the raw syscall, so it does not check the running glibc
-version or depend on its `close_range` wrapper. Blocked/unavailable syscalls keep
-their error and refuse launch; Linux musl and other unsupported targets return
-`ENOSYS` without fallback.
+through `rrx-spawn-hygiene`. On macOS the boundary marks inherited fd >= 3
+CLOEXEC before exec, preserving stdio and std's error pipe; it validates a
+complete aligned libproc list and refuses malformed/full lists or fcntl failures
+without fallback. On Linux it delegates to the original operation without an
+additional hygiene pre_exec callback and provides no descriptor hygiene: children
+inherit every descriptor not marked CLOEXEC, as with the original operation.
+Other targets refuse launch with `ENOSYS`. The rrx crate continues to forbid
+unsafe code.
 
 The six functions delegate to their corresponding original methods. Tokio
 output/status spawn synchronously before returning the future. Stdio defaults,
 cancellation, kill_on_drop, process group, original locks and immediate Child
-adoption retain their meaning. This boundary proves descriptor hygiene rather
+adoption retain their meaning. The macOS boundary proves descriptor hygiene rather
 than process death. Tokio errors during post-spawn registration can still leave
 a child; existing uncertainty and custody rules remain applicable.
 

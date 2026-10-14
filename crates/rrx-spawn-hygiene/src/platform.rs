@@ -8,58 +8,30 @@ use std::process::Command;
 #[link(name = "proc")]
 unsafe extern "C" {}
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 use std::os::unix::process::CommandExt;
 
+#[cfg(target_os = "macos")]
 #[derive(Default)]
 pub(super) struct Options {
     #[cfg(test)]
     pub errno: Option<i32>,
-    #[cfg(all(test, target_os = "macos"))]
+    #[cfg(test)]
     pub capacity: Option<usize>,
 }
 
+#[cfg(target_os = "macos")]
 pub(super) fn install(command: &mut Command) -> io::Result<()> {
     install_with_options(command, Options::default())
 }
 
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
-pub(super) fn install_with_options(command: &mut Command, options: Options) -> io::Result<()> {
-    // SAFETY: the callback only invokes a syscall and constructs an errno-only
-    // io::Error. It allocates no memory, opens no descriptors, and takes no locks.
-    unsafe {
-        command.pre_exec(move || {
-            let result = libc::syscall(
-                libc::SYS_close_range,
-                3u32,
-                u32::MAX,
-                libc::CLOSE_RANGE_CLOEXEC,
-            );
-            let errno = if result == -1 {
-                io::Error::last_os_error()
-                    .raw_os_error()
-                    .unwrap_or(libc::EIO)
-            } else {
-                0
-            };
-            // Test injection replaces the raw operation result, then flows
-            // through the exact production success/error decision below.
-            #[cfg(test)]
-            let (result, errno) = options.errno.map_or((result, errno), |errno| (-1, errno));
-            #[cfg(not(test))]
-            let _ = &options;
-            if result == 0 {
-                Ok(())
-            } else {
-                // No scanning fallback: failure must prevent exec.
-                Err(io::Error::from_raw_os_error(errno))
-            }
-        });
-    }
+#[cfg(target_os = "linux")]
+pub(super) fn install(_command: &mut Command) -> io::Result<()> {
+    // Delegate without changing Command or adding a hygiene pre_exec callback.
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(target_os = "macos")]
 pub(super) fn classify_listfds(ret: i32, bytes: i32, errno: i32) -> Result<usize, i32> {
     if ret <= 0 {
         return Err(if errno == 0 { libc::EIO } else { errno });
@@ -175,7 +147,7 @@ pub(super) fn install_with_options(command: &mut Command, options: Options) -> i
     Ok(())
 }
 
-#[cfg(not(any(target_os = "macos", all(target_os = "linux", target_env = "gnu"))))]
-pub(super) fn install_with_options(_command: &mut Command, _options: Options) -> io::Result<()> {
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+pub(super) fn install(_command: &mut Command) -> io::Result<()> {
     Err(io::Error::from_raw_os_error(libc::ENOSYS))
 }

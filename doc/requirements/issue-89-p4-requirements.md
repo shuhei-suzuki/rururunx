@@ -48,6 +48,10 @@ Required acceptance on the final source:
   Merge is blocked by any of: a higher macOS F1 frequency, a shared severe defect,
   or a Linux safety regression.
 
+Platform separation is implemented from the approved `aed6f6b4` amendment;
+its compilation, controls, Clippy and independent implementation reviews are
+not yet run. Existing historical proofs are not relabeled to this source.
+
 The parent owns measurement, CI, publication, owner approval and merge. Each
 specific PR merge needs owner approval. None of these gates is certified yet.
 

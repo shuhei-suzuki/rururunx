@@ -5,11 +5,9 @@ use super::{
     },
     owner::{Classification, WorkerGroupOwner},
 };
-use crate::{
-    output_std, output_tokio,
-    platform::{self, Options},
-    spawn_std, spawn_tokio, status_std, status_tokio,
-};
+#[cfg(target_os = "macos")]
+use crate::platform::{self, Options};
+use crate::{output_std, output_tokio, spawn_std, spawn_tokio, status_std, status_tokio};
 use std::{
     io::{self, Read, Write},
     os::fd::{AsRawFd, OwnedFd},
@@ -272,19 +270,25 @@ fn inheritance_observation(
     ))
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "test-only error injection uses the same installed callback and original std spawn"
-)]
 fn expect_spawn_err(
-    mut command: Command,
-    options: Options,
+    command: Command,
+    #[cfg(target_os = "macos")] options: Options,
     errno: i32,
     marker: &std::path::Path,
 ) -> Result<(), String> {
-    platform::install_with_options(&mut command, options)
-        .map_err(|e| format!("SETUP prepare {e}"))?;
-    let result = command.spawn();
+    #[cfg(target_os = "macos")]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "macOS test-only error injection uses the same installed callback and original std spawn"
+    )]
+    let result = {
+        let mut command = command;
+        platform::install_with_options(&mut command, options)
+            .map_err(|e| format!("SETUP prepare {e}"))?;
+        command.spawn()
+    };
+    #[cfg(target_os = "linux")]
+    let result = spawn_std(command);
     let error = match result {
         Err(error) => error,
         Ok(child) => {
@@ -423,15 +427,19 @@ fn worker() {
         return;
     }
     let marker = directory.join("marker");
+    #[cfg(target_os = "macos")]
     let mut command = Command::new("/bin/sh");
+    #[cfg(target_os = "macos")]
     command.args(["-c", "touch \"$1\"", "p4"]).arg(&marker);
     let result = match case.as_str() {
         "C2b" => expect_spawn_err(
             Command::new(directory.join("absent-program")),
+            #[cfg(target_os = "macos")]
             Options::default(),
             libc::ENOENT,
             &marker,
         ),
+        #[cfg(target_os = "macos")]
         "C2c" => expect_spawn_err(
             command,
             Options {
@@ -439,15 +447,6 @@ fn worker() {
                 ..Default::default()
             },
             libc::EIO,
-            &marker,
-        ),
-        #[cfg(target_os = "linux")]
-        "C2d" => expect_spawn_err(
-            command,
-            Options {
-                errno: Some(libc::ENOSYS),
-            },
-            libc::ENOSYS,
             &marker,
         ),
         #[cfg(target_os = "macos")]
@@ -461,6 +460,7 @@ fn worker() {
             &marker,
         ),
         "C2g" => stdio(),
+        #[cfg(target_os = "macos")]
         "LISTFDS" => crate::tests::check_listfds(),
         "OW2" => leave_member(),
         _ => Err("SETUP unknown case".into()),
@@ -513,6 +513,7 @@ pub(super) fn run(case: &str) {
     );
 }
 
+#[cfg(target_os = "macos")]
 #[test]
 fn c1() {
     run("C1");
@@ -525,20 +526,17 @@ fn c2a() {
 fn c2b() {
     run("C2b");
 }
+#[cfg(target_os = "macos")]
 #[test]
 fn c2c() {
     run("C2c");
-}
-#[cfg(target_os = "linux")]
-#[test]
-fn c2d() {
-    run("C2d");
 }
 #[cfg(target_os = "macos")]
 #[test]
 fn c2e() {
     run("C2e");
 }
+#[cfg(target_os = "macos")]
 #[test]
 fn c2f() {
     run("C2f");

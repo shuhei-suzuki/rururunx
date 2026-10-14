@@ -1,20 +1,19 @@
-#[cfg(unix)]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod api_wiring;
-#[cfg(unix)]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod controls;
-#[cfg(unix)]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod eof_observation;
-#[cfg(unix)]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod owner;
 
+#[cfg(target_os = "macos")]
 #[test]
 fn listfds_return_bytes_are_fail_closed() {
-    #[cfg(unix)]
     controls::run("LISTFDS");
-    #[cfg(not(unix))]
-    assert_eq!(check_listfds(), Ok(()));
 }
 
+#[cfg(target_os = "macos")]
 fn check_listfds() -> Result<(), String> {
     use super::platform::classify_listfds;
     for (ret, bytes, errno, expected) in [

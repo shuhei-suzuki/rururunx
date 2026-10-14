@@ -1,6 +1,6 @@
 //! Each control observes its own public entry point, under the existing worker owner.
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     io::Read,
     os::fd::{AsRawFd, OwnedFd},
     path::Path,
@@ -11,6 +11,8 @@ use std::{
 enum Observation {
     Pass,
     Inherited,
+    #[cfg(target_os = "linux")]
+    Unequal,
     Setup(String),
     NoResult(String),
 }
@@ -19,6 +21,19 @@ struct Witness {
     fd: i32,
     device: u128,
     inode: u128,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DescriptorState {
+    Closed,
+    Other,
+    Inherited,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct DescriptorReport {
+    group: u128,
+    slots: BTreeMap<i32, DescriptorState>,
 }
 
 struct Fixture {
@@ -108,60 +123,84 @@ fn unsigned(value: &str) -> Option<u128> {
         .flatten()
 }
 
-fn parse_report(bytes: &[u8], fixture: &Fixture, group: u128) -> Observation {
-    let invalid = || Observation::NoResult("missing, malformed or contradictory report".into());
+fn validated_report(bytes: &[u8], fixture: &Fixture, group: u128) -> Option<DescriptorReport> {
     let Ok(text) = std::str::from_utf8(bytes) else {
-        return invalid();
+        return None;
     };
     if bytes.len() > 4096 || !text.ends_with('\n') || text.contains(['\r', '\0']) {
-        return invalid();
+        return None;
     }
     let lines: Vec<_> = text.lines().collect();
     if lines.len() != 5 || lines[0] != format!("P4APIv1\t{group}") {
-        return invalid();
+        return None;
     }
-    let mut observed = BTreeSet::new();
-    let mut inherited = false;
+    let mut observed = BTreeMap::new();
     for line in &lines[1..] {
         let fields: Vec<_> = line.split('\t').collect();
         if fields.len() != 3 {
-            return invalid();
+            return None;
         }
         let Some(slot) = unsigned(fields[0]).and_then(|v| i32::try_from(v).ok()) else {
-            return invalid();
+            return None;
         };
         let Some(error) = unsigned(fields[2]) else {
-            return invalid();
+            return None;
         };
-        if !observed.insert(slot) || !fixture.writers.iter().any(|w| w.fd == slot) {
-            return invalid();
+        if observed.contains_key(&slot) || !fixture.writers.iter().any(|w| w.fd == slot) {
+            return None;
         }
-        match (fields[1], error) {
-            ("closed", value) if value == libc::EBADF as u128 => {}
-            ("other", 0) => {}
-            ("inherited", 0) => inherited = true,
-            _ => return invalid(),
-        }
+        let state = match (fields[1], error) {
+            ("closed", value) if value == libc::EBADF as u128 => DescriptorState::Closed,
+            ("other", 0) => DescriptorState::Other,
+            ("inherited", 0) => DescriptorState::Inherited,
+            _ => return None,
+        };
+        observed.insert(slot, state);
     }
-    if observed != fixture.writers.iter().map(|w| w.fd).collect() {
-        return invalid();
+    if observed.keys().copied().collect::<BTreeSet<_>>()
+        != fixture.writers.iter().map(|w| w.fd).collect()
+    {
+        return None;
     }
-    if inherited {
+    Some(DescriptorReport {
+        group,
+        slots: observed,
+    })
+}
+
+fn parse_report(bytes: &[u8], fixture: &Fixture, group: u128) -> Observation {
+    let Some(report) = validated_report(bytes, fixture, group) else {
+        return Observation::NoResult("missing, malformed or contradictory report".into());
+    };
+    if report
+        .slots
+        .values()
+        .any(|state| *state == DescriptorState::Inherited)
+    {
         Observation::Inherited
     } else {
         Observation::Pass
     }
 }
 
-fn observe(status: ExitStatus, report: &Path, fixture: &Fixture) -> Observation {
+fn read_report(status: ExitStatus, report: &Path) -> Result<Vec<u8>, Observation> {
     if !status.success() {
-        return Observation::NoResult(format!("probe exit: {status}"));
+        return Err(Observation::NoResult(format!("probe exit: {status}")));
     }
     let mut bytes = Vec::new();
     let read = std::fs::File::open(report).and_then(|file| file.take(4097).read_to_end(&mut bytes));
     if let Err(error) = read {
-        return Observation::NoResult(format!("report read: {error}"));
+        return Err(Observation::NoResult(format!("report read: {error}")));
     }
+    Ok(bytes)
+}
+
+#[cfg(target_os = "macos")]
+fn observe(status: ExitStatus, report: &Path, fixture: &Fixture) -> Observation {
+    let bytes = match read_report(status, report) {
+        Ok(bytes) => bytes,
+        Err(observation) => return observation,
+    };
     let group =
         u128::try_from(rustix::process::getpgrp().as_raw_nonzero().get()).unwrap_or_default();
     parse_report(&bytes, fixture, group)
@@ -206,14 +245,122 @@ fn launch(api: &str, fixture: &Fixture, report: &Path) -> Result<ExitStatus, Str
     }
 }
 
+#[cfg(target_os = "linux")]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "Linux-only control compares each consuming wrapper with its corresponding original operation"
+)]
+fn launch_original(api: &str, fixture: &Fixture, report: &Path) -> Result<ExitStatus, String> {
+    let mut command = fixture.command(report);
+    match api {
+        "SPAWN_STD" => {
+            let mut child = command.spawn().map_err(|e| e.to_string())?;
+            child.wait().map_err(|e| e.to_string())
+        }
+        "OUTPUT_STD" => command
+            .output()
+            .map(|o| o.status)
+            .map_err(|e| e.to_string()),
+        "STATUS_STD" => command.status().map_err(|e| e.to_string()),
+        "SPAWN_TOKIO" | "OUTPUT_TOKIO" | "STATUS_TOKIO" => {
+            let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+            let mut command = tokio::process::Command::from(command);
+            command.kill_on_drop(true);
+            runtime.block_on(async move {
+                match api {
+                    "SPAWN_TOKIO" => {
+                        let mut child = command.spawn().map_err(|e| e.to_string())?;
+                        child.wait().await.map_err(|e| e.to_string())
+                    }
+                    "OUTPUT_TOKIO" => command
+                        .output()
+                        .await
+                        .map(|o| o.status)
+                        .map_err(|e| e.to_string()),
+                    "STATUS_TOKIO" => command.status().await.map_err(|e| e.to_string()),
+                    _ => unreachable!(),
+                }
+            })
+        }
+        _ => Err("unknown API".into()),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn delegation_equivalent(api: &str, fixture: &Fixture, directory: &Path) -> Observation {
+    let original_path = directory.join("original-api-report.tsv");
+    let wrapped_path = directory.join("api-report.tsv");
+    let group =
+        u128::try_from(rustix::process::getpgrp().as_raw_nonzero().get()).unwrap_or_default();
+    let original = match launch_original(api, fixture, &original_path) {
+        Ok(status) => read_report(status, &original_path),
+        Err(error) => {
+            return Observation::NoResult(format!("original launch/wait observation: {error}"));
+        }
+    };
+    let original = match original {
+        Ok(bytes) => validated_report(&bytes, fixture, group),
+        Err(observation) => return observation,
+    };
+    let Some(original) = original else {
+        return Observation::NoResult("invalid original report".into());
+    };
+    // All four independent cleared writer witnesses must be observable in the
+    // original child; equality of two unobservable reports cannot pass.
+    if original.slots.len() != 4
+        || original
+            .slots
+            .values()
+            .any(|state| *state != DescriptorState::Inherited)
+    {
+        return Observation::NoResult(
+            "original child did not inherit all four known writers".into(),
+        );
+    }
+    let wrapped = match launch(api, fixture, &wrapped_path) {
+        Ok(status) => read_report(status, &wrapped_path),
+        Err(error) => {
+            return Observation::NoResult(format!("wrapped launch/wait observation: {error}"));
+        }
+    };
+    let wrapped = match wrapped {
+        Ok(bytes) => validated_report(&bytes, fixture, group),
+        Err(observation) => return observation,
+    };
+    let Some(wrapped) = wrapped else {
+        return Observation::NoResult("invalid wrapped report".into());
+    };
+    println!("P4API LINUX original={original:?} wrapped={wrapped:?}");
+    if original == wrapped {
+        Observation::Pass
+    } else {
+        Observation::Unequal
+    }
+}
+
 pub(super) fn run_worker(api: &str, directory: &Path) {
+    #[cfg(target_os = "macos")]
+    println!("P4API EXPECTED pass=validated report with no inherited writer");
+    #[cfg(target_os = "linux")]
+    println!(
+        "P4API EXPECTED pass=equal validated reports with all four original writers inherited"
+    );
     let observation = match Fixture::new() {
         Err(error) => Observation::Setup(error),
         Ok(fixture) => {
-            let report = directory.join("api-report.tsv");
-            match launch(api, &fixture, &report) {
-                Ok(status) => observe(status, &report, &fixture),
-                Err(error) => Observation::NoResult(format!("launch/wait observation: {error}")),
+            #[cfg(target_os = "macos")]
+            {
+                let report = directory.join("api-report.tsv");
+                match launch(api, &fixture, &report) {
+                    Ok(status) => observe(status, &report, &fixture),
+                    Err(error) => {
+                        Observation::NoResult(format!("launch/wait observation: {error}"))
+                    }
+                }
+            }
+            #[cfg(target_os = "linux")]
+            {
+                delegation_equivalent(api, &fixture, directory)
             }
         }
     };
@@ -221,6 +368,10 @@ pub(super) fn run_worker(api: &str, directory: &Path) {
     match observation {
         Observation::Pass => println!("P4C RESULT pass"),
         Observation::Inherited => println!("P4C RESULT fail:public API inherited writer"),
+        #[cfg(target_os = "linux")]
+        Observation::Unequal => {
+            println!("P4C RESULT fail:Linux public API changed original descriptor report")
+        }
         Observation::Setup(error) => println!("P4C SETUP fail:{error}"),
         Observation::NoResult(error) => println!("P4C NO_RESULT {error}"),
     }
