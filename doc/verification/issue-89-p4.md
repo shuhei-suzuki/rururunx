@@ -54,11 +54,85 @@ test success, a waived safety condition or a Linux full-campaign restart.
 New Docker resources/build cache were not created. Required final Linux safety
 checks remain unqualified; source review is not execution proof.
 
-The final macOS M06/V-F and safety/CI/review/owner gates remain unqualified.
+Final-source M06 numeric conditions are met as recorded below; final macOS V-F,
+unresolved failure attribution and safety/CI/owner gates remain unqualified.
 Historical checks and failed attempts below retain their original source scope.
 GNU C2d/V3/V-F and forced-fork evidence are deferred history under the platform
 amendment, not current Linux hygiene or qualification. The historical macOS
 UNKNOWN comparison is not reclassified; macOS attribution remains unresolved.
+
+## Final-source M06 and diagnostic correction results
+
+M06 uses product `42440e5c6d9d9c954aee7b5c8257d94a9b4664da`, with only the
+existing private project_api trace overlay. Two actual compiler-bound Mach-O
+service/test pairs and identical overlay bytes were checked before the campaign.
+The pilot is separate and does not contribute to these 100 attempts.
+
+| Fixed macOS campaign | Actual result |
+| --- | --- |
+| Two jobs, 50 original attempts each | 100 completed; 97 full project_api PASS, 3 FAIL |
+| c_s3d4 / m2_a failures | 0 |
+| Observable attempts / exact target traces | 100 / 200 |
+| B_END / SETUP / NO_RESULT | 0 / 0 / 0 |
+| Other failures | job1 reps1, 2, 30: c_s3d2_status_reconciles_only_its_own_project, existing elapsed < 5 seconds assertion |
+| Direct child custody | All 1700 recorded Cargo/Git children, including 100 Cargo children, waited/reaped; runner completion does not imply all tests passed |
+
+The c_s3d2 failures and original exit101/logs remain. Source binding identifies
+the actual assertion, not its cause; hidden upstream F1 remains unexcluded.
+No deadline extension, retry replacement, ignore, skip or serial flag was used.
+Trace/lsof observer cost is not natural-load or causal equivalence. Fixture Drop
+stop success and complete descendant/group death remain UNPROVEN.
+
+Evidence: `.rrx/p4-macos-final-m06-20261014/results/final-m06-report.json`,
+SHA256 `3e988b2663b0d0dd4d523f25b512ac8360c0e81af93afb4a911976c7570f2883`;
+all100 parent raw/source/artifact audit SHA256
+`cd90c84f63e04100e247a4d9c7b12efca67de8f3374d863eed7c21ed701c9a4e`.
+Five archives retain private Git/source history, all original attempts and four
+actual Mach-O payloads. Parent verified 11726 regular payloads / 3374377495
+bytes against archive and live file bytes/modes; archive audit SHA256
+`e4172c689e6f30be2a350de22e9e875265bdc2fe72714d62d970f201ec98fd96`.
+Only completed measurement job1/job2 source/target copies were removed after
+terminal and preservation checks, with four actual absences confirmed. Logical
+removed bytes are 3284341883; observed host free-space increase is 14508032,
+not a task-only physical reclaim claim. No Docker resources were created/deleted.
+Original product worktrees and all measurement results/archives remain.
+
+The private diagnostic consumer is independently corrected at `cff37a99`, with
+64 pure properties, two actual interpreted Python assertion operators and two
+identical-source restorations PASS, five direct Python children waited/reaped.
+Earlier actual normal selector observations and all unfavorable historical
+records remain unchanged. These controls are not native-signal qualification
+or Rust native source-mutant evidence.
+
+Initial Sol/Opus findings and subsequent confirmed data errors were checked
+against source and controls. After the basic three rounds, finder-side Opus
+confirmed only the remaining parent-storage/exception and original-reason
+corrections: APPROVE, mandatory 0. Body SHA256
+`42d9242c3d0651b078a1e5625c279fdd609973174c1913acfb7dae674c24cc75`.
+Runner reports only claude-opus-5-5 matching the requested model; effort is
+unreported. Eight originals were preserved by bytes/modes/hash and the completed
+review-only temporary directory was removed.
+
+Optional Low observations are retained here rather than opening duplicate Issues:
+
+| ID | Optional improvement / retained limit |
+| --- | --- |
+| N1 | Add a successful-observation plus parent-write-failure control for status downgrade/original status; current code downgrade is source-verified and summary qualification fails closed. |
+| N2 | An owner-start log OSError followed by wait interrupt can preserve OSError as the raised exception; interrupted receipt/NO_RESULT/stop remain, but interrupt exit identity is not guaranteed in that combination. |
+| N3 | A known failed parent output path is not retried; an earlier results file may be stale. The surviving summary records that path as unavailable; no retry was added. |
+| N4 | Side-result storage failure leaves annotation but can lack original_observation_status and retain an overly broad original_failed_not_discarded marker. |
+
+Arbitrary repeated native signals/cancellation and whole-disk persistence remain
+unqualified. This local tooling review proves neither F1 exclusion, root cause,
+group death, all nine producer stages nor full P4/Goal acceptance.
+
+Four fresh source-only main/P4 copies for the final full-library comparison are
+prepared and parent-audited. Source trees/bytes/sealed modes match fixed 060dadcb
+and 8cc759b2 origins. Actual service/lib build, fresh inventory and the planned
+32 default-parallel full-library attempts have not started. Empty public cache
+is not cache readiness. The initial import path/mode setup failure and separate
+source-only continuation are retained. Final V-F, unresolved macOS failures,
+Linux required shared-safety/CI, specific owner PR approval and merge remain.
 
 Issue: <https://github.com/shuhei-suzuki/rururunx/issues/89>. Baseline:
 `b8344ab951fa24f545174917eee7be067284c625`. Original checks below preceded
@@ -366,9 +440,10 @@ confirmation. Existing Linux C2d/V3 acceptance is bound to the fixed source and
 evidence in [GNU follow-up](#gnu-control-and-v3-follow-up). Known Tokio post-spawn Err custody limitations
 remain unresolved by this fd boundary. Do not close issue 89 from this partial PR.
 
-## Latest state: macOS First scope
+## Historical macOS First scope before platform implementation
 
-No platform-split source exists yet. Current facts:
+At this historical checkpoint no platform-split source existed. Later current
+implementation and qualification facts are recorded at the top of this document:
 - EOF repair `e2886a1a`: macOS and GNU each 20/20 PASS. Eight macOS source mutants
   produced nine actual kills, with nine same-byte restorations PASS.
 - Reviews: Sol R2 `fe3f0d3e`, zero required findings. Opus R3 `d8721fba`, APPROVE
@@ -401,4 +476,5 @@ Fresh macOS acceptance, all on the final source:
 - Linux: Clippy and crate tests in the existing immutable GNU image, plus the
   required CI.
 
-Platform implementation, final macOS qualification and merge: UNPROVEN.
+At that checkpoint platform implementation, final macOS qualification and merge
+were UNPROVEN; the current platform unit and M06 do not close the remaining gates.
