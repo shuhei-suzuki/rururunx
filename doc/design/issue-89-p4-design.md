@@ -143,12 +143,33 @@ failure/stdio/close/errno/raw migration/zero return; V9 stalls pre_exec. Mutatio
 copies use dedicated targets and recorded source/binary hashes/restored normal
 controls. Mutants deliberately entering permanent Held are not run.
 
+## EOF observation contract
+
+Ready, EOF, read/poll/configuration error, cancellation, actual read-attempted
+deadline, transport receive/disconnect/timeout, reader join/panic and the two
+child-liveness observations are distinct typed facts. The read FD is made
+nonblocking; a poll timeout alone never proves a read attempt or delayed EOF.
+The channel observation and the single completed join must agree, including
+successful delivery. Missing/duplicate join, reader panic, contradictory delivery,
+transport failure, I/O error and cancellation produce NO_RESULT. Failed ready,
+group or liveness prerequisites produce SETUP after observation-error checks.
+Only ready + live before/after + received/joined EOF passes; delayed EOF requires
+the same prerequisites and a genuine EOF-purpose deadline with an attempted read.
+
+Inner child/thread collection precedes classification. Actual child-observation
+or collection loss retains the inner owner for outer containment; it does not
+permit new signals from logged identifiers. Synthetic observation-fault controls
+do not establish actual kernel authority loss. All 17 fault cases have a normal
+real-worker pair. They assert complete outer custody, the typed witness and that
+SETUP/NO_RESULT are never mutant kills, including the registered-stop parameter.
+The existing WNOWAIT/final-group-signal/single-reap/ESRCH contract is unchanged.
+
 ## Verification state
 
 Local macOS compilation, fmt, all-target Clippy, 11 new-crate controls, 91 related
 integration tests and tracker regression pass. V1/V2/V4/V5/V6/V7/V8/V9 and OW1
 gate/authority/classification source mutants are detected and restored controls
-pass. Linux C2d/V3 remain unexecuted locally. Initial full execution regression
+pass. Later local GNU controls/C2d/V3 are recorded in the ledger. Initial full execution regression
 has 186 pass, two Docker failures and one existing ignore; focused Docker replay
 is 11 pass on both P4 and fixed main. The first failures remain recorded and their
 frequency/cause is not certified. See [verification ledger](../verification/issue-89-p4.md).
@@ -158,7 +179,8 @@ M06's initial fixed-c3fb macOS 50 x 2 campaign passes its numerical conditions:
 runs PASS. Both private overlay copies are archived/hash-checked and removed.
 Later cfg(test)/document changes leave measured production and original binaries
 unchanged; measurement is not relabeled to a newer commit. The observer's extra
-children/scheduling/FD effects remain limitations. V-F and independent repair
-approval remain parent-owned merge gates; the separate EOF-reader classification
-finding is unresolved. Measurement uses a private overlay so measurement-only
+children/scheduling/FD effects remain limitations. The EOF observation repair
+has local macOS/GNU normal controls and eight source-mutant/restoration pairs;
+its independent repair review is pending. V-F's observed GNU F1 increase and
+unresolved causal attribution remain merge STOP conditions. Measurement uses a private overlay so measurement-only
 259a467 is not merged. No all-OS, process-death or full issue-completion claim is made.

@@ -175,10 +175,66 @@ Darwin compile failure and seven restored source/control pairs. All seven privat
 mutation copies and the dedicated normal verification target are removed after
 source/evidence archive and clean checks. Artifact destinations are retained.
 
+## EOF observation repair and completed GNU V-F
+
+The EOF repair is test-harness-only. `lib.rs`, both platform implementations,
+the consuming production APIs and project_api production/test files are unchanged
+from the measured source. The initial local compile failure at `27ae6123`
+(three rustix namespace errors and one unused import warning) is retained.
+`5d2339b1` changes only the namespace/import; `e2886a1a` formats imports only.
+
+| Local check | Fixed source | Result |
+|---|---|---|
+| macOS `cargo test --locked --offline -p rrx-spawn-hygiene --lib -- --nocapture` (dedicated target) | 5d2339b1 | 20 pass, 0 fail/ignore/filter; default parallelism |
+| macOS `cargo clippy --locked --offline --workspace --all-targets -- -D warnings` (same dedicated target) | 5d2339b1 | PASS, 40.79 s; direct child wait/reap |
+| workspace `cargo fmt --all -- --check` | e2886a1a | PASS; initial pre-format check failure retained |
+| GNU full crate, locked/offline, default parallelism, same source archive | e2886a1a | 20 pass, 0 fail/ignore/filter; 4.12 s tests; compiler-JSON/actual AArch64 ELF bound |
+| seven EOF classification/emission source mutants | e2886a1a archive | Seven actual equality-assertion failures with complete owner traces; each same-byte restoration and same exact control PASS |
+| std callback-install bypass source mutant | e2886a1a archive | C1 and high-FD C2f actual delayed-EOF assertion failures with complete custody; both restored controls PASS |
+
+All new local checks use task-only source/target resources. The GNU run uses the
+existing immutable GNU image with `--init`, network-none, cap-drop ALL,
+no-new-privileges/default seccomp, source/public registry read-only and only its
+dedicated target writable. Its Docker run and immutable-CID absence observer
+are directly waited/reaped. Source bytes remain identical. Mac source mutants
+compile an exact compiler-JSON artifact and invoke that actual libtest binary
+with the same exact consumer and default concurrency; compile/setup/observation
+failures are not kills. All original logs/failed attempts and restoration records
+are retained. These new mutant executions are macOS evidence, not GNU mutants.
+Linux-specific fmt/clippy are not proved by the macOS checks.
+
+The planned GNU V-F two jobs x eight repeats for each of main and P4 is complete
+at frozen main `b8344ab9` and P4 `86154999`. All 32 original raw/row/receipt pairs,
+four source copies and eight actual ELF artifacts are bound; all 32 Docker run
+clients and 32 absence observers were waited/reaped. All immutable task-container
+IDs were observed absent. Initial original NO_RESULT annotations remain intact.
+The separate final GNU join has no guard errors and returns
+STOP_OBSERVED_F1_INCREASE: main failed attempts 0/16, P4 5/16, with its unchanged
+finite predicate classifying endpoint F1 one and UNKNOWN four. A separate
+source-bound supplement ties the other four exact same-name panic/FAILED pairs
+to actual Runtime owner reopen nonblocking flock EWOULDBLOCK, before epoch
+creation. The supplemental observed F1 attempt rates are therefore 0/16 and
+5/16 (31.25%). Original UNKNOWNs are not erased. This is a finite sample, not a
+population rate; unequal/uncontrolled host load and unidentified original FD
+holders prevent causal attribution. The completed macOS V-F remains inconclusive
+for unknown attribution. No retry, production lock/unlock/fencing change or
+P4->F3 ordering change has been applied. Dedicated fork/exec causal controls and
+production-contract impact assessment remain pending.
+
+Saved evidence: `.rrx/p4-eof-normal-20261014/`,
+`.rrx/p4-eof-normal-fix1-20261014/`, `.rrx/p4-eof-clippy-20261014/`,
+`.rrx/p4-eof-linux-20261014/`, `.rrx/p4-eof-mutant-preparation-20261014/`,
+`.rrx/p4-linux-vf-20261014/`, and the completed secondary GNU report under
+`.rrx/p4-linux-full32-offline-preparation-20261014/results/full32-initial/`.
+Source supplement and independent parent input proofs are retained separately.
+No group/fixture-wide death is inferred from Docker client exit or absence.
+
 ## Remaining gates
 
-Linux C2d/V3, V-F main/P4 Linux/macOS two jobs × eight repeats (including failure
-frequency), the unresolved EOF-reader classification repair and independent
-Sol/Opus implementation/security repair approval, owner approval, PR publication/merge and worktree
-cleanup remain with the parent. Known Tokio post-spawn Err custody limitations
+The GNU F1 increase STOP, dedicated causal controls/production lock-fencing
+impact assessment, unresolved macOS V-F attribution, independent Sol/Opus
+implementation/security repair confirmation, applicable approval conditions,
+final mandatory CI, PR publication/merge and worktree cleanup remain with the
+parent. EOF local controls/mutants do not close the finding without independent
+confirmation. Existing Linux C2d/V3 acceptance is recorded separately. Known Tokio post-spawn Err custody limitations
 remain unresolved by this fd boundary. Do not close issue 89 from this partial PR.
