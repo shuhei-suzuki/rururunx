@@ -54,8 +54,10 @@ test success, a waived safety condition or a Linux full-campaign restart.
 New Docker resources/build cache were not created. Required final Linux safety
 checks remain unqualified; source review is not execution proof.
 
-Final-source M06 numeric conditions are met as recorded below; final macOS V-F,
-unresolved failure attribution and safety/CI/owner gates remain unqualified.
+Final-source M06 numeric conditions are met as recorded below; final macOS V-F
+ran to completion with an INCONCLUSIVE comparison, while the owner-selected
+mechanism and focused-frequency F1 controls, unresolved failure attribution
+and safety/CI/owner gates remain.
 Historical checks and failed attempts below retain their original source scope.
 GNU C2d/V3/V-F and forced-fork evidence are deferred history under the platform
 amendment, not current Linux hygiene or qualification. The historical macOS
@@ -133,6 +135,64 @@ and 8cc759b2 origins. Actual service/lib build, fresh inventory and the planned
 is not cache readiness. The initial import path/mode setup failure and separate
 source-only continuation are retained. Final V-F, unresolved macOS failures,
 Linux required shared-safety/CI, specific owner PR approval and merge remain.
+
+## Final macOS V-F (32 attempts)
+
+The planned 32 attempts later ran from those prepared copies.
+
+| Variant | Terminated attempts | Qualified attempts | Original verdict |
+| --- | --- | --- | --- |
+| main baseline `b8344ab9` | 16/16 | 0/16 | All NO_RESULT |
+| P4 | 16/16 | 0/16 | All NO_RESULT |
+
+All 32 original campaign/parser verdicts remain NO_RESULT; `campaign_errors`
+is empty. No attempt was rerun, replaced or relabeled. The original 108 input
+files (`campaign.json` and per-attempt `original.log`, `owner.jsonl`,
+`result.json`) have identical hashes before and after annotation. All 32 direct
+Cargo children were waited/reaped and matched against `owner.jsonl`.
+Process-group or descendant death is not proven.
+
+Producer-owned invocation overlap is QUALIFIED for both variants. The measured
+interval runs from Popen return observation to successful wait return
+observation and includes waiting/zombie ownership. It does not prove
+CPU/workload simultaneity, equal load or whole-group death.
+
+The independently reviewed annotation consumer is private tooling, not product
+code. Independent Sol R3 APPROVE with mandatory 0 preceded its application to
+the actual 32 originals into a separate output. Report SHA256:
+`67e9a35b0edb7646c66a4f13a7f2cd1868e9a9bc4c2c0f21c17b556909bb014e`.
+Consumer exit 0 means the report was produced, not acceptance.
+
+| Refusal reason | Rows |
+| --- | --- |
+| audit_pass_progress | 25 |
+| audit_child_failure_set | 4 |
+| failure_heading_pair | 2 |
+| unscoped_nested_frame | 1 |
+
+`observed_F1_no_increase = UNKNOWN`; comparison = INCONCLUSIVE. Aggregate
+`F1_direct_failures = 0` is computed over a qualified denominator of 0. It is
+neither a zero F1 rate nor non-increase.
+
+A separate read-only source join over the same originals found 24 positive
+observations of the RuntimeOwner NonBlockingLockExclusive/WouldBlock path in
+10 main attempts. Runtime restart in `crates/rrx/src/runtime/tests.rs` accounts
+for 13; two restart sites in
+`crates/rrx/src/runtime/installation/tests/epoch_fence.rs` account for 8 and 3.
+No positive was observed in P4 attempts. Non-observation in P4 is not proof of
+zero; F1 rate, non-increase, root cause, original FD holder and P4 improvement
+or regression remain unproven.
+
+Private evidence (raw logs not published):
+`.rrx/p4-macfirst-full-vf-20261014/evidence/frequency-original-r1/` and
+`.rrx/p4-macfirst-vf-attribution-source-20261014/evidence/actual-original32-r1/annotations.json`.
+
+This V-F does not satisfy the merge condition "no higher macOS F1 frequency";
+Unknown is never counted as non-increase. The owner selected a deterministic
+mechanism control plus a focused, pre-registered frequency control on final
+source, in a separate scope from the original 32, to decide that gate. Both
+are synthetic and do not prove natural frequency; neither has run yet.
+Linux full P4 remains deferred.
 
 Issue: <https://github.com/shuhei-suzuki/rururunx/issues/89>. Baseline:
 `b8344ab951fa24f545174917eee7be067284c625`. Original checks below preceded
@@ -432,7 +492,9 @@ No group/fixture-wide death is inferred from Docker client exit or absence.
 ## Remaining gates
 
 The GNU F1 increase STOP, dedicated causal controls/production lock-fencing
-impact assessment, unresolved macOS V-F attribution, independent Sol/Opus
+impact assessment, the INCONCLUSIVE macOS V-F comparison and not-yet-run
+owner-selected macOS F1 mechanism control and focused frequency control
+(separate scope from the original 32), independent Sol/Opus
 implementation/security repair confirmation, applicable approval conditions,
 final mandatory CI, PR publication/merge and worktree cleanup remain with the
 parent. EOF local controls/mutants do not close the finding without independent
