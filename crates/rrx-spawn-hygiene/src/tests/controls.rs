@@ -1,8 +1,7 @@
 use super::{
     eof_observation::{
-        DeliveryAttempt, Fault, JoinedReader, LiveObservation, LivePoint, ReadPurpose,
-        ReaderExit, WorkerObservation, classify_inheritance, poll_read, receive_reader,
-        worker_input,
+        DeliveryAttempt, Fault, JoinedReader, LiveObservation, LivePoint, ReadPurpose, ReaderExit,
+        WorkerObservation, classify_inheritance, poll_read, receive_reader, worker_input,
     },
     owner::{Classification, WorkerGroupOwner},
 };
