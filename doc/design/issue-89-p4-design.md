@@ -276,8 +276,8 @@ changed there. Tests stay parallel (no test-threads override).
 
 ## macOS F1 mechanism and focused frequency controls
 
-Status: designed, not run. Revised after design review round 1 findings
-D01-D07; requires the finder's re-review before any harness exists.
+Status: designed, not run. Revised after design re-review round 2 findings
+D03-R2, D08, D09; requires the finder's re-review before any harness exists.
 The final macOS V-F (main 16 / P4 16) stays INCONCLUSIVE and unchanged. It
 had 0/16 qualified attempts per variant. A read-only source join found 24 F1
 positives in 10 main attempts and none in P4. Not observing F1 in P4 does not
@@ -383,6 +383,8 @@ contract change.
 - Every child is waited and reaped before any assertion or result. No thread
   is detached, and no result is returned while any spawner thread is unjoined
   or any child is unreaped.
+- No signal is ever sent to a raw pid. A child is signalled only through its
+  unwaited std `Child`.
 - These are SETUP/NO_RESULT, never a causal pass or kill: wait errors, FD-slot
   reuse, missing observations, bound overruns and panics.
 - The original 32 attempts and their unknowns stay unchanged.
@@ -406,17 +408,16 @@ Steps:
    otherwise SETUP.
 3. Create two CLOEXEC pipes: `entered` and `gate`. Build a std `Command` for
    `/bin/sh -c 'printf R; read -r line'` with stdin and stdout piped. Register
-   the caller gate closure through the dev-only crate. In the child it first
-   writes the child's pid (`getpid`) as 4 bytes on `entered`, then blocks in
-   `read(gate, 1 byte)`. All three calls are async-signal-safe. A short or
-   failed write or read returns an error, so spawn fails (SETUP).
+   the caller gate closure through the dev-only crate. In the child it writes
+   exactly one byte on `entered`, then blocks in `read(gate, 1 byte)`. It
+   writes no pid. Both calls are async-signal-safe. A short or failed write or
+   read returns an error, so spawn fails (SETUP).
 4. Call `rrx_spawn_hygiene::spawn_std(command)` on a dedicated thread. Std
    returns only after exec, so this thread blocks. pre_exec closures run in
    registration order: the caller gate runs before P4's hygiene callback.
    Hygiene only sets CLOEXEC, so retention through hygiene is unchanged.
-5. The test thread reads the 4 pid bytes from `entered` and records the pid.
-   Without them, the result is SETUP. The pid stays reserved: it is an
-   unreaped child of this process, and only std's `Child` reaps it.
+5. The test thread reads the one byte from `entered`. Without it, the result
+   is SETUP.
 6. Drop the sole owner `Arc` synchronously and confirm the Weak has expired.
    `F_GETFD` on the recorded fd must give EBADF. A valid fd means FD-slot reuse
    (SETUP).
@@ -425,9 +426,9 @@ Steps:
    Call `RuntimeOwner::open(same path)` once and record the outcome. Take the
    snapshot again.
 8. Release the gate by writing one byte (dropping the parent's write end is not
-   enough, because the child holds a copy). Read the child's `R` from stdout
-   within a bound, which shows that exec happened. Join the spawner thread and
-   take the Child.
+   enough, because the child holds a copy). Join the spawner thread within a
+   bound (gate-release join rule below) and take the Child. Read the child's
+   `R` from stdout within a bound, which shows that exec happened.
 9. While the child is still alive (blocked on stdin), call
    `RuntimeOwner::open` once and record the outcome and epoch.
 10. Drop the new owner. Write one line `Q\n` to the child's stdin and then
@@ -439,17 +440,22 @@ Steps:
     - step 9 acquired, with epoch exactly E+1;
     - the child exited 0.
 
-Stall after gate release (hygiene or exec does not finish, so `spawn_std`
-does not return): if `R` is not read within the bound, the parent sends
-SIGKILL to the recorded pid. On std's fork path the CLOEXEC error pipe then
-reaches EOF, `spawn_std` returns the Child, and the spawner thread waits it.
-The run is NO_RESULT. If the spawner thread does not return within a second
-bound, the test process returns no result; the outer owner handles it (see
-Hard constraints).
+Gate-release join rule. After writing the gate byte, the test thread joins
+the spawner thread with a bound. Nothing is signalled by pid:
+- `spawn_std` returned Err (hygiene or exec failed after the gate): std's fork
+  path read the reported errno and already waited the child, so its pid may
+  be reused. The case is NO_RESULT.
+- `spawn_std` returned the Child: the normal path continues, and that Child is
+  waited.
+- The thread has not returned within the bound: the test process returns no
+  result and blocks. The outer runner (own process group, fixed deadline)
+  kills the group, reaps the test-process leader and records NO_RESULT.
+  Descendant death beyond that direct reap is unproven (see Hard constraints).
 
-On other failures: release the gate, write the line `Q\n`, close stdin, then
-wait. If the child is still alive after the bound, it is killed and reaped,
-and the run is NO_RESULT.
+On other failures: release the gate and join the spawner thread under the same
+rule. If it returned the Child, write `Q\n`, close stdin, then wait. If the
+child is still alive after the bound, it is killed through its `Child` and
+reaped, and the run is NO_RESULT.
 
 Negative control N: identical, except no gate is registered and there is no
 `entered` read. `spawn_std` returns after exec, the child reports `R`, the
@@ -461,7 +467,7 @@ Mutants, each run before MC results count:
 
 | Mutant | Required outcome |
 |---|---|
-| Gate read removed (only the blocking `read(gate)`; the pid write on `entered` stays) | Observation and reaping complete; the step-7 refusal assertion fails (reopen acquires) |
+| Gate read removed (only the blocking `read(gate)`; the `entered` write stays) | Observation and reaping complete; the step-7 refusal assertion fails (reopen acquires) |
 | Classifier accepts any error, not only os35 | C0− fails |
 | Same-bytes restoration | Full MC passes |
 
@@ -484,7 +490,8 @@ Each target is built once with `cargo test --no-run` and the same profile in
 both copies (`--release` is not required). The binary sha256 is recorded.
 Test functions `fc_s1`, `fc_s2` and (P4 only) `fc_pos` are selected with
 `--exact`. One invocation runs one block of 1000 counted iterations for one
-arm. Default parallelism is unchanged.
+arm. Each block is a separate test-process invocation with a fresh temp state
+and freshly started spawners. Default parallelism is unchanged.
 
 Child shapes, run as separate arms:
 - S1: `env_clear()` + `env("PATH", "/usr/bin:/bin")` + bare program `true`.
@@ -566,19 +573,34 @@ Records per block:
 This rule is fixed before any FC run and cannot be edited afterwards. The
 section hash is recorded before block 1.
 
-Counts per arm, over all n counted iterations of the arm:
-- x_main = main RefusedOs35;
-- x_P4 = P4 RefusedOs35 + P4 SETUP/NO_RESULT (conservative: missing
-  iterations are never counted in P4's favour);
-- the sensitivity check uses observed RefusedOs35 of FC-POS and P4-S1.
+Inference unit: the block. Blocks are separate test-process invocations with
+a fresh temp state and freshly started spawners, and they are the independent
+units. Dependence among iterations inside a block is allowed and not
+modelled.
 
-CP_upper(0.975; x, n) and CP_lower(0.975; x, n) are one-sided 97.5%
-Clopper-Pearson bounds. Per shape:
-- U = CP_upper(0.975; x_P4, n_P4) - CP_lower(0.975; x_main, n_main), a
-  Bonferroni-combined one-sided 95% upper bound on the rate difference;
-- delta = max(0.001, 0.25 * CP_lower(0.975; x_main, n_main)): an absolute
-  floor of 0.1 percentage point, otherwise 25% of main's conservative lower
-  rate.
+Block rates, per shape and round r (r = 1..20, 1000 counted iterations per
+arm block):
+- P4 rate p_r = (RefusedOs35 + SETUP/NO_RESULT) / 1000 (conservative);
+- main rate m_r = RefusedOs35 / 1000;
+- d_r = p_r - m_r;
+- FC-POS rate q_r = observed RefusedOs35 / 1000;
+- e_r = q_r - (P4-S1 conservative rate p_r of the same round).
+
+Missing iterations never help NOT_OBSERVED_HIGHER anywhere in the rule: they
+raise P4's rate, lower main's and FC-POS's observed rates, and so make both
+non-inferiority and sensitivity harder to show.
+
+Bounds use Student t with 19 df over the 20 block values, one-sided 95%:
+- UB(d) = mean(d_r) + t(0.95, 19) * sd(d_r) / sqrt(20);
+- L_main = max(0, mean(m_r) - t(0.95, 19) * sd(m_r) / sqrt(20));
+- delta = max(0.001, 0.25 * L_main): an absolute floor of 0.1 percentage
+  point, otherwise 25% of main's lower block-mean rate;
+- LB(e) = mean(e_r) - t(0.95, 19) * sd(e_r) / sqrt(20).
+
+Assumption: blocks are independent invocations, and the block-mean statistic
+is treated as approximately normal at 20 blocks. If this assumption is not met
+(e.g., any block NO_RESULT, which is already a veto), the result is
+INCONCLUSIVE, never NOT_OBSERVED_HIGHER.
 
 Veto, in any arm: a RECOVERY refusal, a non-os35 open error, a block-level
 NO_RESULT anomaly, or spawned != reaped. The event's position and the number
@@ -586,27 +608,28 @@ of remaining iterations do not matter.
 
 Outcomes:
 - STOP (P4 higher): for any shape, either
-  - a one-sided Fisher exact test (hypergeometric P(X >= P4 refusals), fixed
-    margins) on the 2×2 table copy (P4, main) × outcome (RefusedOs35,
-    Acquired), over observed qualified iterations, gives P4 > main with
-    p < 0.05; or
+  - a pooled one-sided Fisher exact test (hypergeometric P(X >= P4
+    refusals), fixed margins) on the 2×2 table copy (P4, main) × outcome
+    (RefusedOs35, Acquired), over observed qualified iterations, gives
+    P4 > main with p < 0.05; or
   - a per-block paired sign test gives one-sided p < 0.05 for P4 higher.
     Each pair is the main and P4 block of the same shape and round, compared
     by observed RefusedOs35; ties are dropped.
 
   There is no multiplicity correction; this deliberately leans toward STOP.
 - NOT_OBSERVED_HIGHER: only if all of these hold:
-  - for every shape, U <= delta;
-  - sensitivity: CP_lower(0.975; FC-POS RefusedOs35, n) >
-    CP_upper(0.975; P4-S1 RefusedOs35, n);
+  - for every shape, UB(d) <= delta;
+  - sensitivity: LB(e) > 0;
   - SETUP/NO_RESULT <= 2% of iterations in every arm;
   - no veto.
 - INCONCLUSIVE: anything else, including a failed sensitivity check.
 
-Pooling blocks into one Fisher or CP count assumes that iterations within an
-arm are exchangeable across blocks and rounds. The ABBA order and the sign
-test guard against drift; they do not prove exchangeability. Per-block counts
-are reported.
+Pooled counts treat iterations as independent Bernoulli trials, which this
+design does not assume. Pooled Clopper-Pearson bounds and pooled Fisher are
+recorded as descriptive only; neither gives the pass. Pooled Fisher stays a
+STOP trigger: a misspecified pooled test can only make STOP more likely, which
+is the safe direction. The ABBA order and the sign test guard against drift.
+Per-block counts are reported.
 
 delta is a pre-registered engineering margin for a synthetic load, not a
 property of natural use. STOP and INCONCLUSIVE keep P4 unmergeable and are
