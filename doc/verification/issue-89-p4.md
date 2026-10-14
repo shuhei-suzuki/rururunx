@@ -3,7 +3,8 @@
 ## Current macOS First implementation state
 
 The platform amendment approved at `aed6f6b4` is implemented. Local checks below
-cover `e8359628`; independent implementation reviews remain NOT RUN. macOS keeps
+cover `e8359628`; fresh Sol and Opus initial implementation reviews at
+`cb2dcd66` both APPROVE with mandatory 0. macOS keeps
 its existing backend; Linux every target_env uses an untouched Command/no-op
 install with no additional hygiene callback, syscall or probe. Other targets
 retain ENOSYS. Six consuming signatures and existing caller migrations remain.
@@ -27,6 +28,31 @@ The first `ae23b43b` formatting check passed; Clippy stopped with two
 `question_mark` findings in the Option report parser and tests were not started.
 `e8359628` changes only those two equivalent None-propagation expressions; the
 failed attempt remains separate and is not relabeled as success.
+
+The two fresh implementation reviews cover source wiring and security/contracts,
+not final qualification. Sol served model/effort are unreported; Opus reports
+only `claude-opus-5-5`, with effort unreported. Review body hashes are
+`7758552af2724834d798c5d1721e5919bed266506f6fef6a88ab0be3f6baf977`
+and `d60e25f3f4a7c250b9cec7f9a6e0f104633e42382368899289db9ca0eea0f1e5`.
+
+New Mac mapping controls at cb2dcd66 have two distinct source operators and
+three compiled actual assertion kills with three same-tree restored passes:
+Mac install no-op makes API_SPAWN_STD and C1 reject actual inherited writers;
+header omission makes the pure invalid-report control reject the unexpected
+acceptance. API/C1 preserve worker signal-before-reap and complete ownership
+records. The pure case creates no fixture Child. Four actual Mach-O binaries
+and source/compiler/log bindings were preserved; the parent checked all 3613
+regular archive file bytes and four binary hashes/magic. Only the completed
+private-source and targets were removed after live equality and terminal checks;
+the original product worktrees and evidence remain. Earlier EOF operators were
+not rerun or relabeled to the new source.
+
+Linux local minimal controls did not start: fixed Docker image inspection
+returned `No such image`. No Cargo/test/container was launched or certified.
+The missing prerequisite and fixed-source plan are retained. This is not a
+test success, a waived safety condition or a Linux full-campaign restart.
+New Docker resources/build cache were not created. Required final Linux safety
+checks remain unqualified; source review is not execution proof.
 
 The final macOS M06/V-F and safety/CI/review/owner gates remain unqualified.
 Historical checks and failed attempts below retain their original source scope.

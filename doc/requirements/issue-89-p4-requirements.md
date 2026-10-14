@@ -50,8 +50,9 @@ Required acceptance on the final source:
 
 Platform separation is implemented from the approved `aed6f6b4` amendment;
 its local macOS formatting, workspace/all-targets warnings-denied Clippy and
-20 hygiene tests passed at `e8359628`. Linux controls, final macOS campaigns and
-independent implementation reviews remain unqualified. Existing historical
+20 hygiene tests passed at `e8359628`; initial Sol/Opus implementation source
+reviews at `cb2dcd66` both APPROVE with mandatory 0. Linux controls and final
+macOS campaigns remain unqualified. Existing historical
 proofs are not relabeled to this source.
 
 The parent owns measurement, CI, publication, owner approval and merge. Each
