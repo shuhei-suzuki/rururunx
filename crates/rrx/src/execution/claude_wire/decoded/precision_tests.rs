@@ -73,7 +73,8 @@ fn checked_api_status_presence_and_equivalent_numeric_consumers() {
             assert!(state.result.is_none() && !state.complete());
         }
     }
-    for form in ["null"] {
+    {
+        let form = "null";
         let mut state = initialized();
         assert_eq!(
             state

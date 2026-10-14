@@ -59,7 +59,7 @@ impl Decimal {
     fn parse(text: &str) -> Self {
         let negative = text.starts_with('-');
         let unsigned = text.strip_prefix('-').unwrap_or(text);
-        let (mantissa, exponent) = match unsigned.find(|c| c == 'e' || c == 'E') {
+        let (mantissa, exponent) = match unsigned.find(['e', 'E']) {
             Some(i) => (&unsigned[..i], &unsigned[i + 1..]),
             None => (unsigned, "0"),
         };
