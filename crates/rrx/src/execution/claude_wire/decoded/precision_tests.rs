@@ -113,10 +113,10 @@ fn counter_frames(n: &str) -> Vec<String> {
         ),
         format!(r#"{{"type":"stream_event","event":{{"type":"content_block_stop","index":{n}}}}}"#),
         format!(
-            r#"{{"type":"stream_event","event":{{"type":"message_start","message":{{"id":"m","type":"message","role":"assistant","model":"model","content":[],"stop_reason":null,"stop_sequence":null,"usage":{{"input_tokens":{n},"output_tokens":{n},"cache_read_input_tokens":{n},"cache_creation_input_tokens":{n}}}}}}}}"#
+            r#"{{"type":"stream_event","event":{{"type":"message_start","message":{{"id":"m","type":"message","role":"assistant","model":"model","content":[],"stop_reason":null,"stop_sequence":null,"usage":{{"input_tokens":{n},"output_tokens":{n},"cache_read_input_tokens":{n},"cache_creation_input_tokens":{n}}}}}}}}}"#
         ),
         format!(
-            r#"{{"type":"stream_event","event":{{"type":"message_delta","delta":{{"stop_reason":null,"stop_sequence":null}},"usage":{{"output_tokens":{n},"cache_read_input_tokens":{n},"cache_creation_input_tokens":{n}}}}}}"#
+            r#"{{"type":"stream_event","event":{{"type":"message_delta","delta":{{"stop_reason":null,"stop_sequence":null}},"usage":{{"output_tokens":{n},"cache_read_input_tokens":{n},"cache_creation_input_tokens":{n}}}}}}}"#
         ),
     ]
 }
