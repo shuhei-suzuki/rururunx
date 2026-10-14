@@ -276,8 +276,8 @@ changed there. Tests stay parallel (no test-threads override).
 
 ## macOS F1 mechanism and focused frequency controls
 
-Status: designed, not run. Revised after design re-review round 2 findings
-D03-R2, D08, D09; requires the finder's re-review before any harness exists.
+Status: designed, not run. Revised after design re-review round 3 finding
+D08; requires the finder's focused re-check before any harness exists.
 The final macOS V-F (main 16 / P4 16) stays INCONCLUSIVE and unchanged. It
 had 0/16 qualified attempts per variant. A read-only source join found 24 F1
 positives in 10 main attempts and none in P4. Not observing F1 in P4 does not
@@ -553,8 +553,7 @@ Block procedure:
 
    If the RECOVERY open is refused, that refusal is not a counted F1. The
    block's remaining iterations are NO_RESULT, the anomaly is recorded, and
-   it is a veto (see the rule). In P4 arms, those iterations also count
-   against P4 in the decision rule.
+   it is a veto (see the rule).
 5. At block end, stop and join every spawner thread. Any panic or join error,
    or spawned != reaped, makes the whole block NO_RESULT.
 
@@ -578,17 +577,22 @@ a fresh temp state and freshly started spawners, and they are the independent
 units. Dependence among iterations inside a block is allowed and not
 modelled.
 
-Block rates, per shape and round r (r = 1..20, 1000 counted iterations per
-arm block):
-- P4 rate p_r = (RefusedOs35 + SETUP/NO_RESULT) / 1000 (conservative);
+Missing data. NOT_OBSERVED_HIGHER requires zero SETUP/NO_RESULT iterations in
+every block of all five arms. Any missing iteration anywhere makes the result
+INCONCLUSIVE unless a STOP trigger fires. Missing data can therefore never
+move a result toward NOT_OBSERVED_HIGHER, because any missing data forbids
+that result. Missing iterations are not imputed as refusals: the t bounds use
+the sample SD, and imputation can shrink the SD more than it moves the mean,
+so it could turn a failed check into a pass. SETUP/NO_RESULT counts stay
+recorded per block.
+
+Block rates, per shape and round r (r = 1..20). When the bounds are used,
+every arm block has 1000 observed iterations (Acquired or RefusedOs35):
+- P4 rate p_r = RefusedOs35 / 1000;
 - main rate m_r = RefusedOs35 / 1000;
 - d_r = p_r - m_r;
-- FC-POS rate q_r = observed RefusedOs35 / 1000;
-- e_r = q_r - (P4-S1 conservative rate p_r of the same round).
-
-Missing iterations never help NOT_OBSERVED_HIGHER anywhere in the rule: they
-raise P4's rate, lower main's and FC-POS's observed rates, and so make both
-non-inferiority and sensitivity harder to show.
+- FC-POS rate q_r = RefusedOs35 / 1000;
+- e_r = q_r - (P4-S1 rate p_r of the same round).
 
 Bounds use Student t with 19 df over the 20 block values, one-sided 95%:
 - UB(d) = mean(d_r) + t(0.95, 19) * sd(d_r) / sqrt(20);
@@ -617,12 +621,14 @@ Outcomes:
     by observed RefusedOs35; ties are dropped.
 
   There is no multiplicity correction; this deliberately leans toward STOP.
+  Both triggers use observed counts and can fire whatever the missing data.
 - NOT_OBSERVED_HIGHER: only if all of these hold:
+  - zero SETUP/NO_RESULT iterations in every block of all five arms;
   - for every shape, UB(d) <= delta;
   - sensitivity: LB(e) > 0;
-  - SETUP/NO_RESULT <= 2% of iterations in every arm;
   - no veto.
-- INCONCLUSIVE: anything else, including a failed sensitivity check.
+- INCONCLUSIVE: anything else, including any missing iteration without a STOP
+  and a failed sensitivity check.
 
 Pooled counts treat iterations as independent Bernoulli trials, which this
 design does not assume. Pooled Clopper-Pearson bounds and pooled Fisher are
