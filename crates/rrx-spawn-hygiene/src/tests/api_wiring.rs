@@ -140,12 +140,8 @@ fn validated_report(bytes: &[u8], fixture: &Fixture, group: u128) -> Option<Desc
         if fields.len() != 3 {
             return None;
         }
-        let Some(slot) = unsigned(fields[0]).and_then(|v| i32::try_from(v).ok()) else {
-            return None;
-        };
-        let Some(error) = unsigned(fields[2]) else {
-            return None;
-        };
+        let slot = unsigned(fields[0]).and_then(|v| i32::try_from(v).ok())?;
+        let error = unsigned(fields[2])?;
         if observed.contains_key(&slot) || !fixture.writers.iter().any(|w| w.fd == slot) {
             return None;
         }
