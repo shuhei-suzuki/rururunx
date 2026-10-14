@@ -304,3 +304,40 @@ parent. EOF local controls/mutants do not close the finding without independent
 confirmation. Existing Linux C2d/V3 acceptance is bound to the fixed source and
 evidence in [GNU follow-up](#gnu-control-and-v3-follow-up). Known Tokio post-spawn Err custody limitations
 remain unresolved by this fd boundary. Do not close issue 89 from this partial PR.
+
+## Latest state: macOS First scope
+
+No platform-split source exists yet. Current facts:
+- EOF repair `e2886a1a`: macOS and GNU each 20/20 PASS. Eight macOS source mutants
+  produced nine actual kills, with nine same-byte restorations PASS.
+- Reviews: Sol R2 `fe3f0d3e`, zero required findings. Opus R3 `d8721fba`, APPROVE
+  with zero required findings.
+- M06 at fixed `c3fb` (100 observable, PASS) is historical evidence only. It does
+  not qualify the final source.
+- The earlier macOS V-F (`86154999`) stays INCONCLUSIVE / UNKNOWN_ATTRIBUTION:
+  - F1: main 50, P4 0. Unknown: main 25, P4 30.
+  - P4's 30 Unknowns: Docker partial report 13, audit nested exit 7, Grok nested
+    cause hidden 7, explicit timeout 1, watchdog 1, SC10 bound not reached 1.
+  - Hidden errors can include owner open failure, so the absence of F1 text does not
+    exclude F1.
+- GNU V-F (main 0/16, P4 5/16, all 32 receipts) is retained and deferred, not
+  relabelled. Whether the GNU increase was caused by the backend remains unproven.
+  Linux delegation removes the backend; it does not explain the increase.
+- The forced-fork fixture has a required classification defect and no actual runs.
+  It is not accepted evidence.
+
+Fresh macOS acceptance, all on the final source:
+- controls, affected regressions, fmt, Clippy, mutants as mapped, and M06 50 × 2;
+- V-F main/P4, 2 × 8 full rrx-lib runs. The predicate is fixed before
+  classification: count failed occurrences and attempts with at least one failure.
+  Declare the failure-path mapping before the campaign. A non-increase claim
+  needs conclusive source-bound classification; Unknown and Other with unknown
+  causes cannot simply be assumed unrelated to F1. Expose omitted errors in a
+  symmetric diagnostic overlay and retain unresolved attribution explicitly.
+  No new numerical acceptance predicate is introduced by this amendment.
+- An optional diagnostic test overlay may run symmetrically on main and P4,
+  classified apart from the original attempts.
+- Linux: Clippy and crate tests in the existing immutable GNU image, plus the
+  required CI.
+
+Platform implementation, final macOS qualification and merge: UNPROVEN.

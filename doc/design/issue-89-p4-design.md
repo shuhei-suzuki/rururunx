@@ -199,3 +199,72 @@ despite completed 16-attempt variants; its exact report and parent audit are
 referenced in the ledger. Completed finite observations do not establish equal
 host load, original FD ownership or the failure's causal mechanism. Historical
 NOT RUN entries retain their original unit scope and point to later evidence.
+
+## Platform scope amendment (macOS First)
+
+Status: proposal. Platform implementation, final macOS qualification and merge are
+UNPROVEN. This section supersedes these earlier statements in this record (the
+v3–v6 text above is kept as reviewed history):
+- the Linux `close_range` source-to-sink row and the GNU raw-syscall backend;
+- the GNU/glibc >= 2.34 / kernel >= 5.11 support baseline;
+- the musl ENOSYS refusal, and "README and master describe those current facts";
+- "pre_exec forces std's fork path" (now true on macOS only);
+- Linux C2d and GNU V3 as acceptance;
+- the GNU F1 increase as a merge STOP for this PR;
+- "its independent repair review is pending".
+
+The EOF repair has its reviews: Sol R2 at `fe3f0d3e` with zero required findings,
+and Opus R3 at `d8721fba` (document repair) APPROVE with zero required findings.
+Whole-P4 final scope has not passed or merged.
+
+### Decision
+The `platform` module splits only at cfg function boundaries:
+- `target_os = "macos"`: `install`, `install_with_options`, `Options`
+  (`errno`/`capacity` under cfg(test)) and `classify_listfds`. The callback order,
+  probe, capacity and checked arithmetic are byte-for-byte unchanged in meaning.
+- `target_os = "linux"`: `install` returns `Ok(())` without touching the Command.
+- everything else: `install` returns ENOSYS.
+
+The GNU close_range body is removed from production source. It stays as
+experimental evidence at its fixed SHAs only. `lib.rs` keeps its six signatures and
+`prepare_*`. Only the module doc changes, to say hygiene is macOS-only. Every item
+compiles warning-free per target: no allow(dead_code), cfg_attr suppression or new
+production allowlist. Cargo.toml, Cargo.lock, clippy.toml and ci.yml are unchanged.
+Auth, CAS, owner, marker, #19 and process custody are unchanged.
+
+### Test mapping (each worker case declares its per-target expected classification first)
+| Control | macOS | Linux |
+|---|---|---|
+| C1, C2f, LISTFDS, C2c, C2e, V9 stall | hygiene/injection, unchanged | not compiled; there is no callback to inject into |
+| C2a (explicit CLOEXEC writer), C2b ENOENT + WNOWAIT no-zombie, C2g stdio/method semantics, OW1/OW2 | unchanged | same controls against the original operation |
+| API_* ×6 | all witnesses closed → pass; inherited → RESULT fail | wrapped and direct-original reports both fully validated and equal, with all four cleared witnesses inherited → pass; valid but unequal → RESULT fail; otherwise NO_RESULT |
+| 17 EOF fault/normal pairs | writer CLOEXEC cleared (unchanged) | test-owned CLOEXEC writer; classifier/error semantics unchanged |
+| Mutants | V1 ×6 bypass, V2, V4–V9, 8 EOF | L1: re-enabling the old GNU close_range/CLOEXEC backend must fail API equivalence; V3/C2d are historical GNU evidence only |
+
+The Linux direct-original helper adds one test-only, Linux-only raw-method exception
+with a local reason. It uses the existing finite probe and report validator, with no
+new bound, timeout or privilege. Mutant kills count only as an actual compiled
+assertion in a source/binary-hash-bound binary, followed by a same-bytes restored
+PASS. Input negatives, compile failures, SETUP, NO_RESULT and cleanup Unknown never
+count as kills. macOS mutants are re-run where the mutated region or its consumer
+changed. Otherwise they cite their fixed-SHA result plus a diff proof that nothing
+changed there. Tests stay parallel (no test-threads override).
+
+### Impact
+- Public: the six APIs, `prepare_*` and platform `Options`/module cfg.
+- Unchanged: OwnedProcess and the existing call-site migrations (earlier caller
+  analysis reused), and the Clippy raw-method ban.
+- Test consumers: `controls`, `api_wiring`, `eof_observation`, `owner` and the
+  injection/callback-order cases, as mapped above.
+- Documents: requirements, issue comment, master `agent-execution.md`, README and
+  the verification ledger.
+- Linux behaviour returns to main semantics. That is not a new production contract.
+
+### Authorization
+- Owner-authorized, not re-asked: macOS First; platform separation that keeps the
+  Linux baseline; deferral of Linux work; Mac F3 after P4.
+- Existing approvals reused: v3–v6 for the macOS backend, the custody contracts and
+  unsupported-target ENOSYS.
+- Still needs a concrete decision: the final PR merge (owner); any future Linux
+  hygiene, or resolving the GNU STOP (this Issue's deferred scope); any change to the V-F
+  predicate once classification has started.
