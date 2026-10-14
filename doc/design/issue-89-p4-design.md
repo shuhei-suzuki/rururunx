@@ -94,8 +94,9 @@ The bounded UTF-8 TSV report must match the complete unique slot set, process
 group observation, legal tokens and successful child exit. Only a valid report
 of an identical inherited writer yields RESULT fail. Setup, read, launch/wait,
 malformed report and observation failures yield SETUP or NO_RESULT; they never
-kill a mutant. The existing inheritance reader and InnerOwner::close are
-unchanged; I89-P4-IMPL-M01 is a separate repair. Stdio/cancel/kill_on_drop controls
+kill a mutant. At the `149cf859` per-entry-point unit, the inheritance reader and
+InnerOwner::close were unchanged; the later EOF observation repair is described
+below. Stdio/cancel/kill_on_drop controls
 remain in place, and optional unpolled Tokio controls are not made mandatory.
 
 Six V1 variants bypass prepare at one public API at a time, each paired with its
@@ -169,7 +170,14 @@ The existing WNOWAIT/final-group-signal/single-reap/ESRCH contract is unchanged.
 Local macOS compilation, fmt, all-target Clippy, 11 new-crate controls, 91 related
 integration tests and tracker regression pass. V1/V2/V4/V5/V6/V7/V8/V9 and OW1
 gate/authority/classification source mutants are detected and restored controls
-pass. Later local GNU controls/C2d/V3 are recorded in the ledger. Initial full execution regression
+pass. The later GNU follow-up at fixed
+`861549995b12b3afe6d46a07d06a47a21b6b83a8` records all 18 controls and exact C2d
+PASS, V3's actual RESULT fail/assertion with complete custody, and byte-identical
+restored-control PASS. Its platform/source/binary hashes, raw logs,
+`complete-proof.json` and independent parent audit are bound in the
+[GNU follow-up ledger](../verification/issue-89-p4.md#gnu-control-and-v3-follow-up).
+These precede the EOF repair; the new EOF source mutants are macOS evidence.
+Initial full execution regression
 has 186 pass, two Docker failures and one existing ignore; focused Docker replay
 is 11 pass on both P4 and fixed main. The first failures remain recorded and their
 frequency/cause is not certified. See [verification ledger](../verification/issue-89-p4.md).
@@ -180,7 +188,14 @@ runs PASS. Both private overlay copies are archived/hash-checked and removed.
 Later cfg(test)/document changes leave measured production and original binaries
 unchanged; measurement is not relabeled to a newer commit. The observer's extra
 children/scheduling/FD effects remain limitations. The EOF observation repair
-has local macOS/GNU normal controls and eight source-mutant/restoration pairs;
+has local macOS/GNU normal controls and eight macOS source-mutant/restoration pairs;
 its independent repair review is pending. V-F's observed GNU F1 increase and
 unresolved causal attribution remain merge STOP conditions. Measurement uses a private overlay so measurement-only
 259a467 is not merged. No all-OS, process-death or full issue-completion claim is made.
+
+Both macOS and GNU V-F executions are complete, while acceptance remains unmet.
+The macOS source-scoped comparison remains INCONCLUSIVE / UNKNOWN_ATTRIBUTION
+despite completed 16-attempt variants; its exact report and parent audit are
+referenced in the ledger. Completed finite observations do not establish equal
+host load, original FD ownership or the failure's causal mechanism. Historical
+NOT RUN entries retain their original unit scope and point to later evidence.

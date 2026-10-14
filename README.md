@@ -389,8 +389,9 @@ recent_history_tokens = 8000
 max_concurrent = 6
 ```
 
-Measure warm help startup after the release build (Python is only a benchmark
-utility, not part of the Rust runtime):
+Measure warm help startup after the release build. The benchmark uses Python;
+P4 public-API descriptor tests also require `/usr/bin/python3 -I -S` for their
+finite child probe. Python is not part of the Rust runtime:
 
 ```bash
 python3 scripts/measure-startup.py target/release/rrx --runs 30
