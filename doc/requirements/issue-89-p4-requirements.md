@@ -49,8 +49,10 @@ Required acceptance on the final source:
   or a Linux safety regression.
 
 Platform separation is implemented from the approved `aed6f6b4` amendment;
-its compilation, controls, Clippy and independent implementation reviews are
-not yet run. Existing historical proofs are not relabeled to this source.
+its local macOS formatting, workspace/all-targets warnings-denied Clippy and
+20 hygiene tests passed at `e8359628`. Linux controls, final macOS campaigns and
+independent implementation reviews remain unqualified. Existing historical
+proofs are not relabeled to this source.
 
 The parent owns measurement, CI, publication, owner approval and merge. Each
 specific PR merge needs owner approval. None of these gates is certified yet.

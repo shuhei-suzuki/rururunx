@@ -2,8 +2,8 @@
 
 ## Current macOS First implementation state
 
-The platform amendment approved at `aed6f6b4` is implemented, with verification
-and independent implementation reviews NOT RUN on this new source. macOS keeps
+The platform amendment approved at `aed6f6b4` is implemented. Local checks below
+cover `e8359628`; independent implementation reviews remain NOT RUN. macOS keeps
 its existing backend; Linux every target_env uses an untouched Command/no-op
 install with no additional hygiene callback, syscall or probe. Other targets
 retain ENOSYS. Six consuming signatures and existing caller migrations remain.
@@ -12,6 +12,21 @@ reports with all four known original writers inherited; Linux EOF pairs use a
 test-owned CLOEXEC baseline. Mac-only callback/list/injection controls are cfg
 scoped. No test serialization, timeout extension, skip/ignore or warning
 suppression is introduced.
+
+| Local check | Fixed source | Result |
+| --- | --- | --- |
+| `cargo fmt --all -- --check` | `e8359628b057a23162063bec75497b53ac7eaaac` | PASS |
+| `cargo clippy --locked --offline --workspace --all-targets -- -D warnings` | same | PASS |
+| `cargo test --locked --offline -p rrx-spawn-hygiene -- --nocapture` | same | 20 top-level tests PASS, 0 failed, 0 ignored; nested workers are separate observations |
+
+Commands retained default test parallelism. The direct Cargo children were
+waited/reaped and the source stayed clean before/after each command. This is a
+local unit result, not proof of broader fixture/group death, macOS V-F/M06,
+Linux equivalence, source mutants on the new mapping, CI or live qualification.
+The first `ae23b43b` formatting check passed; Clippy stopped with two
+`question_mark` findings in the Option report parser and tests were not started.
+`e8359628` changes only those two equivalent None-propagation expressions; the
+failed attempt remains separate and is not relabeled as success.
 
 The final macOS M06/V-F and safety/CI/review/owner gates remain unqualified.
 Historical checks and failed attempts below retain their original source scope.

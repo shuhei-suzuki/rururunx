@@ -202,8 +202,9 @@ NOT RUN entries retain their original unit scope and point to later evidence.
 
 ## Platform scope amendment (macOS First)
 
-Status: platform separation implemented, not yet compiled, tested or independently
-reviewed in this scope. Final macOS qualification and merge are UNPROVEN.
+Status: platform separation implemented. Local macOS formatting, workspace
+all-targets Clippy and 20 hygiene tests passed at `e8359628`; independent
+implementation review, final macOS qualification and merge are UNPROVEN.
 The design amendment at `aed6f6b4` passed fresh independent Sol design R1 with
 zero mandatory findings. This section supersedes these earlier statements in this record (the
 v3–v6 text above is kept as reviewed history):
