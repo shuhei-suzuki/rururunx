@@ -42,7 +42,7 @@ fn installed(f: &ControlFixture) {
 /// service loop and retained as Known, with no protected row change.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn dc1_postcommit_preparation_error_is_confirmed_known_once() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     installed(&f);
     let (_, tasks) = accept(&f, 1).await;
@@ -97,7 +97,7 @@ async fn dc1_postcommit_preparation_error_is_confirmed_known_once() {
 /// when the service is woken far more often.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn dc2_dc4_precommit_error_stays_held_with_capped_backoff() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     installed(&f);
     let (_, tasks) = accept(&f, 1).await;
@@ -171,7 +171,7 @@ async fn dc2_dc4_precommit_error_stays_held_with_capped_backoff() {
 /// the service join completes without its timeout.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn dc3_shutdown_holding_admission_makes_selected_try_not_attempted() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     installed(&f);
     let (_, tasks) = accept(&f, 1).await;

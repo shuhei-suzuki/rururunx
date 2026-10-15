@@ -82,10 +82,21 @@ fn fixture_mode(
                 ..Default::default()
             },
         );
+        let reviewer_path = dir.join("configured-reviewer-fixture");
+        std::fs::write(
+            &reviewer_path,
+            format!("#!/usr/bin/python3\nPROVIDER=\"claude\"\n{source}"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&reviewer_path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut reviewer = config.agents["worker"].clone();
+        reviewer.provider = Some("claude".into());
+        reviewer.command = vec![reviewer_path.to_string_lossy().into()];
+        if let Some(compat) = reviewer.compatibility.as_mut() {
+            compat.cli_version = "2.1.294".into();
+        }
         for alias in ["rev-a", "rev-b"] {
-            config
-                .agents
-                .insert(alias.into(), config.agents["worker"].clone());
+            config.agents.insert(alias.into(), reviewer.clone());
         }
         configure(&mut config);
         config
@@ -216,7 +227,7 @@ async fn c2_paired_undeclared_protocol_fixture_has_no_claim_or_helper_effects() 
 
 #[tokio::test]
 async fn c5_c6_actual_ingress_source_prepared_transport_and_record_only_binding() {
-    for provider in ["claude", "codex"] {
+    for provider in ["codex"] {
         let mut f = fixture(provider, true);
         f.register_real_git_project();
         let (goal, tasks) = accept(&f, 1).await;
@@ -348,4 +359,45 @@ async fn c5_c6_actual_ingress_source_prepared_transport_and_record_only_binding(
         std::fs::write(profile.output.join("fixture-bootstrap-release"), "release").unwrap();
         finish(f).await;
     }
+}
+
+/// B1 rejects Claude Executor selection before persistence, helpers or admission.
+async fn assert_claude_executor_refused(f: ControlFixture) {
+    let error = f
+        .runtime
+        .handle_control(
+            &f.socket,
+            f.request(ControlAction::CreateGoal {
+                project: f.project.id,
+                expected_project: f.project.version,
+                plan: plan(),
+            }),
+        )
+        .await
+        .expect_err("B1: Claude Executor accepted");
+    assert_eq!(
+        error.downcast_ref::<crate::execution::capability::CapabilityRefusal>(),
+        Some(&crate::execution::capability::CapabilityRefusal::ClaudeExecutorUnavailable),
+    );
+    f.runtime.start().await.unwrap();
+    assert_eq!(f.runtime.admit_ready_tasks().unwrap(), 0);
+    for table in [
+        "goals",
+        "tasks",
+        "task_drivers",
+        "execution_units",
+        "managed_effects",
+        "native_invocations",
+        "quota_leases",
+        "managed_phase_operations",
+        "workflow_native_contracts",
+    ] {
+        assert_eq!(count(&f, table), 0, "B1: {table} effect before refusal");
+    }
+    assert!(
+        f.runtime.phase_jobs.observed_jobs().is_empty(),
+        "B1: Held job"
+    );
+    f.runtime.shutdown().await.unwrap();
+    finish(f).await;
 }

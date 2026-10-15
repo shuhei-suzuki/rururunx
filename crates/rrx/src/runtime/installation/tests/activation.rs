@@ -283,7 +283,7 @@ fn release_peer(f: &ControlFixture, workflow: &crate::workflow::WorkflowSnapshot
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca1_actual_activation_gates_marker_and_record_only_bound() {
-    for provider in ["claude", "codex"] {
+    for provider in ["codex"] {
         let mut f = fixture(provider, true);
         f.register_real_git_project();
         let (_, tasks) = accept(&f, 1).await;

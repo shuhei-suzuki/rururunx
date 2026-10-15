@@ -422,7 +422,7 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation, prepara
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn rn_h1_genuine_normal_n_closes_and_pre_s5_refusal_stays_held() {
-    for provider in ["claude", "codex"] {
+    for provider in ["codex"] {
         physical_refusal(provider, PreparationObservation::BeforeTransport, false).await;
         physical_refusal(provider, PreparationObservation::BeforeCommand, false).await;
     }
@@ -430,5 +430,5 @@ async fn rn_h1_genuine_normal_n_closes_and_pre_s5_refusal_stays_held() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn rn_p1_genuine_writer_contention_confirms_rollback_clears_u_then_closes() {
-    physical_refusal("claude", PreparationObservation::BeforeTransport, true).await;
+    physical_refusal("codex", PreparationObservation::BeforeTransport, true).await;
 }

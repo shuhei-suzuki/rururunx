@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca2_four_tasks_two_projects_retain_own_scope_and_roster() {
-    let mut f = fixture_with("claude", true, |config| {
+    let mut f = fixture_with("codex", true, |config| {
         let mut codex = config.agents["worker"].clone();
         let old_path = std::path::Path::new(&codex.command[0]);
         let codex_path = old_path.with_file_name("configured-codex-protocol-fixture");
@@ -89,7 +89,7 @@ async fn ca3_representable_roster_refusals_preserve_claimed_sibling() {
     use crate::runtime::task_driver::{AdmitOutcome, SkipReason};
     use crate::state::CandidatePage;
     for case in ["empty", "undeclared", "nine"] {
-        let mut f = fixture_with("claude", true, |config| {
+        let mut f = fixture_with("codex", true, |config| {
             if case == "undeclared" {
                 config.agents.get_mut("rev-a").unwrap().compatibility = None;
             }
@@ -97,7 +97,7 @@ async fn ca3_representable_roster_refusals_preserve_claimed_sibling() {
                 for i in 0..9 {
                     config
                         .agents
-                        .insert(format!("r-{i}"), config.agents["worker"].clone());
+                        .insert(format!("r-{i}"), config.agents["rev-a"].clone());
                 }
             }
         });
@@ -186,7 +186,7 @@ async fn ca3_representable_roster_refusals_preserve_claimed_sibling() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca3_missing_alias_is_rejected_at_accepted_ingress() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     let error = f
         .runtime
         .handle_control(
@@ -211,7 +211,7 @@ async fn ca3_missing_alias_is_rejected_at_accepted_ingress() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca3b_original_composition_cross_pairs_refuse_before_store() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project_named("ca3b-project-a");
     let task_a = accepted_plan(&f, task_plan(&["rev-a"])).await.remove(0);
     f.register_real_git_project_named("ca3b-project-b");

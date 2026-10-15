@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn ca4i_whole_registry_counts_actual_held_plan_across_two_pages() {
     for one_held in [true, false] {
-        let mut f = fixture_with("claude", true, |config| {
+        let mut f = fixture_with("codex", true, |config| {
             config.scheduler.global_max_sessions = 128;
         });
         let mut tasks = Vec::new();

@@ -214,7 +214,7 @@ impl Fixture {
             config.agents.insert(
                 provider.into(),
                 AgentConfig {
-                    provider: Some(provider.into()),
+                    provider: Some("codex".into()),
                     command: vec![program.to_string_lossy().into()],
                     ..Default::default()
                 },
@@ -270,7 +270,7 @@ impl Fixture {
         provider: &str,
     ) -> (NativeAllocation, PreparationGuard, ExecutionUnit) {
         let (unit, _) = AttemptManager::new(self.owner.clone())
-            .prepare(task.id, provider, "Implement", None)
+            .prepare(task.id, "codex", "Implement", None)
             .await
             .unwrap();
         let allocation = self

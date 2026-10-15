@@ -60,7 +60,7 @@ fn bounded_body(mut body: String, len: usize) -> String {
 
 #[tokio::test]
 async fn c13_exact_bound_reaches_actual_service_claim() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     accept(&f, 1).await;
     let key = keys(&f).remove(0);
     replace_body(&f, &key, bounded_body(body(&f, &key), 1048576).into());
@@ -85,7 +85,7 @@ async fn c13_exact_bound_reaches_actual_service_claim() {
 #[tokio::test]
 async fn c13_early_bound_identity_and_decode_refusals_preserve_sibling_progress() {
     for case in ["over", "blob", "decode", "id", "version"] {
-        let f = fixture("claude", true);
+        let f = fixture("codex", true);
         accept(&f, 2).await;
         let page = keys(&f);
         let bad = &page[0];
@@ -151,7 +151,7 @@ async fn c13_early_bound_identity_and_decode_refusals_preserve_sibling_progress(
 
 #[tokio::test]
 async fn c13_original_composition_bounded_reread_refuses_before_validate_for() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     accept(&f, 1).await;
     let key = keys(&f).remove(0);
     f.runtime.start().await.unwrap();
@@ -190,7 +190,7 @@ async fn c13_original_composition_bounded_reread_refuses_before_validate_for() {
 
 #[tokio::test]
 async fn c9_busy_admission_sweep_is_synchronous_and_shutdown_stops_claims() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     accept(&f, 1).await;
     f.runtime.start().await.unwrap();
     let guard = f.runtime.control_admission.lock().await;
@@ -229,7 +229,7 @@ async fn c9_busy_admission_sweep_is_synchronous_and_shutdown_stops_claims() {
 
 #[tokio::test]
 async fn c15_actual_service_pass_keeps_cursor_after_32_paused_tasks() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     let (paused, _) = accept(&f, 40).await;
     let version = f
         .owner

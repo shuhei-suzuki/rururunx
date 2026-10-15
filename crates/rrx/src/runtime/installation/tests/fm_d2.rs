@@ -32,9 +32,10 @@ fn git(root: &std::path::Path, args: &[&str]) {
 
 /// The installed protocol fixture (as `fixture_mode`, commit mode) that also
 /// records the actual outgoing Native input bytes.
-fn recording_fixture(provider: &str) -> ControlFixture {
+fn recording_fixture(front: &str) -> ControlFixture {
+    let provider = "codex";
     ControlFixture::configured(|dir| {
-        let path = dir.join("configured-protocol-fixture");
+        let path = dir.join(format!("configured-{front}-protocol-fixture"));
         let source = include_str!("../../../execution/native/native_fixture.py");
         let source = source.replacen(
             "while True: time.sleep(0.02)",
@@ -74,10 +75,21 @@ fn recording_fixture(provider: &str) -> ControlFixture {
                 ..Default::default()
             },
         );
+        let reviewer_path = dir.join("configured-reviewer-fixture");
+        std::fs::write(
+            &reviewer_path,
+            format!("#!/usr/bin/python3\nPROVIDER=\"claude\"\n{source}"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&reviewer_path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut reviewer = config.agents["worker"].clone();
+        reviewer.provider = Some("claude".into());
+        reviewer.command = vec![reviewer_path.to_string_lossy().into()];
+        if let Some(compat) = reviewer.compatibility.as_mut() {
+            compat.cli_version = "2.1.294".into();
+        }
         for alias in ["rev-a", "rev-b"] {
-            config
-                .agents
-                .insert(alias.into(), config.agents["worker"].clone());
+            config.agents.insert(alias.into(), reviewer.clone());
         }
         config
     })

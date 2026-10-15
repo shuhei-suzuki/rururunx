@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca4b_activation_segment_linearizes_before_shutdown() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     accept(&f, 1).await;
     let block = Arc::new(ServicePark::default());
@@ -104,7 +104,7 @@ async fn ca4b_activation_segment_linearizes_before_shutdown() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca4b_segment_keeps_runtime_alive_after_external_drop() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     accept(&f, 1).await;
     let block = Arc::new(ServicePark::default());
@@ -145,7 +145,7 @@ async fn ca4b_segment_keeps_runtime_alive_after_external_drop() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca4a_stop_at_genuine_retained_pre_admission_rolls_back() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     accept(&f, 1).await;
     let (observations, _release) = install_pause(&f, None);
@@ -174,7 +174,7 @@ async fn ca4a_stop_at_genuine_retained_pre_admission_rolls_back() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca4a_last_external_drop_at_s1_cancels_original_worker() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     accept(&f, 1).await;
     let (observations, _release) = install_pause(&f, None);
@@ -229,7 +229,7 @@ async fn ca4a_last_external_drop_at_s1_cancels_original_worker() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca4c_precommit_failure_proves_same_plan_rollback() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     accept(&f, 1).await;
     let seams = Arc::new(ActivationSeams {
@@ -266,7 +266,7 @@ async fn ca4c_precommit_failure_proves_same_plan_rollback() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca4d_contained_fault_recovers_in_same_live_worker() {
     for panic in [false, true] {
-        let mut f = fixture("claude", true);
+        let mut f = fixture("codex", true);
         f.register_real_git_project();
         let (_, tasks) = accept(&f, 1).await;
         let (park, _open) = service_park(&f);
@@ -359,7 +359,7 @@ async fn ca4d_contained_fault_recovers_in_same_live_worker() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca4g_actual_exited_worker_keeps_same_plan_held() {
     for panic in [false, true] {
-        let mut f = fixture("claude", true);
+        let mut f = fixture("codex", true);
         f.register_real_git_project();
         accept(&f, 1).await;
         let (park, _open) = service_park(&f);
@@ -431,7 +431,7 @@ async fn ca4g_actual_exited_worker_keeps_same_plan_held() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca4h_precommit_panic_stays_poisoned_and_rolls_back() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     accept(&f, 1).await;
     let (park, _open) = service_park(&f);

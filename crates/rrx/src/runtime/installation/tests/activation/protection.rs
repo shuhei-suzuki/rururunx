@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca5d_integrity_decision_uses_genuine_allocation_and_negative_raw_members() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     let (_, tasks) = accept(&f, 1).await;
     f.runtime.start().await.unwrap();
@@ -66,7 +66,7 @@ async fn ca5d_integrity_decision_uses_genuine_allocation_and_negative_raw_member
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca6_genuine_contract_refuses_generic_workflow_and_contract_writers() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     let (_, tasks) = accept(&f, 1).await;
     let (park, _open) = service_park(&f);
@@ -201,7 +201,7 @@ async fn ca6_genuine_contract_refuses_generic_workflow_and_contract_writers() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn nongrant_ca4e_task_controls_cannot_supply_drift_producer() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     let (_, tasks) = accept(&f, 1).await;
     let (observations, _release) = install_pause(&f, None);
@@ -272,7 +272,7 @@ async fn nongrant_ca4e_task_controls_cannot_supply_drift_producer() {
 /// or rolled back. The cfg(test) seam injects only that one fault.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ca7_postcommit_cache_fault_reconciles_same_custody_once() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     f.register_real_git_project();
     let (_, tasks) = accept(&f, 1).await;
     crate::state::managed_binding::arm_driver_publication_fault(tasks[0].id);

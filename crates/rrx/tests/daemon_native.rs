@@ -65,7 +65,7 @@ impl Lane {
         let fixture = base.join("protocol-fixture");
         std::fs::write(
             &fixture,
-            format!("#!/usr/bin/python3\nPROVIDER=\"claude\"\n{source}"),
+            format!("#!/usr/bin/python3\nPROVIDER=\"codex\"\n{source}"),
         )
         .unwrap();
         std::fs::set_permissions(&fixture, std::fs::Permissions::from_mode(0o700)).unwrap();
@@ -75,7 +75,7 @@ impl Lane {
         };
         config.workflow.risk_mapping = [WorkflowClass::Quick; 4];
         let agent = AgentConfig {
-            provider: Some("claude".into()),
+            provider: Some("codex".into()),
             command: vec![fixture.to_string_lossy().into()],
             compatibility: Some(NativeCompatConfig {
                 profile: "rrx-native-inherited-v1".into(),
@@ -85,8 +85,21 @@ impl Lane {
             }),
             ..Default::default()
         };
-        for alias in ["worker", "rev-a", "rev-b"] {
-            config.agents.insert(alias.into(), agent.clone());
+        config.agents.insert("worker".into(), agent.clone());
+        let reviewer_fixture = base.join("reviewer-protocol-fixture");
+        std::fs::write(
+            &reviewer_fixture,
+            format!("#!/usr/bin/python3\nPROVIDER=\"claude\"\n{source}"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&reviewer_fixture, std::fs::Permissions::from_mode(0o700))
+            .unwrap();
+        let mut reviewer = agent;
+        reviewer.provider = Some("claude".into());
+        reviewer.command = vec![reviewer_fixture.to_string_lossy().into()];
+        reviewer.compatibility.as_mut().unwrap().cli_version = "2.1.294".into();
+        for alias in ["rev-a", "rev-b"] {
+            config.agents.insert(alias.into(), reviewer.clone());
         }
         let config_path = base.join("config.toml");
         std::fs::write(&config_path, toml::to_string(&config).unwrap()).unwrap();
@@ -376,7 +389,7 @@ impl Drop for Lane {
 async fn c_s1f_native_success_and_refusal_equal_under_serve_and_daemon() {
     let mut outcomes = Vec::new();
     for detached in [false, true] {
-        let mut lane = Lane::new("2.1.294");
+        let mut lane = Lane::new("codex-cli 0.160.0");
         if detached {
             lane.run_daemon();
         } else {
@@ -387,7 +400,7 @@ async fn c_s1f_native_success_and_refusal_equal_under_serve_and_daemon() {
         assert_eq!(links, SUCCESS, "detached={detached}");
         lane.stop().await;
 
-        let mut refused = Lane::new("2.1.283");
+        let mut refused = Lane::new("codex-cli 0.159.0");
         if detached {
             refused.run_daemon();
         } else {
@@ -464,7 +477,7 @@ print("closed", flush=True)
 /// child belongs to the daemon, and the Task's phase closes normally.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn c_s1a_daemon_survives_invoker_group_and_terminal() {
-    let mut lane = Lane::new("2.1.294");
+    let mut lane = Lane::new("codex-cli 0.160.0");
     let mut invoker = rrx_spawn_hygiene::spawn_std({
         let mut command = Command::new("/usr/bin/python3");
         command

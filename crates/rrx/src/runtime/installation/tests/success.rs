@@ -326,7 +326,7 @@ async fn sc1_success_lane(provider: &str) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc1_claude_quick_implement_closes_once_through_the_full_chain() {
-    sc1_success_lane("claude").await;
+    sc1_success_lane("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc1_codex_quick_implement_closes_once_through_the_full_chain() {
@@ -429,7 +429,7 @@ async fn sc7_ordinary_failure(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc7_claude_ordinary_failure_installs_no_settlement() {
-    sc7_ordinary_failure("claude").await;
+    sc7_ordinary_failure("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc7_codex_ordinary_failure_installs_no_settlement() {
@@ -508,7 +508,7 @@ async fn sc2_late(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc2_claude_late_binding_after_settlement_closes_once() {
-    sc2_late("claude").await;
+    sc2_late("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc2_codex_late_binding_after_settlement_closes_once() {
@@ -731,7 +731,7 @@ async fn sc3p_parent_change(provider: &str, order: Sc3pOrder) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc3p_claude_parent_change_during_hold_refuses_binding() {
-    sc3p_parent_change("claude", Sc3pOrder::WriteAfterPause).await;
+    sc3p_parent_change("codex", Sc3pOrder::WriteAfterPause).await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc3p_codex_parent_change_during_hold_refuses_binding() {
@@ -739,7 +739,7 @@ async fn sc3p_codex_parent_change_during_hold_refuses_binding() {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc3p_t_claude_terminal_before_turn_still_refuses_binding() {
-    sc3p_parent_change("claude", Sc3pOrder::TerminalFirst).await;
+    sc3p_parent_change("codex", Sc3pOrder::TerminalFirst).await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc3p_t_codex_terminal_before_turn_still_refuses_binding() {
@@ -844,7 +844,7 @@ async fn scu_unknown(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn scu_claude_post_claim_evaluation_failure_is_durable_unknown() {
-    scu_unknown("claude").await;
+    scu_unknown("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn scu_codex_post_claim_evaluation_failure_is_durable_unknown() {
@@ -930,7 +930,7 @@ async fn br1(provider: &str, site: &'static str, mark: &'static str) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn br1_claude_owner_immediate_retries_once_after_binding() {
     br1(
-        "claude",
+        "codex",
         crate::runtime::phase_jobs::OWNER_IMMEDIATE,
         "mark immediate",
     )
@@ -948,7 +948,7 @@ async fn br1_codex_owner_immediate_retries_once_after_binding() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn br1p_claude_owner_planning_retries_once_after_binding() {
     br1(
-        "claude",
+        "codex",
         crate::runtime::phase_jobs::OWNER_PLANNING,
         "mark planning",
     )
@@ -1039,7 +1039,7 @@ async fn br2(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn br2_claude_parent_drift_never_retries() {
-    br2("claude").await;
+    br2("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn br2_codex_parent_drift_never_retries() {
@@ -1142,7 +1142,7 @@ async fn br3(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn br3_claude_linked_plan_is_never_marked() {
-    br3("claude").await;
+    br3("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn br3_codex_linked_plan_is_never_marked() {
@@ -1273,7 +1273,7 @@ async fn sc6_requirements(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc6_claude_standard_requirements_waits_without_closure() {
-    sc6_requirements("claude").await;
+    sc6_requirements("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc6_codex_standard_requirements_waits_without_closure() {
@@ -1361,7 +1361,7 @@ async fn sc8_graph(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc8_claude_results_graph_corruption_blocks_closure() {
-    sc8_graph("claude").await;
+    sc8_graph("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc8_codex_results_graph_corruption_blocks_closure() {
@@ -1445,7 +1445,7 @@ async fn sc4_all(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc4_claude_uncertain_writes_confirm_and_close_once() {
-    sc4_all("claude").await;
+    sc4_all("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc4_codex_uncertain_writes_confirm_and_close_once() {
@@ -1550,7 +1550,7 @@ async fn sc3_conflict(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc3_claude_owner_session_advance_conflicts_then_binds_normal() {
-    sc3_conflict("claude").await;
+    sc3_conflict("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc3_codex_owner_session_advance_conflicts_then_binds_normal() {
@@ -1645,7 +1645,7 @@ async fn sc3_lock(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc3l_claude_writer_lock_is_uncertain_then_rolled_back() {
-    sc3_lock("claude").await;
+    sc3_lock("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc3l_codex_writer_lock_is_uncertain_then_rolled_back() {
@@ -1707,7 +1707,7 @@ async fn retained_all(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn scr_claude_completion_survives_refused_plan_and_conflict() {
-    retained_all("claude").await;
+    retained_all("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn scr_codex_completion_survives_refused_plan_and_conflict() {
@@ -1754,12 +1754,13 @@ async fn project_tasks(f: &mut ControlFixture, executors: &[&str]) -> Vec<Task> 
     assert_eq!(projects.len(), executors.len(), "SETUP: distinct Projects");
     tasks
 }
-/// SC10: four Tasks in four distinct Projects (two Claude, two Codex; one
-/// active Task per Project) close independently in commit mode, with no
-/// cross-job acknowledgment or Driver publication.
+/// SC10 retains the original four simultaneous Executor completions across
+/// Projects. B1 leaves only Codex, whose provider quota admits two Executors;
+/// this control remains failing rather than weakening quota or serializing it.
+/// See the U2 ledger for this unconvertible fixture.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc10_four_projects_close_independently() {
-    let mut f = fixture_mode("claude", true, None, codex_worker);
+    let mut f = fixture_mode("codex", true, None, codex_worker);
     if let Err(refusal) = &f.runtime.installed {
         panic!("SETUP: {}", refusal);
     }
@@ -1882,7 +1883,7 @@ fn shared_quota(f: &ControlFixture) -> Vec<String> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc10_cross_project_quota_drift_replans_from_fresh_images() {
     use crate::runtime::phase_jobs::{QUOTA_APPLY, counted};
-    let mut f = fixture_mode("claude", true, None, codex_worker);
+    let mut f = fixture_mode("codex", true, None, codex_worker);
     if let Err(refusal) = &f.runtime.installed {
         panic!("SETUP: {}", refusal);
     }
@@ -1952,7 +1953,7 @@ async fn sc10_cross_project_quota_drift_replans_from_fresh_images() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc10_own_lease_change_refuses_without_replan() {
     use crate::runtime::phase_jobs::{QUOTA_APPLY, counted};
-    let mut f = fixture_mode("claude", true, None, codex_worker);
+    let mut f = fixture_mode("codex", true, None, codex_worker);
     if let Err(refusal) = &f.runtime.installed {
         panic!("SETUP: {}", refusal);
     }
@@ -2055,7 +2056,7 @@ async fn sc9a_stop(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc9a_claude_shutdown_cancels_success_admission() {
-    sc9a_stop("claude").await;
+    sc9a_stop("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc9a_codex_shutdown_cancels_success_admission() {
@@ -2172,7 +2173,7 @@ async fn sc11_fence(provider: &str, parent_edit: bool) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc11_claude_settled_helper_fence_holds_and_confirms() {
-    sc11_fence("claude", false).await;
+    sc11_fence("codex", false).await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc11_codex_settled_helper_fence_holds_and_confirms() {
@@ -2180,7 +2181,7 @@ async fn sc11_codex_settled_helper_fence_holds_and_confirms() {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc11n_claude_parent_edit_while_held_refuses_next_tick() {
-    sc11_fence("claude", true).await;
+    sc11_fence("codex", true).await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc11n_codex_parent_edit_while_held_refuses_next_tick() {
@@ -2231,7 +2232,7 @@ async fn sc5d_gap(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc5d_claude_revoke_settle_gap_records_no_conclusion() {
-    sc5d_gap("claude").await;
+    sc5d_gap("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc5d_codex_revoke_settle_gap_records_no_conclusion() {
@@ -2309,8 +2310,8 @@ async fn sc4n(provider: &str, fault: crate::state::managed_binding::fault::Commi
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc4n_claude_uncertain_bind_then_terminal_confirms() {
     use crate::state::managed_binding::fault::CommitFault;
-    sc4n("claude", CommitFault::AfterCommit).await;
-    sc4n("claude", CommitFault::BeforeCommit).await;
+    sc4n("codex", CommitFault::AfterCommit).await;
+    sc4n("codex", CommitFault::BeforeCommit).await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc4n_codex_uncertain_bind_then_terminal_confirms() {
@@ -2392,7 +2393,7 @@ async fn sc4c(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc4c_claude_later_context_keeps_uncertain_closure_held() {
-    sc4c("claude").await;
+    sc4c("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc4c_codex_later_context_keeps_uncertain_closure_held() {
@@ -2483,7 +2484,7 @@ async fn sc7_killed(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc7k_claude_killed_peer_never_late_binds() {
-    sc7_killed("claude").await;
+    sc7_killed("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc7k_codex_killed_peer_never_late_binds() {
@@ -2550,7 +2551,7 @@ async fn sc9c(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc9c_claude_pending_publication_stays_held_after_shutdown() {
-    sc9c("claude").await;
+    sc9c("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc9c_codex_pending_publication_stays_held_after_shutdown() {
@@ -2618,7 +2619,7 @@ async fn sc9b(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc9b_claude_shutdown_preempts_root_success_action() {
-    sc9b("claude").await;
+    sc9b("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc9b_codex_shutdown_preempts_root_success_action() {
@@ -2676,7 +2677,7 @@ async fn sc9d(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc9d_claude_shutdown_cannot_interleave_admitted_closure() {
-    sc9d("claude").await;
+    sc9d("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn sc9d_codex_shutdown_cannot_interleave_admitted_closure() {

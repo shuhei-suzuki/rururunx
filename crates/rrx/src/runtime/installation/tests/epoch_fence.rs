@@ -583,7 +583,7 @@ async fn ef1(provider: &str) {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ef_setup_control_claude_terminal_under_custody_closes_the_session() {
-    ef_setup_control("claude").await;
+    ef_setup_control("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ef_setup_control_codex_terminal_under_custody_closes_the_session() {
@@ -591,7 +591,7 @@ async fn ef_setup_control_codex_terminal_under_custody_closes_the_session() {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ef1_claude_managed_session_fenced_lost_exactly() {
-    ef1("claude").await;
+    ef1("codex").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ef1_codex_managed_session_fenced_lost_exactly() {
@@ -604,7 +604,7 @@ async fn ef1_codex_managed_session_fenced_lost_exactly() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ef3_wrong_or_missing_permit_rolls_back_the_whole_epoch() {
     use crate::state::epoch_fence_fault::{Fault, Observation, arm, observations};
-    let (_dir, state, _config, task) = bound_and_stopped("claude").await;
+    let (_dir, state, _config, task) = bound_and_stopped("codex").await;
     let conn = crate::state::current_test_writer(&state).unwrap();
     let sid = session_id(&conn, &task);
     let before = dump(&conn);
@@ -668,7 +668,7 @@ async fn ef3_wrong_or_missing_permit_rolls_back_the_whole_epoch() {
 /// touched by the epoch fence.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ef4_terminal_managed_session_is_skipped() {
-    let mut f = fixture_mode("claude", true, None, |_| {});
+    let mut f = fixture_mode("codex", true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
         panic!("SETUP: {}", refusal);
