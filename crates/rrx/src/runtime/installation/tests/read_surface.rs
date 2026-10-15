@@ -137,7 +137,7 @@ fn proposal_of(response: ControlResponse) -> GoalId {
 /// shows as a version change, never as one combined snapshot.
 #[tokio::test]
 async fn c_s4a_hierarchy_pages_are_scoped_and_cursors_checked() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     let (g1, tasks1) = accept(&f, 2).await;
     let (g2, _) = accept(&f, 1).await;
     let g3 = proposal_of(
@@ -263,7 +263,7 @@ async fn c_s4a_hierarchy_pages_are_scoped_and_cursors_checked() {
 /// stable order with metadata only; the decision stays unqualified.
 #[tokio::test]
 async fn c_s4b_review_pages_every_row_once_without_data_or_decision() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     let (_, tasks) = accept(&f, 2).await;
     let scope = tasks[0].scope();
     let data = |i: usize| {
@@ -394,7 +394,7 @@ async fn c_s4b_review_pages_every_row_once_without_data_or_decision() {
 /// own Sessions only.
 #[tokio::test]
 async fn c_s4c_sessions_project_only_the_task_session_view() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     let (goal, tasks) = accept(&f, 2).await;
     let scope = tasks[0].scope();
     let own = session(&f, &scope, SessionRole::Reviewer, "OWN");
@@ -487,7 +487,7 @@ fn stored_attention(f: &ControlFixture, task: crate::domain::TaskId) -> Option<S
 /// as `stored_unqualified`. Operations are advisory and re-checked.
 #[tokio::test]
 async fn c_s4d_attention_queue_derives_typed_items_and_operations() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     let (running, running_tasks) = accept(&f, 2).await;
     let (paused, _) = accept(&f, 1).await;
     let proposal = proposal_of(
@@ -699,7 +699,7 @@ async fn c_s4d_attention_queue_derives_typed_items_and_operations() {
 /// operations go away.
 #[tokio::test]
 async fn c_s4d_terminal_goal_keeps_its_task_facts() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     let (cancelled, cancelled_tasks) = accept(&f, 1).await;
     let (failed, failed_tasks) = accept(&f, 1).await;
     f.store()
@@ -763,7 +763,7 @@ async fn c_s4d_terminal_goal_keeps_its_task_facts() {
 /// at the observed Project version.
 #[tokio::test]
 async fn c_s4d_project_limit_is_a_goal_item_with_repair() {
-    let mut f = fixture("claude", true);
+    let mut f = fixture("codex", true);
     let (goal, _) = accept(&f, 1).await;
     f.project = f
         .store()
@@ -811,7 +811,7 @@ async fn c_s4d_project_limit_is_a_goal_item_with_repair() {
 /// typed continuation fact.
 #[tokio::test]
 async fn c_s4d_claimed_driver_is_native_continuation_unavailable() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     let (_, tasks) = accept(&f, 1).await;
     f.runtime.start().await.unwrap();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
@@ -848,7 +848,7 @@ async fn c_s4d_claimed_driver_is_native_continuation_unavailable() {
 /// printable included) is `event_unavailable`, and no data appears.
 #[tokio::test]
 async fn c_s4e_event_kinds_are_allowlisted_and_data_is_never_returned() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     let (goal, tasks) = accept(&f, 2).await;
     let scope = tasks[0].scope();
     record(
@@ -989,7 +989,7 @@ async fn c_s4e_event_kinds_are_allowlisted_and_data_is_never_returned() {
 /// Routing only `RoutingUnavailable`; nothing stored appears.
 #[tokio::test]
 async fn c_s4f_metrics_and_routing_are_typed_unavailable() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     let (_, tasks) = accept(&f, 1).await;
     let scope = tasks[0].scope();
     let session = session(&f, &scope, SessionRole::Reviewer, "USAGE");
@@ -1096,7 +1096,7 @@ fn fingerprint(f: &ControlFixture) -> Vec<String> {
 /// `maximum` 0 and 129 refuse; an over-long title is null, not a refusal.
 #[tokio::test]
 async fn c_s4g_every_read_writes_nothing_and_bounds_hold() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     let mut long = plan();
     long.definition.title = "T".repeat(GOAL_TITLE_BYTES + 1);
     let long_goal = f.create(long).await;
@@ -1208,7 +1208,7 @@ fn last_read() -> crate::state::read_observation::Read {
 /// one item exactly once and then ends.
 #[tokio::test]
 async fn c_s4d_r_queue_work_is_bounded_per_request() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     for _ in 0..70 {
         f.create(plan()).await;
     }
@@ -1265,7 +1265,7 @@ async fn c_s4d_r_queue_work_is_bounded_per_request() {
 /// would exceed 1024, once one Goal has been evaluated.
 #[tokio::test]
 async fn c_s4d_r_task_budget_ends_the_request() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     accept(&f, 600).await;
     accept(&f, 600).await;
     let (page, next) = items(
@@ -1310,7 +1310,7 @@ async fn c_s4d_r_task_budget_ends_the_request() {
 /// Project with a Goal adds one, and 60 Projects without Goals add none.
 #[tokio::test]
 async fn c_s4d_r_project_rows_only_for_fetched_goals() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     accept(&f, 1).await;
     f.create(plan()).await;
     proposal_of(
@@ -1358,7 +1358,7 @@ async fn c_s4d_r_project_rows_only_for_fetched_goals() {
 /// selected view.
 #[tokio::test]
 async fn c_s4d_r_scanned_position_is_scope_checked() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     accept(&f, 1).await;
     let (other, other_goal, _) = other_project(&f, 1).await;
     for (project, cursor) in [

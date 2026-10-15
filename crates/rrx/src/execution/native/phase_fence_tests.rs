@@ -58,6 +58,9 @@ async fn genuine_accepted_goal_cannot_enter_legacy_native_before_private_phase_e
             let sessions = (entry == "direct").then(|| NativeSessions::new(owner.clone()).unwrap());
             let registry = (entry == "adapter")
                 .then(|| AgentRegistry::from_managed_config(&config, owner.clone()).unwrap());
+            // The genuine accepted Goal uses the approved M0 Executor role.
+            // The independently installed obsolete adapter still covers both providers.
+            config.agents.get_mut("selected").unwrap().provider = Some("codex".into());
             let runtime = Arc::new(Runtime::new(owner.clone(), config.clone()).unwrap());
             let (socket, _peer) = tokio::net::UnixStream::pair().unwrap();
             let response = runtime
@@ -107,13 +110,13 @@ async fn genuine_accepted_goal_cannot_enter_legacy_native_before_private_phase_e
                 let task_id = store.goal(goal).unwrap().unwrap().dag.nodes[0];
                 store.task(task_id).unwrap().unwrap()
             };
-            assert!(
+            assert_eq!(
                 runtime
                     .installed_driver_composition(&task)
                     .err()
                     .unwrap()
-                    .to_string()
-                    .contains("managed Registry installation refused")
+                    .downcast_ref::<crate::runtime::InstallationRefusal>(),
+                Some(&crate::runtime::InstallationRefusal::Registry)
             );
             let scope: Scope = task.scope();
             let input = ManagedInput {
@@ -152,8 +155,8 @@ async fn genuine_accepted_goal_cannot_enter_legacy_native_before_private_phase_e
                     .err()
                     .expect("protected direct entry accepted");
                 assert_eq!(
-                    error.downcast_ref::<NativeFailure>(),
-                    Some(&NativeFailure::AuthorityUnavailable)
+                    error.downcast_ref::<crate::execution::capability::CapabilityRefusal>(),
+                    Some(&crate::execution::capability::CapabilityRefusal::LegacyEntryUnavailable)
                 );
             } else {
                 let registry = registry.as_ref().unwrap();
@@ -175,7 +178,12 @@ async fn genuine_accepted_goal_cannot_enter_legacy_native_before_private_phase_e
                     .await
                     .err()
                     .expect("protected adapter entry accepted");
-                assert_eq!(error.kind, ErrorKind::OwnershipMismatch);
+                assert_eq!(
+                    error.kind,
+                    ErrorKind::CapabilityUnavailable(
+                        crate::execution::capability::CapabilityRefusal::LegacyEntryUnavailable
+                    )
+                );
             }
             assert!(
                 !counter.exists(),

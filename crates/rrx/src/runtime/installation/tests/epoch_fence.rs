@@ -195,7 +195,7 @@ async fn stopped_with(
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = tasks[0].clone();
@@ -671,7 +671,7 @@ async fn ef4_terminal_managed_session_is_skipped() {
     let mut f = fixture_mode("claude", true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = tasks[0].clone();

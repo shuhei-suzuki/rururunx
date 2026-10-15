@@ -41,7 +41,7 @@ impl Fixture {
         config.agents.insert(
             "worker".into(),
             AgentConfig {
-                provider: Some("claude".into()),
+                provider: Some("codex".into()),
                 command: vec!["/bin/true".into()],
                 ..Default::default()
             },

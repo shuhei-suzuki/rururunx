@@ -15,6 +15,14 @@ fn unavailable<T: std::fmt::Debug>(result: AdapterResult<T>) {
     assert_eq!(error.kind, ErrorKind::UnsupportedCapability);
     assert_eq!(error.message, REASON);
 }
+fn legacy_unavailable<T: std::fmt::Debug>(result: AdapterResult<T>) {
+    assert_eq!(
+        result.unwrap_err().kind,
+        ErrorKind::CapabilityUnavailable(
+            rrx::execution::capability::CapabilityRefusal::LegacyEntryUnavailable
+        )
+    );
+}
 fn snapshot(store: &SharedStore, scope: &Scope) -> Value {
     let store = store.lock().unwrap();
     json!({"sessions":store.records(scope,RecordKind::Session).unwrap(),"events":store.events(scope,0,1000).unwrap()})
@@ -68,14 +76,14 @@ async fn ordinary_empty_library_child() {
     assert_eq!(snapshot(&store, &scope), before);
     assert!(!directory.join("git-effect").exists());
     assert!(!directory.join("codex-effect").exists());
-    unavailable(started);
+    legacy_unavailable(started);
     let started = plain
         .start_structured(request.clone(), json!({"type":"object"}))
         .await;
     assert_eq!(snapshot(&store, &scope), before);
     assert!(!directory.join("git-effect").exists());
     assert!(!directory.join("codex-effect").exists());
-    unavailable(started);
+    legacy_unavailable(started);
     let adapter = Arc::new(
         CodexAdapter::new(
             "codex".into(),
@@ -101,7 +109,7 @@ async fn ordinary_empty_library_child() {
     );
     assert!(!directory.join("git-effect").exists());
     assert!(!directory.join("codex-effect").exists());
-    unavailable(started);
+    legacy_unavailable(started);
     let started = adapter
         .start_structured(request.clone(), schema.clone())
         .await;
@@ -112,9 +120,9 @@ async fn ordinary_empty_library_child() {
     );
     assert!(!directory.join("git-effect").exists());
     assert!(!directory.join("codex-effect").exists());
-    unavailable(started);
-    unavailable(adapter.resume(unknown.clone()).await);
-    unavailable(
+    legacy_unavailable(started);
+    legacy_unavailable(adapter.resume(unknown.clone()).await);
+    legacy_unavailable(
         adapter
             .checkpoint(unknown.clone(), request.input.clone())
             .await,
@@ -131,10 +139,10 @@ async fn ordinary_empty_library_child() {
     let dynamic: Arc<dyn AgentAdapter> = adapter;
     assert!(dynamic.capabilities().is_empty());
     unavailable(dynamic.probe());
-    unavailable(dynamic.start(request.clone()).await);
-    unavailable(dynamic.start_structured(request.clone(), schema).await);
-    unavailable(dynamic.resume(unknown.clone()).await);
-    unavailable(
+    legacy_unavailable(dynamic.start(request.clone()).await);
+    legacy_unavailable(dynamic.start_structured(request.clone(), schema).await);
+    legacy_unavailable(dynamic.resume(unknown.clone()).await);
+    legacy_unavailable(
         dynamic
             .checkpoint(unknown.clone(), request.input.clone())
             .await,

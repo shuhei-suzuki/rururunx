@@ -34,7 +34,7 @@ fn protected_rows(f: &ControlFixture, task: &Task, unit: crate::execution::UnitI
 
 fn installed(f: &ControlFixture) {
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
 }
 

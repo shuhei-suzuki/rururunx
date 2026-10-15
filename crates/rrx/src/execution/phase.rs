@@ -328,81 +328,92 @@ mod tests {
             let (_dir, owner, unit, registry, counter) = fixture(provider).await;
             let before = counts(&owner);
             let port = registry.native_phase_port(provider).unwrap();
-            let allocation = port
-                .allocate(
-                    input(&unit, "exact original input"),
-                    Some("model".into()),
-                    Some("effort".into()),
-                )
-                .unwrap();
-            let f = allocation.facts();
-            assert_eq!(
-                (f.state_path, f.state_root, f.instance_id),
-                (owner.state_path(), owner.state_root(), owner.instance_id())
+            let result = port.allocate(
+                input(&unit, "exact original input"),
+                Some("model".into()),
+                Some("effort".into()),
             );
-            assert_eq!(
-                f.program,
-                _dir.path().join("native-counter").canonicalize().unwrap()
-            );
-            assert_eq!(
-                (f.unit_id, f.generation, f.epoch, f.unit_version),
-                (unit.id, unit.generation, unit.owner_epoch, unit.version)
-            );
-            assert_eq!(
-                (
-                    f.scope,
-                    f.provider,
-                    f.alias,
-                    f.role,
-                    f.path,
-                    f.profile_digest
-                ),
-                (
-                    &unit.scope,
-                    provider,
-                    provider,
-                    SessionRole::Executor,
-                    unit.worktree.as_path(),
-                    unit.profile_digest.as_str()
-                )
-            );
-            assert_eq!(
-                (f.model, f.effort, f.artifact),
-                (Some("model"), Some("effort"), unit.artifact_id)
-            );
-            let encoded: serde_json::Value = serde_json::from_slice(f.input_bytes).unwrap();
-            assert_eq!(encoded["payload"], f.input.payload);
-            assert_eq!(encoded["version"], f.input.version);
-            assert_eq!(
-                encoded["source_versions"],
-                serde_json::json!(f.input.source_versions)
-            );
-            let other = port
-                .allocate(input(&unit, "exact original input"), None, None)
-                .unwrap();
-            let o = other.facts();
-            assert_eq!(f.origin_id, o.origin_id);
-            assert_ne!(f.session_id, o.session_id);
-            assert_ne!(f.invocation_id, o.invocation_id);
-            assert_ne!(f.operation_id, o.operation_id);
-            assert_ne!(f.pair_id, o.pair_id);
-            drop(other);
-            drop(allocation);
-            assert_eq!(counts(&owner), before);
-            assert_eq!(
-                owner
-                    .store
-                    .lock()
-                    .unwrap()
-                    .execution_unit(unit.id)
-                    .unwrap()
-                    .version,
-                unit.version
-            );
-            assert!(
-                !counter.exists(),
-                "allocation ran a Native version helper or child"
-            );
+            if provider == "claude" {
+                let error = result.err().unwrap();
+                assert_eq!(
+                    error.downcast_ref::<crate::execution::capability::CapabilityRefusal>(),
+                    Some(
+                        &crate::execution::capability::CapabilityRefusal::ClaudeExecutorUnavailable
+                    )
+                );
+                assert_eq!(counts(&owner), before);
+                assert!(!counter.exists());
+            } else {
+                let allocation = result.unwrap();
+                let f = allocation.facts();
+                assert_eq!(
+                    (f.state_path, f.state_root, f.instance_id),
+                    (owner.state_path(), owner.state_root(), owner.instance_id())
+                );
+                assert_eq!(
+                    f.program,
+                    _dir.path().join("native-counter").canonicalize().unwrap()
+                );
+                assert_eq!(
+                    (f.unit_id, f.generation, f.epoch, f.unit_version),
+                    (unit.id, unit.generation, unit.owner_epoch, unit.version)
+                );
+                assert_eq!(
+                    (
+                        f.scope,
+                        f.provider,
+                        f.alias,
+                        f.role,
+                        f.path,
+                        f.profile_digest
+                    ),
+                    (
+                        &unit.scope,
+                        provider,
+                        provider,
+                        SessionRole::Executor,
+                        unit.worktree.as_path(),
+                        unit.profile_digest.as_str()
+                    )
+                );
+                assert_eq!(
+                    (f.model, f.effort, f.artifact),
+                    (Some("model"), Some("effort"), unit.artifact_id)
+                );
+                let encoded: serde_json::Value = serde_json::from_slice(f.input_bytes).unwrap();
+                assert_eq!(encoded["payload"], f.input.payload);
+                assert_eq!(encoded["version"], f.input.version);
+                assert_eq!(
+                    encoded["source_versions"],
+                    serde_json::json!(f.input.source_versions)
+                );
+                let other = port
+                    .allocate(input(&unit, "exact original input"), None, None)
+                    .unwrap();
+                let o = other.facts();
+                assert_eq!(f.origin_id, o.origin_id);
+                assert_ne!(f.session_id, o.session_id);
+                assert_ne!(f.invocation_id, o.invocation_id);
+                assert_ne!(f.operation_id, o.operation_id);
+                assert_ne!(f.pair_id, o.pair_id);
+                drop(other);
+                drop(allocation);
+                assert_eq!(counts(&owner), before);
+                assert_eq!(
+                    owner
+                        .store
+                        .lock()
+                        .unwrap()
+                        .execution_unit(unit.id)
+                        .unwrap()
+                        .version,
+                    unit.version
+                );
+                assert!(
+                    !counter.exists(),
+                    "allocation ran a Native version helper or child"
+                );
+            }
         }
     }
 

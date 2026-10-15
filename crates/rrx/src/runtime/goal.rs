@@ -190,6 +190,9 @@ impl GoalPlan {
                 config.agents.contains_key(&task.executor),
                 "Task executor not configured"
             );
+            crate::execution::capability::require_executor(
+                config.agents[&task.executor].provider.as_deref(),
+            )?;
             for reviewer in &task.reviewers {
                 ensure!(
                     config.agents.contains_key(reviewer),

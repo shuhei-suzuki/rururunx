@@ -462,6 +462,7 @@ impl ManagedWorkflowSources {
         ticket: DriverReadTicket,
         selected: Arc<NativePhasePort>,
     ) -> Result<SourceNativeHandoff> {
+        crate::execution::capability::require_executor(Some(selected.provider()))?;
         ticket.matches_input_view(task, record, context)?;
         ticket.validate_current_read()?;
         let workflow: WorkflowSnapshot = serde_json::from_value(record.data.clone())?;

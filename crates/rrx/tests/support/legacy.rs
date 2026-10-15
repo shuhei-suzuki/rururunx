@@ -44,13 +44,9 @@ fn config(plans: &[GoalSpec]) -> Config {
     let mut config = Config::default();
     let planned = plans.iter().flat_map(|(_, _, tasks)| tasks.iter());
     for (_, executor, _, _, _) in planned.clone() {
-        // Ingress-only config: accepted plans admit claude|codex providers.
-        // The copied legacy row carries only the executor name, exactly as
-        // `Task::new(.., executor)` wrote it.
-        let provider = match *executor {
-            "codex" => "codex",
-            _ => "claude",
-        };
+        // M0 ingress selects Codex for the Executor role. Historical aliases
+        // are copied unchanged; they never establish provider authority.
+        let provider = "codex";
         config.agents.insert(
             (*executor).into(),
             AgentConfig {

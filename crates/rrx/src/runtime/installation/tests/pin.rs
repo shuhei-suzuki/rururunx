@@ -31,7 +31,7 @@ async fn pin_c2_old_declared_cli_version_is_refused_before_native() {
     });
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     f.runtime.start().await.unwrap();
@@ -66,7 +66,7 @@ async fn pin_c3_old_observed_cli_version_is_refused_before_native() {
     });
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     f.runtime.start().await.unwrap();

@@ -169,7 +169,7 @@ fn engine(f: &ControlFixture) -> &Arc<crate::workflow::WorkflowEngine> {
     &f.runtime
         .installed
         .as_ref()
-        .unwrap_or_else(|refusal| panic!("SETUP: {}", refusal.0))
+        .unwrap_or_else(|refusal| panic!("SETUP: {}", refusal))
         .engine
 }
 

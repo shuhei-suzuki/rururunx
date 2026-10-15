@@ -87,6 +87,7 @@ pub struct AgentInfo {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
+    CapabilityUnavailable(crate::execution::capability::CapabilityRefusal),
     UnsupportedCapability,
     ExecutableMissing,
     InvalidConfiguration,

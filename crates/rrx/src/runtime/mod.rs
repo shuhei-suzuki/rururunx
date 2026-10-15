@@ -5,6 +5,7 @@ pub mod control;
 pub(crate) mod driver;
 pub mod goal;
 pub(crate) mod installation;
+pub use installation::InstallationRefusal;
 pub(crate) mod phase_effect_admission;
 mod phase_handoffs;
 mod phase_jobs;

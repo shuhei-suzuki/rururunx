@@ -10,7 +10,7 @@ fn config() -> Config {
     c.agents.insert(
         "worker".into(),
         AgentConfig {
-            provider: Some("claude".into()),
+            provider: Some("codex".into()),
             command: vec!["/bin/true".into()],
             ..Default::default()
         },
@@ -891,13 +891,13 @@ pub(crate) async fn legacy_fixture_with_siblings(
         .chain(siblings.iter().map(|s| &s.task))
         .flat_map(|t| std::iter::once(t.executor).chain(t.reviewers.iter().copied()));
     for agent in agents {
-        // Ingress-only config: accepted plans admit claude|codex providers.
-        // The copied legacy row carries only the executor name, exactly as
-        // `Task::new(.., executor)` wrote it (e.g. "grok").
-        let provider = match agent {
-            "codex" => "codex",
-            _ => "claude",
-        };
+        // Ingress-only M0 roles. Migration preserves each historical alias;
+        // its spelling is not a provider identity or an execution permission.
+        let is_executor = tasks
+            .iter()
+            .chain(siblings.iter().map(|s| &s.task))
+            .any(|t| t.executor == agent);
+        let provider = if is_executor { "codex" } else { "claude" };
         config.agents.insert(
             agent.into(),
             AgentConfig {

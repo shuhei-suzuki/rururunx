@@ -12,11 +12,14 @@ pub(super) enum SkipReason {
     CurrentTaskBounded,
     BoundedReread,
     Composition,
+    Installation(super::installation::InstallationRefusal),
+    Capability(crate::execution::capability::CapabilityRefusal),
     ValidateFor,
     Plan,
     /// The Project stores a Task limit other than the fixed MVP value.
     ProjectLimitUnsupported,
 }
+#[derive(Debug)]
 pub(super) enum AdmitOutcome {
     Claimed,
     Skipped(SkipReason),
@@ -35,6 +38,9 @@ impl Runtime {
             self.service_running(),
             "Runtime is not accepting Task Drivers"
         );
+        if let Err(refusal) = crate::execution::capability::require_m0_capabilities() {
+            return Ok(AdmitOutcome::Skipped(SkipReason::Capability(refusal)));
+        }
         let current = match self
             .owner
             .store

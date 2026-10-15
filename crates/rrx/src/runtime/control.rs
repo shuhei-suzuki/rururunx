@@ -341,6 +341,7 @@ pub enum ControlResponse {
         service_running: bool,
         requested_global_sessions: usize,
         requested_tasks_per_project: usize,
+        admission_refusal: AdmissionRefusal,
     },
     Unavailable {
         request_id: Uuid,
@@ -467,6 +468,13 @@ impl HumanIngress {
         ensure!(!request.request_id.is_nil(), "control request ID missing");
         Ok(())
     }
+}
+/// Finite status classification; a diagnostic is never an admission capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AdmissionRefusal {
+    Installation(super::installation::InstallationRefusal),
+    Capability(crate::execution::capability::CapabilityRefusal),
 }
 impl Runtime {
     /// Read-only Project routing by selector or CWD: the same route checks
@@ -755,6 +763,12 @@ impl Runtime {
                 epoch: self.owner.epoch(),
                 operational: false,
                 service_running: self.service_running(),
+                admission_refusal: match &self.installed {
+                    Err(refusal) => AdmissionRefusal::Installation(*refusal),
+                    Ok(_) => AdmissionRefusal::Capability(
+                        crate::execution::capability::CapabilityRefusal::M0CapabilityChainUnavailable,
+                    ),
+                },
                 requested_global_sessions: self.config.scheduler.global_max_sessions,
                 requested_tasks_per_project: crate::config::MVP_PROJECT_TASKS,
             },

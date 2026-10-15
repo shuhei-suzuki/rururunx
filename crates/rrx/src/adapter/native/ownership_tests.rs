@@ -99,3 +99,52 @@ async fn selected_port_observes_only_original_live_vtable_and_origin() {
     assert!(!replacement_counter.exists());
     drop(replacement);
 }
+
+/// EX-1: allocation refuses a Claude Executor before creating provisional assets.
+#[tokio::test]
+async fn claude_executor_allocation_refuses_before_provisional_assets() {
+    let (_dir, owner, task) = execution::results::tests::fixture().await;
+    let mut config = Config::default();
+    config.agents.insert(
+        "codex".into(),
+        AgentConfig {
+            provider: Some("claude".into()),
+            command: vec![
+                execution::native::tests::program(_dir.path(), "claude")
+                    .to_string_lossy()
+                    .into(),
+            ],
+            ..Default::default()
+        },
+    );
+    let registry = AgentRegistry::from_managed_config(&config, owner.clone()).unwrap();
+    let port = registry.native_phase_port("codex").unwrap();
+    let (unit, _) = execution::attempts::AttemptManager::new(owner.clone())
+        .prepare(task.id, "claude", "implement", None)
+        .await
+        .unwrap();
+    let mut input = execution::native::tests::input(&unit, "complete");
+    input.agent = "codex".into();
+    let before = owner
+        .store
+        .lock()
+        .unwrap()
+        .managed_effects(unit.id)
+        .unwrap()
+        .len();
+    let error = port.allocate(input, None, None).err().unwrap();
+    assert_eq!(
+        error.downcast_ref::<execution::capability::CapabilityRefusal>(),
+        Some(&execution::capability::CapabilityRefusal::ClaudeExecutorUnavailable)
+    );
+    assert_eq!(
+        owner
+            .store
+            .lock()
+            .unwrap()
+            .managed_effects(unit.id)
+            .unwrap()
+            .len(),
+        before
+    );
+}

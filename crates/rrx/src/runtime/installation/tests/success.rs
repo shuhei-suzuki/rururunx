@@ -90,7 +90,7 @@ async fn sc1_success_lane(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -346,7 +346,7 @@ async fn sc7_ordinary_failure(provider: &str) {
     let mut f = fixture_mode(provider, true, Some(scenario), |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -444,7 +444,7 @@ async fn sc2_late(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -637,7 +637,7 @@ async fn sc3p_parent_change(provider: &str, order: Sc3pOrder) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (goal, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -754,7 +754,7 @@ async fn scu_unknown(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -871,7 +871,7 @@ async fn br1(provider: &str, site: &'static str, mark: &'static str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -972,7 +972,7 @@ async fn br2(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (goal, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -1053,7 +1053,7 @@ async fn br3(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (goal, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -1159,7 +1159,7 @@ async fn sc6_requirements(provider: &str) {
     });
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (goal, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -1288,7 +1288,7 @@ async fn sc8_graph(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -1379,7 +1379,7 @@ async fn sc4_uncertain(
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -1470,7 +1470,7 @@ async fn sc3_conflict(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -1565,7 +1565,7 @@ async fn sc3_lock(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -1664,7 +1664,7 @@ async fn retained_completion(
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -1761,7 +1761,7 @@ async fn project_tasks(f: &mut ControlFixture, executors: &[&str]) -> Vec<Task> 
 async fn sc10_four_projects_close_independently() {
     let mut f = fixture_mode("claude", true, None, codex_worker);
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let tasks = project_tasks(
         &mut f,
@@ -1884,7 +1884,7 @@ async fn sc10_cross_project_quota_drift_replans_from_fresh_images() {
     use crate::runtime::phase_jobs::{QUOTA_APPLY, counted};
     let mut f = fixture_mode("claude", true, None, codex_worker);
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let tasks = project_tasks(&mut f, &["worker-codex", "worker-codex"]).await;
     let (a, b) = (&tasks[0], &tasks[1]);
@@ -1954,7 +1954,7 @@ async fn sc10_own_lease_change_refuses_without_replan() {
     use crate::runtime::phase_jobs::{QUOTA_APPLY, counted};
     let mut f = fixture_mode("claude", true, None, codex_worker);
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let tasks = project_tasks(&mut f, &["worker-codex"]).await;
     let task = &tasks[0];
@@ -2009,7 +2009,7 @@ async fn sc9a_stop(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -2084,7 +2084,7 @@ async fn sc11_fence(provider: &str, parent_edit: bool) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (goal, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -2195,7 +2195,7 @@ async fn sc5d_gap(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -2249,7 +2249,7 @@ async fn sc4n(provider: &str, fault: crate::state::managed_binding::fault::Commi
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -2329,7 +2329,7 @@ async fn sc4c(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -2408,7 +2408,7 @@ async fn sc7_killed(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -2498,7 +2498,7 @@ async fn sc9c(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -2567,7 +2567,7 @@ async fn sc9b(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];
@@ -2634,7 +2634,7 @@ async fn sc9d(provider: &str) {
     let mut f = fixture_mode(provider, true, None, |_| {});
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let (_, tasks) = accept(&f, 1).await;
     let task = &tasks[0];

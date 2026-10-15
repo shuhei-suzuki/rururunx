@@ -85,7 +85,7 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation, prepara
             std::os::unix::net::UnixListener::bind(f._dir.path().join("rn-ipc-diagnostic.sock"));
         panic!(
             "SETUP: {}; fixture-local Unix bind: {diagnostic:?}",
-            refusal.0
+            refusal
         );
     }
     let port = f

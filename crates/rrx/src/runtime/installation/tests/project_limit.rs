@@ -421,7 +421,7 @@ async fn c_s2a_held_phase_operation_alone_keeps_second_task_out() {
     let mut f = fixture("claude", true);
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let adapter = f
         .runtime

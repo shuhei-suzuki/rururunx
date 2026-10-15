@@ -97,7 +97,7 @@ pub(super) async fn committed(provider: &str, class: crate::config::WorkflowClas
     let mut f = recording_fixture(provider);
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
-        panic!("SETUP: {}", refusal.0);
+        panic!("SETUP: {}", refusal);
     }
     let root = f.project.root.clone();
     let class_name = match class {

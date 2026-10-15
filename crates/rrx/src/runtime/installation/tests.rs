@@ -23,6 +23,7 @@ mod project_limit;
 mod read_surface;
 mod success;
 mod sweep;
+mod u2;
 
 fn fixture(provider: &str, declared: bool) -> ControlFixture {
     fixture_with(provider, declared, |_| {})
@@ -150,7 +151,7 @@ async fn finish(f: ControlFixture) {
 
 #[tokio::test]
 async fn c1_installed_graph_reuses_same_engine_registry_and_port_without_cli_launch() {
-    let f = fixture("claude", true);
+    let f = fixture("codex", true);
     let (_, tasks) = accept(&f, 1).await;
     f.runtime.start().await.unwrap();
     let guard = f.runtime.control_admission.lock().await;
@@ -179,7 +180,7 @@ async fn c1_installed_graph_reuses_same_engine_registry_and_port_without_cli_lau
 
 #[tokio::test]
 async fn c2_paired_undeclared_protocol_fixture_has_no_claim_or_helper_effects() {
-    let f = fixture("claude", false);
+    let f = fixture("codex", false);
     let (_, tasks) = accept(&f, 1).await;
     f.runtime.start().await.unwrap();
     let guard = f.runtime.control_admission.lock().await;

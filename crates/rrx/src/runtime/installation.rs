@@ -326,7 +326,21 @@ pub(super) struct InstalledNativeGraph {
     engine: Arc<WorkflowEngine>,
 }
 /// Bounded static diagnostic only; no retry/availability flag or authority.
-pub(super) struct InstallationRefusal(Box<str>);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallationRefusal {
+    Registry,
+    Sources,
+    Gates,
+    Verifier,
+    Engine,
+}
+impl std::fmt::Display for InstallationRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "managed {self:?} installation refused")
+    }
+}
+impl std::error::Error for InstallationRefusal {}
 impl InstalledNativeGraph {
     pub(super) fn new(
         owner: Arc<RuntimeOwner>,
@@ -334,22 +348,22 @@ impl InstalledNativeGraph {
     ) -> std::result::Result<Self, InstallationRefusal> {
         let registry = Arc::new(
             crate::adapter::AgentRegistry::from_managed_config(config, owner.clone())
-                .map_err(|_| InstallationRefusal("managed Registry installation refused".into()))?,
+                .map_err(|_| InstallationRefusal::Registry)?,
         );
         let sources = Arc::new(
             ManagedWorkflowSources::new(owner.clone(), config.clone())
-                .map_err(|_| InstallationRefusal("managed Sources installation refused".into()))?,
+                .map_err(|_| InstallationRefusal::Sources)?,
         );
         let gates = Arc::new(
             crate::execution::workflow_gates::ManagedWorkflowGates::new(
                 owner.clone(),
                 sources.clone(),
             )
-            .map_err(|_| InstallationRefusal("managed Gates installation refused".into()))?,
+            .map_err(|_| InstallationRefusal::Gates)?,
         );
         let verifier =
             crate::execution::verification::ManagedVerifier::new(owner.clone(), sources.clone())
-                .map_err(|_| InstallationRefusal("managed Verifier installation refused".into()))?;
+                .map_err(|_| InstallationRefusal::Verifier)?;
         let engine = WorkflowEngine::new(
             owner.store(),
             registry.clone(),
@@ -358,7 +372,7 @@ impl InstalledNativeGraph {
             gates.clone(),
         )
         .and_then(|engine| engine.with_verifier(Arc::new(verifier)))
-        .map_err(|_| InstallationRefusal("managed Engine installation refused".into()))?;
+        .map_err(|_| InstallationRefusal::Engine)?;
         Ok(Self {
             registry,
             sources,
@@ -372,10 +386,16 @@ impl Runtime {
         self: &Arc<Self>,
         task: &Task,
     ) -> Result<InstalledDriverComposition> {
+        crate::execution::capability::require_executor(
+            self.config
+                .agents
+                .get(&task.executor)
+                .and_then(|a| a.provider.as_deref()),
+        )?;
         let graph = self
             .installed
             .as_ref()
-            .map_err(|refusal| anyhow::anyhow!("{}", refusal.0))?;
+            .map_err(|refusal| anyhow::Error::new(*refusal))?;
         ensure!(
             self.service_running(),
             "installed Runtime is not accepting Drivers"
