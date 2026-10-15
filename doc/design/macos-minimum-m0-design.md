@@ -1,8 +1,10 @@
 # macOS 最小一本道 M0: capability probe 設計案
 
-状態: **DRAFT / A3 は旧 API の機能廃止として整理する方針に確定 / 両系の独立確認・オーナー設計承認済み、実装待ち**。本番コード・テストは変更していない。
+状態: **DRAFT / 役割入れ替え改訂（2026-10-15）はオーナー再承認待ち** / `c6413082`の全体設計承認とA1〜A6は維持する。M0-U1（Claude strict wire decoder／metrics、O03、I01〜I04、共有queue予算補正）は実装・限定検証・独立修正確認済み（`doc/verification/macos-minimum-m0-u1.md`）で、役割入れ替え後はReviewer側のdecoderとして使う。それ以外のM0本番実装・検証は未着手。
 
 オーナー全体設計承認（2026-10-13）: 固定HEAD `c64130828453cb38b742c9b31d08d9e488e85ee1` の3文書を承認し、必須検証を維持してM0実装へ進むとの明示回答を取得した。A1／A2／A4／A5／A6を含む設計承認であり、実装・実CLI適合・controls／mutants・両OS／実Mac受入・実装レビュー・マージ条件の免除ではない。
+
+役割入れ替え改訂（オーナー決定 2026-10-15）: rururunxの役割をオーナーの日常開発に合わせ、**CodexをExecutor、ClaudeをReviewer**とする。`c6413082`の承認はClaude Executor＋Codex Reviewerを前提としていた。A1〜A6の他の決定、R1、M4のruntime自動merge、public `rrx-e2e-sandbox`、安全規則、M0→M5対応、M0実Mac受入前にM1へ進まない順序は変えない。再承認の対象は§0の差分一覧と§13のB1〜B4だけである。本稿は執筆成果であり、レビュー票・承認・実装・検証結果ではない。
 
 公開sourceのbaseline: `cb9c17e023601b3dbe721495bbdf50c9f65d92bb`。過去の修正入力: `d452675989df799d29931c7d4f19d73d6b387550`。前回の局所修正はclean固定HEAD `2c9fb68f6f6544ef9c8b3b53c7f936aec2e354e2`から設計草案へ取込済み。今回のR5後補修本文案の入力はclean固定HEAD `0fadf545c45558a05d89377bcb073009875bdb01`であり、設計草案へ取込済み・固定HEAD b746dfd4の補修diffはOpus承認済みである。baselineと各執筆入力HEADを混同しない。
 
@@ -26,6 +28,27 @@ Sol R4は正式なREQUEST CHANGES。Opus R4はCLI child exit 0でもmodelUsage�
 
 基準と状態は要件に同じ。本稿の型名は実装予定の契約名であり、存在する実装・取得済み証拠を意味しない。
 
+### 0. 役割入れ替えの差分一覧（`c6413082`比）
+
+オーナーが再承認するのは本表の差分だけである。表にない決定は`c6413082`の承認内容のまま変えない。
+
+| ID | 項目 | `c6413082` | 本改訂 | 承認 |
+|---|---|---|---|---|
+| D-01 | 役割 | Claude Executor＋Codex Reviewer | Codex Executor＋Claude Reviewer | B1 |
+| D-02 | M0で提供するExecutor | Claude（最初のExecutorまで） | Codex（最初のExecutorまで、§8a）。ClaudeをExecutorとする設定はinstallationで型付き拒否（helper・Unit・Held 0） | B1 |
+| D-03 | Codexモデル実行 | M0範囲外。CodexはS／Pの握手だけ | Executorのthread/turn実行をM0へ入れる（§8a） | B4 |
+| D-04 | Codex approval方針・sandbox | 規定なし。本番Executorのthread/startはどちらも送らずCLIの継承設定に従う | 承認要求を出さない固定approval方針、Worktree＋Unit temp／output／cacheだけのworkspace-write、network無効、config上書きなし、応答一致確認、rrxの自動付与0、server request着信はUnknown→Held（§8a） | B2 |
+| D-05 | Claude P（A1のcanary、A2のProbe条件） | Executor準備としてM0で本番化 | Reviewer準備の検査として定義を維持し、本番producer・実境界・受入はM3。M0はProbe producerを追加しない | B3 |
+| D-06 | Probe argvのplan mode | Executor argvへplan modeを追加 | Reviewerの本番argvが既に`--permission-mode plan`を含み、Probeはそれをそのまま使う | B3 |
+| D-07 | SのClaude argv | `command_argv(claude, Executor, …)` | `command_argv(claude, Reviewer, …)`。plan mode付きの実argvをSで確認 | B1 |
+| D-08 | AC-13 owner-run | 全aliasのS、Claude P、Claude Implement、SC-N | 全aliasのS、Codex P、Codex Implement＋retained capture、SC-N。ClaudeはSとReviewer argv | B4 |
+| D-09 | 実producerの予算境界 | Claude Executor（B237、Prepared252、初回入力255） | Codex Executor（B232、prefix248、初回入力256）。Claude Reviewerは純粋計算で、実境界はM3 | B3 |
+| D-10 | controls | Claude Probe系をM0で実施 | CL-1／CL-3／CL-6／CL-8／CL-9、Q-1のProbe配置、Q-2、I-PのProbe分をM3へ移す。Codex Executor群EX-1〜EX-6を追加 | B4 |
+| D-11 | spawn経路 | 既存spawn | P4（`79e4d273`）の`rrx-spawn-hygiene`消費関数だけ。U0でrebaseする（§12a） | 事実反映（承認不要） |
+| D-12 | M0-U1差分 | Executor側のClaude decoder | 同じ差分をReviewer側（S initialize、M3のSession）のdecoderとして保持 | 事実反映（承認不要） |
+
+変えないもの: capability probeによるpin撤廃、R1、S全alias gate、migration v12とjournal、private path、Codex finite wire・schema gate（A5／A6）、rate契約、旧API機能廃止（A3）と#19、auth／CAS／owner／marker／fencing／process custody、禁止事項（Task.version authority、test専用authority constructor、SQL成功seed、`allow(dead_code)`、skip／ignore／直列化、timeoutだけの修正、warning抑止）、M0→M5対応とM1開始条件。
+
 ### 1. Producerからconsumerまでの鎖
 
 | producer／契約 | consumer |
@@ -34,14 +57,14 @@ Sol R4は正式なREQUEST CHANGES。Opus R4はCLI child exit 0でもmodelUsage�
 | Sのfreshな全alias観測、既知settlement、宣言digest、program identity | メモリ上のstartup gate、Task admission、installed composition。journalから合格を再構成しない。 |
 | 静的profile／Frame digest／既存hook宣言検査 | `NativeCompatStatic`。番号比較を含めない。 |
 | SAME actorのVersion、CodexではSchema／Handshake、Git×13の閉じた履歴 | prefix qualification、command、no-dispatch、quota計画。 |
-| ClaudeのSAME prefix・command・quota Admit・Probe settlement | `ClaudeProbeQualified`。`issue_prepared`が必須とする。 |
+| ClaudeのSAME prefix・command・quota Admit・Probe settlement | `ClaudeProbeQualified`。`issue_prepared`が必須とする。Claude Reviewer Pに属し、producerと配線はM3で実装する。 |
 | provider別の最終inventory末尾 | Prepared、transport登録、quota closure。ClaudeはProbeを含む末尾、Codexはprefix末尾。 |
 | 共通wire decoderが生成するvalidated frame | 所有フィルタ、RunState、quota consumer、answer collector、approval consumer。未検査`Value`を迂回入力しない。 |
 
 Pの順序は次のとおりとする。
 
-- Codex：準備commit→static→Version→Schema→Handshake→Git×13→command→no-dispatch→quota→Prepared→transport。
-- Claude：準備commit→static→Version→Git×13→command→no-dispatch→quota Admit→Probe→Prepared→transport。
+- Codex（Executor、M0で本番化）：準備commit→static→Version→Schema→Handshake→Git×13→command→no-dispatch→quota→Prepared→transport→§8aの本番Session。
+- Claude（Reviewer、M3で本番化）：準備commit→static→Version→Git×13→command→no-dispatch→quota Admit→Probe→Prepared→transport。M0はこの順序を契約として保持するが、Probe producerを追加しない。
 
 Claude Probeは専用custody slotに保持する。prefixの先頭Versionと13本のGit順序を変えない。no-dispatch／quota admissionは`Prefix`末尾を要求し、Probe intentがまだないことを確認する。Prepared／transportはClaudeの`Probed`末尾を要求する。closureはProbe intentなしならPrefix、既知settlementありならProbed、未確定intentありなら成立させない。
 
@@ -49,7 +72,7 @@ authorityは既存のowner／marker／epoch／actor原本から生成する。Ta
 
 ### 2. Sのcustody、path、journal
 
-S専用custodyは既存`RetainedRawProcess`を保持し、intent commit後にだけspawnする。spawn後のadoptをpipe／identity検査より先に行う。#19のcustody poolを流用しない。
+S専用custodyは既存`RetainedRawProcess`を保持し、intent commit後にだけspawnする。spawn後のadoptをpipe／identity検査より先に行う。#19のcustody poolを流用しない。spawnはP4の`rrx-spawn-hygiene`消費関数（`spawn_tokio`等）だけを通し、`clippy.toml`の直接spawn禁止と`OwnedProcess::spawn(Command)`の所有移動を維持する。macOSでpre_execにより全spawnがforkする点は#98の残余リスクであり、M0で解消したとは扱わない。
 
 `RetainedRawProcess::pipes`は現在stdout／stderrだけを返すため、stdinを保持・一度だけcloseできる所有型へ拡張する。stdin、stdout、stderrの移動とclose責任をcustody内に一本化し、非同期taskがstdinを失って停止不能になる構造を作らない。
 
@@ -60,7 +83,7 @@ Sはdaemon継承環境と専用の空cwdを使い、既存の設定・認証・h
 | provider | stepとargv／送信 | 合否・停止点 |
 |---|---|---|
 | Codex | Versionは`--version`。Schemaは`app-server generate-json-schema --experimental --out <new-dir>`。Handshakeは`command_argv(codex, Executor, model, effort, None)`の`app-server --listen stdio://`。 | Schema gate後、initialize→paramsなしinitialized→account/read（refreshToken=false）→environment/status（local ID）→account/rateLimits/read。chatgpt／ready／strict-valid rateを確認し、thread/start／turn/startを送らず停止。 |
-| Claude | Versionは`--version`。Handshake stepにinitialize観測を記録。`command_argv(claude, Executor, 設定model, 設定effort, fresh UUID)`の`-p --input-format stream-json --output-format stream-json --verbose --session-id <UUID> --permission-prompt-tool stdio --settings {"forceLoginMethod":"claudeai"}`に、存在するmodel／effortを既存の有界argv検査で付加する。 | 専用request IDのinitialize（既存hooks=null）だけ送信し、相関したsuccess control_responseを検査して停止。user／canary／権限応答は0。Sでsystem-init／resultを必須にも観測済みにもしない。 |
+| Claude（Reviewer） | Versionは`--version`。Handshake stepにinitialize観測を記録。`command_argv(claude, Reviewer, 設定model, 設定effort, fresh UUID)`の`-p --input-format stream-json --output-format stream-json --verbose --session-id <UUID> --permission-prompt-tool stdio --settings {"forceLoginMethod":"claudeai"}`に、存在するmodel／effortを既存の有界argv検査で付加し、末尾に`--permission-mode plan`を含む。実argvにplan modeがなければ拒否する。 | 専用request IDのinitialize（既存hooks=null）だけ送信し、相関したsuccess control_responseを検査して停止。user／canary／権限応答は0。Sでsystem-init／resultを必須にも観測済みにもしない。 |
 
 Claudeはepoch・aliasごとのfresh session UUIDを用い、opaque request IDと区別する。SでReviewer用authorityを作らない。Codexは3step、ClaudeはVersion／Handshakeの2stepで、journalの96行上限を維持する。実argv／空cwd／停止が成立しなければBLOCKEDとし、モデル入力や設定迂回で成立させない。
 
@@ -184,11 +207,13 @@ Codexは`232+Version1+Schema1+Handshake1+Git13=248`。Claudeは`237+Version1+Git
 
 同じbudget定数をVersion intent、metadata helper、Git reserve、Probe intent、Prepared、registration、setup/input consumerへ渡す。byte reserveは追加helperの最大imageも含む。
 
-境界positiveとB+1 negativeは実installed producerが生成する履歴で検査する。`vec![row; N]`やSQL seedだけでは予算契約の正例にならない。M0 は現に提供する Executor の実 producer で境界を検証する。Reviewer の同一予算政策は純粋計算として照合するが、実 Reviewer helper 鎖の境界合格は M3 で検証する。純粋計算を実 Reviewer 起動の成功証明としない。
+境界positiveとB+1 negativeは実installed producerが生成する履歴で検査する。`vec![row; N]`やSQL seedだけでは予算契約の正例にならない。M0 は現に提供する Codex Executor の実 producer（B232→prefix248、Prepared上限248、初回入力256）で境界を検証する。Claude Reviewer の同一予算政策（Prepared上限252、初回入力255）は純粋計算として照合するが、実 Reviewer helper 鎖の境界合格は M3 で検証する。純粋計算を実 Reviewer 起動の成功証明としない。
 
-### 6. Claude Probeとstrict wire
+### 6. Claude Reviewer Probeとstrict wire
 
-Probeは本番`command_argv`を使い、専用session UUID、同じmodel／effort／overlay／worktreeを用いる。Executorにはplan modeを追加する。既存設定・認証・hookを変更・スキップしない。
+適用範囲: ClaudeはReviewerである。本節のProbe（canary文面、nonce、Probe中の拒否、成功後tail、§10のcanary期限、§9のcanary Known closure）はClaude Reviewer Pの契約であり、本番producer・実境界・受入はReviewer helper鎖を提供するM3で行う。M0はProbe producerを追加せず、Probe合格を記録しない。共通strict decoder、rate decoder selfcheck、UUID内容digest、telemetry契約はM0の範囲に残し、SのClaude initialize応答と、M3のReviewer Sessionが使う本番Claude Session経路のdecoderとして維持する（M0-U1の実装済み部分を含む）。M0の設定ではClaudeの本番Sessionを起動しないため、本番Session向け契約はM0-U1の実child検査とM3受入で扱い、owner-runの観測には数えない。
+
+Probeは本番`command_argv(claude, Reviewer, …)`を使い、専用session UUID、同じmodel／effort／overlay／worktreeを用いる。Reviewer argvは既に`--permission-mode plan`を含む（`native/prepared.rs::command_argv`）ため、Probeはplan modeを追加・除去せず、実argvにplan modeがなければ拒否する。既存設定・認証・hookを変更・スキップしない。
 
 canary入力は次の固定文面とする。
 
@@ -223,7 +248,7 @@ Probe中のtool・権限要求・tool result・background task・注入turnは�
 
 全rowのtypeは表のtop type、system rowのsubtypeは表の名前を要求する。共通optional uuidはUUID、session_idはpresentなら有界string（init／assistant／result／rateでは必須）。optional originはnullまたはobjectで、非nullはkindを要求する。assistant.errorの12値は`authentication_failed/oauth_org_not_allowed/account_on_hold/billing_error/rate_limit/overloaded/invalid_request/model_not_found/server_error/max_output_tokens/cloud_credential_error/unknown`。現consumerがhint分類に使う4値とこのwire集合を混同しない。api_error_statusの公開numberに対するuint16 refinement、usageの非負性、配列上限はrrx契約でありlive適合は未証明。欠落とnullはdecoder上で別状態を保持する。今回の局所実装ではapi_error_statusをPresence<uint16>としてValidatedClaudeResultに保持し、RunStateのauth／capacity分類はこの検査済み値を消費する。整数値、整数decimal、整数exponentの業務分類を揃え、分類結果からquota／retry authorityを作らない。本番Sessionのcorrelated initialize responseはbootstrap専用consumerでoptional session_idのpresent時一致を検査し、optional UUIDの内容履歴をnative_input後の同じRunStateへ引き継ぐ。responseはinit／input ACKではなく、system/initの既存所有・cwd検査を代替しない。O03のnormal-loop control_response拒否はUUID再送判定より先に維持する。
 
-今回の局所実装の本番Claude byte経路はLinesの元bytes→有限strict検査→元number lexemeの有界な保持→検査済み整数／UUID内容digestとする。共有strict_json::decodeのValue契約は変更しない。Claude専用の数値補助は元decimal／exponentの十進係数と指数から整数性・uint64域を判定し、整数float受理、u64::MAX、absent／null／zeroを維持する。UUID digestは未知fieldを含む元数値の正確な十進内容、key順序非依存、UUID正規化を消費する。従来の整数Numberとfloat Numberの表現区別、float signed zeroの区別は保持する。同じfloat数値の等価なdecimal／exponent表記は正規化し、f64への丸めでしか同一にならない異なる元数値は同一内容にしない。非整数用の有限非負f64 fieldとrate resetsAtの既存整数表現契約は変更しない。Value-only入口は供給されたValueだけを検査でき、上流で失われた精度を復元したとは扱わない。startup queueはValueと元bytesを対で保持する。既存128件上限とencoded Valueの8MiB上限を保持し、元bytesにも独立した8MiB上限を適用する。短い整数exponentがValue serializationで長くなる場合に旧encoded上限を緩めず、長い元表記も別予算で有界化する。dequeueは保存したencoded長と元bytes長から双方を回復する。これは本番Claudeと同じLinesを使うCodex queueにも及ぶ。元bytesだけで旧encoded計数を置き換えた9937案はこの後続局所補正で訂正し、元案と未検証の履歴は保存する。S/P資格付けは引き続き未実装で、将来のbyte producerも元bytes入口を独立に検査する必要がある。以上は適用した局所実装のsource記録であり、compile・controls・source mutants・独立レビューは未実施である。full M0の未完了項目を閉じない。
+今回の局所実装の本番Claude byte経路はLinesの元bytes→有限strict検査→元number lexemeの有界な保持→検査済み整数／UUID内容digestとする。共有strict_json::decodeのValue契約は変更しない。Claude専用の数値補助は元decimal／exponentの十進係数と指数から整数性・uint64域を判定し、整数float受理、u64::MAX、absent／null／zeroを維持する。UUID digestは未知fieldを含む元数値の正確な十進内容、key順序非依存、UUID正規化を消費する。従来の整数Numberとfloat Numberの表現区別、float signed zeroの区別は保持する。同じfloat数値の等価なdecimal／exponent表記は正規化し、f64への丸めでしか同一にならない異なる元数値は同一内容にしない。非整数用の有限非負f64 fieldとrate resetsAtの既存整数表現契約は変更しない。Value-only入口は供給されたValueだけを検査でき、上流で失われた精度を復元したとは扱わない。startup queueはValueと元bytesを対で保持する。既存128件上限とencoded Valueの8MiB上限を保持し、元bytesにも独立した8MiB上限を適用する。短い整数exponentがValue serializationで長くなる場合に旧encoded上限を緩めず、長い元表記も別予算で有界化する。dequeueは保存したencoded長と元bytes長から双方を回復する。これは本番Claudeと同じLinesを使うCodex queueにも及ぶ。元bytesだけで旧encoded計数を置き換えた9937案はこの後続局所補正で訂正し、元案と未検証の履歴は保存する。S/P資格付けは引き続き未実装で、将来のbyte producerも元bytes入口を独立に検査する必要がある。以上はM0-U1として実装した局所差分であり、固定source `a61d038d`でfmt・clippy・対象tests、7件のsource operator kill／復元、Sol修正確認（APPROVE）を`doc/verification/macos-minimum-m0-u1.md`に記録した。full workspace test、両OS CI、installed S/P、owner-runは未完了であり、full M0の未完了項目を閉じない。役割入れ替え後もこの差分はClaude Reviewer側のdecoderとして保持する。
 
 result telemetryの公開型はsuccess/error両枝で必須duration_api_ms:number、total_cost_usd:number、usage:NonNullableUsageである。NonNullableUsageではここで消費するinput_tokens／output_tokens／cache_read_input_tokens／cache_creation_input_tokensはnumberでnull不可。rrxは既存のnullable観測を維持するため、usage容器と6項目をoptional nullableとして受理する公開型との差を明記する。usage非nullはobject、各4カウンタおよびduration_api_msの非null値は有限・非負・整数・uint64域、total_cost_usdの非null値は有限・非負f64域へのchecked変換を要求する。absent／null／0は別状態、present wrongtype、負数、fractional counter、overflowはProtocolErrorであり欠落へ丸めない。未消費のSDK metrics全体を新しいrequired契約へ拡大しない。
 
@@ -260,6 +285,8 @@ Claude rate eventはforeign sessionでもstrict decodeを先に行う。正常fo
 ### 7. Codexの有限wire契約
 
 rrx側に`CodexWireContractV1`を定義し、typed decoder、schema gate、S/P、本番consumerで共用する。CLIのruntime出力から型・required・enumを作り直さない。ignored通知も同じdecoderを通す。
+
+適用範囲: 本節の契約は、全Codex aliasのS、Codex Executor P（Schema／Handshake）、§8aのCodex Executor本番Sessionで同じdecoderとして使う。Claude Reviewerには適用しない。
 
 以下の表の記法は、`s=string`、`b=boolean`、`i=int64`、`T=threadId:s`、`U=turnId:s`、`I=itemId:s`、`[]`は型付きarray。IDには既存の有界ID制約を追加する。表は**全83通知の必須payload**を定義する。同じ行にある複数methodは同一形を共有する。
 
@@ -447,7 +474,7 @@ agentMessage.phaseはoptional nullable、presentならcommentary／final_answer�
 
 JSON-RPC envelopeの判別keyはid／method／params／result／errorであり未宣言追加field扱いしない。受信94 methods（server request 11／通知83）は、requestならid＋method＋params、notificationならmethod＋paramsかつidなしを要求する。success responseはid＋resultかつmethod／params／errorなし、error responseはid＋errorかつmethod／params／resultなしを要求する。送信requestのparams presenceは各source branchのrequiredに従い、`account/rateLimits/read`はid／method required・params optional nullableで、現rrxのnative.rs:2158は`{}`を送る。送信ClientNotificationの`initialized`はparamsなしであり、optional nullableなrequest paramsとは別契約である。送信使用6 methodsの既存wire検査とCX-3／CX-4を緩めない。idは有界stringまたはsource整数域でnull不可、methodは有限method。result＋error、method＋result/error、id:null、initialized＋paramsを拒否し、result:null等のpayload nullabilityは選択済response型で別検査する。判別key以外の追加fieldはclosed objectでない既知位置だけ既存のbounded保持規則を適用する。
 
-server requestは既知11種すべてのparamsを先に検査する。本番で対応する承認2種だけ既存ledgerへ渡し、残り9種は既存の非対応拒否を維持する。M0で権限応答能力を増やさない。
+server requestは既知11種すべてのparamsを先に検査する。S/P握手では全種を拒否する。M0のCodex Executor Sessionは§8aの固定approval方針で承認要求を生じさせない契約とし、着信した11種はparams検査後に既存ledgerへ渡さず、応答も送らずにUnknown→Heldへ接続する。既存ledgerの承認2種対応と`submit_approval`経路は#10の範囲として存置し、M0で呼出し元・権限応答能力を増やさない。
 
 ### 8. Schema gateと実握手
 
@@ -473,14 +500,14 @@ PのSchema出力先はSAME Unitの既存tmp直下にrrxが新規作成する専�
 
 `initialized`はschema上methodしか宣言しない。S/P／本番producerを`{"method":"initialized"}`へ変更し、`params:{}`を送らない。これをschemaの例外で救済しない。
 
-送信契約はinitializeのclientInfo／experimentalApi、account/readのrefreshToken=false、environment/statusのlocal ID、rate readの空params、thread/startのcwd／environments／任意model／Reviewer sandbox、turn/startのthreadId／text input／任意effortを、実producerと共通の型で表す。
+送信契約はinitializeのclientInfo／experimentalApi、account/readのrefreshToken=false、environment/statusのlocal ID、rate readの空params、thread/startのcwd／environments／任意model／Reviewer sandbox／Executorの固定approval方針・sandbox（§8a）、turn/startのthreadId／text input／任意effort／Executorのsandbox policy（§8aでcatalogに宣言がある場合）を、実producerと共通の型で表す。
 
 responseは以下も対象にする。
 
 - Initialize：4必須文字列と既存platform／absolute path業務条件。
 - Account：requiresOpenaiAuth boolean、nullable accountのapiKey／chatgpt／amazonBedrock枝。資格付けはchatgptのみ。
 - Environment：ready／pending／disconnected／unknown。資格付けはreadyのみ。
-- ThreadStart：thread、cwd、modelProvider、model、approvalPolicy、approvalsReviewer、sandbox等の必須構造。
+- ThreadStart：thread、cwd、modelProvider、model、approvalPolicy、approvalsReviewer、sandbox等の必須構造。Executorでは応答のapprovalPolicy・sandboxが§8aの送信値と一致することも要求する。
 - TurnStart／Turn：id、items、statusとoptional error／timestamps。
 - TurnStatus：completed／interrupted／failed／inProgress。
 - CodexErrorInfo：既知15文字列、4 HTTP object枝、activeTurnNotSteerable枝。HTTP statusはnullable uint16、turnKindはreview／compact。
@@ -488,7 +515,33 @@ responseは以下も対象にする。
 
 握手はinitialize→initialized→account/read→environment/status→rate read。schema宣言だけではRPC成功を代替しない。schema適合でも`-32601`なら拒否する。S/P metadataをquota poolへ書かない。
 
+### 8a. Codex Executor の実行経路
+
+適用範囲: M0で本番提供するExecutorはCodexであり、本節はPの後にtransportで起動する本番Sessionの契約である。§7のfinite decoder、§8の握手と送信契約、§9のrate契約、§10のidentity・停止契約をそのまま使い、緩めない。
+
+**現sourceの事実**: `execution/native.rs`のCodex Sessionは、initialize→initialized→account/read→environment/status→account/rateLimits/read→thread/start（cwd＝Unit Worktree、local environmentのruntimeWorkspaceRoots＝Worktree／Unit temp／output／cache、任意model）→ACK→turn/start（text input、任意effort）→通知loopの順に進む。Reviewerだけ`sandbox:"read-only"`を送り、Executorはapproval方針もsandboxも送らないため、実効値はCLIの継承設定で決まる。server requestは`codex::managed::Approvals`（`codex/protocol.rs::ApprovalLedger`）のpendingへ入り、応答経路は`NativeAdapter::submit_approval`→`NativeSessions::approve`だけである。runtime／workflow／CLIにその呼出し元はなく、Executor turnで承認要求が来るとturnはcancel／stopまで進まない。turn/completedはcompleted→Success、failedは既存のquota／auth／capacity／Failure分類、それ以外はUnknown／Lostになる。Codexモデル経路のlive実行は未証明である。
+
+**1. 起動とcustody**: transportはPrepared・登録後に既存の登録手順で起動する。argvは`command_argv(codex, Executor, …)`の`app-server --listen stdio://`だけで、追加flag・`-c`上書き・環境変数による方針変更をしない。spawnは`rrx-spawn-hygiene`の消費関数（`spawn_tokio`等）だけを通し、`OwnedProcess::spawn(Command)`へ所有を移す。`clippy.toml`の直接spawn禁止を維持する。spawn直前に§10のprogram identityを再検査する。停止はstdin close、group signal、drain、leader reapを§10の手順で行い、両pipe EOFとreapが既知の場合だけKnownとする。macOSでpre_execによりforkする点は#98の残余リスクとして記録し、M0で解消しない。
+
+**2. Worktree束縛**: thread/startのcwdとenvironmentのcwdは、Unitが保持する既存Worktree（authority原本由来の絶対path）だけとする。ThreadStart応答のcwdがWorktreeと一致し、modelProviderが`openai`であることの既存検査（native.rs:2281-2285）を維持する。Task本文やモデル出力からcwd・rootを作らない。
+
+**3. approval方針とsandbox（既定はfail-closed）**: Executorのthread/startで、approval方針（AskForApproval）を「承認要求を出さない」固定値（catalog上の`never`相当）に、sandbox（SandboxMode）を`workspace-write`相当に明示する。書込み可能rootは既存runtimeWorkspaceRootsと同じWorktree／Unit temp／output／cacheの4つだけとし、network accessは無効、`/tmp`と`TMPDIR`の暗黙書込み許可は除外する。これらを表すfield（thread/startのapprovalPolicy／sandbox、turn/startの`sandboxPolicy`のworkspaceWrite枝など）と値名は固定catalogの宣言で確定し、§8の送信値検査（CX-3）を通す。宣言がない、または同じ意味を表せない場合はBLOCKEDとして設計へ戻り、`config` mapや環境変数で代替しない。ThreadStartParams.configは送らない。ThreadStart応答のapproval方針とsandboxは送信値との完全一致を要求する。より広いsandbox、別のapproval方針、欠落はturn/start前に拒否する（NativeInput 0、既存の応答不一致と同じ失敗経路）。
+
+rrxが自動で付与できるapprovalは0件とする。承認済みWorktree範囲の内側でも、commandExecution・fileChange・権限追加・network・MCP elicitation等へ自動accept／自動declineを返さない。この方針ではCodexが承認要求を出さない前提なので、Executor turn中に着信した11種のserver requestは、§7でparamsをstrict検査した後、ledgerへ入れず応答も送らずにSessionを停止し、`WorkOutcome::Unknown`／`Disposition::ProtocolError`とする。`item/autoApprovalReview/*`と`autoApprovalReview/strictReviewRequired`の着信も同じ扱いとする。既存ledgerと`submit_approval`経路は#10の範囲として存置し、M0で呼出し元を追加しない。
+
+新しい本番権限: この方針により、Codexは承認済みWorktree範囲のsandbox内で、1 turnの間、操作ごとの承認なしにコマンド実行とファイル変更を行う。rrxが権限応答を出すわけではないが、従来の本番Executor（Claude、`--permission-prompt-tool stdio`で権限要求をrrxのpending承認へ回す形）にない権限形であり、オーナー判断B2（§13）とする。承認前は実装しない。承認要求を許してrrxが範囲内のfileChangeだけを自動acceptする代替案は、rrxの自動付与権限と#10の資格付けを要するため採らない。
+
+**4. 実行中のdecode**: 本番処理順は§7のstrict envelope→method→payload全構造→所有フィルタ→consumerを維持する。未知method・item.type・discriminatorとmalformed（foreignを含む）はProtocolErrorとし、turn/start送信後はWorktreeに効果が生じうるためUnknownとして扱う。所有turnのitemについて、commandExecution.cwdとfileChange.changesの各pathを、既存のabsolute-path検査と`codex/protocol.rs::operation_paths`と同じ基準（Worktree基準の解決、`..`・symlinkで越えない）で書込み可能root内か検査し、外ならUnknownとする。所有turnの外へ作業を広げるcollabAgentToolCall／subAgentActivityは、効果の帰属を確認できないためUnknownとする。他の正常itemは構造検査後に回答・authorityへ使わず、既存collector（agentMessageの業務条件）だけが回答を採否する。
+
+**5. turnの完了と結果**: 成功はowned threadIdとturn.idが一致する`turn/completed`のstatus=completedだけとし、検査済みturnを既存collectorへ渡して`(Success, Completed)`を返す。Worktreeの結果はCodexにcommitさせず、既存のprovider非依存経路（`workflow/driven_settled.rs::continue_settled_executor`→`execution/workflow_source.rs::capture_settled`→`execution/workflow_gates.rs`→`execution/results.rs::capture_settled`、`retained_io::RetainedGit`によるexact commitの保持）でcaptureする。この経路はM0で変更せず、Codexの成功tupleが既存の成功と同じ形で入ることを回帰検証する。その後`post_success_closure`がSC-Nで停止する。failedは既存のquota／auth／capacity／Failure分類を§9の検査済み値で行う。
+
+**6. Unknown／Held**: interrupted、inProgressのままの完了通知、未知status、turn/completed前のEOF・exit、collector overflow、§3／§4の拒否、pipe EOFまたはleader reap不明は、成功にもKnown Failureにもせず`WorkOutcome::Unknown`とする。所有・CASが成立して保存できた場合は§6と同じ`UnitState::WorkUnknown`／`SessionState::Lost`→`SettledLookup::Held`→`StepResult::Waiting`の明示操作待ちへ接続し、Worktreeを消去・reset・captureしない。自動再送、新しい入力、retry authorityは発行しない。照合不能は既存Held／pending原本保持に従う。
+
+**7. 期限とquota**: モデルturnに新しい期限を追加しない。停止は既存のcancel／stop、authority fence（100 ms）、§4のshutdownで行い、期限延長で問題を隠さない。turn/startは既存quota Admit後だけ送る。`account/rateLimits/updated`とusageLimitExceededの観測は§9と§10のラベル契約に従う。
+
 ### 9. Rate契約とquota closure
+
+適用範囲: Claude rate decoderとselfcheck（R1）はM0で実装する。下記のcanary Known closure（quota Admit後のProbe失敗）はClaude Reviewer Pに属し、M3で実producerとともに実施する。Codex rate契約は全Codex aliasのS、Codex Executor P、§8aの本番Executor Sessionの`account/rateLimits/updated`／usageLimitExceeded観測に共通する。
 
 Claude decoderは`NotRateEvent／Classified／Unparseable`。bucketは既存5種、statusはallowed／allowed_warning／rejected。optional resetsAtはnullまたは秒int64でmilliseconds変換overflowを拒否し、utilizationはnullまたは有限0〜1。欠落・wrong type・未知enumはUnparseable。
 
@@ -542,9 +595,10 @@ helperはprotocol、stop方式、exit、pipe EOF、tail、signal、leader reap�
 | Version | spawnから30秒 | 64 KiB |
 | Schema process | spawnから60秒 | 64 KiB。生成filesの16 MiB枠とは別 |
 | Handshake | spawnから90秒、各相関応答はrequest送信から30秒 | 1 MiB |
-| Claude canary | user送信から120秒 | Probe枠に含める |
-| Claude Probe全体 | intent／custody開始から180秒、initialize応答は送信から30秒 | 4 MiB |
+| Claude canary（M3、Reviewer P） | user送信から120秒 | Probe枠に含める |
+| Claude Probe全体（M3、Reviewer P） | intent／custody開始から180秒、initialize応答は送信から30秒 | 4 MiB |
 | Git helper／batch | 現行各応答30秒／batch180秒 | 現行各action上限を維持 |
+| Codex Executor turn（§8a） | 新しい期限を追加しない。既存cancel／stop／authority fenceと§4のshutdownで停止 | 既存Lines／collector上限 |
 | S全体 | custody登録から10分 | 全alias合計8 MiB。各helper上限も独立に適用 |
 
 入れ子deadlineは常に最も早い期限を使う。準備PではVersion／Schema／Handshake／Git／Probeのstdout＋stderrの全受信bytesを、既存`AGGREGATE_BYTES=8 MiB`へ一度だけ累積算入する。stderrを保存しなくても算入する。UUIDなし、同一UUID再送、foreign、ignored、合法tailもdedup／所有filter前に算入する。各helperは自身の上限とaggregate残量の小さい方で制限し、capture stateと固定size read bufferも有界にする。Sは全aliasで同じ8 MiB counterを共有し、予約・加算を競合時にも超過させない。PのHELPER_LIMIT=32、Sのstep上限96、既存line／JSON上限を維持する。生成schema filesは別sinkであり、この8 MiB捕捉counterへ混算しない。
@@ -609,21 +663,22 @@ fixture実体・縮約manifest・decoder対応表・適合結果は未作成／�
 | Strict | 全83通知・19itemの正常形、各required欠落・wrongtype・nested tag改変、自／foreign双方。正常ignored／tool維持。所有filter先行mutant。 |
 | Schema | 実fileの枝複製・削除、required追加、型・nullable・enum・数値域・ref先改変、無関係同名property、未解決／循環ref。 |
 | R1 | 合法empty／usable window／wrongtypeを区別。foreign rate先drop、unknownをAvailable／not_observed化、selfcheck呼出し除去mutant。vector mutationは試験用authority seamを作らずsource差分として実施。 |
-| Quota | Wait、普通Admit、recovery Admitそれぞれのモデル入力数、lease／probe ownership／期限／CAS、観測非更新。 |
-| Budget | M0 が提供する Executor の実 producer の境界／+1、Git13→9仮定mutant、Probe末尾省略mutant。Reviewer は純粋政策の照合と実起動証明を区別し、本番 helper 鎖は M3 で検証。 |
-| IPC | Claude ProbeとCodex Schema／Handshakeそれぞれ、shim呼出し、Grant0、helper以外効果追加0。 |
+| Quota | Codex ExecutorのWait、普通Admit、recovery Admitそれぞれのモデル入力数、lease／probe ownership／期限／CAS。Claude canaryの観測非更新とKnown closureはM3。 |
+| Budget | M0 が提供する Codex Executor の実 producer の境界／+1、Git13→9仮定mutant。Claude Reviewer のProbe末尾を含む純粋政策は照合だけとし、本番 helper 鎖とProbe末尾省略mutantは M3 で検証。 |
+| IPC | Codex Schema／Handshake（M0）とClaude Probe（M3）それぞれ、shim呼出し、Grant0、helper以外効果追加0。 |
 | Custody | stop／Drop／panic／forced deathの別期待、stdin close、tail打切り、reap不明をConfirmed化するmutant。 |
 | Migration/path | new、v1〜9、v10、v11、current、同時initializer、guard欠落・旧reference新表混入、alias traversal／symlink／ownership／境界cleanup。 |
 | Consumer | RuntimeMetadata／ShutdownSite wire、型付きinstallation refusal、collector usability、synthetic child実呼出し。 |
 | Legacy | 機能廃止・残置・移植の完全台帳、旧入口と他 consumer の起動／入力0、共有する安全性ケースの実管理経路での positive。拒否だけを共有ケースの検証としない。 |
+| Executor | Codex Executorの固定approval方針・sandbox・Worktree束縛、応答一致、server request／範囲外item／未知variantのUnknown→Held、turn結果分類、retained capture接続、spawn経路。 |
 
-上の11群を次の個別control／対応mutantで具体化する。各negativeは正常な対を同じproducerで通し、指定欠陥を1つだけ変える。mutantで別の拒否が残っても、対象検査へ実到達してその検査の欠落を検出することを要求する。
+上の12群を次の個別control／対応mutantで具体化する。各negativeは正常な対を同じproducerで通し、指定欠陥を1つだけ変える。mutantで別の拒否が残っても、対象検査へ実到達してその検査の欠落を検出することを要求する。
 
 | ID | positive／negativeと期待 | 落ちるべきmutant |
 |---|---|---|
 | S-1 | 全alias fresh合格／完了前Task投入・1alias拒否。未公開時admission0、status pending／refused | S gate除去 |
 | S-2 | Codexの相関した全応答、chatgpt、ready、合法empty rate／各応答欠落、ID違い、error、-32601、非chatgpt、非ready。欠陥alias拒否 | RPCをschemaだけで代替、相関比較除去、account／ready比較除去 |
-| S-3 | Claude相関initialize／未着、ID違い、error。user入力0、system-init／resultを観測済みにしない | initialize相関除去、未着を合格化 |
+| S-3 | Claude Reviewer argv（plan mode付き）の相関initialize／未着、ID違い、error、plan mode欠落argv。user入力0、system-init／resultを観測済みにしない | initialize相関除去、未着を合格化、SのargvをExecutor role（plan modeなし）へ戻す |
 | S-4 | stop／Drop／panic／forced death後の新epochを別検査。確認できたreap／joinだけ記録し、未知はpending／unknown、合格非公開 | Sをshutdown確認から除去、journalからpass復元、Drop／forced deathをreap済みにする |
 | S-5 | S合格でもP fresh検査必須。P欠落は拒否 | S合格によるP省略 |
 | CL-1 | P initialize成功／control_response欠落、相関ID違い、error。AC-08とterminal disposition | request ID相関除去 |
@@ -650,15 +705,23 @@ fixture実体・縮約manifest・decoder対応表・適合結果は未作成／�
 | I-P | genuine SAME actor、現Unit／epoch／正しいcookieでshim要求をserverへ到達させ、cookie検査後にmarker-bound Driver拒否へ達した有限証跡を確認。Grant0、helper外効果0 | state/runtime/driver.rsのmarker-bound拒否除去。元の拒否境界消失を検出し、別の拒否や接続失敗でpassにしない |
 | M-1 | TOML新profile・cli_version不在／旧profile、旧キーpresence（表現可能な各値）。canonical前とinstallationで型付き拒否、helper／Unit0。TOML null負例は作らない | legacy宣言検査をhelper後へ移動、canonical前／installationのpresence検査を各々除去 |
 | M-2 | 新Frameの旧key不在serialize→deserialize roundtripとdigest一致／旧保持Frame、新profile＋cli_version旧keyあり（JSON null含む）。型付き拒否、Preparing Unit Held、Session0。新旧profile混在不可 | Frame presence検査除去、旧keyを省略してcanonical化、Frame digest比較除去、新Frameへ旧key再出力 |
-| M-3 | 任意の合法な単一行版数で全検査通過→ExecutorのNativeInput。番号外だけで拒否しない | 旧版数一致・番号付きqualified_profile復活 |
+| M-3 | 任意の合法な単一行版数で全検査通過→Codex ExecutorのNativeInput、ClaudeはS合格。番号外だけで拒否しない | 旧版数一致・番号付きqualified_profile復活 |
 | MP-1 | new、v1〜9、v10、v11、current、同時initializer。旧版別layout、guard、旧binary open拒否 | 旧referenceへstartup混入、新表guard省略、v11をlegacy一般枝へ落とす |
 | MP-2 | §2の既存正負例を同じproducerで束ねる。0755／0700 root・検査済みstartup共有親・umask000 private child0700はpositive。root g/o書込み、別inode lock、他uid、startup symlink／file／0755、既存epoch／alias、spawn前置換、run外cleanupはnegative。追加対はuid=euid／不一致（非特権CIの不一致は§2の単一述語確認として別計数し、実producer／権限証明に数えない）、special bits付きでも0777 maskが0700のprivate child、空Version／Handshake cwd／残存物、Schema child identity一致／置換。実instance＋epoch成分の新規作成と同名拒否を確認 | root書込み／uid検査除去、lock inode束縛除去、startupの0700検査除去、旧epoch／alias採用、通常create_dir_allへ戻す、raw alias join、空cwd／Schema child再確認除去、identity確認省略、symlink追跡、旧残骸まで削除 |
-| B-1 | Executor実producerのB境界／B+1と末尾。Reviewerは純粋政策照合だけ | Git13を9として計算、Probe末尾省略 |
+| B-1 | Codex Executor実producerのB境界（232）／B+1とprefix248・初回入力256。Claude Reviewer（237／252／255）は純粋政策照合だけ | Git13を9として計算、Codex Schema／Handshake行の省略（Probe末尾省略はM3） |
 | R-1 | selfcheck全vector／source差分で1vector改変。installation拒否 | 成功token不要化、selfcheck呼出し除去 |
 | LG-1 | 本番の正常ignored／foreign／tool／追加field／task_type任意string／patch.status欠落／pending／running／各malformed対。公開origin正常非human／不正、§6の旧黙認variant／blockの新拒否、合法text tool_result／image等表外拒否を分離し、型名だけのwire対応をpositiveにしない | ignored検査省略、consumer条件をwire enumへ戻す、未知fieldの改変をdigestから除外、表外黙認復活 |
 | C-1 | Metadata／ShutdownSite／型付きrefusalのwireとcollector usability、台帳で維持するsynthetic child実wrapper | consumer配線欠落、正常child起動省略 |
 | L-1 | 全旧入口のhelper／Session／新入力0、#19残置検査、共有ケースの現管理producer positive、完全台帳 | 拒否をhelper後へ移動、resume／checkpoint抜け、共有保持領域削除 |
 | T-1 | 各deadlineの無応答、UUIDなし通知洪水、同UUID再送、stderrのみ、各byte境界／+1、残aggregate不足。有限停止とKnown／Unknownを別検査 | 通知でdeadline更新、dedup後だけ加算、stderr除外、捕捉枠をfile枠と混同 |
+| EX-1 | Codex Executor＋Claude Reviewer設定のinstallation正例／Claude Executor設定の型付き拒否（helper・Unit・Held 0）。thread/startの固定approval方針・sandbox・書込み可能root・network無効・config不在の送信値をCX-3と同じ宣言比較で検査 | role判定除去、approval方針またはsandboxの送信省略（CLI設定継承）、network有効化、書込み可能root追加、config map送信 |
+| EX-2 | ThreadStart応答のcwd・modelProvider・approval方針・sandboxが送信値と一致／各1項目不一致（広いsandbox、別approval方針、別cwd）。不一致ではturn/start・NativeInput 0 | 応答一致比較の各1項目除去、不一致後のturn/start送信 |
+| EX-3 | Executor turn中の11種server requestの正常params／malformed。いずれもledger登録0、応答送信0、Grant0、Unknown→Held、自動再送0。autoApprovalReview通知も同じ | ledgerへ転送、accept／declineの自動応答、server requestを無視して続行、malformedを欠落扱い |
+| EX-4 | 所有turnのcommandExecution.cwd／fileChange pathが書込み可能root内／外（`..`、symlink経由、root外の絶対path）、collabAgentToolCall／subAgentActivity、未知item.type。外・帰属不明・未知はUnknown→Held、成功0 | path範囲検査除去、文字列prefix比較へ戻す、symlink解決省略、未知itemを無視 |
+| EX-5 | owned `turn/completed` completed→Success→既存retained Git capture→SC-N／failedの各分類／interrupted・inProgress・未知status・turn/completed前のEOF・reap不明。後者はUnknown→Held、capture成功0、自動再送0 | interruptedをFailure／Success化、EOFをSuccess化、foreign turnのcompletedを採用、capture経路の迂回 |
+| EX-6 | Executor transportのspawnが`rrx-spawn-hygiene`の消費関数経由、spawn前のprogram identity再検査、stop／Drop／forced deathのKnown／Unknown分類 | 直接`Command::spawn`へ戻す差分のclippy拒否確認、identity再検査除去、reap不明をConfirmed化 |
+
+Claude Reviewer Pに属するCL-1、CL-3、CL-6、CL-8、CL-9、Q-1のProbe配置、Q-2、I-PのClaude Probe分、BudgetのProbe末尾mutantは、M3で実producerを通して実施する。M0ではこれらをsyntheticだけで合格扱いにせず、producerも追加しない。CL-2、CL-4、CL-5、CL-7、CL-10、LG-1、R-1はM0の共通decoder・selfcheck検査として実施する（M0-U1で実施済みの範囲は検証記録のとおり）。
 
 I-Pの最小本番観測は、既存のgenuine経路を変更せず非authorityの有限拒否分類を通す方式を選ぶ。state/runtime/driver.rs::validateの実marker検査が返す拒否だけにtyped `MarkerBoundDriverRefused`を付け、state/execution.rs::validate_authority→Store::validate_execution→ipc.rs::currentへ失敗型を保持する。文字列matchingで推定しない。ipc.rs::serveはpeer／request decode／現Unit・epoch・cookie検査の実通過後に返ったこの型だけを`CookieAcceptedMarkerRefused`とする。cookie失敗、その他検査の拒否、接続失敗は別の有限分類でありmarker到達証明にしない。現行accept loopはserve Errを捨て、shimには固定Refusedだけを返すため、この観測は未実装である。
 
@@ -677,13 +740,13 @@ owner-runは設計全体承認・実装・必要な検証後に実Macで1run行�
 1. 新しいrun ID、状態directory、一時directoryを作る。既存なら起動前拒否し、前回状態を再利用しない。
 2. Claude／CodexのVersion観測と実行ファイルSHA-256を表示する。特定番号との一致を条件にしない。
 3. release buildと試験用Git repositoryを用意する。
-4. 新profile、実設定のClaude Executor＋Codex Reviewerでdaemonを起動する。
+4. 新profile、実設定のCodex Executor＋Claude Reviewerでdaemonを起動する。
 5. selfcheckと全aliasのS合格を10分上限内で確認する。Sでモデル実行を確認済みにしない。
 6. 1 Project／1 Active Task／QUICKを投入する。
-7. Claude P receipt、Worktree gate、Implement work=success、SC-N Waiting、sessions=1、Unknown effects=0を確認する。Codex ReviewerはSのみで、review成功とは記録しない。
+7. Codex P receipt（Version／Schema／Handshake／Git×13）、ThreadStart応答のapproval方針・sandbox一致、Worktree gate、Codex Implement work=success、retained Git artifactのcapture、server request 0・範囲外item 0、SC-N Waiting、sessions=1、Unknown effects=0を確認する。Claude ReviewerはSとReviewer argvのplan mode確認だけで、Claude P・review成功とは記録しない。
 8. daemonを停止し、PASS時だけ当該scriptが作成したdirectoryを既存規則で削除し、残存なしを確認する。
 
-出力は`M0 selfcheck=pass`、provider別startup passと観測版数／exe digest／実際に確認したstep、Claude preparation probe/init/result pass、rate=`not_observed/empty_valid/usable`、`M0 implement=success stop=SC-N sessions=1 unknown_effects=0`、`M0 RESULT=PASS`を持つ。未証明一覧にはCodex model methods／review／approval／error分類／sandbox実効、Claude permission roundtrip／既定mode、escaped descendants、wrapper内部identityを残し、rate未着ならclaude_rate_limit_eventも加える。static／synthetic合格をこれらのlive証明へ昇格しない。
+出力は`M0 selfcheck=pass`、provider別startup passと観測版数／exe digest／実際に確認したstep（ClaudeはReviewer argvの`permission_mode=plan`を含む）、`codex preparation schema/handshake pass`、`executor approval_policy=<固定値> sandbox=<固定値> server_requests=0 scope_violations=0`、codex rate=`empty_valid/usable`、claude rate=`not_observed`（M0ではClaude Sessionを起動しない）、`M0 implement=success provider=codex artifact=retained stop=SC-N sessions=1 unknown_effects=0`、`M0 RESULT=PASS`を持つ。未証明一覧にはCodexのapproval往復／error分類／sandbox実効／network遮断の実効、Claude Reviewer P（canary／init／result）／review／permission roundtrip／既定mode／claude_rate_limit_event、escaped descendants、wrapper内部identityを残す。1runの成功をCodex Executor経路全般の資格付けへ広げず、static／synthetic合格をこれらのlive証明へ昇格しない。
 
 失敗時は有限stage／reason／unit=held|retired|noneと保持した状態・一時directoryを表示し、`M0 RESULT=FAIL`として保存する。失敗runは削除・再利用せず、原因確認後の再挑戦は新run IDで行う。保持directoryの削除はowner判断に残す。追加cleanup工程や2runをM0受入条件へ増やさない。
 
@@ -703,47 +766,60 @@ owner-runは設計全体承認・実装・必要な検証後に実Macで1run行�
 | migration v12 | `state/mod.rs`、`state/execution.rs`、`state/managed_binding/schema.rs`、§3のMUTABLE_TABLES全consumer。historical集合とcurrent集合を分離し、旧binary混在不可を確認 |
 | 旧入口廃止 | §11の全入口、standalone／Native／adapter／workflow tests、examples、既存protected拒否。entries／starts／preparationsと現status／cancelは保持 |
 | 共通fixture | `execution/native/native_fixture.py`、installation tests／pin／success／activation/composition、`crates/rrx/tests/daemon_native.rs`。S・P helper・本番Sessionを区別し、BOOTSTRAP_CASEの失敗がSession前へ移る期待を更新。旧最小payloadやUUIDを新strict正例の証拠として流用しない |
+| spawn経路（P4） | S custody、P helper、Codex Executor transportの新規spawnを`rrx-spawn-hygiene`の6消費関数（`spawn_std`／`output_std`／`status_std`／`spawn_tokio`／`output_tokio`／`status_tokio`）へ限定する。`clippy.toml`の直接`Command::spawn/output/status`禁止を緩めない。`OwnedProcess::spawn`は`Command`を値で受けるため、identity再検査後のCommand構築とspawnの順序を保つ |
+| Codex Executor実行経路 | `execution/native.rs`のCodex Session（thread/start送信値と応答検査、server request処理、item・turn/completed分類）、`codex/managed.rs`、`codex/protocol.rs::ApprovalLedger`／`operation_paths`（存置、M0で呼出し元追加なし）、`adapter/native.rs::submit_approval`（存置）、collector。capture経路の`workflow/driven_settled.rs`、`execution/workflow_source.rs`、`execution/workflow_gates.rs`、`execution/results.rs`は無変更で回帰検証する |
+| 役割入れ替え（設定・fixture） | `AgentRegistry::from_managed_config`のrole判定、installation fixture／`native_fixture.py`、`tests/daemon_native.rs`、`tests/runtime_cli.rs`、`runtime/installation/tests/success.rs`等のClaude Executor＋Codex Reviewer前提。Codex Executor＋Claude Reviewerへ移し、Claude Executor設定は型付き拒否の負例に移す。thread/start送信値・argv本数を数えるfixtureも更新する。既存正例を削除で置き換えない |
 
 | 競合所有集合 | 編集順序 |
 |---|---|
 | #93: `execution/native/tests.rs`、`runtime/installation/tests/fm_d2.rs` | 移植／旧宣言変更が必要。担当進捗と保存済み変更を確認し、#93の取り込み後に編集 |
 | #93: `execution/results/tests/retained_tests.rs`、`workflow/committed_source_tests.rs` | この修正では編集予定なし。参照／coverage影響が確認されたら担当と調整 |
-| #94: `runtime/phase_jobs.rs`、`runtime/installation/tests/epoch_fence.rs` | phase_jobs自体の契約変更は予定しない。S gateでepoch_fence fixture前提が変わるため担当進捗を確認し、必要差分は取り込み順を調整 |
+| #94（マージ済み）: `runtime/phase_jobs.rs`、`runtime/installation/tests/epoch_fence.rs` | phase_jobs自体の契約変更は予定しない。S gateでepoch_fence fixture前提が変わるため、main上の現sourceへ差分を載せる |
 | F3: `adapter/inspection.rs`、`inspection/diagnostics.rs` | 編集予定なし。共有refusal型の参照は確認 |
-| P4: `crates/rrx/tests/project_api.rs`、production側未確定集合 | 編集予定なし。production集合が確定するまで無影響を断言しない |
+| P4（#89、PR #99、`79e4d273`マージ済み）: `crates/rrx-spawn-hygiene`、`clippy.toml`、`OwnedProcess::spawn(Command)`の署名、P4が書換えたtests（`tests/daemon_native.rs`、`tests/runtime_cli.rs`、`runtime/installation/tests/{success,fm_d2}.rs`、`cli/daemon{,/tests}.rs`、`runtime/tests.rs`）とproduction（`codex/{session,transport,preparation}.rs`、`native/{version,transport}.rs`）、`tests/project_api.rs` | U0でM0ブランチを`79e4d273`へrebaseしてから編集する。P4の書換えを戻さず、その上に§4・§10a・役割入れ替えの差分を載せる。新規spawnは6消費関数だけを使う。`tests/project_api.rs`は編集予定なし |
 | 上記外のfixture／installation／daemon tests | sourceと消費者を再照合して編集。並行worktreeの未保存変更を上書きしない |
 
 修正手段自体の影響も検査する。登録前CLI本起動は継承設定・hook・MCP・履歴・IPC環境を消費し、Claude canaryは実quotaと費用を消費する。ProbeをAdmit後に置くためpre-Session lease／same-Unit gateの保持時間が延びるが、§10の有限上限内とする。strict化は本番Sessionにも作用し、未適合eventを終端させる。schema免責集合、行・byte閾値、argv本数、UUID／path形はそれを数えるfixtureも更新する。marker authority、既存transport登録手順、Core／terminalの契約を緩める変更は予定しないが、共有consumerの回帰検証を省略しない。
+
+役割入れ替え後、M0のowner-runでモデル入力を消費するのはCodex Executorのturnだけであり、Claude canaryの実quota・費用消費とpre-Session lease保持時間の延長はM3で生じる。Codex Executorの固定sandboxはCodexのツール実行（build・testを含む）からnetworkとWorktree外書込みを奪うため、Implementの成否に影響しうる。これは安全側の制約であり、広げる場合はowner判断へ戻す。
 
 ### 12b. セキュリティ自己点検
 
 | 面 | 維持する対策・検証と限界 |
 |---|---|
 | CLI偽装／入力 | strict JSON、有限method／variant、分類前のfield型検査、相関ID、nonce完全一致、UUID内容digest、成功後tail、deadline／累積bytes。追加fieldからauthorityを作らない |
-| canary副作用 | Admit後だけ送信、Executor plan mode、tool／権限要求で拒否、応答0。既存hookや自動許可toolの開始を隔離したとは保証しない |
+| canary副作用（M3） | Admit後だけ送信、Reviewer argvのplan mode、tool／権限要求で拒否、応答0。既存hookや自動許可toolの開始を隔離したとは保証しない |
 | helper IPC | SはUnitなし、Pはgenuine contextからmarker-bound拒否へ実到達。cookie失敗／接続失敗をmarker検査の証明にしない |
 | S流用／権限 | freshメモリ公開だけ、journalからpass復元しない。Sは拒否専用でP／Prepared／permission／Session authorityを発行しない |
 | filesystem／process | raw aliasを使わず、private child identityと限定cleanup、intent先行custody、stdin保持、EOF／leader reap／joinの実観測。root境界は§2とMP-2の同じ正負例・mutantで独立確認する。canonical pathだけ、Drop、forced deathから全子孫死亡を推定しない |
 | quota／CAS | SAME actor原本、epoch、revoke、no_registration、末尾inventory、全before／after画像、既存freshness。canary観測非反映と機械的closure更新を分離 |
 | 秘密のsink | frame／account／codexHome／nonce／stderrを永続化せず、有限receipt・件数・digestのみ。file／capture／JSONの既存上限維持 |
 | legacy／#19 | 起動・新入力前拒否、全consumer台帳、共有3保持領域と停止保持、#19既存部品・検査保持。削除や拒否だけで共有安全性のpositiveを代替しない |
+| Codex Executor実行（新規面） | rrxはapprovalを自動付与しない（自動付与できる種類は0）。承認要求を出さない固定approval方針、Worktree＋Unit temp／output／cacheだけを書込み可とするworkspace-write sandbox、network無効、config上書きなしを送信し、ThreadStart応答で一致を確認してからturn/startする。server request／autoApprovalReviewの着信は応答0でUnknown→Held。範囲外item・未知variantもUnknown→Held。モデルが出したcommand・path・patchは信頼しない入力として扱い、成功はowned turnのcompletedだけ。限界: sandboxの強制はCodex CLIとOSの実装に依存し、rrxは実効を証明しない。Worktree内ではモデルが利用者の継承権限でコマンドを実行・書込みでき、Task本文や既存repo内容からのprompt injectionの影響はsandbox内に限られるだけで、内容の安全性は保証しない。成功はImplement完了であり、merge権限（M4）や後続phaseのauthorityを与えない |
+| spawn経路 | S custody、P helper、Executor transportの新規spawnは`rrx-spawn-hygiene`の6消費関数だけ。`clippy.toml`の直接spawn禁止を維持し、`OwnedProcess::spawn(Command)`へ所有を移す。macOSのpre_exec forkは#98の残余リスクとして記録し、M0で解消しない |
 
 S custodyは自journalのintent／settlementだけ、P SAME actorは既存Admit／CASの範囲でhelperとnongrant closureだけを扱う。S観測のGit／Prepared消費、別actor・CLI peerによるsettlement、revoke済みactorによる新spawn、Probe中のpermission応答は不可。revoke後も既存原本で物理結果を記録することと、新しい実行許可を分ける。ownerの設定選択・一括設計承認、adminのstatus／stopはprobe成功から新authorityを得ない。別Task／Project、同uid別process、unauthにも強制pass・再判定入口を作らない。
 
 source→sinkはVersion stdout→有界観測receipt、wire→validated frame→有限件数／分類、schema files→有限形状比較／digest、program→stat／SHA-256、nonce→メモリ比較だけとする。設定／allocationからargv・環境へ渡す既存境界検査を維持する。helperは利用者の継承権限で動き、exec直前の窓、wrapper内部、escaped descendantsは未証明のままである。
 
+新しい本番権限: 本改訂でrrxが新たに許すのは、承認済みWorktree範囲のsandbox内で、Codex Executorが1 turnの間に操作ごとの承認なしでコマンド実行・ファイル変更を行うことである。これはrrxの権限応答ではなくCodexへ渡す実行方針であり、B2の承認前は実装しない。source→sinkは、モデル提案のcommand／path／patch→sandbox内実行とrrxのpath範囲検査、owned turnのcompleted→既存retained Git captureとする。Codexの資格情報・ChatGPT accountはCLIの継承状態のままで、rrxは読取り・保存しない。
+
 ### 13. 一括有限承認表
 
 | ID | 全体設計承認に含める決定 | 現状 |
 |---|---|---|
-| A1 | quota Admit後、準備ごとのClaude canary 1turn。費用・履歴・既存hook・quota消費、Known failureの明示retry帰結を含む。 | 承認済み（2026-10-13、固定HEAD c6413082）。実装・検証は未完了。 |
-| A2 | Probeの専用UUID、固定文面、Executor plan mode、tool／権限応答なし。既定modeや隔離を証明しない。 | 承認済み（2026-10-13、固定HEAD c6413082）。実装・検証は未完了。 |
+| A1 | quota Admit後、準備ごとのClaude canary 1turn。費用・履歴・既存hook・quota消費、Known failureの明示retry帰結を含む。 | 承認済み（2026-10-13、固定HEAD c6413082）。役割入れ替え後はClaude Reviewer Pへ適用し、本番化はM3（B3で再承認）。実装・検証は未完了。 |
+| A2 | Probeの専用UUID、固定文面、Executor plan mode、tool／権限応答なし。既定modeや隔離を証明しない。 | 承認済み（2026-10-13、固定HEAD c6413082）。「Executor plan mode」はReviewerの本番argvのplan modeへ読み替え、適用はM3（B3で再承認）。実装・検証は未完了。 |
 | A3 | 旧起動 API の機能廃止、不要コード・固有テストの理由付き整理、共有安全性の実管理経路での検証。Reviewer 本番正常系は M3。 | オーナー方向決定済み（2026-10-13）。設計全体承認済み。台帳・実装差分・実装後レビューは未完了。 |
 | A4 | S全alias gate、版12 migration、有限deadline／capture、journalの独立upper boundsと上限時BLOCKED、confirmedの限定prune／unknown保持、安全なprivate path、停止wire変更と新旧混在不可。上限の容量を使い切れる保証や旧残骸の自動cleanupは含まない。 | 承認済み（2026-10-13、固定HEAD c6413082）。実装・検証は未完了。 |
 | A5 | 本番strict decoder、finite item／notification／nested variant、分類fieldの型・optional／nullableとwire domain／消費条件の分離、83method所有区分、UUID改変拒否、rate解析不能終端。既知frameの未宣言fieldは有界保持受理し業務非使用、Codex closed object／key-tag／RPC判別keyは§7の例外で拒否。Claude origin公開型と非human消費、実消費6項目／usage・structured_outputは§6の明示契約とし、telemetryからreplay authorityを作らない。未知variantは拒否し、旧黙認から新拒否になるvariant／blockとAC-05正常母集団は§6の一覧で判断する。公開未確認のrrx限定集合と数値refinementのlive適合は未証明。 | 承認済み（2026-10-13、固定HEAD c6413082）。実装・検証は未完了。 |
 | A6 | schemaの未知method／宣言property／discriminatorで起動前拒否。明示Opaque集合とtyped mapだけを例外にし、枝別免責を拡大しない。wire frameの未宣言field保持とは別契約。static catalogは開発時根拠でありruntime仕様生成器ではない。raw hash pinなし。未適合CLI拡張は契約見直しまでBLOCKED。 | 承認済み（2026-10-13、固定HEAD c6413082）。実装・検証は未完了。 |
+| B1 | 役割をCodex Executor＋Claude Reviewerへ入れ替える。M0はCodexを最初のExecutorとして提供し、ClaudeをExecutorとする設定をinstallationで型付き拒否する（helper・Unit・Held 0）。SのClaude argvはReviewer role（plan mode付き）とする。Claude Executorの再提供は別判断とする。 | オーナー決定（2026-10-15）の設計反映。本差分の再承認待ち。 |
+| B2 | Codex Executorの実行方針（§8a）: 承認要求を出さない固定approval方針、Worktree＋Unit temp／output／cacheだけのworkspace-write sandbox、network無効、config上書きなし、応答一致確認。rrxの自動approval付与は0。server request着信・範囲外item・未知variant・不明なturn結果はUnknown→Held。承認済みWorktree範囲のsandbox内で、操作ごとの承認なしにコマンド実行・ファイル変更を許す新しい本番権限を含む。 | 新規。オーナー承認待ち。 |
+| B3 | Claude P（A1のcanary、A2のProbe条件）をClaude Reviewer準備の検査とし、本番producer・実境界・受入をM3へ移す。ProbeはReviewerの本番argv（plan mode付き）をそのまま使う。M0のClaude coverageはS（Reviewer argv）、strict decoder（M0-U1）、rate selfcheckとする。 | A1／A2の適用対象・時期の変更。再承認待ち。 |
+| B4 | Codexモデル実行（Executorのthread/turn）をM0範囲へ入れ、AC-13を「全aliasのS、Codex P、Worktree→Codex Implement成功、SC-N停止」の1runへ改める。Codex Executor群EX-1〜EX-6を追加し、Claude Probe系controlsはM3へ移す。 | 再承認待ち。 |
 
-R1、M4 runtime merge、public sandboxの作成・使用は決定済み。執筆者は今後の実装者・レビュアーを承認しない。
+R1、M4 runtime merge、public sandboxの作成・使用は決定済み。B1〜B4の再承認は§0の差分だけを対象とし、A1〜A6の他の内容を再判断しない。執筆者は今後の実装者・レビュアーを承認しない。
 
 ### 14. pin 設計との差分一覧（orchestrator の転記）
 
@@ -753,8 +829,9 @@ R1、M4 runtime merge、public sandboxの作成・使用は決定済み。執筆
 | 版数検査の消費者 | phase 4、legacy 3 | すべて削除 |
 | legacy 経路 | ピンの下で起動 | 旧起動 API を機能廃止として整理し、起動前に CapabilityUnavailable。共有安全性検証は現行の管理経路で維持 |
 | 起動時 | 何もしない | 層 S（非モデル、拒否専用） |
-| 準備の helper | Version＋Git×13 | Codex は＋Schema＋Handshake、Claude は admission 後に Probe |
-| 登録前の観測 | `--version` | 握手、Claude の `system/init`／`result`、Codex の schema 構造 |
+| 準備の helper | Version＋Git×13 | Codex（Executor）は＋Schema＋Handshake、Claude（Reviewer）は admission 後に Probe（M3） |
+| 登録前の観測 | `--version` | 握手、Codex の schema 構造、Claude の `system/init`／`result`（M3） |
+| Codex Executor の approval／sandbox | CLI の継承設定 | 固定値の送信と応答一致、rrx の自動付与 0（§8a） |
 | 実行ファイル | canonical パス | stat と sha256 の束縛 |
 | 解析 | top `type` のみ有限、未知通知を無視 | 内部 variant、method、payload まで有限 |
 | rate decoder | 未知を `None` | 型分離、解析不能は Probe でも本番でも fail closed |
@@ -763,4 +840,4 @@ R1、M4 runtime merge、public sandboxの作成・使用は決定済み。執筆
 
 ### 15. この稿の完了境界
 
-A3 の方向はオーナーが旧 API の機能廃止として確定した。修正差分の独立確認とM0設計全体承認は完了した。具体的な削除・残置・移植台帳、共有安全性ケースの代替検証と実装後レビューは未完了である。M0 で現に提供する振る舞い、廃止する振る舞い、M3 で新たに提供する Reviewer を区別して確認する。
+A3 の方向はオーナーが旧 API の機能廃止として確定した。`c6413082` の修正差分の独立確認とM0設計全体承認は完了した。2026-10-15 の役割入れ替え改訂（§0、B1〜B4）は、非執筆側の独立確認とオーナー再承認が未完了であり、承認まで役割に依存するM0実装へ進まない。M0-U1は実装・限定検証・修正確認済みで、他の単位は未着手である。具体的な削除・残置・移植台帳、共有安全性ケースの代替検証と実装後レビューは未完了である。M0 で現に提供する振る舞い（Codex Executor の最初の Implement まで）、廃止する振る舞い、M3 で新たに提供する Claude Reviewer（Probe を含む）を区別して確認する。
