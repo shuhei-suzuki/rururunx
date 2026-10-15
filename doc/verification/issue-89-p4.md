@@ -55,9 +55,10 @@ New Docker resources/build cache were not created. Required final Linux safety
 checks remain unqualified; source review is not execution proof.
 
 Final-source M06 numeric conditions are met as recorded below; final macOS V-F
-ran to completion with an INCONCLUSIVE comparison, while the owner-selected
-mechanism and focused-frequency F1 controls, unresolved failure attribution
-and safety/CI/owner gates remain.
+ran to completion with an INCONCLUSIVE comparison, the mechanism control ran
+(MECHANISM_SHOWN), and the frequency control was closed as INCONCLUSIVE by owner
+decision, so the F1 merge gate awaits the owner's decision; unresolved failure
+attribution and safety/CI/owner gates remain.
 Historical checks and failed attempts below retain their original source scope.
 GNU C2d/V3/V-F and forced-fork evidence are deferred history under the platform
 amendment, not current Linux hygiene or qualification. The historical macOS
@@ -193,6 +194,83 @@ mechanism control plus a focused, pre-registered frequency control on final
 source, in a separate scope from the original 32, to decide that gate. Both
 are synthetic and do not prove natural frequency; neither has run yet.
 Linux full P4 remains deferred.
+
+## macOS F1 mechanism control and frequency control results
+
+The controls below followed the original 32 attempts. Design:
+`doc/design/issue-89-p4-design.md`, section
+`macOS F1 mechanism and focused frequency controls`, approved at `490911db`
+after four Sol design review rounds, amended at `b8d010cf`, with FC closed at
+`758d7cad`.
+
+Private measurement copies and the runner repo are retained under
+`.rrx/p4-f1-controls-20261015/`; the copies are never merged. Main uses the
+`b8344ab9` tracked archive and P4 the `44405c93` tracked archive, with trees
+equal to their origins. Opus reviewed the harness over three rounds plus
+focused fix checks. Production sources are unchanged; provenance checks pin
+copy heads, baseline trees and archive commit IDs at every stage.
+
+Result paths below are relative to that evidence root:
+
+| Run | Result path |
+| --- | --- |
+| Mutants | `results/20261015T001358.210461Z-mutants-f9a695ca` |
+| MC | `results/20261015T003827.862525Z-mc-d7e8a175` |
+| FC campaign 1 | `results/20261015T003955.389883Z-fc-c732aea1` |
+| Calibration | `results/20261015T014730.804105Z-calibrate-bbae55ad` |
+
+In the P4 copy, gate-no-read and classifier-any-error mutants were killed by
+compiled assertions; same-bytes restoration passed. The first mutants attempt
+is retained as NO_RESULT: its interpreter lacked os.waitid, the group was
+killed/reaped and the patch reversed. Identical provenance produced different
+binaries, so builds are not byte-reproducible. MC binds to the last restored
+build.
+
+MC's counted verdict is MECHANISM_SHOWN, exit 0; C0 classifier controls passed.
+In 10 gated cases, a child spawned through `spawn_std` was held between fork
+and exec. The same-path `RuntimeOwner::open` was refused with typed os35
+("another Runtime owns this state root"); after exec it acquired at epoch E+1
+while the child was alive. All 10 negative-control cases acquired at E+1.
+All children were waited/reaped. MC proves the mechanism and fail-closed
+refusal only, not a natural frequency.
+
+FC campaign 1 used K=1000 per block and a 600 s block deadline. Main-S2
+completed 1000/1000 Acquired, 0 refused, in 75 s. Main-S1, P4-S1, FC-POS and
+P4-S2, all fork-path blocks, hit the deadline (NO_RESULT). The r02 P4-S1 block
+was interrupted by SIGINT about 91.5 s after start. The campaign was stopped
+and retained, and is not used for any decision. A `sample` of a running
+fork-path block showed the test thread in `RuntimeOwner::open` → `Store::open`
+→ SQLite schema parse, with allocations blocked in `_xzm_fork_lock_wait`.
+
+Declared calibration used K=20 per arm and is excluded from decisions. Every
+arm recorded 20/20 Acquired, 0 refused:
+
+| Arm | Seconds per iteration |
+| --- | --- |
+| main-S1 | 2.18 |
+| P4-S1 | 2.08 |
+| FC-POS (1 ms) | 1.32 |
+| P4-S2 | 1.94 |
+| main-S2 | 0.095 |
+
+The 80 fork-path calibration iterations had 0 refusals. Loadavg rose from
+18 to 47; the host was not idle.
+
+The amended design (K=100 per block, 50 ms FC-POS, 900 s deadline) was
+re-reviewed. Sol found, and the finding was confirmed, that with rare refusals
+the block-level bound collapses and cannot exclude increases near the 0.1 pp
+margin. By owner decision on 2026-10-15, FC is closed as INCONCLUSIVE without
+running the amended campaign. No NOT_OBSERVED_HIGHER claim is made.
+
+Under synthetic load only, forcing fork for every spawn, as P4 does on macOS,
+makes concurrent spawning stall allocations in the whole parent process on
+the malloc fork lock. This performance impact is separate from F1.
+
+The merge condition "no higher macOS F1 frequency" is not demonstrated;
+Unknown is not non-increase. The owner decides the F1 gate from MC
+MECHANISM_SHOWN, FC INCONCLUSIVE, the original 32-attempt INCONCLUSIVE and the
+impact analysis. P4 is not mergeable until that decision and the remaining
+CI/PR gates.
 
 Issue: <https://github.com/shuhei-suzuki/rururunx/issues/89>. Baseline:
 `b8344ab951fa24f545174917eee7be067284c625`. Original checks below preceded
@@ -492,10 +570,9 @@ No group/fixture-wide death is inferred from Docker client exit or absence.
 ## Remaining gates
 
 The GNU F1 increase STOP, dedicated causal controls/production lock-fencing
-impact assessment, the INCONCLUSIVE macOS V-F comparison and not-yet-run
-owner-selected macOS F1 mechanism control and focused frequency control
-(separate scope from the original 32), independent Sol/Opus
-implementation/security repair confirmation, applicable approval conditions,
+impact assessment, the INCONCLUSIVE macOS V-F comparison and the owner's F1
+gate decision based on MC MECHANISM_SHOWN and FC INCONCLUSIVE, independent
+Sol/Opus implementation/security repair confirmation, applicable approval conditions,
 final mandatory CI, PR publication/merge and worktree cleanup remain with the
 parent. EOF local controls/mutants do not close the finding without independent
 confirmation. Existing Linux C2d/V3 acceptance is bound to the fixed source and
