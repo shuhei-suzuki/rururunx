@@ -35,7 +35,7 @@ async fn pipe_lines(raw_frames: &[Vec<u8>]) -> (tempfile::TempDir, OwnedProcess,
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    let mut process = OwnedProcess::spawn(&mut command).unwrap();
+    let mut process = OwnedProcess::spawn(command).unwrap();
     let stdin = process.child.stdin.take().unwrap();
     let stdout = process.child.stdout.take().unwrap();
     (directory, process, Lines::new(stdin, stdout, FRAME))
