@@ -1,5 +1,15 @@
 # Issue 6: Native Codex session design
 
+
+## Execution Domain composition (#75)
+
+This design no longer defines provider-neutral whole-workload ownership independently. The authoritative runtime contract is [Execution Domain](master/execution-domain.md) / #75.
+
+Codex-specific supervision consumes an exact Domain permit before any launch-capable path. Existing owned ProcessGroup/inspection machinery remains useful bounded native supervision, but it is a Native/Compatibility component unless the selected platform Strong backend is qualified (#76 Linux, #77 macOS). Persistent external jobs compose #78. Shared Git/effect compatibility remains #60 and restart recovery remains #14.
+
+No existing Codex fixture, cleanup receipt, PID/PGID/SID/native UUID, terminal Session state or selected-group death can by itself mint a Strong Execution Domain or settle a delegated operation.
+
+
 Status: implementation in progress. Installed protocol baseline: Codex CLI 0.160.0.
 The installed CLI's generated schemas govern compatibility; current documentation
 can describe fields absent from that version.
