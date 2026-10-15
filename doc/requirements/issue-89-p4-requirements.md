@@ -48,6 +48,18 @@ Required acceptance on the final source:
   Merge is blocked by any of: a higher macOS F1 frequency, a shared severe defect,
   or a Linux safety regression.
 
+On 2026-10-15, the owner resolved the F1 frequency merge condition by accepting
+residual risk: "no higher macOS F1 frequency" remains undemonstrated (original
+32-attempt V-F INCONCLUSIVE; FC INCONCLUSIVE, closed; MC MECHANISM_SHOWN: lock
+held between fork and exec, typed os35 refusal, no epoch, state write or retry,
+and lock not held after exec). The owner weighed the fail-closed refusal,
+P4's EOF/FD-inheritance fix and the recorded impact (fork for every macOS spawn,
+plausibly widening F1 exposure and stalling allocations on the malloc fork
+lock under synthetic concurrent spawning only); this is gate risk acceptance,
+not a claim of F1 non-increase or P4 improvement, with fork-free macOS hygiene
+tracked at <https://github.com/shuhei-suzuki/rururunx/issues/98> and specific PR merge approval still required
+(see [verification](../verification/issue-89-p4.md#owner-f1-gate-decision)).
+
 Platform separation is implemented from the approved `aed6f6b4` amendment;
 its local macOS formatting, workspace/all-targets warnings-denied Clippy and
 20 hygiene tests passed at `e8359628`; initial Sol/Opus implementation source

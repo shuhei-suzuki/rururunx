@@ -267,10 +267,8 @@ makes concurrent spawning stall allocations in the whole parent process on
 the malloc fork lock. This performance impact is separate from F1.
 
 The merge condition "no higher macOS F1 frequency" is not demonstrated;
-Unknown is not non-increase. The owner decides the F1 gate from MC
-MECHANISM_SHOWN, FC INCONCLUSIVE, the original 32-attempt INCONCLUSIVE and the
-impact analysis. P4 is not mergeable until that decision and the remaining
-CI/PR gates.
+Unknown is not non-increase. The owner decision is recorded below; the remaining
+CI/PR gates still apply.
 
 Issue: <https://github.com/shuhei-suzuki/rururunx/issues/89>. Baseline:
 `b8344ab951fa24f545174917eee7be067284c625`. Original checks below preceded
@@ -281,6 +279,24 @@ and macOS INCONCLUSIVE attribution). The macOS First scope above defers the GNU
 qualification; final-source acceptance, owner approval and merge
 remain separate gates. F1/F3/F4 remain under
 [CI 品質の収束](https://claude.ai/code/session_018R7Q39hySMcnivGdtBcyJC).
+
+### Owner F1 gate decision
+
+On 2026-10-15, the owner accepted the residual risk for the P4 merge gate.
+The requirement "no higher macOS F1 frequency" is not demonstrated: the
+original 32-attempt V-F is INCONCLUSIVE, FC is INCONCLUSIVE (closed), and MC is
+MECHANISM_SHOWN. MC showed the lock held between fork and exec, with typed
+os35 refusal, no epoch, no state write and no retry; it was not held after exec.
+
+The owner weighed the fail-closed refusal, P4's EOF/FD-inheritance fix and the
+recorded impact: P4 forces fork for every macOS spawn, plausibly widening F1
+exposure and stalling allocations on the malloc fork lock under concurrent
+spawning. The evidence is synthetic load only. A fork-free macOS hygiene
+follow-up is tracked separately at
+<https://github.com/shuhei-suzuki/rururunx/issues/98>.
+
+This is owner risk acceptance for the gate, not a claim of F1 non-increase or
+P4 improvement. Specific PR merge approval is still required.
 
 ## Results
 
@@ -570,8 +586,8 @@ No group/fixture-wide death is inferred from Docker client exit or absence.
 ## Remaining gates
 
 The GNU F1 increase STOP, dedicated causal controls/production lock-fencing
-impact assessment, the INCONCLUSIVE macOS V-F comparison and the owner's F1
-gate decision based on MC MECHANISM_SHOWN and FC INCONCLUSIVE, independent
+impact assessment, the INCONCLUSIVE macOS V-F comparison and the recorded owner
+risk acceptance for the F1 gate (not a non-increase claim), independent
 Sol/Opus implementation/security repair confirmation, applicable approval conditions,
 final mandatory CI, PR publication/merge and worktree cleanup remain with the
 parent. EOF local controls/mutants do not close the finding without independent
