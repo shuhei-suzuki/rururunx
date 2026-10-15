@@ -1,6 +1,6 @@
 # M0 U2 verification — B1 refusal and fixture classification
 
-Input HEAD: `7d840a361fb80ed3b1e387cc53ead2a859683fe5` (`wip(m0): fix U2 review round 1 findings`), on top of the fixture conversion `80c670ff`. Approved role revision: `2a9114bc`, B1–B4/B2a. Local macOS; Cargo `/Users/shuheisuzuki/.cargo/bin/cargo`; all dependency operations locked/offline. The orchestrator owns commits and independent review. No network, CI, deployment, or live Agent qualification was performed.
+Input HEAD: `61b1dbdb84817204bec71074168b7c2661f0f70e` (`wip(m0): fix U2 review round 2 findings`), on top of the round 1 corrections `7d840a36` and the fixture conversion `80c670ff`. Approved role revision: `2a9114bc`, B1–B4/B2a. Local macOS; Cargo `/Users/shuheisuzuki/.cargo/bin/cargo`; all dependency operations locked/offline. The orchestrator owns commits and independent review. No network, CI, deployment, or live Agent qualification was performed.
 
 ## Result and scope
 
@@ -14,7 +14,7 @@ Input HEAD: `7d840a361fb80ed3b1e387cc53ead2a859683fe5` (`wip(m0): fix U2 review 
 
 Every original ID stays in the ledger with its source hash and assertions; none was ignored or skipped. Six original executables no longer exist on their own: the five refusal-only IDs share one refusal control, and `pin_c2` maps to the equivalent existing Codex control (arrows in the mapping table). Historical `_claude_` names identify provenance: the provider-independent cases now select Codex. Shared assertions still cover CAS, owner/epoch fencing, markers, custody, admission, persistence, read surfaces, and Project isolation through the existing genuine production consumers.
 
-The B1 production boundary refuses every Executor provider except Codex at Goal validation, saved-Task admission/composition, allocation, and first-Executor handoff through one predicate (`execution/capability.rs::require_executor`). No auth/CAS/owner/marker/fencing/#19/process-custody or quota check was changed. No Task.version authority, test authority constructor, SQL success seed, `allow(dead_code)`, suppression, new ignore/skip/serialization, or timeout-only change was introduced.
+The B1 production boundary refuses every Executor provider except Codex through one predicate (`execution/capability.rs::require_executor`). The primary refusal points are Goal validation (`runtime/goal.rs`) and, for saved Tasks, the start of `runtime/installation.rs::installed_driver_composition`, which candidate evaluation maps to `SkipReason::Capability`. Allocation (`adapter/native.rs`, Executor Units only) and first-Executor handoff (`execution/workflow_source/native_handoff.rs`) are defence in depth. A saved Task whose Executor alias is no longer configured keeps its composition failure instead of a capability refusal. No auth/CAS/owner/marker/fencing/#19/process-custody or quota check was changed. No Task.version authority, test authority constructor, SQL success seed, `allow(dead_code)`, suppression, new ignore/skip/serialization, or timeout-only change was introduced.
 
 ## Review round 1 corrections
 
@@ -22,31 +22,43 @@ Round 1 (HEAD `80c670ff`) had independent Sol (implementation) and Opus (securit
 
 | Finding (reporters) | Resulting behaviour |
 |---|---|
-| Typed refusal does not reach consumers (Sol U2-I01, Opus S-1; 2/2) | The shared socket service loop (`cli/service.rs::serve_runtime`, used by foreground and detached entry points) answers a genuine capability refusal with `ControlResponse::CapabilityRejected { request_id, reason }`; other errors keep the generic `Rejected`. The CLI client turns it back into the typed `CapabilityRefusal`. Saved-Task capability skips from the last finite admission pass appear as `RuntimeMetadata.admission_refusal = Capability(reason)`; this is an advisory observation, never authority, and an installation refusal takes precedence. The dead `ErrorKind::CapabilityUnavailable` is removed. `execution/native.rs::classify_failure` is the single finite classifier for terminal supervision and raw handoff errors and maps `CapabilityRefusal` to `UnsupportedCapability`, not `ProtocolFailure`. |
+| Typed refusal does not reach consumers (Sol U2-I01, Opus S-1; 2/2) | The shared socket service loop (`cli/service.rs::serve_runtime`, used by foreground and detached entry points) answers a genuine capability refusal with `ControlResponse::CapabilityRejected { request_id, reason }`; other errors keep the generic `Rejected`. The CLI client turns it back into the typed `CapabilityRefusal`. Saved-Task capability skips from the last finite admission pass appear as `RuntimeMetadata.admission_refusal = Capability(reason)`; this is an advisory observation, never authority, and an installation refusal takes precedence. The dead `ErrorKind::CapabilityUnavailable` is removed. Allocation and handoff refusals return the typed `CapabilityRefusal` before any Session or native Core exists, so they never reach the terminal classifier in `Core::run`; that classifier is unchanged (round 2, R2-1). |
 | Shared safety tests misclassified as B1 (Sol U2-I02, Opus S-2; 2/2) | The cl10 retry property runs through accepted ingress and the installed Codex Core: a malformed owned frame gives `ProtocolFailure`, a trigger fails only receipt persistence, and after recovery and delayed watch publication the failure, diagnostic and receipt are preserved; work stays Unknown, the Session Lost, custody retained through pending shutdown. `pin_c3` declares Codex 0.160.0 against an executable reporting 0.159.0 and is refused before NativeInput with zero invocations and links. `pin_c2` maps to `daemon_native::c_s1f_native_success_and_refusal_equal_under_serve_and_daemon`. |
 | Denylist instead of allowlist (Opus S-4) | `require_executor` accepts only `Some("codex")`; Claude keeps `ClaudeExecutorUnavailable`, None/unknown get `ExecutorProviderUnavailable`. Reviewer registration and provider support are unchanged. |
 | Saved-Task negative by raw SQL (Opus S-5) | A Task is accepted while alias `worker` is Codex; the alias is changed to Claude and the Runtime and owner are rebuilt at a new epoch (`runtime/tests.rs::ControlFixture::restart_with_config`). The unchanged saved Task is skipped by the production candidate/admission path with the capability reason in status and zero Driver/Unit/helper/native/quota/Session effects. |
 | Ledger accuracy and duplicated refusal checks (Opus S-6) | `refusal_only` marks the five refusal mappings; they share one executable refusal control instead of repeating identical refusal tests. New U2 refusal controls also carry `refusal_only: true`. |
 
-Class check: every production caller of the Executor provider check goes through `require_executor` (Goal validation, saved-Task evaluation/composition, first-Executor handoff, allocation); every former `CapabilityUnavailable` producer/consumer is removed; the two raw-error classifiers in `execution/native.rs` are replaced by the one `classify_failure`.
+Class check: every production caller of the Executor provider check goes through `require_executor` (Goal validation, saved-Task composition, first-Executor handoff, allocation); every former `CapabilityUnavailable` producer/consumer is removed.
+
+## Review round 2 corrections
+
+Round 2 was the Opus re-review of `80c670ff..fb4d1df0`. It found no security defect; it confirmed findings 2–5 of round 1 as fixed and finding 1 as partly fixed. Confirmed findings were fixed by Sol in `61b1dbdb`; `execution/native.rs` has no diff against `80c670ff`.
+
+| Finding | Severity | Resulting behaviour |
+|---|---|---|
+| R2-1: the capability branch of the extracted terminal classifier had no production producer; tests called it by hand | Medium (required) | The original inline classification in `Core::run` is restored and the hand-called assertions are removed. The allocation and handoff tests keep their typed `CapabilityRefusal` and zero-effect assertions. |
+| R2-2: the saved-Task provider check ran twice (candidate evaluation and composition), so removing one was undetectable; the earlier `restart` mutation fabricated `Claimed` instead of removing a check | Medium (required) | Only `installed_driver_composition` checks the provider for saved Tasks. The `restart` mutation now removes that single check and is detected. |
+| R2-3: a removed Executor alias was reported as `ExecutorProviderUnavailable` | Low | The allowlist applies to configured aliases only; a removed alias keeps its composition failure (`u2::saved_task_removed_executor_alias_is_not_a_capability_refusal`, restart path). |
+| R2-5: the saved-Task negative did not check Held jobs, phase operations or native contracts | Low | U2 negatives and the shared refusal control use one helper (`assert_no_execution_effects`) that checks all of them. |
+
+Not changed, recorded as optional: R2-4 — `RuntimeMetadata.admission_refusal` mixes the Runtime installation refusal and the last finite admission pass's Task skip, and the pass observation can be stale or miss Tasks outside the 32-candidate page. It has no authority reader (status display only) and the installation refusal takes precedence. R2-6 — no test checks that precedence when both occur at once; the implementation was confirmed correct by reading.
 
 ### Mutation checks for the corrections
 
-Each mutation changes the production check, runs the exact test, restores the original bytes, and reruns the same test successfully. They ran on committed HEAD `97f6eab4` (same Rust source as `7d840a36`) with a clean tree before and after (evidence: `.rrx/u2-fixes/mutations-final2/`, one `result.json` per operator with the observed panic). All eleven mutants failed the intended assertion (exit 101); all restored runs passed (exit 0). An earlier batch (`.rrx/u2-fixes/mutations/`) ran before the last test edit and without the wire operator; it is superseded.
+Each mutation changes the production check, runs the exact test, restores the original bytes, and reruns the same test successfully. They ran on committed HEAD `61b1dbdb` with a clean tree before and after (evidence: `.rrx/u2-fixes/mutations-final3/`, one `result.json` per operator with the observed panic). All ten mutants failed the intended assertion (exit 101); all restored runs passed (exit 0). Earlier batches (`.rrx/u2-fixes/mutations/`, `.rrx/u2-fixes/mutations-final2/`) ran on superseded source; the latter's `restart` operator substituted a fabricated `Claimed` result and its `classification-*` operators exercised the classifier removed in round 2.
 
-| Operator | Exact test |
-|---|---|
-| wire: collapse `CapabilityRejected` to generic `Rejected` in the service loop | `runtime::installation::tests::u2::goal_capability_refusal_round_trips_through_socket_service` |
-| client: drop typed conversion of `CapabilityRejected` | same socket round-trip test |
-| status: drop the saved-Task capability reason | `runtime::installation::tests::u2::saved_task_provider_refusal_preserves_finite_classification_before_composition` |
-| allowlist: revert to the Claude-only denylist | `runtime::installation::tests::u2::executor_provider_allowlist_refuses_missing_and_unknown_provider` |
-| retry: break the shared terminal retry preservation | `runtime::installation::tests::m0_claude::cl10_terminal_retry_preserves_the_original_failure_in_status_and_watch` |
-| watch: break delayed watch republication | same cl10 retry test |
-| pin: remove observed-version qualification | `runtime::installation::tests::pin::pin_c3_old_observed_cli_version_is_refused_before_native` |
-| restart: remove the restart-path capability skip | `runtime::installation::tests::u2::saved_task_provider_refusal_preserves_finite_classification_before_composition` |
-| classification-allocation: lose the finite allocation classification | `adapter::native::ownership_tests::claude_executor_allocation_refuses_before_provisional_assets` |
-| classification-handoff: lose the finite handoff classification | `runtime::installation::tests::u2::native_handoff_refuses_claude_provider_before_ticket_and_asset_transfer` |
-| refusal: remove the shared refusal effects check | `runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects` |
+| Operator | Exact test | Observed mutant failure |
+|---|---|---|
+| wire: collapse `CapabilityRejected` to generic `Rejected` in the service loop | `runtime::installation::tests::u2::goal_capability_refusal_round_trips_through_socket_service` | `wire capability reason missing: Rejected { … }` |
+| client: drop typed conversion of `CapabilityRejected` | same socket round-trip test | typed refusal equality assertion |
+| status: drop the saved-Task capability reason | `runtime::installation::tests::u2::saved_task_provider_refusal_preserves_finite_classification_before_composition` | `saved Task reason missing: … admission_refusal: None` |
+| allowlist: revert to the Claude-only denylist | `runtime::installation::tests::u2::executor_provider_allowlist_refuses_missing_and_unknown_provider` | `unapproved Executor provider accepted` |
+| retry: break the shared terminal retry preservation | `runtime::installation::tests::m0_claude::cl10_terminal_retry_preserves_the_original_failure_in_status_and_watch` | recovered failure equality assertion |
+| watch: break delayed watch republication | same cl10 retry test | republished failure equality assertion |
+| pin: remove observed-version qualification | `runtime::installation::tests::pin::pin_c3_old_observed_cli_version_is_refused_before_native` | `C3: observed version was not refused before NativeInput` |
+| restart: remove the single saved-Task provider check in `installed_driver_composition` | `runtime::installation::tests::u2::saved_task_provider_refusal_preserves_finite_classification_before_composition` | `unexpected candidate result: Claimed` |
+| alias: restore the lookup that refused a removed alias as a provider | `runtime::installation::tests::u2::saved_task_removed_executor_alias_is_not_a_capability_refusal` | `unexpected candidate result: Skipped(Capability(ExecutorProviderUnavailable))` |
+| refusal: accept the Claude Executor provider | `runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects` | `B1: Claude Executor accepted: GoalAccepted { … }` |
 
 ## Fixture changes and retained coverage
 
@@ -70,20 +82,20 @@ B1 permits only Codex Executor. `execution/quota.rs::QuotaScheduler::new` fixes 
 
 ## Final verification
 
-Verification ran on the committed HEAD `7d840a36` with a clean working tree before and after all suites (`.rrx/u2-fixes/final2/`: `input-head.txt`, `input-status.txt`, `output-status.txt`, per-command logs and exit codes, `full-results.json`). Socket and process tests need host permissions, so the suites ran outside the command sandbox under the standing local-verification approval; an earlier in-sandbox attempt (`.rrx/u2-fixes/final/`) could not bind sockets or inspect processes, did not finish, and is not counted. No permission/hook bypass or approval rejection occurred.
+Verification ran on the committed HEAD `61b1dbdb` with a clean working tree before and after all suites (`.rrx/u2-fixes/final3/`: `input-head.txt`, `input-status.txt`, `output-status.txt`, per-command logs and exit codes, `full-results.json`). Socket and process tests need host permissions, so the suites ran outside the command sandbox under the standing local-verification approval; an earlier in-sandbox attempt (`.rrx/u2-fixes/final/`) could not bind sockets or inspect processes, did not finish, and is not counted. No permission/hook bypass or approval rejection occurred.
 
 | Command (absolute Cargo path above) | Passed / failed / ignored | Result |
 |---|---|---|
 | `cargo fmt --all -- --check` | n/a | PASS |
 | `cargo clippy --locked --offline --workspace --all-targets -- -D warnings` | n/a | PASS |
-| `cargo test --locked --offline -p rrx --lib` | 844 / 2 / 27 (nested child 44 / 0 / 1) | FAIL |
+| `cargo test --locked --offline -p rrx --lib` | 840 / 7 / 27 (nested child 43 / 1 / 1) | FAIL |
 | `cargo test --locked --offline -p rrx --test adapter` | 19 / 0 / 0 | PASS |
 | `cargo test --locked --offline -p rrx --test runtime_cli` | 9 / 0 / 0 | PASS |
 | `cargo test --locked --offline -p rrx --test project_api` | 14 / 0 / 0 | PASS |
 | `cargo test --locked --offline -p rrx --test daemon_native` | 2 / 0 / 0 | PASS |
 | `cargo test --locked --offline -p rrx --test codex_unavailable` | 1 / 0 / 1 (nested child 1 / 0 / 0) | PASS |
 
-Both observed failures were rerun in their own invocation with `--exact --nocapture`: **2 exact invocations, 0 passed / 2 failed**. No other test failed in the full run, including the cl10 retry test. The 27 library ignores and the one `codex_unavailable` ignore predate this work; that integration parent still runs its ignored child. No ignore was added.
+Every observed failure, including the nested-child failure, was rerun in its own invocation with `--exact --nocapture`: **8 exact invocations, 6 passed / 2 failed**. The six that pass alone are parallel-run-only failures in this observation: `adapter::git_owner::tests::actual_worker_join_precedes_success_and_capacity_release` (nested child), `adapter::git_owner::tests::destructive_private_controls_leave_fresh_production_pool_unchanged`, `adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_{checkpoint,resume}`, `cli::endpoint::tests::c_s1e2_bind_replaces_known_leftovers_and_refuses_foreign` and `runtime::installation::tests::epoch_fence::ef1_claude_managed_session_fenced_lost_exactly`. The same kinds also failed only in parallel at `80c670ff` (below); none touches code changed by the corrections. A successful alone rerun does not rule out future flakiness. The previous full run on `7d840a36` (`.rrx/u2-fixes/final2/`, lib 844/2/27) had only the two alone failures. The 27 library ignores and the one `codex_unavailable` ignore predate this work; that integration parent still runs its ignored child. No ignore was added.
 
 ### Failures remaining alone
 
@@ -96,7 +108,7 @@ Superseded evidence from the fixture conversion at `80c670ff` is retained under 
 
 ## Protected-property mutation sample (fixture conversion)
 
-Each mutation changes a real production check, runs one converted original test with `--exact --nocapture`, restores exact original bytes under a restoration trap, and reruns that same test successfully. Compiler failures or timeout-only outcomes are not counted. All five mutants fail the intended protected-property assertion; all restored runs are 1/0/0. These ran at `80c670ff`; the five production checks they mutate are not changed by the round 1 corrections.
+Each mutation changes a real production check, runs one converted original test with `--exact --nocapture`, restores exact original bytes under a restoration trap, and reruns that same test successfully. Compiler failures or timeout-only outcomes are not counted. All five mutants fail the intended protected-property assertion; all restored runs are 1/0/0. These ran at `80c670ff`; the five production checks they mutate are not changed by the round 1 or round 2 corrections.
 
 | Operator / protected property | Exact converted test | Observed mutant failure | Exact bytes restored / restored result |
 |---|---|---|---|
@@ -203,7 +215,7 @@ P = provider-independent safety/behaviour; P+M3 = shared part verified through C
 
 ## Files, limits and cleanup
 
-The fixture conversion (`80c670ff`) changed seventeen Rust test/fixture files: `runtime/installation/tests.rs`, its `activation.rs` and `activation/{composition,lifecycle,pages,protection}.rs`, `{epoch_fence,fm_d2,m0_claude,nonsuccess,pin,preparation,project_limit,success,sweep}.rs`, `runtime/phase_supervisor/tests.rs`, and integration `tests/daemon_native.rs`. The round 1 corrections (`7d840a36`) changed production `adapter.rs`, `adapter/native.rs`, `cli/{client,service}.rs`, `execution/{capability,native}.rs`, `runtime/{admission,control,mod}.rs`, and tests `adapter/native/ownership_tests.rs`, `runtime/tests.rs`, `runtime/installation/tests/{m0_claude,pin,u2}.rs`. Paths are under `crates/rrx/src/` except the integration path under `crates/rrx/`. This report and the legacy ledger are also updated. The existing Python peer is unchanged.
+The fixture conversion (`80c670ff`) changed seventeen Rust test/fixture files: `runtime/installation/tests.rs`, its `activation.rs` and `activation/{composition,lifecycle,pages,protection}.rs`, `{epoch_fence,fm_d2,m0_claude,nonsuccess,pin,preparation,project_limit,success,sweep}.rs`, `runtime/phase_supervisor/tests.rs`, and integration `tests/daemon_native.rs`. The round 2 corrections (`61b1dbdb`) changed production `runtime/{admission,installation}.rs` and restored `execution/native.rs`, and changed tests `adapter/native/ownership_tests.rs` and `runtime/installation/{tests.rs,tests/u2.rs}`. The round 1 corrections (`7d840a36`) changed production `adapter.rs`, `adapter/native.rs`, `cli/{client,service}.rs`, `execution/{capability,native}.rs`, `runtime/{admission,control,mod}.rs`, and tests `adapter/native/ownership_tests.rs`, `runtime/tests.rs`, `runtime/installation/tests/{m0_claude,pin,u2}.rs`. Paths are under `crates/rrx/src/` except the integration path under `crates/rrx/`. This report and the legacy ledger are also updated. The existing Python peer is unchanged.
 
 No UI/browser work applies. Linux/macOS CI, new S/P/Executor replacements, Claude Reviewer runtime acceptance and real Mac Agent qualification are not performed or claimed. SC10 stays BLOCKED pending issue #100.
 

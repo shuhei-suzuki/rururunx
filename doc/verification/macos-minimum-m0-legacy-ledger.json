@@ -11053,6 +11053,15 @@
         "AC-04"
       ],
       "refusal_only": true
+    },
+    {
+      "id": "runtime::installation::tests::u2::saved_task_removed_executor_alias_is_not_a_capability_refusal",
+      "controls": [
+        "EX-1",
+        "AC-08",
+        "C-1"
+      ],
+      "refusal_only": true
     }
   ],
   "u2_pending": "U2 review corrections preserve finite refusals across socket/client, status, allocation and native handoff. Provider-independent terminal retry and observed-version qualification now run through Codex. Claude telemetry/wire properties remain M3 Reviewer work; AC-01 removal of declared/observed number pins remains U7 pending (not B1 retirement). SC10 remains BLOCKED pending issue #100; no quota/peer/admission change.",
