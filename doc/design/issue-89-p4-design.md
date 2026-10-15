@@ -276,8 +276,9 @@ changed there. Tests stay parallel (no test-threads override).
 
 ## macOS F1 mechanism and focused frequency controls
 
-Status: designed, not run. Revised after design re-review round 3 finding
-D08; requires the finder's focused re-check before any harness exists.
+Status: MC run (MECHANISM_SHOWN). FC parameters amended after a stopped
+campaign and a declared calibration run; requires the non-writing family's
+re-review before the new campaign.
 The final macOS V-F (main 16 / P4 16) stays INCONCLUSIVE and unchanged. It
 had 0/16 qualified attempts per variant. A read-only source join found 24 F1
 positives in 10 main attempts and none in P4. Not observing F1 in P4 does not
@@ -357,6 +358,14 @@ The extra exposure is bounded by each child's fork-to-exec time. If either
 control shows that a contract must change, work stops and a concrete diff goes
 to the owner. Examples are retention past exec, or a busy-retry or lock
 contract change.
+
+Separate performance impact (observed under synthetic load only). Forcing
+fork for every spawn, as P4 does on macOS, makes concurrent spawning hold the
+macOS malloc fork lock. Allocations in the whole parent process then stall:
+a `sample` showed `Store::open` blocked in `_xzm_fork_lock_wait`. In
+calibration, S2 took 0.095 s per iteration on main (posix_spawn) and 1.94 s
+on P4 (fork). This is distinct from F1 and changes no lock or fencing
+contract. It is reported to the owner with the FC results.
 
 ### Hard constraints
 - Nothing changes in production code, permission, ownership, CAS, marker,
@@ -480,6 +489,8 @@ MC runs 10 gated cases and 10 N cases in one invocation:
 - NOT_SHOWN: a qualified gated case acquires at step 7;
 - otherwise NO_RESULT.
 
+Result: MECHANISM_SHOWN (see Campaign 1 and calibration record).
+
 ### FC: focused frequency control (main and P4 copies)
 Each copy gets one measurement-only integration test target with identical
 source, except for the spawn line and the P4-only FC-POS function:
@@ -489,7 +500,7 @@ source, except for the spawn line and the P4-only FC-POS function:
 Each target is built once with `cargo test --no-run` and the same profile in
 both copies (`--release` is not required). The binary sha256 is recorded.
 Test functions `fc_s1`, `fc_s2` and (P4 only) `fc_pos` are selected with
-`--exact`. One invocation runs one block of 1000 counted iterations for one
+`--exact`. One invocation runs one block of 100 counted iterations for one
 arm. Each block is a separate test-process invocation with a fresh temp state
 and freshly started spawners. Default parallelism is unchanged.
 
@@ -501,17 +512,25 @@ Child shapes, run as separate arms:
   in-kernel before closing CLOEXEC descriptors, so S2-main is a comparison arm,
   not a zero control.
 - FC-POS (P4 copy, positive sensitivity arm): S1 through `spawn_std`, plus a
-  dev-crate pre_exec closure that calls `nanosleep` for 1 ms
+  dev-crate pre_exec closure that calls `nanosleep` for 50 ms
   (async-signal-safe) before hygiene. It lengthens only the fork-to-exec
-  window. FC can return NOT_OBSERVED_HIGHER only if FC-POS is detected as
-  higher than P4-S1 (rule below); otherwise the result is not a pass.
+  window. A 1 ms delay produced 0 refusals in calibration, so 50 ms is used to
+  let this arm produce refusals. FC-POS demonstrates procedure sensitivity,
+  not a natural rate. FC can return NOT_OBSERVED_HIGHER only if FC-POS is
+  detected as higher than P4-S1 (rule below); otherwise the result is not a
+  pass.
 
-Fixed values: K = 20000 counted iterations per arm, in blocks of 1000, and
-M = 8 spawner threads. The arms are main-S1, P4-S1, FC-POS, main-S2 and
-P4-S2, giving 100 blocks in 20 rounds. The order is fixed before the start and
-balanced ABBA across rounds:
+Fixed values: K = 100 counted iterations per block, 20 rounds, and M = 8
+spawner threads. The arms are main-S1, P4-S1, FC-POS, main-S2 and P4-S2,
+giving 5 × 20 = 100 blocks and 2000 counted iterations per arm. The outer
+runner's block deadline is 900 s. The estimated campaign time is about 5-6
+hours on this host. The order is fixed before the start and balanced ABBA
+across rounds:
 - odd rounds (main first): main-S1, P4-S1, FC-POS, main-S2, P4-S2;
 - even rounds (P4 first): P4-S1, FC-POS, main-S1, P4-S2, main-S2.
+
+The deadline applies to the measurement runner only. No counted open waits
+or retries longer, and no product or existing-test timeout changes.
 
 All runs use the same Mac, as idle as possible.
 
@@ -523,7 +542,7 @@ Block procedure:
    completed-cycle counter, incremented only after spawn + reap + exit 0.
    Each spawner owns its in-flight Child in a guard whose Drop kills and waits
    it. A panic sets a stop flag.
-3. For each of the 1000 counted iterations:
+3. For each of the 100 counted iterations:
    - while the owner is still held, wait (bounded) until every spawner has
      completed at least one new cycle since the reference point: the end of
      the previous counted iteration, the block's SETUP open, or the last
@@ -569,8 +588,11 @@ Records per block:
   reference point to the drop.
 
 ### Pre-registered decision rule
-This rule is fixed before any FC run and cannot be edited afterwards. The
-section hash is recorded before block 1.
+This rule was fixed before campaign 1. The amendment changes only K, the
+block denominators and the FC-POS delay; the formulas, vetoes and triggers are
+unchanged. The amended rule is fixed before the new campaign's first block
+and cannot be edited afterwards. The section hash is recorded again before
+block 1.
 
 Inference unit: the block. Blocks are separate test-process invocations with
 a fresh temp state and freshly started spawners, and they are the independent
@@ -587,11 +609,11 @@ so it could turn a failed check into a pass. SETUP/NO_RESULT counts stay
 recorded per block.
 
 Block rates, per shape and round r (r = 1..20). When the bounds are used,
-every arm block has 1000 observed iterations (Acquired or RefusedOs35):
-- P4 rate p_r = RefusedOs35 / 1000;
-- main rate m_r = RefusedOs35 / 1000;
+every arm block has 100 observed iterations (Acquired or RefusedOs35):
+- P4 rate p_r = RefusedOs35 / 100;
+- main rate m_r = RefusedOs35 / 100;
 - d_r = p_r - m_r;
-- FC-POS rate q_r = RefusedOs35 / 1000;
+- FC-POS rate q_r = RefusedOs35 / 100;
 - e_r = q_r - (P4-S1 rate p_r of the same round).
 
 Bounds use Student t with 19 df over the 20 block values, one-sided 95%:
@@ -600,6 +622,11 @@ Bounds use Student t with 19 df over the 20 block values, one-sided 95%:
 - delta = max(0.001, 0.25 * L_main): an absolute floor of 0.1 percentage
   point, otherwise 25% of main's lower block-mean rate;
 - LB(e) = mean(e_r) - t(0.95, 19) * sd(e_r) / sqrt(20).
+
+Block rates have resolution 1/100. With near-zero refusal rates, L_main is
+near 0 and the non-inferiority check is governed by the 0.1 percentage point
+floor. For example, with no main refusals, one P4 refusal in one block gives
+UB(d) ≈ 0.0014 > delta.
 
 Assumption: blocks are independent invocations, and the block-mean statistic
 is treated as approximately normal at 20 blocks. If this assumption is not met
@@ -643,6 +670,53 @@ reported to the owner. NOT_OBSERVED_HIGHER is a synthetic-load finding, not
 proof of natural non-increase. The owner decides the gate with these results
 together with the MC verdict. FC runs whatever the MC verdict is, and neither
 control alone authorizes merge.
+
+### Campaign 1 and calibration record
+Private evidence is under `.rrx/p4-f1-controls-20261015/results/`.
+
+MC (P4 copy): counted verdict MECHANISM_SHOWN, exit 0, C0 controls passed.
+- 10 gated cases: step 7 refused with typed os35 ("another Runtime owns this
+  state root"); step 9 acquired at epoch E+1 while the child was alive.
+- 10 N cases acquired at E+1.
+- Mutants: gate-no-read and classifier-any-error were both killed;
+  same-bytes restoration passed.
+- Builds are not byte-reproducible: identical provenance gives different
+  binaries. MC binds to the last restored build.
+
+FC campaign 1 (pre-registered K = 1000 per block, 600 s block deadline) was
+stopped by SIGINT after 6 blocks. Its records are retained, but it is not
+used for the decision.
+
+| Block | Outcome |
+|---|---|
+| main-S2 | 1000/1000 Acquired, 0 refused, in 75 s |
+| main-S1, P4-S1, FC-POS, P4-S2, r02 P4-S1 | 600 s deadline hit (NO_RESULT) |
+
+A `sample` of a fork-path block showed the test thread in
+`RuntimeOwner::open` → `Store::open` → SQLite schema parse, with allocations
+blocked in `_xzm_fork_lock_wait` (macOS malloc fork lock) while spawner
+threads fork.
+
+Declared calibration (excluded from the decision): K = 20 per arm, one block
+each, 900 s deadline. All five arms completed with 20/20 Acquired, 0 refused,
+no setup failures, and spawned = reaped.
+
+| Arm | Seconds per iteration |
+|---|---|
+| main-S1 | 2.18 |
+| P4-S1 | 2.08 |
+| FC-POS (1 ms) | 1.32 |
+| P4-S2 | 1.94 |
+| main-S2 | 0.095 |
+
+loadavg rose from 18 to 47 during calibration; the host was not idle. At these
+rates a 1000-iteration fork-path block needs about 2000 s, which explains the
+campaign-1 deadline hits.
+
+Campaign 1 and the calibration are excluded from the decision. No counted
+data from campaign 1 is reused. The amended parameters (K = 100, 900 s
+deadline, 50 ms FC-POS) are fixed before the new campaign's first block, and
+the section hash is recorded again before block 1.
 
 ### Review and records
 - This design is reviewed by the non-writing family (Sol, high). Zero confirmed
