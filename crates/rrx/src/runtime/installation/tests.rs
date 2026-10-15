@@ -136,6 +136,23 @@ fn count(f: &ControlFixture, table: &str) -> usize {
         .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
         .unwrap()
 }
+fn assert_no_execution_effects(f: &ControlFixture) {
+    for table in [
+        "task_drivers",
+        "execution_units",
+        "managed_effects",
+        "native_invocations",
+        "quota_leases",
+        "managed_phase_operations",
+        "workflow_native_contracts",
+    ] {
+        assert_eq!(count(f, table), 0, "B1: {table} effect before refusal");
+    }
+    assert!(
+        f.runtime.phase_jobs.observed_jobs().is_empty(),
+        "B1: Held job"
+    );
+}
 async fn finish(f: ControlFixture) {
     let weak = Arc::downgrade(&f.runtime);
     let engine = f
@@ -381,23 +398,10 @@ async fn assert_claude_executor_refused(f: ControlFixture) {
     );
     f.runtime.start().await.unwrap();
     assert_eq!(f.runtime.admit_ready_tasks().unwrap(), 0);
-    for table in [
-        "goals",
-        "tasks",
-        "task_drivers",
-        "execution_units",
-        "managed_effects",
-        "native_invocations",
-        "quota_leases",
-        "managed_phase_operations",
-        "workflow_native_contracts",
-    ] {
+    for table in ["goals", "tasks"] {
         assert_eq!(count(&f, table), 0, "B1: {table} effect before refusal");
     }
-    assert!(
-        f.runtime.phase_jobs.observed_jobs().is_empty(),
-        "B1: Held job"
-    );
+    assert_no_execution_effects(&f);
     f.runtime.shutdown().await.unwrap();
     finish(f).await;
 }

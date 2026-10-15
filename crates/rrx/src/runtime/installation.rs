@@ -386,12 +386,9 @@ impl Runtime {
         self: &Arc<Self>,
         task: &Task,
     ) -> Result<InstalledDriverComposition> {
-        crate::execution::capability::require_executor(
-            self.config
-                .agents
-                .get(&task.executor)
-                .and_then(|a| a.provider.as_deref()),
-        )?;
+        if let Some(agent) = self.config.agents.get(&task.executor) {
+            crate::execution::capability::require_executor(agent.provider.as_deref())?;
+        }
         let graph = self
             .installed
             .as_ref()

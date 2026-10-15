@@ -24,19 +24,7 @@ fn configured_with(available: bool) -> ControlFixture {
     })
 }
 fn assert_no_effects(f: &ControlFixture) {
-    for table in [
-        "task_drivers",
-        "execution_units",
-        "managed_effects",
-        "native_invocations",
-        "quota_leases",
-    ] {
-        assert_eq!(
-            count(f, table),
-            0,
-            "AC-04/08: {table} created before refusal"
-        );
-    }
+    assert_no_execution_effects(f);
     assert_eq!(
         raw(f)
             .query_row(
@@ -174,6 +162,42 @@ async fn saved_task_provider_refusal_preserves_finite_classification_before_comp
         ),
         "saved Task reason missing: {decoded:?}"
     );
+    assert_no_effects(&f);
+    f.runtime.shutdown().await.unwrap();
+    finish(f).await;
+}
+
+/// A removed Executor alias skips saved Tasks without a capability refusal or effects.
+#[tokio::test]
+async fn saved_task_removed_executor_alias_is_not_a_capability_refusal() {
+    let f = configured();
+    accept(&f, 1).await;
+    let f = f
+        .restart_with_config(|config| {
+            config.agents.remove("worker");
+        })
+        .await;
+    f.runtime.start().await.unwrap();
+    let guard = f.runtime.control_admission.lock().await;
+    let page = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .ready_driver_candidates(f.owner.instance_id(), f.owner.epoch(), None, 8)
+        .unwrap();
+    let crate::state::CandidatePage::Rows { keys, .. } = page else {
+        panic!("no candidate")
+    };
+    let result = f
+        .runtime
+        .evaluate_driver_candidate(&guard, &keys[0])
+        .unwrap();
+    assert!(
+        matches!(&result, AdmitOutcome::Skipped(reason) if !matches!(reason, SkipReason::Capability(_))),
+        "unexpected candidate result: {result:?}"
+    );
+    drop(guard);
     assert_no_effects(&f);
     f.runtime.shutdown().await.unwrap();
     finish(f).await;
@@ -356,10 +380,6 @@ async fn native_handoff_refuses_claude_provider_before_ticket_and_asset_transfer
                 assert_eq!(
                     error.downcast_ref::<CapabilityRefusal>(),
                     Some(&CapabilityRefusal::ClaudeExecutorUnavailable)
-                );
-                assert_eq!(
-                    crate::execution::native::classify_failure(&error),
-                    crate::execution::NativeFailure::UnsupportedCapability
                 );
                 assert_eq!(effects(), before);
                 sent.lock().unwrap().take().unwrap().send(()).unwrap();

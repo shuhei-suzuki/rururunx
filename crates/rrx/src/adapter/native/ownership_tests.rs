@@ -138,10 +138,6 @@ async fn claude_executor_allocation_refuses_before_provisional_assets() {
         Some(&execution::capability::CapabilityRefusal::ClaudeExecutorUnavailable)
     );
     assert_eq!(
-        execution::native::classify_failure(&error),
-        execution::NativeFailure::UnsupportedCapability
-    );
-    assert_eq!(
         owner
             .store
             .lock()

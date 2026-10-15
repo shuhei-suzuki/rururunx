@@ -24,14 +24,6 @@ impl Runtime {
             Ok(task) => task,
             Err(_) => return Ok(AdmitOutcome::Skipped(SkipReason::CurrentTaskBounded)),
         };
-        if let Err(refusal) = crate::execution::capability::require_executor(
-            self.config
-                .agents
-                .get(&current.executor)
-                .and_then(|a| a.provider.as_deref()),
-        ) {
-            return Ok(AdmitOutcome::Skipped(SkipReason::Capability(refusal)));
-        }
         if let Err(refusal) = &self.installed {
             return Ok(AdmitOutcome::Skipped(SkipReason::Installation(*refusal)));
         }
