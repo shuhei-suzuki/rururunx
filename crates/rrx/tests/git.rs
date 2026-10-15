@@ -9,11 +9,12 @@ use tempfile::TempDir;
 mod legacy;
 
 fn git(path: &Path, args: &[&str]) {
-    let out = Command::new("git")
-        .current_dir(path)
-        .args(args)
-        .output()
-        .unwrap();
+    let out = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("git");
+        command.current_dir(path).args(args);
+        command
+    })
+    .unwrap();
     assert!(
         out.status.success(),
         "{:?}: {}",
@@ -252,16 +253,17 @@ fn cleanup_rejects_unmerged_then_removes_only_owned_merged_tree() {
     assert!(!s.worktree.exists());
     assert!(other.worktree.exists());
     assert!(f.root.join("change.txt").exists());
-    let out = Command::new("git")
-        .current_dir(&f.root)
-        .args([
+    let out = rrx_spawn_hygiene::status_std({
+        let mut command = Command::new("git");
+        command.current_dir(&f.root).args([
             "show-ref",
             "--quiet",
             "--verify",
             &format!("refs/heads/{}", s.branch),
-        ])
-        .status()
-        .unwrap();
+        ]);
+        command
+    })
+    .unwrap();
     assert!(!out.success());
     assert!(
         f.store
@@ -475,11 +477,14 @@ fn qualified_base_ref_wins_over_same_named_tag_and_replacement_is_blocked() {
     git(&f.root, &["commit", "--allow-empty", "-m", "base changed"]);
     let t = f.task(1);
     let s = Manager::create(&mut f.store, t.id).unwrap();
-    let out = Command::new("git")
-        .current_dir(&f.root)
-        .args(["rev-parse", "refs/heads/main"])
-        .output()
-        .unwrap();
+    let out = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("git");
+        command
+            .current_dir(&f.root)
+            .args(["rev-parse", "refs/heads/main"]);
+        command
+    })
+    .unwrap();
     assert_eq!(s.revision, String::from_utf8(out.stdout).unwrap().trim());
     // Replacing the source checkout with unrelated history must not silently rebind Project.
     let old = f.root.with_file_name("old-repo");
@@ -575,15 +580,16 @@ fn separate_git_metadata_namespace_is_rejected_before_binding_or_native_creation
     let persisted = fixture.store.task(task.id).unwrap().unwrap();
     assert!(persisted.worktree.is_none() && persisted.branch.is_none());
     assert!(!fixture.project.worktree_root.exists());
-    let branch = Command::new("git")
-        .current_dir(&fixture.root)
-        .args([
+    let branch = rrx_spawn_hygiene::status_std({
+        let mut command = Command::new("git");
+        command.current_dir(&fixture.root).args([
             "show-ref",
             "--verify",
             "--quiet",
             "refs/heads/feature/issue-99",
-        ])
-        .status()
-        .unwrap();
+        ]);
+        command
+    })
+    .unwrap();
     assert!(!branch.success());
 }

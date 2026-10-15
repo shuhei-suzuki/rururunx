@@ -355,6 +355,11 @@ MVP hosts: macOS and Linux. Cargo produces the local `rrx` binary; prebuilt rele
 packaging is not available yet. Native agents keep their own installation,
 authentication, hooks and permission settings.
 
+On macOS, process launch marks inherited descriptors >= 3 CLOEXEC and refuses
+launch when that cannot be proven. On Linux, launch uses the original std/Tokio
+operation without an additional hygiene pre_exec callback or descriptor hygiene.
+Other targets refuse launch with `ENOSYS`.
+
 Configuration uses TOML. Inputs are explicit during bootstrap:
 
 ```bash
@@ -382,8 +387,9 @@ recent_history_tokens = 8000
 max_concurrent = 6
 ```
 
-Measure warm help startup after the release build (Python is only a benchmark
-utility, not part of the Rust runtime):
+Measure warm help startup after the release build. The benchmark uses Python;
+P4 public-API descriptor tests also require `/usr/bin/python3 -I -S` for their
+finite child probe. Python is not part of the Rust runtime:
 
 ```bash
 python3 scripts/measure-startup.py target/release/rrx --runs 30

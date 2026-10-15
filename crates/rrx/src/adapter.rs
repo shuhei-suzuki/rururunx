@@ -781,8 +781,7 @@ impl AgentAdapter for GenericCliAdapter {
                 // PTY handling is a separate native capability, never simulated with pipes.
                 command.process_group(0);
                 command.as_std_mut().arg0(&self.command[0]);
-                command
-                    .spawn()
+                rrx_spawn_hygiene::spawn_tokio(command)
                     .map_err(|e| error(ErrorKind::LaunchFailure, e.to_string()))
             }
             .await;
@@ -2054,10 +2053,12 @@ mod tests {
             .unwrap();
         assert_eq!(result.unwrap_err().kind, ErrorKind::Timeout);
         let pid = std::fs::read_to_string(marker).unwrap();
-        let output = std::process::Command::new("ps")
-            .args(["-o", "stat=", "-p", &pid])
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = std::process::Command::new("ps");
+            command.args(["-o", "stat=", "-p", &pid]);
+            command
+        })
+        .unwrap();
         assert!(
             output.stdout.is_empty(),
             "timed-out Git leader must be reaped"
@@ -2161,10 +2162,12 @@ mod tests {
         assert_eq!(result.kind(), std::io::ErrorKind::TimedOut);
         assert!(started.elapsed() < Duration::from_secs(1));
         let pid = pid.get().to_string();
-        let output = std::process::Command::new("ps")
-            .args(["-o", "stat=", "-p", &pid])
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = std::process::Command::new("ps");
+            command.args(["-o", "stat=", "-p", &pid]);
+            command
+        })
+        .unwrap();
         assert!(output.stdout.is_empty(), "inspector child must be reaped");
     }
 
@@ -2308,10 +2311,12 @@ mod tests {
                     owned_pid.as_raw_nonzero().get().to_string(),
                     std::fs::read_to_string(&descendant_file).unwrap(),
                 ] {
-                    let output = std::process::Command::new("ps")
-                        .args(["-o", "stat=", "-p", &native_pid])
-                        .output()
-                        .unwrap();
+                    let output = rrx_spawn_hygiene::output_std({
+                        let mut command = std::process::Command::new("ps");
+                        command.args(["-o", "stat=", "-p", &native_pid]);
+                        command
+                    })
+                    .unwrap();
                     let state = String::from_utf8(output.stdout).unwrap();
                     assert!(
                         state.trim().is_empty() || state.trim().starts_with('Z'),

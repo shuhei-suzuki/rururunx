@@ -455,11 +455,13 @@ fn observe_command_recorded(
         command.get_envs().count(),
     );
     let spawn_started = Instant::now();
-    let child = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
+    let child = rrx_spawn_hygiene::spawn_std({
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        command
+    });
     // Start the same post-spawn deadline before recording spawn timing.
     let spawned_at = Instant::now();
     let deadline = spawned_at + BUDGET;
@@ -747,13 +749,16 @@ mod tests {
     fn exited_inspector_retained_output_writer_is_unknown_and_watchdog_releases_mutants() {
         let (reader, retained_writer) = UnixStream::pair().unwrap();
         let output = retained_writer.try_clone().unwrap();
-        let child = std::process::Command::new("/bin/sh")
-            .args(["-c", "printf '42 42 Z\\n'"])
-            .env_clear()
-            .stdout(Stdio::from(OwnedFd::from(output)))
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
+        let child = rrx_spawn_hygiene::spawn_std({
+            let mut command = std::process::Command::new("/bin/sh");
+            command
+                .args(["-c", "printf '42 42 Z\\n'"])
+                .env_clear()
+                .stdout(Stdio::from(OwnedFd::from(output)))
+                .stderr(Stdio::piped());
+            command
+        })
+        .unwrap();
         let pid = rustix::process::Pid::from_raw(child.id() as i32).unwrap();
         loop {
             if rustix::process::waitid(
@@ -825,14 +830,17 @@ mod tests {
     #[test]
     fn actual_read_error_reaps_the_owned_inspector_without_accepting_a_frame() {
         let directory = tempfile::tempdir().unwrap();
-        let child = std::process::Command::new("/bin/sh")
-            .args(["-c", ":"])
-            .env_clear()
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
+        let child = rrx_spawn_hygiene::spawn_std({
+            let mut command = std::process::Command::new("/bin/sh");
+            command
+                .args(["-c", ":"])
+                .env_clear()
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped());
+            command
+        })
+        .unwrap();
         let mut inspector = Inspector {
             child,
             unreaped: true,
@@ -941,29 +949,35 @@ mod tests {
     impl OwnedBoundary {
         async fn new() -> Self {
             use std::os::unix::process::CommandExt;
-            let child = tokio::process::Command::new("/bin/cat")
-                .env_clear()
-                .stdin(Stdio::piped())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .kill_on_drop(true)
-                .process_group(0)
-                .spawn()
-                .unwrap();
+            let child = rrx_spawn_hygiene::spawn_tokio({
+                let mut command = tokio::process::Command::new("/bin/cat");
+                command
+                    .env_clear()
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .kill_on_drop(true)
+                    .process_group(0);
+                command
+            })
+            .unwrap();
             let mut leader = super::super::ProcessGroup::new(
                 child,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             )
             .unwrap();
-            let member = std::process::Command::new("/bin/sleep")
-                .arg("30")
-                .env_clear()
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .process_group(leader.pid.as_raw_nonzero().get())
-                .spawn()
-                .unwrap();
+            let member = rrx_spawn_hygiene::spawn_std({
+                let mut command = std::process::Command::new("/bin/sleep");
+                command
+                    .arg("30")
+                    .env_clear()
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .process_group(leader.pid.as_raw_nonzero().get());
+                command
+            })
+            .unwrap();
             drop(leader.child.stdin.take());
             let fixture = Self {
                 leader: Some(leader),

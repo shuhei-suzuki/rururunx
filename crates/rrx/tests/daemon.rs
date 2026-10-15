@@ -38,15 +38,18 @@ impl Fixture {
         }
     }
     fn daemon(&self, verb: &str) -> (Output, Value) {
-        let output = Command::new(env!("CARGO_BIN_EXE_rrx"))
-            .arg("--state")
-            .arg(&self.state)
-            .arg("--config")
-            .arg(&self.config)
-            .args(["daemon", verb, "--json"])
-            .current_dir(&self.base)
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+            command
+                .arg("--state")
+                .arg(&self.state)
+                .arg("--config")
+                .arg(&self.config)
+                .args(["daemon", verb, "--json"])
+                .current_dir(&self.base);
+            command
+        })
+        .unwrap();
         let value = serde_json::from_slice(&output.stdout).unwrap_or_else(|_| {
             panic!(
                 "daemon {verb}: {}{}",
@@ -61,15 +64,18 @@ impl Fixture {
     }
     /// An S4 reader through the compiled entry.
     fn read(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_rrx"))
-            .arg("--state")
-            .arg(&self.state)
-            .arg("--config")
-            .arg(&self.config)
-            .args(args)
-            .current_dir(&self.base)
-            .output()
-            .unwrap()
+        rrx_spawn_hygiene::output_std({
+            let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+            command
+                .arg("--state")
+                .arg(&self.state)
+                .arg("--config")
+                .arg(&self.config)
+                .args(args)
+                .current_dir(&self.base);
+            command
+        })
+        .unwrap()
     }
     /// Every Store file of the selected state, as (name, length, hash).
     fn store_files(&self) -> Vec<(String, usize, u64)> {
@@ -184,11 +190,14 @@ impl Fixture {
     }
     /// The detached service of this state root, found only to inspect it.
     fn service_pid(&self) -> u32 {
-        let output = Command::new("pgrep")
-            .arg("-f")
-            .arg(format!("{} --config", self.state.display()))
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = Command::new("pgrep");
+            command
+                .arg("-f")
+                .arg(format!("{} --config", self.state.display()));
+            command
+        })
+        .unwrap();
         let pids: Vec<u32> = String::from_utf8_lossy(&output.stdout)
             .split_whitespace()
             .map(|p| p.parse().unwrap())
@@ -200,14 +209,16 @@ impl Fixture {
 impl Drop for Fixture {
     /// Bounded cleanup: a probe that blocks must fail the control, not hang it.
     fn drop(&mut self) {
-        let Ok(mut child) = Command::new(env!("CARGO_BIN_EXE_rrx"))
-            .arg("--state")
-            .arg(&self.state)
-            .args(["daemon", "stop"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        else {
+        let Ok(mut child) = rrx_spawn_hygiene::spawn_std({
+            let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+            command
+                .arg("--state")
+                .arg(&self.state)
+                .args(["daemon", "stop"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+            command
+        }) else {
             return;
         };
         let deadline = Instant::now() + Duration::from_secs(10);
@@ -274,24 +285,28 @@ fn owner_lock_fifo_is_a_typed_probe_error_for_every_command() {
     let lock = f.root().join("owner.lock");
     std::fs::remove_file(&lock).unwrap();
     assert!(
-        Command::new("/usr/bin/mkfifo")
-            .args(["-m", "600"])
-            .arg(&lock)
-            .status()
-            .unwrap()
-            .success()
+        rrx_spawn_hygiene::status_std({
+            let mut command = Command::new("/usr/bin/mkfifo");
+            command.args(["-m", "600"]).arg(&lock);
+            command
+        })
+        .unwrap()
+        .success()
     );
     for verb in ["status", "start", "stop"] {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_rrx"))
-            .arg("--state")
-            .arg(&f.state)
-            .arg("--config")
-            .arg(&f.config)
-            .args(["daemon", verb, "--json"])
-            .current_dir(&f.base)
-            .stdout(std::process::Stdio::piped())
-            .spawn()
-            .unwrap();
+        let mut child = rrx_spawn_hygiene::spawn_std({
+            let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+            command
+                .arg("--state")
+                .arg(&f.state)
+                .arg("--config")
+                .arg(&f.config)
+                .args(["daemon", verb, "--json"])
+                .current_dir(&f.base)
+                .stdout(std::process::Stdio::piped());
+            command
+        })
+        .unwrap();
         let deadline = Instant::now() + Duration::from_secs(10);
         while child.try_wait().unwrap().is_none() {
             if Instant::now() >= deadline {
@@ -336,7 +351,7 @@ fn c_s1c2_concurrent_status_never_corrupts_start() {
                 .arg(&f.state)
                 .args(["daemon", "status", "--json"])
                 .stdout(std::process::Stdio::null());
-            command.spawn().unwrap()
+            rrx_spawn_hygiene::spawn_std(command).unwrap()
         };
         let started = f.start();
         let mut status = status;
@@ -378,11 +393,13 @@ fn c_s1e2_daemon_start_replaces_known_leftovers_only() {
     // A crash leaves the protocol-4 descriptor behind.
     let pid = f.service_pid();
     assert!(
-        Command::new("kill")
-            .args(["-9", &pid.to_string()])
-            .status()
-            .unwrap()
-            .success()
+        rrx_spawn_hygiene::status_std({
+            let mut command = Command::new("kill");
+            command.args(["-9", &pid.to_string()]);
+            command
+        })
+        .unwrap()
+        .success()
     );
     let deadline = Instant::now() + Duration::from_secs(30);
     while f.status()["status"] != "discovery_unavailable" {
@@ -512,19 +529,23 @@ fn c_s1g_daemon_owns_no_inet_socket() {
             "control listener is not AF_UNIX"
         );
     } else {
-        let inet = Command::new("lsof")
-            .args(["-n", "-P", "-a", "-p", &pid.to_string(), "-i"])
-            .output()
-            .unwrap();
+        let inet = rrx_spawn_hygiene::output_std({
+            let mut command = Command::new("lsof");
+            command.args(["-n", "-P", "-a", "-p", &pid.to_string(), "-i"]);
+            command
+        })
+        .unwrap();
         assert!(
             String::from_utf8_lossy(&inet.stdout).trim().is_empty(),
             "daemon owns an inet socket: {}",
             String::from_utf8_lossy(&inet.stdout)
         );
-        let unix = Command::new("lsof")
-            .args(["-n", "-P", "-a", "-p", &pid.to_string(), "-U"])
-            .output()
-            .unwrap();
+        let unix = rrx_spawn_hygiene::output_std({
+            let mut command = Command::new("lsof");
+            command.args(["-n", "-P", "-a", "-p", &pid.to_string(), "-U"]);
+            command
+        })
+        .unwrap();
         assert!(
             !String::from_utf8_lossy(&unix.stdout).trim().is_empty(),
             "control listener is not AF_UNIX"

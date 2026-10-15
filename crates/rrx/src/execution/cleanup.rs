@@ -277,10 +277,10 @@ mod tests {
         }
     }
     fn child(cookie: &str, marker: &std::path::Path) -> OwnedChild {
-        OwnedChild(Command::new("/usr/bin/python3")
+        OwnedChild(rrx_spawn_hygiene::spawn_std({ let mut command = Command::new("/usr/bin/python3"); command
             .args(["-c", "import os,time,pathlib; pathlib.Path(os.environ['RRX_FIXTURE_READY']).write_text('ready'); time.sleep(30)"])
             .env("RRX_PROCESS_COOKIE", cookie).env("RRX_FIXTURE_READY", marker)
-            .stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap())
+            .stdout(Stdio::null()).stderr(Stdio::null()); command }).unwrap())
     }
     #[tokio::test]
     async fn historical_cookie_sweep_preserves_retained_result_and_live_sibling() {

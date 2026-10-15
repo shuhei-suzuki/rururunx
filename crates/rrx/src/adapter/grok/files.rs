@@ -586,11 +586,13 @@ mod tests {
         std::fs::write(directory.path().join("binary"), [0, 1, 255]).unwrap();
         assert!(files.read(&json!({"path":"binary"})).is_err());
         assert!(
-            std::process::Command::new("mkfifo")
-                .arg(directory.path().join("fifo"))
-                .status()
-                .unwrap()
-                .success()
+            rrx_spawn_hygiene::status_std({
+                let mut command = std::process::Command::new("mkfifo");
+                command.arg(directory.path().join("fifo"));
+                command
+            })
+            .unwrap()
+            .success()
         );
         assert!(files.read(&json!({"path":"fifo"})).is_err());
         assert!(

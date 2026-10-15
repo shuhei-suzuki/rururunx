@@ -528,7 +528,7 @@ impl ManagedVerifier {
                     .lock()
                     .map_err(|_| anyhow::anyhow!("state poisoned"))?;
                 store.reserve_verification_command(grant, index, operation, &cwd_observation)?;
-                match process::OwnedProcess::spawn(&mut command) {
+                match process::OwnedProcess::spawn(command) {
                     Ok(child) => child,
                     Err(e) => {
                         store.reconcile_managed_effect(

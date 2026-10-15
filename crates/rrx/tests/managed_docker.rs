@@ -29,20 +29,23 @@ fn installed_docker_entry_binds_runtime_and_shim_configuration() {
     }
     let mut paths = vec![tools];
     paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap()));
-    let child = std::process::Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--ignored",
-            "--exact",
-            "installed_docker_routing_worker",
-            "--nocapture",
-        ])
-        .env("RRX_DOCKER_FIXTURE_ROOT", &root)
-        .env("PATH", std::env::join_paths(paths).unwrap())
-        .env("DOCKER_CONFIG", root.join("config-a"))
-        .env_remove("DOCKER_HOST")
-        .env_remove("DOCKER_CONTEXT")
-        .output()
-        .unwrap();
+    let child = rrx_spawn_hygiene::output_std({
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--ignored",
+                "--exact",
+                "installed_docker_routing_worker",
+                "--nocapture",
+            ])
+            .env("RRX_DOCKER_FIXTURE_ROOT", &root)
+            .env("PATH", std::env::join_paths(paths).unwrap())
+            .env("DOCKER_CONFIG", root.join("config-a"))
+            .env_remove("DOCKER_HOST")
+            .env_remove("DOCKER_CONTEXT");
+        command
+    })
+    .unwrap();
     assert!(
         child.status.success(),
         "fixture worker failed: {}\n{}",
@@ -52,12 +55,13 @@ fn installed_docker_entry_binds_runtime_and_shim_configuration() {
 }
 
 async fn git(root: &Path, args: &[&str]) {
-    let output = Command::new("/usr/bin/git")
-        .current_dir(root)
-        .args(args)
-        .output()
-        .await
-        .unwrap();
+    let output = rrx_spawn_hygiene::output_tokio({
+        let mut command = Command::new("/usr/bin/git");
+        command.current_dir(root).args(args);
+        command
+    })
+    .await
+    .unwrap();
     assert!(output.status.success(), "fixture Git failed");
 }
 
@@ -142,10 +146,13 @@ async fn installed_docker_routing_worker() {
         .args(["run", "-d", "fixture-image"])
         .envs(profile.environment(&unit.cookie, owner.ipc_path()).unwrap())
         .env("DOCKER_CONFIG", &b);
-    let refused = tokio::time::timeout(Duration::from_secs(15), different.output())
-        .await
-        .unwrap()
-        .unwrap();
+    let refused = tokio::time::timeout(
+        Duration::from_secs(15),
+        rrx_spawn_hygiene::output_tokio(different),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert!(!refused.status.success());
     assert!(read()["calls"].as_array().unwrap().is_empty());
     assert!(read()["containers"].as_object().unwrap().is_empty());
@@ -155,12 +162,15 @@ async fn installed_docker_routing_worker() {
         .envs(profile.environment(&unit.cookie, owner.ipc_path()).unwrap())
         .env("DOCKER_HOST", "unix:///fixture-different.sock");
     assert!(
-        !tokio::time::timeout(Duration::from_secs(15), host.output())
-            .await
-            .unwrap()
-            .unwrap()
-            .status
-            .success()
+        !tokio::time::timeout(
+            Duration::from_secs(15),
+            rrx_spawn_hygiene::output_tokio(host)
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .status
+        .success()
     );
     assert!(read()["calls"].as_array().unwrap().is_empty());
     let mut matching = Command::new(&shim);
@@ -168,10 +178,13 @@ async fn installed_docker_routing_worker() {
         .current_dir(&unit.worktree)
         .args(["run", "-d", "fixture-image"])
         .envs(profile.environment(&unit.cookie, owner.ipc_path()).unwrap());
-    let accepted = tokio::time::timeout(Duration::from_secs(15), matching.output())
-        .await
-        .unwrap()
-        .unwrap();
+    let accepted = tokio::time::timeout(
+        Duration::from_secs(15),
+        rrx_spawn_hygiene::output_tokio(matching),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert!(
         accepted.status.success(),
         "{}",

@@ -27,11 +27,12 @@ impl Holder {
 }
 
 fn git(root: &Path, args: &[&str]) {
-    let output = std::process::Command::new("git")
-        .current_dir(root)
-        .args(args)
-        .output()
-        .unwrap();
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = std::process::Command::new("git");
+        command.current_dir(root).args(args);
+        command
+    })
+    .unwrap();
     assert!(
         output.status.success(),
         "SETUP: git {args:?}: {}",

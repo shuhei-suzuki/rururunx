@@ -5059,10 +5059,12 @@ mod tests {
     }
     fn assert_leader_reaped(marker: &std::path::Path) {
         let pid = std::fs::read_to_string(marker).unwrap();
-        let output = std::process::Command::new("/bin/ps")
-            .args(["-p", &pid, "-o", "pid="])
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = std::process::Command::new("/bin/ps");
+            command.args(["-p", &pid, "-o", "pid="]);
+            command
+        })
+        .unwrap();
         assert!(
             output.stdout.is_empty(),
             "owned bootstrap leader must be reaped before Finished"
@@ -6215,10 +6217,12 @@ mod tests {
         bounded(async {
             loop {
                 let pid = std::fs::read_to_string(directory.join("leader")).unwrap();
-                let output = std::process::Command::new("/bin/ps")
-                    .args(["-p", &pid, "-o", "pid="])
-                    .output()
-                    .unwrap();
+                let output = rrx_spawn_hygiene::output_std({
+                    let mut command = std::process::Command::new("/bin/ps");
+                    command.args(["-p", &pid, "-o", "pid="]);
+                    command
+                })
+                .unwrap();
                 if output.stdout.is_empty() {
                     break;
                 }
@@ -6845,11 +6849,16 @@ mod tests {
         )
         .unwrap();
         std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let configured = std::process::Command::new("git")
-            .current_dir(&owned.request.worktree)
-            .args(["config", "core.fsmonitor", hook.to_str().unwrap()])
-            .output()
-            .unwrap();
+        let configured = rrx_spawn_hygiene::output_std({
+            let mut command = std::process::Command::new("git");
+            command.current_dir(&owned.request.worktree).args([
+                "config",
+                "core.fsmonitor",
+                hook.to_str().unwrap(),
+            ]);
+            command
+        })
+        .unwrap();
         assert!(configured.status.success());
         let (executable, native_marker) = bootstrap_fixture(&owned);
         let adapter = Arc::new(

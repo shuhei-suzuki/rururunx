@@ -21,11 +21,12 @@ use std::{
 };
 
 fn git(root: &Path, args: &[&str]) {
-    let out = Command::new("git")
-        .current_dir(root)
-        .args(args)
-        .output()
-        .unwrap();
+    let out = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("git");
+        command.current_dir(root).args(args);
+        command
+    })
+    .unwrap();
     assert!(
         out.status.success(),
         "{args:?}: {}",
@@ -79,11 +80,13 @@ impl Fixture {
         std::fs::create_dir(&bin).unwrap();
         let log = base.join("daemon-git.log");
         let real = String::from_utf8(
-            Command::new("sh")
-                .args(["-c", "command -v git"])
-                .output()
-                .unwrap()
-                .stdout,
+            rrx_spawn_hygiene::output_std({
+                let mut command = Command::new("sh");
+                command.args(["-c", "command -v git"]);
+                command
+            })
+            .unwrap()
+            .stdout,
         )
         .unwrap();
         // Fails with a secret-looking stderr while `<repo>/.git/rrx-fail`
@@ -129,7 +132,12 @@ impl Fixture {
         command
     }
     fn cli(&self, cwd: &Path, args: &[&str]) -> Output {
-        self.command(cwd).args(args).output().unwrap()
+        rrx_spawn_hygiene::output_std({
+            let mut command = self.command(cwd);
+            command.args(args);
+            command
+        })
+        .unwrap()
     }
     fn ok(&self, cwd: &Path, args: &[&str]) -> String {
         let out = self.cli(cwd, args);
@@ -150,12 +158,12 @@ impl Fixture {
             self.bin.display(),
             std::env::var("PATH").unwrap_or_default()
         );
-        let out = self
-            .command(&self.base)
-            .env("PATH", path)
-            .args(["daemon", verb, "--json"])
-            .output()
-            .unwrap();
+        let out = rrx_spawn_hygiene::output_std({
+            let mut command = self.command(&self.base);
+            command.env("PATH", path).args(["daemon", verb, "--json"]);
+            command
+        })
+        .unwrap();
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| {
             panic!(
                 "daemon {verb}: {}{}",
@@ -348,13 +356,15 @@ fn c_s3b_offline_write_holds_the_owner_lock_until_its_last_write() {
         f.bin.display(),
         std::env::var("PATH").unwrap_or_default()
     );
-    let mut writer = f
-        .command(&f.base)
-        .env("PATH", path)
-        .args(["project", "add", f.a.to_str().unwrap()])
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut writer = rrx_spawn_hygiene::spawn_std({
+        let mut command = f.command(&f.base);
+        command
+            .env("PATH", path)
+            .args(["project", "add", f.a.to_str().unwrap()])
+            .stdout(std::process::Stdio::piped());
+        command
+    })
+    .unwrap();
     f.wait_held(&f.a);
     assert!(f.state.exists(), "SETUP: the Store was not opened yet");
     let busy = f.daemon("start");

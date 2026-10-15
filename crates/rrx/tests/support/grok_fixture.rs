@@ -11,13 +11,14 @@ pub(super) struct Fixture {
     observations: Mutex<BTreeMap<SessionId, Observation>>,
 }
 pub(super) fn git(root: &Path, args: &[&str]) -> String {
-    let output = std::process::Command::new("git")
-        .args(args)
-        .current_dir(root)
-        .env_clear()
-        .envs(std::env::vars_os().filter(|(key, _)| !key.to_string_lossy().starts_with("GIT_")))
-        .output()
-        .unwrap();
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = std::process::Command::new("git");
+        command.args(args).current_dir(root).env_clear().envs(
+            std::env::vars_os().filter(|(key, _)| !key.to_string_lossy().starts_with("GIT_")),
+        );
+        command
+    })
+    .unwrap();
     assert!(
         output.status.success(),
         "{}",

@@ -543,6 +543,7 @@ dependencies = [
  "clap",
  "futures-util",
  "rrx-process-tracker",
+ "rrx-spawn-hygiene",
  "rusqlite",
  "rustix",
  "serde",
@@ -560,8 +561,19 @@ name = "rrx-process-tracker"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "rrx-spawn-hygiene",
  "rustix",
  "tempfile",
+]
+
+[[package]]
+name = "rrx-spawn-hygiene"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "rustix",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

@@ -110,15 +110,18 @@ impl NativeServer {
             .map_err(|error| failure(ErrorKind::LaunchFailure, error.to_string()))?;
         let socket_binding = SocketBinding::capture(&socket)?;
         drop(listener);
-        let child = Command::new("/bin/sleep")
-            .arg("30")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0)
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|error| failure(ErrorKind::LaunchFailure, error.to_string()))?;
+        let child = rrx_spawn_hygiene::spawn_tokio({
+            let mut command = Command::new("/bin/sleep");
+            command
+                .arg("30")
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .process_group(0)
+                .kill_on_drop(true);
+            command
+        })
+        .map_err(|error| failure(ErrorKind::LaunchFailure, error.to_string()))?;
         let mut process = ProcessGroup::new(child, uncertain)?;
         let pid = process.child.id().expect("owned fixture child");
         let stdout = Reader::spawn(process.child.stdout.take().expect("piped stdout"));
@@ -197,7 +200,7 @@ impl NativeServer {
             .kill_on_drop(true)
             .process_group(0);
         preparation.check()?;
-        let child = command.spawn().map_err(|_| {
+        let child = rrx_spawn_hygiene::spawn_tokio(command).map_err(|_| {
             preparation.failed(failure(
                 ErrorKind::LaunchFailure,
                 "native Codex app-server could not start",
@@ -735,10 +738,12 @@ mod tests {
         );
         assert!(!uncertain.load(std::sync::atomic::Ordering::SeqCst));
         let pid = std::fs::read_to_string(ready).unwrap();
-        let observed = std::process::Command::new("/bin/ps")
-            .args(["-p", &pid, "-o", "pid="])
-            .output()
-            .unwrap();
+        let observed = rrx_spawn_hygiene::output_std({
+            let mut command = std::process::Command::new("/bin/ps");
+            command.args(["-p", &pid, "-o", "pid="]);
+            command
+        })
+        .unwrap();
         assert!(
             observed.stdout.is_empty(),
             "bootstrap must reap its owned leader"

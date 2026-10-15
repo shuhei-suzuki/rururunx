@@ -646,11 +646,12 @@ mod tests {
                     .trim()
                     .parse()
                     .unwrap();
-                let member = std::process::Command::new("sleep")
-                    .arg("30")
-                    .process_group(leader)
-                    .spawn()
-                    .unwrap();
+                let member = rrx_spawn_hygiene::spawn_std({
+                    let mut command = std::process::Command::new("sleep");
+                    command.arg("30").process_group(leader);
+                    command
+                })
+                .unwrap();
                 std::fs::write(&go, "").unwrap();
                 member
             })
@@ -699,12 +700,13 @@ mod tests {
             ][..],
         ] {
             assert!(
-                std::process::Command::new("git")
-                    .current_dir(&repo)
-                    .args(args)
-                    .status()
-                    .unwrap()
-                    .success()
+                rrx_spawn_hygiene::status_std({
+                    let mut command = std::process::Command::new("git");
+                    command.current_dir(&repo).args(args);
+                    command
+                })
+                .unwrap()
+                .success()
             );
         }
         let runtime = Arc::new(runtime(dir.path()));

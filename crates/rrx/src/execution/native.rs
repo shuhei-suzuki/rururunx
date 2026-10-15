@@ -403,7 +403,7 @@ impl NativeSessions {
                 &unit.worktree,
                 "native_version",
             )?;
-            match process::OwnedProcess::spawn(&mut version) {
+            match process::OwnedProcess::spawn(version) {
                 Ok(child) => child,
                 Err(error) => {
                     store.reconcile_managed_effect(
@@ -565,7 +565,7 @@ impl NativeSessions {
                 });
             }
             preparation_guard.update(&unit);
-            match process::OwnedProcess::spawn(&mut command) {
+            match process::OwnedProcess::spawn(command) {
                 Ok(child) => child,
                 Err(e) => {
                     store.retire_execution(&unit.authority(), false)?;

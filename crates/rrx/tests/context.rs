@@ -15,11 +15,12 @@ use tempfile::TempDir;
 mod legacy;
 
 fn git(root: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .current_dir(root)
-        .args(args)
-        .output()
-        .unwrap();
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("git");
+        command.current_dir(root).args(args);
+        command
+    })
+    .unwrap();
     assert!(
         output.status.success(),
         "Git {args:?}: {}",
@@ -819,13 +820,13 @@ async fn root_directory_identity_and_hard_links_cannot_reuse_sources() {
     let moved = f.root.with_file_name("held-original");
     std::fs::rename(&f.root, &moved).unwrap();
     assert!(
-        Command::new("cp")
-            .arg("-R")
-            .arg(&moved)
-            .arg(&f.root)
-            .status()
-            .unwrap()
-            .success()
+        rrx_spawn_hygiene::status_std({
+            let mut command = Command::new("cp");
+            command.arg("-R").arg(&moved).arg(&f.root);
+            command
+        })
+        .unwrap()
+        .success()
     );
     assert_eq!(
         rrx::git::repository_identity(&f.root, "main").unwrap(),
@@ -986,11 +987,13 @@ async fn symlink_nested_repo_metadata_namespace_and_special_files_fail_closed() 
     std::fs::remove_file(f.root.join("RULES.md")).unwrap();
     std::fs::write(f.root.join("RULES.md"), "restored mandatory rule").unwrap();
     assert!(
-        Command::new("mkfifo")
-            .arg(f.worktree.join("fifo"))
-            .status()
-            .unwrap()
-            .success()
+        rrx_spawn_hygiene::status_std({
+            let mut command = Command::new("mkfifo");
+            command.arg(f.worktree.join("fifo"));
+            command
+        })
+        .unwrap()
+        .success()
     );
     assert!(
         tokio::time::timeout(

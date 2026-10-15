@@ -40,7 +40,7 @@ async fn retained_inspection_ambient_common_directory_cannot_substitute_complete
         .env("RRX_RETAINED_TEST_STATE", dir.path().join("state.db"))
         .env("RRX_RETAINED_TEST_ARTIFACT", &metadata)
         .env("GIT_COMMON_DIR", &backup);
-    let observed = process::capture_observed(&mut command).await.unwrap();
+    let observed = process::capture_observed(command).await.unwrap();
     assert!(
         observed.receipt.status.success(),
         "actual public verification accepted incomplete original storage through ambient common directory"
@@ -103,7 +103,7 @@ async fn remove_ancestors(repository: &Path, backup: &Path, ancestors: &[String]
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
-        let mut child = process::OwnedProcess::spawn(&mut command).unwrap();
+        let mut child = process::OwnedProcess::spawn(command).unwrap();
         let mut stdin = child.child.stdin.take().unwrap();
         let write = async {
             stdin.write_all(&bytes).await?;

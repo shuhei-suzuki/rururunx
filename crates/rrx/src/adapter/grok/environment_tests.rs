@@ -28,8 +28,11 @@ async fn isolated_with(name: &str, extras: &[(String, String)], omit_ssl: bool) 
         command.env_remove("SSLKEYLOGFILE");
     }
     command.envs(extras.iter().cloned());
-    let mut child =
-        ProcessGroup::new(command.spawn().unwrap(), Arc::new(AtomicBool::new(false))).unwrap();
+    let mut child = ProcessGroup::new(
+        rrx_spawn_hygiene::spawn_tokio(command).unwrap(),
+        Arc::new(AtomicBool::new(false)),
+    )
+    .unwrap();
     let stdout = tokio::spawn(read_git_output(child.child.stdout.take().unwrap()));
     let stderr = tokio::spawn(read_git_output(child.child.stderr.take().unwrap()));
     let observation_started = std::time::Instant::now();
