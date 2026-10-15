@@ -348,8 +348,8 @@ UNKNOWN. Normal main custody composition777 now passed initial local macOS full
 default Debug and distinct Release TEST, each445 top-level Rust tests+2docs/
 27ignored, plus fmt/Clippy/both BUILDs. Two independent static reviews approve
 only this composition without findings; CI37270293297 passed every step bothOS
-with complete tested-tree equality. Final docs-only checks precede any limited
-merge. The audit selection remains45mac/42Linux;20new Codex custody controls gain
+with complete tested-tree equality. Final docs-only checks passed and the selected component merged through
+PR64 at6146b163. The audit selection remains45mac/42Linux;20new Codex custody controls gain
 no selected private-pool or Context settlement credit. Whole60/native/backend/F1/
 MVP and historical failure causes remain OPEN. Exact current scope and the
 finite27-run/23-operator/25-kill ledger are recorded in
