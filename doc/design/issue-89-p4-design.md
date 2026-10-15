@@ -276,9 +276,11 @@ changed there. Tests stay parallel (no test-threads override).
 
 ## macOS F1 mechanism and focused frequency controls
 
-Status: MC run (MECHANISM_SHOWN). FC parameters amended after a stopped
-campaign and a declared calibration run; requires the non-writing family's
-re-review before the new campaign.
+Status: MC run (MECHANISM_SHOWN). FC stopped by owner decision on 2026-10-15
+before any counted block under the amended parameters: non-inferiority at the
+0.1 percentage point margin cannot be established at a feasible scale when
+refusals are rare (FC result: INCONCLUSIVE). The F1 merge gate is decided by
+the owner from the MC result and the impact analysis.
 The final macOS V-F (main 16 / P4 16) stays INCONCLUSIVE and unchanged. It
 had 0/16 qualified attempts per variant. A read-only source join found 24 F1
 positives in 10 main attempts and none in P4. Not observing F1 in P4 does not
@@ -683,14 +685,17 @@ MC (P4 copy): counted verdict MECHANISM_SHOWN, exit 0, C0 controls passed.
 - Builds are not byte-reproducible: identical provenance gives different
   binaries. MC binds to the last restored build.
 
-FC campaign 1 (pre-registered K = 1000 per block, 600 s block deadline) was
-stopped by SIGINT after 6 blocks. Its records are retained, but it is not
-used for the decision.
+FC campaign 1 (pre-registered K = 1000 per block, 600 s block deadline) ran
+the five blocks of round 1. The first block of round 2 (r02 P4-S1) was then
+interrupted mid-run by SIGINT, which stopped the campaign. Only one block
+(main-S2) completed. Its records are retained, but it is not used for the
+decision.
 
 | Block | Outcome |
 |---|---|
-| main-S2 | 1000/1000 Acquired, 0 refused, in 75 s |
-| main-S1, P4-S1, FC-POS, P4-S2, r02 P4-S1 | 600 s deadline hit (NO_RESULT) |
+| r01 main-S1, P4-S1, FC-POS, P4-S2 (fork path) | 600 s deadline hit (NO_RESULT) |
+| r01 main-S2 | Completed: 1000/1000 Acquired, 0 refused, in 75 s |
+| r02 P4-S1 | Interrupted by SIGINT about 91.5 s after it started (KeyboardInterrupt recorded); incomplete |
 
 A `sample` of a fork-path block showed the test thread in
 `RuntimeOwner::open` → `Store::open` → SQLite schema parse, with allocations
@@ -717,6 +722,24 @@ Campaign 1 and the calibration are excluded from the decision. No counted
 data from campaign 1 is reused. The amended parameters (K = 100, 900 s
 deadline, 50 ms FC-POS) are fixed before the new campaign's first block, and
 the section hash is recorded again before block 1.
+
+### FC closure
+The design re-review of the amendment found (F1-A01, confirmed) that with
+near-zero refusal counts the block-level t bound collapses (sd = 0 gives
+UB(d) = 0) and cannot exclude increases near the 0.1 pp margin. For example,
+a true P4 rate of 0.12% gives all-zero 2000 iterations with probability about
+9%; the zero-count 95% upper bound under independence is about 0.15%.
+Excluding 0.1 pp with zero events needs more than 3000 independent iterations
+per arm. At about 2 s per fork-path iteration on this host, that is roughly
+7-13 hours or more, and it still assumes independence that this design does
+not grant.
+
+Therefore the amended FC was not run, and no NOT_OBSERVED_HIGHER claim is
+made. The amended parameters remain as the record of what was approved for
+consideration; they are not a run. Calibration evidence (0 refusals in the
+100 calibration iterations, 80 of them on the fork path, including the 1 ms
+FC-POS) shows refusals are rare under this synthetic load; it is not a
+natural-rate estimate.
 
 ### Review and records
 - This design is reviewed by the non-writing family (Sol, high). Zero confirmed
