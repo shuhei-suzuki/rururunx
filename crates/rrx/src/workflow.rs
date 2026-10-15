@@ -566,6 +566,7 @@ pub(crate) struct ActivationProbe<'a> {
     lifetime: &'a crate::runtime::driver::WorkerLifetime,
     task: &'a Task,
     record: &'a Record,
+    context: &'a crate::domain::ContextVersion,
 }
 #[cfg(test)]
 impl<'a> ActivationProbe<'a> {
@@ -585,6 +586,9 @@ impl<'a> ActivationProbe<'a> {
     }
     pub(crate) fn record(&self) -> &'a Record {
         self.record
+    }
+    pub(crate) fn context(&self) -> &'a crate::domain::ContextVersion {
+        self.context
     }
 }
 
@@ -1138,6 +1142,7 @@ impl WorkflowEngine {
                         lifetime,
                         task: &snapshot.task,
                         record: &snapshot.record,
+                        context: &context,
                     })
                     .await;
                 }

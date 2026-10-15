@@ -258,10 +258,7 @@ async fn workflow_source_bootstrap_reads_commit_and_refuses_native_before_effect
             .await
             .err()
             .unwrap();
-        assert_eq!(
-            error.downcast_ref::<crate::execution::capability::CapabilityRefusal>(),
-            Some(&crate::execution::capability::CapabilityRefusal::LegacyEntryUnavailable)
-        );
+        assert!(error.to_string().contains("native input identity mismatch"));
         {
             let store = owner.store.lock().unwrap();
             let current = store.execution_unit(unit.id).unwrap();
@@ -2542,69 +2539,3 @@ async fn native_concurrent_terminal_retry_survives_supervisor_watch_publication(
 mod confirmed_findings_tests;
 mod queue_budget_tests;
 mod terminal_lock_tests;
-
-/// AC-11/L-1: obsolete Native entry chains refuse before all retained maps and effects.
-#[tokio::test]
-async fn legacy_native_entry_chains_refuse_before_helper_session_and_input() {
-    use crate::execution::capability::CapabilityRefusal;
-    for provider in ["claude", "codex"] {
-        let (dir, owner, task) = results::tests::fixture().await;
-        let (unit, _) = attempts::AttemptManager::new(owner.clone())
-            .prepare(task.id, provider, "implement", None)
-            .await
-            .unwrap();
-        let sessions = NativeSessions::new(owner.clone()).unwrap();
-        let before =
-            serde_json::to_value(owner.store.lock().unwrap().execution_unit(unit.id).unwrap())
-                .unwrap();
-        let effects = owner
-            .store
-            .lock()
-            .unwrap()
-            .managed_effects(unit.id)
-            .unwrap()
-            .len();
-        for entry in [1, 0, 2] {
-            let input = input(&unit, "complete");
-            let result = match entry {
-                0 => sessions.start(input, None, None).await,
-                1 => {
-                    sessions
-                        .start_inner(input, None, None, Some(program(dir.path(), provider)))
-                        .await
-                }
-                _ => {
-                    sessions
-                        .start_legacy(input, None, None, Some(program(dir.path(), provider)))
-                        .await
-                }
-            };
-            // A late refusal is insufficient: it must preserve the genuine Unit.
-            assert_eq!(
-                serde_json::to_value(owner.store.lock().unwrap().execution_unit(unit.id).unwrap())
-                    .unwrap(),
-                before
-            );
-            assert_eq!(
-                owner
-                    .store
-                    .lock()
-                    .unwrap()
-                    .managed_effects(unit.id)
-                    .unwrap()
-                    .len(),
-                effects
-            );
-            assert!(sessions.entries.lock().unwrap().is_empty());
-            assert!(sessions.starts.lock().unwrap().is_empty());
-            assert!(sessions.preparations.lock().unwrap().is_empty());
-            assert_eq!(
-                result
-                    .err()
-                    .unwrap_or_else(|| panic!("obsolete Native entry accepted"))
-                    .downcast_ref::<CapabilityRefusal>(),
-                Some(&CapabilityRefusal::LegacyEntryUnavailable)
-            );
-        }
-    }
-}

@@ -1,120 +1,193 @@
-# M0 U2 verification
+# M0 U2 verification — re-scoped provider refusal
 
-Base HEAD: `25545c27843bc4cb95b9d8c2b50377d4153b6269`. Owner-approved role revision: `2a9114bc` (B1–B4/B2a). Local macOS only; no network, Git write, commit, push, CI, external LLM review or live Agent qualification. The orchestrator owns commits/review.
+Input HEAD: `77d3b016` (`wip(m0): U2 first draft with temporary admission 0 and legacy refusal`). Unmodified merge base: `25545c27843bc4cb95b9d8c2b50377d4153b6269`. Role revision approved at `2a9114bc` (B1–B4/B2a). This report describes the uncommitted re-scope requested by the orchestrator; the orchestrator owns commits and independent review. Local macOS, offline; no network, Git writes in this worktree, worktrees, external LLM, CI or live Agent qualification.
 
-Implementation contains only U2 refusal boundaries and coverage freezing. Task admission remains 0 in the real final Driver consumer. Existing auth/CAS/owner/marker/fencing, #19 pool/ordinary None/factory/public EMPTY, and Native entries/starts/preparations/status/cancel/cleanup remain. **Verification is not green and this is not an M0/L-1 full acceptance claim.**
+## Implemented boundary
 
-## Files and controls
+B1 / §8a(0) / EX-1 provider part / AC-04: a Task Executor resolving to provider `claude` returns finite `CapabilityRefusal::ClaudeExecutorUnavailable`. The main refusal points are Goal plan validation before persistence, saved-Task admission before composition, and Driver composition before graph/installation lookup. Defence in depth remains at Executor allocation and first-Executor Source/Native handoff. Alias spelling is never provider identity. Claude alias registration is unchanged; the same aliases are accepted as Reviewers by genuine Goal ingress and Driver composition.
 
-| File | Implementation / control |
+The temporary `require_m0_capabilities` / admission-0 gate and its `M0CapabilityChainUnavailable` diagnostic are removed. Valid Codex Tasks use the existing main Driver admission path. Existing exact CLI version pins remain; S/P/managed Codex replacement producers are not claimed by U2. Runtime status carries an optional finite installation diagnostic: successful installation reports `None`, not a fabricated missing-chain refusal. `operational` retains its pre-existing meaning/value and does not certify M0 qualification.
+
+The pre-start legacy refusals are removed from NativeSessions, NativeAdapter, CodexAdapter launch/resume/checkpoint, and legacy transport. Their original #19/EMPTY/factory/custody/owner behavior is restored. The seven files listed below are byte-identical to `25545c27`; shared original tests in them were restored, not deleted. No auth/CAS/owner/marker/fencing/#19/process-custody check, pin, timeout, warning or existing ignore was weakened.
+
+## Deferred to U7 and frozen ledger
+
+The orchestrator's re-scope supersedes the original U2 admission-0 row in `.rrx/reviews/m0-unit-plan/unit-plan.md`. Legacy pre-start refusal and its shared-positive ports land in U7 with the actual managed-path replacements (§12a). They are planned, not done. Reviewer runtime acceptance remains M3.
+
+The frozen ledger preserves all **560 original IDs**, their order, source SHA256, original producer/assertions and classification: **187 移植 / 371 残置 / 2 機能廃止**. All 187 shared-positive migrations and the two planned example retirements are explicitly unfinished U7 work (189 pending entries). Refusal does not count as positive safety coverage. The original Native main inventory remains 26 IDs, 24 direct `start_inner` consumers / 29 calls; no ID was added or omitted to match the plan's estimate. Five current U2 tests are recorded separately from the frozen union. Current source hashes are refreshed separately from frozen baseline hashes.
+
+## Files
+
+| Files | Result |
 |---|---|
-| `crates/rrx/src/adapter.rs` | C-1/L-1: typed CapabilityUnavailable(CapabilityRefusal), preserved across adapter boundary. |
-| `crates/rrx/src/adapter/native.rs` | EX-1/L-1: Executor allocation provider guard, obsolete start_managed refusal, typed mapping and effect-0 test. |
-| `crates/rrx/src/adapter/native/ownership_tests.rs` | EX-1: real provisional Unit/selected-port Claude Executor refusal; no helper/effect added. |
-| `crates/rrx/src/codex/availability.rs` | #19/AC-11: retain EMPTY filesystem/Git coverage; obsolete transport refusal now finite legacy type. |
-| `crates/rrx/src/codex/mod.rs` | L-1: finite legacy refusal adapter, independent of retained #19 availability inputs. |
-| `crates/rrx/src/codex/session.rs` | L-1/AC-11: launch/resume/checkpoint close before registration; observation-only test counter and retained-owner no-effect test. Private #19 registration/factory/status/stop remain. |
-| `crates/rrx/src/codex/transport.rs` | L-1: obsolete transport closes before availability/path/spawn; effect-0 property test. |
-| `crates/rrx/src/execution/capability.rs` | B1/EX-1, AC-04/11, C-1: finite provider/legacy/capability-chain nongrant refusals. |
-| `crates/rrx/src/execution/mod.rs` | Export finite nongrant capability diagnostic type. |
-| `crates/rrx/src/execution/native.rs` | L-1: start → start_inner → start_legacy closes before starts/entries/preparations; their retention consumers remain. |
-| `crates/rrx/src/execution/native/phase_fence_tests.rs` | AC-04/11: accepted Codex Goal plus both retained legacy-provider ports; finite refusal and existing Unit/Session/event 0 assertions. |
-| `crates/rrx/src/execution/native/tests.rs` | L-1/AC-11: all Native legacy entry chains effect-0 test; bootstrap legacy subassertion changed to typed refusal; shared assertions retained. |
-| `crates/rrx/src/execution/phase.rs` | EX-1: old Claude Executor allocation branch becomes typed refusal; all original Codex nongrant identity/encoding/no-effect positive assertions retained. |
-| `crates/rrx/src/execution/workflow_source/native_handoff.rs` | EX-1 defence: selected provider checked before Source/ticket handoff work. |
-| `crates/rrx/src/runtime/admission.rs` | AC-04/C-1: saved-row provider check before composition; retain finite installation/capability classifications. |
-| `crates/rrx/src/runtime/control.rs` | C-1: finite admission_refusal in RuntimeMetadata; status/stop remain operational. |
-| `crates/rrx/src/runtime/goal.rs` | B1/EX-1/AC-04: provider-based Executor refusal before validated Goal can be saved; Reviewer aliases accepted. |
-| `crates/rrx/src/runtime/installation.rs` | C-1/EX-1: finite InstallationRefusal enum and typed error propagation; composition provider check. |
-| `crates/rrx/src/runtime/installation/tests.rs` | C-1/EX-1: new U2 test module; existing graph-only controls use Codex Executor. |
-| `crates/rrx/src/runtime/installation/tests/activation.rs` | C-1: consume finite InstallationRefusal without .0/string-backed diagnostic; remaining shared execution assertions retained. |
-| `crates/rrx/src/runtime/installation/tests/epoch_fence.rs` | C-1: consume finite InstallationRefusal without .0/string-backed diagnostic; remaining shared execution assertions retained. |
-| `crates/rrx/src/runtime/installation/tests/fm_d2.rs` | C-1: consume finite InstallationRefusal without .0/string-backed diagnostic; remaining shared execution assertions retained. |
-| `crates/rrx/src/runtime/installation/tests/nonsuccess.rs` | C-1: consume finite InstallationRefusal without .0/string-backed diagnostic; remaining shared execution assertions retained. |
-| `crates/rrx/src/runtime/installation/tests/pin.rs` | C-1: consume finite InstallationRefusal without .0/string-backed diagnostic; remaining shared execution assertions retained. |
-| `crates/rrx/src/runtime/installation/tests/preparation.rs` | C-1: consume finite InstallationRefusal without .0/string-backed diagnostic; remaining shared execution assertions retained. |
-| `crates/rrx/src/runtime/installation/tests/project_limit.rs` | C-1: consume finite InstallationRefusal without .0/string-backed diagnostic; remaining shared execution assertions retained. |
-| `crates/rrx/src/runtime/installation/tests/read_surface.rs` | AC-08: use approved Codex Executor fixture; preserve read-only/security assertions. Claim-dependent case remains red/pending. |
-| `crates/rrx/src/runtime/installation/tests/success.rs` | C-1: consume finite InstallationRefusal without .0/string-backed diagnostic; remaining shared execution assertions retained. |
-| `crates/rrx/src/runtime/installation/tests/u2.rs` | EX-1/AC-04/08/C-1: genuine ingress, negative saved-row corruption, Reviewer positive, admission 0 and status/stop tests. |
-| `crates/rrx/src/runtime/mod.rs` | C-1: public re-export of finite InstallationRefusal for status consumers. |
-| `crates/rrx/src/runtime/task_driver.rs` | U2/AC-08/C-1: production final Driver admission always refuses missing M0 capability chain, before plan/reservation/claim. |
-| `crates/rrx/src/runtime/tests.rs` | AC-04/15: role-correct Codex Goal fixtures; retain aliases, CAS/owner/read/control and historical nongrant assertions. |
-| `crates/rrx/src/state/managed_binding/tests.rs` | AC-04/15: role-correct Codex Goal fixtures; retain aliases, CAS/owner/read/control and historical nongrant assertions. |
-| `crates/rrx/tests/codex_unavailable.rs` | #19/AC-11/15: ordinary-library public legacy routes expect finite refusal; existing wrapper still executes its ignored child. |
-| `crates/rrx/tests/runtime_cli.rs` | AC-04/15: role-correct Codex Goal fixtures; retain aliases, CAS/owner/read/control and historical nongrant assertions. |
-| `crates/rrx/tests/support/legacy.rs` | AC-04/15: role-correct Codex Goal fixtures; retain aliases, CAS/owner/read/control and historical nongrant assertions. |
-| `doc/verification/macos-minimum-m0-legacy-ledger.json` | §11/AC-11/15: frozen 560-ID union with source hashes, original producers/assertions, classifications/current assertions; 187 shared ports unfinished. |
-| `doc/verification/macos-minimum-m0-u2.md` | U2 evidence, file/control mapping, commands/counts, mutation/reversion table and explicit gaps. |
+| `adapter.rs`, `adapter/native.rs`, `adapter/native/ownership_tests.rs` | Keep finite provider error mapping/allocation refusal and its test; remove draft legacy gate/test. |
+| `execution/capability.rs`, `execution/mod.rs`, `execution/workflow_source/native_handoff.rs` | Keep only provider refusal type/export and handoff check; remove temporary chain/legacy refusal APIs and variants. |
+| `execution/phase.rs` | Codex nongrant allocation positives retain identity, encoding, pins and no-effect assertions; Claude Executor branch checks finite refusal. |
+| `execution/native/phase_fence_tests.rs` | Accepted Goal uses Codex; original direct AuthorityUnavailable / adapter OwnershipMismatch safety checks restored for both retained ports. |
+| `runtime/{goal,admission,installation,task_driver,control,mod}.rs` | Keep provider refusal and finite classification/status plumbing; restore main admission behavior. |
+| `runtime/installation/tests/u2.rs`, `workflow.rs` | Four Runtime tests plus existing allocation test cover provider/alias/Reviewer/order/status/stop. Existing activation observation now borrows the actual context, enabling handoff testing with a real production Driver association/input; it creates no authority. |
+| `runtime/installation/tests.rs`, its `{activation,epoch_fence,fm_d2,nonsuccess,pin,preparation,project_limit,read_surface,success}.rs`, `runtime/tests.rs`, `state/managed_binding/tests.rs`, `tests/runtime_cli.rs`, `tests/support/legacy.rs` | Keep necessary finite-error consumers and accepted-Goal role fixture conversions; shared assertions stay in source. |
+| `codex/{availability,mod,session,transport}.rs`, `execution/native.rs`, `execution/native/tests.rs`, `tests/codex_unavailable.rs` | Entire files restored byte-for-byte to merge base; unrelated legacy gates/counters/tests/expectation edits removed. |
+| `doc/verification/macos-minimum-m0-legacy-ledger.json`, this report | Frozen coverage and truthful current evidence/deferred scope. |
 
-## Frozen coverage ledger
+File paths above are relative to `crates/rrx/src/` except explicit `tests/` and `doc/` paths. The draft's four new legacy-only tests were removed with their deferred behavior; no frozen shared test ID was removed. The former admission-0 test was rewritten to retain its installation/status/stop property. No test-only authority constructor, Task.version authority, SQL success seed, allow(dead_code), skip/ignore/serialization or timeout-only change was added. The saved-row UPDATE is negative corruption after real accepted ingress.
 
-`macos-minimum-m0-legacy-ledger.json`: 560 unique original IDs; 移植 187 / 残置 371 / 機能廃止 2; unclassified 0. All 187 migration entries remain 未完了. Original safety assertions are preserved in source and in the ledger; refusal is not counted as their positive coverage. New U2 tests (8) are separate from the frozen union.
+## Final local verification
 
-The union includes the known session60/custody20/ownership7 subset, transport8/attempt4/preparation2/availability1/policy7/protocol16, integration/examples, complete Native/adapter/Workflow/Runtime modules and direct installed-consumer closure. The JSON records the exact module-closure rule and per-source SHA256. Native main source differs from the plan estimate: 26 test IDs, of which 24 directly call start_inner (29 call sites). All 26 plus adjacent modules are included; no invented/omitted ID makes it match “25”.
+Cargo: `/Users/shuheisuzuki/.cargo/bin/cargo`. Commands ran sequentially on restored source; the exact source SHA256 set and every command/exit/count/log are in `.rrx/u2/rescope-verification/results.json`. HEAD stays the input draft because the user prohibits Git writes; verification covers the recorded working-tree bytes.
 
-## Local checks
+| Command (Cargo path above) | Passed / failed / ignored | Result |
+|---|---|---|
+| `cargo fmt --all -- --check` | n/a | PASS |
+| `cargo clippy --locked --offline --workspace --all-targets -- -D warnings` | n/a | PASS |
+| `cargo test --locked --offline -p rrx --lib` | 759 / 90 / 27 | FAIL |
+| `cargo test --locked --offline -p rrx --test adapter` | 19 / 0 / 0 | PASS |
+| `cargo test --locked --offline -p rrx --test runtime_cli` | 9 / 0 / 0 | PASS |
+| `cargo test --locked --offline -p rrx --test project_api` | 14 / 0 / 0 | PASS |
+| `cargo test --locked --offline -p rrx --test daemon_native` | 0 / 2 / 0 | FAIL |
+| `cargo test --locked --offline -p rrx --test codex_unavailable` | 1 / 0 / 1 | PASS |
 
-Cargo executable: `/Users/shuheisuzuki/.cargo/bin/cargo`. Every test row uses `cargo test --locked --offline -p rrx` plus the arguments below. No new ignore/skip/serialization, authority constructor or SQL success seed. The saved-row UPDATE is a negative corruption stimulus only, after real accepted ingress.
+Every failure in this final six-suite pass was rerun alone with `--exact --nocapture`: **92 reruns**, **5 passed / 87 failed / 0 ignored**. Each exact invocation ran one test. Library reruns use `cargo test --locked --offline -p rrx --lib <full ID> -- --exact --nocapture`; integration reruns replace `--lib` with `--test <target>`. No failure was skipped. Successful reruns resolve only the observed full-run flake, not arbitrary future runs.
 
-`cargo fmt --all`, `cargo fmt --all -- --check`, `cargo clippy --locked --offline --workspace --all-targets -- -D warnings`, and `cargo build --locked --offline --workspace`: PASS.
+The existing `codex_unavailable` parent executes its ignored child; its child pass is recorded inside the log and is not added to the outer harness count. The same distinction applies to existing library wrappers and their nested harness results. The 27 library ignores and one integration ignore predate U2.
 
-| Test arguments | Passed / failed / existing ignored |
-|---|---|
-| `--lib (earlier U2 snapshot, before fixture repairs)` | 626 / 226 / 27 |
-| `--lib -- codex:: execution::native:: runtime:: adapter::native:: execution::phase:: state::managed_binding::` | 241 / 186 / 3 |
-| `--lib runtime::installation::tests::read_surface` | 13 / 1 / 0 |
-| `--lib state::managed_binding::tests` | 5 / 0 / 0 |
-| `--lib execution::phase::tests` | 3 / 0 / 0 |
-| `--lib execution::native::phase_fence_tests` | 1 / 0 / 0 |
-| `--lib runtime::installation::tests::c` | 2 / 1 / 0 |
-| `--test adapter` | 19 / 0 / 0 |
-| `--test runtime_cli` | 9 / 0 / 0 |
-| `--test project_api` | 14 / 0 / 0 |
-| `--test daemon_native` | 0 / 2 / 0 |
-| `--test codex_unavailable` | 1 / 0 / 1 |
+The focused post-re-scope Runtime run (`--lib runtime::installation::tests::u2::`) passed 4/0/0. Together with the allocation test, all five current U2 tests pass, including exact restoration reruns. All 15 source operators below fail their intended assertion and then pass restored (1/0/0 each).
 
-The final affected-module run passed all 8 new U2 tests and all 20 retained #19 custody tests. The ordinary-library wrapper also executed its ignored child successfully (1 child pass); its ignored harness entry was not added by U2. The later test-only ordering/property change was rechecked by the six applicable source operators and restoration tests.
+Preliminary, superseded diagnostics are retained under `.rrx/u2/`: the sandbox full run was 510/338/27 and exposed process-inspection spawn `permission_denied` / SessionLost; the authorized normal-host route preserves all hooks/custody checks. A preliminary host snapshot (before the new handoff test) was 755/93/27. Neither is substituted for the final-source run above. The mutation script's first preflight found a non-unique anchor and exited before edits/tests; it was corrected before starting mutations. No approval rejection or safety-setting change occurred.
 
-Failures remain visible: old Native/Claude Executor/Driver-positive tests are blocked by the intended refusal boundaries; the known `workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_size` environmental Git-hook failure also occurred, and the broad suite showed load-sensitive existing failures. Its test body was not changed. No independent unmodified-main rerun was performed. The full-suite earlier result is not represented as a final-source pass. The read-only surface claim-dependent case and daemon_native’s 2 old execution positives remain red. Other currently failing safety tests are not silently reclassified as safe.
+## Failures that remain when run alone
 
-Logs and exact commands: `.rrx/u2/`. One automatic local-test permission review timed out before execution; the explicitly permitted one-time same-command resubmission succeeded. No hook/sandbox setting was weakened.
+The complete list follows. Attribution is based on reading baseline/current code, as permitted by the orchestrator; **the merge base was not executed and no worktree was created**. The daemon tests expose the generic control refusal at `daemon_native.rs:249`; their `Lane::new` config selects provider Claude for worker, and `create` submits that worker as Executor. The control boundary hides the internal error, so their B1 attribution follows that concrete source path rather than a typed wire diagnostic.
 
-## Source mutations
+- **P (86 tests): no, this exact refusal does not occur on `25545c27`.** Their existing setup chooses a Claude provider as Task Executor. The new B1 Goal/Driver refusal stops that setup with `ClaudeExecutorUnavailable`; baseline Goal validation/composition/allocation has no such guard. Their original deeper assertions were not reached, so those safety properties are not counted as verified. Their migration is unfinished U7 work; the table does not replace them with refusal positives.
+- **E (1 test): yes, same failure on unmodified main by the supplied environmental diagnosis and source-path inspection.** `workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_size` fails at its fixture managed Git command under the local Git hook. Its source and Native implementation were restored byte-for-byte to `25545c27`; this test does not consume the new provider allocation/handoff path. No hook was disabled.
 
-Each row: source edit → the named real test fails → original file bytes restored → the same test passes (1 passed / 0 failed). Compiler errors are not counted. Twenty unique operators; additional targeted executions corrected effect-boundary causality after the initial availability-negative masked the late-refusal assertion. The latest six records use the enabled component case first.
+| Target | Exact test ID | Attribution / identical on merge base? |
+|---|---|---|
+| `lib` | `execution::native::tests::workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_size` | E / Yes (environment; inferred) |
+| `lib` | `runtime::installation::tests::activation::ca1_actual_activation_gates_marker_and_record_only_bound` | P / No |
+| `lib` | `runtime::installation::tests::activation::composition::ca2_four_tasks_two_projects_retain_own_scope_and_roster` | P / No |
+| `lib` | `runtime::installation::tests::activation::composition::ca3_missing_alias_is_rejected_at_accepted_ingress` | P / No |
+| `lib` | `runtime::installation::tests::activation::composition::ca3_representable_roster_refusals_preserve_claimed_sibling` | P / No |
+| `lib` | `runtime::installation::tests::activation::composition::ca3b_original_composition_cross_pairs_refuse_before_store` | P / No |
+| `lib` | `runtime::installation::tests::activation::lifecycle::ca4a_last_external_drop_at_s1_cancels_original_worker` | P / No |
+| `lib` | `runtime::installation::tests::activation::lifecycle::ca4a_stop_at_genuine_retained_pre_admission_rolls_back` | P / No |
+| `lib` | `runtime::installation::tests::activation::lifecycle::ca4b_activation_segment_linearizes_before_shutdown` | P / No |
+| `lib` | `runtime::installation::tests::activation::lifecycle::ca4b_segment_keeps_runtime_alive_after_external_drop` | P / No |
+| `lib` | `runtime::installation::tests::activation::lifecycle::ca4c_precommit_failure_proves_same_plan_rollback` | P / No |
+| `lib` | `runtime::installation::tests::activation::lifecycle::ca4d_contained_fault_recovers_in_same_live_worker` | P / No |
+| `lib` | `runtime::installation::tests::activation::lifecycle::ca4g_actual_exited_worker_keeps_same_plan_held` | P / No |
+| `lib` | `runtime::installation::tests::activation::lifecycle::ca4h_precommit_panic_stays_poisoned_and_rolls_back` | P / No |
+| `lib` | `runtime::installation::tests::activation::pages::ca4i_whole_registry_counts_actual_held_plan_across_two_pages` | P / No |
+| `lib` | `runtime::installation::tests::activation::protection::ca5d_integrity_decision_uses_genuine_allocation_and_negative_raw_members` | P / No |
+| `lib` | `runtime::installation::tests::activation::protection::ca6_genuine_contract_refuses_generic_workflow_and_contract_writers` | P / No |
+| `lib` | `runtime::installation::tests::activation::protection::ca7_postcommit_cache_fault_reconciles_same_custody_once` | P / No |
+| `lib` | `runtime::installation::tests::activation::protection::nongrant_ca4e_task_controls_cannot_supply_drift_producer` | P / No |
+| `lib` | `runtime::installation::tests::c5_c6_actual_ingress_source_prepared_transport_and_record_only_binding` | P / No |
+| `lib` | `runtime::installation::tests::epoch_fence::ef1_claude_managed_session_fenced_lost_exactly` | P / No |
+| `lib` | `runtime::installation::tests::epoch_fence::ef3_wrong_or_missing_permit_rolls_back_the_whole_epoch` | P / No |
+| `lib` | `runtime::installation::tests::epoch_fence::ef4_terminal_managed_session_is_skipped` | P / No |
+| `lib` | `runtime::installation::tests::epoch_fence::ef_setup_control_claude_terminal_under_custody_closes_the_session` | P / No |
+| `lib` | `runtime::installation::tests::fm_d2::fm_d2_committed_source_301_claude_gate_receipts` | P / No |
+| `lib` | `runtime::installation::tests::fm_d2::fm_d2_committed_source_631_claude_quick_front` | P / No |
+| `lib` | `runtime::installation::tests::fm_d2::fm_d2_committed_source_631_claude_standard_front` | P / No |
+| `lib` | `runtime::installation::tests::fm_d2::fm_d2_committed_source_631_claude_strict_front` | P / No |
+| `lib` | `runtime::installation::tests::m0_claude::cl10_installed_error_telemetry_controls_and_mutants_fail_closed` | P / No |
+| `lib` | `runtime::installation::tests::m0_claude::cl10_installed_success_telemetry_controls_and_mutants_fail_closed` | P / No |
+| `lib` | `runtime::installation::tests::m0_claude::cl10_terminal_retry_preserves_the_original_failure_in_status_and_watch` | P / No |
+| `lib` | `runtime::installation::tests::m0_claude::cl10_valid_unfinished_candidate_is_not_a_prior_captured_success` | P / No |
+| `lib` | `runtime::installation::tests::m0_claude::o03_installed_normal_control_responses_fail_closed_and_requests_remain_consumed` | P / No |
+| `lib` | `runtime::installation::tests::m0_claude::r1_installed_rate_control_and_mutant_validate_before_foreign_filter` | P / No |
+| `lib` | `runtime::installation::tests::nonsuccess::rn_h1_genuine_normal_n_closes_and_pre_s5_refusal_stays_held` | P / No |
+| `lib` | `runtime::installation::tests::nonsuccess::rn_p1_genuine_writer_contention_confirms_rollback_clears_u_then_closes` | P / No |
+| `lib` | `runtime::installation::tests::pin::pin_c2_old_declared_cli_version_is_refused_before_native` | P / No |
+| `lib` | `runtime::installation::tests::pin::pin_c3_old_observed_cli_version_is_refused_before_native` | P / No |
+| `lib` | `runtime::installation::tests::preparation::dc1_postcommit_preparation_error_is_confirmed_known_once` | P / No |
+| `lib` | `runtime::installation::tests::preparation::dc2_dc4_precommit_error_stays_held_with_capped_backoff` | P / No |
+| `lib` | `runtime::installation::tests::preparation::dc3_shutdown_holding_admission_makes_selected_try_not_attempted` | P / No |
+| `lib` | `runtime::installation::tests::project_limit::c_s2a2_final_claim_refuses_second_task_typed` | P / No |
+| `lib` | `runtime::installation::tests::project_limit::c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten` | P / No |
+| `lib` | `runtime::installation::tests::project_limit::c_s2a_candidate_never_lists_second_task_while_first_is_occupied` | P / No |
+| `lib` | `runtime::installation::tests::project_limit::c_s2a_held_phase_operation_alone_keeps_second_task_out` | P / No |
+| `lib` | `runtime::installation::tests::project_limit::c_s2a_retained_driver_alone_keeps_second_task_out` | P / No |
+| `lib` | `runtime::installation::tests::project_limit::d3_plan_guard_refuses_stored_legacy_limit_without_writes` | P / No |
+| `lib` | `runtime::installation::tests::project_limit::d4_status_reports_stored_legacy_limit_read_only_until_repair` | P / No |
+| `lib` | `runtime::installation::tests::success::br1_claude_owner_immediate_retries_once_after_binding` | P / No |
+| `lib` | `runtime::installation::tests::success::br1p_claude_owner_planning_retries_once_after_binding` | P / No |
+| `lib` | `runtime::installation::tests::success::br2_claude_parent_drift_never_retries` | P / No |
+| `lib` | `runtime::installation::tests::success::br3_claude_linked_plan_is_never_marked` | P / No |
+| `lib` | `runtime::installation::tests::success::sc10_four_projects_close_independently` | P / No |
+| `lib` | `runtime::installation::tests::success::sc11_claude_settled_helper_fence_holds_and_confirms` | P / No |
+| `lib` | `runtime::installation::tests::success::sc11n_claude_parent_edit_while_held_refuses_next_tick` | P / No |
+| `lib` | `runtime::installation::tests::success::sc1_claude_quick_implement_closes_once_through_the_full_chain` | P / No |
+| `lib` | `runtime::installation::tests::success::sc2_claude_late_binding_after_settlement_closes_once` | P / No |
+| `lib` | `runtime::installation::tests::success::sc3_claude_owner_session_advance_conflicts_then_binds_normal` | P / No |
+| `lib` | `runtime::installation::tests::success::sc3l_claude_writer_lock_is_uncertain_then_rolled_back` | P / No |
+| `lib` | `runtime::installation::tests::success::sc3p_claude_parent_change_during_hold_refuses_binding` | P / No |
+| `lib` | `runtime::installation::tests::success::sc3p_t_claude_terminal_before_turn_still_refuses_binding` | P / No |
+| `lib` | `runtime::installation::tests::success::sc4_claude_uncertain_writes_confirm_and_close_once` | P / No |
+| `lib` | `runtime::installation::tests::success::sc4c_claude_later_context_keeps_uncertain_closure_held` | P / No |
+| `lib` | `runtime::installation::tests::success::sc4n_claude_uncertain_bind_then_terminal_confirms` | P / No |
+| `lib` | `runtime::installation::tests::success::sc5d_claude_revoke_settle_gap_records_no_conclusion` | P / No |
+| `lib` | `runtime::installation::tests::success::sc6_claude_standard_requirements_waits_without_closure` | P / No |
+| `lib` | `runtime::installation::tests::success::sc7_claude_ordinary_failure_installs_no_settlement` | P / No |
+| `lib` | `runtime::installation::tests::success::sc7k_claude_killed_peer_never_late_binds` | P / No |
+| `lib` | `runtime::installation::tests::success::sc8_claude_results_graph_corruption_blocks_closure` | P / No |
+| `lib` | `runtime::installation::tests::success::sc9a_claude_shutdown_cancels_success_admission` | P / No |
+| `lib` | `runtime::installation::tests::success::sc9b_claude_shutdown_preempts_root_success_action` | P / No |
+| `lib` | `runtime::installation::tests::success::sc9c_claude_pending_publication_stays_held_after_shutdown` | P / No |
+| `lib` | `runtime::installation::tests::success::sc9d_claude_shutdown_cannot_interleave_admitted_closure` | P / No |
+| `lib` | `runtime::installation::tests::success::scr_claude_completion_survives_refused_plan_and_conflict` | P / No |
+| `lib` | `runtime::installation::tests::success::scu_claude_post_claim_evaluation_failure_is_durable_unknown` | P / No |
+| `lib` | `runtime::installation::tests::sweep::c13_early_bound_identity_and_decode_refusals_preserve_sibling_progress` | P / No |
+| `lib` | `runtime::installation::tests::sweep::c13_exact_bound_reaches_actual_service_claim` | P / No |
+| `lib` | `runtime::installation::tests::sweep::c13_original_composition_bounded_reread_refuses_before_validate_for` | P / No |
+| `lib` | `runtime::installation::tests::sweep::c15_actual_service_pass_keeps_cursor_after_32_paused_tasks` | P / No |
+| `lib` | `runtime::installation::tests::sweep::c9_busy_admission_sweep_is_synchronous_and_shutdown_stops_claims` | P / No |
+| `lib` | `runtime::phase_supervisor::tests::actual_capacity_refusal_returns_original_objects_and_other_project_still_admits` | P / No |
+| `lib` | `runtime::phase_supervisor::tests::actual_publication_drop_and_shutdown_preserve_unknown_slot_until_proven_rollback` | P / No |
+| `lib` | `runtime::phase_supervisor::tests::actual_selected_allocations_survive_caller_drop_and_guard_is_drained_on_shutdown` | P / No |
+| `lib` | `runtime::phase_supervisor::tests::fair_actual_pending_pages_rotate_projects_and_retain_owner_change_as_hold` | P / No |
+| `lib` | `runtime::phase_supervisor::tests::foreign_preparation_and_stopped_service_refuse_without_consuming_inputs` | P / No |
+| `daemon_native` | `c_s1a_daemon_survives_invoker_group_and_terminal` | P / No |
+| `daemon_native` | `c_s1f_native_success_and_refusal_equal_under_serve_and_daemon` | P / No |
 
-| Mutation | Test function | Killed | Exact bytes restored / test passes |
-|---|---|---|---|
-| `goal_remove` | `goal_refuses_claude_provider_before_save_and_accepts_same_alias_as_reviewer` | yes | yes / yes |
-| `goal_alias_name` | `goal_refuses_claude_provider_before_save_and_accepts_same_alias_as_reviewer` | yes | yes / yes |
-| `reviewer_also_refused` | `goal_refuses_claude_provider_before_save_and_accepts_same_alias_as_reviewer` | yes | yes / yes |
-| `admission_provider_remove` | `saved_task_provider_refusal_preserves_finite_classification_before_composition` | yes | yes / yes |
-| `admission_alias_name` | `saved_task_provider_refusal_preserves_finite_classification_before_composition` | yes | yes / yes |
-| `composition_provider_remove` | `saved_task_provider_refusal_preserves_finite_classification_before_composition` | yes | yes / yes |
-| `composition_refusal_string` | `capability_chain_stops_normal_admission_while_status_and_stop_work` | yes | yes / yes |
-| `admission_classification_lost` | `capability_chain_stops_normal_admission_while_status_and_stop_work` | yes | yes / yes |
-| `m0_admission_remove` | `capability_chain_stops_normal_admission_while_status_and_stop_work` | yes | yes / yes |
-| `allocation_provider_remove` | `claude_executor_allocation_refuses_before_provisional_assets` | yes | yes / yes |
-| `allocation_alias_name` | `claude_executor_allocation_refuses_before_provisional_assets` | yes | yes / yes |
-| `native_legacy_remove` | `legacy_native_entry_chains_refuse_before_helper_session_and_input` | yes | yes / yes |
-| `native_legacy_after_start_map` | `legacy_native_entry_chains_refuse_before_helper_session_and_input` | yes | yes / yes |
-| `adapter_legacy_remove` | `legacy_managed_adapter_refuses_before_preparation` | yes | yes / yes |
-| `codex_launch_remove` | `legacy_routes_refuse_before_effects_even_with_retained_component_inputs` | yes | yes / yes |
-| `codex_resume_remove` | `legacy_routes_refuse_before_effects_even_with_retained_component_inputs` | yes | yes / yes |
-| `codex_checkpoint_remove` | `legacy_routes_refuse_before_effects_even_with_retained_component_inputs` | yes | yes / yes |
-| `codex_launch_after_registration` | `legacy_routes_refuse_before_effects_even_with_retained_component_inputs` | yes | yes / yes |
-| `legacy_transport_remove` | `legacy_transport_refuses_before_availability_and_effects` | yes | yes / yes |
-| `legacy_transport_after_effect_record` | `legacy_transport_refuses_before_availability_and_effects` | yes | yes / yes |
+Full-run-only failures that pass alone:
 
-For `codex_launch_after_registration`, the final assertion detects increased registration attempts even if a transient registry entry is dropped. For `legacy_transport_after_effect_record`, the final assertion detects the nonzero transport-attempt observation. `native_legacy_after_start_map` detects the changed retained start map. Thus the late-refusal kills are effect-boundary assertions, not an earlier unavailable fixture.
+- `lib`: `adapter::git_owner::tests::destructive_private_controls_leave_fresh_production_pool_unchanged` — 1/0/0.
+- `lib`: `adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint` — 1/0/0.
+- `lib`: `adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume` — 1/0/0.
+- `lib`: `cli::endpoint::tests::actual_endpoint_connects_without_epoch_effect_and_refuses_second_publisher` — 1/0/0.
+- `lib`: `cli::endpoint::tests::c_s1e2_bind_replaces_known_leftovers_and_refuses_foreign` — 1/0/0.
 
-Exact command/source SHA256/exit/restoration records: `.rrx/u2/mutation-final-results.json`; initial logs `.rrx/u2/mutations/`, final causal logs `.rrx/u2/causal_mutations_final/`.
+## Provider-refusal mutations
 
-## Not completed / clarification
+Each operator was applied to source, run against the named exact real test, restored in `finally` to SHA256-checked original bytes, and rerun successfully. Compiler errors are not counted. For handoff operators the explicit finite-type assertion fails inside the actual activation callback (the callback panic also triggers its outer wait); this is not counted solely from a timeout. `goal_after_persistence` returns the correct type after saving, and the test catches the nonzero Goal row count. `admission_after_composition` catches ordering/classification through the unavailable-installation control.
 
-- The defence-in-depth `SourceNativeHandoff` provider guard is wired but its own remove-guard mutation is NOT RUN: U2 admission 0 cannot supply a genuine protected Source ticket. No test-only authority or success seed was added to manufacture one. This remains an explicit verification gap for the real producer connection.
-- Shared legacy-positive test bodies remain intact and red where U2 makes their producer unavailable. Clarification requested: keep these original tests/red interim results until U5/U6/U7 (current conservative treatment), or replace their current expectations with refusals while preserving the original safety assertions as pending ledger entries. This report does not grant that change itself.
-- Reviewer runtime positives still belong to M3; no S/P/Executor success or full L-1 coverage is claimed. U2 must not be independently merged to main as a completed capability switch.
+Test keys: G=`runtime::installation::tests::u2::goal_refuses_claude_provider_before_save_and_accepts_same_alias_as_reviewer`; S=`runtime::installation::tests::u2::saved_task_provider_refusal_preserves_finite_classification_before_composition`; C=`runtime::installation::tests::u2::installation_refusal_preserves_status_and_stop`; H=`runtime::installation::tests::u2::native_handoff_refuses_claude_provider_before_ticket_and_asset_transfer`; A=`adapter::native::ownership_tests::claude_executor_allocation_refuses_before_provisional_assets`.
 
-No worktree/checkouts/Docker resources were created. Existing worktree and intended uncommitted changes are preserved for the orchestrator. Scratch/evidence was created only under `.rrx/u2/`; its Python bytecode cache is removed. Existing test harnesses own their temporary fixture cleanup. Docker removal: none, recovered capacity 0.
+| Operator | Test | Mutant failed intended assertion | Exact bytes restored | Restored passed / failed / ignored |
+|---|---|---|---|---|
+| `goal_remove` | G | yes | yes | 1 / 0 / 0 |
+| `goal_alias_name` | G | yes | yes | 1 / 0 / 0 |
+| `reviewer_also_refused` | G | yes | yes | 1 / 0 / 0 |
+| `admission_provider_remove` | S | yes | yes | 1 / 0 / 0 |
+| `admission_alias_name` | S | yes | yes | 1 / 0 / 0 |
+| `composition_provider_remove` | S | yes | yes | 1 / 0 / 0 |
+| `composition_alias_name` | S | yes | yes | 1 / 0 / 0 |
+| `composition_refusal_string` | C | yes | yes | 1 / 0 / 0 |
+| `admission_classification_lost` | C | yes | yes | 1 / 0 / 0 |
+| `allocation_provider_remove` | A | yes | yes | 1 / 0 / 0 |
+| `allocation_alias_name` | A | yes | yes | 1 / 0 / 0 |
+| `native_handoff_remove` | H | yes | yes | 1 / 0 / 0 |
+| `native_handoff_alias_name` | H | yes | yes | 1 / 0 / 0 |
+| `admission_after_composition` | S | yes | yes | 1 / 0 / 0 |
+| `goal_after_persistence` | G | yes | yes | 1 / 0 / 0 |
+
+Commands, original/mutant SHA256, exit codes, logs and restoration proof: `.rrx/u2/rescope-mutations/results.json`. All five refusal points have a remove-guard operator. Alias-name comparisons, also refusing Reviewers, finite classification loss and late refusal are covered. Draft legacy and missing-chain mutations are superseded by the re-scope and are not claimed as current coverage. No mutation remains in the tree.
+
+## Limits and cleanup
+
+The original unit plan still describes admission 0; this report follows the explicit orchestrator re-scope. The remaining Claude-Executor fixtures conflict with retained B1, and their ports are recorded as unfinished U7 work. Some generic controls may admit an earlier Codex fixture conversion; the re-scope did not perform that broader port. Wire-specific Claude cases need their actual replacement producer; changing their provider or replacing their expectations with refusal would lose the old coverage. The preserved tests remain visibly red. U2 is not full M0/L-1 acceptance or a green-suite claim.
+
+No UI change or browser verification applies. Independent review, Linux/macOS CI, S/P/Executor implementation and real Mac Agent acceptance are not performed or claimed here. No worktree/checkout/Docker resource was created; no existing worktree was deleted. Scratch/scripts/evidence are only under `.rrx/u2/`; normal build output and pre-existing test harness temporary-fixture handling remain with those harnesses. No task-owned Docker resource or cache was created/deleted; reclaimed capacity 0. No Git write/commit/push occurred in this worktree. The worktree and intended uncommitted changes remain for the orchestrator.

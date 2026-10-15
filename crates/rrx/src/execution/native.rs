@@ -291,7 +291,6 @@ impl NativeSessions {
         effort: Option<String>,
         executable: Option<std::path::PathBuf>,
     ) -> Result<NativeStart> {
-        super::capability::require_legacy_entry()?;
         // Public ManagedInput/Unit identity is not a managed phase owner. This
         // standalone entry cannot qualify or prepare a protected Workflow.
         let protected = self

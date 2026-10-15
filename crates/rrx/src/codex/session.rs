@@ -120,8 +120,6 @@ pub struct CodexAdapter {
     #[cfg(test)]
     gates: Arc<TestGates>,
     #[cfg(test)]
-    registration_attempts: Arc<std::sync::atomic::AtomicUsize>,
-    #[cfg(test)]
     file_factory: Option<Arc<super::custody::Factory>>,
 }
 struct Entry {
@@ -729,8 +727,6 @@ impl CodexAdapter {
             #[cfg(test)]
             gates: Arc::new(TestGates::default()),
             #[cfg(test)]
-            registration_attempts: Arc::default(),
-            #[cfg(test)]
             file_factory: None,
         })
     }
@@ -824,8 +820,6 @@ impl CodexAdapter {
             #[cfg(test)]
             gates: self.gates.clone(),
             #[cfg(test)]
-            registration_attempts: self.registration_attempts.clone(),
-            #[cfg(test)]
             file_factory: self.file_factory.clone(),
         }
     }
@@ -834,8 +828,6 @@ impl CodexAdapter {
         request: LaunchRequest,
         schema: Option<Value>,
     ) -> AdapterResult<Registered> {
-        #[cfg(test)]
-        self.registration_attempts.fetch_add(1, Ordering::SeqCst);
         self.availability.require()?;
         self.reconcile_custody()?;
         let session = fresh_session(&request, &self.agent);
@@ -880,8 +872,6 @@ impl CodexAdapter {
         })
     }
     fn register_existing(&self, reference: &SessionRef) -> AdapterResult<Registered> {
-        #[cfg(test)]
-        self.registration_attempts.fetch_add(1, Ordering::SeqCst);
         self.availability.require()?;
         self.reconcile_custody()?;
         let mut sessions = self.registry()?;
@@ -971,7 +961,6 @@ impl CodexAdapter {
         schema: Option<Value>,
         resume: Option<Session>,
     ) -> AdapterResult<Session> {
-        super::require_legacy_entry()?;
         self.availability.require()?;
         let registered = if let Some(previous) = resume {
             self.register_existing(&SessionRef::from(&previous))?
@@ -1983,7 +1972,6 @@ impl AgentAdapter for CodexAdapter {
     }
     fn resume(&self, session: SessionRef) -> AdapterFuture<'_, Session> {
         Box::pin(async move {
-            super::require_legacy_entry()?;
             self.availability.require()?;
             let registered = self.register_existing(&session)?;
             self.spawn_launch(registered).await
@@ -2097,7 +2085,6 @@ impl AgentAdapter for CodexAdapter {
     }
     fn checkpoint(&self, session: SessionRef, input: PreparedInput) -> AdapterFuture<'_, ()> {
         Box::pin(async move {
-            super::require_legacy_entry()?;
             self.availability.require()?;
             let registered = self.register_existing(&session)?;
             self.spawn_checkpoint(registered, input).await
@@ -2850,14 +2837,6 @@ mod tests {
     use crate::domain::{ProjectId, Scope};
     use futures_util::{SinkExt, StreamExt};
 
-    fn assert_legacy_unavailable<T: std::fmt::Debug>(result: AdapterResult<T>) {
-        assert_eq!(
-            result.unwrap_err().kind,
-            ErrorKind::CapabilityUnavailable(
-                crate::execution::capability::CapabilityRefusal::LegacyEntryUnavailable
-            )
-        );
-    }
     fn assert_unavailable<T: std::fmt::Debug>(result: AdapterResult<T>) {
         let error = result.unwrap_err();
         assert_eq!(error.kind, ErrorKind::UnsupportedCapability);
@@ -2882,41 +2861,10 @@ mod tests {
         }))).collect();
         json!({
             "registry":registry,
-            "registration_attempts":adapter.registration_attempts.load(Ordering::SeqCst),
             "sessions":store.records(scope, crate::domain::RecordKind::Session).unwrap(),
             "events":store.events(scope,0,1000).unwrap(),
             "sites":adapter.availability.sites(),
         })
-    }
-
-    /// L-1: every obsolete launch route refuses before registry/input/helper effects,
-    /// including an existing #19 terminal and both component availability inputs.
-    #[tokio::test]
-    async fn legacy_routes_refuse_before_effects_even_with_retained_component_inputs() {
-        let mut fixture = ApprovalFixture::new(true).await;
-        let (adapter, reference) = fixture.terminal_adapter();
-        for enabled in [true, false] {
-            adapter.availability.set_fixture_inputs(enabled, enabled);
-            let before = no_effect_snapshot(&adapter, &reference.scope);
-            let request = fixture.authority.request.clone();
-            assert_legacy_unavailable(adapter.start(request.clone()).await);
-            assert_eq!(no_effect_snapshot(&adapter, &reference.scope), before);
-            assert_legacy_unavailable(
-                adapter
-                    .start_structured(request.clone(), json!({"type":"object"}))
-                    .await,
-            );
-            assert_eq!(no_effect_snapshot(&adapter, &reference.scope), before);
-            assert_legacy_unavailable(adapter.resume(reference.clone()).await);
-            assert_eq!(no_effect_snapshot(&adapter, &reference.scope), before);
-            assert_legacy_unavailable(adapter.checkpoint(reference.clone(), request.input).await);
-            assert_eq!(no_effect_snapshot(&adapter, &reference.scope), before);
-            // Refusal cannot evict or mutate a retained component owner.
-            assert_eq!(
-                adapter.status(reference.clone()).await.unwrap().session.id,
-                reference.id
-            );
-        }
     }
 
     #[tokio::test]
@@ -2949,13 +2897,13 @@ mod tests {
         let started = plain.start(owned.request.clone()).await;
         assert_eq!(no_effect_snapshot(&plain, &owned.request.scope), before);
         assert!(!marker.exists() && !git_marker.exists());
-        assert_legacy_unavailable(started);
+        assert_unavailable(started);
         let started = plain
             .start_structured(owned.request.clone(), json!({"type":"object"}))
             .await;
         assert_eq!(no_effect_snapshot(&plain, &owned.request.scope), before);
         assert!(!marker.exists() && !git_marker.exists());
-        assert_legacy_unavailable(started);
+        assert_unavailable(started);
         let adapter = Arc::new(
             CodexAdapter::new("codex".into(), executable, owned.store.clone())
                 .unwrap()
@@ -2976,15 +2924,15 @@ mod tests {
             let result = adapter.start(owned.request.clone()).await;
             assert_eq!(no_effect_snapshot(&adapter, &owned.request.scope), before);
             assert!(!marker.exists() && !git_marker.exists());
-            assert_legacy_unavailable(result);
+            assert_unavailable(result);
             let result = adapter
                 .start_structured(owned.request.clone(), schema.clone())
                 .await;
             assert_eq!(no_effect_snapshot(&adapter, &owned.request.scope), before);
             assert!(!marker.exists() && !git_marker.exists());
-            assert_legacy_unavailable(result);
-            assert_legacy_unavailable(adapter.resume(unknown.clone()).await);
-            assert_legacy_unavailable(
+            assert_unavailable(result);
+            assert_unavailable(adapter.resume(unknown.clone()).await);
+            assert_unavailable(
                 adapter
                     .checkpoint(unknown.clone(), owned.request.input.clone())
                     .await,
@@ -2999,14 +2947,14 @@ mod tests {
             }
             assert_unavailable(adapter.release(unknown.clone()));
             let dynamic: Arc<dyn AgentAdapter> = adapter.clone();
-            assert_legacy_unavailable(dynamic.start(owned.request.clone()).await);
-            assert_legacy_unavailable(
+            assert_unavailable(dynamic.start(owned.request.clone()).await);
+            assert_unavailable(
                 dynamic
                     .start_structured(owned.request.clone(), schema.clone())
                     .await,
             );
-            assert_legacy_unavailable(dynamic.resume(unknown.clone()).await);
-            assert_legacy_unavailable(
+            assert_unavailable(dynamic.resume(unknown.clone()).await);
+            assert_unavailable(
                 dynamic
                     .checkpoint(unknown.clone(), owned.request.input.clone())
                     .await,

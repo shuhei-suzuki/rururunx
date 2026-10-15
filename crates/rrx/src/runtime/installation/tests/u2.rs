@@ -88,9 +88,23 @@ async fn goal_refuses_claude_provider_before_save_and_accepts_same_alias_as_revi
             .unwrap()
     };
     f.runtime.start().await.unwrap();
+    let guard = f.runtime.control_admission.lock().await;
     // Reviewer acceptance is tested by the real composition, not only parsing.
     assert!(f.runtime.installed_driver_composition(&task).is_ok());
+    let response = f
+        .runtime
+        .handle_control(&f.socket, f.request(ControlAction::RuntimeStatus))
+        .await
+        .unwrap();
+    assert!(matches!(
+        response,
+        ControlResponse::RuntimeMetadata {
+            admission_refusal: None,
+            ..
+        }
+    ));
     assert_no_effects(&f);
+    drop(guard);
     f.runtime.shutdown().await.unwrap();
     finish(f).await;
 }
@@ -160,78 +174,128 @@ async fn saved_task_provider_refusal_preserves_finite_classification_before_comp
     }
 }
 
-/// C-1: missing capability and installation failures remain distinct typed facts.
+/// C-1: installation refusal stays typed while status and stop remain usable.
 #[tokio::test]
-async fn capability_chain_stops_normal_admission_while_status_and_stop_work() {
-    for installed in [true, false] {
-        let f = fixture_with("codex", true, |config| {
-            if !installed {
-                config.agents.get_mut("worker").unwrap().command =
-                    vec!["/missing-u2-executable".into()];
-            }
-        });
-        let (_, tasks) = accept(&f, 1).await;
-        f.runtime.start().await.unwrap();
-        assert_eq!(f.runtime.admit_ready_tasks().unwrap(), 0);
-        if !installed {
-            let error = f
-                .runtime
-                .installed_driver_composition(&tasks[0])
-                .err()
-                .unwrap();
-            assert_eq!(
-                error.downcast_ref::<InstallationRefusal>(),
-                Some(&InstallationRefusal::Registry)
-            );
+async fn installation_refusal_preserves_status_and_stop() {
+    let f = configured_with(false);
+    let (_, tasks) = accept(&f, 1).await;
+    f.runtime.start().await.unwrap();
+    assert_eq!(f.runtime.admit_ready_tasks().unwrap(), 0);
+    let error = f
+        .runtime
+        .installed_driver_composition(&tasks[0])
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.downcast_ref::<InstallationRefusal>(),
+        Some(&InstallationRefusal::Registry)
+    );
+    let guard = f.runtime.control_admission.lock().await;
+    let page = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .ready_driver_candidates(f.owner.instance_id(), f.owner.epoch(), None, 8)
+        .unwrap();
+    let crate::state::CandidatePage::Rows { keys, .. } = page else {
+        panic!("no candidate")
+    };
+    let outcome = f
+        .runtime
+        .evaluate_driver_candidate(&guard, &keys[0])
+        .unwrap();
+    assert!(matches!(
+        outcome,
+        AdmitOutcome::Skipped(SkipReason::Installation(InstallationRefusal::Registry))
+    ));
+    drop(guard);
+    let response = f
+        .runtime
+        .handle_control(&f.socket, f.request(ControlAction::RuntimeStatus))
+        .await
+        .unwrap();
+    let wire = serde_json::to_vec(&response).unwrap();
+    let decoded: ControlResponse = serde_json::from_slice(&wire).unwrap();
+    assert!(matches!(
+        decoded,
+        ControlResponse::RuntimeMetadata {
+            admission_refusal: Some(AdmissionRefusal::Installation(
+                InstallationRefusal::Registry
+            )),
+            service_running: true,
+            ..
         }
-        let guard = f.runtime.control_admission.lock().await;
-        let page = f
-            .owner
-            .store
-            .lock()
-            .unwrap()
-            .ready_driver_candidates(f.owner.instance_id(), f.owner.epoch(), None, 8)
+    ));
+    assert_no_effects(&f);
+    f.runtime.shutdown().await.unwrap();
+    assert!(!f.runtime.service_running());
+    assert_no_effects(&f);
+    finish(f).await;
+}
+
+/// EX-1: handoff rejects a Claude port before consuming a real Driver input view.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn native_handoff_refuses_claude_provider_before_ticket_and_asset_transfer() {
+    let mut f = configured();
+    f.register_real_git_project();
+    let graph = f.runtime.installed.as_ref().ok().unwrap();
+    let sources = graph.sources.clone();
+    let selected = graph.registry.native_phase_port("review-model").unwrap();
+    let owner = f.owner.clone();
+    let (sent, received) = tokio::sync::oneshot::channel();
+    let sent = Arc::new(std::sync::Mutex::new(Some(sent)));
+    graph.engine.set_activation_hooks(
+        Some(Arc::new(move |probe| {
+            // All inputs and the association come from the actual production
+            // activation. No constructor, copied row or seed supplies authority.
+            let ticket = crate::state::read_driver_ticket(
+                owner.clone(),
+                probe.lifetime().association().unwrap(),
+            )
             .unwrap();
-        let crate::state::CandidatePage::Rows { keys, .. } = page else {
-            panic!("no candidate")
-        };
-        let outcome = f
-            .runtime
-            .evaluate_driver_candidate(&guard, &keys[0])
-            .unwrap();
-        let expected = if installed {
-            assert!(
-                matches!(
-                    outcome,
-                    AdmitOutcome::Skipped(SkipReason::Capability(
-                        CapabilityRefusal::M0CapabilityChainUnavailable
-                    ))
-                ),
-                "unexpected candidate outcome: {outcome:?}"
-            );
-            AdmissionRefusal::Capability(CapabilityRefusal::M0CapabilityChainUnavailable)
-        } else {
-            assert!(matches!(
-                outcome,
-                AdmitOutcome::Skipped(SkipReason::Installation(InstallationRefusal::Registry))
-            ));
-            AdmissionRefusal::Installation(InstallationRefusal::Registry)
-        };
-        drop(guard);
-        let response = f
-            .runtime
-            .handle_control(&f.socket, f.request(ControlAction::RuntimeStatus))
-            .await
-            .unwrap();
-        let wire = serde_json::to_vec(&response).unwrap();
-        let decoded: ControlResponse = serde_json::from_slice(&wire).unwrap();
-        assert!(
-            matches!(decoded, ControlResponse::RuntimeMetadata { admission_refusal, service_running: true, .. } if admission_refusal == expected)
-        );
-        assert_no_effects(&f);
-        f.runtime.shutdown().await.unwrap();
-        assert!(!f.runtime.service_running());
-        assert_no_effects(&f);
-        finish(f).await;
-    }
+            let sources = sources.clone();
+            let selected = selected.clone();
+            let owner = owner.clone();
+            let sent = sent.clone();
+            Box::pin(async move {
+                let effects = || {
+                    crate::state::current_test_writer(owner.state_path())
+                        .unwrap()
+                        .query_row("SELECT count(*) FROM managed_effects", [], |r| {
+                            r.get::<_, usize>(0)
+                        })
+                        .unwrap()
+                };
+                let before = effects();
+                let error = sources
+                    .offer_first_executor(
+                        probe.task(),
+                        probe.record(),
+                        probe.context(),
+                        ticket,
+                        selected,
+                    )
+                    .await
+                    .err()
+                    .expect("Claude handoff accepted");
+                assert_eq!(
+                    error.downcast_ref::<CapabilityRefusal>(),
+                    Some(&CapabilityRefusal::ClaudeExecutorUnavailable)
+                );
+                assert_eq!(effects(), before);
+                sent.lock().unwrap().take().unwrap().send(()).unwrap();
+            })
+        })),
+        None,
+    );
+    let (_, tasks) = accept(&f, 1).await;
+    f.runtime.start().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(40), received)
+        .await
+        .expect("activation not reached")
+        .unwrap();
+    success::wait_normal_bound(&f, &tasks[0]).await;
+    success::release_completion(&f, &tasks[0]);
+    finish(f).await;
 }

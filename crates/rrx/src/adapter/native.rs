@@ -306,8 +306,6 @@ impl AgentAdapter for NativeAdapter {
         input: ManagedInput,
     ) -> AdapterFuture<'_, NativeStart> {
         Box::pin(async move {
-            execution::capability::require_legacy_entry()
-                .map_err(|refusal| mapped(refusal.into()))?;
             if request.mode != LaunchMode::NonInteractive
                 || !request.environment.is_empty()
                 || input.agent != self.name
@@ -566,80 +564,6 @@ impl AgentAdapter for NativeAdapter {
 mod tests {
     use super::*;
     use crate::execution::{attempts::AttemptManager, native::tests as fixture, results};
-    /// L-1: the old adapter entry refuses even an invalid caller before input checks.
-    #[tokio::test]
-    async fn legacy_managed_adapter_refuses_before_preparation() {
-        for provider in ["claude", "codex"] {
-            let (dir, owner, task) = results::tests::fixture().await;
-            let sessions = Arc::new(NativeSessions::new(owner.clone()).unwrap());
-            let adapter = NativeAdapter {
-                owner: owner.clone(),
-                name: "misleading-alias".into(),
-                provider: provider.into(),
-                program: fixture::program(dir.path(), provider),
-                sessions,
-                compatibility: None,
-            };
-            let (unit, _) = AttemptManager::new(owner.clone())
-                .prepare(task.id, provider, "implement", None)
-                .await
-                .unwrap();
-            let input = fixture::input(&unit, "complete");
-            let project = owner
-                .store
-                .lock()
-                .unwrap()
-                .project(task.project_id)
-                .unwrap()
-                .unwrap();
-            let request = LaunchRequest {
-                project,
-                scope: unit.scope.clone(),
-                worktree: unit.worktree.clone(),
-                role: SessionRole::Executor,
-                mode: LaunchMode::NonInteractive,
-                input: input.input.clone(),
-                environment: BTreeMap::new(),
-                model: None,
-                effort: None,
-            };
-            let before =
-                serde_json::to_value(owner.store.lock().unwrap().execution_unit(unit.id).unwrap())
-                    .unwrap();
-            let effects = owner
-                .store
-                .lock()
-                .unwrap()
-                .managed_effects(unit.id)
-                .unwrap()
-                .len();
-            let result = adapter.start_managed(request, input).await;
-            assert_eq!(
-                serde_json::to_value(owner.store.lock().unwrap().execution_unit(unit.id).unwrap())
-                    .unwrap(),
-                before
-            );
-            assert_eq!(
-                owner
-                    .store
-                    .lock()
-                    .unwrap()
-                    .managed_effects(unit.id)
-                    .unwrap()
-                    .len(),
-                effects
-            );
-            assert_eq!(
-                result
-                    .err()
-                    .unwrap_or_else(|| panic!("obsolete adapter accepted"))
-                    .kind,
-                ErrorKind::CapabilityUnavailable(
-                    execution::capability::CapabilityRefusal::LegacyEntryUnavailable
-                )
-            );
-        }
-    }
     #[tokio::test]
     async fn managed_adapter_routes_aliases_and_observes_work_independently_of_cleanup() {
         for (provider, success) in [

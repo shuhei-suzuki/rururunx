@@ -146,7 +146,6 @@ impl NativeServer {
         uncertain: Arc<AtomicBool>,
         preparation: &Preparation,
     ) -> AdapterResult<Self> {
-        super::require_legacy_entry()?;
         availability.require()?;
         availability.record(Site::Transport);
         preparation.check()?;
@@ -582,34 +581,6 @@ async fn connect_socket(path: &Path, leader: u32) -> AdapterResult<(UnixStream, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    /// L-1: legacy transport refuses before availability, path access and spawn.
-    #[tokio::test]
-    async fn legacy_transport_refuses_before_availability_and_effects() {
-        for enabled in [true, false] {
-            let availability = Availability::default();
-            availability.set_fixture_inputs(enabled, enabled);
-            let uncertainty = Arc::new(AtomicBool::new(false));
-            let result = NativeServer::launch_preparing(
-                &availability,
-                Path::new("/missing-u2-program"),
-                Path::new("relative"),
-                None,
-                vec![],
-                uncertainty.clone(),
-                &Preparation::new(),
-            )
-            .await;
-            assert_eq!(
-                result.err().unwrap().kind,
-                ErrorKind::CapabilityUnavailable(
-                    crate::execution::capability::CapabilityRefusal::LegacyEntryUnavailable
-                )
-            );
-            assert!(availability.sites().into_iter().all(|count| count == 0));
-            assert!(!uncertainty.load(std::sync::atomic::Ordering::SeqCst));
-        }
-    }
-
     #[test]
     fn dangling_owned_alias_waits_only_until_target_exists_and_keeps_privacy_checks() {
         let directory = tempfile::Builder::new().tempdir_in("/tmp").unwrap();

@@ -155,8 +155,8 @@ async fn genuine_accepted_goal_cannot_enter_legacy_native_before_private_phase_e
                     .err()
                     .expect("protected direct entry accepted");
                 assert_eq!(
-                    error.downcast_ref::<crate::execution::capability::CapabilityRefusal>(),
-                    Some(&crate::execution::capability::CapabilityRefusal::LegacyEntryUnavailable)
+                    error.downcast_ref::<NativeFailure>(),
+                    Some(&NativeFailure::AuthorityUnavailable)
                 );
             } else {
                 let registry = registry.as_ref().unwrap();
@@ -178,12 +178,7 @@ async fn genuine_accepted_goal_cannot_enter_legacy_native_before_private_phase_e
                     .await
                     .err()
                     .expect("protected adapter entry accepted");
-                assert_eq!(
-                    error.kind,
-                    ErrorKind::CapabilityUnavailable(
-                        crate::execution::capability::CapabilityRefusal::LegacyEntryUnavailable
-                    )
-                );
+                assert_eq!(error.kind, ErrorKind::OwnershipMismatch);
             }
             assert!(
                 !counter.exists(),

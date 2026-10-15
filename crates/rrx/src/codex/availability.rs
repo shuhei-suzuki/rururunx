@@ -169,12 +169,8 @@ mod tests {
             assert!(!marker.exists());
             assert!(!uncertain.load(Ordering::SeqCst));
             assert_eq!(availability.sites(), [0; 10]);
-            assert_eq!(
-                error.kind,
-                ErrorKind::CapabilityUnavailable(
-                    crate::execution::capability::CapabilityRefusal::LegacyEntryUnavailable
-                )
-            );
+            assert_eq!(error.kind, ErrorKind::UnsupportedCapability);
+            assert_eq!(error.message, UNAVAILABLE);
         }
     }
 }

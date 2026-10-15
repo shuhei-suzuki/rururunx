@@ -38,9 +38,6 @@ impl Runtime {
             self.service_running(),
             "Runtime is not accepting Task Drivers"
         );
-        if let Err(refusal) = crate::execution::capability::require_m0_capabilities() {
-            return Ok(AdmitOutcome::Skipped(SkipReason::Capability(refusal)));
-        }
         let current = match self
             .owner
             .store

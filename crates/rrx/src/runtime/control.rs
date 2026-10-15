@@ -341,7 +341,7 @@ pub enum ControlResponse {
         service_running: bool,
         requested_global_sessions: usize,
         requested_tasks_per_project: usize,
-        admission_refusal: AdmissionRefusal,
+        admission_refusal: Option<AdmissionRefusal>,
     },
     Unavailable {
         request_id: Uuid,
@@ -763,12 +763,11 @@ impl Runtime {
                 epoch: self.owner.epoch(),
                 operational: false,
                 service_running: self.service_running(),
-                admission_refusal: match &self.installed {
-                    Err(refusal) => AdmissionRefusal::Installation(*refusal),
-                    Ok(_) => AdmissionRefusal::Capability(
-                        crate::execution::capability::CapabilityRefusal::M0CapabilityChainUnavailable,
-                    ),
-                },
+                admission_refusal: self
+                    .installed
+                    .as_ref()
+                    .err()
+                    .map(|refusal| AdmissionRefusal::Installation(*refusal)),
                 requested_global_sessions: self.config.scheduler.global_max_sessions,
                 requested_tasks_per_project: crate::config::MVP_PROJECT_TASKS,
             },
