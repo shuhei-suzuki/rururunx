@@ -1,6 +1,6 @@
 # macOS 最小一本道 M0: 要件
 
-状態: **DRAFT / 役割入れ替え改訂（2026-10-15）はオーナー再承認待ち** / `c6413082`の全体設計承認とA1〜A6は維持する。M0-U1（Claude strict wire decoder／metrics、O03、I01〜I04、共有queue予算補正）は実装・限定検証・独立修正確認済み（`doc/verification/macos-minimum-m0-u1.md`）で、役割入れ替え後はReviewer側のdecoderとして使う。それ以外のM0本番実装・検証は未着手。
+状態: **役割入れ替え改訂（2026-10-15）はオーナー承認済み（固定HEAD `2a9114bc`、B1〜B4・B2a許可）** / `c6413082`の全体設計承認とA1〜A6は維持する。M0-U1（Claude strict wire decoder／metrics、O03、I01〜I04、共有queue予算補正）は実装・限定検証・独立修正確認済み（`doc/verification/macos-minimum-m0-u1.md`）で、役割入れ替え後はReviewer側のdecoderとして使う。それ以外のM0本番実装・検証は未着手。
 
 オーナー全体設計承認（2026-10-13）: 固定HEAD `c64130828453cb38b742c9b31d08d9e488e85ee1` の3文書を承認し、必須検証を維持してM0実装へ進むとの明示回答を取得した。A1／A2／A4／A5／A6を含む設計承認であり、実装・実CLI適合・controls／mutants・両OS／実Mac受入・実装レビュー・マージ条件の免除ではない。
 
@@ -26,7 +26,7 @@ Sol R4は正式なREQUEST CHANGES。Opus R4はCLI child exit 0でもmodelUsage�
 
 **macOS最小一本道M0：要件修正全文**
 
-今回のR5後補修本文案の入力HEADは `0fadf545c45558a05d89377bcb073009875bdb01`。前回の取込済み局所修正入力と公開sourceのbaselineは冒頭の別HEADである。本補修は設計草案へ取込済み・固定HEAD b746dfd4の補修diffはOpus承認済みである。状態は冒頭のとおりで、役割入れ替え改訂はオーナー再承認待ちである。本稿は設計修正の執筆成果であり、レビュー票、承認、実装または検証結果ではない。M0-U1以外の実装、実CLI資格付け、macOS／Linux検証、CI、owner-runはすべて未完了である。`c6413082`のオーナー設計承認は冒頭の固定HEADで完了した。
+今回のR5後補修本文案の入力HEADは `0fadf545c45558a05d89377bcb073009875bdb01`。前回の取込済み局所修正入力と公開sourceのbaselineは冒頭の別HEADである。本補修は設計草案へ取込済み・固定HEAD b746dfd4の補修diffはOpus承認済みである。状態は冒頭のとおりで、役割入れ替え改訂はオーナー承認済みである。本稿は設計修正の執筆成果であり、レビュー票、承認、実装または検証結果ではない。M0-U1以外の実装、実CLI資格付け、macOS／Linux検証、CI、owner-runはすべて未完了である。`c6413082`のオーナー設計承認は冒頭の固定HEADで完了した。
 
 M0は#5/#6のSTRICT互換変更、M1は#95、M2は#12、M3は#9、M4は#13、M5は#16に対応する。M0の実Mac受入前にM1へ進まない。M4のruntime自動mergeとpublic `shuhei-suzuki/rrx-e2e-sandbox` の作成・使用は決定済みであり、再承認事項にしない。
 
