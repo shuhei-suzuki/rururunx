@@ -1,20 +1,51 @@
 # M0 U2 verification — B1 refusal and fixture classification
 
-Input HEAD: `1b2ca73acd17c7915fd6995f84316e6e1533fe48` (`refactor(m0): re-scope U2 to the Executor provider refusal`). Approved role revision: `2a9114bc`, B1–B4/B2a. Local macOS; Cargo `/Users/shuheisuzuki/.cargo/bin/cargo`; all dependency operations locked/offline. The orchestrator owns commits and independent review. No network, Git write, new worktree, external LLM, CI, deployment, or live Agent qualification was performed.
+Input HEAD: `7d840a361fb80ed3b1e387cc53ead2a859683fe5` (`wip(m0): fix U2 review round 1 findings`), on top of the fixture conversion `80c670ff`. Approved role revision: `2a9114bc`, B1–B4/B2a. Local macOS; Cargo `/Users/shuheisuzuki/.cargo/bin/cargo`; all dependency operations locked/offline. The orchestrator owns commits and independent review. No network, CI, deployment, or live Agent qualification was performed.
 
 ## Result and scope
 
-**85 of the 86 previously B1-blocked test IDs now pass; one remains failing without weakening its protected property.** The complete per-ID classification and result are below and in `macos-minimum-m0-legacy-ledger.json` (`u2_b1` on every original entry).
+**85 of the 86 previously B1-blocked test IDs pass; SC10 remains failing without weakening its protected property.** The complete per-ID classification and result are below and in `macos-minimum-m0-legacy-ledger.json` (`u2_b1` on every original entry; `refusal_only` separates refusal checks from positive verification).
 
 | Classification of the original 86 | Count | Disposition |
 |---|---:|---|
-| Provider-independent safety/behaviour | 78 | 77 converted and passing; SC10 cannot be converted under the fixed provider quota and remains failing. |
-| Claude Executor-specific wire/telemetry/permission | 6 | Current ID checks typed B1 refusal and zero effects. Original property is **移植 (M3, Reviewer), not done**. |
-| Claude Executor-specific exact-version pin | 2 | **機能廃止 (B1)**; current ID checks typed B1 refusal and zero effects. AC-01 removes number pins, so these are not future Reviewer pin requirements. Current production pins remain unchanged. |
+| Provider-independent safety/behaviour | 80 | 77 converted to Codex fixtures and passing. `pin_c3` is ported to Codex and `pin_c2` maps to an equivalent existing Codex control; their number-pin replacement is AC-01 / U7 pending. SC10 is BLOCKED (below). |
+| Provider-independent terminal persistence with a Claude telemetry part | 1 | `cl10_terminal_retry_…` runs the shared retry/republication property through Codex and passes. The Claude malformed-telemetry producer is 移植 (M3, Reviewer), not done. |
+| Claude Executor-specific wire/telemetry/permission (refusal-only) | 5 | All map to one executable typed-refusal control with zero effects. Original property is **移植 (M3, Reviewer), not done**; not credited as positive verification. |
 
-No original ID was deleted, ignored, skipped, or renamed. Historical `_claude_` names identify provenance: the provider-independent cases now select Codex. Shared assertions still cover CAS, owner/epoch fencing, markers, custody, admission, persistence, read surfaces, and Project isolation through the existing genuine production consumers. The eight refusal cases are not credited as positive verification of their removed/deferred Claude properties.
+Every original ID stays in the ledger with its source hash and assertions; none was ignored or skipped. Six original executables no longer exist on their own: the five refusal-only IDs share one refusal control, and `pin_c2` maps to the equivalent existing Codex control (arrows in the mapping table). Historical `_claude_` names identify provenance: the provider-independent cases now select Codex. Shared assertions still cover CAS, owner/epoch fencing, markers, custody, admission, persistence, read surfaces, and Project isolation through the existing genuine production consumers.
 
-The existing B1 production boundary is unchanged: `CapabilityRefusal::ClaudeExecutorUnavailable` at Goal validation, saved-Task admission/composition, allocation, and first-Executor handoff. No production source change remains. No auth/CAS/owner/marker/fencing/#19/process-custody or quota check was changed. No Task.version authority, test authority constructor, SQL success seed, `allow(dead_code)`, suppression, new ignore/skip/serialization, or timeout change was introduced.
+The B1 production boundary refuses every Executor provider except Codex at Goal validation, saved-Task admission/composition, allocation, and first-Executor handoff through one predicate (`execution/capability.rs::require_executor`). No auth/CAS/owner/marker/fencing/#19/process-custody or quota check was changed. No Task.version authority, test authority constructor, SQL success seed, `allow(dead_code)`, suppression, new ignore/skip/serialization, or timeout-only change was introduced.
+
+## Review round 1 corrections
+
+Round 1 (HEAD `80c670ff`) had independent Sol (implementation) and Opus (security/contract) reviews. Confirmed findings were fixed by Sol; the fix diff is `80c670ff..7d840a36`.
+
+| Finding (reporters) | Resulting behaviour |
+|---|---|
+| Typed refusal does not reach consumers (Sol U2-I01, Opus S-1; 2/2) | The shared socket service loop (`cli/service.rs::serve_runtime`, used by foreground and detached entry points) answers a genuine capability refusal with `ControlResponse::CapabilityRejected { request_id, reason }`; other errors keep the generic `Rejected`. The CLI client turns it back into the typed `CapabilityRefusal`. Saved-Task capability skips from the last finite admission pass appear as `RuntimeMetadata.admission_refusal = Capability(reason)`; this is an advisory observation, never authority, and an installation refusal takes precedence. The dead `ErrorKind::CapabilityUnavailable` is removed. `execution/native.rs::classify_failure` is the single finite classifier for terminal supervision and raw handoff errors and maps `CapabilityRefusal` to `UnsupportedCapability`, not `ProtocolFailure`. |
+| Shared safety tests misclassified as B1 (Sol U2-I02, Opus S-2; 2/2) | The cl10 retry property runs through accepted ingress and the installed Codex Core: a malformed owned frame gives `ProtocolFailure`, a trigger fails only receipt persistence, and after recovery and delayed watch publication the failure, diagnostic and receipt are preserved; work stays Unknown, the Session Lost, custody retained through pending shutdown. `pin_c3` declares Codex 0.160.0 against an executable reporting 0.159.0 and is refused before NativeInput with zero invocations and links. `pin_c2` maps to `daemon_native::c_s1f_native_success_and_refusal_equal_under_serve_and_daemon`. |
+| Denylist instead of allowlist (Opus S-4) | `require_executor` accepts only `Some("codex")`; Claude keeps `ClaudeExecutorUnavailable`, None/unknown get `ExecutorProviderUnavailable`. Reviewer registration and provider support are unchanged. |
+| Saved-Task negative by raw SQL (Opus S-5) | A Task is accepted while alias `worker` is Codex; the alias is changed to Claude and the Runtime and owner are rebuilt at a new epoch (`runtime/tests.rs::ControlFixture::restart_with_config`). The unchanged saved Task is skipped by the production candidate/admission path with the capability reason in status and zero Driver/Unit/helper/native/quota/Session effects. |
+| Ledger accuracy and duplicated refusal checks (Opus S-6) | `refusal_only` marks the five refusal mappings; they share one executable refusal control instead of repeating identical refusal tests. New U2 refusal controls also carry `refusal_only: true`. |
+
+Class check: every production caller of the Executor provider check goes through `require_executor` (Goal validation, saved-Task evaluation/composition, first-Executor handoff, allocation); every former `CapabilityUnavailable` producer/consumer is removed; the two raw-error classifiers in `execution/native.rs` are replaced by the one `classify_failure`.
+
+### Mutation checks for the corrections
+
+Each mutation changes the production check, runs the exact test, restores the original bytes, and reruns the same test successfully (evidence: `.rrx/u2-fixes/mutation-batch.log` and `.rrx/u2-fixes/mutations/`). All ten mutants failed the intended assertion (exit 101); all restored runs passed (exit 0).
+
+| Operator | Exact test |
+|---|---|
+| client: drop typed conversion of `CapabilityRejected` | `runtime::installation::tests::u2::goal_capability_refusal_round_trips_through_socket_service` |
+| status: drop the saved-Task capability reason | `runtime::installation::tests::u2::saved_task_provider_refusal_preserves_finite_classification_before_composition` |
+| allowlist: revert to the Claude-only denylist | `runtime::installation::tests::u2::executor_provider_allowlist_refuses_missing_and_unknown_provider` |
+| retry: break the shared terminal retry preservation | `runtime::installation::tests::m0_claude::cl10_terminal_retry_preserves_the_original_failure_in_status_and_watch` |
+| watch: break delayed watch republication | same cl10 retry test |
+| pin: remove observed-version qualification | `runtime::installation::tests::pin::pin_c3_old_observed_cli_version_is_refused_before_native` |
+| restart: remove the restart-path capability skip | `runtime::installation::tests::u2::saved_task_provider_refusal_preserves_finite_classification_before_composition` |
+| classification-allocation: lose the finite allocation classification | `adapter::native::ownership_tests::claude_executor_allocation_refuses_before_provisional_assets` |
+| classification-handoff: lose the finite handoff classification | `runtime::installation::tests::u2::native_handoff_refuses_claude_provider_before_ticket_and_asset_transfer` |
+| refusal: remove the shared refusal effects check | `runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects` |
 
 ## Fixture changes and retained coverage
 
@@ -24,56 +55,47 @@ The five non-starting phase-supervisor controls retain their original must-not-r
 
 A token-aware macro audit compared the pre-conversion snapshots with current files: **all 754 original assert/assert_eq/assert_ne/panic macros across 18 non-Claude-specific participating files are unchanged** (`.rrx/u2/green/assertions.json`). Incidental daemon version fixture values change from Claude 2.1.294/2.1.283 to Codex 0.160.0/0.159.0; its success/refusal/zero-invocation comparisons are unchanged. Historical two-provider loops now enumerate the one supported Executor provider; their assertion bodies are unchanged.
 
-The six Claude wire tests retain their IDs but explicitly enforce the earlier typed role refusal. The shared refusal assertion checks Goal/Task, Driver, Unit, managed helper/effects, native invocation, quota lease, phase operation, native contract and Held-job effects are zero after genuine refused ingress and an actual zero-admission service pass. Pin cases retain their stale declared/observed fixture variations but never probe the peer because B1 is earlier. The ledger preserves the original source SHA256/assertions and, additionally, the complete pre-conversion Claude wire/pin source including delegated helper assertions for future M3 work.
+The five Claude wire/telemetry IDs map to one executable typed-refusal control (`m0_claude::claude_executor_refusal_has_no_effects`). It checks Goal/Task, Driver, Unit, managed helper/effects, native invocation, quota lease, phase operation, native contract and Held-job effects are zero after genuine refused ingress and an actual zero-admission service pass. The ledger preserves the original source SHA256/assertions and, additionally, the complete pre-conversion Claude wire/pin source including delegated helper assertions for future M3 work.
 
 ## Frozen ledger
 
-The baseline union remains **560 original IDs**, in original order, with original producers, source hashes, and assertions intact. Baseline classification was 187 移植 / 371 残置 / 2 機能廃止. Current classification is **185 移植 / 371 残置 / 4 機能廃止**, reflecting the two B1 pin retirements. The six wire properties are explicitly unfinished M3 Reviewer ports. Current pending count is **187**: 179 other migration entries plus two planned example retirements remain U7 work; six Reviewer migrations remain M3 work. Fixture conversion does not certify completion of the new managed-path replacements or M0 acceptance. The five current U2 refusal tests remain separately inventoried.
+The baseline union remains **560 original IDs**, in original order, with original producers, source hashes, and assertions intact. Classification is **187 移植 / 371 残置 / 2 機能廃止**, the same as the baseline: the two pin cases are shared guards whose number-pin replacement is AC-01 / U7, not B1 retirements. Pending count is **189**: 181 migration entries for later units, five M3 Reviewer refusal-only mappings, the two AC-01 / U7 pin replacements, and the M3 telemetry part of the cl10 retry entry. Fixture conversion does not certify completion of the new managed-path replacements or M0 acceptance. New U2 controls are inventoried separately (`new_u2_tests`).
 
 ## Unconvertible control: SC10
 
 `runtime::installation::tests::success::sc10_four_projects_close_independently` protects four overlapping Executor completions in four Projects, two aliases, with independent links, Task versions, operation identities and Driver publication. It waits for all four to bind before releasing any completion. Originally two peers were Claude and two were Codex.
 
-B1 permits only Codex Executor. `execution/quota.rs::QuotaScheduler::new` fixes `provider_executor=2` and `provider_total=3`; `execution/native.rs::NativeLimits::scheduler` only tightens those caps. Aliases share the provider quota. Four Codex Executors cannot all reach this setup simultaneously. The Codex-only fixture therefore still fails: the precursor exact run stops at **`SETUP: normal Bound absent`**; the final full run instead reaches **`SC10: Task … did not close`** after earlier peers have already lost their owned-success settlement. Its log shows two terminal jobs lacking owned-success settlement; the exact terminal failure subtypes are not recorded by that assertion. Later admission after earlier terminals does not establish four concurrent successful peers. Both are failures; neither is positive coverage. Raising the production quota, reducing the peer count, using a second/false provider identity, bypassing admission, or releasing completions before all four bind would alter the protected property or serialize it. None was done. The original assertions are retained; the ledger explicitly marks this control BLOCKED / not converted, with no positive credit. A different accepted test scope or product quota decision is needed to make this particular four-concurrent control green.
+B1 permits only Codex Executor. `execution/quota.rs::QuotaScheduler::new` fixes `provider_executor=2` and `provider_total=3`; `execution/native.rs::NativeLimits::scheduler` only tightens those caps. Aliases share the provider quota. Four Codex Executors cannot all reach this setup simultaneously, so the Codex-only fixture fails: the exact run stops at **`SETUP: normal Bound absent`**; the full run reaches **`SC10: Task … did not close`** with two bound peers lacking owned-success settlement. Later admission after earlier terminals does not establish four concurrent successful peers. Both are failures, not positive coverage. Raising the production quota, reducing the peer count, using a second/false provider identity, bypassing admission, or releasing completions before all four bind would alter the protected property or serialize it. None was done. The original assertions are retained; the ledger marks this control **BLOCKED pending issue #100**, the owner decision to make provider limits configurable, with no positive credit.
 
 ## Final verification
 
-Verification covers the working-tree source manifest `.rrx/u2/green/final/source_hashes.json`, not a new commit. The final runner verifies that every recorded source SHA256 is unchanged after all suites and alone reruns. Full commands, exit codes, all nested/outer summaries, failures and exact reruns are in `.rrx/u2/green/final/results.json`; logs are adjacent. Host execution preserves hooks and custody checks; the previous U2 report documented sandbox process-inspection failures. No permission/hook bypass or approval rejection occurred.
+Verification ran on the committed HEAD `7d840a36` with a clean working tree before and after all suites (`.rrx/u2-fixes/final2/`: `input-head.txt`, `input-status.txt`, `output-status.txt`, per-command logs and exit codes, `full-results.json`). Socket and process tests need host permissions, so the suites ran outside the command sandbox under the standing local-verification approval; an earlier in-sandbox attempt (`.rrx/u2-fixes/final/`) could not bind sockets or inspect processes, did not finish, and is not counted. No permission/hook bypass or approval rejection occurred.
 
 | Command (absolute Cargo path above) | Passed / failed / ignored | Result |
 |---|---|---|
 | `cargo fmt --all -- --check` | n/a | PASS |
 | `cargo clippy --locked --offline --workspace --all-targets -- -D warnings` | n/a | PASS |
-| `cargo test --locked --offline -p rrx --lib` | 842 / 7 / 27 | FAIL |
+| `cargo test --locked --offline -p rrx --lib` | 844 / 2 / 27 (nested child 44 / 0 / 1) | FAIL |
 | `cargo test --locked --offline -p rrx --test adapter` | 19 / 0 / 0 | PASS |
 | `cargo test --locked --offline -p rrx --test runtime_cli` | 9 / 0 / 0 | PASS |
 | `cargo test --locked --offline -p rrx --test project_api` | 14 / 0 / 0 | PASS |
 | `cargo test --locked --offline -p rrx --test daemon_native` | 2 / 0 / 0 | PASS |
-| `cargo test --locked --offline -p rrx --test codex_unavailable` | 1 / 0 / 1 | PASS |
+| `cargo test --locked --offline -p rrx --test codex_unavailable` | 1 / 0 / 1 (nested child 1 / 0 / 0) | PASS |
 
-Every observed failure (including nested-child failures) was rerun in its own invocation with `--exact --nocapture`: **8 exact invocations, 6 passed / 2 failed / 0 ignored**. Each outer exact harness ran one test; existing wrapper children remain separate nested results. The 27 library ignores and the one `codex_unavailable` ignore predate this work; that integration parent still runs its ignored child. No ignore was added. Successful alone reruns resolve only the observed parallel-run failure, not future flakiness.
+Both observed failures were rerun in their own invocation with `--exact --nocapture`: **2 exact invocations, 0 passed / 2 failed**. No other test failed in the full run, including the cl10 retry test. The 27 library ignores and the one `codex_unavailable` ignore predate this work; that integration parent still runs its ignored child. No ignore was added.
 
 ### Failures remaining alone
 
 | Target / exact ID | Attribution |
 |---|---|
 | `lib` / `execution::native::tests::workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_size` | Known environmental managed-Git/hook failure; supplied baseline says unmodified main fails too. Its source/production path are unchanged. Main was not rerun or checked out in this task. |
-| `lib` / `runtime::installation::tests::success::sc10_four_projects_close_independently` | Unconvertible four-concurrent-Executor fixture under B1 and the unchanged Codex provider quota; explained above. Not attributed to unmodified main. |
+| `lib` / `runtime::installation::tests::success::sc10_four_projects_close_independently` | BLOCKED pending issue #100: four concurrent Codex Executors under the unchanged provider quota; explained above. Not attributed to unmodified main. |
 
-Full-run failures that pass alone:
+Superseded evidence from the fixture conversion at `80c670ff` is retained under `.rrx/u2/green/` (lib 842/7/27, six parallel-run-only failures that passed alone). It does not substitute for the verification above.
 
-- `lib::adapter::git_owner::tests::actual_release_wake_after_expiry_keeps_waited_diagnostic_without_new_effects` — exact outer 1/0/0; parallel-run-only failure in this observation.
-- `lib::adapter::git_owner::tests::destructive_private_controls_leave_fresh_production_pool_unchanged` — exact outer 1/0/0; parallel-run-only failure in this observation.
-- `lib::adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint` — exact outer 1/0/0; parallel-run-only failure in this observation.
-- `lib::adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume` — exact outer 1/0/0; parallel-run-only failure in this observation.
-- `lib::execution::owner::tests::database_aliases_cannot_create_a_second_owner_or_advance_epoch` — exact outer 1/0/0; parallel-run-only failure in this observation.
-- `lib::runtime::installation::tests::epoch_fence::ef1_codex_managed_session_fenced_lost_exactly` — exact outer 1/0/0; parallel-run-only failure in this observation.
+## Protected-property mutation sample (fixture conversion)
 
-Preliminary, superseded evidence is retained under `.rrx/u2/green/`: initial lib 837/12/27; all 14 observed failures including two nested children rerun with `--exact` (7 pass / 7 fail). The five supervisor alone failures were real fixture provider/Unit namespace mismatches; after fixing only that fixture preparation provider, the module passes 9/0/0. Those precursor reruns overlapped the first full run's last long control; the final reruns above are after completion of all full suites. SC10 also fails alone in the precursor run. No precursor result substitutes for final-source verification.
-
-## Protected-property mutation sample
-
-Each mutation changes a real production check, runs one converted original test with `--exact --nocapture`, restores exact original bytes under a restoration trap, and reruns that same test successfully. Compiler failures or timeout-only outcomes are not counted. All five mutants fail the intended protected-property assertion; all restored runs are 1/0/0. Recorded production snapshots are still byte-identical after the final suites.
+Each mutation changes a real production check, runs one converted original test with `--exact --nocapture`, restores exact original bytes under a restoration trap, and reruns that same test successfully. Compiler failures or timeout-only outcomes are not counted. All five mutants fail the intended protected-property assertion; all restored runs are 1/0/0. These ran at `80c670ff`; the five production checks they mutate are not changed by the round 1 corrections.
 
 | Operator / protected property | Exact converted test | Observed mutant failure | Exact bytes restored / restored result |
 |---|---|---|---|
@@ -87,7 +109,7 @@ Evidence: `.rrx/u2/green/mutations/*-result.json` records operator, exact target
 
 ## Complete original-86 mapping
 
-P = provider-independent safety/behaviour; M3 = 移植 (M3, Reviewer), not done; B1 = 機能廃止 (B1). P/FAIL is the explicit unconvertible SC10 control, not an omitted test. Full original ledger IDs are source path plus function; the table gives executable test IDs.
+P = provider-independent safety/behaviour; P+M3 = shared part verified through Codex, Claude telemetry part 移植 (M3, Reviewer), not done; M3 (refusal-only) = 移植 (M3, Reviewer), not done, and the result is the shared refusal control; P (U7) = shared guard verified through Codex, number-pin replacement AC-01 / U7 pending. P/FAIL is the explicit BLOCKED SC10 control, not an omitted test. Full original ledger IDs are source path plus function; the table gives executable test IDs.
 
 | Target | Original executable ID | Classification | Final result |
 |---|---|---|---|
@@ -118,16 +140,16 @@ P = provider-independent safety/behaviour; M3 = 移植 (M3, Reviewer), not done;
 | `lib` | `runtime::installation::tests::fm_d2::fm_d2_committed_source_631_claude_quick_front` | P | PASS |
 | `lib` | `runtime::installation::tests::fm_d2::fm_d2_committed_source_631_claude_standard_front` | P | PASS |
 | `lib` | `runtime::installation::tests::fm_d2::fm_d2_committed_source_631_claude_strict_front` | P | PASS |
-| `lib` | `runtime::installation::tests::m0_claude::cl10_installed_error_telemetry_controls_and_mutants_fail_closed` | M3 | PASS |
-| `lib` | `runtime::installation::tests::m0_claude::cl10_installed_success_telemetry_controls_and_mutants_fail_closed` | M3 | PASS |
-| `lib` | `runtime::installation::tests::m0_claude::cl10_terminal_retry_preserves_the_original_failure_in_status_and_watch` | M3 | PASS |
-| `lib` | `runtime::installation::tests::m0_claude::cl10_valid_unfinished_candidate_is_not_a_prior_captured_success` | M3 | PASS |
-| `lib` | `runtime::installation::tests::m0_claude::o03_installed_normal_control_responses_fail_closed_and_requests_remain_consumed` | M3 | PASS |
-| `lib` | `runtime::installation::tests::m0_claude::r1_installed_rate_control_and_mutant_validate_before_foreign_filter` | M3 | PASS |
+| `lib` | `runtime::installation::tests::m0_claude::cl10_installed_error_telemetry_controls_and_mutants_fail_closed` (→ `claude_executor_refusal_has_no_effects`) | M3 (refusal-only) | PASS |
+| `lib` | `runtime::installation::tests::m0_claude::cl10_installed_success_telemetry_controls_and_mutants_fail_closed` (→ `claude_executor_refusal_has_no_effects`) | M3 (refusal-only) | PASS |
+| `lib` | `runtime::installation::tests::m0_claude::cl10_terminal_retry_preserves_the_original_failure_in_status_and_watch` | P+M3 | PASS |
+| `lib` | `runtime::installation::tests::m0_claude::cl10_valid_unfinished_candidate_is_not_a_prior_captured_success` (→ `claude_executor_refusal_has_no_effects`) | M3 (refusal-only) | PASS |
+| `lib` | `runtime::installation::tests::m0_claude::o03_installed_normal_control_responses_fail_closed_and_requests_remain_consumed` (→ `claude_executor_refusal_has_no_effects`) | M3 (refusal-only) | PASS |
+| `lib` | `runtime::installation::tests::m0_claude::r1_installed_rate_control_and_mutant_validate_before_foreign_filter` (→ `claude_executor_refusal_has_no_effects`) | M3 (refusal-only) | PASS |
 | `lib` | `runtime::installation::tests::nonsuccess::rn_h1_genuine_normal_n_closes_and_pre_s5_refusal_stays_held` | P | PASS |
 | `lib` | `runtime::installation::tests::nonsuccess::rn_p1_genuine_writer_contention_confirms_rollback_clears_u_then_closes` | P | PASS |
-| `lib` | `runtime::installation::tests::pin::pin_c2_old_declared_cli_version_is_refused_before_native` | B1 | PASS |
-| `lib` | `runtime::installation::tests::pin::pin_c3_old_observed_cli_version_is_refused_before_native` | B1 | PASS |
+| `lib` | `runtime::installation::tests::pin::pin_c2_old_declared_cli_version_is_refused_before_native` (→ `daemon_native::c_s1f_native_success_and_refusal_equal_under_serve_and_daemon`) | P (U7) | PASS |
+| `lib` | `runtime::installation::tests::pin::pin_c3_old_observed_cli_version_is_refused_before_native` | P (U7) | PASS |
 | `lib` | `runtime::installation::tests::preparation::dc1_postcommit_preparation_error_is_confirmed_known_once` | P | PASS |
 | `lib` | `runtime::installation::tests::preparation::dc2_dc4_precommit_error_stays_held_with_capped_backoff` | P | PASS |
 | `lib` | `runtime::installation::tests::preparation::dc3_shutdown_holding_admission_makes_selected_try_not_attempted` | P | PASS |
@@ -180,8 +202,8 @@ P = provider-independent safety/behaviour; M3 = 移植 (M3, Reviewer), not done;
 
 ## Files, limits and cleanup
 
-Seventeen Rust test/fixture files changed: `runtime/installation/tests.rs`, its `activation.rs` and `activation/{composition,lifecycle,pages,protection}.rs`, `{epoch_fence,fm_d2,m0_claude,nonsuccess,pin,preparation,project_limit,success,sweep}.rs`, `runtime/phase_supervisor/tests.rs`, and integration `tests/daemon_native.rs`. Paths are under `crates/rrx/src/` except the integration path under `crates/rrx/`. The other two changed files are this report and the legacy ledger. The existing Python peer and all production source remain unchanged.
+The fixture conversion (`80c670ff`) changed seventeen Rust test/fixture files: `runtime/installation/tests.rs`, its `activation.rs` and `activation/{composition,lifecycle,pages,protection}.rs`, `{epoch_fence,fm_d2,m0_claude,nonsuccess,pin,preparation,project_limit,success,sweep}.rs`, `runtime/phase_supervisor/tests.rs`, and integration `tests/daemon_native.rs`. The round 1 corrections (`7d840a36`) changed production `adapter.rs`, `adapter/native.rs`, `cli/{client,service}.rs`, `execution/{capability,native}.rs`, `runtime/{admission,control,mod}.rs`, and tests `adapter/native/ownership_tests.rs`, `runtime/tests.rs`, `runtime/installation/tests/{m0_claude,pin,u2}.rs`. Paths are under `crates/rrx/src/` except the integration path under `crates/rrx/`. This report and the legacy ledger are also updated. The existing Python peer is unchanged.
 
-No UI/browser work applies. Independent review, Linux/macOS CI, new S/P/Executor replacements, Claude Reviewer runtime acceptance and real Mac Agent qualification are not performed or claimed. The remaining ambiguity is the accepted replacement scope for the four-concurrent SC10 control; this change does not decide it or weaken quota.
+No UI/browser work applies. Linux/macOS CI, new S/P/Executor replacements, Claude Reviewer runtime acceptance and real Mac Agent qualification are not performed or claimed. SC10 stays BLOCKED pending issue #100.
 
-No task-owned worktree, checkout, Docker container, volume, network, image or build cache was created. No task-owned external temporary directory was created or left behind; existing test harnesses retain their normal temporary-fixture handling. Docker resources deleted: none; reclaimed capacity: 0. Scratch, snapshots, scripts and verification evidence are only under `.rrx/u2/green/` for the orchestrator. No Git write/commit/push occurred. Intended working-tree changes and the worktree remain for the orchestrator; no worktree was deleted.
+No task-owned worktree, checkout, Docker container, volume, network, image or build cache was created. No task-owned external temporary directory was left behind; existing test harnesses retain their normal temporary-fixture handling. Docker resources deleted: none; reclaimed capacity: 0. Scratch, scripts and verification evidence are only under `.rrx/u2/` and `.rrx/u2-fixes/` (Git-ignored).
