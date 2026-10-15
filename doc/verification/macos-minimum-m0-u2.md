@@ -32,11 +32,12 @@ Class check: every production caller of the Executor provider check goes through
 
 ### Mutation checks for the corrections
 
-Each mutation changes the production check, runs the exact test, restores the original bytes, and reruns the same test successfully (evidence: `.rrx/u2-fixes/mutation-batch.log` and `.rrx/u2-fixes/mutations/`). All ten mutants failed the intended assertion (exit 101); all restored runs passed (exit 0).
+Each mutation changes the production check, runs the exact test, restores the original bytes, and reruns the same test successfully. They ran on committed HEAD `97f6eab4` (same Rust source as `7d840a36`) with a clean tree before and after (evidence: `.rrx/u2-fixes/mutations-final2/`, one `result.json` per operator with the observed panic). All eleven mutants failed the intended assertion (exit 101); all restored runs passed (exit 0). An earlier batch (`.rrx/u2-fixes/mutations/`) ran before the last test edit and without the wire operator; it is superseded.
 
 | Operator | Exact test |
 |---|---|
-| client: drop typed conversion of `CapabilityRejected` | `runtime::installation::tests::u2::goal_capability_refusal_round_trips_through_socket_service` |
+| wire: collapse `CapabilityRejected` to generic `Rejected` in the service loop | `runtime::installation::tests::u2::goal_capability_refusal_round_trips_through_socket_service` |
+| client: drop typed conversion of `CapabilityRejected` | same socket round-trip test |
 | status: drop the saved-Task capability reason | `runtime::installation::tests::u2::saved_task_provider_refusal_preserves_finite_classification_before_composition` |
 | allowlist: revert to the Claude-only denylist | `runtime::installation::tests::u2::executor_provider_allowlist_refuses_missing_and_unknown_provider` |
 | retry: break the shared terminal retry preservation | `runtime::installation::tests::m0_claude::cl10_terminal_retry_preserves_the_original_failure_in_status_and_watch` |
