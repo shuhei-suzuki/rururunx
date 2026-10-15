@@ -288,7 +288,7 @@ pub(super) async fn bounded_git(
         .process_group(0);
     // No await occurs between the cancellation check and taking child ownership.
     preparation.check()?;
-    let child = command.spawn().map_err(|error| {
+    let child = rrx_spawn_hygiene::spawn_tokio(command).map_err(|error| {
         preparation.failed(failure(ErrorKind::ProcessFailure, error.to_string()))
     })?;
     let mut child =
@@ -476,10 +476,12 @@ mod tests {
             "owned cleanup must complete before cancellation returns"
         );
         let pid = std::fs::read_to_string(ready).unwrap();
-        let observed = std::process::Command::new("/bin/ps")
-            .args(["-p", &pid, "-o", "pid="])
-            .output()
-            .unwrap();
+        let observed = rrx_spawn_hygiene::output_std({
+            let mut command = std::process::Command::new("/bin/ps");
+            command.args(["-p", &pid, "-o", "pid="]);
+            command
+        })
+        .unwrap();
         assert!(
             observed.stdout.is_empty(),
             "the helper must reap its owned leader before returning"

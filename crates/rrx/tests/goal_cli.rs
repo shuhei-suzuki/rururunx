@@ -55,7 +55,12 @@ impl Fixture {
         command
     }
     fn output(&self, args: &[&str]) -> Output {
-        self.command().args(args).output().unwrap()
+        rrx_spawn_hygiene::output_std({
+            let mut command = self.command();
+            command.args(args);
+            command
+        })
+        .unwrap()
     }
     fn json(&self, args: &[&str]) -> Value {
         let output = self.output(args);
@@ -70,17 +75,20 @@ impl Fixture {
         let root = self.directory.path().join(name);
         std::fs::create_dir(&root).unwrap();
         assert!(
-            Command::new("git")
-                .args(["init", "--quiet", "--initial-branch=main"])
-                .arg(&root)
-                .status()
-                .unwrap()
-                .success()
+            rrx_spawn_hygiene::status_std({
+                let mut command = Command::new("git");
+                command
+                    .args(["init", "--quiet", "--initial-branch=main"])
+                    .arg(&root);
+                command
+            })
+            .unwrap()
+            .success()
         );
         assert!(
-            Command::new("git")
-                .current_dir(&root)
-                .args([
+            rrx_spawn_hygiene::status_std({
+                let mut command = Command::new("git");
+                command.current_dir(&root).args([
                     "-c",
                     "user.name=Fixture",
                     "-c",
@@ -89,19 +97,22 @@ impl Fixture {
                     "--allow-empty",
                     "--quiet",
                     "-m",
-                    "initial"
-                ])
-                .status()
-                .unwrap()
-                .success()
+                    "initial",
+                ]);
+                command
+            })
+            .unwrap()
+            .success()
         );
-        let output = self
-            .command()
-            .args(["project", "add"])
-            .arg(root)
-            .args(["--name", name])
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = self.command();
+            command
+                .args(["project", "add"])
+                .arg(root)
+                .args(["--name", name]);
+            command
+        })
+        .unwrap();
         assert!(output.status.success());
         String::from_utf8(output.stdout)
             .unwrap()
@@ -113,12 +124,15 @@ impl Fixture {
     }
     async fn start(&mut self) {
         self.child = Some(
-            self.command()
-                .arg("serve")
-                .stdout(Stdio::null())
-                .stderr(Stdio::inherit())
-                .spawn()
-                .unwrap(),
+            rrx_spawn_hygiene::spawn_std({
+                let mut command = self.command();
+                command
+                    .arg("serve")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::inherit());
+                command
+            })
+            .unwrap(),
         );
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
@@ -209,9 +223,11 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         if let Some(mut child) = self.child.take() {
             // Graceful signal preserves owned IPC cleanup even on assertion failure.
-            let _ = Command::new("/bin/kill")
-                .args(["-TERM", &child.id().to_string()])
-                .status();
+            let _ = rrx_spawn_hygiene::status_std({
+                let mut command = Command::new("/bin/kill");
+                command.args(["-TERM", &child.id().to_string()]);
+                command
+            });
             let deadline = Instant::now() + Duration::from_secs(15);
             while child.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
                 std::thread::sleep(Duration::from_millis(20));
@@ -647,11 +663,13 @@ async fn hostile_typed_inputs_refuse_without_publication_or_git_effects() {
     std::os::unix::fs::symlink(&objective, &symlink).unwrap();
     let fifo = f.directory.path().join("fifo");
     assert!(
-        Command::new("mkfifo")
-            .arg(&fifo)
-            .status()
-            .unwrap()
-            .success()
+        rrx_spawn_hygiene::status_std({
+            let mut command = Command::new("mkfifo");
+            command.arg(&fifo);
+            command
+        })
+        .unwrap()
+        .success()
     );
     for path in [symlink, fifo] {
         let began = Instant::now();

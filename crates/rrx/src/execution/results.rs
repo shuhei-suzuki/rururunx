@@ -795,7 +795,9 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    process::capture(git_command(root)?.args(args)).await
+    let mut command = git_command(root)?;
+    command.args(args);
+    process::capture(command).await
 }
 pub(crate) fn text(bytes: &[u8]) -> Result<String> {
     Ok(std::str::from_utf8(bytes)?.trim().to_owned())

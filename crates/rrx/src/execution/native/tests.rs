@@ -58,12 +58,15 @@ pub(crate) fn publication_exposes_partial(
 ) -> bool {
     let dir = tempfile::tempdir().unwrap();
     let mut writer = Writer(
-        std::process::Command::new("/usr/bin/python3")
-            .arg("-c")
-            .arg(format!("{PAUSE_AT_HALF}{prelude}{body}"))
-            .env("RRX_OUTPUT_DIR", dir.path())
-            .spawn()
-            .unwrap(),
+        rrx_spawn_hygiene::spawn_std({
+            let mut command = std::process::Command::new("/usr/bin/python3");
+            command
+                .arg("-c")
+                .arg(format!("{PAUSE_AT_HALF}{prelude}{body}"))
+                .env("RRX_OUTPUT_DIR", dir.path());
+            command
+        })
+        .unwrap(),
     );
     appear(&dir.path().join("halfway"), "the half-written body");
     let path = dir.path().join(published);

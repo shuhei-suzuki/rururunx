@@ -248,12 +248,15 @@ async fn sc1_success_lane(provider: &str) {
         .join(closed.project_id.to_string())
         .join("results.git");
     for (name, expected) in [("commit", &artifact.revision), ("base", &unit.base_sha)] {
-        let output = std::process::Command::new("git")
-            .arg("--git-dir")
-            .arg(&repository)
-            .args(["rev-parse", &format!("refs/rrx/{}/{name}", artifact.id)])
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = std::process::Command::new("git");
+            command
+                .arg("--git-dir")
+                .arg(&repository)
+                .args(["rev-parse", &format!("refs/rrx/{}/{name}", artifact.id)]);
+            command
+        })
+        .unwrap();
         assert!(
             output.status.success(),
             "SC1 {provider}: results.git {name} ref"
@@ -264,12 +267,15 @@ async fn sc1_success_lane(provider: &str) {
             "SC1 {provider}: results.git {name} ref target"
         );
     }
-    let fsck = std::process::Command::new("git")
-        .arg("--git-dir")
-        .arg(&repository)
-        .args(["fsck", "--strict", "--no-dangling"])
-        .output()
-        .unwrap();
+    let fsck = rrx_spawn_hygiene::output_std({
+        let mut command = std::process::Command::new("git");
+        command
+            .arg("--git-dir")
+            .arg(&repository)
+            .args(["fsck", "--strict", "--no-dangling"]);
+        command
+    })
+    .unwrap();
     assert!(
         fsck.status.success(),
         "SC1 {provider}: results.git fsck: {}",
@@ -791,16 +797,16 @@ async fn scu_unknown(provider: &str) {
         .join("projects")
         .join(marked.project_id.to_string())
         .join("results.git");
-    let moved = std::process::Command::new("git")
-        .arg("--git-dir")
-        .arg(&repository)
-        .args([
+    let moved = rrx_spawn_hygiene::output_std({
+        let mut command = std::process::Command::new("git");
+        command.arg("--git-dir").arg(&repository).args([
             "update-ref",
             &format!("refs/rrx/{artifact}/commit"),
             &terminal.base_sha,
-        ])
-        .output()
-        .unwrap();
+        ]);
+        command
+    })
+    .unwrap();
     assert!(moved.status.success(), "SETUP: negative-only ref move");
     pause.0.release();
     wait_for(
@@ -1315,16 +1321,16 @@ async fn sc8_graph(provider: &str) {
         .join("projects")
         .join(marked.project_id.to_string())
         .join("results.git");
-    let moved = std::process::Command::new("git")
-        .arg("--git-dir")
-        .arg(&repository)
-        .args([
+    let moved = rrx_spawn_hygiene::output_std({
+        let mut command = std::process::Command::new("git");
+        command.arg("--git-dir").arg(&repository).args([
             "update-ref",
             &format!("refs/rrx/{artifact}/commit"),
             &unit.base_sha,
-        ])
-        .output()
-        .unwrap();
+        ]);
+        command
+    })
+    .unwrap();
     assert!(moved.status.success(), "SETUP: negative-only ref move");
     closure.0.release();
     let started = std::time::Instant::now();
@@ -2425,10 +2431,12 @@ async fn sc7_killed(provider: &str) {
     let needle = format!("RRX_OUTPUT_DIR={}", output.display());
     // BSD-style `ps axeww` appends each process's environment to its command
     // line on both Linux (procps) and macOS, so no procfs is required.
-    let listing = std::process::Command::new("ps")
-        .args(["axeww", "-o", "pid=,command="])
-        .output()
-        .unwrap();
+    let listing = rrx_spawn_hygiene::output_std({
+        let mut command = std::process::Command::new("ps");
+        command.args(["axeww", "-o", "pid=,command="]);
+        command
+    })
+    .unwrap();
     assert!(listing.status.success(), "SETUP: ps listing");
     let pid = String::from_utf8_lossy(&listing.stdout)
         .lines()
@@ -2436,10 +2444,12 @@ async fn sc7_killed(provider: &str) {
         .filter_map(|line| line.split_whitespace().next()?.parse::<u32>().ok())
         .find(|pid| *pid != std::process::id())
         .expect("SETUP: genuine peer process");
-    let killed = std::process::Command::new("kill")
-        .args(["-9", &pid.to_string()])
-        .status()
-        .unwrap();
+    let killed = rrx_spawn_hygiene::status_std({
+        let mut command = std::process::Command::new("kill");
+        command.args(["-9", &pid.to_string()]);
+        command
+    })
+    .unwrap();
     assert!(killed.success(), "SETUP: kill the genuine peer");
     wait_for(
         || {

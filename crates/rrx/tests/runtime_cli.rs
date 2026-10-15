@@ -58,17 +58,20 @@ impl Fixture {
         let root = self.dir.path().join(name);
         std::fs::create_dir(&root).unwrap();
         assert!(
-            Command::new("git")
-                .args(["init", "--initial-branch=main", "--quiet"])
-                .arg(&root)
-                .status()
-                .unwrap()
-                .success()
+            rrx_spawn_hygiene::status_std({
+                let mut command = Command::new("git");
+                command
+                    .args(["init", "--initial-branch=main", "--quiet"])
+                    .arg(&root);
+                command
+            })
+            .unwrap()
+            .success()
         );
         assert!(
-            Command::new("git")
-                .current_dir(&root)
-                .args([
+            rrx_spawn_hygiene::status_std({
+                let mut command = Command::new("git");
+                command.current_dir(&root).args([
                     "-c",
                     "user.name=Fixture",
                     "-c",
@@ -77,19 +80,22 @@ impl Fixture {
                     "--allow-empty",
                     "--quiet",
                     "-m",
-                    "initial"
-                ])
-                .status()
-                .unwrap()
-                .success()
+                    "initial",
+                ]);
+                command
+            })
+            .unwrap()
+            .success()
         );
-        let out = self
-            .command()
-            .args(["project", "add"])
-            .arg(root)
-            .args(["--name", name])
-            .output()
-            .unwrap();
+        let out = rrx_spawn_hygiene::output_std({
+            let mut command = self.command();
+            command
+                .args(["project", "add"])
+                .arg(root)
+                .args(["--name", name]);
+            command
+        })
+        .unwrap();
         assert!(
             out.status.success(),
             "{}",
@@ -105,12 +111,15 @@ impl Fixture {
     }
     async fn start(&mut self) {
         self.child = Some(
-            self.command()
-                .arg("serve")
-                .stdout(Stdio::null())
-                .stderr(Stdio::inherit())
-                .spawn()
-                .unwrap(),
+            rrx_spawn_hygiene::spawn_std({
+                let mut command = self.command();
+                command
+                    .arg("serve")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::inherit());
+                command
+            })
+            .unwrap(),
         );
         let until = Instant::now() + Duration::from_secs(10);
         loop {
@@ -151,7 +160,12 @@ impl Fixture {
         assert!(!descriptor(&self.state).exists());
     }
     fn cli_json(&self, args: &[&str]) -> Value {
-        let out = self.command().args(args).output().unwrap();
+        let out = rrx_spawn_hygiene::output_std({
+            let mut command = self.command();
+            command.args(args);
+            command
+        })
+        .unwrap();
         assert!(
             out.status.success(),
             "{}",
@@ -328,7 +342,16 @@ async fn compiled_service_goal_pages_routing_and_reads_preserve_all_rows() {
             "ffffffff-ffff-ffff-ffff-ffffffffffff",
         ],
     ] {
-        assert!(!f.command().args(args).output().unwrap().status.success());
+        assert!(
+            !rrx_spawn_hygiene::output_std({
+                let mut command = f.command();
+                command.args(args);
+                command
+            })
+            .unwrap()
+            .status
+            .success()
+        );
     }
     assert!(
         client::request(
@@ -357,7 +380,12 @@ async fn missing_service_reads_create_nothing_and_preserve_stale_descriptor() {
         vec!["status", "--all"],
         vec!["goal", "status", "ffffffff-ffff-ffff-ffff-ffffffffffff"],
     ] {
-        let output = f.command().args(args).output().unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = f.command();
+            command.args(args);
+            command
+        })
+        .unwrap();
         assert!(!output.status.success());
         assert!(String::from_utf8_lossy(&output.stderr).contains("rrx serve"));
         assert!(!f.state.exists());
@@ -369,7 +397,12 @@ async fn missing_service_reads_create_nothing_and_preserve_stale_descriptor() {
     f.stop().await;
     std::fs::write(&path, &bytes).unwrap();
     let before = rows(&f.state);
-    let output = f.command().args(["status", "--json"]).output().unwrap();
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = f.command();
+        command.args(["status", "--json"]);
+        command
+    })
+    .unwrap();
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("rrx serve"));
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
@@ -429,7 +462,12 @@ async fn compiled_server_refuses_raw_frames_and_old_identity_then_keeps_serving(
     let live = f.cli_json(&["status", "--json"]);
     assert_eq!(live["facts"]["epoch"], identity.epoch);
     assert_eq!(rows(&f.state), before, "refused frames published state");
-    let race = f.command().arg("serve").output().unwrap();
+    let race = rrx_spawn_hygiene::output_std({
+        let mut command = f.command();
+        command.arg("serve");
+        command
+    })
+    .unwrap();
     assert!(!race.status.success());
     assert_eq!(rows(&f.state), before, "second owner advanced epoch");
     let old = std::fs::read(descriptor(&f.state)).unwrap();

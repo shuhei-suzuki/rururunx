@@ -705,7 +705,7 @@ pub(crate) fn with_preflight_groups<T>(
 }
 fn run(mut command: Command) -> Result<Output> {
     let Some(groups) = PREFLIGHT.with(|p| p.borrow().clone()) else {
-        return command.output().context("cannot start Git");
+        return rrx_spawn_hygiene::output_std(command).context("cannot start Git");
     };
     use std::os::unix::process::CommandExt;
     command
@@ -716,7 +716,7 @@ fn run(mut command: Command) -> Result<Output> {
     let child = {
         let mut state = groups.state.lock().unwrap_or_else(|e| e.into_inner());
         ensure!(!state.cancelled, "Project preflight cancelled");
-        let child = command.spawn().context("cannot start Git")?;
+        let child = rrx_spawn_hygiene::spawn_std(command).context("cannot start Git")?;
         groups
             .unreaped
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -984,11 +984,12 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(10));
         };
-        let mut member = Command::new("sleep")
-            .arg("30")
-            .process_group(leader)
-            .spawn()
-            .unwrap();
+        let mut member = rrx_spawn_hygiene::spawn_std({
+            let mut command = Command::new("sleep");
+            command.arg("30").process_group(leader);
+            command
+        })
+        .unwrap();
         std::fs::write(&go, "").unwrap();
         let error = worker.join().unwrap().unwrap_err();
         assert!(

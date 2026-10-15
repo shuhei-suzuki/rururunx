@@ -229,9 +229,9 @@ pub(crate) struct CommandCapture {
     pub receipt: ProcessReceipt,
 }
 impl OwnedProcess {
-    pub(crate) fn spawn(command: &mut Command) -> Result<Self> {
+    pub(crate) fn spawn(mut command: Command) -> Result<Self> {
         command.process_group(0).kill_on_drop(true);
-        let child = command.spawn().context("spawn owned command")?;
+        let child = rrx_spawn_hygiene::spawn_tokio(command).context("spawn owned command")?;
         let pid = Pid::from_raw(child.id().context("missing owned child identity")? as i32)
             .context("invalid owned child identity")?;
         Ok(Self {
@@ -299,7 +299,7 @@ pub(crate) async fn bounded_read(reader: impl AsyncRead + Unpin, limit: usize) -
 }
 
 #[cfg(test)]
-pub(crate) async fn capture(command: &mut Command) -> Result<Vec<u8>> {
+pub(crate) async fn capture(command: Command) -> Result<Vec<u8>> {
     let observed = capture_observed(command).await?;
     ensure!(
         observed.receipt.status.success(),
@@ -309,7 +309,7 @@ pub(crate) async fn capture(command: &mut Command) -> Result<Vec<u8>> {
     Ok(observed.stdout)
 }
 #[cfg(test)]
-pub(crate) async fn capture_observed(command: &mut Command) -> Result<CommandCapture> {
+pub(crate) async fn capture_observed(mut command: Command) -> Result<CommandCapture> {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -445,7 +445,7 @@ mod retained_raw_tests {
         let mut command = Command::new("/bin/sleep");
         command.arg("30").process_group(0).kill_on_drop(true);
         let mut custody = RetainedRawProcess::default();
-        let child = command.spawn().unwrap();
+        let child = rrx_spawn_hygiene::spawn_tokio(command).unwrap();
         custody.adopt(child);
         assert!(custody.has_child());
         assert!(custody.pid.is_none());
@@ -459,7 +459,7 @@ mod retained_raw_tests {
         let mut command = Command::new("/bin/sleep");
         command.arg("30").process_group(0).kill_on_drop(true);
         let mut custody = RetainedRawProcess::default();
-        let child = command.spawn().unwrap();
+        let child = rrx_spawn_hygiene::spawn_tokio(command).unwrap();
         custody.adopt(child);
         custody.qualify().unwrap();
         assert!(custody.pid.is_some());
@@ -488,7 +488,7 @@ mod native_child_cell_tests {
             .process_group(0)
             .kill_on_drop(true);
         let mut cell = NativeChildCell::Empty;
-        let child = command.spawn().unwrap();
+        let child = rrx_spawn_hygiene::spawn_tokio(command).unwrap();
         cell.adopt(child);
         cell
     }

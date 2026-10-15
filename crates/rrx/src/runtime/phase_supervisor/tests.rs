@@ -97,12 +97,13 @@ struct Fixture {
     counter: std::path::PathBuf,
 }
 async fn git(path: &Path, args: &[&str]) {
-    let result = tokio::process::Command::new("git")
-        .current_dir(path)
-        .args(args)
-        .output()
-        .await
-        .unwrap();
+    let result = rrx_spawn_hygiene::output_tokio({
+        let mut command = tokio::process::Command::new("git");
+        command.current_dir(path).args(args);
+        command
+    })
+    .await
+    .unwrap();
     assert!(
         result.status.success(),
         "Git fixture setup failed: {}",

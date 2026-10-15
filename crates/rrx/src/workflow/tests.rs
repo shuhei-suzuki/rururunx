@@ -1000,11 +1000,12 @@ async fn project_minimum_and_rule_refresh_override_defaults_and_force_new_genera
         vec!["config", "user.email", "fixture@example.invalid"],
         vec!["commit", "--allow-empty", "-m", "fixture"],
     ] {
-        let status = std::process::Command::new("git")
-            .args(args)
-            .current_dir(root)
-            .status()
-            .unwrap();
+        let status = rrx_spawn_hygiene::status_std({
+            let mut command = std::process::Command::new("git");
+            command.args(args).current_dir(root);
+            command
+        })
+        .unwrap();
         assert!(status.success());
     }
     std::fs::write(
@@ -1758,11 +1759,12 @@ async fn native_git_commit_port_freezes_owning_worktree_head_for_review_and_pr()
     let fixture = Fixture::new(WorkflowClass::Quick);
     let worktree = fixture.task.worktree.clone().unwrap();
     let git = |cwd: &std::path::Path, args: &[&str]| {
-        let output = std::process::Command::new("git")
-            .args(args)
-            .current_dir(cwd)
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = std::process::Command::new("git");
+            command.args(args).current_dir(cwd);
+            command
+        })
+        .unwrap();
         assert!(
             output.status.success(),
             "{}",

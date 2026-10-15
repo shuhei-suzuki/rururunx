@@ -556,7 +556,7 @@ impl NativeSessions {
             closure: Mutex::new(None),
             terminal: Mutex::new(None),
         });
-        let mut command = physical_command(&prepared);
+        let command = physical_command(&prepared);
         preparation.retain_transport(custody.clone(), &prepared)?;
         let launch = plan.launch().clone();
         let mut backoff = 100u64;
@@ -641,7 +641,7 @@ impl NativeSessions {
                 && matches!(child.cell, process::NativeChildCell::Empty)
             {
                 child.creation = Creation::Attempted;
-                match command.spawn() {
+                match rrx_spawn_hygiene::spawn_tokio(command) {
                     Ok(process) => {
                         child.cell.adopt(process);
                         child.creation = Creation::ReturnedChild;

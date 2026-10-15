@@ -577,7 +577,7 @@ impl CleanupDocker<'_> {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
             store.reserve_cleanup_helper(self.claim, operation, target)?;
-            process::OwnedProcess::spawn(&mut command)?
+            process::OwnedProcess::spawn(command)?
         };
         let captured = process::capture_child(child);
         tokio::pin!(captured);

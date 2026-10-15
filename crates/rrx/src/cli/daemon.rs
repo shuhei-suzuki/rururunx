@@ -428,7 +428,7 @@ async fn spawn(launch: &Launch, state: &Path, config: Option<&Path>) -> StartOut
         .stderr(Stdio::from(file))
         .current_dir(state.parent().unwrap_or(Path::new("/")))
         .kill_on_drop(false);
-    let mut child = match command.spawn() {
+    let mut child = match rrx_spawn_hygiene::spawn_tokio(command) {
         Ok(child) => child,
         Err(error) => return failed(&log, error.into()),
     };

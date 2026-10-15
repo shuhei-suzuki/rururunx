@@ -1,0 +1,8 @@
+disallowed-methods = [
+  { path = "std::process::Command::spawn", reason = "consume Command via rrx_spawn_hygiene::spawn_std" },
+  { path = "std::process::Command::output", reason = "consume Command via rrx_spawn_hygiene::output_std" },
+  { path = "std::process::Command::status", reason = "consume Command via rrx_spawn_hygiene::status_std" },
+  { path = "tokio::process::Command::spawn", reason = "consume Command via rrx_spawn_hygiene::spawn_tokio" },
+  { path = "tokio::process::Command::output", reason = "consume Command via rrx_spawn_hygiene::output_tokio" },
+  { path = "tokio::process::Command::status", reason = "consume Command via rrx_spawn_hygiene::status_tokio" },
+]

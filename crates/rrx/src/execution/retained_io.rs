@@ -136,7 +136,7 @@ impl RetainedGit {
                 )?;
             }
             // There is no await/unlocked gap between durable intent and spawn.
-            match process::OwnedProcess::spawn(&mut command) {
+            match process::OwnedProcess::spawn(command) {
                 Ok(child) => child,
                 Err(error) => {
                     store.reconcile_managed_effect(

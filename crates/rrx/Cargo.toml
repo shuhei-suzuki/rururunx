@@ -21,6 +21,7 @@ tokio-tungstenite.workspace = true
 futures-util.workspace = true
 tempfile.workspace = true
 rrx-process-tracker = { path = "../rrx-process-tracker", version = "0.1.0" }
+rrx-spawn-hygiene = { path = "../rrx-spawn-hygiene", version = "0.1.0" }
 
 [lints]
 workspace = true

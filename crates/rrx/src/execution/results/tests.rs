@@ -47,11 +47,12 @@ pub(crate) fn seed(source: &Path) {
             "fixture",
         ],
     ] {
-        let output = std::process::Command::new("git")
-            .current_dir(source)
-            .args(args)
-            .output()
-            .unwrap();
+        let output = rrx_spawn_hygiene::output_std({
+            let mut command = std::process::Command::new("git");
+            command.current_dir(source).args(args);
+            command
+        })
+        .unwrap();
         assert!(output.status.success(), "SETUP: fixture commit");
     }
 }
