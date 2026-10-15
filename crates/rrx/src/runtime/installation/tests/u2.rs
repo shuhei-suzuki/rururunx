@@ -109,69 +109,143 @@ async fn goal_refuses_claude_provider_before_save_and_accepts_same_alias_as_revi
     finish(f).await;
 }
 
-/// AC-04: saved Tasks are checked before composition, Unit, Held and Admit.
+/// Saved Tasks follow the current alias provider after an actual owner restart.
 #[tokio::test]
 async fn saved_task_provider_refusal_preserves_finite_classification_before_composition() {
-    for available in [true, false] {
-        let f = configured_with(available);
-        let (_, tasks) = accept(&f, 1).await;
-        f.runtime.start().await.unwrap();
-        let guard = f.runtime.control_admission.lock().await;
-        for alias in ["codex", "review-model"] {
-            let mut task = f
-                .owner
-                .store
-                .lock()
-                .unwrap()
-                .task(tasks[0].id)
-                .unwrap()
-                .unwrap();
-            task.executor = alias.into();
-            // Negative saved-row corruption only: never a success/authority seed.
-            raw(&f)
-                .execute(
-                    "UPDATE tasks SET body=json_set(body,'$.executor',?1) WHERE id=?2",
-                    [alias, &task.id.to_string()],
-                )
-                .unwrap();
-            let error = f
-                .runtime
-                .installed_driver_composition(&task)
-                .err()
-                .unwrap_or_else(|| panic!("Claude composition accepted"));
-            assert_eq!(
-                error.downcast_ref::<CapabilityRefusal>(),
-                Some(&CapabilityRefusal::ClaudeExecutorUnavailable)
-            );
-            let page = f
-                .owner
-                .store
-                .lock()
-                .unwrap()
-                .ready_driver_candidates(f.owner.instance_id(), f.owner.epoch(), None, 8)
-                .unwrap();
-            let crate::state::CandidatePage::Rows { keys, .. } = page else {
-                panic!("no candidate")
-            };
-            let result = f
-                .runtime
-                .evaluate_driver_candidate(&guard, &keys[0])
-                .unwrap();
-            assert!(
-                matches!(
-                    result,
-                    AdmitOutcome::Skipped(SkipReason::Capability(
-                        CapabilityRefusal::ClaudeExecutorUnavailable
-                    ))
-                ),
-                "unexpected candidate result: {result:?}"
-            );
-            assert_no_effects(&f);
-        }
-        drop(guard);
-        f.runtime.shutdown().await.unwrap();
-        finish(f).await;
+    let f = configured();
+    let (_, tasks) = accept(&f, 1).await;
+    let f = f
+        .restart_with_config(|config| {
+            config.agents.get_mut("worker").unwrap().provider = Some("claude".into());
+        })
+        .await;
+    f.runtime.start().await.unwrap();
+    let guard = f.runtime.control_admission.lock().await;
+    let task = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .task(tasks[0].id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(task.executor, "worker");
+    let page = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .ready_driver_candidates(f.owner.instance_id(), f.owner.epoch(), None, 8)
+        .unwrap();
+    let crate::state::CandidatePage::Rows { keys, .. } = page else {
+        panic!("no candidate")
+    };
+    let result = f
+        .runtime
+        .evaluate_driver_candidate(&guard, &keys[0])
+        .unwrap();
+    assert!(
+        matches!(
+            result,
+            AdmitOutcome::Skipped(SkipReason::Capability(
+                CapabilityRefusal::ClaudeExecutorUnavailable
+            ))
+        ),
+        "unexpected candidate result: {result:?}"
+    );
+    drop(guard);
+    assert_eq!(f.runtime.admit_ready_tasks().unwrap(), 0);
+    let response = f
+        .runtime
+        .handle_control(&f.socket, f.request(ControlAction::RuntimeStatus))
+        .await
+        .unwrap();
+    let wire = serde_json::to_vec(&response).unwrap();
+    let decoded: ControlResponse = serde_json::from_slice(&wire).unwrap();
+    assert!(
+        matches!(
+            decoded,
+            ControlResponse::RuntimeMetadata {
+                admission_refusal: Some(AdmissionRefusal::Capability(
+                    CapabilityRefusal::ClaudeExecutorUnavailable
+                )),
+                ..
+            }
+        ),
+        "saved Task reason missing: {decoded:?}"
+    );
+    assert_no_effects(&f);
+    f.runtime.shutdown().await.unwrap();
+    finish(f).await;
+}
+
+/// Only a configured Codex provider can select the Executor role.
+#[tokio::test]
+async fn executor_provider_allowlist_refuses_missing_and_unknown_provider() {
+    for provider in [None, Some("unknown-provider")] {
+        let error = crate::execution::capability::require_executor(provider)
+            .expect_err("unapproved Executor provider accepted");
+        assert_eq!(error, CapabilityRefusal::ExecutorProviderUnavailable);
     }
+}
+
+/// The real private socket service preserves a finite Goal rejection on the wire.
+#[tokio::test]
+async fn goal_capability_refusal_round_trips_through_socket_service() {
+    let f = configured();
+    let endpoint = crate::cli::endpoint::ControlEndpoint::bind(f.owner.clone()).unwrap();
+    let runtime = f.runtime.clone();
+    let service = tokio::spawn(crate::cli::service::serve_runtime(runtime, endpoint));
+    let mut p = plan();
+    p.tasks[0].executor = "review-model".into();
+    let action = ControlAction::CreateGoal {
+        project: f.project.id,
+        expected_project: f.project.version,
+        plan: p,
+    };
+    let (identity, mut connection) = crate::cli::endpoint::connect(&f.state_path())
+        .await
+        .unwrap();
+    let request_id = uuid::Uuid::new_v4();
+    let request = ControlRequest {
+        request_id,
+        instance: identity.instance,
+        epoch: identity.epoch,
+        action: action.clone(),
+    };
+    crate::cli::transport::send(
+        connection.get_mut(),
+        &request,
+        crate::cli::transport::REQUEST_BYTES,
+    )
+    .await
+    .unwrap();
+    let response: ControlResponse =
+        crate::cli::transport::receive(&mut connection, crate::cli::transport::RESPONSE_BYTES)
+            .await
+            .unwrap();
+    assert!(
+        matches!(response, ControlResponse::CapabilityRejected { reason: CapabilityRefusal::ClaudeExecutorUnavailable, request_id: id } if id == request_id),
+        "wire capability reason missing: {response:?}"
+    );
+    let error = crate::cli::client::request(&f.state_path(), action)
+        .await
+        .expect_err("client accepted capability rejection");
+    assert_eq!(
+        error.downcast_ref::<CapabilityRefusal>(),
+        Some(&CapabilityRefusal::ClaudeExecutorUnavailable)
+    );
+    assert_eq!(count(&f, "goals"), 0);
+    assert_eq!(count(&f, "tasks"), 0);
+    assert_no_effects(&f);
+    assert!(matches!(
+        crate::cli::client::request(&f.state_path(), ControlAction::RuntimeStop)
+            .await
+            .unwrap(),
+        ControlResponse::RuntimeStopped { .. }
+    ));
+    service.await.unwrap().unwrap();
+    finish(f).await;
 }
 
 /// C-1: installation refusal stays typed while status and stop remain usable.
@@ -282,6 +356,10 @@ async fn native_handoff_refuses_claude_provider_before_ticket_and_asset_transfer
                 assert_eq!(
                     error.downcast_ref::<CapabilityRefusal>(),
                     Some(&CapabilityRefusal::ClaudeExecutorUnavailable)
+                );
+                assert_eq!(
+                    crate::execution::native::classify_failure(&error),
+                    crate::execution::NativeFailure::UnsupportedCapability
                 );
                 assert_eq!(effects(), before);
                 sent.lock().unwrap().take().unwrap().send(()).unwrap();

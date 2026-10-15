@@ -111,6 +111,11 @@ pub async fn serve(state: &Path, config: Config, detached: bool) -> Result<()> {
         announce(&owner)?;
     }
     drop(owner);
+    serve_runtime(runtime, endpoint).await
+}
+
+/// The same retained socket service used by foreground and detached entry points.
+pub(crate) async fn serve_runtime(runtime: Arc<Runtime>, endpoint: ControlEndpoint) -> Result<()> {
     runtime.start().await.context("Start Runtime service")?;
     let stop = Arc::new(Notify::new());
     let stop_failed = Arc::new(AtomicBool::new(false));
@@ -165,7 +170,12 @@ pub async fn serve(state: &Path, config: Config, detached: bool) -> Result<()> {
                                 // failed stop; retain it so the process cannot claim success.
                                 stop_failed.store(true, Ordering::SeqCst);
                             }
-                            (response.unwrap_or(ControlResponse::Rejected { request_id: Some(id) }), stopping)
+                            (response.unwrap_or_else(|error| {
+                                match error.downcast_ref::<crate::execution::capability::CapabilityRefusal>() {
+                                    Some(reason) => ControlResponse::CapabilityRejected { request_id: id, reason: *reason },
+                                    None => ControlResponse::Rejected { request_id: Some(id) },
+                                }
+                            }), stopping)
                         }
                         Err(_) => (ControlResponse::Rejected { request_id: None }, false),
                     };

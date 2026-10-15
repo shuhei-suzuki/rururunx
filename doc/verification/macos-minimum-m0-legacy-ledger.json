@@ -2,9 +2,9 @@
   "baseline": "25545c27843bc4cb95b9d8c2b50377d4153b6269",
   "scope_rule": "§11 union (including direct consumer closure found by fixed-source NativeSessions/CodexAdapter/native_phase_port/InstalledDriverComposition/NativeAllocation/plan_initial_driver/claim_initial_driver search and their managed_binding/driver test modules): fixed-HEAD standalone Codex modules; shared protocol/policy; listed integration/examples; complete Native, adapter/native, Workflow and Runtime test modules that consume the shared mechanisms (conservative module closure, including pure/read-only controls). IDs de-duplicated by tracked source path + function, not by test name. New U2 tests are separate.",
   "classifications": {
-    "機能廃止": 4,
+    "機能廃止": 2,
     "残置": 371,
-    "移植": 185
+    "移植": 187
   },
   "groups": {
     "crates/rrx/examples/native_codex_protocol.rs": 1,
@@ -4354,8 +4354,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation.rs::ca1_actual_activation_gates_marker_and_record_only_bound",
@@ -4397,8 +4399,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/composition.rs::ca2_four_tasks_two_projects_retain_own_scope_and_roster",
@@ -4425,8 +4429,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/composition.rs::ca3_representable_roster_refusals_preserve_claimed_sibling",
@@ -4453,8 +4459,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/composition.rs::ca3_missing_alias_is_rejected_at_accepted_ingress",
@@ -4479,8 +4487,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/composition.rs::ca3b_original_composition_cross_pairs_refuse_before_store",
@@ -4510,8 +4520,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4b_activation_segment_linearizes_before_shutdown",
@@ -4542,8 +4554,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4b_segment_keeps_runtime_alive_after_external_drop",
@@ -4566,8 +4580,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4a_stop_at_genuine_retained_pre_admission_rolls_back",
@@ -4594,8 +4610,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4a_last_external_drop_at_s1_cancels_original_worker",
@@ -4623,8 +4641,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4c_precommit_failure_proves_same_plan_rollback",
@@ -4649,8 +4669,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4d_contained_fault_recovers_in_same_live_worker",
@@ -4683,8 +4705,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4g_actual_exited_worker_keeps_same_plan_held",
@@ -4715,8 +4739,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4h_precommit_panic_stays_poisoned_and_rolls_back",
@@ -4745,8 +4771,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/pages.rs::ca4i_whole_registry_counts_actual_held_plan_across_two_pages",
@@ -4782,8 +4810,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/protection.rs::ca5d_integrity_decision_uses_genuine_allocation_and_negative_raw_members",
@@ -4809,8 +4839,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/protection.rs::ca6_genuine_contract_refuses_generic_workflow_and_contract_writers",
@@ -4839,8 +4871,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/protection.rs::nongrant_ca4e_task_controls_cannot_supply_drift_producer",
@@ -4864,8 +4898,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/activation/protection.rs::ca7_postcommit_cache_fault_reconciles_same_custody_once",
@@ -4890,8 +4926,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/epoch_fence.rs::ef_setup_control_claude_terminal_under_custody_closes_the_session",
@@ -4912,8 +4950,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/epoch_fence.rs::ef_setup_control_codex_terminal_under_custody_closes_the_session",
@@ -4948,8 +4988,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/epoch_fence.rs::ef1_codex_managed_session_fenced_lost_exactly",
@@ -4992,8 +5034,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/epoch_fence.rs::ef4_terminal_managed_session_is_skipped",
@@ -5019,8 +5063,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/fm_d2.rs::fm_d2_committed_source_631_claude_quick_front",
@@ -5041,8 +5087,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/fm_d2.rs::fm_d2_committed_source_631_codex_quick_front",
@@ -5077,8 +5125,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/fm_d2.rs::fm_d2_committed_source_631_codex_standard_front",
@@ -5113,8 +5163,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/fm_d2.rs::fm_d2_committed_source_631_codex_strict_front",
@@ -5149,8 +5201,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/fm_d2.rs::fm_d2_committed_source_301_codex_gate_receipts",
@@ -5294,19 +5348,21 @@
       "classification": "移植",
       "status": "未完了 (M3, Reviewer)",
       "original_assertions": [],
-      "current_assertion": "Typed CapabilityRefusal::ClaudeExecutorUnavailable at real Goal ingress; Goal/Task/helper/Unit/Held/quota Admit effects zero. This refusal is NOT positive coverage of the original Claude property.",
+      "current_assertion": "One shared Claude Executor refusal control enforces finite B1 classification and zero effects; not positive verification of the original M3 wire/telemetry property.",
       "port_target": "M3 genuine Claude Reviewer preparation/Session/Core producer; not done",
       "planned_unit": "M3",
       "migration_status": "planned, not implemented or verified",
       "u2_b1": {
         "test_target": "lib",
-        "test_id": "runtime::installation::tests::m0_claude::o03_installed_normal_control_responses_fail_closed_and_requests_remain_consumed",
+        "test_id": "runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects",
         "classification": "移植 (M3, Reviewer)",
-        "conversion_status": "implemented; verification recorded in U2 report",
+        "conversion_status": "refusal-only; original positive property pending M3 Reviewer",
         "protected_property": "Claude strict wire, telemetry, permission/control and terminal receipt consumers",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": true
       },
-      "pre_b1_classification": "移植"
+      "pre_b1_classification": "移植",
+      "refusal_only": true
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/m0_claude.rs::cl10_terminal_retry_preserves_the_original_failure_in_status_and_watch",
@@ -5315,7 +5371,7 @@
       "source_sha256": "f4bcda56991eaa283ecfcf972a458fd92d933375ba12457ccad7419d95e55309",
       "original_producer": "Runtime/Workflow installed Driver → Source preparation → Native phase",
       "classification": "移植",
-      "status": "未完了 (M3, Reviewer)",
+      "status": "未完了 (M3 telemetry); shared persistence port verified separately",
       "original_assertions": [
         "assert!(status(&f, &handle).receipt.is_none())",
         "assert_eq!(recovered.failure, Some(NativeFailure::ProtocolFailure))",
@@ -5335,19 +5391,21 @@
         "assert_eq!(\n        stopped\n            .as_ref()\n            .err()\n            .and_then(crate::runtime::stop::pending_site),\n        Some(crate::runtime::stop::ShutdownSite::AcceptedOriginals)\n    )",
         "assert!(custody.upgrade().is_some())"
       ],
-      "current_assertion": "Typed CapabilityRefusal::ClaudeExecutorUnavailable at real Goal ingress; Goal/Task/helper/Unit/Held/quota Admit effects zero. This refusal is NOT positive coverage of the original Claude property.",
-      "port_target": "M3 genuine Claude Reviewer preparation/Session/Core producer; not done",
+      "current_assertion": "Codex installed Core rejects malformed owned JSON; receipt insertion fails, status retry recovers SAME terminal; original ProtocolFailure/diagnostic/receipt survive recovery and delayed watch publication. No text/answer/confirm adoption. Claude telemetry-specific malformed usage remains M3 Reviewer pending.",
+      "port_target": "Shared terminal persistence: genuine installed Codex Core (U2). Claude malformed-telemetry producer: M3 Reviewer, pending.",
       "planned_unit": "M3",
-      "migration_status": "planned, not implemented or verified",
+      "migration_status": "Shared property port implemented; Claude telemetry migration pending",
       "u2_b1": {
         "test_target": "lib",
         "test_id": "runtime::installation::tests::m0_claude::cl10_terminal_retry_preserves_the_original_failure_in_status_and_watch",
-        "classification": "移植 (M3, Reviewer)",
-        "conversion_status": "implemented; verification recorded in U2 report",
-        "protected_property": "Claude strict wire, telemetry, permission/control and terminal receipt consumers",
-        "verification_result": "PASS"
+        "classification": "provider-independent terminal persistence; Claude telemetry pending M3",
+        "conversion_status": "Shared terminal persistence implemented; Claude telemetry-specific part pending M3",
+        "protected_property": "Original finite terminal failure, diagnostic and receipt preserved across receipt-save retry and delayed watch publication.",
+        "verification_result": "PASS",
+        "refusal_only": false
       },
-      "pre_b1_classification": "移植"
+      "pre_b1_classification": "移植",
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/m0_claude.rs::cl10_installed_success_telemetry_controls_and_mutants_fail_closed",
@@ -5358,19 +5416,21 @@
       "classification": "移植",
       "status": "未完了 (M3, Reviewer)",
       "original_assertions": [],
-      "current_assertion": "Typed CapabilityRefusal::ClaudeExecutorUnavailable at real Goal ingress; Goal/Task/helper/Unit/Held/quota Admit effects zero. This refusal is NOT positive coverage of the original Claude property.",
+      "current_assertion": "One shared Claude Executor refusal control enforces finite B1 classification and zero effects; not positive verification of the original M3 wire/telemetry property.",
       "port_target": "M3 genuine Claude Reviewer preparation/Session/Core producer; not done",
       "planned_unit": "M3",
       "migration_status": "planned, not implemented or verified",
       "u2_b1": {
         "test_target": "lib",
-        "test_id": "runtime::installation::tests::m0_claude::cl10_installed_success_telemetry_controls_and_mutants_fail_closed",
+        "test_id": "runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects",
         "classification": "移植 (M3, Reviewer)",
-        "conversion_status": "implemented; verification recorded in U2 report",
+        "conversion_status": "refusal-only; original positive property pending M3 Reviewer",
         "protected_property": "Claude strict wire, telemetry, permission/control and terminal receipt consumers",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": true
       },
-      "pre_b1_classification": "移植"
+      "pre_b1_classification": "移植",
+      "refusal_only": true
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/m0_claude.rs::cl10_installed_error_telemetry_controls_and_mutants_fail_closed",
@@ -5381,19 +5441,21 @@
       "classification": "移植",
       "status": "未完了 (M3, Reviewer)",
       "original_assertions": [],
-      "current_assertion": "Typed CapabilityRefusal::ClaudeExecutorUnavailable at real Goal ingress; Goal/Task/helper/Unit/Held/quota Admit effects zero. This refusal is NOT positive coverage of the original Claude property.",
+      "current_assertion": "One shared Claude Executor refusal control enforces finite B1 classification and zero effects; not positive verification of the original M3 wire/telemetry property.",
       "port_target": "M3 genuine Claude Reviewer preparation/Session/Core producer; not done",
       "planned_unit": "M3",
       "migration_status": "planned, not implemented or verified",
       "u2_b1": {
         "test_target": "lib",
-        "test_id": "runtime::installation::tests::m0_claude::cl10_installed_error_telemetry_controls_and_mutants_fail_closed",
+        "test_id": "runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects",
         "classification": "移植 (M3, Reviewer)",
-        "conversion_status": "implemented; verification recorded in U2 report",
+        "conversion_status": "refusal-only; original positive property pending M3 Reviewer",
         "protected_property": "Claude strict wire, telemetry, permission/control and terminal receipt consumers",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": true
       },
-      "pre_b1_classification": "移植"
+      "pre_b1_classification": "移植",
+      "refusal_only": true
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/m0_claude.rs::cl10_valid_unfinished_candidate_is_not_a_prior_captured_success",
@@ -5404,19 +5466,21 @@
       "classification": "移植",
       "status": "未完了 (M3, Reviewer)",
       "original_assertions": [],
-      "current_assertion": "Typed CapabilityRefusal::ClaudeExecutorUnavailable at real Goal ingress; Goal/Task/helper/Unit/Held/quota Admit effects zero. This refusal is NOT positive coverage of the original Claude property.",
+      "current_assertion": "One shared Claude Executor refusal control enforces finite B1 classification and zero effects; not positive verification of the original M3 wire/telemetry property.",
       "port_target": "M3 genuine Claude Reviewer preparation/Session/Core producer; not done",
       "planned_unit": "M3",
       "migration_status": "planned, not implemented or verified",
       "u2_b1": {
         "test_target": "lib",
-        "test_id": "runtime::installation::tests::m0_claude::cl10_valid_unfinished_candidate_is_not_a_prior_captured_success",
+        "test_id": "runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects",
         "classification": "移植 (M3, Reviewer)",
-        "conversion_status": "implemented; verification recorded in U2 report",
+        "conversion_status": "refusal-only; original positive property pending M3 Reviewer",
         "protected_property": "Claude strict wire, telemetry, permission/control and terminal receipt consumers",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": true
       },
-      "pre_b1_classification": "移植"
+      "pre_b1_classification": "移植",
+      "refusal_only": true
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/m0_claude.rs::r1_installed_rate_control_and_mutant_validate_before_foreign_filter",
@@ -5427,19 +5491,21 @@
       "classification": "移植",
       "status": "未完了 (M3, Reviewer)",
       "original_assertions": [],
-      "current_assertion": "Typed CapabilityRefusal::ClaudeExecutorUnavailable at real Goal ingress; Goal/Task/helper/Unit/Held/quota Admit effects zero. This refusal is NOT positive coverage of the original Claude property.",
+      "current_assertion": "One shared Claude Executor refusal control enforces finite B1 classification and zero effects; not positive verification of the original M3 wire/telemetry property.",
       "port_target": "M3 genuine Claude Reviewer preparation/Session/Core producer; not done",
       "planned_unit": "M3",
       "migration_status": "planned, not implemented or verified",
       "u2_b1": {
         "test_target": "lib",
-        "test_id": "runtime::installation::tests::m0_claude::r1_installed_rate_control_and_mutant_validate_before_foreign_filter",
+        "test_id": "runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects",
         "classification": "移植 (M3, Reviewer)",
-        "conversion_status": "implemented; verification recorded in U2 report",
+        "conversion_status": "refusal-only; original positive property pending M3 Reviewer",
         "protected_property": "Claude strict wire, telemetry, permission/control and terminal receipt consumers",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": true
       },
-      "pre_b1_classification": "移植"
+      "pre_b1_classification": "移植",
+      "refusal_only": true
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/nonsuccess.rs::rn_h1_genuine_normal_n_closes_and_pre_s5_refusal_stays_held",
@@ -5460,8 +5526,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/nonsuccess.rs::rn_p1_genuine_writer_contention_confirms_rollback_clears_u_then_closes",
@@ -5482,8 +5550,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/pin.rs::pin_c2_old_declared_cli_version_is_refused_before_native",
@@ -5491,27 +5561,28 @@
       "line": 26,
       "source_sha256": "71dd5066496d59b7f9b3f432faacb66eb5f82fa0a5f08eb38cf3bee3aa173e2c",
       "original_producer": "Runtime/Workflow installed Driver → Source preparation → Native phase",
-      "classification": "機能廃止",
-      "status": "廃止 (B1); typed refusal verified separately",
+      "classification": "移植",
+      "status": "未完了 (AC-01 / U7)",
       "original_assertions": [
         "panic!(\"SETUP: {}\", refusal.0)",
         "assert_eq!(\n        count(&f, \"native_invocations\"),\n        0,\n        \"C2: no Native invocation\"\n    )",
         "assert!(\n        success::links(&f, &tasks[0]).is_empty(),\n        \"C2: no Session binding\"\n    )"
       ],
-      "current_assertion": "Typed CapabilityRefusal::ClaudeExecutorUnavailable at real Goal ingress; Goal/Task/helper/Unit/Held/quota Admit effects zero. This refusal is NOT positive coverage of the original Claude property.",
-      "port_target": null,
-      "planned_unit": "B1",
-      "migration_status": "planned, not implemented or verified",
+      "current_assertion": "Codex declared 0.159.0 vs required 0.160.0 is refused before native_invocations and links under real serve and daemon; matching declared 0.160.0 succeeds.",
+      "port_target": "Equivalent existing Codex daemon_native::c_s1f_native_success_and_refusal_equal_under_serve_and_daemon; AC-01 replacement U7 pending",
+      "planned_unit": "U7",
+      "migration_status": "Current shared version guard verified through Codex; AC-01 removal of number pins pending U7",
       "u2_b1": {
-        "test_target": "lib",
-        "test_id": "runtime::installation::tests::pin::pin_c2_old_declared_cli_version_is_refused_before_native",
-        "classification": "機能廃止 (B1)",
-        "conversion_status": "implemented; verification recorded in U2 report",
-        "protected_property": "Claude declared/observed version pin checks",
-        "verification_result": "PASS"
+        "test_target": "daemon_native",
+        "test_id": "c_s1f_native_success_and_refusal_equal_under_serve_and_daemon",
+        "classification": "provider-independent safety/behaviour",
+        "conversion_status": "Current guard mapped/ported to Codex; AC-01 / U7 replacement pending",
+        "protected_property": "Codex declared 0.159.0 vs required 0.160.0 is refused before native_invocations and links under real serve and daemon; matching declared 0.160.0 succeeds.",
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       "pre_b1_classification": "移植",
-      "retirement_reason": "Claude Executor is no longer provided (B1). Its exact-version pin cases are not Reviewer requirements: AC-01 removes number pins. Production pins remain unchanged in re-scoped U2."
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/pin.rs::pin_c3_old_observed_cli_version_is_refused_before_native",
@@ -5519,28 +5590,29 @@
       "line": 55,
       "source_sha256": "71dd5066496d59b7f9b3f432faacb66eb5f82fa0a5f08eb38cf3bee3aa173e2c",
       "original_producer": "Runtime/Workflow installed Driver → Source preparation → Native phase",
-      "classification": "機能廃止",
-      "status": "廃止 (B1); typed refusal verified separately",
+      "classification": "移植",
+      "status": "未完了 (AC-01 / U7)",
       "original_assertions": [
         "assert!(source.contains(\"\\\"2.1.294 (Claude Code)\\\"\"), \"SETUP\")",
         "panic!(\"SETUP: {}\", refusal.0)",
         "assert_eq!(\n        count(&f, \"native_invocations\"),\n        0,\n        \"C3: no Native invocation\"\n    )",
         "assert!(\n        success::links(&f, &tasks[0]).is_empty(),\n        \"C3: no Session binding\"\n    )"
       ],
-      "current_assertion": "Typed CapabilityRefusal::ClaudeExecutorUnavailable at real Goal ingress; Goal/Task/helper/Unit/Held/quota Admit effects zero. This refusal is NOT positive coverage of the original Claude property.",
-      "port_target": null,
-      "planned_unit": "B1",
-      "migration_status": "planned, not implemented or verified",
+      "current_assertion": "Declared Codex 0.160.0, actual binary reports 0.159.0; real helper qualification refuses before NativeInput, native_invocations=0, no Session links.",
+      "port_target": "Genuine installed Codex observed-version negative (U2); AC-01 replacement U7 pending",
+      "planned_unit": "U7",
+      "migration_status": "Current shared version guard verified through Codex; AC-01 removal of number pins pending U7",
       "u2_b1": {
         "test_target": "lib",
         "test_id": "runtime::installation::tests::pin::pin_c3_old_observed_cli_version_is_refused_before_native",
-        "classification": "機能廃止 (B1)",
-        "conversion_status": "implemented; verification recorded in U2 report",
-        "protected_property": "Claude declared/observed version pin checks",
-        "verification_result": "PASS"
+        "classification": "provider-independent safety/behaviour",
+        "conversion_status": "Current guard mapped/ported to Codex; AC-01 / U7 replacement pending",
+        "protected_property": "Declared Codex 0.160.0, actual binary reports 0.159.0; real helper qualification refuses before NativeInput, native_invocations=0, no Session links.",
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       "pre_b1_classification": "移植",
-      "retirement_reason": "Claude Executor is no longer provided (B1). Its exact-version pin cases are not Reviewer requirements: AC-01 removes number pins. Production pins remain unchanged in re-scoped U2."
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/preparation.rs::dc1_postcommit_preparation_error_is_confirmed_known_once",
@@ -5570,8 +5642,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/preparation.rs::dc2_dc4_precommit_error_stays_held_with_capped_backoff",
@@ -5600,8 +5674,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/preparation.rs::dc3_shutdown_holding_admission_makes_selected_try_not_attempted",
@@ -5630,8 +5706,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::c_s2a_candidate_never_lists_second_task_while_first_is_occupied",
@@ -5657,8 +5735,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::c_s2a2_final_claim_refuses_second_task_typed",
@@ -5687,8 +5767,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten",
@@ -5715,8 +5797,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::d3_plan_guard_refuses_stored_legacy_limit_without_writes",
@@ -5742,8 +5826,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::d4_status_reports_stored_legacy_limit_read_only_until_repair",
@@ -5776,8 +5862,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::c_s2a_held_phase_operation_alone_keeps_second_task_out",
@@ -5809,8 +5897,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::c_s2a_retained_driver_alone_keeps_second_task_out",
@@ -5835,8 +5925,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/read_surface.rs::c_s4a_hierarchy_pages_are_scoped_and_cursors_checked",
@@ -6147,8 +6239,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc1_codex_quick_implement_closes_once_through_the_full_chain",
@@ -6183,8 +6277,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc7_codex_ordinary_failure_installs_no_settlement",
@@ -6219,8 +6315,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc2_codex_late_binding_after_settlement_closes_once",
@@ -6272,8 +6370,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc3p_codex_parent_change_during_hold_refuses_binding",
@@ -6308,8 +6408,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc3p_t_codex_terminal_before_turn_still_refuses_binding",
@@ -6344,8 +6446,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::scu_codex_post_claim_evaluation_failure_is_durable_unknown",
@@ -6380,8 +6484,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::br1_codex_owner_immediate_retries_once_after_binding",
@@ -6416,8 +6522,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::br1p_codex_owner_planning_retries_once_after_binding",
@@ -6452,8 +6560,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::br2_codex_parent_drift_never_retries",
@@ -6488,8 +6598,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::br3_codex_linked_plan_is_never_marked",
@@ -6524,8 +6636,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc6_codex_standard_requirements_waits_without_closure",
@@ -6560,8 +6674,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc8_codex_results_graph_corruption_blocks_closure",
@@ -6596,8 +6712,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc4_codex_uncertain_writes_confirm_and_close_once",
@@ -6632,8 +6750,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc3_codex_owner_session_advance_conflicts_then_binds_normal",
@@ -6668,8 +6788,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc3l_codex_writer_lock_is_uncertain_then_rolled_back",
@@ -6704,8 +6826,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::scr_codex_completion_survives_refused_plan_and_conflict",
@@ -6746,9 +6870,11 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "BLOCKED / not converted; retained failing with all original assertions",
         "protected_property": "Four simultaneous Executor completions across four Projects, two aliases; independent links, versions, operation identity and Driver publication.",
-        "blocker": "B1 leaves only Codex Executor. QuotaScheduler::new fixes provider_executor=2 and provider_total=3; NativeLimits::scheduler only tightens them. Four peers are held until all four bind. Raising quota, reducing peers or releasing completions early changes the protected concurrency property or serializes it.",
-        "verification_result": "FAIL alone"
-      }
+        "blocker": "BLOCKED pending issue #100: owner-decided configurable provider limits. Four concurrent Codex Executors cannot all bind under unchanged provider_executor=2/provider_total=3. No quota, peer count or admission change.",
+        "verification_result": "FAIL alone",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc10_cross_project_quota_drift_replans_from_fresh_images",
@@ -6807,8 +6933,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc9a_codex_shutdown_cancels_success_admission",
@@ -6843,8 +6971,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc11_codex_settled_helper_fence_holds_and_confirms",
@@ -6879,8 +7009,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc11n_codex_parent_edit_while_held_refuses_next_tick",
@@ -6915,8 +7047,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc5d_codex_revoke_settle_gap_records_no_conclusion",
@@ -6951,8 +7085,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc4n_codex_uncertain_bind_then_terminal_confirms",
@@ -6987,8 +7123,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc4c_codex_later_context_keeps_uncertain_closure_held",
@@ -7023,8 +7161,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc7k_codex_killed_peer_never_late_binds",
@@ -7059,8 +7199,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc9c_codex_pending_publication_stays_held_after_shutdown",
@@ -7095,8 +7237,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc9b_codex_shutdown_preempts_root_success_action",
@@ -7131,8 +7275,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/success.rs::sc9d_codex_shutdown_cannot_interleave_admitted_closure",
@@ -7170,8 +7316,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/sweep.rs::c13_early_bound_identity_and_decode_refusals_preserve_sibling_progress",
@@ -7198,8 +7346,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/sweep.rs::c13_original_composition_bounded_reread_refuses_before_validate_for",
@@ -7224,8 +7374,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/sweep.rs::c9_busy_admission_sweep_is_synchronous_and_shutdown_stops_claims",
@@ -7252,8 +7404,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/installation/tests/sweep.rs::c15_actual_service_pass_keeps_cursor_after_32_paused_tasks",
@@ -7283,8 +7437,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/phase_handoffs/tests.rs::original_empty_reservation_does_not_retain_queue_or_jobs",
@@ -7460,8 +7616,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/phase_supervisor/tests.rs::actual_capacity_refusal_returns_original_objects_and_other_project_still_admits",
@@ -7486,8 +7644,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/phase_supervisor/tests.rs::fair_actual_pending_pages_rotate_projects_and_retain_owner_change_as_hold",
@@ -7513,8 +7673,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/phase_supervisor/tests.rs::foreign_preparation_and_stopped_service_refuse_without_consuming_inputs",
@@ -7541,8 +7703,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/phase_supervisor/tests.rs::pending_fallback_is_finite_and_idle_resets_backoff",
@@ -7591,8 +7755,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/src/runtime/project_control.rs::runtime_cut_off_answers_only_after_the_reap",
@@ -10680,8 +10846,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/tests/daemon_native.rs::c_s1a_daemon_survives_invoker_group_and_terminal",
@@ -10713,8 +10881,10 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
-      }
+        "verification_result": "PASS",
+        "refusal_only": false
+      },
+      "refusal_only": false
     },
     {
       "id": "crates/rrx/tests/runtime_cli.rs::compiled_service_goal_pages_routing_and_reads_preserve_all_rows",
@@ -10820,7 +10990,7 @@
       "port_target": null
     }
   ],
-  "pending_count": 187,
+  "pending_count": 189,
   "unclassified_count": 0,
   "native_main_inventory_note": "固定 HEAD の native/tests.rs は 26 test ID。そのうち start_inner 直接呼出しは 24 ID/29 call sites。unit plan の「25件」と一致しないが、全26 IDと隣接 confirmed_findings/terminal_lock 等も含めて凍結し、件数に合わせた省略はしない。",
   "new_u2_tests": [
@@ -10830,7 +11000,8 @@
         "EX-1",
         "AC-04",
         "AC-08"
-      ]
+      ],
+      "refusal_only": true
     },
     {
       "id": "runtime::installation::tests::u2::saved_task_provider_refusal_preserves_finite_classification_before_composition",
@@ -10838,21 +11009,24 @@
         "EX-1",
         "AC-04",
         "C-1"
-      ]
+      ],
+      "refusal_only": true
     },
     {
       "id": "runtime::installation::tests::u2::installation_refusal_preserves_status_and_stop",
       "controls": [
         "C-1",
         "AC-08"
-      ]
+      ],
+      "refusal_only": true
     },
     {
       "id": "adapter::native::ownership_tests::claude_executor_allocation_refuses_before_provisional_assets",
       "controls": [
         "EX-1",
         "AC-04"
-      ]
+      ],
+      "refusal_only": true
     },
     {
       "id": "runtime::installation::tests::u2::native_handoff_refuses_claude_provider_before_ticket_and_asset_transfer",
@@ -10860,10 +11034,28 @@
         "EX-1",
         "AC-04",
         "AC-08"
-      ]
+      ],
+      "refusal_only": true
+    },
+    {
+      "id": "runtime::installation::tests::u2::goal_capability_refusal_round_trips_through_socket_service",
+      "controls": [
+        "C-1",
+        "AC-11",
+        "AC-15"
+      ],
+      "refusal_only": true
+    },
+    {
+      "id": "runtime::installation::tests::u2::executor_provider_allowlist_refuses_missing_and_unknown_provider",
+      "controls": [
+        "EX-1",
+        "AC-04"
+      ],
+      "refusal_only": true
     }
   ],
-  "u2_pending": "U2 B1 provider refusal and 78 provider-independent safety/behaviours implemented; six Claude wire properties await M3 Reviewer migration (not done), and two Claude Executor pin cases are retired (B1). Legacy pre-start refusals and replacement producers remain U7, not certified by fixture conversion. Existing admission and version pins are unchanged.",
+  "u2_pending": "U2 review corrections preserve finite refusals across socket/client, status, allocation and native handoff. Provider-independent terminal retry and observed-version qualification now run through Codex. Claude telemetry/wire properties remain M3 Reviewer work; AC-01 removal of declared/observed number pins remains U7 pending (not B1 retirement). SC10 remains BLOCKED pending issue #100; no quota/peer/admission change.",
   "u2_source_hashes": {
     "crates/rrx/examples/native_codex_protocol.rs": "ab97fe12537c40335482e67bc5709fd40eb7ad512246c941da10473f498a67e1",
     "crates/rrx/examples/native_codex_session.rs": "ab97fe12537c40335482e67bc5709fd40eb7ad512246c941da10473f498a67e1",
@@ -10968,11 +11160,11 @@
     "condition": "Land together with managed-path replacement producers and shared-positive ports; no U2 legacy refusal."
   },
   "u2_b1_fixture_conversion": {
-    "head": "1b2ca73acd17c7915fd6995f84316e6e1533fe48",
+    "head": "80c670ff",
     "counts": {
-      "provider-independent safety/behaviour": 78,
-      "移植 (M3, Reviewer)": 6,
-      "機能廃止 (B1)": 2
+      "provider-independent safety/behaviour": 80,
+      "provider-independent terminal persistence; Claude telemetry pending M3": 1,
+      "移植 (M3, Reviewer), refusal-only": 5
     },
     "tests": [
       {
@@ -10982,7 +11174,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation.rs::ca1_actual_activation_gates_marker_and_record_only_bound",
@@ -10991,7 +11184,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/composition.rs::ca2_four_tasks_two_projects_retain_own_scope_and_roster",
@@ -11000,7 +11194,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/composition.rs::ca3_representable_roster_refusals_preserve_claimed_sibling",
@@ -11009,7 +11204,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/composition.rs::ca3_missing_alias_is_rejected_at_accepted_ingress",
@@ -11018,7 +11214,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/composition.rs::ca3b_original_composition_cross_pairs_refuse_before_store",
@@ -11027,7 +11224,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4b_activation_segment_linearizes_before_shutdown",
@@ -11036,7 +11234,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4b_segment_keeps_runtime_alive_after_external_drop",
@@ -11045,7 +11244,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4a_stop_at_genuine_retained_pre_admission_rolls_back",
@@ -11054,7 +11254,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4a_last_external_drop_at_s1_cancels_original_worker",
@@ -11063,7 +11264,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4c_precommit_failure_proves_same_plan_rollback",
@@ -11072,7 +11274,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4d_contained_fault_recovers_in_same_live_worker",
@@ -11081,7 +11284,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4g_actual_exited_worker_keeps_same_plan_held",
@@ -11090,7 +11294,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/lifecycle.rs::ca4h_precommit_panic_stays_poisoned_and_rolls_back",
@@ -11099,7 +11304,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/pages.rs::ca4i_whole_registry_counts_actual_held_plan_across_two_pages",
@@ -11108,7 +11314,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/protection.rs::ca5d_integrity_decision_uses_genuine_allocation_and_negative_raw_members",
@@ -11117,7 +11324,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/protection.rs::ca6_genuine_contract_refuses_generic_workflow_and_contract_writers",
@@ -11126,7 +11334,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/protection.rs::nongrant_ca4e_task_controls_cannot_supply_drift_producer",
@@ -11135,7 +11344,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/activation/protection.rs::ca7_postcommit_cache_fault_reconciles_same_custody_once",
@@ -11144,7 +11354,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/epoch_fence.rs::ef_setup_control_claude_terminal_under_custody_closes_the_session",
@@ -11153,7 +11364,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/epoch_fence.rs::ef1_claude_managed_session_fenced_lost_exactly",
@@ -11162,7 +11374,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/epoch_fence.rs::ef3_wrong_or_missing_permit_rolls_back_the_whole_epoch",
@@ -11171,7 +11384,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/epoch_fence.rs::ef4_terminal_managed_session_is_skipped",
@@ -11180,7 +11394,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/fm_d2.rs::fm_d2_committed_source_631_claude_quick_front",
@@ -11189,7 +11404,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/fm_d2.rs::fm_d2_committed_source_631_claude_standard_front",
@@ -11198,7 +11414,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/fm_d2.rs::fm_d2_committed_source_631_claude_strict_front",
@@ -11207,7 +11424,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/fm_d2.rs::fm_d2_committed_source_301_claude_gate_receipts",
@@ -11216,61 +11434,68 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/m0_claude.rs::o03_installed_normal_control_responses_fail_closed_and_requests_remain_consumed",
         "test_target": "lib",
-        "test_id": "runtime::installation::tests::m0_claude::o03_installed_normal_control_responses_fail_closed_and_requests_remain_consumed",
+        "test_id": "runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects",
         "classification": "移植 (M3, Reviewer)",
-        "conversion_status": "implemented; verification recorded in U2 report",
+        "conversion_status": "refusal-only; original positive property pending M3 Reviewer",
         "protected_property": "Claude strict wire, telemetry, permission/control and terminal receipt consumers",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": true
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/m0_claude.rs::cl10_terminal_retry_preserves_the_original_failure_in_status_and_watch",
         "test_target": "lib",
         "test_id": "runtime::installation::tests::m0_claude::cl10_terminal_retry_preserves_the_original_failure_in_status_and_watch",
-        "classification": "移植 (M3, Reviewer)",
-        "conversion_status": "implemented; verification recorded in U2 report",
-        "protected_property": "Claude strict wire, telemetry, permission/control and terminal receipt consumers",
-        "verification_result": "PASS"
+        "classification": "provider-independent terminal persistence; Claude telemetry pending M3",
+        "conversion_status": "Shared terminal persistence implemented; Claude telemetry-specific part pending M3",
+        "protected_property": "Original finite terminal failure, diagnostic and receipt preserved across receipt-save retry and delayed watch publication.",
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/m0_claude.rs::cl10_installed_success_telemetry_controls_and_mutants_fail_closed",
         "test_target": "lib",
-        "test_id": "runtime::installation::tests::m0_claude::cl10_installed_success_telemetry_controls_and_mutants_fail_closed",
+        "test_id": "runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects",
         "classification": "移植 (M3, Reviewer)",
-        "conversion_status": "implemented; verification recorded in U2 report",
+        "conversion_status": "refusal-only; original positive property pending M3 Reviewer",
         "protected_property": "Claude strict wire, telemetry, permission/control and terminal receipt consumers",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": true
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/m0_claude.rs::cl10_installed_error_telemetry_controls_and_mutants_fail_closed",
         "test_target": "lib",
-        "test_id": "runtime::installation::tests::m0_claude::cl10_installed_error_telemetry_controls_and_mutants_fail_closed",
+        "test_id": "runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects",
         "classification": "移植 (M3, Reviewer)",
-        "conversion_status": "implemented; verification recorded in U2 report",
+        "conversion_status": "refusal-only; original positive property pending M3 Reviewer",
         "protected_property": "Claude strict wire, telemetry, permission/control and terminal receipt consumers",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": true
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/m0_claude.rs::cl10_valid_unfinished_candidate_is_not_a_prior_captured_success",
         "test_target": "lib",
-        "test_id": "runtime::installation::tests::m0_claude::cl10_valid_unfinished_candidate_is_not_a_prior_captured_success",
+        "test_id": "runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects",
         "classification": "移植 (M3, Reviewer)",
-        "conversion_status": "implemented; verification recorded in U2 report",
+        "conversion_status": "refusal-only; original positive property pending M3 Reviewer",
         "protected_property": "Claude strict wire, telemetry, permission/control and terminal receipt consumers",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": true
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/m0_claude.rs::r1_installed_rate_control_and_mutant_validate_before_foreign_filter",
         "test_target": "lib",
-        "test_id": "runtime::installation::tests::m0_claude::r1_installed_rate_control_and_mutant_validate_before_foreign_filter",
+        "test_id": "runtime::installation::tests::m0_claude::claude_executor_refusal_has_no_effects",
         "classification": "移植 (M3, Reviewer)",
-        "conversion_status": "implemented; verification recorded in U2 report",
+        "conversion_status": "refusal-only; original positive property pending M3 Reviewer",
         "protected_property": "Claude strict wire, telemetry, permission/control and terminal receipt consumers",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": true
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/nonsuccess.rs::rn_h1_genuine_normal_n_closes_and_pre_s5_refusal_stays_held",
@@ -11279,7 +11504,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/nonsuccess.rs::rn_p1_genuine_writer_contention_confirms_rollback_clears_u_then_closes",
@@ -11288,25 +11514,28 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/pin.rs::pin_c2_old_declared_cli_version_is_refused_before_native",
-        "test_target": "lib",
-        "test_id": "runtime::installation::tests::pin::pin_c2_old_declared_cli_version_is_refused_before_native",
-        "classification": "機能廃止 (B1)",
-        "conversion_status": "implemented; verification recorded in U2 report",
-        "protected_property": "Claude declared/observed version pin checks",
-        "verification_result": "PASS"
+        "test_target": "daemon_native",
+        "test_id": "c_s1f_native_success_and_refusal_equal_under_serve_and_daemon",
+        "classification": "provider-independent safety/behaviour",
+        "conversion_status": "Current guard mapped/ported to Codex; AC-01 / U7 replacement pending",
+        "protected_property": "Codex declared 0.159.0 vs required 0.160.0 is refused before native_invocations and links under real serve and daemon; matching declared 0.160.0 succeeds.",
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/pin.rs::pin_c3_old_observed_cli_version_is_refused_before_native",
         "test_target": "lib",
         "test_id": "runtime::installation::tests::pin::pin_c3_old_observed_cli_version_is_refused_before_native",
-        "classification": "機能廃止 (B1)",
-        "conversion_status": "implemented; verification recorded in U2 report",
-        "protected_property": "Claude declared/observed version pin checks",
-        "verification_result": "PASS"
+        "classification": "provider-independent safety/behaviour",
+        "conversion_status": "Current guard mapped/ported to Codex; AC-01 / U7 replacement pending",
+        "protected_property": "Declared Codex 0.160.0, actual binary reports 0.159.0; real helper qualification refuses before NativeInput, native_invocations=0, no Session links.",
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/preparation.rs::dc1_postcommit_preparation_error_is_confirmed_known_once",
@@ -11315,7 +11544,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/preparation.rs::dc2_dc4_precommit_error_stays_held_with_capped_backoff",
@@ -11324,7 +11554,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/preparation.rs::dc3_shutdown_holding_admission_makes_selected_try_not_attempted",
@@ -11333,7 +11564,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::c_s2a_candidate_never_lists_second_task_while_first_is_occupied",
@@ -11342,7 +11574,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::c_s2a2_final_claim_refuses_second_task_typed",
@@ -11351,7 +11584,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten",
@@ -11360,7 +11594,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::d3_plan_guard_refuses_stored_legacy_limit_without_writes",
@@ -11369,7 +11604,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::d4_status_reports_stored_legacy_limit_read_only_until_repair",
@@ -11378,7 +11614,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::c_s2a_held_phase_operation_alone_keeps_second_task_out",
@@ -11387,7 +11624,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/project_limit.rs::c_s2a_retained_driver_alone_keeps_second_task_out",
@@ -11396,7 +11634,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc1_claude_quick_implement_closes_once_through_the_full_chain",
@@ -11405,7 +11644,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc7_claude_ordinary_failure_installs_no_settlement",
@@ -11414,7 +11654,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc2_claude_late_binding_after_settlement_closes_once",
@@ -11423,7 +11664,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc3p_claude_parent_change_during_hold_refuses_binding",
@@ -11432,7 +11674,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc3p_t_claude_terminal_before_turn_still_refuses_binding",
@@ -11441,7 +11684,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::scu_claude_post_claim_evaluation_failure_is_durable_unknown",
@@ -11450,7 +11694,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::br1_claude_owner_immediate_retries_once_after_binding",
@@ -11459,7 +11704,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::br1p_claude_owner_planning_retries_once_after_binding",
@@ -11468,7 +11714,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::br2_claude_parent_drift_never_retries",
@@ -11477,7 +11724,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::br3_claude_linked_plan_is_never_marked",
@@ -11486,7 +11734,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc6_claude_standard_requirements_waits_without_closure",
@@ -11495,7 +11744,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc8_claude_results_graph_corruption_blocks_closure",
@@ -11504,7 +11754,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc4_claude_uncertain_writes_confirm_and_close_once",
@@ -11513,7 +11764,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc3_claude_owner_session_advance_conflicts_then_binds_normal",
@@ -11522,7 +11774,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc3l_claude_writer_lock_is_uncertain_then_rolled_back",
@@ -11531,7 +11784,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::scr_claude_completion_survives_refused_plan_and_conflict",
@@ -11540,7 +11794,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc10_four_projects_close_independently",
@@ -11549,8 +11804,9 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "BLOCKED / not converted; retained failing with all original assertions",
         "protected_property": "Four simultaneous Executor completions across four Projects, two aliases; independent links, versions, operation identity and Driver publication.",
-        "blocker": "B1 leaves only Codex Executor. QuotaScheduler::new fixes provider_executor=2 and provider_total=3; NativeLimits::scheduler only tightens them. Four peers are held until all four bind. Raising quota, reducing peers or releasing completions early changes the protected concurrency property or serializes it.",
-        "verification_result": "FAIL alone"
+        "blocker": "BLOCKED pending issue #100: owner-decided configurable provider limits. Four concurrent Codex Executors cannot all bind under unchanged provider_executor=2/provider_total=3. No quota, peer count or admission change.",
+        "verification_result": "FAIL alone",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc9a_claude_shutdown_cancels_success_admission",
@@ -11559,7 +11815,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc11_claude_settled_helper_fence_holds_and_confirms",
@@ -11568,7 +11825,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc11n_claude_parent_edit_while_held_refuses_next_tick",
@@ -11577,7 +11835,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc5d_claude_revoke_settle_gap_records_no_conclusion",
@@ -11586,7 +11845,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc4n_claude_uncertain_bind_then_terminal_confirms",
@@ -11595,7 +11855,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc4c_claude_later_context_keeps_uncertain_closure_held",
@@ -11604,7 +11865,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc7k_claude_killed_peer_never_late_binds",
@@ -11613,7 +11875,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc9c_claude_pending_publication_stays_held_after_shutdown",
@@ -11622,7 +11885,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc9b_claude_shutdown_preempts_root_success_action",
@@ -11631,7 +11895,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/success.rs::sc9d_claude_shutdown_cannot_interleave_admitted_closure",
@@ -11640,7 +11905,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/sweep.rs::c13_exact_bound_reaches_actual_service_claim",
@@ -11649,7 +11915,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/sweep.rs::c13_early_bound_identity_and_decode_refusals_preserve_sibling_progress",
@@ -11658,7 +11925,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/sweep.rs::c13_original_composition_bounded_reread_refuses_before_validate_for",
@@ -11667,7 +11935,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/sweep.rs::c9_busy_admission_sweep_is_synchronous_and_shutdown_stops_claims",
@@ -11676,7 +11945,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/installation/tests/sweep.rs::c15_actual_service_pass_keeps_cursor_after_32_paused_tasks",
@@ -11685,7 +11955,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/phase_supervisor/tests.rs::actual_selected_allocations_survive_caller_drop_and_guard_is_drained_on_shutdown",
@@ -11694,7 +11965,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/phase_supervisor/tests.rs::actual_capacity_refusal_returns_original_objects_and_other_project_still_admits",
@@ -11703,7 +11975,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/phase_supervisor/tests.rs::fair_actual_pending_pages_rotate_projects_and_retain_owner_change_as_hold",
@@ -11712,7 +11985,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/phase_supervisor/tests.rs::foreign_preparation_and_stopped_service_refuse_without_consuming_inputs",
@@ -11721,7 +11995,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/src/runtime/phase_supervisor/tests.rs::actual_publication_drop_and_shutdown_preserve_unknown_slot_until_proven_rollback",
@@ -11730,7 +12005,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/tests/daemon_native.rs::c_s1f_native_success_and_refusal_equal_under_serve_and_daemon",
@@ -11739,7 +12015,8 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       },
       {
         "ledger_id": "crates/rrx/tests/daemon_native.rs::c_s1a_daemon_survives_invoker_group_and_terminal",
@@ -11748,19 +12025,19 @@
         "classification": "provider-independent safety/behaviour",
         "conversion_status": "implemented; verification recorded in U2 report",
         "protected_property": "Original assertions and genuine production consumers retained; Codex Executor + Claude Reviewer fixture roles.",
-        "verification_result": "PASS"
+        "verification_result": "PASS",
+        "refusal_only": false
       }
     ],
-    "note": "86 original IDs retained. Fixture conversion does not certify the M0 managed-path replacement chain, CLI qualification, or pending U7 ports. Six Claude wire properties remain unfinished M3 Reviewer migrations; two Claude Executor pin cases are retired under B1, without removing current production pins.",
-    "converted_independent_count": 77,
+    "note": "All 86 original IDs remain in the ledger. Five deferred Claude wire/telemetry IDs share one refusal-only executable; terminal persistence is ported to Codex while Claude telemetry remains pending. C2 maps to equivalent declared-version refusal in the real Codex serve/daemon test; C3 runs actual unqualified Codex binary version. Both pin replacements remain AC-01/U7 pending. No positive credit for refusal-only assertions. SC10 remains BLOCKED pending #100.",
+    "converted_independent_count": 80,
     "unconvertible_count": 1,
     "verification": {
-      "results": ".rrx/u2/green/final/results.json",
-      "original_86_passed": 85,
-      "original_86_failed": 1,
-      "mutation_samples": 5,
-      "mutations_killed": 5,
-      "mutations_restored_passed": 5
+      "results": ".rrx/u2-fixes/final-results.json",
+      "status": "pending final verification",
+      "positive_original_ids": 80,
+      "refusal_only_original_ids": 5,
+      "blocked_original_ids": 1
     }
   },
   "u2_b1_original_claude_sources": {

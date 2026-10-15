@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum CapabilityRefusal {
     ClaudeExecutorUnavailable,
+    ExecutorProviderUnavailable,
 }
 impl std::fmt::Display for CapabilityRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -15,8 +16,9 @@ impl std::error::Error for CapabilityRefusal {}
 
 /// EX-1/B1: provider identity, independent of the operator's alias spelling.
 pub(crate) fn require_executor(provider: Option<&str>) -> Result<(), CapabilityRefusal> {
-    if provider == Some("claude") {
-        return Err(CapabilityRefusal::ClaudeExecutorUnavailable);
+    match provider {
+        Some("codex") => Ok(()),
+        Some("claude") => Err(CapabilityRefusal::ClaudeExecutorUnavailable),
+        _ => Err(CapabilityRefusal::ExecutorProviderUnavailable),
     }
-    Ok(())
 }

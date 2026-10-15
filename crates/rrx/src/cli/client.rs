@@ -20,5 +20,8 @@ pub async fn request(state: &Path, action: ControlAction) -> Result<ControlRespo
         !matches!(response, ControlResponse::Rejected { .. }),
         "Runtime control refused; state or scope may have changed"
     );
+    if let ControlResponse::CapabilityRejected { reason, .. } = response {
+        return Err(reason.into());
+    }
     Ok(response)
 }

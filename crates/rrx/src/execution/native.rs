@@ -1975,29 +1975,7 @@ impl Core {
             Err(error) => {
                 // Never retain raw native errors, output or credentials. Only
                 // finite nonsecret categories survive the supervisor.
-                let category = if let Some(category) = error.downcast_ref::<NativeFailure>() {
-                    *category
-                } else if let Some(error) = error.downcast_ref::<AdapterError>() {
-                    match error.kind {
-                        ErrorKind::AuthenticationUnavailable => {
-                            NativeFailure::AuthenticationUnavailable
-                        }
-                        ErrorKind::UnsupportedCapability | ErrorKind::ExecutableMissing => {
-                            NativeFailure::UnsupportedCapability
-                        }
-                        ErrorKind::OwnershipMismatch
-                        | ErrorKind::StateFailure
-                        | ErrorKind::StateConflict
-                        | ErrorKind::Locked => NativeFailure::AuthorityUnavailable,
-                        ErrorKind::SessionLost | ErrorKind::Timeout => NativeFailure::TransportLost,
-                        _ => NativeFailure::ProtocolFailure,
-                    }
-                } else if error.is::<std::io::Error>() || error.is::<tokio::time::error::Elapsed>()
-                {
-                    NativeFailure::TransportLost
-                } else {
-                    NativeFailure::ProtocolFailure
-                };
+                let category = classify_failure(&error);
                 let disposition = match category {
                     NativeFailure::TransportLost => Disposition::Lost,
                     NativeFailure::ProtocolFailure => Disposition::ProtocolError,
@@ -2624,5 +2602,31 @@ impl Drop for Core {
                 s.diagnostic = Some("native supervisor ended without terminal");
             }
         });
+    }
+}
+
+/// Finite classification shared by terminal supervision and raw handoff refusals.
+pub(crate) fn classify_failure(error: &anyhow::Error) -> NativeFailure {
+    if let Some(category) = error.downcast_ref::<NativeFailure>() {
+        *category
+    } else if error.is::<crate::execution::capability::CapabilityRefusal>() {
+        NativeFailure::UnsupportedCapability
+    } else if let Some(error) = error.downcast_ref::<AdapterError>() {
+        match error.kind {
+            ErrorKind::AuthenticationUnavailable => NativeFailure::AuthenticationUnavailable,
+            ErrorKind::UnsupportedCapability | ErrorKind::ExecutableMissing => {
+                NativeFailure::UnsupportedCapability
+            }
+            ErrorKind::OwnershipMismatch
+            | ErrorKind::StateFailure
+            | ErrorKind::StateConflict
+            | ErrorKind::Locked => NativeFailure::AuthorityUnavailable,
+            ErrorKind::SessionLost | ErrorKind::Timeout => NativeFailure::TransportLost,
+            _ => NativeFailure::ProtocolFailure,
+        }
+    } else if error.is::<std::io::Error>() || error.is::<tokio::time::error::Elapsed>() {
+        NativeFailure::TransportLost
+    } else {
+        NativeFailure::ProtocolFailure
     }
 }

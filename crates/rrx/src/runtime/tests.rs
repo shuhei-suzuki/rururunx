@@ -484,7 +484,11 @@ impl ControlFixture {
     /// `RuntimeOwner::open` (a new epoch), a new Runtime with the same config,
     /// and a new Unix-peer pair. The temporary directory is kept.
     pub(super) async fn restart(self) -> Self {
-        let config = self.runtime.config.clone();
+        self.restart_with_config(|_| {}).await
+    }
+    pub(super) async fn restart_with_config(self, configure: impl FnOnce(&mut Config)) -> Self {
+        let mut config = self.runtime.config.clone();
+        configure(&mut config);
         let _ = self.runtime.shutdown().await;
         let Self {
             _dir,

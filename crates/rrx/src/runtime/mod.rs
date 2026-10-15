@@ -37,6 +37,9 @@ pub struct Runtime {
     phase_handoffs: Arc<phase_handoffs::PhaseHandoffs>,
     installed:
         std::result::Result<installation::InstalledNativeGraph, installation::InstallationRefusal>,
+    // Advisory result of the last finite admission pass; never authority.
+    admission_capability_refusal:
+        std::sync::Mutex<Option<crate::execution::capability::CapabilityRefusal>>,
     admission_cursor: std::sync::Mutex<Option<crate::state::CandidateKey>>,
     started: AtomicBool,
     running: Arc<AtomicBool>,
@@ -84,6 +87,7 @@ impl Runtime {
         let installed = installation::InstalledNativeGraph::new(owner.clone(), &config);
         Ok(Self {
             installed,
+            admission_capability_refusal: std::sync::Mutex::new(None),
             admission_cursor: std::sync::Mutex::new(None),
             owner,
             config,

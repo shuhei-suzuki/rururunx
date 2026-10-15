@@ -70,6 +70,7 @@ impl Runtime {
             .lock()
             .map_err(|_| anyhow::anyhow!("admission cursor poisoned"))?;
         let mut cursor = stored.clone();
+        let mut capability_refusal = None;
         let result = (|| {
             let mut evaluations = 0;
             let mut claimed = 0;
@@ -101,7 +102,10 @@ impl Runtime {
                             claimed += 1;
                             break;
                         } // discard pre-claim page
-                        Ok(AdmitOutcome::Skipped(_reason)) => {}
+                        Ok(AdmitOutcome::Skipped(SkipReason::Capability(reason))) => {
+                            capability_refusal = Some(reason);
+                        }
+                        Ok(AdmitOutcome::Skipped(_)) => {}
                         Err(error) => return Err(error),
                     }
                     if evaluations >= 32 {
@@ -116,6 +120,10 @@ impl Runtime {
                 let _ = more;
             }
         })();
+        *self
+            .admission_capability_refusal
+            .lock()
+            .map_err(|_| anyhow::anyhow!("admission observation poisoned"))? = capability_refusal;
         *stored = cursor;
         result
     }

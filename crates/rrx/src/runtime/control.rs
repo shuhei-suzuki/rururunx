@@ -347,6 +347,10 @@ pub enum ControlResponse {
         request_id: Uuid,
         reason: UnavailableReason,
     },
+    CapabilityRejected {
+        request_id: Uuid,
+        reason: crate::execution::capability::CapabilityRefusal,
+    },
     RuntimeStopped {
         instance: String,
         epoch: u64,
@@ -767,7 +771,13 @@ impl Runtime {
                     .installed
                     .as_ref()
                     .err()
-                    .map(|refusal| AdmissionRefusal::Installation(*refusal)),
+                    .map(|refusal| AdmissionRefusal::Installation(*refusal))
+                    .or_else(|| {
+                        self.admission_capability_refusal
+                            .lock()
+                            .ok()
+                            .and_then(|reason| reason.map(AdmissionRefusal::Capability))
+                    }),
                 requested_global_sessions: self.config.scheduler.global_max_sessions,
                 requested_tasks_per_project: crate::config::MVP_PROJECT_TASKS,
             },

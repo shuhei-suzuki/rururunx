@@ -211,8 +211,6 @@ fn mapped(error: anyhow::Error) -> AdapterError {
     // Never turn a provider payload into a durable diagnostic.
     let kind = if let Some(e) = error.downcast_ref::<AdapterError>() {
         e.kind
-    } else if let Some(e) = error.downcast_ref::<execution::capability::CapabilityRefusal>() {
-        ErrorKind::CapabilityUnavailable(*e)
     } else if let Some(e) = error.downcast_ref::<execution::NativeFailure>() {
         match e {
             execution::NativeFailure::AuthenticationUnavailable => {
