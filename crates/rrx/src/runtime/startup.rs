@@ -6,7 +6,7 @@ use crate::{
     execution::{RuntimeOwner, claude_wire::DecoderChecked, process::RetainedRawProcess},
     state::startup::StartupIntent,
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -41,6 +41,7 @@ pub enum StartupRefusal {
     Installation,
     PrivatePath,
     ProgramIdentity,
+    Configuration,
     Journal,
     CodexSchemaUnavailable,
     CodexHandshakeUnavailable,
@@ -173,13 +174,14 @@ impl Startup {
         alias: &str,
         step: &str,
         body: &Value,
-    ) -> Result<StartupIntent> {
-        probe::Observation::validate_body(body)?;
+    ) -> std::result::Result<StartupIntent, StartupRefusal> {
+        probe::Observation::validate_body(body).map_err(|_| StartupRefusal::Configuration)?;
         self.owner
             .store
             .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .map_err(|_| StartupRefusal::Journal)?
             .startup_intent(&self.owner, installation, alias, step, body)
+            .map_err(|_| StartupRefusal::Journal)
     }
     /// Planning has not spawned anything: settle every committed original by CAS.
     fn refuse_plans(&self, plans: &[AliasPlan], reason: StartupRefusal) {
@@ -313,15 +315,19 @@ impl Startup {
                     return;
                 }
             };
-            let plan = (|| -> Result<()> {
-                let agent = config.agents.get(&alias).context("startup alias absent")?;
+            let plan = (|| -> std::result::Result<(), StartupRefusal> {
+                let agent = config
+                    .agents
+                    .get(&alias)
+                    .ok_or(StartupRefusal::Configuration)?;
                 let steps = if provider == "codex" {
                     vec!["version", "schema", "handshake"]
                 } else {
                     vec!["version", "handshake"]
                 };
-                let declaration =
-                    crate::execution::native_result::digest(&serde_json::to_vec(agent)?);
+                let declaration = crate::execution::native_result::digest(
+                    &serde_json::to_vec(agent).map_err(|_| StartupRefusal::Configuration)?,
+                );
                 let body = json!({"instance":self.owner.instance_id(),"provider":provider,"declaration":declaration,"model":agent.model,"effort":agent.effort,"program":program});
                 plans.push(AliasPlan {
                     alias,
@@ -339,8 +345,8 @@ impl Startup {
                 }
                 Ok(())
             })();
-            if plan.is_err() {
-                self.refuse_plans(&plans, StartupRefusal::Journal);
+            if let Err(reason) = plan {
+                self.refuse_plans(&plans, reason);
                 return;
             }
         }
@@ -454,6 +460,7 @@ mod tests {
         for failure in [
             "unreadable",
             "model",
+            "undefined-alias",
             "oversized",
             "directory",
             "private-path",
@@ -481,7 +488,11 @@ mod tests {
                 }
                 "model" => {
                     config.agents.get_mut("b").unwrap().model = Some("m".repeat(4096));
-                    StartupRefusal::Journal
+                    StartupRefusal::Configuration
+                }
+                "undefined-alias" => {
+                    config.agents.remove("b");
+                    StartupRefusal::Configuration
                 }
                 "oversized" => {
                     std::fs::File::create(&second)
@@ -529,11 +540,25 @@ mod tests {
                     Instant::now() + Duration::from_secs(10),
                 )
                 .await;
+            let status = startup.snapshot().unwrap();
+            assert_eq!(status.reason, Some(reason), "{failure}");
             assert_eq!(
-                startup.snapshot().unwrap().reason,
-                Some(reason),
+                status.state,
+                if reason == StartupRefusal::Journal {
+                    StartupState::Unknown
+                } else {
+                    StartupState::Refused
+                },
                 "{failure}"
             );
+            let wire = serde_json::to_value(&status).unwrap();
+            let decoded: StartupStatus = serde_json::from_value(wire.clone()).unwrap();
+            assert_eq!(decoded.state, status.state);
+            assert_eq!(decoded.reason, status.reason);
+            if reason == StartupRefusal::Configuration {
+                assert_eq!(wire["state"], "refused");
+                assert_eq!(wire["reason"], "configuration");
+            }
             assert!(
                 startup.children.lock().unwrap().is_empty(),
                 "planning refusal spawned a child"
@@ -564,6 +589,53 @@ mod tests {
             );
         }
     }
+    /// A planning refusal cannot claim a known result when its committed original fails exact CAS.
+    #[tokio::test]
+    async fn planning_refusal_cas_miss_is_unknown_journal() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("state.db");
+        let owner = RuntimeOwner::open(&state).unwrap();
+        let startup = Startup::new(owner.clone());
+        let installation = uuid::Uuid::new_v4();
+        let paths = path::Paths::new(owner).unwrap();
+        let program = dir.path().join("program");
+        std::fs::write(&program, b"never spawned").unwrap();
+        let body = json!({"instance":startup.owner.instance_id()});
+        let intent = startup.intent(installation, "a", "version", &body).unwrap();
+        let plan = AliasPlan {
+            alias: "a".into(),
+            provider: "claude".into(),
+            program: probe::Program::read(
+                &program,
+                startup.cancelled.clone(),
+                Instant::now() + Duration::from_secs(10),
+            )
+            .await
+            .unwrap(),
+            directory: paths.alias(installation, "a").unwrap(),
+            intents: vec![("version".into(), intent, body.clone())],
+            model: None,
+            effort: None,
+        };
+        let writer = crate::state::current_test_writer(&state).unwrap();
+        assert_eq!(writer.execute("UPDATE runtime_startup_probes SET version=version+1 WHERE alias='a' AND step='version'", []).unwrap(), 1);
+        startup.refuse_plans(&[plan], StartupRefusal::Configuration);
+        let status = startup.snapshot().unwrap();
+        assert_eq!(status.state, StartupState::Unknown);
+        assert_eq!(status.reason, Some(StartupRefusal::Journal));
+        let row: (String, u64, String) = writer
+            .query_row(
+                "SELECT state,version,body FROM runtime_startup_probes",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            row,
+            ("pending".into(), 2, serde_json::to_string(&body).unwrap())
+        );
+        assert!(startup.children.lock().unwrap().is_empty());
+    }
     /// Intent admission reserves the largest settlement at exactly 4096 bytes and refuses the next byte without a write.
     #[test]
     fn intent_reserves_complete_settlement_at_the_byte_boundary() {
@@ -589,8 +661,9 @@ mod tests {
         let intent = startup.intent(id, "a", "version", &body).unwrap();
         let mut over = body.clone();
         over["model"] = json!("m".repeat(remaining + 1));
-        assert!(
-            startup.intent(id, "b", "version", &over).is_err(),
+        assert_eq!(
+            startup.intent(id, "b", "version", &over).err(),
+            Some(StartupRefusal::Configuration),
             "intent accepted without settlement headroom"
         );
         owner

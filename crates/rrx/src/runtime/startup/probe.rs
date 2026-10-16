@@ -1,5 +1,6 @@
 //! Bounded S Version/Claude initialize capture; no Unit, quota or model input.
 use super::*;
+use anyhow::Context;
 use sha2::{Digest, Sha256};
 use std::{
     fs::File,
@@ -70,6 +71,7 @@ impl Program {
             &path,
             rustix::fs::OFlags::RDONLY
                 | rustix::fs::OFlags::NONBLOCK
+                | rustix::fs::OFlags::NOCTTY
                 | rustix::fs::OFlags::NOFOLLOW
                 | rustix::fs::OFlags::CLOEXEC,
             rustix::fs::Mode::empty(),
@@ -245,6 +247,16 @@ fn spawn(
         if let Some(reason) = interruption(&startup.cancelled, deadline) {
             return Err(reason);
         }
+        #[cfg(test)]
+        tests::STORE_WAIT_OBSERVER.with(|observer| {
+            if let Some(waiting) = observer.borrow_mut().take() {
+                assert!(matches!(
+                    startup.owner.store.try_lock(),
+                    Err(std::sync::TryLockError::WouldBlock)
+                ));
+                waiting.send(deadline).unwrap();
+            }
+        });
         // Check the live owner, never a saved Task or receipt.
         startup
             .owner
@@ -540,6 +552,30 @@ pub(super) async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    std::thread_local! {
+        pub(super) static STORE_WAIT_OBSERVER: std::cell::RefCell<Option<std::sync::mpsc::SyncSender<Instant>>> = const { std::cell::RefCell::new(None) };
+    }
+    /// The blocking reader checks stop and deadline before hashing even a large regular file.
+    #[test]
+    fn blocking_identity_read_refuses_stop_and_expired_deadline() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("large");
+        File::create(&path).unwrap().set_len(PROGRAM_BYTES).unwrap();
+        for stop in [true, false] {
+            let started = Instant::now();
+            let deadline = if stop {
+                started + Duration::from_secs(10)
+            } else {
+                started
+            };
+            let error = Program::read_file(&path, &AtomicBool::new(stop), deadline).unwrap_err();
+            assert_eq!(error.to_string(), "startup identity interrupted");
+            assert!(
+                started.elapsed() < Duration::from_secs(1),
+                "blocking identity read did not stop immediately"
+            );
+        }
+    }
     /// T-1 records any bounded legal single line without matching a CLI number.
     #[test]
     fn version_observation_is_bounded_and_not_a_number_pin() {
@@ -763,19 +799,16 @@ mod tests {
                 model: None,
                 effort: None,
             };
-            let deadline = if stop {
-                end
-            } else {
-                Instant::now() + Duration::from_millis(300)
-            };
             let child = ChildCustody {
                 raw: Mutex::new(RetainedRawProcess::default()),
             };
             let runtime = tokio::runtime::Handle::current();
             let store = owner.store.lock().unwrap();
+            let (waiting, reached_wait) = std::sync::mpsc::sync_channel(1);
             let observed = std::thread::scope(|scope| {
                 let probe = scope.spawn(|| {
                     let _runtime = runtime.enter();
+                    STORE_WAIT_OBSERVER.with(|observer| *observer.borrow_mut() = Some(waiting));
                     let mut command = Command::new(&program);
                     command
                         .stdin(Stdio::piped())
@@ -783,15 +816,26 @@ mod tests {
                         .stderr(Stdio::piped())
                         .process_group(0)
                         .kill_on_drop(true);
+                    let deadline = if stop {
+                        end
+                    } else {
+                        Instant::now() + Duration::from_millis(300)
+                    };
                     spawn(&startup, &plan, &child, command, deadline)
                 });
-                // The probe passes its first check and then waits on the held Store lock.
-                std::thread::sleep(Duration::from_millis(500));
-                if stop {
-                    startup.revoke();
+                let reached = reached_wait.recv_timeout(Duration::from_secs(5));
+                if let Ok(deadline) = reached {
+                    if stop {
+                        startup.revoke();
+                    } else {
+                        // Sleep only to expire the deadline after observing the real wait.
+                        std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+                    }
                 }
                 drop(store);
-                probe.join().unwrap()
+                let observed = probe.join().unwrap();
+                reached.expect("probe never passed its first check to wait for Store");
+                observed
             });
             let Err(observed) = observed else {
                 panic!("spawned after stop/deadline");
