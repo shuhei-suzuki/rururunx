@@ -1,6 +1,7 @@
 //! #81 S1 controls through the compiled `rrx daemon` entry: the status table
 //! (C-S1c), probe vs start (C-S1c2), old descriptors (C-S1e2) and no TCP
 //! (C-S1g). The flock is the only arbiter; no PID is used as authority.
+use rrx::cli::transport;
 use serde_json::Value;
 use std::{
     fs::OpenOptions,
@@ -366,31 +367,29 @@ fn c_s1c2_concurrent_status_never_corrupts_start() {
     }
 }
 
-/// C-S1e2 / C-S4i through `daemon start`: same-state protocol-1, protocol-2
-/// and protocol-3 descriptors and a crashed protocol-4 leftover are replaced
-/// by a protocol-4 service; foreign
+/// C-S1e2 / C-S4i: older and crashed current descriptors are replaced;
+/// the service publishes the current protocol. Foreign, unknown-protocol
 /// and malformed descriptors are refused, typed, and nothing is published.
 #[test]
 fn c_s1e2_daemon_start_replaces_known_leftovers_only() {
     let f = Fixture::new();
     f.start_running();
     f.stop_and_wait();
-    // Valid protocol-1, protocol-2 and protocol-3 descriptors for the same
-    // state, lock free, are each replaced.
+    // Every older same-state descriptor is replaced when the lock is free.
     let mut identity = Value::Null;
-    for protocol in [1, 2, 3] {
+    for protocol in 1..transport::PROTOCOL_VERSION {
         f.write_descriptor(&f.stale(protocol, &f.state));
         identity = f.start_running();
-        assert_eq!(identity["protocol"], 4);
+        assert_eq!(identity["protocol"], transport::PROTOCOL_VERSION);
         let published: Value =
             serde_json::from_slice(&std::fs::read(f.descriptor()).unwrap()).unwrap();
-        assert_eq!(published["protocol"], 4);
+        assert_eq!(published["protocol"], transport::PROTOCOL_VERSION);
         assert_eq!(published["identity"]["epoch"], identity["epoch"]);
-        if protocol != 3 {
+        if protocol + 1 < transport::PROTOCOL_VERSION {
             f.stop_and_wait();
         }
     }
-    // A crash leaves the protocol-4 descriptor behind.
+    // A crash leaves the current-protocol descriptor behind.
     let pid = f.service_pid();
     assert!(
         rrx_spawn_hygiene::status_std({
@@ -418,9 +417,9 @@ fn c_s1e2_daemon_start_replaces_known_leftovers_only() {
     f.stop_and_wait();
     // Foreign state and malformed descriptors are refused.
     for bytes in [
-        f.stale(4, &f.base.join("foreign.db")),
-        f.stale(5, &f.state),
-        br#"{"protocol":4}"#.to_vec(),
+        f.stale(transport::PROTOCOL_VERSION, &f.base.join("foreign.db")),
+        f.stale(transport::PROTOCOL_VERSION + 1, &f.state),
+        serde_json::to_vec(&serde_json::json!({"protocol": transport::PROTOCOL_VERSION})).unwrap(),
     ] {
         f.write_descriptor(&bytes);
         let started = f.start();

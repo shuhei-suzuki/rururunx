@@ -36,7 +36,7 @@ impl Fixture {
         let config = directory.path().join("config.toml");
         std::fs::write(
             &config,
-            "[agents.worker]\nprovider='claude'\ncommand=['/usr/bin/false']\n",
+            "[agents.worker]\nprovider='codex'\ncommand=['/usr/bin/false']\n",
         )
         .unwrap();
         Self {
