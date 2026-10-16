@@ -12,6 +12,17 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     process::Command,
 };
+// Allows large native CLI distributions while bounding each identity observation.
+const PROGRAM_BYTES: u64 = 512 * 1024 * 1024;
+fn interruption(cancelled: &AtomicBool, deadline: Instant) -> Option<StartupRefusal> {
+    if cancelled.load(Ordering::SeqCst) {
+        Some(StartupRefusal::Stopped)
+    } else if Instant::now() >= deadline {
+        Some(StartupRefusal::Deadline)
+    } else {
+        None
+    }
+}
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub(super) struct Program {
     path: PathBuf,
@@ -23,20 +34,66 @@ pub(super) struct Program {
     sha256: String,
 }
 impl Program {
-    pub(super) fn read(path: &Path) -> Result<Self> {
+    pub(super) async fn read(
+        path: &Path,
+        cancelled: Arc<AtomicBool>,
+        deadline: Instant,
+    ) -> std::result::Result<Self, StartupRefusal> {
+        if let Some(reason) = interruption(&cancelled, deadline) {
+            return Err(reason);
+        }
+        let path = path.to_path_buf();
+        let stop = cancelled.clone();
+        let mut task = tokio::task::spawn_blocking(move || Self::read_file(&path, &stop, deadline));
+        let mut tick = tokio::time::interval(Duration::from_millis(10));
+        loop {
+            if let Some(reason) = interruption(&cancelled, deadline) {
+                task.abort();
+                return Err(reason);
+            }
+            tokio::select! { biased;
+                result = &mut task => {
+                    if let Some(reason) = interruption(&cancelled, deadline) {
+                        return Err(reason);
+                    }
+                    return result.ok().and_then(Result::ok).ok_or(StartupRefusal::ProgramIdentity);
+                },
+                _ = tick.tick() => {},
+            }
+        }
+    }
+    fn read_file(path: &Path, cancelled: &AtomicBool, deadline: Instant) -> Result<Self> {
         let path = path.canonicalize()?;
-        let mut file = File::open(&path)?;
+        // NONBLOCK prevents opening a FIFO from waiting for a writer; fstat is
+        // checked before reading any bytes. NOFOLLOW closes the final symlink swap.
+        let mut file = File::from(rustix::fs::open(
+            &path,
+            rustix::fs::OFlags::RDONLY
+                | rustix::fs::OFlags::NONBLOCK
+                | rustix::fs::OFlags::NOFOLLOW
+                | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::Mode::empty(),
+        )?);
         let m = file.metadata()?;
         ensure!(m.is_file(), "startup program is not a file");
+        ensure!(m.len() <= PROGRAM_BYTES, "startup program over size bound");
         let mut h = Sha256::new();
         let mut bytes = [0u8; 65536];
+        let mut total = 0u64;
         loop {
+            ensure!(
+                interruption(cancelled, deadline).is_none(),
+                "startup identity interrupted"
+            );
             let n = file.read(&mut bytes)?;
             if n == 0 {
                 break;
             }
+            total += n as u64;
+            ensure!(total <= m.len(), "startup program grew during hashing");
             h.update(&bytes[..n]);
         }
+        ensure!(total == m.len(), "startup program shrank during hashing");
         let identity = Self {
             path,
             dev: m.dev(),
@@ -74,12 +131,16 @@ impl Program {
         );
         Ok(())
     }
-    fn verify(&self) -> Result<()> {
-        ensure!(
-            Self::read(&self.path)? == *self,
-            "startup executable hash changed"
-        );
-        Ok(())
+    async fn verify(
+        &self,
+        cancelled: Arc<AtomicBool>,
+        deadline: Instant,
+    ) -> std::result::Result<(), StartupRefusal> {
+        if Self::read(&self.path, cancelled, deadline).await? == *self {
+            Ok(())
+        } else {
+            Err(StartupRefusal::ProgramIdentity)
+        }
     }
 }
 #[derive(Serialize)]
@@ -99,6 +160,32 @@ pub(super) struct Observation {
     version: Option<String>,
 }
 impl Observation {
+    pub(super) fn validate_body(body: &Value) -> Result<()> {
+        // Every serialized field is at its largest possible representation:
+        // false, longest refusal, signed exit, usize bytes, and legal version.
+        let largest = Self {
+            known: false,
+            pass: false,
+            reason: Some(StartupRefusal::CodexHandshakeUnavailable),
+            protocol: false,
+            stdout_eof: false,
+            stderr_eof: false,
+            leader_reaped: false,
+            signal: false,
+            group_hygiene: false,
+            attempted: false,
+            exit: Some(i32::MIN),
+            bytes: usize::MAX,
+            version: Some("v".repeat(96)),
+        };
+        let mut settled = body.clone();
+        settled["observation"] = serde_json::to_value(largest)?;
+        ensure!(
+            serde_json::to_vec(body)?.len() <= 4096 && serde_json::to_vec(&settled)?.len() <= 4096,
+            "startup intent lacks settlement headroom"
+        );
+        Ok(())
+    }
     pub(super) fn not_spawned(reason: StartupRefusal) -> Self {
         Self {
             known: true,
@@ -141,6 +228,46 @@ fn version(bytes: &[u8]) -> Result<String> {
     }
 }
 
+fn spawn(
+    startup: &Startup,
+    plan: &AliasPlan,
+    child: &ChildCustody,
+    command: Command,
+    deadline: Instant,
+) -> std::result::Result<crate::execution::process::RetainedPipes, Observation> {
+    let spawned = (|| -> std::result::Result<_, StartupRefusal> {
+        plan.directory
+            .verify_empty()
+            .map_err(|_| StartupRefusal::PrivatePath)?;
+        plan.program
+            .stat()
+            .map_err(|_| StartupRefusal::ProgramIdentity)?;
+        if let Some(reason) = interruption(&startup.cancelled, deadline) {
+            return Err(reason);
+        }
+        // Check the live owner, never a saved Task or receipt.
+        startup
+            .owner
+            .store
+            .lock()
+            .map_err(|_| StartupRefusal::Journal)?
+            .old_startup_unknown(&startup.owner)
+            .map_err(|_| StartupRefusal::Journal)?;
+        let process =
+            rrx_spawn_hygiene::spawn_tokio(command).map_err(|_| StartupRefusal::Protocol)?;
+        let mut raw = child.raw.lock().unwrap();
+        raw.adopt(process);
+        raw.qualify().map_err(|_| StartupRefusal::Protocol)?;
+        raw.pipes().map_err(|_| StartupRefusal::Protocol)
+    })();
+    spawned.map_err(|reason| {
+        child.revoke();
+        let mut observation = Observation::not_spawned(reason);
+        observation.known = !child.raw.lock().unwrap().has_child();
+        observation
+    })
+}
+
 pub(super) async fn run(
     startup: &Arc<Startup>,
     plan: &AliasPlan,
@@ -149,14 +276,17 @@ pub(super) async fn run(
     parent: Instant,
     aggregate: &mut usize,
 ) -> Observation {
-    if *aggregate >= 8 * 1024 * 1024 || Instant::now() >= parent {
+    if let Some(reason) = interruption(&startup.cancelled, parent) {
+        return Observation::not_spawned(reason);
+    }
+    if *aggregate >= 8 * 1024 * 1024 {
         return Observation::not_spawned(StartupRefusal::Budget);
     }
     if plan.directory.verify_empty().is_err() {
         return Observation::not_spawned(StartupRefusal::PrivatePath);
     }
-    if plan.program.verify().is_err() {
-        return Observation::not_spawned(StartupRefusal::ProgramIdentity);
+    if let Err(reason) = plan.program.verify(startup.cancelled.clone(), parent).await {
+        return Observation::not_spawned(reason);
     }
     let handshake = step == "handshake";
     let native = uuid::Uuid::new_v4().to_string();
@@ -193,34 +323,9 @@ pub(super) async fn run(
     startup.children.lock().unwrap().push(child.clone());
     let deadline =
         parent.min(Instant::now() + Duration::from_secs(if handshake { 90 } else { 30 }));
-    let spawned = (|| -> Result<_> {
-        plan.directory.verify_empty()?;
-        plan.program.stat()?;
-        ensure!(
-            !startup.cancelled.load(Ordering::SeqCst) && Instant::now() < deadline,
-            "startup stopped before spawn"
-        );
-        // Check the live owner, never a saved Task or receipt.
-        startup
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .old_startup_unknown(&startup.owner)?;
-        let process = rrx_spawn_hygiene::spawn_tokio(command)?;
-        let mut raw = child.raw.lock().unwrap();
-        raw.adopt(process);
-        raw.qualify()?;
-        raw.pipes()
-    })();
-    let pipes = match spawned {
+    let pipes = match spawn(startup, plan, &child, command, deadline) {
         Ok(p) => p,
-        Err(_) => {
-            child.revoke();
-            let mut o = Observation::not_spawned(StartupRefusal::Protocol);
-            o.known = !child.raw.lock().unwrap().has_child();
-            return o;
-        }
+        Err(observation) => return observation,
     };
     let (mut out, mut err) = (pipes.stdout, pipes.stderr);
     let mut observation = Observation::not_spawned(StartupRefusal::Protocol);
@@ -439,22 +544,179 @@ mod tests {
         }
     }
     /// AC-09 compares the complete observed program identity, including the content hash.
-    #[test]
-    fn program_hash_and_stat_must_both_match_the_observed_original() {
+    #[tokio::test]
+    async fn program_hash_and_stat_must_both_match_the_observed_original() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("program");
         std::fs::write(&path, b"first").unwrap();
-        let mut program = Program::read(&path).unwrap();
-        program.verify().unwrap();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let end = Instant::now() + Duration::from_secs(10);
+        let mut program = Program::read(&path, cancelled.clone(), end).await.unwrap();
+        program.verify(cancelled.clone(), end).await.unwrap();
         // Nongrant observation data only: a changed expected digest with an
         // unchanged real descriptor stat must not be accepted as identity.
         program.sha256 = "0".repeat(64);
-        assert!(program.verify().is_err(), "AC-09: content hash ignored");
-        let program = Program::read(&path).unwrap();
+        assert!(
+            program.verify(cancelled.clone(), end).await.is_err(),
+            "AC-09: content hash ignored"
+        );
+        let program = Program::read(&path, cancelled, end).await.unwrap();
         std::fs::write(&path, b"second").unwrap();
         assert!(
             program.stat().is_err(),
             "AC-09: changed program stat accepted"
         );
+    }
+    /// Identity observation refuses nonregular and oversized files before any spawn.
+    #[tokio::test]
+    async fn program_identity_rejects_special_and_oversized_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let oversized = dir.path().join("oversized");
+        File::create(&oversized)
+            .unwrap()
+            .set_len(PROGRAM_BYTES + 1)
+            .unwrap();
+        for path in [dir.path(), oversized.as_path()] {
+            assert_eq!(
+                Program::read(
+                    path,
+                    Arc::new(AtomicBool::new(false)),
+                    Instant::now() + Duration::from_secs(2)
+                )
+                .await,
+                Err(StartupRefusal::ProgramIdentity),
+            );
+        }
+    }
+    /// A FIFO is refused without waiting for a writer or reading any bytes.
+    #[tokio::test]
+    async fn program_identity_refuses_fifo_without_waiting_for_writer() {
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("fifo");
+        let mut command = std::process::Command::new("/usr/bin/mkfifo");
+        command.arg(&fifo);
+        assert!(rrx_spawn_hygiene::status_std(command).unwrap().success());
+        assert_eq!(
+            Program::read(
+                &fifo,
+                Arc::new(AtomicBool::new(false)),
+                Instant::now() + Duration::from_secs(2)
+            )
+            .await,
+            Err(StartupRefusal::ProgramIdentity),
+        );
+    }
+    /// Stop and the parent deadline interrupt an in-progress identity observation on one async worker.
+    #[tokio::test]
+    async fn program_identity_observation_obeys_stop_and_parent_deadline() {
+        use std::{future::Future, task::Poll};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("large");
+        File::create(&path).unwrap().set_len(PROGRAM_BYTES).unwrap();
+        for stop in [true, false] {
+            let owner =
+                RuntimeOwner::open(
+                    &dir.path()
+                        .join(if stop { "stop.db" } else { "deadline.db" }),
+                )
+                .unwrap();
+            let startup = Startup::new(owner);
+            let deadline = Instant::now() + Duration::from_millis(100);
+            let mut config = Config::default();
+            config
+                .agents
+                .insert("a".into(), crate::config::AgentConfig::default());
+            let checked = Arc::new(crate::execution::claude_wire::decoder_selfcheck().unwrap());
+            let read = startup.run(
+                config,
+                Some((
+                    uuid::Uuid::new_v4(),
+                    checked,
+                    vec![("a".into(), "claude".into(), path.clone())],
+                )),
+                deadline,
+            );
+            tokio::pin!(read);
+            std::future::poll_fn(|cx| {
+                assert!(
+                    read.as_mut().poll(cx).is_pending(),
+                    "identity did not yield the async worker"
+                );
+                Poll::Ready(())
+            })
+            .await;
+            if stop {
+                startup.revoke();
+            }
+            read.await;
+            let status = startup.snapshot().unwrap();
+            assert_eq!(
+                status.reason,
+                Some(if stop {
+                    StartupRefusal::Stopped
+                } else {
+                    StartupRefusal::Deadline
+                })
+            );
+            assert_eq!(
+                status.state,
+                if stop {
+                    StartupState::Stopped
+                } else {
+                    StartupState::Refused
+                }
+            );
+            assert!(
+                Instant::now() < deadline + Duration::from_secs(1),
+                "identity ignored stop/deadline"
+            );
+            assert!(startup.children.lock().unwrap().is_empty());
+        }
+    }
+    /// Revoke at the final spawn guard and an expired parent retain their typed not-spawned reasons.
+    #[tokio::test]
+    async fn pre_spawn_stop_and_expired_parent_are_typed_refusals() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+        let startup = Startup::new(owner.clone());
+        let paths = path::Paths::new(owner).unwrap();
+        let program = dir.path().join("program");
+        std::fs::write(&program, b"never spawned").unwrap();
+        let end = Instant::now() + Duration::from_secs(10);
+        let plan = AliasPlan {
+            alias: "a".into(),
+            provider: "claude".into(),
+            program: Program::read(&program, startup.cancelled.clone(), end)
+                .await
+                .unwrap(),
+            directory: paths.alias(uuid::Uuid::new_v4(), "a").unwrap(),
+            intents: Vec::new(),
+            model: None,
+            effort: None,
+        };
+        let checked = crate::execution::claude_wire::decoder_selfcheck().unwrap();
+        let mut aggregate = 0;
+        let expired = run(
+            &startup,
+            &plan,
+            "version",
+            &checked,
+            Instant::now(),
+            &mut aggregate,
+        )
+        .await;
+        assert_eq!(expired.reason, Some(StartupRefusal::Deadline));
+        assert!(expired.known && !expired.attempted);
+        assert!(startup.children.lock().unwrap().is_empty());
+        startup.revoke();
+        let child = ChildCustody {
+            raw: Mutex::new(RetainedRawProcess::default()),
+        };
+        let observed = spawn(&startup, &plan, &child, Command::new(&program), end)
+            .err()
+            .unwrap();
+        assert_eq!(observed.reason, Some(StartupRefusal::Stopped));
+        assert!(observed.known && !observed.attempted);
+        assert!(!child.raw.lock().unwrap().has_child());
     }
 }

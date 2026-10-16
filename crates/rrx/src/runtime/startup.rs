@@ -102,7 +102,7 @@ impl Drop for ChildCustody {
 /// Tasks own this custody, never the Runtime itself, across I/O and caller Drop.
 pub(super) struct Startup {
     owner: Arc<RuntimeOwner>,
-    cancelled: AtomicBool,
+    cancelled: Arc<AtomicBool>,
     status: Mutex<StartupStatus>,
     children: Mutex<Vec<Arc<ChildCustody>>>,
     task: tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
@@ -125,7 +125,7 @@ impl Startup {
     pub(super) fn new(owner: Arc<RuntimeOwner>) -> Arc<Self> {
         Arc::new(Self {
             owner,
-            cancelled: AtomicBool::new(false),
+            cancelled: Arc::new(AtomicBool::new(false)),
             status: Mutex::new(StartupStatus {
                 state: StartupState::NotStarted,
                 reason: None,
@@ -166,6 +166,43 @@ impl Startup {
             };
             s.reason = Some(reason);
         }
+    }
+    fn intent(
+        &self,
+        installation: uuid::Uuid,
+        alias: &str,
+        step: &str,
+        body: &Value,
+    ) -> Result<StartupIntent> {
+        probe::Observation::validate_body(body)?;
+        self.owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .startup_intent(&self.owner, installation, alias, step, body)
+    }
+    /// Planning has not spawned anything: settle every committed original by CAS.
+    fn refuse_plans(&self, plans: &[AliasPlan], reason: StartupRefusal) {
+        let mut saved = true;
+        for plan in plans {
+            for (_, intent, body) in &plan.intents {
+                let mut settled = body.clone();
+                settled["observation"] =
+                    serde_json::to_value(probe::Observation::not_spawned(reason)).unwrap();
+                saved &= self
+                    .owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))
+                    .and_then(|mut store| store.settle_startup(&self.owner, intent, true, &settled))
+                    .is_ok();
+            }
+        }
+        self.fail(if saved {
+            reason
+        } else {
+            StartupRefusal::Journal
+        });
     }
     pub(super) fn is_revoked(&self) -> bool {
         self.cancelled.load(Ordering::SeqCst)
@@ -265,18 +302,18 @@ impl Startup {
             let directory = match paths.alias(installation, &alias) {
                 Ok(p) => p,
                 Err(_) => {
-                    self.fail(StartupRefusal::PrivatePath);
+                    self.refuse_plans(&plans, StartupRefusal::PrivatePath);
                     return;
                 }
             };
-            let program = match probe::Program::read(&program) {
+            let program = match probe::Program::read(&program, self.cancelled.clone(), end).await {
                 Ok(p) => p,
-                Err(_) => {
-                    self.fail(StartupRefusal::ProgramIdentity);
+                Err(reason) => {
+                    self.refuse_plans(&plans, reason);
                     return;
                 }
             };
-            let plan = (|| -> Result<AliasPlan> {
+            let plan = (|| -> Result<()> {
                 let agent = config.agents.get(&alias).context("startup alias absent")?;
                 let steps = if provider == "codex" {
                     vec!["version", "schema", "handshake"]
@@ -286,32 +323,25 @@ impl Startup {
                 let declaration =
                     crate::execution::native_result::digest(&serde_json::to_vec(agent)?);
                 let body = json!({"instance":self.owner.instance_id(),"provider":provider,"declaration":declaration,"model":agent.model,"effort":agent.effort,"program":program});
-                let mut intents = Vec::new();
-                for step in steps {
-                    let intent = self
-                        .owner
-                        .store
-                        .lock()
-                        .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                        .startup_intent(&self.owner, installation, &alias, step, &body)?;
-                    intents.push((step.into(), intent, body.clone()));
-                }
-                Ok(AliasPlan {
+                plans.push(AliasPlan {
                     alias,
                     provider,
                     program,
                     directory,
-                    intents,
+                    intents: Vec::new(),
                     model: agent.model.clone(),
                     effort: agent.effort.clone(),
-                })
-            })();
-            match plan {
-                Ok(p) => plans.push(p),
-                Err(_) => {
-                    self.fail(StartupRefusal::Journal);
-                    return;
+                });
+                let plan = plans.last_mut().unwrap();
+                for step in steps {
+                    let intent = self.intent(installation, &plan.alias, step, &body)?;
+                    plan.intents.push((step.into(), intent, body.clone()));
                 }
+                Ok(())
+            })();
+            if plan.is_err() {
+                self.refuse_plans(&plans, StartupRefusal::Journal);
+                return;
             }
         }
         self.status.lock().unwrap().aliases = plans
@@ -350,7 +380,9 @@ impl Startup {
                 };
                 if matches!(
                     observation.reason,
-                    Some(StartupRefusal::Budget | StartupRefusal::Deadline)
+                    Some(
+                        StartupRefusal::Budget | StartupRefusal::Deadline | StartupRefusal::Stopped
+                    )
                 ) {
                     halted = observation.reason;
                 }
@@ -415,6 +447,171 @@ impl Startup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Planning refusal settles all committed unspawned originals without consuming unknown capacity on restart.
+    #[tokio::test]
+    async fn planning_refusal_settles_earlier_aliases_before_restart() {
+        use std::os::unix::fs::PermissionsExt;
+        for failure in [
+            "unreadable",
+            "model",
+            "oversized",
+            "directory",
+            "private-path",
+            "partial-journal",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let state = dir.path().join("state.db");
+            let owner = RuntimeOwner::open(&state).unwrap();
+            let startup = Startup::new(owner.clone());
+            let first = dir.path().join("first");
+            let second = dir.path().join("second");
+            std::fs::write(&first, b"never spawned").unwrap();
+            std::fs::write(&second, b"never spawned").unwrap();
+            let mut config = Config::default();
+            for alias in ["a", "b"] {
+                config
+                    .agents
+                    .insert(alias.into(), crate::config::AgentConfig::default());
+            }
+            let reason = match failure {
+                "unreadable" => {
+                    std::fs::set_permissions(&second, std::fs::Permissions::from_mode(0o111))
+                        .unwrap();
+                    StartupRefusal::ProgramIdentity
+                }
+                "model" => {
+                    config.agents.get_mut("b").unwrap().model = Some("m".repeat(4096));
+                    StartupRefusal::Journal
+                }
+                "oversized" => {
+                    std::fs::File::create(&second)
+                        .unwrap()
+                        .set_len(512 * 1024 * 1024 + 1)
+                        .unwrap();
+                    StartupRefusal::ProgramIdentity
+                }
+                "directory" => {
+                    std::fs::remove_file(&second).unwrap();
+                    std::fs::create_dir(&second).unwrap();
+                    StartupRefusal::ProgramIdentity
+                }
+                "private-path" => StartupRefusal::PrivatePath,
+                "partial-journal" => StartupRefusal::Journal,
+                _ => unreachable!(),
+            };
+            let checked = Arc::new(crate::execution::claude_wire::decoder_selfcheck().unwrap());
+            let installation = uuid::Uuid::new_v4();
+            let second_alias = if failure == "private-path" { "a" } else { "b" };
+            if failure == "partial-journal" {
+                // An independently settled original refuses the second step
+                // while the first step of this alias has already committed.
+                let existing = startup
+                    .intent(installation, "b", "handshake", &json!({}))
+                    .unwrap();
+                owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .settle_startup(&owner, &existing, true, &json!({}))
+                    .unwrap();
+            }
+            startup
+                .run(
+                    config,
+                    Some((
+                        installation,
+                        checked,
+                        vec![
+                            ("a".into(), "claude".into(), first),
+                            (second_alias.into(), "claude".into(), second),
+                        ],
+                    )),
+                    Instant::now() + Duration::from_secs(10),
+                )
+                .await;
+            assert_eq!(
+                startup.snapshot().unwrap().reason,
+                Some(reason),
+                "{failure}"
+            );
+            assert!(
+                startup.children.lock().unwrap().is_empty(),
+                "planning refusal spawned a child"
+            );
+            let read = crate::state::current_test_writer(&state).unwrap();
+            let (pending, confirmed, attempted): (u64, u64, u64) = read.query_row(
+                "SELECT coalesce(sum(state='pending'),0),coalesce(sum(state='confirmed'),0),coalesce(sum(json_extract(body,'$.observation.attempted')=1),0) FROM runtime_startup_probes",
+                [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
+            ).unwrap();
+            assert_eq!(pending, 0, "unspawned intent remained pending: {failure}");
+            assert!(
+                confirmed >= 2,
+                "earlier alias intents were not observed: {failure}"
+            );
+            assert_eq!(attempted, 0);
+            drop(read);
+            drop(startup);
+            drop(owner);
+            let next = RuntimeOwner::open(&state).unwrap();
+            assert_eq!(
+                next.store
+                    .lock()
+                    .unwrap()
+                    .old_startup_unknown(&next)
+                    .unwrap(),
+                0,
+                "unspawned intent fenced unknown: {failure}"
+            );
+        }
+    }
+    /// Intent admission reserves the largest settlement at exactly 4096 bytes and refuses the next byte without a write.
+    #[test]
+    fn intent_reserves_complete_settlement_at_the_byte_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("state.db");
+        let owner = RuntimeOwner::open(&state).unwrap();
+        let startup = Startup::new(owner.clone());
+        let mut observation = serde_json::to_value(probe::Observation::not_spawned(
+            StartupRefusal::CodexHandshakeUnavailable,
+        ))
+        .unwrap();
+        observation["known"] = json!(false);
+        observation["exit"] = json!(i32::MIN);
+        observation["bytes"] = json!(usize::MAX);
+        observation["version"] = json!("v".repeat(96));
+        let mut settled = json!({"model":"", "observation":observation});
+        let remaining = 4096 - serde_json::to_vec(&settled).unwrap().len();
+        settled["model"] = json!("m".repeat(remaining));
+        assert_eq!(serde_json::to_vec(&settled).unwrap().len(), 4096);
+        let mut body = settled.clone();
+        body.as_object_mut().unwrap().remove("observation");
+        let id = uuid::Uuid::new_v4();
+        let intent = startup.intent(id, "a", "version", &body).unwrap();
+        let mut over = body.clone();
+        over["model"] = json!("m".repeat(remaining + 1));
+        assert!(
+            startup.intent(id, "b", "version", &over).is_err(),
+            "intent accepted without settlement headroom"
+        );
+        owner
+            .store
+            .lock()
+            .unwrap()
+            .settle_startup(&owner, &intent, false, &settled)
+            .unwrap();
+        let read = crate::state::current_test_writer(&state).unwrap();
+        assert_eq!(
+            read.query_row("SELECT count(*) FROM runtime_startup_probes", [], |r| r
+                .get::<_, u64>(0))
+                .unwrap(),
+            1
+        );
+        let stored: String = read
+            .query_row("SELECT body FROM runtime_startup_probes", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stored.len(), 4096);
+        assert_eq!(serde_json::from_str::<Value>(&stored).unwrap(), settled);
+    }
     /// S-4 classifies a retained unjoined S task as StartupProbes pending.
     #[tokio::test]
     async fn unjoined_startup_task_is_not_shutdown_completion() {

@@ -632,7 +632,11 @@ Claude成功後の新規tail許容集合は、strict-validなrate event、auth_s
 
 Native programはcanonical path、dev／ino／size／mtime／ctime、SHA-256をVersion intent前に記録し、Native helper／transport前にhash、spawn直前にstatを再検査する。Git helperはCLI identityの再hash対象外。execとの非原子的な窓、wrapper内部、escaped descendantsは未証明として残す。
 
+Sのidentity観測は通常fileかつ512 MiB以下に限定する（大きなnative CLI配布物を許容する有限上限）。canonical化後は`O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC`で開き、read前にdescriptorの型とsizeを検査する。hash中に初期sizeを越えた場合も拒否する。path解決・open・hash・観測後statはblocking poolで実行し、各read間にrevoke／S親deadlineを確認する。async側も10 ms間隔で停止と親deadlineを観測し、Stopped／Deadlineで有限に拒否する。OS内で停滞した同期I/Oを強制中断する保証はなく、開始済みblocking処理は戻り次第停止する。その処理はowner／child custodyを保持せず、新spawnやauthorityを発行しない。
+
 監査は有限語彙、method件数、digest、nullable観測状態だけ。account本文、codexHome、nonce、canary本文、raw frame、stderrを保存しない。receiptは16項目以下、値128 bytes以下、既存private imageの8192 bytes上限を維持する。S bodyは4096 bytes以下。版数はexit 0、完全捕捉、256 bytes以下、単一行、制御文字なし。記録は96 bytes以下かつ`[A-Za-z0-9 ._()+/:-]`なら原文、それ以外はSHA-256とnonrecordableを記録する。記録可否を版数一致による合否へ変換しない。
+
+S intent保存前に最大のobservation（96 bytesの合法version、最長の拒否理由、exit／byte数の型上限を含む）を加えたsettlementも4096 bytes以内と検査する。計画途中で後続aliasのpath／identity／journalが拒否された場合、既にcommitした未spawnのintentは元のpending imageへのexact CASで`confirmed`＋not-spawned観測へ精算する。精算失敗を成功へ変換せずJournal／Unknownで停止する。
 
 `source_version`はCLI番号を含まない契約ラベルへ統一する。`execution/quota.rs:146`は`codex/account.rateLimits`、同:227は`claude/rate_limit_event`、`execution/native.rs:2227`のerror観測は`codex/usageLimitExceeded`、`:2248`のterminal観測は`codex/terminal usageLimitExceeded`、`:2254`のcorrelated recovery completed観測は`codex/correlated recovery turn completed`とする。番号だけを除き、Exhausted error／terminalとAvailable recoveryの意味を保持する。これらのラベルもauthorityではない。実際のCLI版数はVersion観測receiptへ別に記録し、quota DTOのsource_versionや保存済み旧ラベルからqualifyを再構成しない。
 
