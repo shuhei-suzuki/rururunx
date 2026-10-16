@@ -123,6 +123,7 @@ states!(Disposition {
 states!(NativeFailure {
     AuthenticationUnavailable,
     UnsupportedCapability,
+    // Persisted historical value; no current producer.
     MetadataUnavailable,
     ProtocolFailure,
     TransportLost,

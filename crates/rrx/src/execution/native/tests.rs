@@ -1274,8 +1274,8 @@ async fn bootstrap_failure_categories_survive_without_retaining_native_error_pay
         ),
         (
             "metadata",
-            NativeFailure::MetadataUnavailable,
-            Disposition::Refused,
+            NativeFailure::ProtocolFailure,
+            Disposition::ProtocolError,
         ),
         (
             "metadata-malformed",

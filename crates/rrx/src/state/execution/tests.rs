@@ -2,6 +2,56 @@ use super::*;
 use crate::config::WorkflowClass;
 use std::path::PathBuf;
 
+/// Historical terminal records retain their original failure category and diagnostic after reopen.
+#[test]
+fn historical_metadata_unavailable_terminal_remains_readable() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("state.db");
+    let mut store = Store::open(&path).unwrap();
+    let mut project = Project::new(
+        "history".into(),
+        dir.path().to_path_buf(),
+        "historical-no-git".into(),
+        "main".into(),
+    );
+    store.put_project(&mut project).unwrap();
+    let scope = Scope {
+        project_id: project.id,
+        goal_id: None,
+        task_id: None,
+    };
+    // Historical failure evidence only; no execution or success authority is seeded.
+    let mut writer = crate::state::current_test_writer(&path).unwrap();
+    let tx = writer.transaction().unwrap();
+    append_event(
+        &tx,
+        &scope,
+        "execution.work_terminal",
+        json!({"unit":UnitId::new(),"work":"unknown","disposition":"refused","native_failure":"metadata_unavailable"}),
+    )
+    .unwrap();
+    tx.commit().unwrap();
+    drop(writer);
+    drop(store);
+
+    let mut reopened = Store::open(&path).unwrap();
+    reopened.begin_execution_epoch().unwrap();
+    let event = reopened
+        .events(&scope, 0, 100)
+        .unwrap()
+        .into_iter()
+        .find(|event| event.kind == "execution.work_terminal")
+        .unwrap();
+    let failure: NativeFailure =
+        serde_json::from_value(event.data["native_failure"].clone()).unwrap();
+    assert_eq!(failure, NativeFailure::MetadataUnavailable);
+    assert_eq!(
+        serde_json::to_value(failure).unwrap(),
+        "metadata_unavailable"
+    );
+    assert_eq!(failure.diagnostic(), "native quota metadata unavailable");
+}
+
 thread_local! {
     /// The fixture Projects' worktree roots (`draft` places each Unit under
     /// its Task's); each test runs on its own thread.

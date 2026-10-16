@@ -71,6 +71,31 @@ fn u4_methods_and_response_types() {
             .is_err()
     );
 }
+/// Rate responses and notifications require a non-null snapshot, even when an optional bucket map exists.
+#[test]
+fn u4_rate_snapshot_required_at_both_inbound_boundaries() {
+    let c = CodexWireContract::default();
+    for value in [
+        json!({}),
+        json!({"ordinaryUsageAllowed":true}),
+        json!({"rateLimitsByLimitId":{"x":{"primary":{"usedPercent":20}}}}),
+        json!({"rateLimits":null}),
+    ] {
+        assert!(
+            c.response("account/rateLimits/read", &value).is_err(),
+            "{value}"
+        );
+        assert!(
+            c.frame(json!({"method":"account/rateLimits/updated","params":value}))
+                .is_err(),
+            "missing or null snapshot notification accepted"
+        );
+    }
+    let empty = json!({"rateLimits":{}});
+    c.response("account/rateLimits/read", &empty).unwrap();
+    c.frame(json!({"method":"account/rateLimits/updated","params":empty}))
+        .unwrap();
+}
 /// CX-4 key-tags, nested domains, refinements and four RPC forms are checked before consumers.
 #[test]
 fn u4_nested_types_and_rpc_forms() {
@@ -370,6 +395,9 @@ fn u4_handshake_correlation_and_rate() {
         "disconnected",
         "unknown",
         "environment-malformed",
+        "rate-absent",
+        "rate-null",
+        "rate-map-only",
         "rate",
         "error",
         "missing",
@@ -390,6 +418,12 @@ fn u4_handshake_correlation_and_rate() {
                 json!({"rateLimits":{"primary":{"usedPercent":20}}})
             } else if scenario == "rate" {
                 json!({"rateLimits":{},"rateLimitsByLimitId":{"unselected":{"primary":{"usedPercent":"20"}}}})
+            } else if scenario == "rate-absent" {
+                json!({})
+            } else if scenario == "rate-null" {
+                json!({"rateLimits":null})
+            } else if scenario == "rate-map-only" {
+                json!({"rateLimitsByLimitId":{"x":{"primary":{"usedPercent":20}}}})
             } else {
                 json!({"rateLimits":{}})
             },
@@ -440,12 +474,16 @@ fn u4_handshake_correlation_and_rate() {
             assert_eq!(h.rate, Some(scenario == "usable"));
         } else if matches!(
             scenario,
-            "pending" | "disconnected" | "unknown" | "environment-malformed"
+            "pending"
+                | "disconnected"
+                | "unknown"
+                | "environment-malformed"
+                | "rate-absent"
+                | "rate-null"
+                | "rate-map-only"
+                | "rate"
         ) {
-            assert_eq!(
-                h.rate, None,
-                "environment refusal observed quota: {scenario}"
-            );
+            assert_eq!(h.rate, None, "handshake refusal observed quota: {scenario}");
         }
     }
 }

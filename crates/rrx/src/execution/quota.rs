@@ -249,9 +249,6 @@ impl CodexRate {
     }
 }
 pub fn codex_windows(value: &Value, at: i64) -> Result<Vec<QuotaObservation>> {
-    if value.is_object() && value.get("rateLimits").is_none() {
-        anyhow::bail!(NativeFailure::MetadataUnavailable);
-    }
     Ok(CodexRate::decode(value)
         .context(NativeFailure::ProtocolFailure)?
         .observations(at))
@@ -390,52 +387,29 @@ mod r1_tests {
     use super::*;
     use serde_json::json;
 
-    /// Missing snapshots remain unavailable while present malformed evidence is a protocol failure.
+    /// Missing required snapshots and malformed evidence fail the wire contract without inventing quota.
     #[test]
-    fn missing_and_malformed_rate_snapshots_have_distinct_failures() {
-        for (value, expected) in [
-            (json!({}), NativeFailure::MetadataUnavailable),
-            (
-                json!({"ordinaryUsageAllowed":true}),
-                NativeFailure::MetadataUnavailable,
-            ),
-            (Value::Null, NativeFailure::ProtocolFailure),
-            (json!({"rateLimits":null}), NativeFailure::ProtocolFailure),
-            (json!({"rateLimits":false}), NativeFailure::ProtocolFailure),
-            (
-                json!({"rateLimits":{"primary":true}}),
-                NativeFailure::ProtocolFailure,
-            ),
-            (
-                json!({"rateLimits":{},"ordinaryUsageAllowed":1}),
-                NativeFailure::ProtocolFailure,
-            ),
-            (
-                json!({"rateLimits":{},"rateLimitsByLimitId":{"x":null}}),
-                NativeFailure::ProtocolFailure,
-            ),
+    fn missing_and_malformed_rate_snapshots_are_protocol_failures() {
+        for value in [
+            json!({}),
+            json!({"ordinaryUsageAllowed":true}),
+            json!({"rateLimitsByLimitId":{"x":{"primary":{"usedPercent":20}}}}),
+            Value::Null,
+            json!({"rateLimits":null}),
+            json!({"rateLimits":false}),
+            json!({"rateLimits":{"primary":true}}),
+            json!({"rateLimits":{},"ordinaryUsageAllowed":1}),
+            json!({"rateLimits":{},"rateLimitsByLimitId":{"x":null}}),
             // Sequence and enum-map forms are never typed rate evidence.
-            (
-                json!({"rateLimits":[null,[20,null,null],null,null,null]}),
-                NativeFailure::ProtocolFailure,
-            ),
-            (
-                json!({"rateLimits":{"primary":[20,null,null]}}),
-                NativeFailure::ProtocolFailure,
-            ),
-            (
-                json!({"rateLimits":{},"rateLimitsByLimitId":{"x":[null,[20,null,null],null,null,null]}}),
-                NativeFailure::ProtocolFailure,
-            ),
-            (
-                json!({"rateLimits":{"primary":{"usedPercent":20},"rateLimitReachedType":{"rate_limit_reached":null}}}),
-                NativeFailure::ProtocolFailure,
-            ),
+            json!({"rateLimits":[null,[20,null,null],null,null,null]}),
+            json!({"rateLimits":{"primary":[20,null,null]}}),
+            json!({"rateLimits":{},"rateLimitsByLimitId":{"x":[null,[20,null,null],null,null,null]}}),
+            json!({"rateLimits":{"primary":{"usedPercent":20},"rateLimitReachedType":{"rate_limit_reached":null}}}),
         ] {
             let error = codex_windows(&value, 0).unwrap_err();
             assert_eq!(
                 error.downcast_ref::<NativeFailure>(),
-                Some(&expected),
+                Some(&NativeFailure::ProtocolFailure),
                 "{value}"
             );
         }
