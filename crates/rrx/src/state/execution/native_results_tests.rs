@@ -21,7 +21,7 @@ fn legacy5(path: &Path) -> Connection {
         [Uuid::new_v4().to_string()],
     )
     .unwrap();
-    for table in MUTABLE_TABLES.iter().filter(|table| {
+    for table in M11_TABLES.iter().filter(|table| {
         !crate::state::runtime::TABLES.contains(table)
             && !crate::state::managed_binding::TABLES.contains(table)
             && !matches!(
@@ -80,7 +80,7 @@ fn schema6_migrates_real5_layout_and_fences_preopen_cached_writer() {
         1
     );
     assert_eq!(current.begin_execution_epoch().unwrap().1, 2);
-    for table in MUTABLE_TABLES {
+    for table in mutable_tables(SCHEMA_VERSION) {
         for action in ["INSERT", "UPDATE", "DELETE"] {
             let sql: String = current
                 .connection

@@ -449,6 +449,12 @@ async fn goal_control(
     print_decision(response, json)
 }
 fn print_control(response: ControlResponse, json: bool, metadata: bool) -> Result<()> {
+    if !json && let ControlResponse::RuntimeMetadata { startup, .. } = &response {
+        println!(
+            "Startup: {:?}; oldEpochUnknown={}",
+            startup.state, startup.old_epoch_unknown
+        );
+    }
     let observation = if metadata {
         "runtime_metadata"
     } else {

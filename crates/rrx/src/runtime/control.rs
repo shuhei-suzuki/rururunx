@@ -335,6 +335,7 @@ pub enum ControlResponse {
     },
     /// Control-service facts only; native Driver admission remains unavailable.
     RuntimeMetadata {
+        startup: super::startup::StartupStatus,
         instance: String,
         epoch: u64,
         operational: bool,
@@ -763,6 +764,7 @@ impl Runtime {
         }
         Ok(match &request.action {
             ControlAction::RuntimeStatus => ControlResponse::RuntimeMetadata {
+                startup: self.startup.snapshot()?,
                 instance: self.owner.instance_id().into(),
                 epoch: self.owner.epoch(),
                 operational: false,

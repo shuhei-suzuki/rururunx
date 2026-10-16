@@ -6,7 +6,7 @@ pub mod owner;
 pub use owner::{OwnerLock, RuntimeOwner};
 pub mod attempts;
 pub mod capability;
-mod claude_wire;
+pub(crate) mod claude_wire;
 pub mod cleanup;
 pub(crate) mod docker;
 pub(crate) mod git_io;

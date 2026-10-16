@@ -351,3 +351,21 @@ async fn c_s1d_serve_exits_unsuccessfully_after_a_pending_stop() {
         "{error:#}"
     );
 }
+
+/// C-1 preserves the StartupProbes pending site through the strict current wire.
+#[test]
+fn startup_pending_site_round_trips_without_becoming_stopped() {
+    let response = ControlResponse::RuntimeStopPending {
+        instance: "synthetic".into(),
+        epoch: 1,
+        site: ShutdownSite::StartupProbes,
+    };
+    let wire = serde_json::to_vec(&response).unwrap();
+    assert!(matches!(
+        serde_json::from_slice::<ControlResponse>(&wire).unwrap(),
+        ControlResponse::RuntimeStopPending {
+            site: ShutdownSite::StartupProbes,
+            ..
+        }
+    ));
+}

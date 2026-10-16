@@ -4,7 +4,8 @@ use crate::execution::{model::key, *};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub(super) const MUTABLE_TABLES: &[&str] = &[
+/// Historical v10/v11 manifest; never extend this with current-only tables.
+pub(super) const M11_TABLES: &[&str] = &[
     "projects",
     "goals",
     "tasks",
@@ -52,6 +53,13 @@ pub(super) const MUTABLE_TABLES: &[&str] = &[
     "scoped_session_identities",
 ];
 
+pub(super) fn mutable_tables(version: i64) -> impl Iterator<Item = &'static str> {
+    M11_TABLES
+        .iter()
+        .copied()
+        .chain((version >= 12).then_some("runtime_startup_probes"))
+}
+
 pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
     migration::validate_legacy(tx)?;
     tx.execute_batch(include_str!("execution.sql"))?;
@@ -62,7 +70,7 @@ pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
         "INSERT INTO runtime_epoch(singleton,instance_id,epoch) VALUES(1,?1,0)",
         [Uuid::new_v4().to_string()],
     )?;
-    install_writer_guards(tx)?;
+    // Table creation has no writer-guard side effects.
     // Register historical paths without promoting native liveness or work success.
     let mut tasks = tx.prepare("SELECT body FROM tasks")?;
     let old = tasks
@@ -124,12 +132,18 @@ pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
 pub(super) fn install_writer_guards(tx: &Transaction<'_>) -> Result<()> {
     install_writer_guards_at(tx, SCHEMA_VERSION)
 }
+pub(super) fn install_pre_startup_writer_guards(tx: &Transaction<'_>) -> Result<()> {
+    install_writer_guards_for(tx, SCHEMA_VERSION, false)
+}
 /// The guards of one writer contract `version`; the v10 layout reference
 /// (S4 D6-R3 R8) is the only caller with an older version.
 pub(super) fn install_writer_guards_at(tx: &Transaction<'_>, version: i64) -> Result<()> {
+    install_writer_guards_for(tx, version, version >= 12)
+}
+fn install_writer_guards_for(tx: &Transaction<'_>, version: i64, startup: bool) -> Result<()> {
     // Replace only contract guards; retain all append-only and identity triggers.
     // The function is connection-local, not a persisted flag inherited by old writers.
-    for table in MUTABLE_TABLES {
+    for table in mutable_tables(if startup { 12 } else { 11 }) {
         for action in ["INSERT", "UPDATE", "DELETE"] {
             tx.execute_batch(&format!(
                 "DROP TRIGGER IF EXISTS writer_{table}_{action}; \
@@ -544,6 +558,7 @@ impl Store {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
         let epoch = old.checked_add(1).context("owner epoch overflow")?;
+        crate::state::startup::fence_epoch(&tx, epoch)?;
         source_recovery::invalidate_epoch(&tx, &self.binding_permits)?;
         let mut statement=tx.prepare("SELECT id FROM execution_units WHERE native_effects_open=1 OR result_finalization_open=1")?;
         let units = statement

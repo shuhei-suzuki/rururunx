@@ -2254,7 +2254,7 @@ impl Core {
             .await?;
         let probe = self.quota_probe()?;
         let observations =
-            quota::codex_windows(&quota, now_ms()).context(NativeFailure::MetadataUnavailable)?;
+            quota::codex_windows(&quota, now_ms()).context(NativeFailure::ProtocolFailure)?;
         let exhausted = observations
             .iter()
             .any(|o| o.status == QuotaStatus::Exhausted);

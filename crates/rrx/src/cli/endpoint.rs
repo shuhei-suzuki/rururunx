@@ -446,7 +446,7 @@ mod tests {
     /// refused, typed, before any request is sent; the peer reads only EOF.
     #[tokio::test]
     async fn c_s1e_protocol_1_hello_is_refused_before_any_request() {
-        for protocol in [1, 2, 3] {
+        for protocol in [1, 2, 3, 4] {
             let dir = tempfile::tempdir().unwrap();
             let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
             let endpoint = ControlEndpoint::bind(owner.clone()).unwrap();
@@ -491,7 +491,7 @@ mod tests {
     }
 
     /// C-S1e2 / C-S4i (bind): the exclusive owner replaces a same-state
-    /// protocol 1–4 leftover of the strict shape, never a foreign one.
+    /// protocol 1–5 leftover of the strict shape, never a foreign one.
     #[test]
     fn c_s1e2_bind_replaces_known_leftovers_and_refuses_foreign() {
         let dir = tempfile::tempdir().unwrap();
@@ -505,7 +505,7 @@ mod tests {
         let path = endpoint.descriptor_path.clone();
         let left = endpoint.descriptor.clone();
         drop(endpoint);
-        for protocol in [1, 2, 3, 4] {
+        for protocol in [1, 2, 3, 4, 5] {
             let mut leftover = left.clone();
             leftover.protocol = protocol;
             write_private(&path, &serde_json::to_vec(&leftover).unwrap());
@@ -519,7 +519,7 @@ mod tests {
         let mut foreign = left.clone();
         foreign.identity.state = dir.path().join("foreign.db");
         let mut unknown = left.clone();
-        unknown.protocol = 5;
+        unknown.protocol = transport::PROTOCOL_VERSION + 1;
         for bytes in [
             serde_json::to_vec(&foreign).unwrap(),
             serde_json::to_vec(&unknown).unwrap(),

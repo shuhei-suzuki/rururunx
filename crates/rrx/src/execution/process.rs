@@ -35,11 +35,9 @@ pub(crate) struct Refused<S> {
 impl NativeChildCell {
     pub(crate) fn adopt(&mut self, child: Child) {
         // The one-shot spawn checks Empty before creating a Child.
-        *self = Self::Raw(RetainedRawProcess {
-            child: Some(child),
-            pid: None,
-            reaped: false,
-        });
+        let mut raw = RetainedRawProcess::default();
+        raw.adopt(child);
+        *self = Self::Raw(raw);
     }
     pub(crate) fn qualify(&mut self) -> Result<()> {
         let Self::Raw(raw) = self else {
@@ -140,6 +138,12 @@ pub(crate) struct RetainedRawProcess {
     child: Option<Child>,
     pid: Option<Pid>,
     reaped: bool,
+    stdin: std::sync::Arc<tokio::sync::Mutex<Option<tokio::process::ChildStdin>>>,
+}
+pub(crate) struct RetainedPipes {
+    pub(crate) stdin: std::sync::Arc<tokio::sync::Mutex<Option<tokio::process::ChildStdin>>>,
+    pub(crate) stdout: tokio::process::ChildStdout,
+    pub(crate) stderr: tokio::process::ChildStderr,
 }
 impl RetainedRawProcess {
     pub(crate) fn has_child(&self) -> bool {
@@ -150,7 +154,7 @@ impl RetainedRawProcess {
         self.reaped
     }
     pub(crate) fn adopt(&mut self, child: Child) {
-        // The private one-shot producer ensures this cell is empty.
+        // Adoption precedes every fallible identity/pipe check.
         self.child = Some(child);
     }
     pub(crate) fn qualify(&mut self) -> Result<()> {
@@ -164,13 +168,18 @@ impl RetainedRawProcess {
             Some(Pid::from_raw(i32::try_from(raw)?).context("invalid retained raw identity")?);
         Ok(())
     }
-    pub(crate) fn pipes(
-        &mut self,
-    ) -> Result<(tokio::process::ChildStdout, tokio::process::ChildStderr)> {
+    pub(crate) fn pipes(&mut self) -> Result<RetainedPipes> {
         let child = self.child.as_mut().context("retained child absent")?;
-        let out = child.stdout.take().context("retained stdout absent")?;
-        let err = child.stderr.take().context("retained stderr absent")?;
-        Ok((out, err))
+        ensure!(
+            child.stdout.is_some() && child.stderr.is_some(),
+            "retained pipes absent"
+        );
+        self.stdin = std::sync::Arc::new(tokio::sync::Mutex::new(child.stdin.take()));
+        Ok(RetainedPipes {
+            stdin: self.stdin.clone(),
+            stdout: child.stdout.take().unwrap(),
+            stderr: child.stderr.take().unwrap(),
+        })
     }
     pub(crate) fn exited_unreaped(&self) -> Result<bool> {
         let pid = self
@@ -186,7 +195,16 @@ impl RetainedRawProcess {
             Err(e) => Err(e.into()),
         }
     }
+    pub(crate) fn close_stdin(&mut self) {
+        if let Some(child) = self.child.as_mut() {
+            child.stdin.take();
+        }
+        if let Ok(mut stdin) = self.stdin.try_lock() {
+            stdin.take();
+        }
+    }
     pub(crate) fn hygiene(&mut self) -> bool {
+        self.close_stdin();
         if self.reaped {
             return true;
         }

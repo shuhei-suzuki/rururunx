@@ -277,7 +277,7 @@ pub(super) struct NativeTransportCommand {
     pub(super) environment: BTreeMap<String, String>,
     pub(super) native_session: Option<uuid::Uuid>,
 }
-pub(super) fn command_argv(
+pub(crate) fn command_argv(
     provider: &str,
     role: SessionRole,
     model: Option<&str>,

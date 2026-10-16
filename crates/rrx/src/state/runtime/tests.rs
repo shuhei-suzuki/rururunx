@@ -26,7 +26,7 @@ fn old8(path: &std::path::Path) -> Connection {
         [Uuid::new_v4().to_string()],
     )
     .unwrap();
-    for table in execution::MUTABLE_TABLES.iter().filter(|t| {
+    for table in execution::M11_TABLES.iter().filter(|t| {
         !super::TABLES.contains(t) && !crate::state::managed_binding::TABLES.contains(t)
     }) {
         for action in ["INSERT", "UPDATE", "DELETE"] {
@@ -62,7 +62,7 @@ fn schema9_orders_actual8_and_fences_preopened_cached_writer_all_tables() {
             .to_string()
             .contains("incompatible rrx writer contract")
     );
-    for table in execution::MUTABLE_TABLES {
+    for table in execution::mutable_tables(SCHEMA_VERSION) {
         for action in ["INSERT", "UPDATE", "DELETE"] {
             let sql: String = current
                 .connection

@@ -320,6 +320,7 @@ impl InstalledDriverComposition {
     }
 }
 pub(super) struct InstalledNativeGraph {
+    pub(super) decoder: Arc<crate::execution::claude_wire::DecoderChecked>,
     registry: Arc<crate::adapter::AgentRegistry>,
     sources: Arc<ManagedWorkflowSources>,
     gates: Arc<crate::execution::workflow_gates::ManagedWorkflowGates>,
@@ -329,6 +330,7 @@ pub(super) struct InstalledNativeGraph {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallationRefusal {
+    DecoderSelfcheck,
     Registry,
     Sources,
     Gates,
@@ -342,9 +344,39 @@ impl std::fmt::Display for InstallationRefusal {
 }
 impl std::error::Error for InstallationRefusal {}
 impl InstalledNativeGraph {
+    pub(super) fn startup_inputs(
+        &self,
+        config: &crate::config::Config,
+    ) -> Result<super::startup::StartupInstallation> {
+        let ports = config
+            .agents
+            .keys()
+            .map(|alias| {
+                let port = self.registry.native_phase_port(alias)?;
+                Ok((
+                    alias.clone(),
+                    port.provider().to_owned(),
+                    port.program().to_path_buf(),
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let id = config
+            .agents
+            .keys()
+            .next()
+            .map(|alias| {
+                self.registry
+                    .native_phase_port(alias)
+                    .map(|p| p.installation_id())
+            })
+            .transpose()?
+            .unwrap_or_else(uuid::Uuid::new_v4);
+        Ok((id, self.decoder.clone(), ports))
+    }
     pub(super) fn new(
         owner: Arc<RuntimeOwner>,
         config: &crate::config::Config,
+        checked: crate::execution::claude_wire::DecoderChecked,
     ) -> std::result::Result<Self, InstallationRefusal> {
         let registry = Arc::new(
             crate::adapter::AgentRegistry::from_managed_config(config, owner.clone())
@@ -374,6 +406,7 @@ impl InstalledNativeGraph {
         .and_then(|engine| engine.with_verifier(Arc::new(verifier)))
         .map_err(|_| InstallationRefusal::Engine)?;
         Ok(Self {
+            decoder: Arc::new(checked),
             registry,
             sources,
             gates,
@@ -386,9 +419,6 @@ impl Runtime {
         self: &Arc<Self>,
         task: &Task,
     ) -> Result<InstalledDriverComposition> {
-        if let Some(agent) = self.config.agents.get(&task.executor) {
-            crate::execution::capability::require_executor(agent.provider.as_deref())?;
-        }
         let graph = self
             .installed
             .as_ref()
@@ -398,6 +428,7 @@ impl Runtime {
             "installed Runtime is not accepting Drivers"
         );
         let selected = graph.registry.native_phase_port(&task.executor)?;
+        crate::execution::capability::require_executor(Some(selected.provider()))?;
         let adapter = selected.selected_adapter()?;
         ensure!(
             adapter.compatibility.is_some(),
@@ -429,6 +460,7 @@ impl Runtime {
                 .matches_composition(&self.owner, &graph.sources, &selected),
             "installed Engine graph differs"
         );
+        self.startup.require_qualified()?;
         Ok(InstalledDriverComposition {
             identity: Arc::new(CompositionIdentity { task: task.id }),
             runtime: Arc::downgrade(self),

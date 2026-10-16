@@ -367,7 +367,7 @@ fn schema5_replaces_contract4_guards_and_fences_already_open_writer() {
         [Uuid::new_v4().to_string()],
     )
     .unwrap();
-    for table in MUTABLE_TABLES.iter().filter(|table| {
+    for table in M11_TABLES.iter().filter(|table| {
         !crate::state::runtime::TABLES.contains(table)
             && !crate::state::managed_binding::TABLES.contains(table)
             && !matches!(
@@ -410,7 +410,7 @@ fn schema5_replaces_contract4_guards_and_fences_already_open_writer() {
     );
     assert_eq!(current.begin_execution_epoch().unwrap().1, 2);
     let guards: u64 = current.connection.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND name LIKE 'writer_%' AND sql LIKE ?1", [format!("%<>{SCHEMA_VERSION}%")], |r| r.get(0)).unwrap();
-    assert_eq!(guards, (MUTABLE_TABLES.len() * 3) as u64);
+    assert_eq!(guards, (mutable_tables(SCHEMA_VERSION).count() * 3) as u64);
     // The unrelated append-only guard remains installed across the upgrade.
     assert!(current.connection.query_row("SELECT 1 FROM sqlite_schema WHERE type='trigger' AND name='cleanup_observation_no_update'", [], |r| r.get::<_, i64>(0)).is_ok());
 }

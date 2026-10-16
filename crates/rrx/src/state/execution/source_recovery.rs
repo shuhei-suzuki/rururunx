@@ -591,7 +591,7 @@ mod tests {
             [Uuid::new_v4().to_string()],
         )
         .unwrap();
-        for table in MUTABLE_TABLES.iter().filter(|t| {
+        for table in M11_TABLES.iter().filter(|t| {
             !crate::state::runtime::TABLES.contains(t)
                 && !crate::state::managed_binding::TABLES.contains(t)
                 && !matches!(
@@ -630,7 +630,7 @@ mod tests {
                 .to_string()
                 .contains("incompatible rrx writer contract")
         );
-        for table in MUTABLE_TABLES {
+        for table in mutable_tables(SCHEMA_VERSION) {
             for action in ["INSERT", "UPDATE", "DELETE"] {
                 let sql: String = current
                     .connection

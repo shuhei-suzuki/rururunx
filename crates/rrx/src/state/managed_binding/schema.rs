@@ -157,7 +157,7 @@ fn validate_actual9(c: &Connection) -> Result<()> {
         [],
         |r| r.get(0),
     )?;
-    let expected_writers = 3 * crate::state::execution::MUTABLE_TABLES
+    let expected_writers = 3 * crate::state::execution::M11_TABLES
         .iter()
         .filter(|t| !TABLES.contains(t))
         .count() as i64;
@@ -187,7 +187,7 @@ fn validate_actual9(c: &Connection) -> Result<()> {
             .with_context(|| format!("actual9 object unavailable: {name}"))?;
         ensure!(actual == (kind, sql), "actual9 SQL layout differs: {name}");
     }
-    for table in crate::state::execution::MUTABLE_TABLES
+    for table in crate::state::execution::M11_TABLES
         .iter()
         .filter(|t| !TABLES.contains(t))
     {
@@ -254,6 +254,9 @@ pub(in crate::state) fn validate_current_layout(c: &Connection) -> Result<()> {
 pub(in crate::state) fn validate_exact_v10_layout(c: &Connection) -> Result<()> {
     validate_layout(c, crate::state::BINDING_LAYOUT_VERSION)
 }
+pub(in crate::state) fn validate_exact_v11_layout(c: &Connection) -> Result<()> {
+    validate_layout(c, 11)
+}
 fn validate_layout(c: &Connection, version: i64) -> Result<()> {
     // Bound/read the selected snapshot FIRST, before creating the reference.
     let actual = catalog(c)?;
@@ -265,11 +268,13 @@ fn validate_layout(c: &Connection, version: i64) -> Result<()> {
     install_schema(&tx)?;
     crate::state::execution::install_schema(&tx)?;
     install_retained_guards(&tx)?;
-    if version == SCHEMA_VERSION {
+    if version >= 11 {
         crate::state::install_read_indexes(&tx)?;
-    } else {
-        crate::state::execution::install_writer_guards_at(&tx, version)?;
     }
+    if version >= 12 {
+        crate::state::startup::install_schema(&tx)?;
+    }
+    crate::state::execution::install_writer_guards_at(&tx, version)?;
     let expected = catalog(&tx)?;
     ensure!(
         actual == expected,

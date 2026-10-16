@@ -29,10 +29,7 @@ fn old9(path: &Path) -> Connection {
         [uuid::Uuid::new_v4().to_string()],
     )
     .unwrap();
-    for table in execution::MUTABLE_TABLES
-        .iter()
-        .filter(|t| !TABLES.contains(t))
-    {
+    for table in execution::M11_TABLES.iter().filter(|t| !TABLES.contains(t)) {
         for action in ["INSERT", "UPDATE", "DELETE"] {
             c.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>9 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
         }
@@ -315,7 +312,7 @@ fn actual9_to10_fences_preopened_cached_all_table_writers_and_reopens() {
         .unwrap();
     assert_eq!(indexed, 1);
     assert!(cached.execute([]).is_err());
-    for table in execution::MUTABLE_TABLES {
+    for table in execution::mutable_tables(SCHEMA_VERSION) {
         for action in ["INSERT", "UPDATE", "DELETE"] {
             let sql: String = s
                 .connection

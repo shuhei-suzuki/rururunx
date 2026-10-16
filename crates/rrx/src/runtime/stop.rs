@@ -1,4 +1,4 @@
-//! Typed "remains pending" shutdown outcomes. Only the six classified pending
+//! Typed "remains pending" shutdown outcomes. Only the seven classified pending
 //! exits construct the marker; poison and every other error stay unmarked.
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,8 @@ pub enum ShutdownSite {
     AcceptedOriginals,
     /// P5: retained Native jobs.
     NativeJobs,
+    /// P7: startup probe task join or leader reap remains pending.
+    StartupProbes,
     /// P6: retained Source handoffs.
     SourceHandoffs,
 }
@@ -35,6 +37,7 @@ impl ShutdownPending {
 impl std::fmt::Display for ShutdownPending {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self.site {
+            ShutdownSite::StartupProbes => "Runtime startup probes remain pending",
             ShutdownSite::Admission => "Runtime control admission shutdown remains pending",
             ShutdownSite::SupervisorJoin => "Runtime control loop shutdown remains pending",
             ShutdownSite::DriverPoll => "Task Driver shutdown remains pending with owned handles",

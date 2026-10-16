@@ -9,7 +9,7 @@ use crate::runtime::{
     control::{ControlAction, ControlRequest, ControlResponse},
     stop::ShutdownSite,
 };
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use serde::Serialize;
 use std::{
     ffi::OsString,
@@ -240,8 +240,20 @@ async fn runtime_status(
             epoch,
             service_running,
             operational,
+            startup,
             ..
         } if instance == identity.instance && epoch == identity.epoch => {
+            // A startup observation cannot promote the daemon to operational.
+            ensure!(
+                !operational
+                    || !matches!(
+                        startup.state,
+                        crate::runtime::startup::StartupState::Pending
+                            | crate::runtime::startup::StartupState::Refused
+                            | crate::runtime::startup::StartupState::Unknown
+                    ),
+                "inconsistent startup status"
+            );
             Ok((service_running, operational))
         }
         _ => anyhow::bail!("unexpected Runtime status response"),

@@ -18,6 +18,7 @@ pub(crate) use phase_jobs::{
 };
 pub(crate) mod phase_supervisor;
 mod service;
+pub mod startup;
 pub mod stop;
 mod task_driver;
 use crate::{cli::transport::ServiceIdentity, config::Config, execution::RuntimeOwner};
@@ -29,6 +30,7 @@ use std::sync::{
 
 pub struct Runtime {
     owner: Arc<RuntimeOwner>,
+    startup: Arc<startup::Startup>,
     config: Config,
     _drivers: Arc<driver::DriverRegistry>,
     phases: Arc<phase_supervisor::PhaseSupervisor>,
@@ -84,9 +86,14 @@ impl Runtime {
             running.clone(),
             stopping.clone(),
         );
-        let installed = installation::InstalledNativeGraph::new(owner.clone(), &config);
+        let installed = crate::execution::claude_wire::decoder_selfcheck()
+            .map_err(|_| installation::InstallationRefusal::DecoderSelfcheck)
+            .and_then(|checked| {
+                installation::InstalledNativeGraph::new(owner.clone(), &config, checked)
+            });
         Ok(Self {
             installed,
+            startup: startup::Startup::new(owner.clone()),
             admission_capability_refusal: std::sync::Mutex::new(None),
             admission_cursor: std::sync::Mutex::new(None),
             owner,
@@ -151,6 +158,7 @@ struct GoalAdmissionPause {
 impl Drop for Runtime {
     fn drop(&mut self) {
         self.stopping.store(true, Ordering::SeqCst);
+        self.startup.revoke();
         self._drivers.stop_all();
         self.wake.notify_waiters();
     }

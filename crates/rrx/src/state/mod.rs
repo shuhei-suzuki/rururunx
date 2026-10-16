@@ -8,6 +8,7 @@ mod read_index_tests;
 mod runtime;
 #[cfg(test)]
 mod sqlite_build_tests;
+pub(crate) mod startup;
 pub(crate) use environment::EnvironmentAdmission;
 pub use runtime::driver::ProjectLimitUnsupported;
 pub(crate) use runtime::driver::{
@@ -29,7 +30,7 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 11;
+pub const SCHEMA_VERSION: i64 = 12;
 /// The managed-binding layout was introduced at 10 and is unchanged at 11.
 pub(crate) const BINDING_LAYOUT_VERSION: i64 = 10;
 pub(crate) use execution::source_recovery::SourceReadBinding;
@@ -227,6 +228,8 @@ impl Store {
                 runtime::install_schema(&tx)?;
                 managed_binding::install_schema(&tx)?;
                 execution::install_schema(&tx)?;
+                startup::install_schema(&tx)?;
+                execution::install_writer_guards(&tx)?;
                 install_read_indexes(&tx)?;
                 tx.pragma_update(None, "application_id", APPLICATION_ID)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -238,12 +241,21 @@ impl Store {
                     tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
                 ensure!(application == APPLICATION_ID, "not an rrx state database");
                 managed_binding::validate_exact_v10_layout(&tx)?;
+                startup::install_schema(&tx)?;
                 install_read_indexes(&tx)?;
+                execution::install_writer_guards(&tx)?;
+                tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            } else if locked_version == 11 {
+                let application: i64 =
+                    tx.pragma_query_value(None, "application_id", |r| r.get(0))?;
+                ensure!(application == APPLICATION_ID, "not an rrx state database");
+                managed_binding::validate_exact_v11_layout(&tx)?;
+                startup::install_schema(&tx)?;
                 execution::install_writer_guards(&tx)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else {
                 ensure!(
-                    (1..=SCHEMA_VERSION).contains(&locked_version),
+                    (1..=9).contains(&locked_version),
                     "unsupported state schema {locked_version}"
                 );
                 let application: i64 =
@@ -271,19 +283,24 @@ impl Store {
                 for next in (locked_version + 1)..=SCHEMA_VERSION {
                     if next == 4 {
                         execution::install_schema(&tx)?;
+                        execution::install_pre_startup_writer_guards(&tx)?;
                     }
                     if next == 5 {
                         // The ordered upgrade is one atomic transaction. Prepare
                         // the new tables before installing this binary's guards;
                         // no intermediate schema5+native layout is published.
                         execution::native_results::install_schema(&tx)?;
-                        execution::install_writer_guards(&tx)?;
+                        execution::install_pre_startup_writer_guards(&tx)?;
                     }
                     if next == 6 {
                         execution::native_results::install_schema(&tx)?;
-                        execution::install_writer_guards(&tx)?;
+                        execution::install_pre_startup_writer_guards(&tx)?;
                     }
                     if matches!(next, 7..=11) {
+                        execution::install_pre_startup_writer_guards(&tx)?;
+                    }
+                    if next == 12 {
+                        startup::install_schema(&tx)?;
                         execution::install_writer_guards(&tx)?;
                     }
                     if next == 11 {

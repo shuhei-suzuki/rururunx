@@ -132,6 +132,8 @@ fn genuine_v10(path: &Path) {
     }
     let c = contract_writer(path, SCHEMA_VERSION);
     c.execute_batch("DROP INDEX goals_by_project").unwrap();
+    c.execute_batch("DROP TABLE runtime_startup_probes")
+        .unwrap();
     for (name, sql) in writer_guards(&c) {
         assert!(sql.contains(&format!("<>{SCHEMA_VERSION}")), "{name}");
         c.execute_batch(&format!(
@@ -150,15 +152,13 @@ fn fresh_schema_11_has_the_read_index_and_seek_plans() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("state.db");
     let store = Store::open(&path).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 11);
+    assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
     assert!(index_present(&store.connection));
     managed_binding::validate_current_layout(&store.connection).unwrap();
     assert_seeks(&store.connection);
 }
 
-/// R11(3)/(5) / R5'(2): a genuine v10 migrates to 11 with every row
-/// unchanged, gains exactly the index and the v11 guards, then refuses a
-/// contract-10 writer; the migrated database seeks the index too.
+/// MP-1 preserves genuine v10 rows, adds the current startup/index layout and refuses old writers.
 #[test]
 fn genuine_v10_migrates_to_11_adding_only_the_index_and_guards() {
     let dir = tempfile::tempdir().unwrap();
@@ -174,12 +174,17 @@ fn genuine_v10_migrates_to_11_adding_only_the_index_and_guards() {
     assert_seeks(&store.connection);
     drop(store);
     let after = fingerprint(&path);
-    // Rows are identical; the catalog differs only by the index, the
-    // re-created writer guards and the version.
+    // Retained rows/objects are identical; additions belong only to the
+    // startup table (with its PK index), read index and writer contract.
     let rows = |f: &[String]| -> Vec<String> {
         f.iter()
             .filter(|l| !l.starts_with("trigger|writer_") && !l.starts_with("user_version"))
             .filter(|l| !l.starts_with("index|goals_by_project"))
+            .filter(|l| {
+                !l.starts_with("index|sqlite_autoindex_runtime_startup_probes_")
+                    && !l.starts_with("table|runtime_startup_probes")
+                    && !l.starts_with("runtime_startup_probes:")
+            })
             .cloned()
             .collect()
     };
@@ -196,7 +201,10 @@ fn genuine_v10_migrates_to_11_adding_only_the_index_and_guards() {
             .is_err()
     );
     let tables: usize = writer_guards(&old).len();
-    assert_eq!(tables, 3 * execution::MUTABLE_TABLES.len());
+    assert_eq!(
+        tables,
+        3 * execution::mutable_tables(SCHEMA_VERSION).count()
+    );
 }
 
 /// One labelled change to a genuine v10 copy.

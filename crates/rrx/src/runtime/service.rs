@@ -66,6 +66,16 @@ impl Runtime {
             slot.is_none() && !self.started.swap(true, Ordering::SeqCst),
             "Runtime already started"
         );
+        let startup_release = self
+            .startup
+            .register(
+                self.config.clone(),
+                self.installed
+                    .as_ref()
+                    .ok()
+                    .and_then(|graph| graph.startup_inputs(&self.config).ok()),
+            )
+            .await;
         let retained = Arc::downgrade(self);
         let running = self.running.clone();
         running.store(true, Ordering::SeqCst);
@@ -160,6 +170,9 @@ impl Runtime {
                 sequence = 0;
             }
         }));
+        drop(slot);
+        drop(_admission);
+        let _ = startup_release.send(());
         Ok(())
     }
     /// Cooperative shutdown retains the JoinHandle on timeout/caller Drop.
@@ -171,6 +184,7 @@ impl Runtime {
                 .await
                 .map_err(|_| ShutdownPending::at(ShutdownSite::Admission))?;
         self.stopping.store(true, Ordering::SeqCst);
+        self.startup.revoke();
         self._drivers.stop_all();
         self.phases.close_unmarked();
         self.wake.notify_one();
@@ -193,6 +207,7 @@ impl Runtime {
             );
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
+        self.startup.shutdown().await?;
         self.phases.ensure_accepted_shutdown_complete()?;
         self.phase_jobs.ensure_shutdown_complete()?;
         self.phase_handoffs.ensure_shutdown_complete()?;

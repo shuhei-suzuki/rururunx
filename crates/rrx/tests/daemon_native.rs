@@ -546,3 +546,40 @@ async fn c_s1a_daemon_survives_invoker_group_and_terminal() {
     assert_eq!(lane.daemon("status")["identity"], identity);
     lane.stop().await;
 }
+
+/// C-1 detached startup observations remain nongrant even after the S task ends.
+#[tokio::test]
+async fn u3_detached_daemon_exposes_startup_without_native_admission() {
+    let mut lane = Lane::new("codex-cli 0.160.0");
+    lane.run_daemon();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let response = client::request(&lane.state, ControlAction::RuntimeStatus)
+            .await
+            .unwrap();
+        let ControlResponse::RuntimeMetadata {
+            startup,
+            operational,
+            ..
+        } = response
+        else {
+            panic!("C-1: metadata absent")
+        };
+        assert!(!operational);
+        if startup.state == rrx::runtime::startup::StartupState::Refused {
+            assert!(!startup.aliases.is_empty());
+            break;
+        }
+        assert!(Instant::now() < deadline, "C-1: startup did not settle");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    for table in [
+        "task_drivers",
+        "execution_units",
+        "native_invocations",
+        "quota_leases",
+    ] {
+        assert_eq!(lane.count(table), 0, "AC-08: {table} effect during S");
+    }
+    lane.stop().await;
+}

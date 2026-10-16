@@ -77,8 +77,21 @@ async fn goal_refuses_claude_provider_before_save_and_accepts_same_alias_as_revi
     };
     f.runtime.start().await.unwrap();
     let guard = f.runtime.control_admission.lock().await;
-    // Reviewer acceptance is tested by the real composition, not only parsing.
-    assert!(f.runtime.installed_driver_composition(&task).is_ok());
+    // U3 retains provider acceptance while the new S boundary closes composition.
+    let graph = f.runtime.installed.as_ref().ok().unwrap();
+    for alias in &task.reviewers {
+        assert_eq!(
+            graph.registry.native_phase_port(alias).unwrap().provider(),
+            "claude"
+        );
+    }
+    let refusal = f
+        .runtime
+        .installed_driver_composition(&task)
+        .err()
+        .expect("U3 composition bypassed startup gate");
+    assert!(refusal.to_string().contains("startup"));
+    assert!(refusal.downcast_ref::<CapabilityRefusal>().is_none());
     let response = f
         .runtime
         .handle_control(&f.socket, f.request(ControlAction::RuntimeStatus))
@@ -194,7 +207,7 @@ async fn saved_task_removed_executor_alias_is_not_a_capability_refusal() {
         .evaluate_driver_candidate(&guard, &keys[0])
         .unwrap();
     assert!(
-        matches!(&result, AdmitOutcome::Skipped(reason) if !matches!(reason, SkipReason::Capability(_))),
+        matches!(&result, AdmitOutcome::Skipped(SkipReason::Composition)),
         "unexpected candidate result: {result:?}"
     );
     drop(guard);

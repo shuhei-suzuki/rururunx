@@ -4,7 +4,8 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 mod decoded;
-pub(super) use decoded::{ValidatedClaudeFrame, ValidatedClaudeResult, decoder_selfcheck};
+pub(crate) use decoded::{DecoderChecked, decoder_selfcheck};
+pub(super) use decoded::{ValidatedClaudeFrame, ValidatedClaudeResult};
 
 pub(super) fn failure(kind: ErrorKind, message: impl Into<String>) -> AdapterError {
     AdapterError {
@@ -532,3 +533,108 @@ fn capacity_text(text: &str) -> bool {
 }
 #[cfg(test)]
 mod tests;
+
+/// S-3 uses the same strict decoder and correlation as the Reviewer bootstrap.
+/// It never sends user/permission messages or creates a Session authority.
+pub(crate) struct StartupClaude<'a> {
+    checked: &'a DecoderChecked,
+    state: RunState,
+    native: String,
+    request: String,
+    initialized: bool,
+}
+impl<'a> StartupClaude<'a> {
+    pub(crate) fn new(checked: &'a DecoderChecked, native: String, request: String) -> Self {
+        Self {
+            checked,
+            state: RunState::default(),
+            native,
+            request,
+            initialized: false,
+        }
+    }
+    pub(crate) fn request(&self) -> Value {
+        control("initialize", &self.request)
+    }
+    pub(crate) fn observe(&mut self, bytes: &[u8]) -> AdapterResult<bool> {
+        let frame = ValidatedClaudeFrame::decode_bytes(bytes, self.checked)?;
+        let raw = frame.raw();
+        if !self.initialized && raw["type"] == "control_response" {
+            self.state
+                .initialize_response(&frame, &self.native, &self.request)?;
+            self.initialized = true;
+        } else {
+            // Full identical UUID redelivery is allowed, altered bytes are not.
+            if !self.state.remember(&frame)? {
+                return Ok(self.initialized);
+            }
+            let allowed = match raw["type"].as_str() {
+                Some("rate_limit_event") => frame.rate().is_some_and(|r| !r.rejected),
+                Some("auth_status") => {
+                    raw.get("error").is_none() && raw["isAuthenticating"] == false
+                }
+                Some("stream_event") => {
+                    matches!(raw["event"]["type"].as_str(), Some("ping" | "message_stop"))
+                }
+                Some("system") => {
+                    raw["subtype"] == "session_state_changed" && raw["state"] == "idle"
+                }
+                _ => false,
+            };
+            if !allowed {
+                return Err(failure(
+                    ErrorKind::ParseFailure,
+                    "startup frame or tail refused",
+                ));
+            }
+        }
+        Ok(self.initialized)
+    }
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+    /// S-3 accepts only a correlated initialize and finite strict-valid tail.
+    #[test]
+    fn s3_reviewer_initialize_correlation_and_tail_are_required() {
+        let checked = decoder_selfcheck().unwrap();
+        let response = json!({"type":"control_response","response":{"request_id":"request","subtype":"success","response":{}}});
+        for bad in [
+            json!({"type":"control_response","response":{"request_id":"other","subtype":"success","response":{}}}),
+            json!({"type":"control_response","response":{"subtype":"success","response":{}}}),
+            json!({"type":"control_response","response":{"request_id":"request","subtype":"error","error":"no"}}),
+        ] {
+            let mut state = StartupClaude::new(&checked, "session".into(), "request".into());
+            assert!(
+                state.observe(&serde_json::to_vec(&bad).unwrap()).is_err(),
+                "S-3: uncorrelated/error initialize accepted"
+            );
+        }
+        let mut state = StartupClaude::new(&checked, "session".into(), "request".into());
+        assert!(
+            state
+                .observe(&serde_json::to_vec(&response).unwrap())
+                .unwrap(),
+            "S-3: correlated initialize absent"
+        );
+        for tail in [
+            json!({"type":"auth_status","isAuthenticating":false,"output":[]}),
+            json!({"type":"stream_event","event":{"type":"ping"}}),
+            json!({"type":"system","subtype":"session_state_changed","state":"idle"}),
+        ] {
+            assert!(state.observe(&serde_json::to_vec(&tail).unwrap()).unwrap());
+        }
+        for bad in [
+            response,
+            json!({"type":"auth_status","isAuthenticating":false,"output":[],"error":"failed"}),
+            json!({"type":"rate_limit_event","session_id":"session","rate_limit_info":{"rateLimitType":"five_hour","status":"rejected"}}),
+            json!({"type":"stream_event","event":{"type":"future"}}),
+        ] {
+            assert!(
+                state.observe(&serde_json::to_vec(&bad).unwrap()).is_err(),
+                "S-3: illegal tail accepted"
+            );
+        }
+    }
+}

@@ -673,7 +673,9 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
         None
     };
     let intent = helper.state().intent.clone();
-    if let (Some((mut out, mut err)), Some(intent)) = (pipes, intent) {
+    if let (Some(pipes), Some(intent)) = (pipes, intent) {
+        pipes.stdin.lock().await.take();
+        let (mut out, mut err) = (pipes.stdout, pipes.stderr);
         let mut out_open = true;
         let mut err_open = true;
         let mut out_buffer = [0u8; 4096];

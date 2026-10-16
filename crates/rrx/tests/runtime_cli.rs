@@ -561,3 +561,130 @@ async fn actual_connection_limit_and_idle_shutdown_are_bounded() {
     );
     drop(held);
 }
+
+/// S-4/MP-1 forced daemon death leaves pending journal rows; the next epoch fences them unknown.
+#[tokio::test]
+async fn u3_forced_daemon_death_fences_startup_without_recovering_a_pass() {
+    use std::os::unix::fs::PermissionsExt;
+    let mut f = Fixture::new();
+    let peer = f.dir.path().join("startup-peer");
+    let ready = f.dir.path().join("startup-ready");
+    std::fs::write(
+        &peer,
+        format!(
+            r#"#!/usr/bin/python3
+import os,sys,time
+if sys.argv[1:] != ['--version']: sys.exit(1)
+parent=os.getppid()
+with open({:?},'w') as ready: ready.write('ready')
+while os.getppid() == parent: time.sleep(0.02)
+"#,
+            ready.to_str().unwrap()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&peer, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::write(
+        &f.config,
+        format!(
+            "[agents.worker]\nprovider='codex'\ncommand=[{:?}]\n",
+            peer.to_str().unwrap()
+        ),
+    )
+    .unwrap();
+    f.start().await;
+    let end = Instant::now() + Duration::from_secs(10);
+    while !ready.exists() {
+        assert!(Instant::now() < end, "S-4: Version child not reached");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let child = f.child.as_mut().unwrap();
+    child.kill().unwrap();
+    child.wait().unwrap();
+    f.child.take();
+    let read = rusqlite::Connection::open(&f.state).unwrap();
+    let pending: u64 = read
+        .query_row(
+            "SELECT count(*) FROM runtime_startup_probes WHERE state='pending'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(pending > 0, "S-4: forced death fabricated settlement");
+    drop(read);
+    f.start().await;
+    let response = client::request(&f.state, ControlAction::RuntimeStatus)
+        .await
+        .unwrap();
+    let ControlResponse::RuntimeMetadata {
+        startup,
+        operational,
+        ..
+    } = response
+    else {
+        panic!("C-1: startup metadata absent")
+    };
+    assert!(!operational);
+    assert_eq!(
+        startup.old_epoch_unknown, pending,
+        "MP-1: old pending did not fence unknown"
+    );
+    assert_ne!(
+        startup.state,
+        rrx::runtime::startup::StartupState::NotStarted
+    );
+    f.stop().await;
+}
+
+/// MP-2 creates private components atomically even when a separate daemon inherits umask 000.
+#[tokio::test]
+async fn u3_private_startup_directories_are_private_under_umask_zero() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let mut f = Fixture::new();
+    let root = f.dir.path().join("state.db.execution");
+    std::fs::create_dir(&root).unwrap();
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let base = f.command();
+    let mut shell = Command::new("/bin/sh");
+    shell
+        .args(["-c", "umask 000; exec \"$@\"", "rrx-u3-umask"])
+        .arg(base.get_program())
+        .args(base.get_args())
+        .arg("serve")
+        .current_dir(f.dir.path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    f.child = Some(rrx_spawn_hygiene::spawn_std(shell).unwrap());
+    let end = Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Ok(ControlResponse::RuntimeMetadata { startup, .. }) =
+            client::request(&f.state, ControlAction::RuntimeStatus).await
+            && matches!(startup.state, rrx::runtime::startup::StartupState::Refused)
+        {
+            break;
+        }
+        assert!(Instant::now() < end, "MP-2: startup did not settle");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let startup = root.join("startup");
+    assert_eq!(
+        startup.metadata().unwrap().mode() & 0o777,
+        0o700,
+        "MP-2: startup became public under umask000"
+    );
+    let epochs = std::fs::read_dir(&startup)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(epochs.len(), 1);
+    let epoch = epochs[0].path();
+    assert_eq!(epoch.metadata().unwrap().mode() & 0o777, 0o700);
+    let aliases = std::fs::read_dir(epoch)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(aliases.len(), 1);
+    assert_eq!(aliases[0].metadata().unwrap().mode() & 0o777, 0o700);
+    assert_eq!(root.metadata().unwrap().mode() & 0o777, 0o755);
+    f.stop().await;
+}

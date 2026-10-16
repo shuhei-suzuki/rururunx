@@ -590,7 +590,7 @@ fn stream_usage(value: &Value, numbers: &Value, input: bool) -> AdapterResult<()
 /// valid empty observation, distinct from malformed and never-observed.
 pub(in crate::execution) struct ValidatedRate {
     bucket: String,
-    rejected: bool,
+    pub(super) rejected: bool,
     reset_ms: Presence<i64>,
     utilization: Presence<f64>,
 }
@@ -661,10 +661,10 @@ fn rejected_rate() -> crate::adapter::AdapterError {
 
 /// Nongrant evidence from the pure decoder, not evidence of a live event or
 /// installation/startup qualification. Future S must require this same value.
-pub(in crate::execution) struct DecoderChecked {
+pub(crate) struct DecoderChecked {
     _private: (),
 }
-pub(in crate::execution) fn decoder_selfcheck() -> AdapterResult<DecoderChecked> {
+pub(crate) fn decoder_selfcheck() -> AdapterResult<DecoderChecked> {
     // These are literal contract vectors, independent of observed CLI output.
     // Check both acceptance and rejection; silently dropping malformed to None
     // cannot produce the checked value.
@@ -714,6 +714,34 @@ pub(in crate::execution) fn decoder_selfcheck() -> AdapterResult<DecoderChecked>
     if nonrate.rate().is_some() {
         return Err(rejected());
     }
+    for bucket in [
+        "five_hour",
+        "seven_day",
+        "seven_day_opus",
+        "seven_day_sonnet",
+        "seven_day_overage_included",
+    ] {
+        for status in ["allowed", "allowed_warning", "rejected"] {
+            for optional in [
+                json!({}),
+                json!({"resetsAt":null,"utilization":null}),
+                json!({"resetsAt":123,"utilization":0.5}),
+            ] {
+                let mut info = json!({"rateLimitType":bucket,"status":status});
+                info.as_object_mut()
+                    .ok_or_else(rejected)?
+                    .extend(optional.as_object().ok_or_else(rejected)?.clone());
+                let frame = ValidatedClaudeFrame::decode_contract(
+                    json!({"type":"rate_limit_event","session_id":"selfcheck","rate_limit_info":info}),
+                )?;
+                let rate = frame.rate().ok_or_else(rejected)?;
+                if rate.rejected != (status == "rejected") {
+                    return Err(rejected());
+                }
+            }
+        }
+    }
+    crate::execution::quota::rate_selfcheck().map_err(|_| rejected())?;
     Ok(DecoderChecked { _private: () })
 }
 

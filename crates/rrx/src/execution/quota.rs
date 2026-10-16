@@ -83,72 +83,155 @@ impl QuotaScheduler {
     }
 }
 
-/// Shapes pinned against `codex-cli 0.160.0 app-server generate-json-schema --experimental`.
-pub fn codex_windows(value: &Value, at: i64) -> Result<Vec<QuotaObservation>> {
-    let mut snapshots = Vec::new();
-    if let Some(all) = value.get("rateLimitsByLimitId").filter(|v| !v.is_null()) {
-        let map = all.as_object().context("invalid native quota bucket map")?;
-        ensure!(map.len() <= 32, "too many quota buckets");
-        for (key, snapshot) in map {
-            snapshots.push((key.as_str(), snapshot));
-        }
-    } else {
-        let snapshot = value
-            .get("rateLimits")
-            .context("missing native quota snapshot")?;
-        snapshots.push((snapshot["limitId"].as_str().unwrap_or("all"), snapshot));
-    }
-    let mut observations = Vec::new();
-    for (bucket, snapshot) in snapshots {
-        ensure!(
-            !bucket.is_empty() && bucket.len() <= 128 && snapshot.is_object(),
-            "invalid quota snapshot"
-        );
-        for window in ["primary", "secondary"] {
-            let Some(w) = snapshot.get(window).filter(|v| !v.is_null()) else {
-                continue;
-            };
-            let percent = w["usedPercent"]
-                .as_i64()
-                .context("native quota percentage missing")?;
+/// Typed R-1 rate evidence, shared by selfcheck and the existing quota consumer.
+/// Metadata-only/empty snapshots never invent a usable window.
+#[derive(Debug)]
+pub(crate) struct CodexRate {
+    snapshots: Vec<(String, RateSnapshot)>,
+    pub(crate) ordinary: RatePresence<bool>,
+}
+#[derive(Debug, PartialEq)]
+pub(crate) enum RatePresence<T> {
+    Absent,
+    Null,
+    Value(T),
+}
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RateSnapshot {
+    limit_id: Option<String>,
+    primary: Option<RateWindow>,
+    secondary: Option<RateWindow>,
+    rate_limit_reached_type: Option<ReachedKind>,
+    spend_control_reached: Option<bool>,
+}
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ReachedKind {
+    RateLimitReached,
+    WorkspaceOwnerCreditsDepleted,
+    WorkspaceMemberCreditsDepleted,
+    WorkspaceOwnerUsageLimitReached,
+    WorkspaceMemberUsageLimitReached,
+}
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RateWindow {
+    used_percent: i32,
+    resets_at: Option<i64>,
+    window_duration_mins: Option<i64>,
+}
+impl CodexRate {
+    pub(crate) fn decode(value: &Value) -> Result<Self> {
+        let envelope = value.as_object().context("invalid rate envelope")?;
+        let decode = |v: &Value| -> Result<RateSnapshot> {
+            let snapshot: RateSnapshot = serde_json::from_value(v.clone())?;
             ensure!(
-                i32::try_from(percent).is_ok(),
-                "native quota percentage is outside its int32 wire contract"
+                snapshot
+                    .limit_id
+                    .as_ref()
+                    .is_none_or(|id| !id.is_empty() && id.len() <= 128),
+                "invalid rate limit ID"
             );
-            let reset = match w.get("resetsAt") {
-                None | Some(Value::Null) => None,
-                Some(v) => Some(
-                    v.as_i64()
-                        .context("invalid native quota reset")?
-                        .checked_mul(1000)
-                        .context("quota reset overflow")?,
-                ),
-            };
-            let reached = snapshot["rateLimitReachedType"] == "rate_limit_reached";
-            observations.push(QuotaObservation {
-                provider: "codex".into(),
-                account_key: "unknown".into(),
-                bucket: format!("{bucket}/{window}"),
-                window_id: reset
-                    .map_or_else(|| format!("unknown-{bucket}-{window}"), |r| r.to_string()),
-                status: if reached || percent >= 100 {
-                    QuotaStatus::Exhausted
-                } else if percent < 0 {
-                    QuotaStatus::Unknown
-                } else {
-                    QuotaStatus::Available
-                },
-                // The wire schema has no 0..100 constraint. Keep an out-of-range
-                // fraction unknown rather than fabricating or clamping capacity.
-                used_percent: (0..=100).contains(&percent).then_some(percent as f64),
-                resets_at: reset,
-                observed_at: at,
-                source_version: "codex-cli 0.160.0/account.rateLimits".into(),
-                confirmed_subscription: reached || percent >= 100,
-            });
-        }
+            for w in [&snapshot.primary, &snapshot.secondary]
+                .into_iter()
+                .flatten()
+            {
+                if let Some(reset) = w.resets_at {
+                    reset.checked_mul(1000).context("quota reset overflow")?;
+                }
+                // Parsed as int64 even though duration is not used for admission.
+                let _ = w.window_duration_mins;
+            }
+            Ok(snapshot)
+        };
+        let fallback = decode(
+            envelope
+                .get("rateLimits")
+                .context("missing native quota snapshot")?,
+        )?;
+        let ordinary = match envelope.get("ordinaryUsageAllowed") {
+            None => RatePresence::Absent,
+            Some(Value::Null) => RatePresence::Null,
+            Some(v) => RatePresence::Value(v.as_bool().context("invalid ordinary usage flag")?),
+        };
+        let snapshots = match envelope.get("rateLimitsByLimitId") {
+            None | Some(Value::Null) => vec![(
+                fallback.limit_id.clone().unwrap_or_else(|| "all".into()),
+                fallback,
+            )],
+            Some(v) => {
+                let map = v.as_object().context("invalid native quota bucket map")?;
+                ensure!(map.len() <= 32, "too many quota buckets");
+                map.iter()
+                    .map(|(key, v)| {
+                        ensure!(
+                            !key.is_empty() && key.len() <= 128,
+                            "invalid quota bucket key"
+                        );
+                        Ok((key.clone(), decode(v)?))
+                    })
+                    .collect::<Result<Vec<_>>>()?
+            }
+        };
+        Ok(Self {
+            snapshots,
+            ordinary,
+        })
     }
-    Ok(observations)
+    pub(crate) fn observations(&self, at: i64) -> Vec<QuotaObservation> {
+        // Presence is metadata only, never an availability/admission override.
+        let _ = &self.ordinary;
+        let mut observations = Vec::new();
+        for (bucket, snapshot) in &self.snapshots {
+            for (window, w) in [
+                ("primary", &snapshot.primary),
+                ("secondary", &snapshot.secondary),
+            ] {
+                let Some(w) = w else { continue };
+                let percent = w.used_percent;
+                let reset = w.resets_at.map(|r| r * 1000);
+                let exhausted = percent >= 100
+                    || matches!(
+                        snapshot.rate_limit_reached_type,
+                        Some(ReachedKind::RateLimitReached)
+                    );
+                let credit = snapshot.spend_control_reached == Some(true)
+                    || matches!(
+                        snapshot.rate_limit_reached_type,
+                        Some(
+                            ReachedKind::WorkspaceOwnerCreditsDepleted
+                                | ReachedKind::WorkspaceMemberCreditsDepleted
+                                | ReachedKind::WorkspaceOwnerUsageLimitReached
+                                | ReachedKind::WorkspaceMemberUsageLimitReached
+                        )
+                    );
+                observations.push(QuotaObservation {
+                    provider: "codex".into(),
+                    account_key: "unknown".into(),
+                    bucket: format!("{bucket}/{window}"),
+                    window_id: reset
+                        .map_or_else(|| format!("unknown-{bucket}-{window}"), |r| r.to_string()),
+                    status: if exhausted {
+                        QuotaStatus::Exhausted
+                    } else if credit || percent < 0 {
+                        QuotaStatus::Unknown
+                    } else {
+                        QuotaStatus::Available
+                    },
+                    used_percent: (0..=100).contains(&percent).then_some(f64::from(percent)),
+                    resets_at: reset,
+                    observed_at: at,
+                    source_version: "codex/account.rateLimits".into(),
+                    confirmed_subscription: exhausted,
+                });
+            }
+        }
+        observations
+    }
+}
+pub fn codex_windows(value: &Value, at: i64) -> Result<Vec<QuotaObservation>> {
+    Ok(CodexRate::decode(value)?.observations(at))
 }
 pub fn codex_subscription_error(error: &Value) -> bool {
     error["codexErrorInfo"] == "usageLimitExceeded"
@@ -179,6 +262,70 @@ pub fn claude_window(value: &Value, at: i64) -> Result<Option<QuotaObservation>>
     Ok(frame.rate().map(|rate| rate.observation(at)))
 }
 
+pub(crate) fn rate_selfcheck() -> Result<()> {
+    use serde_json::json;
+    for value in [
+        json!({"rateLimits":{}}),
+        json!({"rateLimits":{"primary":null,"secondary":null}}),
+        json!({"rateLimits":{},"rateLimitsByLimitId":{}}),
+    ] {
+        ensure!(
+            CodexRate::decode(&value)?.observations(0).is_empty(),
+            "empty rate invented windows"
+        );
+    }
+    for reached in [
+        "workspace_owner_credits_depleted",
+        "workspace_member_credits_depleted",
+        "workspace_owner_usage_limit_reached",
+        "workspace_member_usage_limit_reached",
+    ] {
+        let r = CodexRate::decode(
+            &json!({"rateLimits":{"primary":{"usedPercent":2},"rateLimitReachedType":reached}}),
+        )?;
+        ensure!(
+            r.observations(0)[0].status == QuotaStatus::Unknown,
+            "credits became available"
+        );
+    }
+    for invalid in [
+        json!({}),
+        json!({"rateLimits":null}),
+        json!({"rateLimits":{"limitId":1}}),
+        json!({"rateLimits":{"rateLimitReachedType":"future"}}),
+        json!({"rateLimits":{"spendControlReached":1}}),
+        json!({"rateLimits":{"primary":{"usedPercent":2147483648_i64}}}),
+        json!({"rateLimits":{"primary":{"usedPercent":2,"resetsAt":i64::MAX}}}),
+        json!({"rateLimits":{},"ordinaryUsageAllowed":1}),
+        json!({"rateLimits":{},"rateLimitsByLimitId":{"x":null}}),
+        json!({"rateLimits":{"primary":false},"rateLimitsByLimitId":{}}),
+    ] {
+        ensure!(
+            CodexRate::decode(&invalid).is_err(),
+            "malformed rate accepted"
+        );
+    }
+    // The flags are structurally distinct but never authorize ordinary usage.
+    for (v, p) in [
+        (json!({"rateLimits":{}}), RatePresence::Absent),
+        (
+            json!({"rateLimits":{},"ordinaryUsageAllowed":null}),
+            RatePresence::Null,
+        ),
+        (
+            json!({"rateLimits":{},"ordinaryUsageAllowed":false}),
+            RatePresence::Value(false),
+        ),
+        (
+            json!({"rateLimits":{},"ordinaryUsageAllowed":true}),
+            RatePresence::Value(true),
+        ),
+    ] {
+        ensure!(CodexRate::decode(&v)?.ordinary == p, "rate presence lost");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,7 +350,7 @@ mod tests {
     }
     #[test]
     fn native_optional_windows_and_buckets_keep_unknown_fields_unknown() {
-        let values=codex_windows(&json!({"rateLimitsByLimitId":{"codex":{"primary":{"usedPercent":100,"resetsAt":123},"secondary":null},"review":{"primary":{"usedPercent":20},"secondary":null}}}),1).unwrap();
+        let values=codex_windows(&json!({"rateLimits":{},"rateLimitsByLimitId":{"codex":{"primary":{"usedPercent":100,"resetsAt":123},"secondary":null},"review":{"primary":{"usedPercent":20},"secondary":null}}}),1).unwrap();
         assert_eq!(values.len(), 2);
         assert_eq!(values[0].status, QuotaStatus::Exhausted);
         assert_eq!(values[0].resets_at, Some(123000));
@@ -221,5 +368,69 @@ mod tests {
         let c=claude_window(&json!({"type":"rate_limit_event","session_id":"native","rate_limit_info":{"status":"rejected","rateLimitType":"five_hour","resetsAt":123}}),1).unwrap().unwrap();
         assert_eq!(c.used_percent, None);
         assert_eq!(c.status, QuotaStatus::Exhausted);
+    }
+}
+
+#[cfg(test)]
+mod r1_tests {
+    use super::*;
+    use serde_json::json;
+    /// R-1 validates both snapshots before classifying windows and credit flags.
+    #[test]
+    fn typed_rate_selfcheck_and_live_consumer_share_classification() {
+        rate_selfcheck().unwrap();
+        let checked = super::super::claude_wire::decoder_selfcheck().unwrap();
+        let _ = checked;
+        for (reached, spend, percent, status) in [
+            (Value::Null, false, 20, QuotaStatus::Available),
+            (
+                json!("rate_limit_reached"),
+                false,
+                20,
+                QuotaStatus::Exhausted,
+            ),
+            (
+                json!("workspace_owner_credits_depleted"),
+                false,
+                20,
+                QuotaStatus::Unknown,
+            ),
+            (Value::Null, true, 20, QuotaStatus::Unknown),
+            (
+                json!("workspace_member_usage_limit_reached"),
+                true,
+                100,
+                QuotaStatus::Exhausted,
+            ),
+            (Value::Null, false, -1, QuotaStatus::Unknown),
+            (Value::Null, false, 101, QuotaStatus::Exhausted),
+        ] {
+            let value = json!({"rateLimits":{"primary":{"usedPercent":percent},"rateLimitReachedType":reached,"spendControlReached":spend}});
+            let observations = codex_windows(&value, 1).unwrap();
+            assert_eq!(
+                observations[0].status, status,
+                "R-1: quota classification differs"
+            );
+            assert_eq!(
+                observations[0].confirmed_subscription,
+                status == QuotaStatus::Exhausted
+            );
+        }
+        let mut map = serde_json::Map::new();
+        for i in 0..32 {
+            map.insert(format!("bucket-{i}"), json!({}));
+        }
+        let mut value = json!({"rateLimits":{},"rateLimitsByLimitId":map});
+        assert!(codex_windows(&value, 1).unwrap().is_empty());
+        value["rateLimitsByLimitId"]["extra"] = json!({});
+        assert!(codex_windows(&value, 1).is_err(), "R-1: map budget widened");
+        assert!(
+            codex_windows(
+                &json!({"rateLimits":{"primary":true},"rateLimitsByLimitId":{}}),
+                1
+            )
+            .is_err(),
+            "R-1: unselected malformed fallback hidden"
+        );
     }
 }

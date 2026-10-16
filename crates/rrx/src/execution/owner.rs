@@ -326,6 +326,10 @@ impl RuntimeOwner {
     pub fn state_path(&self) -> &Path {
         &self.state_path
     }
+    pub(crate) fn lock_identity(&self) -> Result<(u64, u64)> {
+        let m = self._lock.metadata()?;
+        Ok((m.dev(), m.ino()))
+    }
     pub fn state_root(&self) -> &Path {
         &self.root
     }
