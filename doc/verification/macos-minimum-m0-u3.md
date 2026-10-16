@@ -63,6 +63,29 @@ All 72 planned operators ran on the host at `535ce474` (`.rrx/u3/host/mut/index.
 | Killed at the intended assertion, restored run passes | 71 | Covers provider/config divergence, removed alias, the N-4 post-claim zero-effects boundary, selfcheck propagation, real Reviewer argv, initialize correlation, wire round trip, old-writer guards for schemas 4–11, CAS/body/alias/epoch/total/uncertain/prune budgets, path/lock inode and unsafe mode, byte/stderr/aggregate budgets, deadline renewal, panic/Drop/join/reap, forced-death fencing, F1–F3 and G1–G2. Operator 48 (`C1-old-hello-socket-accept`) is detected by the client's refusal deadline (`Elapsed`), not an equality assertion. |
 | Equivalent | 1 | Operator 36 widens only the Rust intent bound; the SQL `CHECK(length(CAST(body AS BLOB)) <= 4096)` still refuses a 4097-byte body. A supplemental mutant widening both (`36s`) fails `MP-1: intent body bound widened`; its restored run passes. |
 
+## Review round 1 corrections
+
+The initial review ran at `ae1a209a` in parallel: Sol (implementation diff) and Opus (security and contracts), both high. Every finding below was confirmed against the code. Each was fixed by the family that did not report it; the reporter re-reviews only the fix diff.
+
+| ID (reporter) | Severity | Defect | Fix (fixer, commit) |
+|---|---|---|---|
+| SEC-01 (Opus) | Medium | A later alias refused during planning left earlier aliases' committed intents `pending`, later fenced to permanent `unknown`, although they never spawned. | Every committed, unspawned intent is settled `confirmed` with a not-spawned observation through the exact CAS (Sol, `7970c9f0`). |
+| SEC-02 (Opus) | Low | An accepted intent could produce a settlement over 4096 bytes, so a spawned step could never settle. | Intent admission reserves the largest settlement within the unchanged 4096-byte bounds (Sol, `7970c9f0`). |
+| I4 = SEC-03 (both) | Medium / Low | Program identity hashed the whole file with blocking reads, without size bound, deadline or stop. | Regular files up to 512 MiB, opened non-blocking without following links, hashed off the async worker under the parent deadline and stop (Sol, `7970c9f0`; re-review by Opus). |
+| CON-04 (Opus) | Low | Stop and deadline before spawn were recorded as `Protocol` / `Budget`, and later steps were still attempted. | Typed `Stopped` / `Deadline`, and both halt later steps (Sol, `7970c9f0`). |
+| I1 (Sol) | Medium | Derived decoding accepted array-form rate snapshots and windows, producing Available quota from malformed evidence. | Snapshots and windows must be JSON objects and the reached type a string; also in the selfcheck (Opus, `6c5bcd1d`). |
+| I2 (Sol) | Medium | A byte-budget overflow broke out without drain or reap, so the result was always Unknown. | The group is signalled, then both pipes drain and the leader is reaped within the bounded windows; Known/Unknown follows the observation (Opus, `6c5bcd1d`). |
+| I3 (Sol) | Medium | Stop or deadline could pass between the last check and spawn. | Rechecked under the child slot lock that revoke takes, held through spawn/adopt, and again before the initialize write (Opus, `6c5bcd1d`). |
+| TST-05 (Opus) | Low | `u3_aggregate…` can fail only under parallel load. | Not changed (bound kept); recorded for a follow-up issue. |
+
+The part-B fixer's sandbox could not run Cargo; the orchestrator ran fmt (one line re-wrapped by rustfmt, no behaviour change) and clippy on the host before the commit.
+
+### Verification of the round 1 fixes
+
+At `6c5bcd1d`, clean tree before and after (`.rrx/u3/host/full3/`, `.rrx/u3/host/mut-r1/`): fmt, clippy and the bin build pass; lib 762 / 118 / 27 (nested child 43 / 1 / 1); every integration target and both helper crates pass except `daemon_native` 1 / 2 / 0. All 121 failures were rerun alone: three pass alone (two `adapter::git_owner` and `cli::endpoint::c_s1e2`, the parallel-only kinds seen at U2); the 118 that fail alone are exactly the earlier set less the fixed G1/G2 tests — 115 admission-0, two `daemon_native` admission-0 and the known bootstrap file-reader. No new alone failure.
+
+All 86 operators (the 72 above, 9 for part A, 5 for part B) were rerun: 85 are killed at the intended assertion with passing restored runs (`mut-r1/kill-reasons.tsv`); operator 36 remains equivalent as above.
+
 ## Harness notes and limits
 
 - A first full run hung for three hours: the library daemon controls executed a stale `target/debug/rrx` (protocol 4). The run script now builds the bin first. Separately, `cli::daemon::tests::c_s1b2_identity_match_refuses_a_replacement_epoch` hangs instead of failing when its setup panics while the paused start task is inside `block_in_place`; this predates U3 and is recorded for a follow-up.
