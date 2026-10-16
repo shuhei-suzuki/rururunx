@@ -688,14 +688,7 @@ mod tests {
         let state = dir.path().join("state.db");
         let owner = RuntimeOwner::open(&state).unwrap();
         let startup = Startup::new(owner.clone());
-        let mut observation = serde_json::to_value(probe::Observation::not_spawned(
-            StartupRefusal::CodexHandshakeUnavailable,
-        ))
-        .unwrap();
-        observation["known"] = json!(false);
-        observation["exit"] = json!(i32::MIN);
-        observation["bytes"] = json!(usize::MAX);
-        observation["version"] = json!("v".repeat(96));
+        let observation = serde_json::to_value(probe::Observation::reservation()).unwrap();
         let mut settled = json!({"model":"", "observation":observation});
         let remaining = 4096 - serde_json::to_vec(&settled).unwrap().len();
         settled["model"] = json!("m".repeat(remaining));

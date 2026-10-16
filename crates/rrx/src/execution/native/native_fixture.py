@@ -72,7 +72,12 @@ for line in sys.stdin:
         elif method == "account/read":
             result = {"requiresOpenaiAuth":True,"account": None if failure == "auth" else {"type": "apiKey" if failure == "api" else "chatgpt", "email":None,"planType": "pro"}}
         elif method == "environment/status":
-            result = {"status": "unsupported" if failure == "environment" else "ready"}
+            result = {"status": {
+                "environment": "disconnected",
+                "environment-pending": "pending",
+                "environment-unknown": "unknown",
+                "environment-malformed": "unsupported",
+            }.get(failure, "ready")}
         elif method == "account/rateLimits/read":
             result = {} if failure == "metadata" else {"rateLimits": {"limitId": "fixture", "primary": {"usedPercent": 20}, "secondary": None}}
             if failure == "metadata-malformed": result = {"rateLimits": None}

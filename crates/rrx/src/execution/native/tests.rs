@@ -1253,6 +1253,21 @@ async fn bootstrap_failure_categories_survive_without_retaining_native_error_pay
             Disposition::Refused,
         ),
         (
+            "environment-pending",
+            NativeFailure::UnsupportedCapability,
+            Disposition::Refused,
+        ),
+        (
+            "environment-unknown",
+            NativeFailure::UnsupportedCapability,
+            Disposition::Refused,
+        ),
+        (
+            "environment-malformed",
+            NativeFailure::ProtocolFailure,
+            Disposition::ProtocolError,
+        ),
+        (
             "rpc-unsupported",
             NativeFailure::UnsupportedCapability,
             Disposition::Refused,

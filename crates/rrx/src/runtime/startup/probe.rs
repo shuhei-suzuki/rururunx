@@ -164,10 +164,9 @@ pub(super) struct Observation {
     rate: Option<&'static str>,
 }
 impl Observation {
-    pub(super) fn validate_body(body: &Value) -> Result<()> {
-        // Every serialized field is at its largest possible representation:
-        // false, longest refusal, signed exit, usize bytes, and legal version.
-        let largest = Self {
+    /// A fieldwise upper envelope, including fields from separate probe steps.
+    pub(super) fn reservation() -> Self {
+        Self {
             known: false,
             pass: false,
             reason: Some(StartupRefusal::CodexHandshakeUnavailable),
@@ -183,7 +182,7 @@ impl Observation {
             version: Some("v".repeat(96)),
             schema: Some(Box::new(crate::execution::native::schema::Receipt {
                 pass: false,
-                reason: Some(crate::execution::native::schema::Reason::StrictMismatch),
+                reason: Some(crate::execution::native::schema::Reason::ServerRequestAdded),
                 kind: Some(crate::execution::native::schema::Mismatch::Constraint),
                 positions: vec!["p".repeat(96)],
                 tolerated_changes: usize::MAX,
@@ -192,9 +191,11 @@ impl Observation {
                 additions_sha256: "f".repeat(64),
             })),
             rate: Some("empty_valid"),
-        };
+        }
+    }
+    pub(super) fn validate_body(body: &Value) -> Result<()> {
         let mut settled = body.clone();
-        settled["observation"] = serde_json::to_value(largest)?;
+        settled["observation"] = serde_json::to_value(Self::reservation())?;
         ensure!(
             serde_json::to_vec(body)?.len() <= 4096 && serde_json::to_vec(&settled)?.len() <= 4096,
             "startup intent lacks settlement headroom"
@@ -706,6 +707,122 @@ pub(super) async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// The settlement reservation covers every probe field and finite refusal domain.
+    #[test]
+    fn settlement_reservation_covers_schema_and_handshake_fields() {
+        use crate::execution::native::schema::{self, Mismatch, Reason, Receipt};
+        fn covered(actual: &Value, reserved: &Value) {
+            if let (Some(actual), Some(reserved)) = (actual.as_object(), reserved.as_object()) {
+                for (key, value) in actual {
+                    covered(value, reserved.get(key).unwrap());
+                }
+            } else {
+                assert!(
+                    serde_json::to_vec(actual).unwrap().len()
+                        <= serde_json::to_vec(reserved).unwrap().len(),
+                    "unreserved field: {actual} exceeds {reserved}"
+                );
+            }
+        }
+        let reserved = serde_json::to_value(Observation::reservation()).unwrap();
+        let mut observed = Observation::not_spawned(StartupRefusal::Protocol);
+        observed.known = false;
+        observed.exit = Some(i32::MIN);
+        observed.bytes = usize::MAX;
+        for refusal in [
+            StartupRefusal::Installation,
+            StartupRefusal::PrivatePath,
+            StartupRefusal::ProgramIdentity,
+            StartupRefusal::Configuration,
+            StartupRefusal::Journal,
+            StartupRefusal::CodexSchemaUnavailable,
+            StartupRefusal::CodexHandshakeUnavailable,
+            StartupRefusal::Protocol,
+            StartupRefusal::Stopped,
+            StartupRefusal::Budget,
+            StartupRefusal::Deadline,
+            StartupRefusal::UnitUnavailable,
+        ] {
+            observed.reason = Some(refusal);
+            covered(&serde_json::to_value(&observed).unwrap(), &reserved);
+        }
+        for bytes in [vec![b'v'; 96], vec![b'!'; 256]] {
+            observed.version = Some(version(&bytes).unwrap());
+            covered(&serde_json::to_value(&observed).unwrap(), &reserved);
+        }
+        for rate in [None, Some("usable"), Some("empty_valid")] {
+            observed.rate = rate;
+            covered(&serde_json::to_value(&observed).unwrap(), &reserved);
+        }
+        for reason in [
+            Reason::StrictMismatch,
+            Reason::StrictReach,
+            Reason::OwnershipKey,
+            Reason::ServerRequestAdded,
+            Reason::StrictRemoved,
+            Reason::AdditionLimit,
+            Reason::AdditionName,
+            Reason::Ref,
+            Reason::Limit,
+            Reason::File,
+        ] {
+            for kind in [
+                Mismatch::Added,
+                Mismatch::Removed,
+                Mismatch::Type,
+                Mismatch::Required,
+                Mismatch::Enum,
+                Mismatch::Branch,
+                Mismatch::Constraint,
+                Mismatch::Closed,
+                Mismatch::Default,
+            ] {
+                observed.schema = Some(Box::new(Receipt {
+                    pass: false,
+                    reason: Some(reason),
+                    kind: Some(kind),
+                    positions: vec!["p".repeat(96)],
+                    tolerated_changes: usize::MAX,
+                    accepted_item_types: 32,
+                    accepted_notifications: 64,
+                    additions_sha256: "f".repeat(64),
+                }));
+                covered(&serde_json::to_value(&observed).unwrap(), &reserved);
+            }
+        }
+        // Exercise the real Schema producer at both addition ceilings, then its
+        // longest refusal; the reservation deliberately combines separate steps.
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/codex-contract/basis-pair.json"
+        ))
+        .unwrap();
+        let mut files: std::collections::BTreeMap<String, Value> =
+            serde_json::from_value(fixture["files"].clone()).unwrap();
+        let notification = files.get_mut("ServerNotification").unwrap();
+        for index in 0..32 {
+            notification["definitions"]["ThreadItem"]["oneOf"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"type":"object","properties":{"id":{"type":"string"},"type":{"type":"string","enum":[format!("extraItem{index}")]}},"required":["id","type"]}));
+        }
+        for index in 0..64 {
+            notification["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"method":{"type":"string","enum":[format!("extra/notification{index}")]},"params":{"type":"object"}},"required":["method","params"]}));
+        }
+        let gate = schema::compare(&files);
+        assert!(gate.receipt.pass, "{:?}", gate.receipt);
+        assert_eq!(gate.receipt.accepted_item_types, 32);
+        assert_eq!(gate.receipt.accepted_notifications, 64);
+        observed.schema = Some(Box::new(gate.receipt));
+        covered(&serde_json::to_value(&observed).unwrap(), &reserved);
+        files.get_mut("ServerRequest").unwrap()["oneOf"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"type":"object","properties":{"method":{"type":"string","enum":["extra/request"]},"params":{"type":"object"},"id":{"type":"string"}},"required":["id","method","params"]}));
+        let gate = schema::compare(&files);
+        assert_eq!(gate.receipt.reason, Some(Reason::ServerRequestAdded));
+        observed.schema = Some(Box::new(gate.receipt));
+        covered(&serde_json::to_value(&observed).unwrap(), &reserved);
+    }
     std::thread_local! {
         pub(super) static STORE_WAIT_OBSERVER: std::cell::RefCell<Option<std::sync::mpsc::SyncSender<Instant>>> = const { std::cell::RefCell::new(None) };
     }

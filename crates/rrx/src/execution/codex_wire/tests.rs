@@ -367,6 +367,9 @@ fn u4_handshake_correlation_and_rate() {
         "id",
         "api",
         "pending",
+        "disconnected",
+        "unknown",
+        "environment-malformed",
         "rate",
         "error",
         "missing",
@@ -378,7 +381,11 @@ fn u4_handshake_correlation_and_rate() {
         let responses = [
             init(),
             json!({"requiresOpenaiAuth":true,"account":{"type":if scenario=="api" {"apiKey"}else{"chatgpt"},"email":null,"planType":"pro"}}),
-            json!({"status":if scenario=="pending" {"pending"}else{"ready"}}),
+            json!({"status":match scenario {
+                "pending" | "disconnected" | "unknown" => scenario,
+                "environment-malformed" => "unsupported",
+                _ => "ready",
+            }}),
             if scenario == "usable" {
                 json!({"rateLimits":{"primary":{"usedPercent":20}}})
             } else if scenario == "rate" {
@@ -387,6 +394,13 @@ fn u4_handshake_correlation_and_rate() {
                 json!({"rateLimits":{}})
             },
         ];
+        assert_eq!(
+            CodexWireContract::default()
+                .response("environment/status", &responses[2])
+                .is_ok(),
+            scenario != "environment-malformed",
+            "{scenario}"
+        );
         let mut valid = true;
         for (i, r) in responses.into_iter().enumerate() {
             if scenario == "missing" && i == 3 {
@@ -424,6 +438,14 @@ fn u4_handshake_correlation_and_rate() {
         );
         if matches!(scenario, "empty_valid" | "usable") {
             assert_eq!(h.rate, Some(scenario == "usable"));
+        } else if matches!(
+            scenario,
+            "pending" | "disconnected" | "unknown" | "environment-malformed"
+        ) {
+            assert_eq!(
+                h.rate, None,
+                "environment refusal observed quota: {scenario}"
+            );
         }
     }
 }
