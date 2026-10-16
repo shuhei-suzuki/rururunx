@@ -125,6 +125,22 @@ impl CodexRate {
     pub(crate) fn decode(value: &Value) -> Result<Self> {
         let envelope = value.as_object().context("invalid rate envelope")?;
         let decode = |v: &Value| -> Result<RateSnapshot> {
+            // Derived visitors also accept sequences and single-key enum maps;
+            // native evidence is a snapshot object with object windows only.
+            let object = v.as_object().context("invalid rate snapshot")?;
+            for key in ["primary", "secondary"] {
+                ensure!(
+                    matches!(object.get(key), None | Some(Value::Null | Value::Object(_))),
+                    "invalid rate window"
+                );
+            }
+            ensure!(
+                matches!(
+                    object.get("rateLimitReachedType"),
+                    None | Some(Value::Null | Value::String(_))
+                ),
+                "invalid rate reached type"
+            );
             let snapshot: RateSnapshot = serde_json::from_value(v.clone())?;
             ensure!(
                 snapshot
@@ -304,6 +320,8 @@ pub(crate) fn rate_selfcheck() -> Result<()> {
         json!({"rateLimits":{},"ordinaryUsageAllowed":1}),
         json!({"rateLimits":{},"rateLimitsByLimitId":{"x":null}}),
         json!({"rateLimits":{"primary":false},"rateLimitsByLimitId":{}}),
+        json!({"rateLimits":[null,[20,null,null],null,null,null]}),
+        json!({"rateLimits":{},"rateLimitsByLimitId":{"x":{"secondary":[20,null,null]}}}),
     ] {
         ensure!(
             CodexRate::decode(&invalid).is_err(),
@@ -403,6 +421,23 @@ mod r1_tests {
             ),
             (
                 json!({"rateLimits":{},"rateLimitsByLimitId":{"x":null}}),
+                NativeFailure::ProtocolFailure,
+            ),
+            // Sequence and enum-map forms are never typed rate evidence.
+            (
+                json!({"rateLimits":[null,[20,null,null],null,null,null]}),
+                NativeFailure::ProtocolFailure,
+            ),
+            (
+                json!({"rateLimits":{"primary":[20,null,null]}}),
+                NativeFailure::ProtocolFailure,
+            ),
+            (
+                json!({"rateLimits":{},"rateLimitsByLimitId":{"x":[null,[20,null,null],null,null,null]}}),
+                NativeFailure::ProtocolFailure,
+            ),
+            (
+                json!({"rateLimits":{"primary":{"usedPercent":20},"rateLimitReachedType":{"rate_limit_reached":null}}}),
                 NativeFailure::ProtocolFailure,
             ),
         ] {

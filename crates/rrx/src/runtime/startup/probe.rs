@@ -253,9 +253,15 @@ fn spawn(
             .map_err(|_| StartupRefusal::Journal)?
             .old_startup_unknown(&startup.owner)
             .map_err(|_| StartupRefusal::Journal)?;
+        // Revoke stores the flag before taking this slot lock, so a stop or
+        // deadline during the Store wait is seen here, and a later revoke
+        // waits for adoption and then signals the adopted group.
+        let mut raw = child.raw.lock().unwrap();
+        if let Some(reason) = interruption(&startup.cancelled, deadline) {
+            return Err(reason);
+        }
         let process =
             rrx_spawn_hygiene::spawn_tokio(command).map_err(|_| StartupRefusal::Protocol)?;
-        let mut raw = child.raw.lock().unwrap();
         raw.adopt(process);
         raw.qualify().map_err(|_| StartupRefusal::Protocol)?;
         raw.pipes().map_err(|_| StartupRefusal::Protocol)
@@ -344,6 +350,11 @@ pub(super) async fn run(
         bytes.push(b'\n');
         let sent = tokio::time::timeout_at(response_deadline.unwrap(), async {
             let mut stdin = pipes.stdin.lock().await;
+            // Revoke cannot take stdin while it is held here; recheck under it.
+            ensure!(
+                interruption(&startup.cancelled, deadline).is_none(),
+                "startup interrupted before initialize"
+            );
             stdin
                 .as_mut()
                 .context("startup stdin absent")?
@@ -368,6 +379,8 @@ pub(super) async fn run(
     let mut drain = None;
     let mut reap_end = deadline;
     let mut deliberate = false;
+    // After a budget overflow, bytes are drained to EOF but never retained or counted.
+    let mut overflowed = false;
     let mut tick = tokio::time::interval(Duration::from_millis(20));
     while !(observation.stdout_eof && observation.stderr_eof && observation.leader_reaped) {
         let now = Instant::now();
@@ -429,11 +442,15 @@ pub(super) async fn run(
         if drain.is_some_and(|d| now >= d) && (!observation.stdout_eof || !observation.stderr_eof) {
             break;
         }
-        let window = (limit
-            .saturating_sub(observation.bytes)
-            .min((8usize * 1024 * 1024).saturating_sub(*aggregate))
-            + 1)
-        .min(4096);
+        let window = if overflowed {
+            ob.len()
+        } else {
+            (limit
+                .saturating_sub(observation.bytes)
+                .min((8usize * 1024 * 1024).saturating_sub(*aggregate))
+                + 1)
+            .min(4096)
+        };
         let (n, stdout) = tokio::select! {biased;
             _=tick.tick()=>{continue;},
             n=out.read(&mut ob[..window]),if !observation.stdout_eof=>(n,true),
@@ -447,15 +464,18 @@ pub(super) async fn run(
                     observation.stderr_eof = true;
                 }
             }
+            Ok(_) if overflowed => {}
             Ok(n) => {
                 observation.bytes = observation.bytes.saturating_add(n);
                 *aggregate = aggregate.saturating_add(n);
                 if observation.bytes > limit || *aggregate > 8 * 1024 * 1024 {
+                    // The group is signalled by the invalid branch on the next
+                    // pass; drain and reap stay bounded by the parent deadline.
                     valid = false;
+                    overflowed = true;
                     observation.reason = Some(StartupRefusal::Budget);
-                    child.revoke();
-                    observation.signal = true;
-                    break;
+                    response_deadline = None;
+                    continue;
                 }
                 if stdout && valid {
                     buffer.extend_from_slice(&ob[..n]);
@@ -718,5 +738,116 @@ mod tests {
         assert_eq!(observed.reason, Some(StartupRefusal::Stopped));
         assert!(observed.known && !observed.attempted);
         assert!(!child.raw.lock().unwrap().has_child());
+    }
+    /// Stop or deadline expiry while spawn waits for the Store lock spawns and adopts nothing.
+    #[tokio::test]
+    async fn stop_or_deadline_during_store_wait_spawns_nothing() {
+        use std::os::unix::fs::PermissionsExt;
+        for stop in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+            let startup = Startup::new(owner.clone());
+            let paths = path::Paths::new(owner.clone()).unwrap();
+            let program = dir.path().join("program");
+            std::fs::write(&program, b"#!/bin/sh\nexec /bin/sleep 30\n").unwrap();
+            std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let end = Instant::now() + Duration::from_secs(10);
+            let plan = AliasPlan {
+                alias: "a".into(),
+                provider: "claude".into(),
+                program: Program::read(&program, startup.cancelled.clone(), end)
+                    .await
+                    .unwrap(),
+                directory: paths.alias(uuid::Uuid::new_v4(), "a").unwrap(),
+                intents: Vec::new(),
+                model: None,
+                effort: None,
+            };
+            let deadline = if stop {
+                end
+            } else {
+                Instant::now() + Duration::from_millis(300)
+            };
+            let child = ChildCustody {
+                raw: Mutex::new(RetainedRawProcess::default()),
+            };
+            let runtime = tokio::runtime::Handle::current();
+            let store = owner.store.lock().unwrap();
+            let observed = std::thread::scope(|scope| {
+                let probe = scope.spawn(|| {
+                    let _runtime = runtime.enter();
+                    let mut command = Command::new(&program);
+                    command
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .process_group(0)
+                        .kill_on_drop(true);
+                    spawn(&startup, &plan, &child, command, deadline)
+                });
+                // The probe passes its first check and then waits on the held Store lock.
+                std::thread::sleep(Duration::from_millis(500));
+                if stop {
+                    startup.revoke();
+                }
+                drop(store);
+                probe.join().unwrap()
+            });
+            let Err(observed) = observed else {
+                panic!("spawned after stop/deadline");
+            };
+            assert_eq!(
+                observed.reason,
+                Some(if stop {
+                    StartupRefusal::Stopped
+                } else {
+                    StartupRefusal::Deadline
+                })
+            );
+            assert!(observed.known && !observed.attempted);
+            assert!(!child.raw.lock().unwrap().has_child());
+        }
+    }
+    /// A budget overflow still drains and reaps the leader, so the step is a known Budget refusal.
+    #[tokio::test]
+    async fn budget_overflow_is_drained_reaped_and_known() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+        let startup = Startup::new(owner);
+        let program = dir.path().join("program");
+        // The version step limit is 64 KiB; this writes one byte more and exits.
+        std::fs::write(
+            &program,
+            b"#!/bin/sh\nexec /usr/bin/head -c 65537 /dev/zero\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut config = Config::default();
+        config
+            .agents
+            .insert("a".into(), crate::config::AgentConfig::default());
+        let checked = Arc::new(crate::execution::claude_wire::decoder_selfcheck().unwrap());
+        startup
+            .run(
+                config,
+                Some((
+                    uuid::Uuid::new_v4(),
+                    checked,
+                    vec![("a".into(), "claude".into(), program)],
+                )),
+                Instant::now() + Duration::from_secs(60),
+            )
+            .await;
+        let step = startup.snapshot().unwrap().aliases[0].steps[0].clone();
+        assert_eq!(
+            (step.step.as_str(), step.state, step.reason),
+            ("version", ProbeState::Refused, Some(StartupRefusal::Budget)),
+            "budget overflow was not a known refusal"
+        );
+        // No explicit shutdown has run; the probe itself reaped the leader.
+        let children = startup.children.lock().unwrap();
+        assert_eq!(children.len(), 1);
+        assert!(children[0].raw.lock().unwrap().leader_reaped());
     }
 }
