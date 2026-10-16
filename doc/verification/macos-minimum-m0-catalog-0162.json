@@ -1,6 +1,6 @@
 {
  "kind": "M0 Codex contract basis catalog (design §8b, C2); offline public observation, not a runtime validator or live qualification",
- "status": "proposed basis; awaiting design review and owner approval of C1-C4",
+ "status": "contract basis; C1-C4 owner-approved 2026-10-16 after non-author design review (Sol, 3 rounds, 9ce78531)",
  "generator": "scripts/build-codex-catalog.py",
  "source": {
   "repository": "https://github.com/openai/codex",
