@@ -86,6 +86,20 @@ At `6c5bcd1d`, clean tree before and after (`.rrx/u3/host/full3/`, `.rrx/u3/host
 
 All 86 operators (the 72 above, 9 for part A, 5 for part B) were rerun: 85 are killed at the intended assertion with passing restored runs (`mut-r1/kill-reasons.tsv`); operator 36 remains equivalent as above.
 
+## Review round 2
+
+Each reporting family re-reviewed only its fix diff at `e8fa34ed`: Opus `ae1a209a..7970c9f0` (with the later `probe.rs` changes checked at HEAD) and Sol `7970c9f0..6c5bcd1d`. **Both approved with no required finding** (Opus: コードセキュリティ承認; Sol: コード承認). Every round 1 finding was judged resolved.
+
+Five optional Low findings remain. They are carried into U4, which rebuilds the same startup state publication and probe paths, in the same way U2 carried N-1/N-2/N-4 into U3:
+
+| ID (reporter) | Item | Disposition in U4 |
+|---|---|---|
+| R2-02 (Opus) | A planning refusal for a configuration error (body headroom, undefined alias) is published as `Unknown / Journal` although its journal rows are correctly `confirmed`. | Fix (data accuracy of the public state): typed Refused reasons; only CAS/capacity failures stay `Journal / Unknown`. |
+| R2-01 (Opus) | The `refuse_plans` settlement-failure branch (`Journal / Unknown`) has no test. | Add the negative test (CAS miss before the refusal) with its mutation. |
+| R2-03 (Opus) | The per-read stop/deadline check inside the blocking identity read has no test. | Add a direct `read_file` test with a pre-cancelled flag and its mutation. |
+| R2-T1 (Sol) | The I3 test relies on a 500 ms sleep to reach the Store wait (can only pass falsely). | Synchronize on the wait point; an unreached run must not count as a pass. |
+| R2-04 (Opus, plausible) | Program identity opens the path before the type check without `O_NOCTTY`. | Add `O_NOCTTY` (fstat remains authoritative). |
+
 ## Harness notes and limits
 
 - A first full run hung for three hours: the library daemon controls executed a stale `target/debug/rrx` (protocol 4). The run script now builds the bin first. Separately, `cli::daemon::tests::c_s1b2_identity_match_refuses_a_replacement_epoch` hangs instead of failing when its setup panics while the paused start task is inside `block_in_place`; this predates U3 and is recorded for a follow-up.
