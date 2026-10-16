@@ -15,12 +15,21 @@ Rule:
 - sources: ClientNotification, ServerNotification and ServerRequest (whole roots),
   ClientRequest_used (only the branches of <methods>, in ClientRequest.json order), and each
   response root in <responses>.
-- annotation keywords (description, title, examples, $schema) are removed where they are
-  keywords, never as names inside properties/definitions/patternProperties/$defs maps; each
-  root's `definitions` is removed.
-- local_definition_digests is the transitive local $ref closure of each root, keyed by
-  definition name, valued by the SHA-256 of the compact sorted-key JSON of the stripped
-  definition; shared_definitions maps each digest to that definition.
+- only schema positions are walked: the root, the members of the schema maps (properties,
+  patternProperties, definitions, $defs, dependentSchemas), the single subschemas
+  (additionalProperties, additionalItems, items, contains, propertyNames, not, if, then, else,
+  unevaluatedProperties, unevaluatedItems) and the subschema lists (allOf, anyOf, oneOf,
+  prefixItems, array-form items). Every other keyword value (default, enum, const, required,
+  type, format, numeric/string/array bounds) is a value position and is kept verbatim, including
+  any nested `title`, `description`, `examples` or `$ref` keys inside it.
+- annotation keywords (description, title, examples, $schema) are removed only as keywords of a
+  schema position; each root's `definitions` is removed.
+- a keyword outside the schema and value sets above fails the run, so a new keyword needs an
+  explicit rule change (and the reproduction check) instead of a silent default.
+- local_definition_digests is the transitive local $ref closure of each root, following `$ref`
+  only where it is a keyword of a schema position, keyed by definition name, valued by the
+  SHA-256 of the compact sorted-key JSON of the stripped definition; shared_definitions maps each
+  digest to that definition.
 - subtree digest: SHA-256 of json.dumps(catalog, sort_keys=True, separators=(",", ":"),
   ensure_ascii=False) encoded as UTF-8.
 """
@@ -32,36 +41,65 @@ from pathlib import Path
 
 EXPORT = 'codex-rs/app-server-protocol/schema/precomputed/app-server-exports-experimental.json.zst'
 STRIP = {'description', 'title', 'examples', '$schema'}
-MAPS = {'properties', 'definitions', 'patternProperties', '$defs'}
+SCHEMA_MAPS = {'properties', 'patternProperties', 'definitions', '$defs', 'dependentSchemas'}
+SCHEMA_ONE = {'additionalProperties', 'additionalItems', 'contains', 'propertyNames', 'not', 'if',
+              'then', 'else', 'unevaluatedProperties', 'unevaluatedItems'}
+SCHEMA_LIST = {'allOf', 'anyOf', 'oneOf', 'prefixItems'}
+VALUES = {'$ref', 'type', 'enum', 'const', 'default', 'required', 'format', 'minimum', 'maximum',
+          'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf', 'minLength', 'maxLength', 'pattern',
+          'minItems', 'maxItems', 'uniqueItems', 'minProperties', 'maxProperties', 'readOnly',
+          'writeOnly', 'deprecated'}
 KIND = ('offline public observation only; source-local refs resolve through '
         'local_definition_digests into shared_definitions; not a runtime validator')
 
 
-def strip(v, in_map=False):
-    if isinstance(v, dict):
-        return {k: strip(x, in_map=(not in_map and k in MAPS))
-                for k, x in v.items() if in_map or k not in STRIP}
-    if isinstance(v, list):
-        return [strip(x) for x in v]
-    return v
+def subschemas(k, x):
+    """(key, subschema) pairs of a schema-position keyword; None for a value-position keyword."""
+    if k in SCHEMA_MAPS:
+        return [(n, s) for n, s in x.items()]
+    if k in SCHEMA_ONE or (k == 'items' and not isinstance(x, list)):
+        return [(None, x)]
+    if k in SCHEMA_LIST or k == 'items':
+        return [(i, s) for i, s in enumerate(x)]
+    if k in VALUES:
+        return None
+    sys.exit(f'unknown schema keyword {k}')
+
+
+def strip(s):
+    if not isinstance(s, dict):
+        return s  # boolean schema
+    out = {}
+    for k, x in s.items():
+        if k in STRIP:
+            continue
+        sub = subschemas(k, x)
+        if sub is None:
+            out[k] = x
+        elif k in SCHEMA_MAPS:
+            out[k] = {n: strip(v) for n, v in sub}
+        elif isinstance(x, list):
+            out[k] = [strip(v) for _, v in sub]
+        else:
+            out[k] = strip(x)
+    return out
 
 
 def canon(v):
     return json.dumps(v, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
 
 
-def local_refs(v, acc):
-    if isinstance(v, dict):
-        r = v.get('$ref')
-        if isinstance(r, str):
-            if not r.startswith('#/definitions/'):
-                sys.exit(f'non-local ref {r}')
-            acc.add(r[len('#/definitions/'):])
-        for x in v.values():
-            local_refs(x, acc)
-    elif isinstance(v, list):
-        for x in v:
-            local_refs(x, acc)
+def local_refs(s, acc):
+    if not isinstance(s, dict):
+        return acc
+    r = s.get('$ref')
+    if r is not None:
+        if not isinstance(r, str) or not r.startswith('#/definitions/'):
+            sys.exit(f'non-local ref {r}')
+        acc.add(r[len('#/definitions/'):])
+    for k, x in s.items():
+        for _, v in subschemas(k, x) or ():
+            local_refs(v, acc)
     return acc
 
 
