@@ -76,7 +76,7 @@ async fn settled(f: &ControlFixture) -> crate::runtime::startup::StartupStatus {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }
-/// AC-02/03/08: real Claude plan initialize settles, Codex gaps refuse, Unit effects stay zero.
+/// AC-02/03/08: real Claude plan initialize settles, a non-Schema Codex peer refuses, Unit effects stay zero.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn u3_real_startup_claude_plan_and_codex_refusal_have_zero_execution_effects() {
     let f = s_fixture("success");
@@ -106,14 +106,8 @@ async fn u3_real_startup_claude_plan_and_codex_refusal_have_zero_execution_effec
                 "S-3: Reviewer plan initialize missing"
             );
         } else {
-            assert_eq!(
-                alias.steps[1].reason,
-                Some(StartupRefusal::CodexSchemaUnavailable)
-            );
-            assert_eq!(
-                alias.steps[2].reason,
-                Some(StartupRefusal::CodexHandshakeUnavailable)
-            );
+            assert_eq!(alias.steps[1].reason, Some(StartupRefusal::Protocol));
+            assert_eq!(alias.steps[2].reason, Some(StartupRefusal::Protocol));
         }
     }
     // This helper is intentionally first: removing the S gate must reach a real

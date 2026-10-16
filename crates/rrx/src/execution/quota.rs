@@ -123,6 +123,8 @@ struct RateWindow {
 }
 impl CodexRate {
     pub(crate) fn decode(value: &Value) -> Result<Self> {
+        super::codex_wire::CodexWireContract::default()
+            .response("account/rateLimits/read", value)?;
         let envelope = value.as_object().context("invalid rate envelope")?;
         let decode = |v: &Value| -> Result<RateSnapshot> {
             // Derived visitors also accept sequences and single-key enum maps;
@@ -255,24 +257,13 @@ pub fn codex_windows(value: &Value, at: i64) -> Result<Vec<QuotaObservation>> {
         .observations(at))
 }
 pub fn codex_subscription_error(error: &Value) -> bool {
-    error["codexErrorInfo"] == "usageLimitExceeded"
+    super::codex_wire::error_kind(&error["codexErrorInfo"])
+        .is_ok_and(|k| k == super::codex_wire::CodexErrorKind::Subscription)
 }
 
 pub(super) fn codex_capacity_error(error: &Value) -> bool {
-    // These are finite members of the installed 0.160.0 schema. They do not
-    // establish a subscription balance and must not poison a sibling pool.
-    let info = &error["codexErrorInfo"];
-    matches!(
-        info.as_str(),
-        Some("rateLimitExceeded" | "flexUnavailable" | "serverOverloaded")
-    ) || [
-        "httpConnectionFailed",
-        "responseStreamConnectionFailed",
-        "responseStreamDisconnected",
-        "responseTooManyFailedAttempts",
-    ]
-    .iter()
-    .any(|key| matches!(info[key]["httpStatusCode"].as_u64(), Some(429 | 503)))
+    super::codex_wire::error_kind(&error["codexErrorInfo"])
+        .is_ok_and(|k| k == super::codex_wire::CodexErrorKind::Capacity)
 }
 
 /// Compatibility projection of the shared strict Claude decoder. Malformed or

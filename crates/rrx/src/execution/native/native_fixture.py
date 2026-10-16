@@ -64,12 +64,13 @@ for line in sys.stdin:
             send({"id":value["id"],"error":{"code":-32601,"message":"PRIVATE_FIXTURE_ERROR_MUST_NOT_PERSIST"}})
             continue
         if method == "initialized":
+            assert value == {"method":"initialized"}
             continue
         if method == "initialize":
             hold_bootstrap()
             result = {"codexHome": "/fixture/native-home", "userAgent": "fixture", "platformFamily": "unix", "platformOs": "macos" if sys.platform == "darwin" else "linux"}
         elif method == "account/read":
-            result = {"account": None if failure == "auth" else {"type": "apiKey" if failure == "api" else "chatgpt", "planType": "pro"}}
+            result = {"requiresOpenaiAuth":True,"account": None if failure == "auth" else {"type": "apiKey" if failure == "api" else "chatgpt", "email":None,"planType": "pro"}}
         elif method == "environment/status":
             result = {"status": "unsupported" if failure == "environment" else "ready"}
         elif method == "account/rateLimits/read":
@@ -77,9 +78,9 @@ for line in sys.stdin:
             if failure == "metadata-malformed": result = {"rateLimits": None}
         elif method == "thread/start":
             NATIVE_SANDBOX = value["params"].get("sandbox")
-            result = {"thread": {"id": os.environ["RRX_UNIT_ID"]}, "cwd": os.getcwd(), "modelProvider": "openai"}
+            result = {"thread": {"id": os.environ["RRX_UNIT_ID"],"cwd":os.getcwd(),"modelProvider":"openai","status":{"type":"idle"},"turns":[]}, "cwd": os.getcwd(), "modelProvider": "openai","model":"fixture","approvalPolicy":"never","approvalsReviewer":"user","sandbox":{"type":"readOnly" if NATIVE_SANDBOX=="read-only" else "workspaceWrite"}}
         elif method == "turn/start":
-            send({"id": value["id"], "result": {"turn": {"id": "fixture-turn"}}})
+            send({"id": value["id"], "result": {"turn": {"id": "fixture-turn","items":[],"status":"inProgress"}}})
             payload = value["params"]["input"][0]["text"]
             if payload.startswith("answer-"):
                 if payload in ("answer-item-overflow","answer-event-overflow"):
@@ -107,11 +108,11 @@ for line in sys.stdin:
                 if payload == "answer-change": emit(dict(item,text="CHANGED answer"))
                 if payload == "answer-two-finals": emit(dict(item,id="second-final",text="SECOND answer"))
                 if payload == "answer-hold-after-final":
-                    send({"id":"answer-barrier","method":"item/commandExecution/requestApproval","params":{"threadId":os.environ["RRX_UNIT_ID"],"turnId":"fixture-turn","itemId":"barrier","command":"fixture no execution","cwd":os.getcwd()}})
+                    send({"id":"answer-barrier","method":"item/commandExecution/requestApproval","params":{"threadId":os.environ["RRX_UNIT_ID"],"turnId":"fixture-turn","itemId":"barrier","startedAtMs":0,"command":"fixture no execution","cwd":os.getcwd()}})
                     with open(os.path.join(os.environ["RRX_OUTPUT_DIR"],"fixture-answer-ready"),"w") as ready: ready.write("ready")
                     while not os.path.exists(os.path.join(os.environ["RRX_OUTPUT_DIR"],"fixture-release")): time.sleep(0.02)
                 turn = {"id":"fixture-turn","status":"failed" if payload == "answer-failed" else "completed","items":[item]}
-                if payload == "answer-failed": turn["error"] = {"codexErrorInfo":"other"}
+                if payload == "answer-failed": turn["error"] = {"message":"fixture","codexErrorInfo":"other"}
                 if payload == "answer-summary": turn.update(items=[],itemsView="summary")
                 if payload == "answer-delta-only": turn["items"] = []
                 send({"method":"turn/completed","params":{"threadId":os.environ["RRX_UNIT_ID"],"turn":turn}})
@@ -119,15 +120,15 @@ for line in sys.stdin:
             if payload.startswith("capacity-") or payload == "authentication-terminal":
                 info = {"capacity-rate":"rateLimitExceeded", "capacity-flex":"flexUnavailable", "capacity-overload":"serverOverloaded", "capacity-http":{"httpConnectionFailed":{"httpStatusCode":429}}, "capacity-retry-success":"rateLimitExceeded", "authentication-terminal":"unauthorized"}[payload]
                 if payload == "capacity-retry-success":
-                    send({"method":"error", "params":{"threadId":os.environ["RRX_UNIT_ID"], "turnId":"fixture-turn", "willRetry":True, "error":{"codexErrorInfo":info}}})
-                send({"method":"turn/completed", "params":{"threadId":os.environ["RRX_UNIT_ID"], "turn":{"id":"fixture-turn", "status":"completed" if payload == "capacity-retry-success" else "failed", "error":{"codexErrorInfo":info}}}})
+                    send({"method":"error", "params":{"threadId":os.environ["RRX_UNIT_ID"], "turnId":"fixture-turn", "willRetry":True, "error":{"message":"fixture","codexErrorInfo":info}}})
+                send({"method":"turn/completed", "params":{"threadId":os.environ["RRX_UNIT_ID"], "turn":{"id":"fixture-turn", "items":[],"status":"completed" if payload == "capacity-retry-success" else "failed", "error":{"message":"fixture","codexErrorInfo":info}}}})
             elif payload in ("quota-terminal", "quota-retry-terminal", "quota-retry-held", "ordinary-failure"):
                 if payload in ("quota-retry-terminal", "quota-retry-held"):
-                    send({"method": "error", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turnId": "fixture-turn", "willRetry": True, "error": {"codexErrorInfo": "usageLimitExceeded"}}})
+                    send({"method": "error", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turnId": "fixture-turn", "willRetry": True, "error": {"message":"fixture","codexErrorInfo": "usageLimitExceeded"}}})
                 if payload == "quota-retry-held":
                     while not os.path.exists(os.path.join(os.environ["RRX_OUTPUT_DIR"], "fixture-quota-release")): time.sleep(0.02)
-                error = {"codexErrorInfo": "usageLimitExceeded" if payload != "ordinary-failure" else "other"}
-                send({"method": "turn/completed", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turn": {"id": "fixture-turn", "status": "failed", "error": error}}})
+                error = {"message":"fixture","codexErrorInfo": "usageLimitExceeded" if payload != "ordinary-failure" else "other"}
+                send({"method": "turn/completed", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turn": {"id": "fixture-turn", "items":[],"status": "failed", "error": error}}})
             else:
                 complete(payload)
                 item = {"id":"fixture-answer","type":"agentMessage","phase":"final_answer","text":"fixture complete"}
@@ -135,7 +136,7 @@ for line in sys.stdin:
                 send({"method": "turn/completed", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turn": {"id": "fixture-turn", "status": "completed","items":[item]}}})
             continue
         else:
-            send({"id": value["id"], "error": {"code": -32601}})
+            send({"id": value["id"], "error": {"code": -32601,"message":"unsupported"}})
             continue
         send({"id": value["id"], "result": result})
     else:

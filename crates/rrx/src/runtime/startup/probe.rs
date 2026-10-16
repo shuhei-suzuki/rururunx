@@ -160,6 +160,8 @@ pub(super) struct Observation {
     exit: Option<i32>,
     bytes: usize,
     version: Option<String>,
+    schema: Option<Box<crate::execution::native::schema::Receipt>>,
+    rate: Option<&'static str>,
 }
 impl Observation {
     pub(super) fn validate_body(body: &Value) -> Result<()> {
@@ -179,6 +181,17 @@ impl Observation {
             exit: Some(i32::MIN),
             bytes: usize::MAX,
             version: Some("v".repeat(96)),
+            schema: Some(Box::new(crate::execution::native::schema::Receipt {
+                pass: false,
+                reason: Some(crate::execution::native::schema::Reason::StrictMismatch),
+                kind: Some(crate::execution::native::schema::Mismatch::Constraint),
+                positions: vec!["p".repeat(96)],
+                tolerated_changes: usize::MAX,
+                accepted_item_types: 32,
+                accepted_notifications: 64,
+                additions_sha256: "f".repeat(64),
+            })),
+            rate: Some("empty_valid"),
         };
         let mut settled = body.clone();
         settled["observation"] = serde_json::to_value(largest)?;
@@ -203,6 +216,8 @@ impl Observation {
             exit: None,
             bytes: 0,
             version: None,
+            schema: None,
+            rate: None,
         }
     }
 }
@@ -236,11 +251,14 @@ fn spawn(
     child: &ChildCustody,
     command: Command,
     deadline: Instant,
+    schema: Option<&File>,
 ) -> std::result::Result<crate::execution::process::RetainedPipes, Observation> {
     let spawned = (|| -> std::result::Result<_, StartupRefusal> {
-        plan.directory
-            .verify_empty()
-            .map_err(|_| StartupRefusal::PrivatePath)?;
+        match schema {
+            Some(dir) => plan.directory.verify_schema(dir),
+            None => plan.directory.verify_empty(),
+        }
+        .map_err(|_| StartupRefusal::PrivatePath)?;
         plan.program
             .stat()
             .map_err(|_| StartupRefusal::ProgramIdentity)?;
@@ -293,6 +311,7 @@ pub(super) async fn run(
     checked: &DecoderChecked,
     parent: Instant,
     aggregate: &mut usize,
+    contract: &mut Option<crate::execution::codex_wire::CodexWireContract>,
 ) -> Observation {
     if let Some(reason) = interruption(&startup.cancelled, parent) {
         return Observation::not_spawned(reason);
@@ -307,11 +326,51 @@ pub(super) async fn run(
         return Observation::not_spawned(reason);
     }
     let handshake = step == "handshake";
+    let schema = step == "schema";
+    let schema_dir = if schema {
+        match plan.directory.schema() {
+            Ok(dir) => Some(dir),
+            Err(_) => return Observation::not_spawned(StartupRefusal::PrivatePath),
+        }
+    } else {
+        None
+    };
+    let mut codex = if handshake && plan.provider == "codex" {
+        let Some(contract) = contract.take() else {
+            return Observation::not_spawned(StartupRefusal::CodexSchemaUnavailable);
+        };
+        Some(crate::execution::codex_wire::Handshake::new(contract))
+    } else {
+        None
+    };
     let native = uuid::Uuid::new_v4().to_string();
     let request = uuid::Uuid::new_v4().to_string();
     let mut decoder =
         crate::execution::claude_wire::StartupClaude::new(checked, native.clone(), request);
-    let argv = if handshake {
+    let argv = if schema {
+        vec![
+            "app-server".into(),
+            "generate-json-schema".into(),
+            "--experimental".into(),
+            "--out".into(),
+            plan.directory
+                .path
+                .join("schema-out")
+                .to_string_lossy()
+                .into_owned(),
+        ]
+    } else if codex.is_some() {
+        match crate::execution::native::prepared::command_argv(
+            "codex",
+            crate::domain::SessionRole::Executor,
+            plan.model.as_deref(),
+            plan.effort.as_deref(),
+            None,
+        ) {
+            Ok(argv) => argv,
+            Err(_) => return Observation::not_spawned(StartupRefusal::Configuration),
+        }
+    } else if handshake {
         match crate::execution::native::prepared::command_argv(
             "claude",
             crate::domain::SessionRole::Reviewer,
@@ -339,9 +398,24 @@ pub(super) async fn run(
     });
     // The slot exists before spawn, and adoption precedes identity and pipes.
     startup.children.lock().unwrap().push(child.clone());
-    let deadline =
-        parent.min(Instant::now() + Duration::from_secs(if handshake { 90 } else { 30 }));
-    let pipes = match spawn(startup, plan, &child, command, deadline) {
+    let deadline = parent.min(
+        Instant::now()
+            + Duration::from_secs(if handshake {
+                90
+            } else if schema {
+                60
+            } else {
+                30
+            }),
+    );
+    let pipes = match spawn(
+        startup,
+        plan,
+        &child,
+        command,
+        deadline,
+        schema_dir.as_ref(),
+    ) {
         Ok(p) => p,
         Err(observation) => return observation,
     };
@@ -358,7 +432,11 @@ pub(super) async fn run(
     };
     let mut close_at = None;
     if handshake {
-        let mut bytes = serde_json::to_vec(&decoder.request()).unwrap();
+        let request = match &codex {
+            Some(c) => c.initial().unwrap(),
+            None => decoder.request(),
+        };
+        let mut bytes = serde_json::to_vec(&request).unwrap();
         bytes.push(b'\n');
         let sent = tokio::time::timeout_at(response_deadline.unwrap(), async {
             let mut stdin = pipes.stdin.lock().await;
@@ -494,7 +572,52 @@ pub(super) async fn run(
                     if handshake {
                         while let Some(end) = buffer.iter().position(|b| *b == b'\n') {
                             let line = buffer.drain(..=end).collect::<Vec<_>>();
-                            match decoder.observe(&line[..line.len() - 1]) {
+                            let decoded = if let Some(codex) = &mut codex {
+                                match codex.observe(&line[..line.len() - 1]) {
+                                    Ok(outgoing) => {
+                                        let mut sent = true;
+                                        for value in outgoing {
+                                            let mut bytes = serde_json::to_vec(&value).unwrap();
+                                            bytes.push(b'\n');
+                                            let result = tokio::time::timeout_at(
+                                                deadline
+                                                    .min(Instant::now() + Duration::from_secs(30)),
+                                                async {
+                                                    let mut stdin = pipes.stdin.lock().await;
+                                                    ensure!(
+                                                        interruption(&startup.cancelled, deadline)
+                                                            .is_none(),
+                                                        "startup interrupted before RPC"
+                                                    );
+                                                    stdin
+                                                        .as_mut()
+                                                        .context("startup stdin absent")?
+                                                        .write_all(&bytes)
+                                                        .await?;
+                                                    Ok::<_, anyhow::Error>(())
+                                                },
+                                            )
+                                            .await;
+                                            sent &= matches!(result, Ok(Ok(())));
+                                            response_deadline = Some(
+                                                deadline
+                                                    .min(Instant::now() + Duration::from_secs(30)),
+                                            );
+                                        }
+                                        if sent {
+                                            Ok(codex.complete())
+                                        } else {
+                                            Err(anyhow::anyhow!("startup RPC send failed"))
+                                        }
+                                    }
+                                    Err(e) => Err(e),
+                                }
+                            } else {
+                                decoder
+                                    .observe(&line[..line.len() - 1])
+                                    .map_err(anyhow::Error::from)
+                            };
+                            match decoded {
                                 Ok(initialized) => {
                                     if initialized && !protocol {
                                         protocol = true;
@@ -527,6 +650,8 @@ pub(super) async fn run(
         observation.stdout_eof && observation.stderr_eof && observation.leader_reaped;
     if handshake {
         valid &= buffer.is_empty();
+    } else if schema {
+        valid &= observation.known && observation.exit == Some(0);
     } else if observation.known && observation.exit == Some(0) {
         match version(&buffer) {
             Ok(v) => observation.version = Some(v),
@@ -543,6 +668,35 @@ pub(super) async fn run(
         && observation.group_hygiene
         && valid
         && (observation.exit == Some(0) || handshake && deliberate && observation.exit.is_none());
+    if schema && observation.pass {
+        let dir = schema_dir.as_ref().unwrap();
+        let result = plan
+            .directory
+            .verify_schema(dir)
+            .and_then(|()| crate::execution::native::schema::read_directory(dir));
+        match result {
+            Ok(files) => {
+                let gate = crate::execution::native::schema::compare(&files);
+                observation.pass &= gate.receipt.pass;
+                observation.schema = Some(Box::new(gate.receipt));
+                if observation.pass && plan.directory.clean_schema(dir).is_ok() {
+                    *contract = gate.contract;
+                } else {
+                    observation.pass = false;
+                }
+            }
+            Err(e) => {
+                observation.pass = false;
+                observation.schema =
+                    Some(Box::new(crate::execution::native::schema::file_refused(&e)));
+            }
+        }
+    }
+    if let Some(c) = codex {
+        observation.rate = c
+            .rate
+            .map(|usable| if usable { "usable" } else { "empty_valid" });
+    }
     if observation.pass {
         observation.reason = None;
     }
@@ -759,6 +913,7 @@ mod tests {
             &checked,
             Instant::now(),
             &mut aggregate,
+            &mut None,
         )
         .await;
         assert_eq!(expired.reason, Some(StartupRefusal::Deadline));
@@ -768,7 +923,7 @@ mod tests {
         let child = ChildCustody {
             raw: Mutex::new(RetainedRawProcess::default()),
         };
-        let observed = spawn(&startup, &plan, &child, Command::new(&program), end)
+        let observed = spawn(&startup, &plan, &child, Command::new(&program), end, None)
             .err()
             .unwrap();
         assert_eq!(observed.reason, Some(StartupRefusal::Stopped));
@@ -821,7 +976,7 @@ mod tests {
                     } else {
                         Instant::now() + Duration::from_millis(300)
                     };
-                    spawn(&startup, &plan, &child, command, deadline)
+                    spawn(&startup, &plan, &child, command, deadline, None)
                 });
                 let reached = reached_wait.recv_timeout(Duration::from_secs(5));
                 if let Ok(deadline) = reached {

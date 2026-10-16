@@ -104,8 +104,11 @@ pub(super) enum Event {
 
 impl Event {
     pub(super) fn parse(bytes: &[u8]) -> AdapterResult<Self> {
-        let value: Value = serde_json::from_slice(bytes)
-            .map_err(|_| failure(ErrorKind::ParseFailure, "invalid native JSON-RPC"))?;
+        let value: Value = crate::execution::strict_json::decode(
+            bytes,
+            crate::execution::strict_json::Limits::CEILINGS,
+        )
+        .map_err(|_| failure(ErrorKind::ParseFailure, "invalid native JSON-RPC"))?;
         let object = value
             .as_object()
             .ok_or_else(|| failure(ErrorKind::ParseFailure, "native JSON-RPC must be an object"))?;
@@ -134,7 +137,10 @@ impl Event {
                     .filter(|s| !s.is_empty() && s.len() <= 256)
                     .ok_or_else(|| failure(ErrorKind::ParseFailure, "invalid native method"))?
                     .to_owned();
-                let params = object.get("params").cloned().unwrap_or_else(|| json!({}));
+                let params = object
+                    .get("params")
+                    .cloned()
+                    .ok_or_else(|| failure(ErrorKind::ParseFailure, "native params absent"))?;
                 if !params.is_object() {
                     return Err(failure(
                         ErrorKind::ParseFailure,
@@ -146,11 +152,11 @@ impl Event {
                     None => Self::Notification { method, params },
                 })
             }
-            (None, Some(result), None) => Ok(Self::Response {
+            (None, Some(result), None) if !object.contains_key("params") => Ok(Self::Response {
                 id: id.ok_or_else(|| failure(ErrorKind::ParseFailure, "response has no RPC ID"))?,
                 result: result.clone(),
             }),
-            (None, None, Some(error)) => Ok(Self::Error {
+            (None, None, Some(error)) if !object.contains_key("params") => Ok(Self::Error {
                 id: id.ok_or_else(|| failure(ErrorKind::ParseFailure, "error has no RPC ID"))?,
                 code: error
                     .get("code")
@@ -406,7 +412,11 @@ impl NativeRpc {
         // userAgent is not assumed to report a binary version or authenticate a
         // peer. The separate owned --version process and IPC peer check do that.
         verify_initialize(&response)?;
-        self.send(json!({"method":"initialized","params":{}})).await
+        let initialized = json!({"method":"initialized"});
+        crate::execution::codex_wire::CodexWireContract::default()
+            .sent(&initialized)
+            .map_err(|_| failure(ErrorKind::ParseFailure, "invalid initialized notification"))?;
+        self.send(initialized).await
     }
 }
 

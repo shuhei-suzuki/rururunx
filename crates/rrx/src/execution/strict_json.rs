@@ -68,6 +68,25 @@ pub fn decode(bytes: &[u8], limits: Limits) -> Result<Value, Error> {
     if !limits.valid() {
         return Err(Error::InvalidLimits);
     }
+    bounded_decode(bytes, limits)
+}
+
+/// Dedicated schema-file sink; does not widen any wire/queue budget.
+pub(crate) fn decode_schema(bytes: &[u8]) -> Result<Value, Error> {
+    bounded_decode(
+        bytes,
+        Limits {
+            frame_bytes: 1024 * 1024,
+            depth: 64,
+            nodes: 262144,
+            string_bytes: 64 * 1024,
+            total_string_bytes: 1024 * 1024,
+            object_entries: 4096,
+            array_entries: 4096,
+        },
+    )
+}
+fn bounded_decode(bytes: &[u8], limits: Limits) -> Result<Value, Error> {
     if bytes.len() > limits.frame_bytes {
         return Err(Error::FrameBytes);
     }

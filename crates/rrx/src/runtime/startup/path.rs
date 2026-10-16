@@ -86,6 +86,23 @@ pub(super) struct AliasPath {
     pub(super) path: PathBuf,
 }
 impl Paths {
+    pub(super) fn cleanup(&self) -> Result<()> {
+        privilege()?;
+        matches(&self.root, "startup", &self.startup)?;
+        matches(&self.startup, &self.epoch_name, &self.epoch)?;
+        for e in rustix::fs::Dir::read_from(&self.epoch)? {
+            ensure!(
+                matches!(e?.file_name().to_bytes(), b"." | b".."),
+                "startup epoch not empty"
+            );
+        }
+        rustix::fs::unlinkat(
+            &self.startup,
+            &self.epoch_name,
+            rustix::fs::AtFlags::REMOVEDIR,
+        )?;
+        Ok(())
+    }
     pub(super) fn new(owner: Arc<RuntimeOwner>) -> Result<Arc<Self>> {
         privilege()?;
         let root = File::from(open(&owner.root, FLAGS, Mode::empty())?);
@@ -142,7 +159,7 @@ impl Paths {
     }
 }
 impl AliasPath {
-    pub(super) fn verify_empty(&self) -> Result<()> {
+    pub(super) fn verify(&self) -> Result<()> {
         privilege()?;
         let p = &self.paths;
         directory(&p.root, false)?;
@@ -164,6 +181,10 @@ impl AliasPath {
         matches(&p.root, "startup", &p.startup)?;
         matches(&p.startup, &p.epoch_name, &p.epoch)?;
         matches(&p.epoch, &self.name, &self.directory)?;
+        Ok(())
+    }
+    pub(super) fn verify_empty(&self) -> Result<()> {
+        self.verify()?;
         for entry in rustix::fs::Dir::read_from(&self.directory)? {
             let entry = entry.context("startup directory listing failed")?;
             ensure!(
@@ -173,6 +194,105 @@ impl AliasPath {
         }
         Ok(())
     }
+    pub(super) fn schema(&self) -> Result<File> {
+        self.verify_empty()?;
+        child(&self.directory, "schema-out", false)
+    }
+    pub(super) fn verify_schema(&self, retained: &File) -> Result<()> {
+        self.verify()?;
+        matches(&self.directory, "schema-out", retained)?;
+        for e in rustix::fs::Dir::read_from(&self.directory)? {
+            ensure!(
+                matches!(e?.file_name().to_bytes(), b"." | b".." | b"schema-out"),
+                "startup cwd changed"
+            );
+        }
+        Ok(())
+    }
+    pub(super) fn clean_schema(&self, retained: &File) -> Result<()> {
+        self.verify_schema(retained)?;
+        clean(retained, 0, &mut 0)?;
+        self.verify_schema(retained)?;
+        rustix::fs::unlinkat(
+            &self.directory,
+            "schema-out",
+            rustix::fs::AtFlags::REMOVEDIR,
+        )?;
+        self.verify_empty()
+    }
+    pub(super) fn cleanup(&self) -> Result<()> {
+        self.verify()?;
+        clean(&self.directory, 0, &mut 0)?;
+        self.verify()?;
+        rustix::fs::unlinkat(
+            &self.paths.epoch,
+            &self.name,
+            rustix::fs::AtFlags::REMOVEDIR,
+        )?;
+        Ok(())
+    }
+}
+
+/// Descriptor-relative, no-follow traversal of this run's retained directory.
+/// Unknown or unsafe entries leave the directory available for investigation.
+fn clean(dir: &File, depth: usize, count: &mut usize) -> Result<()> {
+    ensure!(depth <= 4, "startup cleanup depth bound");
+    for entry in rustix::fs::Dir::read_from(dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if matches!(name.to_bytes(), b"." | b"..") {
+            continue;
+        }
+        *count += 1;
+        ensure!(*count <= 1024, "startup cleanup entry bound");
+        let stat = rustix::fs::statat(dir, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)?;
+        if rustix::fs::FileType::from_raw_mode(stat.st_mode) == rustix::fs::FileType::Symlink {
+            // unlinkat removes this link itself, never its target.
+            let current = rustix::fs::statat(dir, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)?;
+            ensure!(
+                (current.st_dev, current.st_ino) == (stat.st_dev, stat.st_ino),
+                "startup cleanup replaced symlink"
+            );
+            rustix::fs::unlinkat(dir, name, rustix::fs::AtFlags::empty())?;
+            continue;
+        }
+        let file = File::from(openat(
+            dir,
+            name,
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            Mode::empty(),
+        )?);
+        let m = file.metadata()?;
+        ensure!(
+            m.uid() == rustix::process::getuid().as_raw()
+                && m.dev() == dir.metadata()?.dev()
+                && (m.is_file() && m.nlink() == 1 || m.is_dir()),
+            "startup cleanup unsafe entry"
+        );
+        if m.is_dir() {
+            clean(&file, depth + 1, count)?;
+        }
+        let current = File::from(openat(
+            dir,
+            name,
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            Mode::empty(),
+        )?);
+        ensure!(
+            identity(&file)? == identity(&current)?,
+            "startup cleanup replaced entry"
+        );
+        rustix::fs::unlinkat(
+            dir,
+            name,
+            if m.is_dir() {
+                rustix::fs::AtFlags::REMOVEDIR
+            } else {
+                rustix::fs::AtFlags::empty()
+            },
+        )?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -181,6 +301,64 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     fn owner(dir: &tempfile::TempDir) -> Arc<RuntimeOwner> {
         RuntimeOwner::open(&dir.path().join("state.db")).unwrap()
+    }
+    /// MP-2 successful cleanup is bounded and cannot follow a replaced alias outside its retained epoch.
+    #[test]
+    fn u4_success_cleanup_is_private_and_bounded() {
+        for scenario in ["success", "replaced", "symlink", "depth", "entries"] {
+            let temp = tempfile::tempdir().unwrap();
+            let owner = owner(&temp);
+            let paths = Paths::new(owner).unwrap();
+            let alias = paths.alias(uuid::Uuid::new_v4(), "a").unwrap();
+            let path = alias.path.clone();
+            let outside = temp.path().join("outside");
+            std::fs::create_dir(&outside).unwrap();
+            std::fs::write(outside.join("keep"), "preserve").unwrap();
+            match scenario {
+                "success" => {
+                    let dir = alias.schema().unwrap();
+                    std::fs::create_dir(path.join("schema-out/sub")).unwrap();
+                    std::fs::write(path.join("schema-out/sub/data"), "bounded").unwrap();
+                    alias.clean_schema(&dir).unwrap();
+                    alias.verify_empty().unwrap();
+                }
+                "replaced" => {
+                    std::fs::rename(&path, path.with_extension("old")).unwrap();
+                    std::fs::create_dir(&path).unwrap();
+                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))
+                        .unwrap();
+                }
+                "symlink" => std::os::unix::fs::symlink(&outside, path.join("escape")).unwrap(),
+                "depth" => {
+                    let mut p = path.clone();
+                    for _ in 0..5 {
+                        p = p.join("d");
+                        std::fs::create_dir(&p).unwrap();
+                    }
+                }
+                _ => {
+                    for i in 0..1025 {
+                        std::fs::write(path.join(i.to_string()), b"x").unwrap();
+                    }
+                }
+            }
+            assert_eq!(
+                alias.cleanup().is_ok(),
+                matches!(scenario, "success" | "symlink"),
+                "{scenario}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(outside.join("keep")).unwrap(),
+                "preserve"
+            );
+            if matches!(scenario, "success" | "symlink") {
+                paths.cleanup().unwrap();
+                assert!(!path.exists());
+                assert!(!path.parent().unwrap().exists());
+            } else {
+                assert!(path.exists());
+            }
+        }
     }
     /// MP-2 accepts safe roots, hashes raw alias bytes and refuses reuse or inode replacement.
     #[test]

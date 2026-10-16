@@ -30,6 +30,7 @@ pub(crate) use nonsuccess::{NativeClosureStep, NativeNoDispatchClosureProof, Pre
 pub(crate) mod prepared;
 pub(crate) mod readonly;
 mod registration;
+pub(crate) mod schema;
 pub(crate) mod transport;
 pub(crate) mod version;
 pub use super::claude_wire::Metrics as NativeMetrics;
@@ -1023,9 +1024,12 @@ impl Lines {
     async fn call(&mut self, method: &str, params: Value) -> Result<Value> {
         let id = self.next;
         self.next = self.next.checked_add(1).context("RPC identity exhausted")?;
-        self.send(&json!({"id":id,"method":method,"params":params}))
-            .await?;
-        self.response(id).await
+        let request = json!({"id":id,"method":method,"params":params});
+        super::codex_wire::CodexWireContract::default().sent(&request)?;
+        self.send(&request).await?;
+        let response = self.response(id).await?;
+        super::codex_wire::CodexWireContract::default().response(method, &response)?;
+        Ok(response)
     }
     async fn response(&mut self, id: u64) -> Result<Value> {
         tokio::time::timeout(Duration::from_secs(30),async {loop {
@@ -1036,6 +1040,7 @@ impl Lines {
                 }
                 return Ok(value["result"].clone());
             }
+            ensure!(value.get("method").is_some(),"uncorrelated native RPC response");
             if value.get("id").is_some() && value.get("method").is_some(){
                 self.send(&json!({"id":value["id"],"error":{"code":-32601,"message":"No native turn established"}})).await?;
             }else{self.queue(value)?;}
@@ -2229,7 +2234,8 @@ impl Core {
         let init=self.boot_call("initialize",json!({"clientInfo":{"name":"rururunx","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}}),None).await?;
         crate::codex::managed::initialization(&init)
             .context(NativeFailure::UnsupportedCapability)?;
-        let initialized = json!({"method":"initialized","params":{}});
+        let initialized = json!({"method":"initialized"});
+        super::codex_wire::CodexWireContract::default().sent(&initialized)?;
         if self.phase.is_some() {
             self.send_effect(&initialized, None, "native_setup").await?;
         } else {
@@ -2301,20 +2307,28 @@ impl Core {
         loop {
             tokio::select! {
                 frame=self.wire.receive()=>{
-                    let frame=frame?;crate::codex::managed::frame(&frame)?;
+                    let frame=frame?;let validated=crate::codex::managed::frame(&frame)?;
                     let p=&frame["params"];
                     if frame.get("id").is_some() && frame.get("method").is_some(){
-                        self.authority()?;let pending=approvals.insert(&frame)?;self.update.send_modify(|s|s.pending.push(pending));continue;
+                        self.authority()?;let pending=approvals.insert(&validated)?;self.update.send_modify(|s|s.pending.push(pending));continue;
                     }
                     if frame["method"]=="account/rateLimits/updated" {
                         for observation in quota::codex_windows(p,now_ms())?{self.observe_quota(&observation,false)?;}continue;
                     }
-                    if p.get("threadId").is_some_and(|id|id!=&json!(thread_id)){continue;}
-                    if p.get("turnId").is_some_and(|id|id!=&json!(turn_id)){continue;}
+                    if validated.foreign(&thread_id,&turn_id) {continue;}
+                    if matches!(frame["method"].as_str(),Some("item/autoApprovalReview/started"|"item/autoApprovalReview/completed"|"autoApprovalReview/strictReviewRequired"|"item/mcpToolCall/progress")) {
+                        return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));
+                    }
+                    if matches!(frame["method"].as_str(),Some("item/started"|"item/completed")) && !super::codex_wire::Item::decode(&p["item"],&super::codex_wire::CodexWireContract::default())?.permitted() {
+                        return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));
+                    }
+                    if frame["method"]=="turn/completed" && !super::codex_wire::Turn::decode(&p["turn"],&super::codex_wire::CodexWireContract::default())?.permitted() {
+                        return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));
+                    }
                     match frame["method"].as_str() {
-                        Some("item/started")=>{approvals.item(&p["item"])?; if p["threadId"]==thread_id && p["turnId"]==turn_id {self.collector.codex_item(&p["item"],false);}},
-                        Some("item/completed") if p["threadId"]==thread_id && p["turnId"]==turn_id=>self.collector.codex_item(&p["item"],true),
-                        Some("item/agentMessage/delta") if p["threadId"]==thread_id && p["turnId"]==turn_id=>self.collector.codex_delta(p),
+                        Some("item/started")=>{approvals.item(super::codex_wire::Item::decode(&p["item"], &super::codex_wire::CodexWireContract::default())?)?; if p["threadId"]==thread_id && p["turnId"]==turn_id {self.collector.codex_item(super::codex_wire::Item::decode(&p["item"], &super::codex_wire::CodexWireContract::default())?,false);}},
+                        Some("item/completed") if p["threadId"]==thread_id && p["turnId"]==turn_id=>self.collector.codex_item(super::codex_wire::Item::decode(&p["item"], &super::codex_wire::CodexWireContract::default())?,true),
+                        Some("item/agentMessage/delta") if p["threadId"]==thread_id && p["turnId"]==turn_id=>self.collector.codex_delta(super::codex_wire::Delta::decode(p, &super::codex_wire::CodexWireContract::default())?),
                         Some("error") if p["threadId"]==thread_id && p["turnId"]==turn_id && quota::codex_subscription_error(&p["error"])=>{
                             quota_ended = !p["willRetry"].as_bool().context("native retry flag missing")?;
                             self.observe_quota(&QuotaObservation {provider:"codex".into(),account_key:"unknown".into(),bucket:"native.subscription".into(),window_id:"unknown-native".into(),
@@ -2327,7 +2341,14 @@ impl Core {
                         Some("turn/completed") if p["threadId"]==thread_id && p["turn"]["id"]==turn_id=>{
                             let status=p["turn"]["status"].as_str().context("native turn status missing")?;
                             if matches!(status,"completed"|"failed") {
-                                self.collector.codex_terminal(&p["turn"]);
+                                self.collector.codex_terminal(&super::codex_wire::Turn::decode(&p["turn"], &super::codex_wire::CodexWireContract::default())?);
+                            }
+                            if status=="failed" && !p["turn"]["error"]["codexErrorInfo"].is_null() && super::codex_wire::error_kind(&p["turn"]["error"]["codexErrorInfo"])? == super::codex_wire::CodexErrorKind::Unclassified {
+                                self.update.send_modify(|s|s.diagnostic=Some("codex error kind unclassified"));
+                                self.observed_terminal=Some((WorkOutcome::Unknown,Disposition::ProtocolError,None));
+                                return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));
+                            }
+                            if matches!(status,"completed"|"failed") {
                                 self.observed_terminal=Some(if status=="completed" {(WorkOutcome::Success,Disposition::Completed,None)}
                                     else if quota_ended || quota::codex_subscription_error(&p["turn"]["error"]) {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
                                     else if p["turn"]["error"]["codexErrorInfo"]=="unauthorized" {(WorkOutcome::Unknown,Disposition::Refused,Some(NativeFailure::AuthenticationUnavailable))}

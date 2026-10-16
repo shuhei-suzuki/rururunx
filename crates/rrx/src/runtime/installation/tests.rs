@@ -25,6 +25,7 @@ mod success;
 mod sweep;
 mod u2;
 mod u3;
+mod u4;
 
 fn fixture(provider: &str, declared: bool) -> ControlFixture {
     fixture_with(provider, declared, |_| {})

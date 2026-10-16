@@ -1,0 +1,30 @@
+{
+  "basis_subtree_digest": "bbdede32736d0d954683bef90861c902a09aa46d33cf492f9f1cc3766005b38e",
+  "source_count": 12,
+  "shared_definition_count": 303,
+  "pair_sha256": "a1edac2d2a3c243e2b61c3654d07c168fb439f79611d00b765292e732f390376",
+  "derivation": "Only the 12 approved source roots and their source-local closure; ClientRequest reduced to the eight sent methods. No runtime schema is used.",
+  "reach_pairs": [
+    "ServerNotification:Thread.environments:LegacyAppPathString",
+    "ServerNotification:Thread.reasoningEffort:ReasoningEffort",
+    "ServerNotification:ThreadItem[collabAgentToolCall]:ReasoningEffort",
+    "ServerNotification:ThreadItem[imageGeneration]:AbsolutePathBuf",
+    "ServerNotification:ThreadItem[imageView]:LegacyAppPathString",
+    "ServerNotification:ThreadItem[subAgentActivity]:ReasoningEffort",
+    "ServerNotification:fs/changed:AbsolutePathBuf",
+    "ServerNotification:hook/completed:AbsolutePathBuf",
+    "ServerNotification:hook/started:AbsolutePathBuf",
+    "ServerNotification:item/autoApprovalReview/completed:AbsolutePathBuf",
+    "ServerNotification:item/autoApprovalReview/completed:LegacyAppPathString",
+    "ServerNotification:item/autoApprovalReview/started:AbsolutePathBuf",
+    "ServerNotification:item/autoApprovalReview/started:LegacyAppPathString",
+    "ThreadStartResponse:Thread.environments:LegacyAppPathString",
+    "ThreadStartResponse:Thread.reasoningEffort:ReasoningEffort",
+    "ThreadStartResponse:ThreadItem[collabAgentToolCall]:ReasoningEffort",
+    "ThreadStartResponse:ThreadItem[imageGeneration]:AbsolutePathBuf",
+    "ThreadStartResponse:ThreadItem[imageView]:LegacyAppPathString",
+    "ThreadStartResponse:ThreadItem[subAgentActivity]:ReasoningEffort",
+    "TurnStartResponse:ThreadItem[imageView]:LegacyAppPathString"
+  ],
+  "reach_pair_count": 20
+}

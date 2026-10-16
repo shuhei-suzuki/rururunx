@@ -8,6 +8,7 @@ pub mod attempts;
 pub mod capability;
 pub(crate) mod claude_wire;
 pub mod cleanup;
+pub(crate) mod codex_wire;
 pub(crate) mod docker;
 pub(crate) mod git_io;
 pub mod ipc;

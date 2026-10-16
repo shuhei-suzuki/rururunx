@@ -21,6 +21,102 @@ pub enum InvocationState {
     Closed,
 }
 
+#[cfg(test)]
+mod u4_tests {
+    use super::*;
+    use crate::execution::codex_wire::{CodexWireContract, Item, Turn};
+    use serde_json::{Value, json};
+    fn collected(extra: Value) -> Content {
+        let c = CodexWireContract::default();
+        let mut collector = Collector::default();
+        let item =
+            json!({"id":"answer","type":"agentMessage","text":"answer","phase":"final_answer"});
+        collector.codex_item(Item::decode(&item, &c).unwrap(), true);
+        let turn = json!({"id":"turn","status":"completed","items":[item,{"id":"tolerated","type":"reasoning","content":extra}]});
+        collector.codex_terminal(&Turn::decode(&turn, &c).unwrap());
+        collector.confirm_complete();
+        collector.content()
+    }
+    fn semantic(c: &Content) -> Value {
+        json!({"acquisition":c.acquisition,"text":c.text,"prefix":c.prefix,"answer_sha256":c.answer_sha256,"diagnostics":c.diagnostics})
+    }
+    /// CX-8 tolerated item values change only whole-Turn integrity and never answer or classification.
+    #[test]
+    fn u4_tolerated_content_changes_only_terminal_integrity() {
+        let a = collected(json!(["baseline"]));
+        let b = collected(
+            json!({"status":"failed","codexErrorInfo":"usageLimitExceeded","type":"commandExecution","text":"foreign"}),
+        );
+        assert_eq!(a.acquisition, AcquisitionStatus::Complete);
+        assert_eq!(semantic(&a), semantic(&b));
+        assert_ne!(a.terminal_sha256, b.terminal_sha256);
+    }
+    /// CX-8 receipt equality and canonical body equality retain the complete terminal digest.
+    #[test]
+    fn u4_receipt_integrity_is_part_of_whole_image() {
+        let c = collected(json!(null));
+        let r = NativeResultReceipt {
+            id: NativeResultId::new(),
+            invocation_id: NativeInvocationId::new(),
+            unit_id: UnitId::new(),
+            session_id: SessionId::new(),
+            scope: Scope::task(
+                crate::domain::ProjectId::new(),
+                crate::domain::GoalId::new(),
+                crate::domain::TaskId::new(),
+            ),
+            generation: 1,
+            owner_epoch: 1,
+            provider: "codex".into(),
+            native_thread: Some("thread".into()),
+            native_turn: Some("turn".into()),
+            acquisition: c.acquisition,
+            authority: ReceiptAuthority::HistoricalDraft,
+            text: c.text,
+            structured_output: None,
+            prefix: c.prefix,
+            answer_sha256: c.answer_sha256,
+            terminal_sha256: c.terminal_sha256,
+            wire: None,
+            observed_work: WorkOutcome::Success,
+            disposition: Disposition::Completed,
+            diagnostics: c.diagnostics,
+            captured_at: 0,
+            version: 1,
+        };
+        r.validate().unwrap();
+        let mut changed = r.clone();
+        changed.terminal_sha256 = Some(digest(b"different whole turn"));
+        changed.validate().unwrap();
+        assert_ne!(r, changed);
+        assert_ne!(
+            serde_json::to_string(&r).unwrap(),
+            serde_json::to_string(&changed).unwrap()
+        );
+        assert_eq!(
+            r.projection(),
+            changed.projection(),
+            "integrity digest became status/answer input"
+        );
+    }
+    /// CX-4 partial_answer remains a non-final observation and cannot create a complete answer.
+    #[test]
+    fn u4_partial_answer_never_becomes_final() {
+        let c = CodexWireContract::default();
+        let mut collector = Collector::default();
+        let item =
+            json!({"id":"answer","type":"agentMessage","text":"partial","phase":"partial_answer"});
+        collector.codex_item(Item::decode(&item, &c).unwrap(), true);
+        let turn = json!({"id":"turn","status":"completed","items":[item]});
+        collector.codex_terminal(&Turn::decode(&turn, &c).unwrap());
+        collector.confirm_complete();
+        let content = collector.content();
+        assert!(content.text.is_none());
+        assert_ne!(content.acquisition, AcquisitionStatus::Complete);
+        assert!(content.diagnostics.is_empty());
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeInvocation {
@@ -414,7 +510,8 @@ impl Collector {
         self.terminal = None;
         self.diagnostics = vec!["native_sensitive_failure".into()];
     }
-    pub(super) fn codex_item(&mut self, item: &serde_json::Value, completed: bool) {
+    pub(super) fn codex_item(&mut self, item: super::codex_wire::Item<'_>, completed: bool) {
+        let item = item.value();
         if !self.event() {
             return;
         }
@@ -471,7 +568,7 @@ impl Collector {
             return;
         }
         match item["phase"].as_str() {
-            Some("commentary") => {}
+            Some("commentary" | "partial_answer") => {}
             Some("final_answer") => {
                 if self.final_id.as_deref().is_some_and(|old| old != id) {
                     self.poison(AcquisitionStatus::Ambiguous, "answer_multiple_finals");
@@ -487,7 +584,8 @@ impl Collector {
             }
         }
     }
-    pub(super) fn codex_delta(&mut self, params: &serde_json::Value) {
+    pub(super) fn codex_delta(&mut self, params: super::codex_wire::Delta<'_>) {
+        let params = params.value();
         if !self.event() {
             return;
         }
@@ -503,7 +601,8 @@ impl Collector {
             self.poison(AcquisitionStatus::Overflow, "answer_byte_limit");
         }
     }
-    pub(super) fn codex_terminal(&mut self, turn: &serde_json::Value) {
+    pub(super) fn codex_terminal(&mut self, turn: &super::codex_wire::Turn<'_>) {
+        let turn = turn.value();
         self.terminal = Some(digest(&serde_json::to_vec(turn).expect("Value encoding")));
         let Some(items) = turn["items"].as_array() else {
             self.poison(

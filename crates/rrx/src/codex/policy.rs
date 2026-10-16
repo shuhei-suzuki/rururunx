@@ -211,15 +211,17 @@ impl DecisionPolicy {
         Ok(())
     }
     pub fn verify_configuration(&self, effective: &Value) -> AdapterResult<()> {
-        if effective["web_search"] != "disabled"
-            || self
-                .restricted_features()
-                .any(|feature| effective["features"][*feature] != false)
-            || self
-                .disabled_servers
-                .iter()
-                .any(|name| effective["mcp_servers"][name]["enabled"] != false)
-        {
+        let judgement =
+            crate::execution::codex_wire::ConfigJudgement::decode(effective).map_err(|_| {
+                failure(
+                    ErrorKind::ParseFailure,
+                    "invalid native config judgement paths",
+                )
+            })?;
+        if !judgement.restricted(
+            self.restricted_features().copied(),
+            self.disabled_servers.iter().map(String::as_str),
+        ) {
             return Err(failure(
                 ErrorKind::UnsupportedCapability,
                 "native decision controls are not effective",

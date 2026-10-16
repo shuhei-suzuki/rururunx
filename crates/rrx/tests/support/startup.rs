@@ -29,6 +29,9 @@ async fn wait_for_settlement(mut observe: impl AsyncFnMut() -> StartupState) {
             if state == StartupState::Refused {
                 return;
             }
+            if state == StartupState::Passed {
+                return;
+            }
             assert_eq!(
                 state,
                 StartupState::Pending,
@@ -48,16 +51,15 @@ mod tests {
     /// A baseline waits through pending public observations until journal settlement.
     #[tokio::test]
     async fn whole_state_baseline_waits_for_public_startup_settlement() {
-        let mut observations = [
-            StartupState::Pending,
-            StartupState::Pending,
-            StartupState::Refused,
-        ]
-        .into_iter();
-        wait_for_settlement(async || observations.next().expect("polled after settlement")).await;
-        assert!(
-            observations.next().is_none(),
-            "baseline preceded settlement"
-        );
+        for terminal in [StartupState::Refused, StartupState::Passed] {
+            let mut observations =
+                [StartupState::Pending, StartupState::Pending, terminal].into_iter();
+            wait_for_settlement(async || observations.next().expect("polled after settlement"))
+                .await;
+            assert!(
+                observations.next().is_none(),
+                "baseline preceded settlement"
+            );
+        }
     }
 }

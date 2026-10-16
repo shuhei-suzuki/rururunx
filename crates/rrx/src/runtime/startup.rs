@@ -23,6 +23,7 @@ use tokio::time::Instant;
 pub enum StartupState {
     NotStarted,
     Pending,
+    Passed,
     Refused,
     Unknown,
     Stopped,
@@ -234,10 +235,13 @@ impl Startup {
         }
         Ok(s)
     }
-    /// U3 deliberately has no producer of the all-alias pass. U4 must supply
-    /// fresh Schema and Handshake evidence before this boundary can open.
+    /// S never substitutes for a fresh Preparing actor's P observations.
     pub(super) fn require_qualified(&self) -> Result<()> {
-        anyhow::bail!("startup Codex Schema/Handshake unavailable (U4)")
+        ensure!(
+            !self.is_revoked() && self.snapshot()?.state == StartupState::Passed,
+            "startup all-alias qualification unavailable"
+        );
+        anyhow::bail!(FreshPreparationUnavailable)
     }
     pub(super) async fn shutdown(&self) -> Result<()> {
         self.revoke();
@@ -370,19 +374,25 @@ impl Startup {
         let mut halted = None;
         for (index, plan) in plans.iter().enumerate() {
             let mut prior_pass = true;
+            let mut contract = None;
             for (i, (step, intent, body)) in plan.intents.iter().enumerate() {
                 let observation = if self.is_revoked() {
                     probe::Observation::not_spawned(StartupRefusal::Stopped)
                 } else if let Some(reason) = halted {
                     probe::Observation::not_spawned(reason)
-                } else if step == "schema" {
-                    probe::Observation::not_spawned(StartupRefusal::CodexSchemaUnavailable)
-                } else if plan.provider == "codex" && step == "handshake" {
-                    probe::Observation::not_spawned(StartupRefusal::CodexHandshakeUnavailable)
                 } else if !prior_pass {
                     probe::Observation::not_spawned(StartupRefusal::Protocol)
                 } else {
-                    probe::run(self, plan, step, &checked, end, &mut aggregate).await
+                    probe::run(
+                        self,
+                        plan,
+                        step,
+                        &checked,
+                        end,
+                        &mut aggregate,
+                        &mut contract,
+                    )
+                    .await
                 };
                 if matches!(
                     observation.reason,
@@ -440,15 +450,50 @@ impl Startup {
                 return;
             }
         }
-        // U3 is an intentionally closed intermediate unit, including a
-        // configuration containing only Claude aliases. No journal replay gate.
-        self.fail(if self.is_revoked() {
-            StartupRefusal::Stopped
+        let passed = self
+            .status
+            .lock()
+            .unwrap()
+            .aliases
+            .iter()
+            .all(|a| a.steps.iter().all(|s| s.state == ProbeState::Passed));
+        if !passed || self.is_revoked() {
+            self.fail(if self.is_revoked() {
+                StartupRefusal::Stopped
+            } else {
+                StartupRefusal::Protocol
+            });
+            return;
+        }
+        for plan in &plans {
+            if plan.directory.cleanup().is_err() {
+                self.fail(StartupRefusal::PrivatePath);
+                return;
+            }
+        }
+        if paths.cleanup().is_err() {
+            self.fail(StartupRefusal::PrivatePath);
+            return;
+        }
+        let mut status = self.status.lock().unwrap();
+        if self.is_revoked() {
+            status.state = StartupState::Stopped;
+            status.reason = Some(StartupRefusal::Stopped);
         } else {
-            StartupRefusal::UnitUnavailable
-        });
+            status.state = StartupState::Passed;
+            status.reason = None;
+        }
     }
 }
+
+#[derive(Debug)]
+pub(super) struct FreshPreparationUnavailable;
+impl std::fmt::Display for FreshPreparationUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("fresh Codex preparation unavailable (U5)")
+    }
+}
+impl std::error::Error for FreshPreparationUnavailable {}
 
 #[cfg(test)]
 mod tests {

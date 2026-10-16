@@ -10,12 +10,12 @@ pub(crate) fn version(value: &str) -> Result<()> {
     Ok(())
 }
 pub(crate) fn initialization(value: &Value) -> Result<()> {
+    crate::execution::codex_wire::CodexWireContract::default().response("initialize", value)?;
     verify_initialize(value)?;
     Ok(())
 }
-pub(crate) fn frame(value: &Value) -> Result<()> {
-    Event::parse(&serde_json::to_vec(value)?)?;
-    Ok(())
+pub(crate) fn frame(value: &Value) -> Result<crate::execution::codex_wire::Frame> {
+    crate::execution::codex_wire::CodexWireContract::default().frame(value.clone())
 }
 pub(crate) struct Approvals {
     ledger: ApprovalLedger,
@@ -26,11 +26,12 @@ impl Approvals {
             ledger: ApprovalLedger::new(thread.into(), turn.into()).for_workspace(source.into()),
         }
     }
-    pub(crate) fn item(&mut self, value: &Value) -> Result<()> {
-        self.ledger.observe_item(value)?;
+    pub(crate) fn item(&mut self, value: crate::execution::codex_wire::Item<'_>) -> Result<()> {
+        self.ledger.observe_item(value.value())?;
         Ok(())
     }
-    pub(crate) fn insert(&mut self, value: &Value) -> Result<Value> {
+    pub(crate) fn insert(&mut self, frame: &crate::execution::codex_wire::Frame) -> Result<Value> {
+        let value = frame.value();
         let id: RpcId = serde_json::from_value(value["id"].clone())?;
         let method = value["method"]
             .as_str()
