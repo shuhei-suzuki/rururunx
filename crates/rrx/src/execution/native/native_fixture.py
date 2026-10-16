@@ -74,6 +74,7 @@ for line in sys.stdin:
             result = {"status": "unsupported" if failure == "environment" else "ready"}
         elif method == "account/rateLimits/read":
             result = {} if failure == "metadata" else {"rateLimits": {"limitId": "fixture", "primary": {"usedPercent": 20}, "secondary": None}}
+            if failure == "metadata-malformed": result = {"rateLimits": None}
         elif method == "thread/start":
             NATIVE_SANDBOX = value["params"].get("sandbox")
             result = {"thread": {"id": os.environ["RRX_UNIT_ID"]}, "cwd": os.getcwd(), "modelProvider": "openai"}

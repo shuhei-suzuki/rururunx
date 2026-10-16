@@ -1263,6 +1263,11 @@ async fn bootstrap_failure_categories_survive_without_retaining_native_error_pay
             Disposition::Refused,
         ),
         (
+            "metadata-malformed",
+            NativeFailure::ProtocolFailure,
+            Disposition::ProtocolError,
+        ),
+        (
             "protocol",
             NativeFailure::ProtocolFailure,
             Disposition::ProtocolError,

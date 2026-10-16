@@ -569,7 +569,7 @@ impl ProcessGroup {
 }
 
 #[cfg(target_os = "macos")]
-fn macos_group_is_dead(pid: Pid) -> std::io::Result<bool> {
+pub(crate) fn macos_group_is_dead(pid: Pid) -> std::io::Result<bool> {
     process_group_inspection(Path::new("/bin/ps"), pid.as_raw_nonzero().get())
 }
 #[cfg(target_os = "macos")]
@@ -586,7 +586,7 @@ fn inspect_process_group(
 }
 
 #[cfg(target_os = "macos")]
-fn resolve_macos_signal_result(
+pub(crate) fn resolve_macos_signal_result(
     result: Result<(), rustix::io::Errno>,
     inspection: impl FnOnce() -> std::io::Result<bool>,
 ) -> std::io::Result<()> {

@@ -2253,8 +2253,7 @@ impl Core {
             .boot_call("account/rateLimits/read", json!({}), None)
             .await?;
         let probe = self.quota_probe()?;
-        let observations =
-            quota::codex_windows(&quota, now_ms()).context(NativeFailure::ProtocolFailure)?;
+        let observations = quota::codex_windows(&quota, now_ms())?;
         let exhausted = observations
             .iter()
             .any(|o| o.status == QuotaStatus::Exhausted);

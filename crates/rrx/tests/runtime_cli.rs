@@ -17,6 +17,8 @@ use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 #[path = "runtime_cli/recorded.rs"]
 mod recorded;
+#[path = "support/startup.rs"]
+mod startup;
 
 struct Fixture {
     dir: tempfile::TempDir,
@@ -159,6 +161,10 @@ impl Fixture {
         }
         assert!(!descriptor(&self.state).exists());
     }
+    async fn settled_rows(&self) -> Vec<(String, Vec<Vec<String>>)> {
+        startup::settled(&self.state).await;
+        rows(&self.state)
+    }
     fn cli_json(&self, args: &[&str]) -> Value {
         let out = rrx_spawn_hygiene::output_std({
             let mut command = self.command();
@@ -287,9 +293,7 @@ async fn compiled_service_goal_pages_routing_and_reads_preserve_all_rows() {
     let foreign = f.project("two");
     f.start().await;
     let goal = f.create(project, 65).await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    let before = rows(&f.state);
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    let before = f.settled_rows().await;
     assert_eq!(
         rows(&f.state),
         before,
@@ -413,7 +417,7 @@ async fn missing_service_reads_create_nothing_and_preserve_stale_descriptor() {
 async fn compiled_server_refuses_raw_frames_and_old_identity_then_keeps_serving() {
     let mut f = Fixture::new();
     f.start().await;
-    let before = rows(&f.state);
+    let before = f.settled_rows().await;
     let (identity, connection) = endpoint::connect(&f.state).await.unwrap();
     drop(connection);
     let nominal = serde_json::to_string(&ControlRequest {

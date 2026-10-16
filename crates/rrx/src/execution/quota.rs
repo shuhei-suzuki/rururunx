@@ -231,7 +231,12 @@ impl CodexRate {
     }
 }
 pub fn codex_windows(value: &Value, at: i64) -> Result<Vec<QuotaObservation>> {
-    Ok(CodexRate::decode(value)?.observations(at))
+    if value.is_object() && value.get("rateLimits").is_none() {
+        anyhow::bail!(NativeFailure::MetadataUnavailable);
+    }
+    Ok(CodexRate::decode(value)
+        .context(NativeFailure::ProtocolFailure)?
+        .observations(at))
 }
 pub fn codex_subscription_error(error: &Value) -> bool {
     error["codexErrorInfo"] == "usageLimitExceeded"
@@ -375,6 +380,50 @@ mod tests {
 mod r1_tests {
     use super::*;
     use serde_json::json;
+
+    /// Missing snapshots remain unavailable while present malformed evidence is a protocol failure.
+    #[test]
+    fn missing_and_malformed_rate_snapshots_have_distinct_failures() {
+        for (value, expected) in [
+            (json!({}), NativeFailure::MetadataUnavailable),
+            (
+                json!({"ordinaryUsageAllowed":true}),
+                NativeFailure::MetadataUnavailable,
+            ),
+            (Value::Null, NativeFailure::ProtocolFailure),
+            (json!({"rateLimits":null}), NativeFailure::ProtocolFailure),
+            (json!({"rateLimits":false}), NativeFailure::ProtocolFailure),
+            (
+                json!({"rateLimits":{"primary":true}}),
+                NativeFailure::ProtocolFailure,
+            ),
+            (
+                json!({"rateLimits":{},"ordinaryUsageAllowed":1}),
+                NativeFailure::ProtocolFailure,
+            ),
+            (
+                json!({"rateLimits":{},"rateLimitsByLimitId":{"x":null}}),
+                NativeFailure::ProtocolFailure,
+            ),
+        ] {
+            let error = codex_windows(&value, 0).unwrap_err();
+            assert_eq!(
+                error.downcast_ref::<NativeFailure>(),
+                Some(&expected),
+                "{value}"
+            );
+        }
+        assert!(
+            codex_windows(&json!({"rateLimits":{}}), 0)
+                .unwrap()
+                .is_empty()
+        );
+        let observations =
+            codex_windows(&json!({"rateLimits":{"primary":{"usedPercent":20}}}), 0).unwrap();
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0].status, QuotaStatus::Available);
+    }
+
     /// R-1 validates both snapshots before classifying windows and credit flags.
     #[test]
     fn typed_rate_selfcheck_and_live_consumer_share_classification() {

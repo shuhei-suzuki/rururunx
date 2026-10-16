@@ -212,9 +212,20 @@ impl RetainedRawProcess {
             return false;
         };
         if let Some(pid) = self.pid {
-            match kill_process_group(pid, Signal::KILL) {
-                Ok(()) | Err(rustix::io::Errno::SRCH) => return true,
-                Err(_) => {}
+            let result = kill_process_group(pid, Signal::KILL);
+            // Inspect while the original leader still pins the numeric group
+            // identity. Darwin may return EPERM for a zombie-only group.
+            #[cfg(target_os = "macos")]
+            let result = crate::adapter::resolve_macos_signal_result(result, || {
+                crate::adapter::macos_group_is_dead(pid)
+            });
+            #[cfg(not(target_os = "macos"))]
+            let result = match result {
+                Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
+                Err(e) => Err(std::io::Error::from(e)),
+            };
+            if result.is_ok() {
+                return true;
             }
         }
         // Unqualified identity or failed group signal never adopts another PID.
@@ -445,6 +456,31 @@ pub(crate) async fn capture_scoped_with(
 #[cfg(test)]
 mod retained_raw_tests {
     use super::*;
+
+    /// A naturally exited leader pins group identity until inspected hygiene completes.
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn exited_unreaped_macos_startup_child_passes_inspected_hygiene() {
+        let mut command = Command::new("/usr/bin/true");
+        command.process_group(0).kill_on_drop(true);
+        let mut custody = RetainedRawProcess::default();
+        custody.adopt(rrx_spawn_hygiene::spawn_tokio(command).unwrap());
+        custody.qualify().unwrap();
+        let original = custody.pid;
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !custody.exited_unreaped().unwrap() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(!custody.leader_reaped());
+        assert!(custody.hygiene(), "zombie-only group hygiene was refused");
+        assert_eq!(custody.pid, original);
+        assert!(!custody.leader_reaped(), "inspection reaped the leader");
+        assert!(custody.exited_unreaped().unwrap());
+        assert!(reaped(&mut custody).await.success());
+    }
 
     async fn reaped(raw: &mut RetainedRawProcess) -> ExitStatus {
         tokio::time::timeout(Duration::from_secs(10), async {

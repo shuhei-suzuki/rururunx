@@ -17,6 +17,8 @@ use std::{
 use uuid::Uuid;
 #[path = "support/current_writer.rs"]
 mod current_writer;
+#[path = "support/startup.rs"]
+mod startup;
 
 struct Fixture {
     directory: tempfile::TempDir,
@@ -208,15 +210,8 @@ impl Fixture {
         self.json(&["goal", "--plan", path.to_str().unwrap(), "--json"])
     }
     async fn stable(&self) -> Vec<(String, Vec<Vec<String>>)> {
-        let deadline = Instant::now() + Duration::from_secs(8);
-        loop {
-            let before = rows(&self.state);
-            tokio::time::sleep(Duration::from_millis(200)).await;
-            if before == rows(&self.state) {
-                return before;
-            }
-            assert!(Instant::now() < deadline, "no idle whole-row baseline");
-        }
+        startup::settled(&self.state).await;
+        rows(&self.state)
     }
 }
 impl Drop for Fixture {
