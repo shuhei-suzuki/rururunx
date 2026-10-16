@@ -6,6 +6,8 @@
 
 役割入れ替え改訂（オーナー決定 2026-10-15）: rururunxの役割をオーナーの日常開発に合わせ、**CodexをExecutor、ClaudeをReviewer**とする。`c6413082`の承認はClaude Executor＋Codex Reviewerを前提としていた。A1〜A6の他の決定、R1、M4のruntime自動merge、public `rrx-e2e-sandbox`、安全規則、M0→M5対応、M0実Mac受入前にM1へ進まない順序は変えない。再承認の対象は§0の差分一覧と§13のB1〜B4・B2aだけである。本稿は執筆成果であり、レビュー票・承認・実装・検証結果ではない。
 
+Codex契約改訂（2026-10-16、**提案中・オーナー承認待ち**）: インストール済みCLIがcodex-cli 0.160.1から0.162.1へ上がり、オーナーは契約をインストール版へ合わせること、版数は今後も上がることを示した。本改訂はCodex有限契約を、通常のCLI更新で毎回止まらない形（strict／toleratedの位置二分類）へ改め、契約basisを0.162.1へ移し、strict位置に触れる更新の再生成手順を定める。差分は§0a、決定は§13のC1〜C4であり、A5／A6と§7免責表を広げる項目を明示する。承認前は本改訂に依存するU4実装（Schema gate、Codex wire decoder、ConfigRead／McpServerStatusList）へ進まない。
+
 公開sourceのbaseline: `cb9c17e023601b3dbe721495bbdf50c9f65d92bb`。過去の修正入力: `d452675989df799d29931c7d4f19d73d6b387550`。前回の局所修正はclean固定HEAD `2c9fb68f6f6544ef9c8b3b53c7f936aec2e354e2`から設計草案へ取込済み。今回のR5後補修本文案の入力はclean固定HEAD `0fadf545c45558a05d89377bcb073009875bdb01`であり、設計草案へ取込済み・固定HEAD b746dfd4の補修diffはOpus承認済みである。baselineと各執筆入力HEADを混同しない。
 
 R5結果の事実転記: SolはAPPROVE（確認済required 0）。固定argvでの要求は記録されているがserved model／effortは未報告。OpusはREQUEST CHANGES（確認済required 2: R5-O-01／R5-O-02）、runner ok／model_match=match、報告モデルは`claude-opus-5-5`のみ、effortは未報告。CLI完了と本文の判定は別であり、両レビュー承認済みとはしない。今回の補修はSolが執筆し、指摘側Opusが修正diffだけを独立確認する。無変更範囲のSol R5全文レビューを重複させず、両系の独立レビュー条件は維持する。適用状態はorchestratorが事実転記した。全体オーナー設計承認・実装・台帳・fixture・Linux／macOS／live検証は未完了。
@@ -48,7 +50,32 @@ Sol R4は正式なREQUEST CHANGES。Opus R4はCLI child exit 0でもmodelUsage�
 | D-12 | M0-U1差分 | Executor側のClaude decoder | 同じ差分をReviewer側（S initialize、M3のSession）のdecoderとして保持 | 事実反映（承認不要） |
 | D-13 | Codex送信method | 6 method＋initialized | Executorだけconfig/read・mcpServerStatus/listを加えた8 method＋initialized、応答8種（§7・§8・§8a(3a)） | B2 |
 
-変えないもの: capability probeによるpin撤廃、R1、S全alias gate、migration v12とjournal、private path、Codex finite wire・schema gate（A5／A6）、rate契約、旧API機能廃止（A3）と#19、auth／CAS／owner／marker／fencing／process custody、禁止事項（Task.version authority、test専用authority constructor、SQL成功seed、`allow(dead_code)`、skip／ignore／直列化、timeoutだけの修正、warning抑止）、M0→M5対応とM1開始条件。
+変えないもの: capability probeによるpin撤廃、R1、S全alias gate、migration v12とjournal、private path、Codex finite wire・schema gate（A5／A6。§0aのC1〜C4で改訂を提案中）、rate契約、旧API機能廃止（A3）と#19、auth／CAS／owner／marker／fencing／process custody、禁止事項（Task.version authority、test専用authority constructor、SQL成功seed、`allow(dead_code)`、skip／ignore／直列化、timeoutだけの修正、warning抑止）、M0→M5対応とM1開始条件。
+
+### 0a. Codex契約改訂の差分一覧（承認済みA5／A6・`c44baad3`比、提案中）
+
+オーナーが承認を判断するのは本表の差分だけである。「広げる」はrrxが受理する範囲またはA6／§7免責表を承認済みより広げる項目、「狭める」は安全側への追加である。表にないA5／A6の内容（strict JSON、所有フィルタ先行禁止、closed object／key-tag／RPC判別key、raw hash pinなし、static catalogをruntime validatorにしない）は変えない。
+
+| ID | 項目 | 承認済み（A6、0.160.1 catalog `c44baad3`） | 本改訂 | 広げる／狭める | 承認 |
+|---|---|---|---|---|---|
+| E-01 | Schema gateの比較 | 未知の宣言property／method／discriminatorは全位置で起動前拒否 | strict位置は完全一致、tolerated位置は§8の規則内で増減を許容（§7・§8） | 広げる | C1 |
+| E-02 | 新しい通知method | 拒否 | params閉包がstrict位置のdefinitionへ到達しなければgate許容追加（上限64）。実行時は内容不使用 | 広げる | C1 |
+| E-03 | 新しいThreadItem type | 拒否 | gate許容追加（上限32）。所有turnでUnknown→Held（成功0）、foreignはid／type検査後に除外 | 広げる（結果はHeld） | C1 |
+| E-04 | 新しいserver request method、strict位置の新property、used enumの新値 | 拒否 | 拒否のまま | 変更なし | C1 |
+| E-05 | 通知payloadの実行時検査 | 全83通知の全payloadを型検査 | 21通知（S-notify）は全payload、4通知（S-held）はmethodと所有キー、他59通知は所有キーだけ型検査し残りは有界strict JSON（§7） | 広げる | C3 |
+| E-06 | ThreadItem内容 | 19枝すべての内容を型検査 | agentMessage・commandExecution・fileChangeだけ内容を型検査。他16枝はid／typeだけ（所有turnの許可集合外は従来どおりHeld） | 広げる | C3 |
+| E-07 | Thread／TurnError | Thread全体、ThreadExtra明示map、TurnError全体を型検査 | Thread core（id、cwd、modelProvider、status、turns）とTurnError（misalignment内容を除く）だけ型検査 | 広げる | C3 |
+| E-08 | ConfigRead `config` | 未確定（catalog不在でBLOCKED） | 判定path（web_search、features.<name>、mcp_servers.<name>.enabled）だけを型検査。`Config`の開放領域（additionalProperties=true）を§7免責表へ追加し、他の宣言propertyはtolerated（§7・§8） | 広げる（免責表に1行追加） | C3 |
+| E-09 | McpServerStatusList | 未確定（catalog不在でBLOCKED） | data、nextCursor、各serverのname・tools（空であること）・toolsErrorだけ型検査。他とTool値はtolerated | 広げる | C3 |
+| E-10 | §7免責表 | 15行 | 9行（strict領域内の型なし位置だけ）。外れた7行はtolerated領域に含まれ、Config開放領域1行を追加 | 広げる | C3 |
+| E-11 | CodexErrorInfo | 既知15文字列＋5 object枝で閉じる（oneOf） | basisの宣言（anyOf＋`string/object`の開放枝）に合わせ、開放枝だけに合う値は`Unclassified`。failedの所有turnではUnknown→Held、quota／auth／capacityの根拠にしない | 広げる（結果はHeld） | C2 |
+| E-12 | MessagePhase | commentary／final_answer | partial_answerを追加。回答に採用しない（commentaryと同じ扱い）。final_answerだけ採用 | 広げる（回答authorityなし） | C2 |
+| E-13 | thread/goal/updated | params.threadId＝goal.threadIdをrrx refinementで検査 | tolerated通知のため内容を検査しない（refinement廃止） | 広げる | C3 |
+| E-14 | thread/settings/updated | 型検査のみ | 所有threadのapprovalPolicy・sandboxPolicy・cwdがThreadStart応答と異なればturn/start前は拒否、後はUnknown→Held | 狭める | C2 |
+| E-15 | 契約basis | 0.160.1 catalog（10 source、268共有definition、`c44baad3…`）。再生成しない | 0.162.1 catalog（12 source、303共有definition、`bbdede32…`）。0.160.1 catalogは履歴として書換えずに保持（§12） | basis変更 | C2 |
+| E-16 | 契約の更新 | 「未適合CLI拡張は契約見直しまでBLOCKED」（手順なし） | §8bの再生成・再現確認・出所記録・レビュー手順。strict位置を広げる、または免責／tolerated集合を広げる更新だけオーナー承認 | 手順の追加 | C4 |
+
+0.160.1→0.162.1の実差分（§8bの分類）: toleratedで吸収できるのは`thread/prediction/updated`の追加、`McpServerOauthLoginCompletedNotification.loginId`、`MisalignmentErrorDetails.reviewTarget`、subAgentActivity枝のoptional `model`／`reasoningEffort`。strict位置に触れるため本規則でも再生成が要るのは`TurnStartParams.parentTurnId／rootTurnId`、`Turn.rootTurnId`、`MessagePhase.partial_answer`、`CodexErrorInfo`のoneOf→anyOfと開放枝である。今回のbasis更新でこれらを契約へ取り込む。二分類は更新ごとの再承認を減らすが、strict位置に触れる更新を無承認で通すものではない。
 
 ### 1. Producerからconsumerまでの鎖
 
@@ -286,11 +313,53 @@ Claude rate eventはforeign sessionでもstrict decodeを先に行う。正常fo
 
 ### 7. Codexの有限wire契約
 
-rrx側に`CodexWireContractV1`を定義し、typed decoder、schema gate、S/P、本番consumerで共用する。CLIのruntime出力から型・required・enumを作り直さない。ignored通知も同じdecoderを通す。
+rrx側に`CodexWireContract`を1つだけ定義し、typed decoder、schema gate、S/P、本番consumerで共用する。契約はbasis catalogのsubtree digestで識別し、CLI版数で契約を選ばない。CLIのruntime出力から型・required・enumを作り直さない。ignored通知も同じdecoderを通す。
 
 適用範囲: 本節の契約は、全Codex aliasのS、Codex Executor P（Schema／Handshake）、§8aのCodex Executor本番Sessionで同じdecoderとして使う。Claude Reviewerには適用しない。
 
-以下の表の記法は、`s=string`、`b=boolean`、`i=int64`、`T=threadId:s`、`U=turnId:s`、`I=itemId:s`、`[]`は型付きarray。IDには既存の有界ID制約を追加する。表は**全83通知の必須payload**を定義する。同じ行にある複数methodは同一形を共有する。
+**契約basisと位置の二分類（C1〜C3、提案中）**
+
+契約basisはcodex-cli 0.162.1の公開tag export（§12）とする。各位置（method、definitionのproperty path、enum値集合、枝集合、required集合）をstrictかtoleratedのどちらかに割り当てる。分類は到達経路ごとに行い、同じdefinitionがstrict位置とtolerated位置の両方から到達する場合はstrictとして比較する（例: UserInputはturn/start送信の閉包でstrict、userMessage itemの内容ではtolerated。CommandActionはcommandExecution枝とserver requestでstrict）。下表にない位置はstrictとする。
+
+| strict区分 | 位置 | 根拠 |
+|---|---|---|
+| S-send | `initialized`と送信8 methodのparams閉包の全宣言。rrxが送らないoptional property、default値、approval方針・sandbox・roots・network・environment・cwd・dynamicToolsを含む | rrxが送る値と、送らない値のCLI既定がrrxの安全前提を決める |
+| S-handshake | Initialize／Account／Environment／Rate responseの全宣言（rateLimitUpsellは免責表） | account mode、ready、rate証拠は資格付けの判断値 |
+| S-config | ConfigReadResponseのroot required（config、origins）とlayersの宣言、`config`がConfig objectであること、Configの`additionalProperties: true`、`web_search`の宣言（nullable WebSearchMode）、`features`と`mcp_servers`が宣言propertyでないこと | §8a(3a)の判定path。features／mcp_serversはsourceでは開放領域にあり、rrx refinementで型付けする（§8） |
+| S-inventory | ListMcpServerStatusResponseのdata（required array）とnextCursor（nullable string）、McpServerStatusのname（required string）・tools（required object map）・toolsError（nullable string） | §8a(3a)の判定値 |
+| S-thread | ThreadStartResponse top-levelの全宣言、Thread core（id、cwd、modelProvider、status、turns）、TurnStartResponse、Turnの全宣言、TurnStatus、TurnError（misalignmentの内容を除く）、CodexErrorInfoの全枝、ThreadStatus、ThreadSettings | owned thread／turnの同一性・状態・終端と応答echo |
+| S-notify | 次の21通知の全payload: error、thread/started、thread/status/changed、thread/archived、thread/deleted、thread/unarchived、thread/closed、thread/reverted、thread/settings/updated、turn/started、turn/completed、item/started、item/completed、item/agentMessage/delta、item/commandExecution/terminalInteraction、item/fileChange/patchUpdated、serverRequest/resolved、mcpServer/startupStatus/updated、account/updated、account/rateLimits/updated、account/login/completed | 決定値、効果、終端、回答、資格付けの相反観測を運ぶ |
+| S-held | item/autoApprovalReview/started、item/autoApprovalReview/completed、autoApprovalReview/strictReviewRequired、item/mcpToolCall/progressのmethodと所有キー | 所有turnでの着信だけでUnknown→Held。内容は判断に使わない |
+| S-request | server request 11 methodとparams閉包の全宣言 | rrxへ許可・入力を求めうる |
+| S-item | ThreadItemの全枝のid／type、agentMessage（MessagePhaseを含む）・commandExecution（CommandAction、cwd、status）・fileChangeの内容の全宣言 | 回答・効果・path検査の対象 |
+| 所有キー | 84通知すべての所有キー（threadId、turnId、thread.id、turn.id）の宣言 | 所有フィルタと握手扱い |
+
+| tolerated区分 | 位置 | 実行時 |
+|---|---|---|
+| T-notify | S-notify以外の63通知のpayloadのうち所有キー以外（S-heldの4通知を含む） | envelope・method・所有キーだけ型検査し、残りは有界strict JSONとして保持 |
+| T-item | userMessage・reasoning・plan・contextCompactionの内容、§8a(3a)許可集合外12枝の内容 | id／typeだけ検査。所有turnの許可集合外はUnknown→Held、foreignは除外 |
+| T-thread | Thread core以外のproperty（extra、gitInfo、source等）とTurnError.misalignmentの内容 | 保持のみ |
+| T-config | Configの宣言propertyのうちweb_search以外、origins、layersの内容 | 保持のみ。layersは実行時absent／nullを要求する（includeLayers=falseを送るため） |
+| T-inventory | McpServerStatusのcore以外（authStatus、resources、resourceTemplates、runtimeStatus、serverInfo、serverCapabilities、httpOrigin、pluginId）とtools mapの値（Tool） | 保持のみ。tools mapは空であることだけを使う |
+
+tolerated位置の実行時規則: 既存のbyte／depth／node／文字列／容器上限とstrict JSON（duplicate key、切れたJSON等の拒否）をそのまま適用する。frame処理中のメモリ保持だけとし、journal・receipt・log・statusへ本文を出さない。分類・回答・quota・auth・authority・所有判断に使わず、tolerated値でstrict位置の判定を変えない。consumerがtolerated位置を読む必要が出た場合は、§8bの手順でstrictへ移してから読む。黙って再分類しない。
+
+新しい宣言の扱いは次表で閉じる。
+
+| 新しい宣言 | Schema gate | 実行時 |
+|---|---|---|
+| server request method | 拒否 | 着信はS/Pで拒否、SessionでUnknown→Held（従来どおり） |
+| ThreadItem type | 許容追加（上限32、名前1〜64 bytesの`[A-Za-z0-9_]`） | 所有turnでUnknown→Held、成功0。foreignはid／type検査後に除外 |
+| 通知method | params閉包が同一file内でstrict位置から到達するdefinitionへ到達せず、所有キーが宣言されていればstring／nullable stringのときだけ許容追加（上限64、名前1〜128 bytesの`[A-Za-z0-9/_.-]`、既知method名と非衝突）。それ以外は拒否 | T-notifyと同じ。所有区分は宣言から決める（threadId requiredならThread、optional／nullableならOptional Thread、なければGlobal。turnIdも同様） |
+| strict位置の新property（optional／nullableを含む） | 拒否 | - |
+| used enumの新値（MessagePhase、TurnStatus、ThreadStatus、CodexErrorInfoの既知値集合、WebSearchMode、AskForApproval、SandboxMode、SandboxPolicy type、startup status、rateLimitReachedType、authMode、environment status等） | 拒否 | - |
+| tolerated位置の追加・削除・変更 | 許容。ただしtolerated通知のparams閉包がstrict位置のdefinitionへ新たに到達する場合と所有キーの型変更は拒否 | 保持のみ |
+| strict位置・strict通知の削除 | 拒否 | - |
+| tolerated既知通知の削除 | 許容 | - |
+
+ThreadItem typeと通知methodのgate許容追加は、そのgateを実行したSのHandshake、またはPと同じUnitの本番Session decoderへ、メモリ上の有界集合（名前と所有区分）として渡す。Session前のprogram identity再検査（X-1）でgateを実行したprogramとの一致を確認する。この集合はauthorityではなく、journalには件数とdigestだけを記録し、journalから復元しない。契約にもgate許容追加にもないmethod／typeの実着信は従来どおりProtocolErrorとする。
+
+以下の表の記法は、`s=string`、`b=boolean`、`i=int64`、`T=threadId:s`、`U=turnId:s`、`I=itemId:s`、`[]`は型付きarray。IDには既存の有界ID制約を追加する。表は**basisの全84通知の必須payload**を記す。実行時に全payloadを型検査するのはS-notifyの21通知だけで、他は所有キーだけを型検査する（上表）。同じ行にある複数methodは同一形を共有する。
 
 | method | 必須payload |
 |---|---|
@@ -302,6 +371,7 @@ rrx側に`CodexWireContractV1`を定義し、typed decoder、schema gate、S/P�
 | `thread/name/updated` | T |
 | `thread/attachment/updated` | T,attachmentId:s,attachmentType:s,identityKey:s,operation:`created/deleted` |
 | `thread/goal/updated` | T,goal:ThreadGoal |
+| `thread/prediction/updated` | T,sourceTurnId:s,result:ThreadPredictionResult（type=`completed`（optional text:string/null）／`failed`） |
 | `thread/goal/cleared`、`thread/queue/changed` | T |
 | `project/changed` | projectId:s,changeType:`created/updated/deleted` |
 | `thread/project/updated` | T,projectId:string/null |
@@ -364,70 +434,42 @@ rrx側に`CodexWireContractV1`を定義し、typed decoder、schema gate、S/P�
 | `windowsSandbox/setupCompleted` | mode:`elevated/unelevated`,success:b |
 | `account/login/completed` | success:b |
 
-optional fieldもpresentなら型検査する。特にthreadName、projectId、turnId、error、reason、details、targetItemId、environmentIdなどのnullableとoptionalを混同しない。以下の所有列を上のpayload表へmethodで自然結合し、全83methodがちょうど1区分に属することを検査する。列挙中のmethodはそれぞれ独立methodであり、prefixによる未知methodの受理ではない。
+optional fieldもpresentなら型検査する。特にthreadName、projectId、turnId、error、reason、details、targetItemId、environmentIdなどのnullableとoptionalを混同しない。以下の所有列を上のpayload表へmethodで自然結合し、全84methodがちょうど1区分に属することを検査する。列挙中のmethodはそれぞれ独立methodであり、prefixによる未知methodの受理ではない。
 
 | method集合（件数） | 所有区分／キーと型 | S/P握手中 |
 |---|---|---|
 | error、thread/tokenUsage/updated、turn/diff/updated、turn/plan/updated、item/started、item/autoApprovalReview/started、item/autoApprovalReview/completed、autoApprovalReview/strictReviewRequired、item/completed、item/agentMessage/delta、item/plan/delta、item/commandExecution/outputDelta、item/commandExecution/terminalInteraction、item/fileChange/outputDelta、item/fileChange/patchUpdated、item/mcpToolCall/progress、item/reasoning/summaryTextDelta、item/reasoning/summaryPartAdded、item/reasoning/textDelta、thread/compacted、model/rerouted、model/verification、modelProvider/authRecoveryStarted、modelProvider/authRecoveryCompleted、turn/moderationMetadata、model/safetyBuffering/updated（26） | Thread＋Turn。params.threadId:string、params.turnId:stringとも必須。 | strict検査後に拒否 |
-| thread/status/changed、thread/archived、thread/deleted、thread/unarchived、thread/closed、thread/reverted、thread/name/updated、thread/attachment/updated、thread/goal/cleared、thread/queue/changed、thread/project/updated、thread/environment/connected、thread/environment/disconnected、thread/settings/updated、serverRequest/resolved、guardianWarning、thread/realtime/started、thread/realtime/itemAdded、thread/realtime/item/started、thread/realtime/item/transcript/delta、thread/realtime/item/completed、thread/realtime/transcript/delta、thread/realtime/transcript/done、thread/realtime/outputAudio/delta、thread/realtime/sdp、thread/realtime/error、thread/realtime/closed（27） | Thread。params.threadId:string必須。 | strict検査後に拒否 |
+| thread/status/changed、thread/archived、thread/deleted、thread/unarchived、thread/closed、thread/reverted、thread/name/updated、thread/attachment/updated、thread/prediction/updated、thread/goal/cleared、thread/queue/changed、thread/project/updated、thread/environment/connected、thread/environment/disconnected、thread/settings/updated、serverRequest/resolved、guardianWarning、thread/realtime/started、thread/realtime/itemAdded、thread/realtime/item/started、thread/realtime/item/transcript/delta、thread/realtime/item/completed、thread/realtime/transcript/delta、thread/realtime/transcript/done、thread/realtime/outputAudio/delta、thread/realtime/sdp、thread/realtime/error、thread/realtime/closed（28） | Thread。params.threadId:string必須。 | strict検査後に拒否 |
 | thread/goal/updated、hook/started、hook/completed（3） | Thread＋任意Turn。params.threadId:string必須、params.turnIdはoptional string/null。非nullだけ追加の所有比較。 | turnId欠落／nullでも拒否 |
 | thread/started（1） | Nested Thread。params.thread.id:string必須。Thread全体も検査。top-level threadId不在を全体通知としない。 | 拒否 |
 | turn/started、turn/completed（2） | Thread＋Nested Turn。params.threadId:string、params.turn.id:string必須。Turn全体も検査。 | 拒否 |
 | mcpServer/oauthLogin/completed、mcpServer/startupStatus/updated、warning（3） | Optional Thread。params.threadIdはoptional string/null。欠落／nullなら全体、非nullならThread。 | 欠落／nullなら正常全体通知として続行、非nullなら拒否 |
 | skills/changed、project/changed、command/exec/outputDelta、process/outputDelta、process/exited、mcpServer/event/stream/notification、account/updated、account/gatewayOAuth/changed、account/rateLimits/updated、app/list/updated、remoteControl/status/changed、externalAgentConfig/import/progress、externalAgentConfig/import/completed、fs/changed、deprecationNotice、configWarning、fuzzyFileSearch/sessionUpdated、fuzzyFileSearch/sessionCompleted、windows/worldWritableWarning、windowsSandbox/setupCompleted、account/login/completed（21） | Global。Thread／Turn所有キーなし。processHandle、processId、watchId、subscriptionId、sessionId等をNative Thread／Turn authorityへ変換しない。 | strict-validなら件数に算入して続行。rateは§9も適用 |
 
-本番では存在する所有キーをすべて比較し、foreignはpayload全体の検査後にだけ除外する。任意Turnが欠落／nullでもThread比較は省略しない。Global通知はwire合法性だけで入力・回答・権限authorityを発行しない。 `thread/goal/updated`はparams.threadIdと必須goal.threadIdの一致を所有filter前に検査し、両方を同じThread所有へ束縛する。この等値制約はsource catalogの制約ではなくrrx refinementであり、全SDK対応の追加scopeにはしない。不一致はforeignとして捨てずProtocolError。S/P握手ではaccount/updated.authModeがpresentでchatgpt以外（null含む）、またはaccount/login/completed.success=falseなら相反観測として拒否し、後の正常account/readで打ち消して資格付けない。authMode欠落は肯定証拠にせず、成功通知自体もchatgpt資格付けの代替にしない。
+本番では存在する所有キーをすべて比較し、foreignはpayload全体の検査後にだけ除外する。任意Turnが欠落／nullでもThread比較は省略しない。Global通知はwire合法性だけで入力・回答・権限authorityを発行しない。`thread/goal/updated`はT-notifyであり、goalの内容を検査・使用しない（params.threadIdの所有比較だけを行う）。S/P握手ではaccount/updated.authModeがpresentでchatgpt以外（null含む）、またはaccount/login/completed.success=falseなら相反観測として拒否し、後の正常account/readで打ち消して資格付けない。authMode欠落は肯定証拠にせず、成功通知自体もchatgpt資格付けの代替にしない。
 
-補助型は、固定HEADの公開static catalogでsource schemaごとの`local_definition_digests`から`shared_definitions`へ解決したdefinitionを開発時根拠にする。rrx予定型名とsource definition名は同名とは限らない。
+補助型は、basis catalog（§12）でsource schemaごとの`local_definition_digests`から`shared_definitions`へ解決したdefinitionを開発時根拠にする。rrx予定型名とsource definition名は同名とは限らない。strict位置で型付けする補助型の対応は次のとおり。GuardianApprovalReviewAction、GuardianApprovalReview、HookRunSummary、ThreadRealtimeItem、ExternalAgentConfigImportTypeResult、FuzzyFileSearchResult、TurnPlanStep、AppInfo、ThreadGoal、token usageはT-notifyの内容であり、rrx型を作らない。
 
 | source definition | rrx予定型 |
 |---|---|
-| GuardianApprovalReviewAction | GuardianAction |
-| GuardianApprovalReview | GuardianReview |
-| HookRunSummary | HookRun |
-| ThreadRealtimeItem | RealtimeItem |
-| ExternalAgentConfigImportTypeResult | ImportResult |
-| FuzzyFileSearchResult | SearchResult |
-| TurnPlanStep | PlanStep |
 | FunctionCallOutputBody | FunctionOutput |
 | RateLimitSnapshot | RateSnapshot |
 | FileSystemSpecialPath | SpecialPath |
 
-その他の同名型もsource schema名とdefinition名を明記する。転記範囲は上表、11 server request、送信8 method（§8a(3a)のconfig/read・mcpServerStatus/listを含む）、8 responseから到達する**宣言済みproperty／required／enum／型／数値域の全閉包**であり、optional／nullable、配列要素、map値も含めてrequiredだけの投影に縮めない。出所definition→rrx型→decoder→consumer対応表を実装成果物に含める。static catalogは開発時の観測資料であり、runtime validatorの仕様生成器ではない。全JSON dump、runtime生成schemaからの型生成、schemaをvalidatorとして実行する方式でこの固定rrx契約を代替しない。
+その他の同名型もsource schema名とdefinition名を明記する。転記範囲はstrict位置（上の二分類表）から到達する**宣言済みproperty／required／enum／型／数値域／defaultの全閉包**であり、optional／nullable、配列要素、map値も含めてrequiredだけの投影に縮めない。tolerated位置は閉包の転記対象にしない。出所definition→rrx型→decoder→consumer対応表を実装成果物に含める。static catalogは開発時の観測資料であり、runtime validatorの仕様生成器ではない。全JSON dump、runtime生成schemaからの型生成、schemaをvalidatorとして実行する方式でこの固定rrx契約を代替しない。
 
-内部discriminatorは少なくとも次を有限化する。
+strict位置の内部discriminatorは少なくとも次を有限化する。
 
 - ThreadStatus：notLoaded／idle／systemError／active。activeはactiveFlags配列を要求。
-- GuardianActionは`GuardianApprovalReviewAction`の7枝。全枝でtypeを必須とし、枝別構造は次表に固定する。server request methodの`applyPatchApproval`を内部action tagとして受理しない。
+- FileSystemPath／SpecialPath、AskForApproval（`untrusted/on-request/never`と閉じたgranular枝）、SandboxPolicy（dangerFullAccess／readOnly／externalSandbox／workspaceWrite）、SandboxMode（`read-only/workspace-write/danger-full-access`）：各tagと枝別構造。
+- ThreadSettings、permission profile（RequestPermissionProfileを含む）、server request params：配列要素・map値・nullable参照を再帰検査し、objectだけでは通さない。LegacyAppPathStringとAbsolutePathBufはsourceのstring形を保ち、後者には既存absolute-path業務条件を適用する。
 
-| type | 追加必須field | optional field |
-|---|---|---|
-| command | command:string、cwd:LegacyAppPathString、source=`shell/unifiedExec` | なし |
-| execve | argv:string[]、cwd:AbsolutePathBuf、program:string、source=`shell/unifiedExec` | なし |
-| writeStdin | approvalId:string、cwd:LegacyAppPathString、processId:string、stdin:string | なし |
-| applyPatch | cwd:LegacyAppPathString、files:LegacyAppPathString[] | なし |
-| networkAccess | host:string、port:uint16、protocol=`http/https/socks5Tcp/socks5Udp`、target:string | なし |
-| mcpToolCall | server:string、toolName:string | connectorId／connectorName／toolTitle:string/null |
-| requestPermissions | permissions:RequestPermissionProfile | reason:string/null |
+GuardianAction（7枝）、GuardianReview、HookRun、RealtimeItem、ImportResult、AppInfo、SearchResult、ThreadGoal、token usage、SessionSource／SubAgentSource（Thread.source）はtolerated位置にだけ現れるため型付き検査しない（E-05／E-07）。server request methodの`applyPatchApproval`等をtolerated内容から読み取らない。
 
-LegacyAppPathStringとAbsolutePathBufはsourceのstring形を保ち、後者には既存absolute-path業務条件を適用する。RequestPermissionProfileはtyped閉包を検査し、任意JSONへ落とさない。
-- GuardianReview status：inProgress／approved／denied／timedOut／aborted。
-- HookRun：eventName、executionMode、handlerType、scope、source、status、entries.kindの各有限enum。
-- FileSystemPath／SpecialPath、AskForApproval、SandboxPolicy、SessionSource／SubAgentSource：各oneOfのtagと枝別必須構造。
-- RealtimeItem：共通id／realtimeSessionIdに加え、realtimeSessionStarted／transcriptSegment／bemItemPromoted／realtimeSessionClosedの枝別構造。presentationのwholeItem／inlineMarkdown／inlineVisualizationも検査。
-- ImportResult、AppInfo、SearchResult、ThreadGoal、ThreadSettings、token usage、permission profile：配列要素・map値・nullable参照を再帰検査し、objectだけでは通さない。
-
-`OpaqueJson`の免責集合は次表で閉じる。位置はsource definitionのproperty pathであり、枝をまたいで拡大しない。任意JSON自身にはnullを含められるが、外側のtyped容器の型・required／optional／nullableは維持する。
+`OpaqueJson`の免責集合は、strict領域内にsourceが型なし（`true`、`{}`、`additionalProperties: true`）で宣言した位置だけを次表で閉じる。位置はsource definitionのproperty pathであり、枝をまたいで拡大しない。任意JSON自身にはnullを含められるが、外側のtyped容器の型・required／optional／nullableは維持する。tolerated領域内の型なし位置（McpServerEventNotification.params、McpToolCallResultの3位置、ThreadItemのmcpToolCall／dynamicToolCall arguments、webSearch results[]、ThreadRealtimeItemAddedNotification.item、TurnModerationMetadataNotification.metadata、Tool／Resource／serverCapabilities等）はtolerated区分に含まれ、本表に載せない。
 
 | source位置 | 外側の契約 |
 |---|---|
-| McpServerEventNotification.params | 必須任意JSON |
-| McpToolCallResult._meta、structuredContent | 各optional任意JSON |
-| McpToolCallResult.content[] | contentは必須array、各要素だけ任意JSON |
-| ThreadItem[type=mcpToolCall].arguments、ThreadItem[type=dynamicToolCall].arguments | 各枝で必須任意JSON |
-| ThreadItem[type=webSearch].results[] | resultsはoptional array/null、非null arrayの各要素だけ任意JSON |
-| ThreadRealtimeItemAddedNotification.item | 必須任意JSON。ThreadRealtimeItemのtyped枝とは別位置 |
-| TurnModerationMetadataNotification.metadata | 必須任意JSON |
 | DynamicToolCallParams.arguments | 必須任意JSON |
 | McpServerElicitationRequestParams[mode=openai/userVerification・form・openai/form・openaiForm・url]._meta | 5枝それぞれoptional任意JSON |
 | McpServerElicitationRequestParams[mode=openai/form・openaiForm].requestedSchema | この2枝だけ必須任意JSON |
@@ -436,14 +478,15 @@ LegacyAppPathStringとAbsolutePathBufはsourceのstring形を保ち、後者に�
 | ThreadStartParams.configのmap値 | configはoptional object/null、値だけ任意JSON |
 | TurnStartParams.outputSchema | optional任意JSON（sourceは型なし`{}`） |
 | GetAccountRateLimitsResponse.rateLimitUpsell | optional任意JSON（sourceは型なし`{}`）。quota／可用性判断に使用しない |
+| ConfigReadResponse.config（Config）の`additionalProperties: true`領域のうち`features`と`mcp_servers`以外のkey | 値だけ任意JSON。`features`／`mcp_servers`は§8のrrx refinementで型付けし、本免責に含めない。内容は保存・監査しない（E-08） |
 
 McpServerElicitationRequestParamsのmode=formではrequestedSchemaは必須`McpElicitationSchema`であり、型付きproperties／required／primitive schema閉包を検査する。mode=openai/userVerification／urlへrequestedSchemaの免責を追加しない。共通必須serverName／threadIdとoptional nullable turnIdも検査する。
 
-選択した10source schemaと到達definition閉包に明示された`true`／型なしschema位置について、この表との双方向集合一致を検査する。typed枝を免責へ広げず、欠落免責を暗黙追加しない。未知method・item.type・status・discriminatorをopaqueへ落とさない。opaqueもstrict JSONと既存byte／depth／nodes／文字列／容器上限の対象であり、構造外のauthority・業務成功証拠にしない。 Thread.extraのThreadExtraはsourceの`type:object`を保つ有界非使用mapであり、任意JSON全体のOpaqueJsonではない。外側Thread.extraのrequired／optional／nullableはcatalogに従い、非null値はobject、map値だけ有界strict JSONとして保持し業務非使用とする。この位置を明示typed mapとして照合し、unknown-schema exemptionを別位置へ拡大しない。
+選択した12source schemaのstrict位置と到達definition閉包に明示された`true`／型なしschema位置について、この表との双方向集合一致を検査する。typed枝を免責へ広げず、欠落免責を暗黙追加しない。未知method・status・discriminatorをopaqueへ落とさない（ThreadItem typeと通知methodのgate許容追加は上の規則だけ）。opaqueもstrict JSONと既存byte／depth／nodes／文字列／容器上限の対象であり、構造外のauthority・業務成功証拠にしない。Thread.extraはT-threadであり、明示typed mapとしての照合はしない。
 
 **ThreadItem全19枝**
 
-全枝でid／typeを要求する。追加必須は以下とする。
+全枝でid／type（string）を要求する。内容を型検査するのはagentMessage・commandExecution・fileChangeだけ（S-item）で、他の16枝の追加fieldはbasisの宣言を記録するがT-itemとして保持だけ行う。追加必須は以下とする。
 
 | type | 追加必須 |
 |---|---|
@@ -458,7 +501,7 @@ McpServerElicitationRequestParamsのmode=formではrequestedSchemaは必須`McpE
 | mcpToolCall | arguments:OpaqueJson,server:s,tool:s,status:`inProgress/completed/failed` |
 | dynamicToolCall | arguments:OpaqueJson,tool:s,status:`inProgress/completed/failed` |
 | collabAgentToolCall | agentsStates:typed map,receiverThreadIds:string[],senderThreadId:s,status:`inProgress/completed/failed/interrupted`,tool:有限9種 |
-| subAgentActivity | agentPath:s,agentThreadId:s,kind:`started/interacted/interrupted/completed` |
+| subAgentActivity | agentPath:s,agentThreadId:s,kind:`started/interacted/interrupted/completed`（optional model:string/null、reasoningEffort/null） |
 | webSearch | query:s |
 | imageView | path:s |
 | sleep | durationMs:uint64 |
@@ -466,15 +509,17 @@ McpServerElicitationRequestParamsのmode=formではrequestedSchemaは必須`McpE
 | enteredReviewMode／exitedReviewMode | review:s |
 | contextCompaction | なし |
 
-UserInputはtext／image／localImage／audio／localAudio／skill／mention。textはtext文字列、imageはurlまたはfileId、他は各path／url／nameを要求する。CommandAction、FunctionOutput content、WebSearchAction、ImageGenerationFailureも入れ子の有限枝を検査する。imageGeneration.statusは仕様上stringであり、rrxが根拠なくenumを発明しない。
+UserInputはtext／image／localImage／audio／localAudio／skill／mention。textはtext文字列、imageはurlまたはfileId、他は各path／url／nameを要求する。UserInputとFunctionOutput contentはturn/start送信の閉包（S-send）で、CommandActionはcommandExecution枝（S-item）で入れ子の有限枝を検査する。WebSearchAction、ImageGenerationFailureはT-itemの内容である。
 
-agentMessage.phaseはoptional nullable、presentならcommentary／final_answer。欠落／nullはwire合法だが回答承認には使わない。delivery／questionsもwire構造を検査した後、collectorの業務条件で採用可否を決める。
+agentMessage.phaseはoptional nullable、presentならcommentary／partial_answer／final_answer。回答に採用するのはfinal_answerだけで、partial_answerはcommentaryと同じく回答に採用しない（E-12）。欠落／nullはwire合法だが回答承認には使わない。delivery／questionsもwire構造を検査した後、collectorの業務条件で採用可否を決める。
 
-本番処理順はstrict envelope→method→payload全構造→所有フィルタ→consumer。正常toolは構造検査後に回答から除外できる。malformed foreign frameはProtocolError。S/P握手では全server requestをparams検査後に拒否し、通知は所有列の握手扱いを使う。正常なGlobal通知と、Optional ThreadでthreadId欠落／nullの通知だけを数えて続行する。Codex Executorの本番Sessionでは、構造検査を通った正常なforeign通知・itemは除外して続行し、所有turn内で作業を別thread／turn／agentへ広げるitemと§8a(3a)の許可集合外itemだけを§8a(4)のUnknown→Heldとする。
+本番処理順はstrict envelope→method→payload（strict位置の全構造、tolerated位置は有界strict JSON）→所有フィルタ→consumer。正常toolは構造検査後に回答から除外できる。malformed foreign frameはProtocolError。S/P握手では全server requestをparams検査後に拒否し、通知は所有列の握手扱いを使う。正常なGlobal通知と、Optional ThreadでthreadId欠落／nullの通知だけを数えて続行する。Codex Executorの本番Sessionでは、構造検査を通った正常なforeign通知・itemは除外して続行し、所有turn内で作業を別thread／turn／agentへ広げるitemと§8a(3a)の許可集合外itemだけを§8a(4)のUnknown→Heldとする。
 
-既知Codex wire frame内の未宣言fieldは、Claudeと同じく有界strict JSONとして保持受理し、業務・authorityには使わない。既知fieldの不正型、未知method／tag／enum、branch不適合は拒否する。このwire追加field規則と、Schema gateで未知の宣言property／method／discriminatorを拒否する規則は別である。schemaのadditionalProperties未指定を、未知methodやtyped field不正を受理する根拠にしない。明示typed mapとOpaque位置以外に、新しい宣言propertyを自動追加しない。 例外としてsourceでadditionalProperties=falseのclosed objectは宣言key以外を拒否する。固定catalogのshared definitions全体では27位置であり、数から契約を生成せず、対象source rootのref解決後閉包にある各位置のproperties／required／additionalPropertiesを保持する。externally-tagged／key-tag unionはtag keyの存在もdiscriminatorであり、既知tag keyはちょうど1つ、0または複数は拒否する。CodexErrorInfoの5 object枝（4 HTTP＋activeTurnNotSteerable）にも適用する。
+既知Codex wire frame内の未宣言fieldは、Claudeと同じく有界strict JSONとして保持受理し、業務・authorityには使わない。strict位置の既知fieldの不正型、未知method／tag／enum、branch不適合は拒否する。このwire追加field規則と、Schema gateのstrict／tolerated比較規則（§8）は別である。schemaのadditionalProperties未指定を、未知methodやtyped field不正を受理する根拠にしない。明示typed mapとOpaque位置以外に、新しい宣言propertyを自動追加しない。 例外としてsourceでadditionalProperties=falseのclosed objectは、strict位置から到達する場合に宣言key以外を拒否する。basis catalogのshared definitions全体では29位置（8 method閉包。0.160.1の8 method閉包でも29で、6 method閉包の27からの増分2はConfigRead閉包のWebSearchLocation／WebSearchToolConfigであり、T-config内）である。数から契約を生成せず、strict位置のref解決後閉包にある各位置のproperties／required／additionalPropertiesを保持する。tolerated位置だけから到達するclosed objectは有界strict JSONとして保持する。externally-tagged／key-tag unionはtag keyの存在もdiscriminatorであり、既知tag keyはちょうど1つ、0または複数は拒否する。CodexErrorInfoの5 object枝（4 HTTP＋activeTurnNotSteerable）にも適用する。
 
-JSON-RPC envelopeの判別keyはid／method／params／result／errorであり未宣言追加field扱いしない。受信94 methods（server request 11／通知83）は、requestならid＋method＋params、notificationならmethod＋paramsかつidなしを要求する。success responseはid＋resultかつmethod／params／errorなし、error responseはid＋errorかつmethod／params／resultなしを要求する。送信requestのparams presenceは各source branchのrequiredに従い、`account/rateLimits/read`はid／method required・params optional nullableで、現rrxのnative.rs:2158は`{}`を送る。送信ClientNotificationの`initialized`はparamsなしであり、optional nullableなrequest paramsとは別契約である。送信使用6 methodsの既存wire検査とCX-3／CX-4を緩めない。idは有界stringまたはsource整数域でnull不可、methodは有限method。result＋error、method＋result/error、id:null、initialized＋paramsを拒否し、result:null等のpayload nullabilityは選択済response型で別検査する。判別key以外の追加fieldはclosed objectでない既知位置だけ既存のbounded保持規則を適用する。
+CodexErrorInfo（S-thread）はbasisでanyOfになり、既知15文字列・5 object枝に加えて`{"type":["string","object"]}`の開放枝を宣言する。rrx decoderは既知値と既知枝を先に照合し、既知tag keyを1つだけ持つobjectが既知枝に適合しなければProtocolError、既知tag keyを複数持てばProtocolErrorとする（開放枝で不正な既知枝を救済しない）。既知tag keyを持たないobjectと未知文字列（既存の文字列上限内）だけを`CodexErrorKind::Unclassified`とする。Unclassifiedはsubscription exhaustion・auth・capacityのどれの根拠にもせず、Availableにもしない。所有turnのfailedでUnclassifiedならKnown FailureではなくUnknown→Held（有限reason `codex error kind unclassified`）とし、`error`通知のUnclassifiedはquota観測を作らずturn終端の分類へ委ねる（E-11）。
+
+JSON-RPC envelopeの判別keyはid／method／params／result／errorであり未宣言追加field扱いしない。受信95 methods（server request 11／通知84）とgate許容追加の通知methodは、requestならid＋method＋params、notificationならmethod＋paramsかつidなしを要求する。success responseはid＋resultかつmethod／params／errorなし、error responseはid＋errorかつmethod／params／resultなしを要求する。送信requestのparams presenceは各source branchのrequiredに従い、`account/rateLimits/read`はid／method required・params optional nullableで、現rrxのnative.rs:2158は`{}`を送る。送信ClientNotificationの`initialized`はparamsなしであり、optional nullableなrequest paramsとは別契約である。送信使用8 methodsの既存wire検査とCX-3／CX-4を緩めない。idは有界stringまたはsource整数域でnull不可、methodは有限method。result＋error、method＋result/error、id:null、initialized＋paramsを拒否し、result:null等のpayload nullabilityは選択済response型で別検査する。判別key以外の追加fieldはclosed objectでない既知位置だけ既存のbounded保持規則を適用する。
 
 server requestは既知11種すべてのparamsを先に検査する。S/P握手では全種を拒否する。M0のCodex Executor Sessionは§8aの固定approval方針で承認要求を生じさせない契約とし、turn/start送信から所有turnの終了まで（turn/start応答待ちを含む全受信経路）に着信した11種はparams検査後に既存ledgerへ渡さず、応答（`-32601`を含む）も送らずにUnknown→Heldへ接続する（§8a(3)）。既存ledgerの承認2種対応と`submit_approval`経路は#10の範囲として存置し、M0で呼出し元・権限応答能力を増やさない。
 
@@ -494,30 +539,54 @@ PのSchema出力先はSAME Unitの既存tmp直下にrrxが新規作成する専�
 
 - method枝は単一enumの一意枝。入れ子oneOfもtagの単一enumまたは相互排他的構造で一意に選択する。
 - `$ref`は解決してから比較する。allOfは全制約の積、anyOfはunion、oneOfはちょうど1枝。type配列はunion、nullableは明示null枝だけ。
-- boolean schema／型なしschemaを任意型扱いするのは、rrx契約が明示OpaqueJsonとする位置だけ。ThreadExtraの明示object mapはobject容器を維持し、任意型免責へ落とさない。closed object／key-tagの制約もref閉包ごとに比較する。
-- enum、integer／number、minimum／maximum、minLength、items、additionalPropertiesを含めて意味比較する。int32／uint16／uint64等のwire域を保ち、曖昧なformatを無制約へ落とさない。
+- boolean schema／型なしschemaを任意型扱いするのは、strict位置ではrrx契約が明示OpaqueJsonとする位置だけ。closed object／key-tagの制約もstrict位置のref閉包ごとに比較する。
+- enum、integer／number、minimum／maximum、minLength、items、additionalProperties、defaultを含めて意味比較する。int32／uint16／uint64等のwire域を保ち、曖昧なformatを無制約へ落とさない。description／title／examples／`$schema`だけは注記として比較しない（basis catalogの生成規則と同じ）。
 - 送信値は実producerが生成可能な値集合のすべてがCLI宣言に適合し、CLI requiredを満たす。
 - 受信側はCLIが宣言する既知fieldの型・nullability・enum・枝がrrx decoderの受理範囲を越えないことを要求する。業務上の追加条件は別に検査する。
-- 未知の宣言field／method／discriminatorを無条件受理しない。未使用ClientRequest methodは今回送らないため対象外だが、全notification／server requestは有限表に含まれることを要求する。
+- 未知の宣言field／method／discriminatorは、§7の新しい宣言の表が許容追加とするもの以外を受理しない。未使用ClientRequest methodは今回送らないため対象外。
+
+**新しいCLIの判定（C1）**: gateは生成schemaの各位置を§7の二分類で照合し、次の順で判定する。番号・raw hashは使わない。
+
+1. strict位置の一致: 各strict位置について、ref解決後の宣言が契約と意味的に等しいことを要求する。等しいとは、property名集合（optional／nullableを含む）、required集合、type集合（null枝を含む）、enum値集合、枝集合と各枝の構造（oneOf／anyOf／allOfの区別を含む）、数値・文字列・配列の制約、additionalProperties、defaultがすべて一致することである。definition名の変更は構造が同じなら一致とする。property・枝・enum値の追加、削除、変更はどれも不一致とする（optional／nullableの追加を含む）。
+2. strict到達集合: 同一file内でstrict位置から到達するdefinitionの集合をstrict到達集合とする。tolerated通知（既知・新規とも）のparams閉包がこの集合へ到達すれば拒否する（strict位置の黙った再分類の防止）。
+3. tolerated位置: 追加・削除・変更を許容する。所有キーの宣言は型（string／nullable string）とrequired性が契約と一致することを要求する。
+4. 新しい宣言: §7の表に従う。server request methodの追加、strict通知・送信methodの削除、used enumの新値は拒否する。許容追加はThreadItem type 32件・通知method 64件まで、名前は§7の文字種と長さに限る。超えたら拒否する。
+5. 既存の生成file sink、JSON、ref、memo、work-node上限は変えず、tolerated位置の読取りにも同じ上限を適用する。
+
+結果は`Pass{ tolerated_changes, accepted_item_types, accepted_notifications }`か`Refused{ reason }`の有限値であり、journalには結果、有限reason、件数、strict不一致の最初の8件の位置だけを記録する。reasonは`strict_mismatch`（kind: added／removed／type／required／enum／branch／constraint／closed／default）、`strict_reach`、`ownership_key`、`server_request_added`、`strict_removed`、`addition_limit`、`addition_name`、`ref`、`limit`、`file`のいずれか。位置はsource名（固定manifestの名前）と、definition名・property pathがあれば§10の版数と同じ規則（96 bytes以下かつ`[A-Za-z0-9 ._()+/:-]`なら原文、それ以外はSHA-256とnonrecordable）で記録する。生schema、schema本文の抜粋、tolerated位置の内容は保存しない。S bodyの4096 bytesとreceiptの既存上限を増やさず、超える分は件数だけにする。Passはcapability・authorityを発行せず、許容追加の集合は§7のとおりメモリ上でだけdecoderへ渡す。
 
 `initialized`はschema上methodしか宣言しない。S/P／本番producerを`{"method":"initialized"}`へ変更し、`params:{}`を送らない。これをschemaの例外で救済しない。
 
-送信契約はinitializeのclientInfo／experimentalApi、account/readのrefreshToken=false、environment/statusのlocal ID、rate readの空params、config/readのcwd（Unit Worktree）／includeLayers=false、mcpServerStatus/listのthreadId／limit=100／cursor=null（この2 methodはExecutorだけ、§8a(3a)）、thread/startのcwd／environments／任意model／Reviewer sandbox／Executorの固定approval方針・sandbox（§8a）とdynamicTools等の不送信、turn/startのthreadId／text input／任意effort／Executorのsandbox policy（§8aでcatalogに宣言がある場合）を、実producerと共通の型で表す。
+送信契約はinitializeのclientInfo／experimentalApi、account/readのrefreshToken=false、environment/statusのlocal ID、rate readの空params、config/readのcwd（Unit Worktree）／includeLayers=false、mcpServerStatus/listのthreadId／limit=100／cursor=null（この2 methodはExecutorだけ、§8a(3a)）、thread/startのcwd／environments／任意model／Reviewer sandbox／Executorの固定approval方針・sandbox（§8a）とdynamicTools等の不送信、turn/startのthreadId／text input／任意effort／Executorのapproval方針・sandboxPolicy（§8a(3)）を、実producerと共通の型で表す。
 
 responseは以下も対象にする。
 
 - Initialize：4必須文字列と既存platform／absolute path業務条件。
 - Account：requiresOpenaiAuth boolean、nullable accountのapiKey／chatgpt／amazonBedrock枝。資格付けはchatgptのみ。
 - Environment：ready／pending／disconnected／unknown。資格付けはreadyのみ。
-- ThreadStart：thread、cwd、modelProvider、model、approvalPolicy、approvalsReviewer、sandbox等の必須構造。Executorでは応答のapprovalPolicy・sandboxが§8aの送信値と一致することも要求する。
-- TurnStart／Turn：id、items、statusとoptional error／timestamps。
+- ThreadStart：thread、cwd、modelProvider、model、approvalPolicy（AskForApproval）、approvalsReviewer、sandbox（SandboxPolicy）等の必須構造とtop-levelの全宣言。Executorでは応答のapprovalPolicy・sandboxが§8aの送信値と一致することも要求する。threadはThread coreだけを型検査する（§7）。
+- TurnStart／Turn：id、items、statusとoptional error／timestamps／rootTurnId（string/null、業務非使用）を含むTurnの全宣言。
 - TurnStatus：completed／interrupted／failed／inProgress。
-- CodexErrorInfo：既知15文字列、4 HTTP object枝、activeTurnNotSteerable枝。HTTP statusはnullable uint16、turnKindはreview／compact。
+- CodexErrorInfo：既知15文字列、4 HTTP object枝、activeTurnNotSteerable枝、`string/object`開放枝（anyOf）。HTTP statusはnullable uint16、turnKindはreview／compact。開放枝の扱いは§7（E-11）。
 - RateLimitReachedType：既知5値とnullable。
-- ConfigRead（Executorだけ）：`config`のうち§8a(3a)の判定path（web_search、features.<name>、mcp_servers.<name>.enabled）を型検査する。`config`の他の位置をtyped閉包とするかOpaque位置とするかは固定catalogで確定し、Opaque位置なら§7の免責表へ明示追加する。本文は保存・監査しない。
-- McpServerStatusList（Executorだけ）：data配列の各serverのtools object、toolsError、nextCursor。field名・型は固定catalogで確定する。この2 methodの要求・応答が固定catalogの対象sourceにない場合は、fixture sourceを別記録で追補するまでBLOCKEDとし、型を推定しない。
+- ConfigRead（Executorだけ）：rootはconfig（Config）とorigins（ConfigLayerMetadataのmap）がrequired、layersはnullable array。rrxはincludeLayers=falseを送るため、layersはabsent／nullだけを受理し、非nullは`ExecutorCapabilityUnverified`とする。Configはrequiredなし・`additionalProperties: true`のobjectであり、判定pathのうち`web_search`だけが宣言property（nullable WebSearchMode `disabled/cached/indexed/live`）である。`features`と`mcp_servers`はsourceでは開放領域のkeyなので、rrx refinementとして次の型で読む: `features`はabsent／null／object、objectならmap値はboolean（§8a(3a)の対象名はpresentかつfalseを要求）。`mcp_servers`はabsent／null／object（最大4096 entry）、各値はobjectで`enabled`はpresentならboolean。refinementに合わない値は欠落へ丸めず`ExecutorCapabilityUnverified`とする。Configの他の宣言propertyとoriginsはT-config、開放領域の他のkeyは§7免責表の1行であり、判断に使わない。本文は保存・監査しない。
+- McpServerStatusList（Executorだけ）：rootはdata（McpServerStatus[]、required）とnextCursor（string/null）。McpServerStatusはname（string）・tools（Toolのobject map）がrequired、toolsErrorはstring/null。rrxはnameとtoolsのkey数とtoolsErrorとnextCursorだけを読み、Toolの値・resources・resourceTemplates・authStatus・runtimeStatus・serverInfo・serverCapabilities等はT-inventoryとして保持だけ行う。
 
 握手はinitialize→initialized→account/read→environment/status→rate read。schema宣言だけではRPC成功を代替しない。schema適合でも`-32601`なら拒否する。S/P metadataをquota poolへ書かない。
+
+### 8b. 契約の更新手順（C4、提案中）
+
+Schema gateがstrict位置の不一致または許容追加の規則外で拒否した場合だけ、次の手順で契約を更新する。tolerated位置だけの変化はgateが通すため、この手順を要しない。
+
+1. 拒否のjournal（有限reasonと位置）から対象のCLI版数を確認する。版数は観測記録であり、許可根拠にしない。
+2. 公開source `openai/codex`の対応tag（`rust-v<版数>`）のtag object・commitを記録し、`codex-rs/app-server-protocol/schema/precomputed/app-server-exports-experimental.json.zst`のSHA-256とfile数を記録する。tagが無い、またはexportが無い版はBLOCKEDとし、CLI出力からの推定で代替しない。
+3. 記録済みの生成規則（§12。source rootの選び方、使用methodだけのClientRequest枝、注記keywordの除去、`definitions`の除去、root からの推移的ref閉包、compact sorted-key JSONのSHA-256によるdefinition digest）で新catalogを作る。
+4. 再現確認: 同じ生成器と規則で直前basisのtag exportから直前basis catalogを作り、subtree digestが記録値と完全一致することを要求する。一致しなければ生成器か規則が変わったとみなし、新catalogを採用しない。
+5. 旧basisと新catalogの差分を位置ごとに列挙し、§7の二分類で分類する。strict位置の差分ごとに、型付き契約・decoder・consumer・fixture・テスト・影響範囲を更新する。tolerated位置の差分は件数と一覧を記録だけする。
+6. 新catalogは別のverification fileとして追加し、旧basis catalogを書換えない。出所（tag、tag object、commit、export SHA-256、source数、共有definition数、subtree digest、再現確認の結果）を同じfileに記録する。
+7. 設計差分を非執筆側1系でレビューし、実装は通常の実装レビュー（初回2系）と必須検証を通す。
+8. オーナー承認は、strict位置を広げる変更（rrxが受理する値・枝・enum値・item type・server requestを判断位置で増やす、型を緩める、strictからtolerated／Opaqueへ移す、送信値・approval方針・sandboxを変える）と、§7の免責表またはtolerated区分を広げる変更に限って求める。strict位置の一致だけを取り戻す変更（consumerが読まない宣言の取込み、型を狭める、tolerated通知のstrict化）はレビューで閉じ、オーナー承認を要しない。どちらに当たるかはレビューで確定し、判断がつかなければオーナーへ回す。
+9. 新basisの実CLI確認（インストール版の`generate-json-schema --experimental`出力がgateを通ること、握手とExecutor Sessionが成立すること）はowner-runで行い、static catalogやfixtureの合格をlive合格としない。
 
 ### 8a. Codex Executor の実行経路
 
@@ -535,13 +604,17 @@ responseは以下も対象にする。
 
 **3. approval方針とsandbox（既定はfail-closed）**: Executorのthread/startで、approval方針（AskForApproval）を「承認要求を出さない」固定値（catalog上の`never`相当）に、sandbox（SandboxMode）を`workspace-write`相当に明示する。書込み可能rootは既存runtimeWorkspaceRootsと同じWorktree／Unit temp／output／cacheの4つだけとし、network accessは無効、`/tmp`と`TMPDIR`の暗黙書込み許可は除外する。これらを表すfield（thread/startのapprovalPolicy／sandbox、turn/startの`sandboxPolicy`のworkspaceWrite枝など）と値名は固定catalogの宣言で確定し、§8の送信値検査（CX-3）を通す。宣言がない、または同じ意味を表せない場合はBLOCKEDとして設計へ戻り、`config` mapや環境変数で代替しない。ThreadStartParams.configは送らない。ThreadStart応答のapproval方針とsandboxは送信値との完全一致を要求する。より広いsandbox、別のapproval方針、欠落はturn/start前に拒否する（NativeInput 0、既存の応答不一致と同じ失敗経路）。
 
+basis catalog（0.162.1）での宣言: ThreadStartParamsはapprovalPolicy（AskForApproval: `untrusted/on-request/never`または閉じたgranular枝、nullable）とsandbox（SandboxMode: `read-only/workspace-write/danger-full-access`、nullable）とruntimeWorkspaceRootsを持ち、書込みrootやnetworkを表すfieldは持たない。TurnStartParamsはapprovalPolicyとsandboxPolicy（SandboxPolicyのworkspaceWrite枝: writableRoots、networkAccess、excludeSlashTmp、excludeTmpdirEnvVar）を持つ。ThreadStartResponseのsandboxはSandboxPolicy（object）である。したがってExecutorはthread/startでapprovalPolicy=`never`とsandbox=`workspace-write`を、turn/startでapprovalPolicy=`never`とsandboxPolicy=`{type:workspaceWrite, writableRoots:[4 root], networkAccess:false, excludeSlashTmp:true, excludeTmpdirEnvVar:true}`を送る（defaultに頼らず明示する）。宣言の存在はcatalogで確認済みだが、ThreadStart応答のSandboxPolicyにwritableRootsがどう現れるか（4 rootとの完全一致で照合できるか）は実CLIで未確認であり、owner-runで確認する。一致を確認できなければ上のとおりturn/start前に拒否する。
+
+所有threadの`thread/settings/updated`（S-notify）は、approvalPolicy・sandboxPolicy・cwdがrrxの送信した方針（approvalPolicy=`never`、上のworkspaceWrite方針、Worktree cwd）と一致する場合だけ続行する。異なる場合はturn/start前なら拒否、turn/start送信後はUnknown→Heldとする（E-14）。
+
 rrxが自動で付与できるapprovalは0件とする。承認済みWorktree範囲の内側でも、commandExecution・fileChange・権限追加・network・MCP elicitation等へ自動accept／自動declineを返さない。この方針ではCodexが承認要求を出さない前提なので、turn/start要求の送信から所有turnの終了までに着信した11種のserver requestは、受信経路（turn/start応答待ちと通知loop）を問わず、§7でparamsをstrict検査した後、応答を送らず（`-32601`を含む）、ledgerへ登録せず、成功原本を捕捉せずにSessionを停止し、`WorkOutcome::Unknown`／`Disposition::ProtocolError`→Heldとし、自動再送しない。turn/start応答待ちには既存`Lines::response`の`-32601`返信と待機継続（`execution/native.rs:1039-1041`）を使わず、この停止規則を持つ受信経路で待つ。他のboot_callの既存挙動は変えない。`item/autoApprovalReview/*`と`autoApprovalReview/strictReviewRequired`の着信も同じ扱いとする。既存ledgerと`submit_approval`経路は#10の範囲として存置し、M0で呼出し元を追加しない。
 
 新しい本番権限: この方針により、Codexは承認済みWorktree範囲のsandbox内で、1 turnの間、操作ごとの承認なしにコマンド実行とファイル変更を行う。MCP・web search・dynamic tool・collabは(3a)の肯定証拠で無効／不在を確認した場合だけturnを始め、これらの権限は含まない。rrxが権限応答を出すわけではないが、従来の本番Executor（Claude、`--permission-prompt-tool stdio`で権限要求をrrxのpending承認へ回す形）にない権限形であり、オーナー判断B2（§13）とする。承認前は実装しない。承認要求を許してrrxが範囲内のfileChangeだけを自動acceptする代替案は、rrxの自動付与権限と#10の資格付けを要するため採らない。
 
-**3a. ツール面の制限と事前の肯定証拠**: M0のExecutorが所有turnで受理するThreadItemは、userMessage、agentMessage、reasoning、plan、commandExecution、fileChange、contextCompactionの7枝だけとする（userMessage・reasoning・plan・contextCompactionは回答・authorityに使わない）。mcpToolCall、dynamicToolCall、webSearch、collabAgentToolCall、subAgentActivityは禁止した能力の行使、hookPrompt、functionCallOutput、imageView、sleep、imageGeneration、enteredReviewMode、exitedReviewModeはM0の許可集合外とし、所有turnで観測したらstrict検査後にUnknown→Heldとする。所有turnの`item/mcpToolCall/progress`も同じ。これは事後の検出であり防止ではないので、モデル入力（turn/start）より前に、同じ本番Sessionのapp-serverから次の肯定証拠を得る。
+**3a. ツール面の制限と事前の肯定証拠**: M0のExecutorが所有turnで受理するThreadItemは、userMessage、agentMessage、reasoning、plan、commandExecution、fileChange、contextCompactionの7枝だけとする（userMessage・reasoning・plan・contextCompactionは回答・authorityに使わない）。mcpToolCall、dynamicToolCall、webSearch、collabAgentToolCall、subAgentActivityは禁止した能力の行使、hookPrompt、functionCallOutput、imageView、sleep、imageGeneration、enteredReviewMode、exitedReviewModeはM0の許可集合外とし、所有turnで観測したらid／type検査後にUnknown→Heldとする（内容はT-item）。gate許容追加のThreadItem type（§7）も許可集合外として同じ扱いとし、成功にしない。所有turnの`item/mcpToolCall/progress`も同じ。これは事後の検出であり防止ではないので、モデル入力（turn/start）より前に、同じ本番Sessionのapp-serverから次の肯定証拠を得る。
 
-1. environment/status・rate readの後、thread/start前に`config/read`（cwd=Unit Worktree、includeLayers=false。`codex/session.rs:1611`の既存形）を送る。実効設定で`web_search`が`"disabled"`、`codex/policy.rs`の`DISABLED_FEATURES`（Executorは`restricted_features`のとおりshell_tool／unified_exec／code_mode_hostを除く。apps、multi_agent／multi_agent_v2、browser_use、computer_use等を含む）が全てfalse、`mcp_servers`の全entryが`enabled=false`であることを、`verify_configuration`と同じ述語で確認する。空の`mcp_servers`表は不在の証明にしない。
+1. environment/status・rate readの後、thread/start前に`config/read`（cwd=Unit Worktree、includeLayers=false。`codex/session.rs:1611`の既存形）を送る。実効設定で`web_search`が`"disabled"`、`codex/policy.rs`の`DISABLED_FEATURES`（Executorは`restricted_features`のとおりshell_tool／unified_exec／code_mode_hostを除く。apps、multi_agent／multi_agent_v2、browser_use、computer_use等を含む）が全てfalse、`mcp_servers`の全entryが`enabled=false`であることを、`verify_configuration`と同じ述語で確認する。空の`mcp_servers`表は不在の証明にしない。`features`／`mcp_servers`はbasisのConfigで宣言propertyでないため、§8のrrx refinementの型で読み、型不適合・layers非nullも`ExecutorCapabilityUnverified`とする。
 2. ThreadStart応答の一致確認後、turn/start前に`mcpServerStatus/list`（threadId、limit=100、cursor=null）を1 pageだけ送り、`verify_inventory_page`と同じ述語で全serverのtoolsが空かつtoolsErrorなし、nextCursorなしを確認する。nextCursor非nullは証拠不成立とし、追加pageを送らない（§5の行予算を固定するため）。
 3. dynamic toolは、rrxがthread/startで`dynamicTools`等を送らないことをCX-3の送信値検査で確認し、受信側は上の許可集合で閉じる。
 4. 本番Sessionで`mcpServer/startupStatus/updated`のstarting／readyを観測したら証拠と相反する観測とし、turn/start前なら拒否、turn/start送信後ならUnknown→Heldとする。
@@ -550,9 +623,9 @@ rrxが自動で付与できるapprovalは0件とする。承認済みWorktree範
 
 `codex/policy.rs::DecisionPolicy`は継承設定に`--disable`・`-c`の制限上書きを加えて同じ検査を通す既存の仕組みだが、M0は「config上書きなし」を維持するため上書きを送らない。継承設定のままで証拠が得られない環境では、Executor準備をBLOCKED（上の型付き拒否）とする。制限方向だけの狭い上書き（既存`arguments`と同じ`--disable <feature>`、`mcp_servers.<name>.enabled=false`、`web_search="disabled"`の形、またはThreadStartParams.configでの同等値）を許すかはオーナー判断B2a（§13）とし、承認前は実装しない。許す場合も上書き後に1〜4を同じく通し、approval方針・sandbox・permissionを上書きで変えない。
 
-**4. 実行中のdecodeと所有**: 本番処理順は§7のstrict envelope→method→payload全構造→所有フィルタ→consumerを維持し、次の3区分を分ける。(a) 全構造検査を通った正常なforeign thread／turnの通知・item（現sourceの`execution/native.rs:2313-2314`の除外）は§7のとおり除外して続行し、成功・Heldの根拠にしない。(b) malformed frame（foreignを含む）、未知method・item.type・discriminatorはProtocolErrorとし、turn/start送信後はWorktreeに効果が生じうるためUnknown→Heldとする。(c) 所有turnのitemのうち、作業を別thread／turn／agentへ広げるcollabAgentToolCall／subAgentActivityと(3a)の許可集合外itemは、効果の帰属と範囲を確認できないためUnknown→Heldとする。所有turnのcommandExecution.cwdとfileChange.changesの各pathは、二段で4つの書込み可能root（Worktree／Unit temp／output／cache）内かを検査する。字句検査は`codex/protocol.rs::operation_paths`（:715-752）と同じ条件（非空・4096 bytes以下・NULなし、`..`成分の拒否、相対pathはWorktreeへjoin、結果がいずれかのrootにcomponent単位で前方一致）とする。実filesystem検査は`codex/session.rs:2162-2217`と同じ条件（存在する最も近い祖先を`symlink_metadata`でたどり、その`canonicalize`がcanonical化したrootの配下であること、既存の通常fileで`nlink>1`なら拒否、metadata取得・解決不能は拒否）とする。commandExecution.cwdはdirectoryなので、hard link条件は通常fileにだけ当てる。どちらかに外れればUnknown→Heldとする。この検査は観測時点の事後検査であり、効果の発生を防がない（防止はsandboxの強制に依存する）。同じ述語を共有し、ledger経路の呼出し元は増やさない。他の許可itemは構造検査後に回答・authorityへ使わず、既存collector（agentMessageの業務条件）だけが回答を採否する。
+**4. 実行中のdecodeと所有**: 本番処理順は§7のstrict envelope→method→payload全構造→所有フィルタ→consumerを維持し、次の3区分を分ける。(a) 全構造検査を通った正常なforeign thread／turnの通知・item（現sourceの`execution/native.rs:2313-2314`の除外）は§7のとおり除外して続行し、成功・Heldの根拠にしない。(b) malformed frame（foreignを含む。strict位置の不適合とtolerated位置の有界strict JSON違反）、契約にもgate許容追加にもないmethod・item.type、未知discriminatorはProtocolErrorとし、turn/start送信後はWorktreeに効果が生じうるためUnknown→Heldとする。gate許容追加の通知とtolerated通知は所有キー検査後に内容を使わず続行し、foreignのgate許容追加itemはid／type検査後に除外する。(c) 所有turnのitemのうち、作業を別thread／turn／agentへ広げるcollabAgentToolCall／subAgentActivity、(3a)の許可集合外item、gate許容追加のitem typeは、効果の帰属と範囲を確認できないためUnknown→Heldとする。所有turnのcommandExecution.cwdとfileChange.changesの各pathは、二段で4つの書込み可能root（Worktree／Unit temp／output／cache）内かを検査する。字句検査は`codex/protocol.rs::operation_paths`（:715-752）と同じ条件（非空・4096 bytes以下・NULなし、`..`成分の拒否、相対pathはWorktreeへjoin、結果がいずれかのrootにcomponent単位で前方一致）とする。実filesystem検査は`codex/session.rs:2162-2217`と同じ条件（存在する最も近い祖先を`symlink_metadata`でたどり、その`canonicalize`がcanonical化したrootの配下であること、既存の通常fileで`nlink>1`なら拒否、metadata取得・解決不能は拒否）とする。commandExecution.cwdはdirectoryなので、hard link条件は通常fileにだけ当てる。どちらかに外れればUnknown→Heldとする。この検査は観測時点の事後検査であり、効果の発生を防がない（防止はsandboxの強制に依存する）。同じ述語を共有し、ledger経路の呼出し元は増やさない。他の許可itemは構造検査後に回答・authorityへ使わず、既存collector（agentMessageの業務条件）だけが回答を採否する。
 
-**5. turnの完了と結果（work軸）**: 成功はowned threadIdとturn.idが一致する`turn/completed`のstatus=completedだけとし、検査済みturnを既存collectorへ渡して`(Success, Completed)`とする。既存coreのとおり、この成功原本（`NativeTerminal`）は`stop_and_reap`より前に`captured_terminal`へ捕捉し保存する（`execution/native.rs:2033-2052`）。捕捉後のEOF・reap・hygieneの結果はknown workを置き換えない（`doc/design/master/agent-execution.md:45`、(6a)）。Worktreeの結果はCodexにcommitさせず、既存のprovider非依存経路（`workflow/driven_settled.rs::continue_settled_executor`→`execution/workflow_source.rs::capture_settled`→`execution/workflow_gates.rs`→`execution/results.rs::capture_settled`、`retained_io::RetainedGit`によるexact commitの保持）でcaptureする。この経路はM0で変更せず、Codexの成功tupleが既存の成功と同じ形で入ることを回帰検証する。その後`post_success_closure`がSC-Nで停止する。failedは既存のquota／auth／capacity／Failure分類を§9の検査済み値で行う。
+**5. turnの完了と結果（work軸）**: 成功はowned threadIdとturn.idが一致する`turn/completed`のstatus=completedだけとし、検査済みturnを既存collectorへ渡して`(Success, Completed)`とする。既存coreのとおり、この成功原本（`NativeTerminal`）は`stop_and_reap`より前に`captured_terminal`へ捕捉し保存する（`execution/native.rs:2033-2052`）。捕捉後のEOF・reap・hygieneの結果はknown workを置き換えない（`doc/design/master/agent-execution.md:45`、(6a)）。Worktreeの結果はCodexにcommitさせず、既存のprovider非依存経路（`workflow/driven_settled.rs::continue_settled_executor`→`execution/workflow_source.rs::capture_settled`→`execution/workflow_gates.rs`→`execution/results.rs::capture_settled`、`retained_io::RetainedGit`によるexact commitの保持）でcaptureする。この経路はM0で変更せず、Codexの成功tupleが既存の成功と同じ形で入ることを回帰検証する。その後`post_success_closure`がSC-Nで停止する。failedは既存のquota／auth／capacity／Failure分類を§9と§7の検査済み値で行う。CodexErrorInfoが`Unclassified`（§7、E-11）のfailedはKnown FailureにせずUnknown→Heldとする。
 
 **6. Unknown／Held（work軸）**: interrupted、inProgressのままの完了通知、未知status、成功原本の捕捉前に生じたturn/completed前のEOF・exit・pipe EOF不明・leader reap不明、collector overflow、§3／§4の拒否、(3)のserver request、(3a)／(4)のUnknown区分は、成功にもKnown Failureにもせず`WorkOutcome::Unknown`とする。所有・CASが成立して保存できた場合は§6と同じ`UnitState::WorkUnknown`／`SessionState::Lost`→`SettledLookup::Held`→`StepResult::Waiting`の明示操作待ちへ接続し、Worktreeを消去・reset・captureしない。自動再送、新しい入力、retry authorityは発行しない。照合不能は既存Held／pending原本保持に従う。
 
@@ -674,19 +747,21 @@ collector は validated item を受ける。id/type/text の malformed は前段
 
 ### 12. Fixture、因果検証、owner-run
 
-CI schema positiveは今回提供された公開生成structureから、使用8 request（§8a(3a)の2 methodを含む）、initialized、全83通知、全11 server request、8種responseとその到達definition閉包を保った有限縮約fixtureとする。合成の最小schemaだけで代替しない。
+CI schema positiveは公開生成structureから、使用8 request（§8a(3a)の2 methodを含む）、initialized、全84通知、全11 server request、8種responseとその到達definition閉包を保った有限縮約fixtureとする。合成の最小schemaだけで代替しない。
 
-fixture sourceは固定HEAD `b22f22a521424eefc3e61fb1a109bfc85965e5ef`のstatic資料`/schema_contract_catalog`と、そのsource_schemasの対象root／local definition閉包に固定する。catalog subtreeの非循環digestは、JSON読取り後にPython `json.dumps(catalog, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`のUTF-8 bytesをSHA-256にする規則で`c44baad39a81231b2a1bd567b21ede7e7d155b08bf705df1ff8b087728944c7e`。これは取得済みcatalogの出所照合であり、未作成fixtureのdigestでもruntime hash pinでもない。
+**契約basis（C2、提案中）**: fixture sourceと§7の契約basisは、codex-cli 0.162.1の公開tag `rust-v0.162.1`（tag object `7a078f6bb4ce0dc2a81408b334ce52979d92c603`、commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`）の`codex-rs/app-server-protocol/schema/precomputed/app-server-exports-experimental.json.zst`（SHA-256 `41d34da4227eadccf971272b9a02dfc6679e23a9992cce1d265ac01a20ab38e3`、447 file）から§8bの規則で作ったcatalogとする。sourceは承認済みcatalogの10 sourceにConfigReadResponseとListMcpServerStatusResponseを加えた12 source、ClientRequest_usedは送信8 method、共有definitionは303、subtree digestは`bbdede32736d0d954683bef90861c902a09aa46d33cf492f9f1cc3766005b38e`。digestの規則は従来と同じ（JSON読取り後のPython `json.dumps(catalog, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`のUTF-8 bytesのSHA-256）であり、出所照合であってruntime hash pinではない。このcatalogはorchestratorが別のverification fileとして追加する（本稿執筆時点で未追加）。
 
-catalogの10source／268共有definition、ClientNotification、6response、notification branch構造は既に補完済みであり、未作成とは扱わない。ClientNotificationはoneOfの1 object枝であるためschema_inspectionのshape文字列だけを訂正し、catalog本体は再生成・書換えしない。static.baselineは公開source baselineを指し、fixtureのauthor入力HEADとは別である。旧static全体digestを今回fixtureの出所として流用しない。
+生成規則の再現確認: 同じ生成器を0.160.1のtag `rust-v0.160.1`（commit `d27764b82f7118f674371e6d6e76271d9d606edb`、export SHA-256 `63028565f715c584c2dad98163de85dcb03801f9a7c096f5ef07d4769a900984`、440 file）のexportへ承認済みの6 method／6 responseで適用すると、承認済みcatalog（10 source、268共有definition、`c44baad39a81231b2a1bd567b21ede7e7d155b08bf705df1ff8b087728944c7e`）と完全一致した。比較用に同じexportから8 method／8 responseで作ったcatalogのdigestは`4c4f7493…`であり、0.162.1との差分は27項目（4 source: ClientRequest_used、ServerNotification、ThreadStartResponse、TurnStartResponse）。分類は§0aの末尾のとおり。
+
+履歴: 固定HEAD `b22f22a521424eefc3e61fb1a109bfc85965e5ef`のstatic資料`/schema_contract_catalog`（0.160.1、`c44baad3…`）はA6承認時の根拠として書換え・再生成せずに保持する。そのClientNotificationのshape文字列訂正だけを行った経緯もそのまま残す。static.baselineは公開source baselineを指し、fixtureのauthor入力HEADとは別である。旧static全体digestを今回fixtureの出所として流用しない。
 
 fixture実体・縮約manifest・decoder対応表・適合結果は未作成／未検証。実体digestは作成後に計算・保存し、今は値や結果を捏造しない。live各項目はnot_runを保持する。
 
 | control群 | positive／negativeと必要mutant |
 |---|---|
 | Startup | 全alias合格／1 alias拒否、gate除去、journalからpass復元、P省略。 |
-| Strict | 全83通知・19itemの正常形、各required欠落・wrongtype・nested tag改変、自／foreign双方。正常ignored／tool維持。所有filter先行mutant。 |
-| Schema | 実fileの枝複製・削除、required追加、型・nullable・enum・数値域・ref先改変、無関係同名property、未解決／循環ref。 |
+| Strict | S-notify 21通知・S-item 3枝の全payload、84通知の所有キー、19itemのid／typeの正常形、各required欠落・wrongtype・nested tag改変、自／foreign双方。T-notify／T-itemは有界JSON違反だけ拒否。正常ignored／tool維持。所有filter先行mutant。 |
+| Schema | 実fileの枝複製・削除、required追加、型・nullable・enum・数値域・default・ref先改変、無関係同名property、未解決／循環ref。strict位置の各変化kindの拒否とtolerated位置の変化の通過、許容追加の規則と上限、記録の有限性。 |
 | R1 | 合法empty／usable window／wrongtypeを区別。foreign rate先drop、unknownをAvailable／not_observed化、selfcheck呼出し除去mutant。vector mutationは試験用authority seamを作らずsource差分として実施。 |
 | Quota | Codex ExecutorのWait、普通Admit、recovery Admitそれぞれのモデル入力数、lease／probe ownership／期限／CAS。Claude canaryの観測非更新とKnown closureはM3。 |
 | Budget | M0 が提供する Codex Executor の実 producer の境界／+1、Git13→9仮定mutant。Claude Reviewer のProbe末尾を含む純粋政策は照合だけとし、本番 helper 鎖とProbe末尾省略mutantは M3 で検証。 |
@@ -716,12 +791,14 @@ fixture実体・縮約manifest・decoder対応表・適合結果は未作成／�
 | CL-7 | rate未着、合法windowなし、usable／未知bucket・status、required欠落、wrong type、overflow。自／foreign双方 | foreign先drop、unknownをAvailable／not_observedへ変換 |
 | CL-8 | 合法tail／成功直後の未知frame、partial JSON、自発nonzero、late rejected。Known不合格またはpipe不明Unknown | 成功frameで読取り打切り |
 | CL-9 | EOF＋leader reap既知／pipe保持子孫、reap不明。後者Unknown／Held／lease保持 | reap不明をConfirmed、UnknownをRetired |
-| CX-1 | 固定source縮約／枝欠落・複製、method.enum複数、無関係な同名property | branch検査を文字列存在検査へ変更 |
+| CX-1 | basis source縮約／枝欠落・複製、method.enum複数、無関係な同名property | branch検査を文字列存在検査へ変更 |
 | CX-2 | local ref閉包／未解決・外部・循環、深さ・memo・work-node上限+1 | ref解決省略、memo／stack／work counter除去 |
 | CX-3 | 実送信8method（config/read・mcpServerStatus/listを含む）＋initialized／送信キー未宣言、型不適合、required追加、read-only欠落、Executor thread/startのdynamicTools等の送信 | schema省略、required／型比較除去 |
-| CX-4 | 全受信閉包／nested required・nullable・enum・数値域・ref先改変、未知method／宣言property、Opaque枝拡大。closed object各位置の正常対／追加key、key-tag 1個／0個・複数（httpConnectionFailed＋activeTurnNotSteerable等）、RPC正常4形／result＋error・method＋result/error・id:null。ThreadExtra object／scalar・過大map、ordinaryUsageAllowedの各状態／wrongtype | 消費requiredだけの投影、typed枝をopaque化、additionalProperties=false無視、複数tagを最初のkeyで選択、RPC判別keyを追加field化、ThreadExtraを任意JSON化 |
-| CX-5 | 全所有区分の正常形／thread.startedのnested ID、turn.id、nullable turnId、任意threadId各状態、malformed foreign、thread/goal/updatedのparams.threadId＝goal.threadId正例／不一致 | top-levelキー有無だけで分類、所有filter先行、goal.threadId照合除去 |
+| CX-4 | strict受信閉包／nested required・nullable・enum・数値域・ref先改変、未知method／strict位置の宣言property、Opaque枝拡大。closed object各位置（strict到達）の正常対／追加key、key-tag 1個／0個・複数（httpConnectionFailed＋activeTurnNotSteerable等）、CodexErrorInfo開放枝の未知文字列・既知tagなしobject（Unclassified）／既知tag 1個の不正枝（ProtocolError）、RPC正常4形／result＋error・method＋result/error・id:null。ordinaryUsageAllowedの各状態／wrongtype。ConfigReadのweb_search各値、features／mcp_servers refinementの正常／型不適合、layers非null。MessagePhase partial_answerは回答不採用 | 消費requiredだけの投影、typed枝をopaque化、additionalProperties=false無視、複数tagを最初のkeyで選択、開放枝で不正な既知枝を救済、UnclassifiedをFailure／Available／capacity化、RPC判別keyを追加field化、refinement不適合を欠落化、partial_answerを回答採用 |
+| CX-5 | 全所有区分の正常形／thread.startedのnested ID、turn.id、nullable turnId、任意threadId各状態、malformed foreign、gate許容追加通知の宣言由来の所有区分 | top-levelキー有無だけで分類、所有filter先行、許容追加通知の所有キー検査除去 |
 | CX-6 | 握手Global通知／Thread通知・server request。両者ともpayload検査後の固有扱い。chatgptに相反しないaccount通知／authMode非chatgpt・null、login success=falseはS/P資格付け拒否 | 握手所有区分除去、server request params検査省略、相反account観測を後続正常応答で相殺 |
+| CX-7 | CLI更新の模擬: basis生成schemaに対し、(a) tolerated位置の変化（T-notifyへのnullable property追加、T-item枝の内容変更、Thread非coreの追加、tolerated既知通知の削除、strict到達集合へ届かない新通知1件、新ThreadItem type 1件）はPassと件数記録、(b) strict位置の変化（送信paramsのoptional property追加、Turnのnullable property追加、used enumの値追加、CodexErrorInfo枝変更、strict通知の削除、server request追加、新通知のparamsがThreadItemへ到達、所有キー型変更、許容追加の上限+1・名前違反）はkind別の有限reasonでRefused。journalに生schemaなし、位置は記録規則どおり、body上限内。0.160.1 basisの生成schemaを0.162.1契約へ与えるとstrict不一致（TurnStartParams等）で拒否 | strict位置をtolerated扱い、default比較除去、strict到達集合検査除去、上限検査除去、reasonを固定文へ潰す、生schemaの記録 |
+| CX-8 | tolerated位置の非使用: 同じstrict内容でT-notify／T-item／T-thread／T-config／T-inventoryの内容だけを上限内の別JSONへ差し替えても、所有判定・回答・quota・terminal分類・§8a(3a)判定・記録が不変。gate許容追加itemが所有turnに来たらUnknown→Held、foreignなら除外、許容追加にないtypeはProtocolError。thread/settings/updatedの方針不一致はturn/start前拒否／後Held | tolerated値を判断に使う差分、許容追加itemを成功扱い、許容集合をjournalから復元、settings不一致の無視 |
 | Q-1 | Wait／Admitの実producer。Waitはモデル入力0、Parked | Probeをquota admission前へ移動 |
 | Q-2 | 普通Admit／recovery AdmitのKnown canary失敗。§9の全before／after、pool自probe解放、期限、readiness CASと観測非反映 | closureからProbe末尾を除外、自probe／期限更新省略、before画像比較を1列除去 |
 | X-1 | 同一Native program／S合格後、各Native helper前、transport前にpath・stat・hash差替え。拒否後spawn0 | 束縛比較を各1点除去 |
@@ -773,7 +850,7 @@ owner-runは設計全体承認・実装・必要な検証後に実Macで1run行�
 7. Codex P receipt（Version／Schema／Handshake／Git×13）、ThreadStart応答のapproval方針・sandbox一致、turn/start前の能力の肯定証拠（config/read・mcpServerStatus/list）pass、Worktree gate、Codex Implement work=success、retained Git artifactのcapture、server request 0・許可集合外item 0・範囲外item 0、SC-N Waiting、sessions=1、Unknown effects=0、custody=knownを確認する。Claude ReviewerはSとReviewer argvのplan mode確認だけで、Claude P・review成功とは記録しない。
 8. daemonを停止し、PASS時だけ当該scriptが作成したdirectoryを既存規則で削除し、残存なしを確認する。
 
-出力は`M0 selfcheck=pass`、provider別startup passと観測版数／exe digest／実際に確認したstep（ClaudeはReviewer argvの`permission_mode=plan`を含む）、`codex preparation schema/handshake pass`、`executor approval_policy=<固定値> sandbox=<固定値> capability_evidence=pass server_requests=0 scope_violations=0`、codex rate=`empty_valid/usable`、claude rate=`not_observed`（M0ではClaude Sessionを起動しない）、`M0 implement=success provider=codex artifact=retained stop=SC-N sessions=1 unknown_effects=0 custody=known`、`M0 RESULT=PASS`を持つ。未証明一覧にはCodexのapproval往復／error分類／sandbox実効／network遮断の実効／MCP・web search・dynamic tool・collab無効化の実効（設定・inventoryの観測を越えるCLI内部の不使用）、Claude Reviewer P（canary／init／result）／review／permission roundtrip／既定mode／claude_rate_limit_event、escaped descendants、wrapper内部identityを残す。1runの成功をCodex Executor経路全般の資格付けへ広げず、static／synthetic合格をこれらのlive証明へ昇格しない。
+出力は`M0 selfcheck=pass`、provider別startup passと観測版数／exe digest／実際に確認したstep（ClaudeはReviewer argvの`permission_mode=plan`を含む）、`codex preparation schema/handshake pass`とSchema gateの`strict_mismatch=0 tolerated_changes=<件数> accepted_additions=<件数>`（S／Pそれぞれ。インストール版の生成schemaが0.162.1契約を通ることのlive確認を兼ねる）、`executor approval_policy=<固定値> sandbox=<固定値> capability_evidence=pass server_requests=0 scope_violations=0`、codex rate=`empty_valid/usable`、claude rate=`not_observed`（M0ではClaude Sessionを起動しない）、`M0 implement=success provider=codex artifact=retained stop=SC-N sessions=1 unknown_effects=0 custody=known`、`M0 RESULT=PASS`を持つ。未証明一覧にはCodexのapproval往復／error分類／sandbox実効／network遮断の実効／MCP・web search・dynamic tool・collab無効化の実効（設定・inventoryの観測を越えるCLI内部の不使用）、Claude Reviewer P（canary／init／result）／review／permission roundtrip／既定mode／claude_rate_limit_event、escaped descendants、wrapper内部identityを残す。1runの成功をCodex Executor経路全般の資格付けへ広げず、static／synthetic合格をこれらのlive証明へ昇格しない。
 
 失敗時は有限stage／reason／unit=held|retired|noneと保持した状態・一時directoryを表示し、`M0 RESULT=FAIL`として保存する。失敗runは削除・再利用せず、原因確認後の再挑戦は新run IDで行う。保持directoryの削除はowner判断に残す。追加cleanup工程や2runをM0受入条件へ増やさない。
 
@@ -810,6 +887,28 @@ owner-runは設計全体承認・実装・必要な検証後に実Macで1run行�
 
 役割入れ替え後、M0のowner-runでモデル入力を消費するのはCodex Executorのturnだけであり、Claude canaryの実quota・費用消費とpre-Session lease保持時間の延長はM3で生じる。Codex Executorの固定sandboxはCodexのツール実行（build・testを含む）からnetworkとWorktree外書込みを奪うため、Implementの成否に影響しうる。これは安全側の制約であり、広げる場合はowner判断へ戻す。
 
+### 12a-2. 影響範囲分析（Codex契約改訂 C1〜C4）
+
+1. **変更対象**: `CodexWireContract`（basis 0.162.1、二分類、許容追加の受け渡し）、Schema gateの比較器と有限結果、通知payload・ThreadItem内容の実行時検査範囲、CodexErrorInfoのUnclassified、MessagePhase partial_answer、thread/settings/updatedの方針照合、ConfigRead／McpServerStatusListの型、§7免責表、basis catalogのverification file（追加のみ）。DB schema、環境変数、RuntimeMetadata wire、行予算、auth／CAS／owner／epoch／marker／#19／process custody／quotaの原本は変更しない。
+2. **影響を受ける箇所**:
+
+| 箇所 | 影響と対応 |
+|---|---|
+| U4予定の`execution/codex_wire.rs`（Codex decoder）と`execution/native/schema.rs`（Schema gate） | 未作成。二分類・新しい宣言の表・有限結果をここで実装する。gate許容追加はメモリ上の有界集合としてS Handshake／同じUnitのSession decoderへ渡す |
+| `runtime/startup.rs:238-240`、`runtime/startup/probe.rs` | U3でCodex Schema／Handshakeを`codex_schema_unavailable`／`codex_handshake_unavailable`で拒否中。U4でgateへ置換し、journal bodyへ有限reason・件数・位置を記録（4096 bytes以内） |
+| `execution/native.rs:2209-2264`（通知loop、thread/start送信値・応答検査）、`:2313-2360`（所有filter、turn/completed分類） | validated frameへ置換する既存計画（§12a）の上で、T-notifyの内容不使用、許容追加itemのHeld、Unclassified→Held、thread/settings/updatedの照合、turn/startのapprovalPolicy／sandboxPolicy送信を加える |
+| `execution/quota.rs:257-275`（codex_subscription_error／codex_capacity_error） | validated CodexErrorKindを受ける形へ変更。Unclassifiedはどちらにもfalse。既知値の分類は不変 |
+| `execution/native_result.rs:473-484`（agentMessage phase） | partial_answerをcommentaryと同じ非採用に追加。他phaseのpoisonは現行どおり |
+| `codex/managed.rs:16-19`（`frame`→`Event::parse`）、`codex/protocol.rs:105-165,973-974,1085-1093` | Executor Sessionの検査はvalidated frameへ移す。`thread/tokenUsage/updated`のTokenCountersはlegacy standalone経路の消費者であり、T-notify化はNative Session decoderだけに適用する。§11台帳のshared protocol 16 testsの分類へ反映 |
+| `codex/policy.rs:213-298`（verify_configuration、verify_inventory_page） | 判定述語は共有のまま。入力をConfigRead refinement／S-inventoryの検査済み値にする。permissions profileの検査は上書き経路（B2a）だけの既存述語であり変更しない |
+| `execution/native/native_fixture.py`、Schema／Handshake fixture、`tests/daemon_native.rs` | 0.162.1 basisの縮約fixtureへ更新（84通知、8 request／8 response、CodexErrorInfo開放枝、partial_answer、Turn.rootTurnId、TurnStartParamsの追加field）。CX-7／CX-8を追加 |
+| `doc/verification/macos-minimum-m0-static.json` | 書換えない（履歴）。新catalogは別file |
+| 受入条件 | AC-05の適用範囲をstrict位置へ明確化し、AC-18を追加（要件） |
+
+3. **影響種別**: 機能影響（tolerated位置の変化でgateが止まらない、許容追加itemはHeld）。セキュリティ影響（tolerated位置の内容を判断に使わない規則とstrict到達集合検査で、判断値の黙った緩和を防ぐ。E-05〜E-10は受理範囲を広げるためオーナー承認対象）。互換性影響（0.160.1のCLIはstrict位置不一致でgate拒否となる。旧版の同時サポートはしない）。パフォーマンス影響（比較は既存のnode／work上限内）。
+4. **対応方針**: 上表のとおり修正し、tolerated化で不要になる型付き検査（GuardianAction等）は実装しない。旧版CLIの受理は追加しない。
+5. **未影響の根拠**: Claude Reviewerのdecoder（§6、M0-U1）はCodex契約を参照しない。§5の行予算はmethod数・setup行数が変わらないため不変。§9のrate契約はGetAccountRateLimitsResponseとRateLimitSnapshotが0.160.1と同一宣言（compare結果）のため不変。§3のmigrationとjournal schemaは列を追加しない（bodyの中身だけ）。retained capture経路（`workflow/driven_settled.rs`等）はwork軸の成功tupleの形が変わらないため無変更。
+
 ### 12b. セキュリティ自己点検
 
 | 面 | 維持する対策・検証と限界 |
@@ -823,6 +922,7 @@ owner-runは設計全体承認・実装・必要な検証後に実Macで1run行�
 | 秘密のsink | frame／account／codexHome／nonce／stderr／config/read本文（MCP serverの環境変数等を含みうる）を永続化せず、有限receipt・件数・digestのみ。file／capture／JSONの既存上限維持 |
 | legacy／#19 | 起動・新入力前拒否、全consumer台帳、共有3保持領域と停止保持、#19既存部品・検査保持。削除や拒否だけで共有安全性のpositiveを代替しない |
 | Codex Executor実行（新規面） | rrxはapprovalを自動付与しない（自動付与できる種類は0）。Executor providerはTask選択時の拒否点で限定する。承認要求を出さない固定approval方針、Worktree＋Unit temp／output／cacheだけを書込み可とするworkspace-write sandbox、network無効、config上書きなしを送信し、ThreadStart応答で一致を確認する。turn/start前に同じSessionの実効設定とinventoryでMCP・web search・dynamic tool・collabの無効／不在を肯定証拠で確認し、得られなければturn/startしない。turn/start応答待ちを含む全受信経路のserver request／autoApprovalReview着信は応答0でUnknown→Held。許可集合外・範囲外item・未知variantもUnknown→Held。モデルが出したcommand・path・patchは信頼しない入力として扱い、成功はowned turnのcompletedで成功原本を捕捉した場合だけ。限界: sandboxの強制はCodex CLIとOSの実装に依存し、rrxは実効を証明しない。能力の無効化証拠はturn/start時点の設定・inventoryの観測であり、CLI内部の不使用の証明ではない。所有turnでの禁止itemやpath範囲外の検出は事後の検出であり、既に生じた効果を防がない。Task本文や既存repo内容からのprompt injectionについてrrxが主張できるのは、利用できる能力をコマンド実行・ファイル変更（sandbox内、強制は未証明）へ減らすことと事後のHeld化だけで、影響がsandbox内に限られることも内容の安全性も保証しない。成功はImplement完了であり、merge権限（M4）や後続phaseのauthorityを与えない |
+| CLI更新とtolerated位置（C1〜C3） | strict位置（送信値、判断値、server request、効果・結果を運ぶitem、終端）は完全一致を要求し、新しいserver request・strict位置の新property・used enumの新値は起動前に拒否する。tolerated位置は有界strict JSONの保持だけで、判断・authority・記録に使わない。tolerated通知がstrict到達集合へ届けば拒否し、黙った再分類を防ぐ。許容追加itemは所有turnでHeld。限界: tolerated通知の意味をrrxは知らないため、効果を新しい名前のdefinition経由で報告する通知が加わった場合は事後path検査の対象外になりうる（防止はsandbox強制に依存）。gate許容追加の集合はgateを実行したprogramにだけ結び付け、journalから復元しない |
 | spawn経路 | S custody、P helper、Executor transportの新規spawnは`rrx-spawn-hygiene`の6消費関数だけ。`clippy.toml`の直接spawn禁止を維持し、`OwnedProcess::spawn(Command)`へ所有を移す。macOSのpre_exec forkは#98の残余リスクとして記録し、M0で解消しない |
 
 S custodyは自journalのintent／settlementだけ、P SAME actorは既存Admit／CASの範囲でhelperとnongrant closureだけを扱う。S観測のGit／Prepared消費、別actor・CLI peerによるsettlement、revoke済みactorによる新spawn、Probe中のpermission応答は不可。revoke後も既存原本で物理結果を記録することと、新しい実行許可を分ける。ownerの設定選択・一括設計承認、adminのstatus／stopはprobe成功から新authorityを得ない。別Task／Project、同uid別process、unauthにも強制pass・再判定入口を作らない。
@@ -839,13 +939,19 @@ source→sinkはVersion stdout→有界観測receipt、wire→validated frame→
 | A2 | Probeの専用UUID、固定文面、Executor plan mode、tool／権限応答なし。既定modeや隔離を証明しない。 | 承認済み（2026-10-13、固定HEAD c6413082）。「Executor plan mode」はReviewerの本番argvのplan modeへ読み替え、適用はM3（B3で再承認）。実装・検証は未完了。 |
 | A3 | 旧起動 API の機能廃止、不要コード・固有テストの理由付き整理、共有安全性の実管理経路での検証。Reviewer 本番正常系は M3。 | オーナー方向決定済み（2026-10-13）。設計全体承認済み。台帳・実装差分・実装後レビューは未完了。 |
 | A4 | S全alias gate、版12 migration、有限deadline／capture、journalの独立upper boundsと上限時BLOCKED、confirmedの限定prune／unknown保持、安全なprivate path、停止wire変更と新旧混在不可。上限の容量を使い切れる保証や旧残骸の自動cleanupは含まない。 | 承認済み（2026-10-13、固定HEAD c6413082）。実装・検証は未完了。 |
-| A5 | 本番strict decoder、finite item／notification／nested variant、分類fieldの型・optional／nullableとwire domain／消費条件の分離、83method所有区分、UUID改変拒否、rate解析不能終端。既知frameの未宣言fieldは有界保持受理し業務非使用、Codex closed object／key-tag／RPC判別keyは§7の例外で拒否。Claude origin公開型と非human消費、実消費6項目／usage・structured_outputは§6の明示契約とし、telemetryからreplay authorityを作らない。未知variantは拒否し、旧黙認から新拒否になるvariant／blockとAC-05正常母集団は§6の一覧で判断する。公開未確認のrrx限定集合と数値refinementのlive適合は未証明。 | 承認済み（2026-10-13、固定HEAD c6413082）。実装・検証は未完了。 |
-| A6 | schemaの未知method／宣言property／discriminatorで起動前拒否。明示Opaque集合とtyped mapだけを例外にし、枝別免責を拡大しない。wire frameの未宣言field保持とは別契約。static catalogは開発時根拠でありruntime仕様生成器ではない。raw hash pinなし。未適合CLI拡張は契約見直しまでBLOCKED。 | 承認済み（2026-10-13、固定HEAD c6413082）。実装・検証は未完了。 |
+| A5 | 本番strict decoder、finite item／notification／nested variant、分類fieldの型・optional／nullableとwire domain／消費条件の分離、83method所有区分、UUID改変拒否、rate解析不能終端。既知frameの未宣言fieldは有界保持受理し業務非使用、Codex closed object／key-tag／RPC判別keyは§7の例外で拒否。Claude origin公開型と非human消費、実消費6項目／usage・structured_outputは§6の明示契約とし、telemetryからreplay authorityを作らない。未知variantは拒否し、旧黙認から新拒否になるvariant／blockとAC-05正常母集団は§6の一覧で判断する。公開未確認のrrx限定集合と数値refinementのlive適合は未証明。 | 承認済み（2026-10-13、固定HEAD c6413082）。実装・検証は未完了。Codex部分はC2／C3（§0a）で改訂を提案中であり、承認まではこの行が有効。 |
+| A6 | schemaの未知method／宣言property／discriminatorで起動前拒否。明示Opaque集合とtyped mapだけを例外にし、枝別免責を拡大しない。wire frameの未宣言field保持とは別契約。static catalogは開発時根拠でありruntime仕様生成器ではない。raw hash pinなし。未適合CLI拡張は契約見直しまでBLOCKED。 | 承認済み（2026-10-13、固定HEAD c6413082）。実装・検証は未完了。C1〜C4（§0a）で改訂を提案中であり、承認まではこの行が有効。 |
 | B1 | 役割をCodex Executor＋Claude Reviewerへ入れ替える。M0はCodexを最初のExecutorとして提供する。aliasはprovider別に登録し、Claude aliasはReviewer用に受理する。TaskのExecutorがClaude provider aliasへ解決される場合は§8a(0)の主拒否点（Goal計画検証、admissionのDriver composition）で型付き拒否する（helper・Unit・Held・quota Admit 0）。SのClaude argvはReviewer role（plan mode付き）とする。Claude Executorの再提供は別判断とする。 | 承認済み（2026-10-15、固定HEAD 2a9114bc）。実装・検証は未完了。 |
 | B2 | Codex Executorの実行方針（§8a）: 承認要求を出さない固定approval方針、Worktree＋Unit temp／output／cacheだけのworkspace-write sandbox、network無効、config上書きなし、応答一致確認。turn/start前のMCP・web search・dynamic tool・collab無効／不在の肯定証拠（config/read・mcpServerStatus/listの2 method追加とCodex Executor B230を含む。得られなければBLOCKED）と許可item集合。rrxの自動approval付与は0。turn/start応答待ちを含む全受信経路のserver request着信・許可集合外／範囲外item・未知variant・不明なturn結果はUnknown→Held。work軸と物理custody軸の分離。承認済みWorktree範囲のsandbox内で、操作ごとの承認なしにコマンド実行・ファイル変更を許す新しい本番権限を含む。 | 承認済み（2026-10-15、固定HEAD 2a9114bc）。実装・検証は未完了。 |
 | B2a | 継承設定のままでは§8a(3a)の肯定証拠が得られない場合に、制限方向だけの狭い上書き（`--disable <feature>`、`mcp_servers.<name>.enabled=false`、`web_search="disabled"`、またはThreadStartParams.configでの同等値）を許すか。許す場合も上書き後に同じ証拠検査を通し、approval方針・sandbox・permissionは上書きしない。許さない場合、該当環境のExecutor準備はBLOCKEDのまま（owner-runが成立しない可能性を含む）。 | 許可（2026-10-15、固定HEAD 2a9114bc）。制限方向の上書きだけを実装し、上書き後も同じ証拠検査を通す。 |
 | B3 | Claude P（A1のcanary、A2のProbe条件）をClaude Reviewer準備の検査とし、本番producer・実境界・受入をM3へ移す。ProbeはReviewerの本番argv（plan mode付き）をそのまま使う。M0のClaude coverageはS（Reviewer argv）、strict decoder（M0-U1）、rate selfcheckとする。 | 承認済み（2026-10-15、固定HEAD 2a9114bc）。A1／A2の適用対象・時期の変更。 |
 | B4 | Codexモデル実行（Executorのthread/turn）をM0範囲へ入れ、AC-13を「全aliasのS、Codex P、Worktree→Codex Implement成功、SC-N停止」の1runへ改める。Codex Executor群EX-1〜EX-7（EX-3bを含む）を追加し、Claude Probe系controlsはM3へ移す。 | 承認済み（2026-10-15、固定HEAD 2a9114bc）。実装・検証は未完了。 |
+| C1 | Codex契約の位置二分類とSchema gateの比較（§7・§8）: strict位置は完全一致（optional／nullableを含むproperty・required・type・enum・枝・制約・defaultの追加／削除／変更で拒否）、tolerated位置は増減を許容、tolerated通知のstrict到達で拒否、新しいserver request・used enum新値・strict削除は拒否、新ThreadItem type（上限32）と規則内の新通知（上限64）は許容追加（itemは所有turnでHeld）、結果は有限Pass／Refusedと有限reason・位置の記録（生schemaなし）、許容追加はメモリ上だけでdecoderへ渡す。**A6を広げる**（E-01〜E-03）。 | 提案中・オーナー承認待ち（2026-10-16）。 |
+| C2 | 契約basisを0.162.1のtag export catalog（12 source、303共有definition、`bbdede32…`）へ移し、0.160.1 catalog（`c44baad3…`）は履歴として保持（§12）。84通知、送信8 method／応答8種、closed object 29位置。CodexErrorInfo開放枝の`Unclassified`→failedでUnknown→Held（E-11、**A5を広げる**、結果はHeld）、MessagePhase partial_answerの受理と回答不採用（E-12、**A5を広げる**、回答authorityなし）、thread/settings/updatedの方針照合（E-14、狭める）、Executorのturn/startでのapprovalPolicy・sandboxPolicy明示（B2の範囲内の値確定）。 | 提案中・オーナー承認待ち（2026-10-16）。 |
+| C3 | 型付き検査の範囲とOpaque／tolerated集合（§7）: 21通知の全payloadと4通知のmethod・所有キーだけを型検査し他59通知は所有キーだけ、ThreadItem内容はagentMessage・commandExecution・fileChangeだけ、Thread coreとTurnError（misalignment除く）、ConfigReadは判定path（web_search宣言＋features／mcp_servers refinement）だけを型検査しConfig開放領域を免責表へ追加、McpServerStatusListはcoreだけ、免責表を15行から9行へ（7行はtolerated領域へ）、thread/goal/updated refinement廃止。**A6と§7免責表を広げる**（E-05〜E-10、E-13）。 | 提案中・オーナー承認待ち（2026-10-16）。 |
+| C4 | 契約の更新手順（§8b）: tag exportから記録済み規則で生成、直前basisの再現確認、出所記録、旧catalogを書換えず別file追加、型付き契約・テスト更新、非執筆側の設計レビューと通常の実装レビュー。オーナー承認はstrict位置を広げる変更と免責／tolerated集合を広げる変更に限る。A6の「契約見直しまでBLOCKED」を具体化する。 | 提案中・オーナー承認待ち（2026-10-16）。 |
+
+C1〜C4は§0aの差分だけを対象とし、A1〜A6・B1〜B4・B2aの他の内容を再判断しない。C1〜C4の承認前は、Codex Schema gate・Codex wire decoder・ConfigRead／McpServerStatusListの実装へ進まない。
 
 R1、M4 runtime merge、public sandboxの作成・使用は決定済み。B1〜B4・B2aの再承認は§0の差分だけを対象とし、A1〜A6の他の内容を再判断しない。本稿（§15を含む）でB1〜B4の再承認と書く箇所はB2aを含む。執筆者は今後の実装者・レビュアーを承認しない。
 
@@ -868,4 +974,4 @@ R1、M4 runtime merge、public sandboxの作成・使用は決定済み。B1〜B
 
 ### 15. この稿の完了境界
 
-A3 の方向はオーナーが旧 API の機能廃止として確定した。`c6413082` の修正差分の独立確認とM0設計全体承認は完了した。2026-10-15 の役割入れ替え改訂（§0、B1〜B4）は、非執筆側の独立確認とオーナー再承認が未完了であり、承認まで役割に依存するM0実装へ進まない。M0-U1は実装・限定検証・修正確認済みで、他の単位は未着手である。具体的な削除・残置・移植台帳、共有安全性ケースの代替検証と実装後レビューは未完了である。M0 で現に提供する振る舞い（Codex Executor の最初の Implement まで）、廃止する振る舞い、M3 で新たに提供する Claude Reviewer（Probe を含む）を区別して確認する。
+A3 の方向はオーナーが旧 API の機能廃止として確定した。`c6413082` の修正差分の独立確認とM0設計全体承認は完了した。2026-10-15 の役割入れ替え改訂（§0、B1〜B4）は、非執筆側の独立確認とオーナー再承認が未完了であり、承認まで役割に依存するM0実装へ進まない。M0-U1は実装・限定検証・修正確認済みで、他の単位は未着手である。具体的な削除・残置・移植台帳、共有安全性ケースの代替検証と実装後レビューは未完了である。M0 で現に提供する振る舞い（Codex Executor の最初の Implement まで）、廃止する振る舞い、M3 で新たに提供する Claude Reviewer（Probe を含む）を区別して確認する。2026-10-16 の Codex 契約改訂（§0a、C1〜C4）は執筆段階であり、非執筆側の独立確認とオーナー承認が未完了である。0.162.1 basis catalog の verification file は未追加、fixture・gate・decoder は未実装、インストール版での live 確認は未実施である。

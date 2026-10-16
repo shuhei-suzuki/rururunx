@@ -6,6 +6,8 @@
 
 役割入れ替え改訂（オーナー決定 2026-10-15）: rururunxの役割をオーナーの日常開発に合わせ、**CodexをExecutor、ClaudeをReviewer**とする。`c6413082`の承認はClaude Executor＋Codex Reviewerを前提としていた。A1〜A6の他の決定、R1、M4のruntime自動merge、public `rrx-e2e-sandbox`、安全規則、M0→M5対応、M0実Mac受入前にM1へ進まない順序は変えない。再承認の対象は設計§0の差分一覧と§13のB1〜B4・B2aだけである。本稿は執筆成果であり、レビュー票・承認・実装・検証結果ではない。
 
+Codex契約改訂（2026-10-16、**提案中・オーナー承認待ち**）: インストール済みCodex CLIが0.162.1へ上がり、版数は今後も上がる。Codex有限契約を位置のstrict／tolerated二分類へ改め、契約basisを0.162.1へ移し、strict位置に触れる更新の手順を定める（設計§0a、§13のC1〜C4）。本要件の該当箇所（目的と範囲のCodex段落、AC-05、AC-18、BLOCKED条件、未証明事項）はこの改訂案を反映した。承認前はこの改訂に依存するU4実装へ進まない。
+
 公開sourceのbaseline: `cb9c17e023601b3dbe721495bbdf50c9f65d92bb`。過去の修正入力: `d452675989df799d29931c7d4f19d73d6b387550`。前回の局所修正はclean固定HEAD `2c9fb68f6f6544ef9c8b3b53c7f936aec2e354e2`から設計草案へ取込済み。今回のR5後補修本文案の入力はclean固定HEAD `0fadf545c45558a05d89377bcb073009875bdb01`であり、設計草案へ取込済み・固定HEAD b746dfd4の補修diffはOpus承認済みである。baselineと各執筆入力HEADを混同しない。
 
 R5結果の事実転記: SolはAPPROVE（確認済required 0）。固定argvでの要求は記録されているがserved model／effortは未報告。OpusはREQUEST CHANGES（確認済required 2: R5-O-01／R5-O-02）、runner ok／model_match=match、報告モデルは`claude-opus-5-5`のみ、effortは未報告。CLI完了と本文の判定は別であり、両レビュー承認済みとはしない。今回の補修はSolが執筆し、指摘側Opusが修正diffだけを独立確認する。無変更範囲のSol R5全文レビューを重複させず、両系の独立レビュー条件は維持する。適用状態はorchestratorが事実転記した。全体オーナー設計承認・実装・台帳・fixture・Linux／macOS／live検証は未完了。
@@ -38,7 +40,7 @@ Sは設定された全Native aliasを対象に、rrxからモデル入力を送�
 
 ClaudeはReviewerとして扱う。Sで`initialize`の相関応答を、Reviewerの実argv（`--permission-prompt-tool stdio`と`--permission-mode plan`を含む）で確認する。Claude P（quota Admit後に`initialize`、`system/init`、stream-jsonの成功`result`を登録前に確認するcanary）はReviewer準備の検査として定義を維持し、本番化と受入はReviewer helper鎖を提供するM3で行う。rate eventは起動時decoder selfcheckを必須とし、実eventが届いた場合はstrict解析する。未着は未観測として記録する。
 
-CodexはExecutorとして扱う。S/Pで生成schemaの構造、使用methodの宣言、`initialize`、`initialized`、ChatGPT account、environment ready、rate metadataの実応答を検査する。モデルcanaryは追加しない。PはExecutor準備の必須検査であり、M0で本番化する。Codex Executorの実行（app-serverのthread/turn、approval方針、sandbox、Worktree束縛、結果のcapture、Unknown／Held）はM0の範囲とし、設計§8aの固定契約に従う。
+CodexはExecutorとして扱う。S/Pで生成schemaの構造、使用methodの宣言、`initialize`、`initialized`、ChatGPT account、environment ready、rate metadataの実応答を検査する。生成schemaは、rrxが送る値・判断に使う値・server request・効果や結果を運ぶitem・終端を表すstrict位置では固定契約との完全一致を要求し、rrxが送らず判断にも使わないtolerated位置では増減を許容する（設計§7・§8）。CLIの通常の更新がtolerated位置だけに触れる場合は契約を作り直さずに動き続け、strict位置に触れる場合は設計§8bの手順で契約を更新するまで起動前に拒否する。版数文字列はこの判定にも使わない。モデルcanaryは追加しない。PはExecutor準備の必須検査であり、M0で本番化する。Codex Executorの実行（app-serverのthread/turn、approval方針、sandbox、Worktree束縛、結果のcapture、Unknown／Held）はM0の範囲とし、設計§8aの固定契約に従う。
 
 2run、#10の権限応答資格付け、#14の自動復旧、追加cleanup工程、Claude Executor設定の提供、Reviewer実行はM0へ広げない。Codexモデル実行はExecutorの最初のImplementまでをM0へ入れ、rrxが自動付与するCodex approvalは0件とする。Task.versionによる新しいauthority束縛、test専用authority constructor、SQL seedによる成功証明、`allow(dead_code)`、skip／ignore／直列化の追加、timeout延長だけの修正は禁止する。
 
@@ -50,7 +52,7 @@ CodexはExecutorとして扱う。S/Pで生成schemaの構造、使用methodの�
 | AC-02 | 設定された全Native aliasのS合格公開前はTask admission 0。1 aliasでもpending／refused／unknownなら全体を止める。Sが作るTask／Unit／Session／NativeInputは0。 |
 | AC-03 | SでClaude initialize、Codex schema・initialize・ChatGPT account・environment ready・rate metadataを確認する。SでClaude system-init／resultやCodexモデル経路を確認済みと記録しない。 |
 | AC-04 | PはSから独立したfreshなSAME actor観測。Codex Executor Pは同じ準備actorのSchema／Handshakeを必須とし、M0の本番Executor準備で実施する。Claude Reviewer Pは、quota Admit後、Session・NativeInput・transport登録前のcanaryとして定義を維持する。その本番producer・実境界・受入はM3へ移し、M0ではClaude P合格を記録せず、producerも追加しない。aliasはproviderごとに登録し、Claude aliasはReviewer用に受理する。TaskのExecutorがClaude provider aliasに解決される場合は、設計§8a(0)の拒否点（Goal計画検証、admissionのDriver composition）で型付き拒否する（helper・Unit・Held・quota Admit 0）。 |
-| AC-05 | envelope、method、payload、入れ子discriminatorを所有フィルタより前に検査する。未知variant・malformed・UUID内容改変を無視しない。正常ignored／foreign／合法toolのpositiveは設計§6・§7の有限受理構造内を母集団とする。既知frameの有界未宣言field保持、Codex closed object／判別keyの例外、Claude表外variant／blockの意図した拒否を設計§6・§7・A5に対応付け、追加field保持を未知variant受理へ広げない。 |
+| AC-05 | envelope、method、payload、入れ子discriminatorを所有フィルタより前に検査する。未知variant・malformed・UUID内容改変を無視しない。正常ignored／foreign／合法toolのpositiveは設計§6・§7の有限受理構造内を母集団とする。既知frameの有界未宣言field保持、Codex closed object／判別keyの例外、Claude表外variant／blockの意図した拒否を設計§6・§7・A5に対応付け、追加field保持を未知variant受理へ広げない。Codexで全構造を型検査するのは設計§7のstrict位置であり、tolerated位置は有界strict JSONとして保持し判断に使わない。 |
 | AC-06 | installationはdecoder selfcheck成功の証拠を必要とする。実rate eventの解析不能は終端エラー。未着、合法だがwindowなし、usableな観測を別々に記録する。 |
 | AC-07 | rrxのモデル入力は既存quota Admit後だけ。canary観測をquota観測としてpool／window／backoffへ反映しない。既存lease・probe ownership・期限・CAS bookkeepingは維持する。 |
 | AC-08 | **登録前拒否**ではSession、native invocation、native input/setup/permission、transport登録、IPC Grant、および当該helper以外の効果追加が0。S／installation拒否ではUnitも0。Pでは既存Preparing Unitとhelper行の存在を許容し、terminal dispositionを検査する。 |
@@ -63,12 +65,13 @@ CodexはExecutorとして扱う。S/Pで生成schemaの構造、使用methodの�
 | AC-15 | M0差分でskip／ignore／直列化を追加せず、禁止されたauthority代替や死んだproducerを導入しない。廃止台帳で残置／移植する既存synthetic childは、IDと実wrapperの対応を保存し、既存`#[ignore]`を必要な実childへ到達するwrapper入口としてpositive検証する。旧機能固有の理由付き削除を全旧positive維持と数えず、#19の既存機構・検査と共有安全性のcoverageを廃止で緩めない。 |
 | AC-16 | 実producerを通る境界positive／+1 negative、因果controls／mutants、独立実装・安全性レビュー、ubuntu／macosの必須CIを通す。 |
 | AC-17 | Codex Executorは設計§8aの固定approval方針・sandbox・Worktree束縛で起動し、ThreadStart応答がその値と一致しなければturn/startを送らない。turn/start前に、同じ本番Sessionの実効設定とinventoryでMCP・web search・dynamic tool・collabが無効または不在である肯定証拠（設計§8a(3a)）を得る。得られなければ型付き拒否でturn/start・NativeInput 0とし、継承設定の上書きで補わない（上書きの可否は設計§13のB2a）。rrxはapprovalを自動付与しない。turn/start送信から所有turnの終了まで、turn/start応答待ちを含む全受信経路でのserver request、所有turnの許可item集合（設計§8a(3a)）外のitem、書込み可能root外のpath、所有turnから別thread／turn／agentへ作業を広げるitem、未知variant、中断・不明なturn結果は成功にせずUnknown→Heldとし、自動再送しない。構造検査を通った正常なforeign通知・itemは設計§7の所有フィルタで除外して続行し、malformed foreignはProtocolErrorとする。成功はowned turnの`completed`で成功原本を捕捉した場合だけで、既存retained Git経路へ接続する。成功原本の捕捉後に生じたpipe EOF／leader reapの不明は物理custody軸に記録し、work軸を反転しない。spawnは`rrx-spawn-hygiene`の消費関数だけを使う。 |
+| AC-18 | Codex Schema gateは設計§7・§8の二分類で判定する（提案中、C1〜C4）。strict位置（送信8 method＋initializedのparams全宣言、握手・ConfigRead判定path・inventory判定値・ThreadStart／TurnStart応答・owned thread／turnの同一性と状態・終端、21通知の全payload、全server request、効果や結果を運ぶitem）では、property（optional／nullableを含む）・required・type・enum・枝・制約・defaultの追加／削除／変更をすべて起動前に拒否する。新しいserver request method、used enumの新値、strict位置の削除も拒否する。tolerated位置の増減、規則内の新しい通知method、新しいThreadItem typeは通過させ、新しいThreadItem typeは所有turnで成功にせずUnknown→Heldとする。tolerated位置の値は分類・回答・quota・authority・記録に使わない。gate結果は有限のPass／Refusedと有限reason・件数・記録可能な位置だけをjournalへ残し、生schemaを保存しない。basis catalogは0.162.1のtag exportから記録済み規則で作り、直前basisの再現確認と出所記録を持ち、旧catalogを書換えない。CLI更新がtolerated位置だけに触れる場合に契約を作り直さず通ること、strict位置に触れる場合にkind別reasonで拒否されることをcontrol（設計CX-7／CX-8）で示す。 |
 
 本番Sessionでのstrict拒否はAC-08の累積0を要求しない。既存状態をbaselineとして、拒否後の新しい入力・権限応答・Grant・quota誤更新がないこと、および既存terminal契約に従うdispositionを検査する。
 
 ### 承認・資格付けの順序
 
-修正差分の独立確認とオーナー設計承認をM0コード着手前に完了する（`c6413082`で完了）。役割入れ替え改訂も、非執筆側の独立確認とオーナー再承認（設計§13のB1〜B4・B2a）を、役割に依存する残りのM0コード着手前に完了する。M0-U1の実装済み差分はReviewer側のdecoderとして保持する。実装後にowner-run実CLI資格付けを行い、M0実Mac合格後に次段階へ進む。設計承認前のlive採取を新しい必須条件にはしない。
+修正差分の独立確認とオーナー設計承認をM0コード着手前に完了する（`c6413082`で完了）。役割入れ替え改訂も、非執筆側の独立確認とオーナー再承認（設計§13のB1〜B4・B2a）を、役割に依存する残りのM0コード着手前に完了する。Codex契約改訂（設計§13のC1〜C4）も、非執筆側の独立確認とオーナー承認を、Codex Schema gate・Codex wire decoder・ConfigRead／McpServerStatusListの実装着手前に完了する。以後のCLI更新で契約を更新する場合は設計§8bに従い、オーナー承認はstrict位置または免責／tolerated集合を広げる更新に限る。M0-U1の実装済み差分はReviewer側のdecoderとして保持する。実装後にowner-run実CLI資格付けを行い、M0実Mac合格後に次段階へ進む。設計承認前のlive採取を新しい必須条件にはしない。
 
 Sの保証は「rrxがモデル入力を送らないこと」である。CLIや既存hookによる内部backend呼出しの不存在を観測済みとは保証しない。設定・認証・hookをスキップしてSを成立させない。
 
@@ -80,8 +83,9 @@ Sの保証は「rrxがモデル入力を送らないこと」である。CLIや�
 - Codex Executorの固定approval方針・sandbox値が固定catalogに宣言されていない、またはThreadStart応答で一致を確認できない。
 - Codex Executorの本番Sessionで、継承設定のままMCP・web search・dynamic tool・collabの無効／不在の肯定証拠をturn/start前に得られない（制限方向の上書きを許すかは設計§13のB2a。判断までその環境のExecutor準備をBLOCKEDとし、上書きで補わない）。
 - Sの実argv／空cwd／停止方式が成立しない、またはrrxがモデル入力を送らなければ成立しない。
-- 実frame／schemaが有限契約の表外、または構造不適合。
+- Codex契約改訂（設計§13のC1〜C4）のオーナー承認が得られない（承認済みA6の規則のままでは、0.162.1のConfigRead／McpServerStatusListと通常のCLI更新を扱えない）。
+- 実frameが有限契約の表外、または構造不適合。Codex生成schemaがstrict位置で不一致、または許容追加の規則外（設計§8bの更新手順を通すまで）。
 - 現在提供する管理経路の共有安全性ケースの検出範囲を維持できない。旧機能の廃止そのものと未検証の安全性を混同しない。
 - 必須検証・レビュー・両OSの結果が欠ける。
 
-未証明事項は、Codexのapproval往復・error分類・sandbox実効（OSでの強制）・network遮断の実効、owner-runの1run以外でのCodex Executorの挙動、ClaudeのReviewer P（canary／system-init／result）・review実行・権限往復・既定permission mode・rate event、escaped descendants、wrapper内部identityである。owner-runの1run成功をCodex Executor経路全般の資格付けへ広げない。静的schema適合やsynthetic positiveでlive成功を証明したとは扱わない。
+未証明事項は、Codexのapproval往復・error分類・sandbox実効（OSでの強制）・network遮断の実効、インストール版0.162.1の`generate-json-schema --experimental`出力が0.162.1契約を通ること（tag exportとの一致はowner-runのgate結果で確認する）、ThreadStart応答のsandbox（writableRoots）が送信方針と照合できる形で返ること、tolerated通知の実際の意味、owner-runの1run以外でのCodex Executorの挙動、ClaudeのReviewer P（canary／system-init／result）・review実行・権限往復・既定permission mode・rate event、escaped descendants、wrapper内部identityである。owner-runの1run成功をCodex Executor経路全般の資格付けへ広げない。静的schema適合やsynthetic positiveでlive成功を証明したとは扱わない。
