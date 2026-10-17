@@ -94,6 +94,10 @@ This narrows acceptance (no owner approval under §8b step 8); design §8 rule 1
 
 Verification at `14368517` (`.rrx/u3/host/full8/`, `.rrx/u3/host/mut-u4r4/`): fmt, clippy and build pass; lib 811 / 117 / 27; the four failures outside the alone baseline (`adapter::git_owner` parallel-only kinds) pass alone; every integration target and both helper crates pass except `daemon_native` 1 / 2 / 0. The 30 operators targeting `schema.rs` (including the new `u4r4-` operators) ran: 28 killed with passing restored runs; 105 and 110 remain layered bounds and 105s / 110s are killed at this HEAD.
 
+## Final check
+
+At `26af8754` Opus checked the simplification diff (code and design §8): SEC-R4-01 resolved, no same-class defect elsewhere, the narrowing may close by review under §8b step 8 — **コードセキュリティ承認, no required finding**. Combined with Sol's round 2 approval of part B, U4 is approved. Optional items are tracked in public issues (title, severity, status only): #103 (SEC-R2-03 work budget, SEC-R3-02 fixtures, SEC-R5-01 anchor namespace, SEC-R5-02 rule text) and #104 (U4-I08 outgoing image keys, SEC-U4-07 cleanup re-scan). SEC-U4-08 (pass gate additions to the Session decoder) is a precondition of U5 opening admission; the `ApprovalLedger` whole-array comparison is re-checked in U6.
+
 ## Limits
 
 - Live confirmation on the Mac (owner-run) is still required: the installed CLI's `generate-json-schema --experimental` output against the 0.162.1 basis, the ThreadStart sandbox shape, config/read features and mcp_servers shapes, and `thread/settings/updated`.
