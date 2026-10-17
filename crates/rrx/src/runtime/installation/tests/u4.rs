@@ -87,8 +87,22 @@ fn fixture_s(scenario: &str) -> ControlFixture {
             let pair = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("tests/fixtures/codex-contract/basis-pair.json");
             let evidence = old.with_file_name(EVIDENCE);
+            // The shim control also follows the real U5 P chain. S still has
+            // no managed context; only fresh P reports its qualified version.
+            let peer = if scenario == "shim" {
+                PEER.replace(
+                    "print('arbitrary updated CLI 88.1')",
+                    "print('codex-cli 0.160.0' if os.environ.get('RRX_UNIT_ID') else 'arbitrary updated CLI 88.1')",
+                )
+                .replace(
+                    "if SCENARIO=='shim': shim(",
+                    "if SCENARIO=='shim' and not os.environ.get('RRX_UNIT_ID'): shim(",
+                )
+            } else {
+                PEER.to_owned()
+            };
             let script = format!(
-                "#!/usr/bin/python3\nPROVIDER={:?}\nSCENARIO={scenario:?}\nALIAS={alias:?}\nEVIDENCE={:?}\nPAIR={:?}\nFILES={}\n{PEER}",
+                "#!/usr/bin/python3\nPROVIDER={:?}\nSCENARIO={scenario:?}\nALIAS={alias:?}\nEVIDENCE={:?}\nPAIR={:?}\nFILES={}\n{peer}",
                 agent.provider.as_deref().unwrap(),
                 evidence.to_str().unwrap(),
                 pair.to_str().unwrap(),
@@ -157,7 +171,8 @@ async fn u5_all_alias_s_pass_opens_composition_without_granting_p() {
 /// I-S: tool requests from Schema and Handshake children reach the real server and are refused without managed context.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn u4r1b_s_children_shim_requests_reach_server_and_are_refused() {
-    let f = fixture_s("shim");
+    let mut f = fixture_s("shim");
+    f.register_real_git_project();
     let evidence = f._dir.path().join(EVIDENCE);
     std::fs::create_dir(&evidence).unwrap();
     std::fs::write(
@@ -167,6 +182,7 @@ async fn u4r1b_s_children_shim_requests_reach_server_and_are_refused() {
     .unwrap();
     let (_, tasks) = accept(&f, 1).await;
     f.runtime.start().await.unwrap();
+    let admission = f.runtime.control_admission.lock().await;
     let status = settled_s(&f).await;
     assert_eq!(status.state, StartupState::Passed, "{status:?}");
     for record in [
@@ -187,9 +203,35 @@ async fn u4r1b_s_children_shim_requests_reach_server_and_are_refused() {
         !evidence.join("granted-effect").exists(),
         "helper-external effect from an S child"
     );
-    assert!(f.runtime.installed_driver_composition(&tasks[0]).is_err());
-    let _ = f.runtime.admit_ready_tasks();
+    assert!(f.runtime.installed_driver_composition(&tasks[0]).is_ok());
+    // All S requests were observed before admitting any managed Unit/helper.
     assert_no_execution_effects(&f);
+    let service = Arc::new(nonsuccess::ServicePark::default());
+    let open = nonsuccess::OpenPark(service.clone());
+    service.close();
+    let hook = service.clone();
+    *f.runtime.before_service_reconcile.lock().unwrap() = Some(Arc::new(move || hook.visit()));
+    f.runtime.wake.notify_one();
+    u5::wait(|| service.parked(), "service did not park after S").await;
+    drop(admission);
+    let _ = f.runtime.admit_ready_tasks();
+    u5::wait(
+        || {
+            f.runtime.phase_jobs.observed_jobs().iter().any(|job| {
+                job.finished
+                    && job.refusal.as_deref().is_some_and(|refusal| {
+                        refusal.contains("Codex Executor unavailable before registration (U6)")
+                    })
+            })
+        },
+        "Executor did not refuse before registration after fresh P",
+    )
+    .await;
+    u5::no_session(&f);
+    assert!(!evidence.join("granted-effect").exists());
+    drop(open);
+    u5::wait_closed(&f, &tasks).await;
+    u5::no_session(&f);
     f.runtime.shutdown().await.unwrap();
     finish(f).await;
 }

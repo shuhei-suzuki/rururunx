@@ -594,6 +594,7 @@ impl PhaseJobs {
     fn release_acknowledged(
         &self,
         phases: &super::phase_supervisor::PhaseSupervisor,
+        handoffs: &super::phase_handoffs::PhaseHandoffs,
         job: &Arc<Job>,
         ack: &Arc<crate::state::PhaseClosedAcknowledgment>,
     ) -> Result<()> {
@@ -612,11 +613,21 @@ impl PhaseJobs {
                 .map_err(|_| anyhow::anyhow!("phase job state poisoned"))?
                 .slot_released = true;
         }
+        // Preserve the SAME closure acknowledgment until both owners retire.
+        // A busy/unfinished handoff stays retained and is retried next sweep.
+        let task = job
+            .allocation
+            .facts()
+            .scope
+            .task_id
+            .ok_or_else(|| anyhow::anyhow!("non-success release Task absent"))?;
+        handoffs.retire_closed(task, &ClosedPhaseAck::NonSuccess(ack.clone()))?;
         self.retire_closed(job)
     }
     pub(super) fn reconcile_nonsuccess(
         &self,
         phases: &super::phase_supervisor::PhaseSupervisor,
+        handoffs: &super::phase_handoffs::PhaseHandoffs,
         stopping: &AtomicBool,
     ) -> Result<bool> {
         use crate::execution::native::{NativeClosureStep, PreparationYield};
@@ -647,7 +658,10 @@ impl PhaseJobs {
                 )
             };
             if let Some(ack) = ack {
-                if self.release_acknowledged(phases, &job, &ack).is_err() {
+                if self
+                    .release_acknowledged(phases, handoffs, &job, &ack)
+                    .is_err()
+                {
                     pending = true;
                 }
                 continue;
@@ -772,7 +786,10 @@ impl PhaseJobs {
                     }
                     job.changed
                         .send_replace(InvocationObservation::ClosedNonSuccess);
-                    if self.release_acknowledged(phases, &job, &ack).is_err() {
+                    if self
+                        .release_acknowledged(phases, handoffs, &job, &ack)
+                        .is_err()
+                    {
                         pending = true;
                     }
                 }

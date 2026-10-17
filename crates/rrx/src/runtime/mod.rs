@@ -78,10 +78,12 @@ impl Runtime {
             admission,
         );
         let phase_jobs = Arc::new(phase_jobs::PhaseJobs::default());
+        let phase_handoffs = Arc::new(phase_handoffs::PhaseHandoffs::default());
         let phase_dispatcher = phase_supervisor::PhaseDispatcher::new(
             owner.clone(),
             phases.clone(),
             phase_jobs.clone(),
+            Arc::downgrade(&phase_handoffs),
             control_admission.clone(),
             running.clone(),
             stopping.clone(),
@@ -102,7 +104,7 @@ impl Runtime {
             phases,
             phase_jobs,
             phase_dispatcher,
-            phase_handoffs: Arc::new(phase_handoffs::PhaseHandoffs::default()),
+            phase_handoffs,
             started: AtomicBool::new(false),
             running,
             stopping,

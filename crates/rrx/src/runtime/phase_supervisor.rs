@@ -845,14 +845,20 @@ pub(super) struct PhaseDispatcher {
     owner: Arc<RuntimeOwner>,
     phases: Arc<PhaseSupervisor>,
     phase_jobs: Arc<super::phase_jobs::PhaseJobs>,
+    // The handoff invocation owns a dispatcher; never add a strong return edge.
+    phase_handoffs: Weak<super::phase_handoffs::PhaseHandoffs>,
     control_admission: Arc<tokio::sync::Mutex<()>>,
     running: Arc<AtomicBool>,
     stopping: Arc<AtomicBool>,
 }
 impl PhaseDispatcher {
     pub(super) fn reconcile_nonsuccess(&self) -> Result<bool> {
+        let handoffs = self
+            .phase_handoffs
+            .upgrade()
+            .context("original Source handoff registry ended")?;
         self.phase_jobs
-            .reconcile_nonsuccess(&self.phases, &self.stopping)
+            .reconcile_nonsuccess(&self.phases, &handoffs, &self.stopping)
     }
     pub(super) fn reconcile_success(&self) -> Result<super::phase_jobs::SuccessSweep> {
         self.phase_jobs.reconcile_success(&self.stopping)
@@ -864,6 +870,7 @@ impl PhaseDispatcher {
         owner: Arc<RuntimeOwner>,
         phases: Arc<PhaseSupervisor>,
         phase_jobs: Arc<super::phase_jobs::PhaseJobs>,
+        phase_handoffs: Weak<super::phase_handoffs::PhaseHandoffs>,
         control_admission: Arc<tokio::sync::Mutex<()>>,
         running: Arc<AtomicBool>,
         stopping: Arc<AtomicBool>,
@@ -872,6 +879,7 @@ impl PhaseDispatcher {
             owner,
             phases,
             phase_jobs,
+            phase_handoffs,
             control_admission,
             running,
             stopping,

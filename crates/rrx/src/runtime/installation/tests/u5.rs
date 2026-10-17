@@ -80,7 +80,7 @@ fn fixture_p(case: &str) -> ControlFixture {
         }
     })
 }
-async fn wait(mut predicate: impl FnMut() -> bool, label: &str) {
+pub(super) async fn wait(mut predicate: impl FnMut() -> bool, label: &str) {
     let end = tokio::time::Instant::now() + Duration::from_secs(60);
     while !predicate() {
         assert!(tokio::time::Instant::now() < end, "{label}");
@@ -139,7 +139,7 @@ async fn arrive(f: &ControlFixture, a: &tokio::sync::Semaphore) {
     }
 }
 
-fn no_session(f: &ControlFixture) {
+pub(super) fn no_session(f: &ControlFixture) {
     let db = raw(f);
     for kind in ["native_input", "native_phase_transport", "native_setup"] {
         let n: usize = db
@@ -159,6 +159,11 @@ fn no_session(f: &ControlFixture) {
         )
         .unwrap();
     assert_eq!(n, 0, "U5 Session registered");
+    assert_eq!(
+        count(f, "native_invocations"),
+        0,
+        "U5 invocation registered"
+    );
 }
 fn effects(
     f: &ControlFixture,
@@ -171,8 +176,14 @@ fn effects(
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn u5_fresh_p_and_ipc_original_survive_complete_inventory_read() {
     let mut f = fixture_p("ipc");
-    f.register_real_git_project();
-    let (_, tasks) = accept(&f, 2).await;
+    // The installed scheduler permits only one active Task per Project.
+    // Keep two simultaneous P actors without relaxing that production limit.
+    let mut tasks = Vec::new();
+    for project in ["u5-ipc-project-a", "u5-ipc-project-b"] {
+        f.register_real_git_project_named(project);
+        tasks.extend(accept(&f, 1).await.1);
+    }
+    assert_ne!(tasks[0].project_id, tasks[1].project_id);
     let (a, r) = park(&f, PreparationObservation::BeforeCommand);
     f.runtime.start().await.unwrap();
     assert_eq!(u4::settled_s(&f).await.state, StartupState::Passed);
@@ -268,17 +279,7 @@ async fn u5_fresh_p_and_ipc_original_survive_complete_inventory_read() {
     }
     no_session(&f);
     r.add_permits(tasks.len());
-    wait(
-        || {
-            f.runtime
-                .phase_jobs
-                .observed_jobs()
-                .iter()
-                .all(|j| j.finished)
-        },
-        "U6 refusal did not finish",
-    )
-    .await;
+    wait_closed(&f, &tasks).await;
     no_session(&f);
     f.runtime.shutdown().await.unwrap();
     finish(f).await;
@@ -475,9 +476,35 @@ async fn u5_pre_registration_refusal_closes_and_requires_explicit_retry() {
         "retired request rewrote an old P receipt"
     );
     drop(open);
+    wait_closed(&f, &tasks).await;
     no_session(&f);
     f.runtime.shutdown().await.unwrap();
     finish(f).await;
+}
+
+/// Known nongrant closure retires each SAME job and Source envelope before stop.
+pub(super) async fn wait_closed(f: &ControlFixture, tasks: &[Task]) {
+    wait(
+        || {
+            f.runtime.phase_jobs.observed_jobs().is_empty()
+                && tasks
+                    .iter()
+                    .all(|task| f.runtime.observe_source_handoff(task.id).unwrap().is_none())
+        },
+        "Known nongrant closure did not retire original jobs and handoffs",
+    )
+    .await;
+    assert_eq!(
+        raw(f)
+            .query_row(
+                "SELECT count(*) FROM audit WHERE kind='rrx.private.workflow.phase_closed'",
+                [],
+                |r| r.get::<_, usize>(0),
+            )
+            .unwrap(),
+        tasks.len(),
+        "missing or duplicate nongrant closure"
+    );
 }
 
 fn commit_files(f: &ControlFixture, files: usize) {

@@ -505,8 +505,8 @@ impl PhaseHandoffs {
             .entries
             .lock()
             .map_err(|_| anyhow::anyhow!("Source handoffs poisoned"))?;
-        // Future completion alone cannot settle Source originals/capacity. This
-        // increment has no genuine closure/retirement producer, so none is evicted.
+        // Future completion alone cannot settle Source originals/capacity.
+        // Only retirement with the SAME allocation's closure can remove them.
         ensure!(
             entries.is_empty(),
             super::stop::ShutdownPending::at(super::stop::ShutdownSite::SourceHandoffs)
