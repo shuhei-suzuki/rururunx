@@ -339,10 +339,7 @@ pub(in crate::state) fn validate(c: &Connection, task_id: TaskId) -> Result<()> 
     )?;
     ensure!(live, "actual retained Task Driver unavailable");
     let row: Row = decode(body)?;
-    ensure!(
-        row.marker.is_none(),
-        "marker-bound Driver requires the genuine managed successor/lifecycle reader"
-    );
+    ensure!(row.marker.is_none(), MarkerBoundDriverRefused);
     let current = snapshot(c, task_id)?;
     ensure!(
         row.id.to_string() == id
@@ -469,3 +466,13 @@ impl Store {
         validate(&self.connection, task)
     }
 }
+
+/// Only the actual marker check constructs this nongrant refusal.
+#[derive(Debug)]
+pub(crate) struct MarkerBoundDriverRefused;
+impl std::fmt::Display for MarkerBoundDriverRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("marker-bound Driver requires the genuine managed successor/lifecycle reader")
+    }
+}
+impl std::error::Error for MarkerBoundDriverRefused {}

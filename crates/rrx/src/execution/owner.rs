@@ -24,6 +24,8 @@ pub struct RuntimeOwner {
     pub(crate) resource_admission: Arc<tokio::sync::Mutex<()>>,
     git_leases: Mutex<BTreeMap<OperationId, Weak<GitLease>>>,
     runtime_drivers: Mutex<Weak<crate::runtime::driver::DriverRegistry>>,
+    preparation_ipc: Mutex<Vec<Weak<super::ipc::PreparationIpcSink>>>,
+    pub(crate) startup_programs: Mutex<BTreeMap<PathBuf, crate::runtime::startup::probe::Program>>,
     _ipc: tempfile::TempDir,
     pub(crate) socket: PathBuf,
 }
@@ -293,6 +295,8 @@ impl RuntimeOwner {
             git_gate: Arc::new(tokio::sync::Mutex::new(())),
             resource_admission: Arc::new(tokio::sync::Mutex::new(())),
             git_leases: Mutex::new(BTreeMap::new()),
+            preparation_ipc: Mutex::new(Vec::new()),
+            startup_programs: Mutex::new(BTreeMap::new()),
             runtime_drivers: Mutex::new(Weak::new()),
             _ipc: ipc,
             socket,
@@ -372,6 +376,63 @@ impl RuntimeOwner {
         leases.retain(|_, lease| lease.strong_count() > 0);
         leases.insert(lease.id, Arc::downgrade(&lease));
         Ok(lease)
+    }
+}
+
+impl RuntimeOwner {
+    pub(crate) fn register_preparation_ipc(
+        &self,
+        helper: &Arc<super::ipc::PreparationIpcSink>,
+    ) -> Result<()> {
+        let mut sinks = self
+            .preparation_ipc
+            .lock()
+            .map_err(|_| anyhow::anyhow!("P IPC index poisoned"))?;
+        sinks.retain(|s| s.strong_count() > 0);
+        ensure!(
+            sinks.len() < 128 * super::native::readonly::HELPER_LIMIT,
+            "P IPC index full"
+        );
+        sinks.push(Arc::downgrade(helper));
+        Ok(())
+    }
+    /// Negative timing control borrows an already registered original; it creates no actor or authority.
+    #[cfg(test)]
+    pub(crate) fn duplicate_active_preparation_sink(
+        &self,
+        unit: &super::ExecutionUnit,
+    ) -> Result<()> {
+        let sink = self
+            .preparation_ipc
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(Weak::upgrade)
+            .find(|s| s.candidate(self, unit))
+            .context("original active helper sink absent")?;
+        self.register_preparation_ipc(&sink)
+    }
+    /// Called only after server-side current Unit, epoch and cookie checks.
+    pub(crate) fn observe_preparation_ipc(
+        &self,
+        unit: &super::ExecutionUnit,
+        marker: super::ipc::PreparationIpcRefusal,
+    ) {
+        let candidates = match self.preparation_ipc.lock() {
+            Ok(sinks) => sinks.iter().filter_map(Weak::upgrade).collect::<Vec<_>>(),
+            Err(_) => return,
+        };
+        let candidates = candidates
+            .into_iter()
+            .filter(|s| s.candidate(self, unit))
+            .collect::<Vec<_>>();
+        if let [helper] = candidates.as_slice() {
+            helper.record(Some(marker));
+        } else {
+            for helper in candidates {
+                helper.record(None);
+            }
+        }
     }
 }
 

@@ -126,7 +126,19 @@ impl EffectImage {
                 array_entries: 16,
             },
         )?;
-        let effect: ManagedEffect = serde_json::from_value(value)?;
+        let effect: ManagedEffect = serde_json::from_value(value.clone())?;
+        ensure!(
+            serde_json::to_value(&effect.receipt)? == value["receipt"],
+            "Native receipt classification lost during deserialize"
+        );
+        ensure!(
+            effect.receipt.len() <= 16
+                && effect
+                    .receipt
+                    .iter()
+                    .all(|(k, v)| k.len() <= 128 && v.len() <= 128),
+            "Native finite receipt bound exceeded"
+        );
         let (p, g, t) = scope_keys(&effect.scope)?;
         ensure!(
             effect.id.to_string() == self.text[0]
@@ -327,6 +339,8 @@ pub(crate) struct NativeVersionHelperPlan {
     action: NativePhaseHelperAction,
     seal: Option<Arc<NativeGitSourceSeal>>,
     conversion: Option<Arc<ConversionIdentity>>,
+    directory: Option<Arc<crate::execution::native::metadata::SchemaDirectory>>,
+    contract: Option<crate::execution::codex_wire::CodexWireContract>,
 }
 /// Known factual settlement of SAME owned observation. Issued only after the
 /// exact closure transaction commits; subsequent helpers still need authority.
@@ -409,6 +423,11 @@ impl NativeHelperHistoryCommit {
     }
 }
 impl NativeHelperSettlementCommit {
+    #[cfg(test)]
+    pub(crate) fn observed_plan(&self) -> &Arc<NativeVersionHelperPlan> {
+        &self.original.original
+    }
+
     pub(crate) fn matches_plan(&self, plan: &Arc<NativeVersionHelperPlan>) -> bool {
         Arc::ptr_eq(&self.original.original, plan)
     }
@@ -422,6 +441,14 @@ impl NativeHelperIntentCommit {
     }
 }
 impl NativeVersionHelperPlan {
+    pub(crate) fn directory(
+        &self,
+    ) -> Option<&Arc<crate::execution::native::metadata::SchemaDirectory>> {
+        self.directory.as_ref()
+    }
+    pub(crate) fn contract(&self) -> Option<&crate::execution::codex_wire::CodexWireContract> {
+        self.contract.as_ref()
+    }
     pub(crate) fn action(&self) -> &NativePhaseHelperAction {
         &self.action
     }
@@ -472,33 +499,33 @@ impl Store {
         let ready = last.original.original.ready.clone();
         // Qualifiers/hash/fs checks run before this method outside SharedStore.
         // Here only SAME original objects and already-owned physical images.
+        let codex = ready.actor().launch().allocation().facts().provider == "codex";
+        let prefix = if codex { 3 } else { 1 };
         ensure!(
-            history.len() == GIT_ACTIONS + 1,
-            "complete version plus Git history absent"
+            history.len() == GIT_ACTIONS + prefix,
+            "complete fresh metadata plus Git history absent"
         );
         for (index, known) in history.iter().enumerate() {
+            let original = &known.original.original;
             ensure!(
-                Arc::ptr_eq(&known.original.original.ready, &ready),
-                "helper history replaced original readiness actor"
+                Arc::ptr_eq(&original.ready, &ready) && known.original.observation.qualified(),
+                "helper history replaced original readiness actor or observation"
             );
-            if index == 0 {
-                ensure!(
-                    matches!(
-                        known.original.original.action,
-                        NativePhaseHelperAction::Version
-                    ),
-                    "history lacks version prefix"
-                );
-            } else {
-                ensure!(
-                    matches!(known.original.original.action, NativePhaseHelperAction::Git(a) if a == PhaseGitAction::ORDERED[index-1])
-                        && Arc::ptr_eq(
-                            &known.original.original.before,
-                            &history[index - 1].original.after
-                        ),
-                    "helper history SAME ordered inventory link differs"
-                );
-            }
+            let ordered = match (&original.action, index) {
+                (NativePhaseHelperAction::Version, 0) => true,
+                (NativePhaseHelperAction::Schema, 1) if codex => true,
+                (NativePhaseHelperAction::Handshake, 2) if codex => true,
+                (NativePhaseHelperAction::Git(a), i) if i >= prefix => {
+                    *a == PhaseGitAction::ORDERED[i - prefix]
+                }
+                _ => false,
+            };
+            ensure!(
+                ordered
+                    && (index == 0
+                        || Arc::ptr_eq(&original.before, &history[index - 1].original.after)),
+                "helper history SAME ordered inventory link differs"
+            );
         }
         selected_database(&self.connection, ready.actor().launch())?;
         let tx = self
@@ -522,7 +549,13 @@ impl Store {
                     ensure!(
                         known.original.observation.complete()
                             && known.original.effect.text[6] == "confirmed"
-                            && current.rows.contains(&known.original.effect),
+                            && current.rows.contains(&known.original.effect)
+                            && known
+                                .original
+                                .effect
+                                .decode(ready.actor().launch().allocation().facts().unit_id)?
+                                .receipt
+                                == known.original.observation.safe_receipt(),
                         "helper history original observed/settled image differs"
                     );
                 }
@@ -587,6 +620,21 @@ impl Store {
             version: 1,
         })?;
         let budget = crate::execution::native::native_effect_budget(facts.provider, facts.role)?;
+        let prefix_rows = if facts.provider == "codex" {
+            GIT_ACTIONS + 3
+        } else {
+            GIT_ACTIONS + 1
+        };
+        let bytes = before
+            .rows
+            .iter()
+            .try_fold(16usize, |n, r| Ok::<_, anyhow::Error>(n + r.bytes()?))?;
+        ensure!(
+            bytes
+                + prefix_rows * shape(&[36, 36, 36, 36, 36, 256, 9, BODY_BYTES], i64::MAX as u64)?
+                <= INVENTORY_BYTES,
+            "P prefix maximal image headroom absent"
+        );
         let pending = Arc::new(before.with_version_intent(effect.clone(), budget)?);
         Ok(Arc::new(NativeVersionHelperPlan {
             ready,
@@ -596,6 +644,8 @@ impl Store {
             action: NativePhaseHelperAction::Version,
             seal: None,
             conversion: None,
+            directory: None,
+            contract: None,
         }))
     }
     pub(crate) fn plan_phase_git_intent(
@@ -619,10 +669,15 @@ impl Store {
             "previous original helper was not qualified/confirmed"
         );
         match original.action {
-            NativePhaseHelperAction::Version => {
+            NativePhaseHelperAction::Version | NativePhaseHelperAction::Handshake => {
+                let codex = original.actor().launch().allocation().facts().provider == "codex";
+                ensure!(
+                    matches!(original.action, NativePhaseHelperAction::Handshake) == codex,
+                    "Git requires fresh P metadata predecessor"
+                );
                 ensure!(
                     action == PhaseGitAction::SourceTop
-                        && previous.original.observation.qualified_profile().is_some(),
+                        && previous.original.observation.qualified(),
                     "Git requires SAME actual qualified version predecessor"
                 );
                 let facts = original.actor().launch().allocation().facts();
@@ -630,6 +685,7 @@ impl Store {
                     crate::execution::native::native_effect_budget(facts.provider, facts.role)?,
                 )?;
             }
+            NativePhaseHelperAction::Schema => anyhow::bail!("Git cannot skip fresh P Handshake"),
             NativePhaseHelperAction::Git(last) => ensure!(
                 action.ordinal() == last.ordinal() + 1
                     && original
@@ -676,7 +732,125 @@ impl Store {
             action: NativePhaseHelperAction::Git(action),
             seal: Some(seal),
             conversion,
+            directory: None,
+            contract: None,
         }))
+    }
+    pub(crate) fn plan_phase_metadata_intent(
+        runtime: &crate::execution::RuntimeOwner,
+        previous: Arc<NativeHelperSettlementCommit>,
+        action: NativePhaseHelperAction,
+        directory: Option<Arc<crate::execution::native::metadata::SchemaDirectory>>,
+    ) -> Result<Arc<NativeVersionHelperPlan>> {
+        let original = &previous.original.original;
+        original.actor().validate_open()?;
+        ensure!(
+            original.actor().launch().allocation().facts().provider == "codex"
+                && previous.original.observation.qualified()
+                && previous.original.effect.text[6] == "confirmed",
+            "P metadata predecessor unqualified"
+        );
+        ensure!(
+            match (&original.action, &action) {
+                (NativePhaseHelperAction::Version, NativePhaseHelperAction::Schema) =>
+                    directory.is_some(),
+                (NativePhaseHelperAction::Schema, NativePhaseHelperAction::Handshake) =>
+                    directory.is_none(),
+                _ => false,
+            },
+            "P metadata order differs"
+        );
+        let contract = if matches!(action, NativePhaseHelperAction::Handshake) {
+            Some(previous.original.observation.schema_contract()?)
+        } else {
+            None
+        };
+        if let Some(dir) = &directory {
+            dir.verify(original.actor())?;
+        }
+        snapshot(runtime, |tx| {
+            let budget = InventoryBudget::new(tx)?;
+            budget.finish((|| {
+                original.validate_ready(tx)?;
+                ensure!(
+                    Inventory::read(tx, original.actor().launch().allocation().facts().unit_id)?
+                        == *previous.original.after,
+                    "P metadata predecessor complete inventory changed"
+                );
+                Ok(())
+            })())
+        })?;
+        let before = previous.original.after.clone();
+        let facts = original.actor().launch().allocation().facts();
+        let maximum =
+            crate::execution::native::native_effect_budget(facts.provider, facts.role)?.git;
+        ensure!(
+            before.rows.len() < maximum,
+            "P metadata row reserve exhausted"
+        );
+        // Reserve maximal private images for both metadata helpers and Git13.
+        let remaining = if matches!(action, NativePhaseHelperAction::Schema) {
+            GIT_ACTIONS + 2
+        } else {
+            GIT_ACTIONS + 1
+        };
+        let bytes = before
+            .rows
+            .iter()
+            .try_fold(16usize, |n, r| Ok::<_, anyhow::Error>(n + r.bytes()?))?;
+        ensure!(
+            bytes + remaining * shape(&[36, 36, 36, 36, 36, 256, 9, BODY_BYTES], i64::MAX as u64)?
+                <= INVENTORY_BYTES,
+            "P metadata maximal byte reserve absent"
+        );
+        let id = OperationId::new();
+        let effect = EffectImage::generated(&ManagedEffect {
+            id,
+            unit_id: facts.unit_id,
+            scope: facts.scope.clone(),
+            kind: action.kind().into(),
+            idempotency_key: format!("native-{}-{id}", action.label()),
+            expected_target: format!(
+                "{}:{}",
+                action.label(),
+                crate::execution::native_result::digest(
+                    format!(
+                        "{}:{}:{}:{}",
+                        facts.operation_id, facts.pair_id, facts.epoch, facts.profile_digest
+                    )
+                    .as_bytes()
+                )
+            ),
+            state: EffectState::Pending,
+            receipt: BTreeMap::new(),
+            version: 1,
+        })?;
+        let pending = Arc::new(before.with(effect.clone())?);
+        Ok(Arc::new(NativeVersionHelperPlan {
+            ready: original.ready.clone(),
+            before,
+            pending,
+            effect,
+            action,
+            seal: None,
+            conversion: None,
+            directory,
+            contract,
+        }))
+    }
+    pub(crate) fn reserve_phase_metadata_intent(
+        &mut self,
+        plan: Arc<NativeVersionHelperPlan>,
+        admission: &PhaseEffectAdmissionGuard,
+    ) -> Result<NativeHelperIntentCommit> {
+        ensure!(
+            matches!(
+                plan.action,
+                NativePhaseHelperAction::Schema | NativePhaseHelperAction::Handshake
+            ) && plan.seal.is_none(),
+            "metadata cannot consume a Git seal"
+        );
+        self.reserve_phase_helper_intent(plan, admission)
     }
     pub(crate) fn reserve_phase_version_intent(
         &mut self,
@@ -815,10 +989,10 @@ mod inventory_tests {
             execution::native::native_effect_budget,
         };
         for (provider, role, version, git, prepared, setup, helpers) in [
-            ("codex", Executor, 234, 235, 248, 6, 13),
-            ("codex", Reviewer, 238, 239, 248, 6, 9),
-            ("claude", Executor, 238, 239, 252, 1, 13),
-            ("claude", Reviewer, 242, 243, 252, 1, 9),
+            ("codex", Executor, 230, 233, 246, 8, 13),
+            ("codex", Reviewer, 232, 235, 248, 6, 13),
+            ("claude", Executor, 237, 238, 252, 1, 13),
+            ("claude", Reviewer, 237, 238, 252, 1, 13),
         ] {
             let budget = native_effect_budget(provider, role).unwrap();
             let row = image(UnitId::new());
@@ -831,7 +1005,7 @@ mod inventory_tests {
                     .unwrap()
                     .rows
                     .len(),
-                git
+                version + 1
             );
             let too_many = Inventory {
                 rows: vec![row.clone(); version + 1],
@@ -846,7 +1020,7 @@ mod inventory_tests {
                 rows: vec![row.clone(); git + 1],
             };
             assert!(too_many.reserve_git_batch(budget).is_err());
-            assert_eq!(git + helpers, prepared);
+            assert_eq!(git + helpers + usize::from(provider == "claude"), prepared);
             budget.check_prepared(prepared).unwrap();
             assert!(budget.check_prepared(prepared + 1).is_err());
             assert!(prepared + 1 + setup <= 255);
@@ -869,13 +1043,13 @@ mod inventory_tests {
     fn nongrant_git_inventory_reserves_13_rows_and_maximal_bytes() {
         let row = image(UnitId::new());
         let mut inventory = Inventory {
-            rows: vec![row.clone(); 243],
+            rows: vec![row.clone(); 238],
         };
         inventory.reserve_git_batch(tested_budget()).unwrap();
         inventory.rows.push(row.clone());
         assert!(inventory.reserve_git_batch(tested_budget()).is_err());
         let mut inventory = Inventory {
-            rows: vec![row.clone(); 243],
+            rows: vec![row.clone(); 238],
         };
         for row in &mut inventory.rows {
             row.text[7].clear();
@@ -971,6 +1145,34 @@ mod inventory_tests {
         .unwrap();
         assert!(Inventory::read(&c.transaction().unwrap(), unit).is_err());
     }
+    /// I-P receipt values survive the real bounded decoder without granting any preparation authority.
+    #[test]
+    fn u5_receipt_decoder_preserves_classification_and_existing_bounds() {
+        let mut c = database();
+        let unit = UnitId::new();
+        let mut effect = image(unit).decode(unit).unwrap();
+        effect.receipt = BTreeMap::from([
+            ("ipc_marker_refused".into(), "1".into()),
+            ("ipc_invalid".into(), "false".into()),
+        ]);
+        let row = EffectImage::generated(&effect).unwrap();
+        insert(&c, &row);
+        let tx = c.transaction().unwrap();
+        let decoded = Inventory::read(&tx, unit).unwrap().rows[0]
+            .decode(unit)
+            .unwrap();
+        assert_eq!(decoded.receipt, effect.receipt);
+        tx.rollback().unwrap();
+        effect.receipt = (0..16)
+            .map(|i| (format!("k{i}"), "x".repeat(128)))
+            .collect();
+        EffectImage::generated(&effect).unwrap();
+        effect.receipt.insert("extra".into(), "x".into());
+        assert!(EffectImage::generated(&effect).is_err());
+        effect.receipt = BTreeMap::from([("key".into(), "x".repeat(129))]);
+        assert!(EffectImage::generated(&effect).is_err());
+    }
+
     #[test]
     fn nongrant_inventory_oversized_index_refuses_before_body_decode() {
         let mut c = database();
@@ -1089,7 +1291,7 @@ mod inventory_tests {
         let unit = UnitId::new();
         let row = image(unit);
         let baseline = Inventory {
-            rows: vec![row.clone(); 242],
+            rows: vec![row.clone(); 237],
         };
         assert_eq!(
             baseline
@@ -1097,7 +1299,7 @@ mod inventory_tests {
                 .unwrap()
                 .rows
                 .len(),
-            243
+            238
         );
         let full = Inventory {
             rows: vec![row.clone(); 255],
@@ -1106,7 +1308,9 @@ mod inventory_tests {
             full.with_version_intent(row.clone(), tested_budget())
                 .is_err()
         );
-        let mut baseline = baseline;
+        let mut baseline = Inventory {
+            rows: vec![row.clone(); 255],
+        };
         for row in &mut baseline.rows {
             row.text[5] = "x".repeat(256);
             row.text[7].clear();
@@ -1126,11 +1330,7 @@ mod inventory_tests {
         }
         assert_eq!(remaining, 0);
         assert!(baseline.validate_bound().is_ok());
-        assert!(
-            baseline
-                .with_version_intent(row.clone(), tested_budget())
-                .is_err()
-        );
+        assert!(baseline.with(row.clone()).is_err());
         baseline
             .rows
             .iter_mut()
@@ -1138,14 +1338,8 @@ mod inventory_tests {
             .unwrap()
             .text[7]
             .pop();
-        assert!(
-            baseline
-                .with_version_intent(row.clone(), tested_budget())
-                .is_ok()
-        );
-        let pending = baseline
-            .with_version_intent(row.clone(), tested_budget())
-            .unwrap();
+        assert!(baseline.with(row.clone()).is_ok());
+        let pending = baseline.with(row.clone()).unwrap();
         let mut receipt_postimage = row;
         receipt_postimage.text[7].push('x');
         assert!(baseline.with(receipt_postimage).is_err());

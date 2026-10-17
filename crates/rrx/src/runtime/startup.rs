@@ -1,6 +1,6 @@
 //! S custody and startup observations. Journal receipts are never admission authority.
-mod path;
-mod probe;
+pub(crate) mod path;
+pub(crate) mod probe;
 use crate::{
     config::Config,
     execution::{RuntimeOwner, claude_wire::DecoderChecked, process::RetainedRawProcess},
@@ -241,7 +241,7 @@ impl Startup {
             !self.is_revoked() && self.snapshot()?.state == StartupState::Passed,
             "startup all-alias qualification unavailable"
         );
-        anyhow::bail!(FreshPreparationUnavailable)
+        Ok(())
     }
     pub(super) async fn shutdown(&self) -> Result<()> {
         self.revoke();
@@ -479,6 +479,11 @@ impl Startup {
             self.fail(StartupRefusal::PrivatePath);
             return;
         }
+        let mut programs = self.owner.startup_programs.lock().unwrap();
+        for plan in &plans {
+            programs.insert(plan.program.path().to_path_buf(), plan.program.clone());
+        }
+        drop(programs);
         let mut status = self.status.lock().unwrap();
         if self.is_revoked() {
             status.state = StartupState::Stopped;
@@ -489,15 +494,6 @@ impl Startup {
         }
     }
 }
-
-#[derive(Debug)]
-pub(super) struct FreshPreparationUnavailable;
-impl std::fmt::Display for FreshPreparationUnavailable {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("fresh Codex preparation unavailable (U5)")
-    }
-}
-impl std::error::Error for FreshPreparationUnavailable {}
 
 #[cfg(test)]
 mod tests {

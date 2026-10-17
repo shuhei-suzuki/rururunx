@@ -1,7 +1,7 @@
 //! Real S child conformance; these peers never create model input or P authority.
 use super::*;
-use crate::runtime::startup::{FreshPreparationUnavailable, ProbeState, StartupState};
-const PEER: &str = r#"
+use crate::runtime::startup::{ProbeState, StartupState};
+pub(super) const PEER: &str = r#"
 import json, os, sys
 def send(v): print(json.dumps(v),flush=True)
 def shim(role):
@@ -100,7 +100,7 @@ fn fixture_s(scenario: &str) -> ControlFixture {
         }
     })
 }
-async fn settled_s(f: &ControlFixture) -> crate::runtime::startup::StartupStatus {
+pub(super) async fn settled_s(f: &ControlFixture) -> crate::runtime::startup::StartupStatus {
     tokio::time::timeout(Duration::from_secs(20), async {
         loop {
             let s = f.runtime.startup.snapshot().unwrap();
@@ -113,13 +113,14 @@ async fn settled_s(f: &ControlFixture) -> crate::runtime::startup::StartupStatus
     .await
     .unwrap()
 }
-/// S pass is public for every alias, cleans only its own epoch, and still cannot grant admission without fresh P.
+/// S pass opens composition for every alias while held admission prevents any Unit or P authority.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn u4_all_alias_s_pass_keeps_admission_zero() {
+async fn u5_all_alias_s_pass_opens_composition_without_granting_p() {
     for scenario in ["empty_valid", "usable"] {
         let f = fixture_s(scenario);
         let (_, tasks) = accept(&f, 1).await;
         f.runtime.start().await.unwrap();
+        let admission = f.runtime.control_admission.lock().await;
         let status = settled_s(&f).await;
         assert_eq!(status.state, StartupState::Passed, "{status:?}");
         assert!(
@@ -132,14 +133,7 @@ async fn u4_all_alias_s_pass_keeps_admission_zero() {
             status.aliases.iter().map(|a| a.steps.len()).sum::<usize>(),
             7
         );
-        assert!(
-            f.runtime
-                .installed_driver_composition(&tasks[0])
-                .err()
-                .unwrap()
-                .is::<FreshPreparationUnavailable>()
-        );
-        let _ = f.runtime.admit_ready_tasks();
+        assert!(f.runtime.installed_driver_composition(&tasks[0]).is_ok());
         assert_no_execution_effects(&f);
         let entries = std::fs::read_dir(f.owner.root.join("startup"))
             .unwrap()
@@ -155,6 +149,7 @@ async fn u4_all_alias_s_pass_keeps_admission_zero() {
             0,
             "S metadata updated quota pools"
         );
+        drop(admission);
         f.runtime.shutdown().await.unwrap();
         finish(f).await;
     }

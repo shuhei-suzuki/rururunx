@@ -10,6 +10,7 @@ mod runtime;
 mod sqlite_build_tests;
 pub(crate) mod startup;
 pub(crate) use environment::EnvironmentAdmission;
+pub(crate) use runtime::driver::MarkerBoundDriverRefused;
 pub use runtime::driver::ProjectLimitUnsupported;
 pub(crate) use runtime::driver::{
     CandidateKey, CandidatePage, DriverExitPublication, DriverPreparationAdvance,

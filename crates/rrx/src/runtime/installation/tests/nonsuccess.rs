@@ -5,15 +5,15 @@ use crate::execution::{Disposition, UnitState, native::PreparationObservation};
 use std::sync::Mutex;
 
 #[derive(Default)]
-struct ServicePark {
+pub(super) struct ServicePark {
     state: Mutex<u8>,
     changed: std::sync::Condvar,
 }
 impl ServicePark {
-    fn close(&self) {
+    pub(super) fn close(&self) {
         *self.state.lock().unwrap() = 1;
     }
-    fn visit(&self) {
+    pub(super) fn visit(&self) {
         let mut state = self.state.lock().unwrap();
         if *state == 1 {
             *state = 2;
@@ -34,15 +34,15 @@ impl ServicePark {
             }
         }
     }
-    fn parked(&self) -> bool {
+    pub(super) fn parked(&self) -> bool {
         *self.state.lock().unwrap() == 2
     }
-    fn open(&self) {
+    pub(super) fn open(&self) {
         *self.state.lock().unwrap() = 3;
         self.changed.notify_all();
     }
 }
-struct OpenPark(Arc<ServicePark>);
+pub(super) struct OpenPark(pub(super) Arc<ServicePark>);
 impl Drop for OpenPark {
     fn drop(&mut self) {
         self.0.open();

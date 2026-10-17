@@ -450,6 +450,19 @@ impl PhaseJobs {
             .map(|entry| entry.job.allocation.clone())
             .ok_or_else(|| anyhow::anyhow!("original retained allocation absent"))
     }
+    #[cfg(test)]
+    pub(super) fn observed_preparation_custody(
+        &self,
+        unit: crate::execution::UnitId,
+    ) -> Result<Arc<NativePreparationCustody>> {
+        self.entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("phase jobs poisoned"))?
+            .values()
+            .find(|entry| entry.job.allocation.facts().unit_id == unit)
+            .map(|entry| entry.job.state.lock().unwrap().preparation.clone())
+            .ok_or_else(|| anyhow::anyhow!("original preparation custody absent"))
+    }
     fn closure_snapshot(&self) -> Result<Vec<(OperationId, Arc<Job>, bool)>> {
         self.rotated_snapshot(&self.closure_cursor)
     }

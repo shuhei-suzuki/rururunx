@@ -498,7 +498,25 @@ impl NativeSessions {
         prepared: Arc<PreparedNativePhase>,
     ) -> Result<NativePhaseStart> {
         prepared.validate_open()?;
+        let identity = prepared
+            .actor
+            .program
+            .get()
+            .context("P executable identity absent")?;
+        identity
+            .verify(
+                prepared.actor.identity_cancellation(),
+                tokio::time::Instant::now() + Duration::from_secs(30),
+            )
+            .await
+            .map_err(|_| anyhow::anyhow!("transport executable changed"))?;
         let profile = version::qualified_physical_profile(&self.owner, &prepared.actor)?;
+        identity.stat()?;
+        let contract = prepared.session_contract()?;
+        ensure!(
+            prepared.launch().allocation().facts().provider != "codex",
+            ExecutorPreparationUnavailable
+        );
         let plan = crate::state::Store::plan_prepared_transport(&self.owner, prepared.clone())?;
         let candidate = phase_protocol::PhaseActor::prepared_candidate(&plan)?;
         let handle = ManagedSessionRef {
@@ -640,6 +658,7 @@ impl NativeSessions {
                 && !child.stop_requested
                 && matches!(child.cell, process::NativeChildCell::Empty)
             {
+                identity.stat()?;
                 child.creation = Creation::Attempted;
                 match rrx_spawn_hygiene::spawn_tokio(command) {
                     Ok(process) => {
@@ -680,7 +699,11 @@ impl NativeSessions {
             unit: plan.unit().clone(),
             session: plan.session().clone(),
             invocation: launch.allocation().facts().invocation_id,
-            wire: Lines::new(pipes.stdin, pipes.stdout, limit),
+            wire: {
+                let mut wire = Lines::new(pipes.stdin, pipes.stdout, limit);
+                wire.contract = contract;
+                wire
+            },
             update: update.clone(),
             controls,
             native: prepared
@@ -803,3 +826,12 @@ impl NativeSessions {
         })
     }
 }
+
+#[derive(Debug)]
+pub(crate) struct ExecutorPreparationUnavailable;
+impl std::fmt::Display for ExecutorPreparationUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Codex Executor unavailable before registration (U6)")
+    }
+}
+impl std::error::Error for ExecutorPreparationUnavailable {}

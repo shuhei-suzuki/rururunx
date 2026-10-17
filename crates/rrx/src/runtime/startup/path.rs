@@ -235,7 +235,7 @@ impl AliasPath {
 
 /// Descriptor-relative, no-follow traversal of this run's retained directory.
 /// Unknown or unsafe entries leave the directory available for investigation.
-fn clean(dir: &File, depth: usize, count: &mut usize) -> Result<()> {
+pub(crate) fn clean(dir: &File, depth: usize, count: &mut usize) -> Result<()> {
     ensure!(depth <= 4, "startup cleanup depth bound");
     for entry in rustix::fs::Dir::read_from(dir)? {
         let entry = entry?;

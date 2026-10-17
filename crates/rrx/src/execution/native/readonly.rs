@@ -153,30 +153,39 @@ impl PhaseGitAction {
 #[derive(Clone)]
 pub(crate) enum NativePhaseHelperAction {
     Version,
+    Schema,
+    Handshake,
     Git(PhaseGitAction),
 }
 impl NativePhaseHelperAction {
     pub(crate) fn kind(&self) -> &'static str {
         match self {
             Self::Version => "native_phase_version",
+            Self::Schema => "native_phase_schema",
+            Self::Handshake => "native_phase_handshake",
             Self::Git(_) => "native_phase_git",
         }
     }
     pub(crate) fn label(&self) -> &'static str {
         match self {
             Self::Version => "version",
+            Self::Schema => "schema",
+            Self::Handshake => "handshake",
             Self::Git(a) => a.label(),
         }
     }
     pub(super) fn output_limit(&self) -> usize {
         match self {
-            Self::Version => super::version::OUTPUT_BYTES,
+            Self::Version | Self::Schema => super::version::OUTPUT_BYTES,
+            Self::Handshake => 1024 * 1024,
             Self::Git(a) => a.output_limit(),
         }
     }
     pub(super) fn cwd<'a>(&self, actor: &'a Arc<NativePreparationActor>) -> &'a Path {
         match self {
-            Self::Version => &actor.launch().allocation().unit_snapshot().worktree,
+            Self::Version | Self::Schema | Self::Handshake => {
+                &actor.launch().allocation().unit_snapshot().worktree
+            }
             Self::Git(a) => a.cwd(actor),
         }
     }

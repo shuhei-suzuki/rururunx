@@ -1,4 +1,4 @@
-//! One retained version-only helper. Neither a receipt nor exit zero completes
+//! Retained finite P helpers. Neither a receipt nor exit zero completes
 //! protected Native preparation, registration, input or Session authority.
 use super::*;
 use crate::state::{
@@ -20,6 +20,7 @@ pub(crate) struct NativeReadonlyHelperCompletion {
     actor: Arc<NativePreparationActor>,
     _correspondence: readonly::NativeGitCorrespondence,
     pub(crate) commit: crate::state::NativeHelperHistoryCommit,
+    pub(super) contract: Option<super::super::codex_wire::CodexWireContract>,
 }
 impl NativeReadonlyHelperCompletion {
     pub(crate) fn matches_actor(&self, actor: &Arc<NativePreparationActor>) -> bool {
@@ -53,6 +54,7 @@ impl BoundedOutput {
 
 pub(super) struct NativeVersionHelperCustody {
     plan: Arc<NativeVersionHelperPlan>,
+    ipc: Arc<super::super::ipc::PreparationIpcSink>,
     raw: Mutex<process::RetainedRawProcess>,
     state: Mutex<HelperState>,
     cancelled: AtomicBool,
@@ -64,6 +66,7 @@ pub(super) struct NativeVersionHelperCustody {
 struct HelperState {
     intent: Option<Arc<NativeHelperIntentCommit>>,
     attempted: bool,
+    started: Option<tokio::time::Instant>,
     observation: Option<Arc<NativeVersionObservation>>,
     settlement: Option<Arc<NativeHelperSettlementPlan>>,
     closure: Option<Arc<NativeVersionClosurePlan>>,
@@ -77,21 +80,36 @@ pub(crate) struct NativeVersionObservation {
     bytes: usize,
     exit: Option<std::process::ExitStatus>,
     complete: bool,
+    stdout_eof: bool,
+    stderr_eof: bool,
+    valid: bool,
     group_hygiene: bool,
     attempted: bool,
     returned_child: bool,
     qualification: std::sync::OnceLock<bool>,
+    schema: std::sync::OnceLock<schema::Gate>,
+    handshake: bool,
+    ipc: super::super::ipc::PreparationIpcObservation,
 }
 impl NativeVersionObservation {
     pub(crate) fn qualified(&self) -> bool {
         *self.qualification.get_or_init(|| self.qualify_once())
     }
     fn qualify_once(&self) -> bool {
-        if !self.complete {
+        if !self.complete || !self.valid || self.ipc.invalid {
             return false;
         }
         match self.plan.action() {
             readonly::NativePhaseHelperAction::Version => self.qualified_profile().is_some(),
+            readonly::NativePhaseHelperAction::Schema => {
+                self.exit.is_some_and(|e| e.success())
+                    && self
+                        .schema_gate()
+                        .is_some_and(|g| g.receipt.pass && g.contract.is_some())
+            }
+            readonly::NativePhaseHelperAction::Handshake => {
+                self.handshake && self.plan.contract().is_some()
+            }
             readonly::NativePhaseHelperAction::Git(action) => {
                 self.plan.git_seal().is_some_and(|seal| {
                     seal.qualify(*action, &self.stdout, self.exit.and_then(|e| e.code()))
@@ -107,7 +125,9 @@ impl NativeVersionObservation {
             && match self.plan.action() {
                 // Preserve version's complete-capture factual bookkeeping;
                 // its successful-exit/profile qualification stays separate.
-                readonly::NativePhaseHelperAction::Version => true,
+                readonly::NativePhaseHelperAction::Version
+                | readonly::NativePhaseHelperAction::Schema
+                | readonly::NativePhaseHelperAction::Handshake => true,
                 readonly::NativePhaseHelperAction::Git(a) => {
                     a.accepts_exit(self.exit.and_then(|e| e.code()))
                 }
@@ -158,8 +178,24 @@ impl NativeVersionObservation {
         );
         Ok(std::str::from_utf8(&self.stdout)?)
     }
+    fn schema_gate(&self) -> Option<&schema::Gate> {
+        self.plan.directory().map(|directory| {
+            self.schema.get_or_init(|| {
+                directory.gate().unwrap_or_else(|e| schema::Gate {
+                    receipt: schema::file_refused(&e),
+                    contract: None,
+                })
+            })
+        })
+    }
+    pub(crate) fn schema_contract(&self) -> Result<super::super::codex_wire::CodexWireContract> {
+        ensure!(self.qualified(), "fresh Schema unqualified");
+        self.schema_gate()
+            .and_then(|g| g.contract.clone())
+            .context("fresh Schema additions absent")
+    }
     pub(crate) fn safe_receipt(&self) -> BTreeMap<String, String> {
-        BTreeMap::from([
+        let mut receipt = BTreeMap::from([
             ("action".into(), self.plan.action().label().into()),
             ("stdout_sha256".into(), native_result::digest(&self.stdout)),
             (
@@ -186,7 +222,12 @@ impl NativeVersionObservation {
             ),
             (
                 "capture".into(),
-                if self.complete { "complete" } else { "unknown" }.into(),
+                format!(
+                    "stdout_eof={};stderr_eof={};leader_reaped={}",
+                    self.stdout_eof,
+                    self.stderr_eof,
+                    self.exit.is_some()
+                ),
             ),
             (
                 "exit".into(),
@@ -212,7 +253,54 @@ impl NativeVersionObservation {
                 }
                 .into(),
             ),
-        ])
+        ]);
+        receipt.insert(
+            "ipc_marker_refused".into(),
+            self.ipc
+                .refusals
+                .iter()
+                .filter(|v| {
+                    **v == super::super::ipc::PreparationIpcRefusal::CookieAcceptedMarkerRefused
+                })
+                .count()
+                .to_string(),
+        );
+        receipt.insert(
+            "ipc_other_refused".into(),
+            self.ipc
+                .refusals
+                .iter()
+                .filter(|v| **v == super::super::ipc::PreparationIpcRefusal::OtherRefused)
+                .count()
+                .to_string(),
+        );
+        receipt.insert("ipc_invalid".into(), self.ipc.invalid.to_string());
+        if let Some(gate) = self.schema_gate() {
+            receipt.insert(
+                "schema_result".into(),
+                gate.receipt.reason.map_or_else(
+                    || "pass".into(),
+                    |r| serde_json::to_value(r).unwrap().as_str().unwrap().into(),
+                ),
+            );
+            if let Some(position) = gate.receipt.positions.first() {
+                receipt.insert("schema_position".into(), position.clone());
+            }
+            receipt.insert(
+                "schema_counts".into(),
+                format!(
+                    "{}:{}:{}",
+                    gate.receipt.tolerated_changes,
+                    gate.receipt.accepted_item_types,
+                    gate.receipt.accepted_notifications
+                ),
+            );
+            receipt.insert(
+                "schema_additions_sha256".into(),
+                gate.receipt.additions_sha256.clone(),
+            );
+        }
+        receipt
     }
 }
 pub(super) fn qualified_codex_phase_version(text: &str) -> bool {
@@ -322,6 +410,7 @@ struct CaptureOwner {
 impl Drop for CaptureOwner {
     fn drop(&mut self) {
         self.custody.abandon();
+        self.custody.ipc.finish();
         let _ = self.custody.raw().hygiene();
         let mut state = self.custody.state();
         state.ended = true;
@@ -351,7 +440,7 @@ impl Drop for CaptureKick {
     }
 }
 
-fn physical_command(
+pub(super) fn physical_command(
     owner: &Arc<RuntimeOwner>,
     actor: &Arc<NativePreparationActor>,
     action: &readonly::NativePhaseHelperAction,
@@ -432,10 +521,27 @@ fn build_helper_command(
     overlay: BTreeMap<String, String>,
     facts: crate::execution::phase::AllocationFacts<'_>,
 ) -> Result<Command> {
-    let mut command = if matches!(action, readonly::NativePhaseHelperAction::Version) {
+    let mut command = if !matches!(action, readonly::NativePhaseHelperAction::Git(_)) {
         ensure!(lease.is_none(), "version cannot consume Git lease");
         let mut command = Command::new(facts.program);
-        command.arg("--version");
+        match action {
+            readonly::NativePhaseHelperAction::Version => {
+                command.arg("--version");
+            }
+            readonly::NativePhaseHelperAction::Schema => {
+                command.args(["app-server", "generate-json-schema", "--experimental"]);
+            }
+            readonly::NativePhaseHelperAction::Handshake => {
+                command.args(prepared::command_argv(
+                    facts.provider,
+                    facts.role,
+                    facts.model,
+                    facts.effort,
+                    None,
+                )?);
+            }
+            readonly::NativePhaseHelperAction::Git(_) => unreachable!("Git handled separately"),
+        }
         command
     } else {
         let lease = lease.context("original readonly Git lease absent")?;
@@ -469,7 +575,13 @@ fn build_helper_command(
     command
         .current_dir(action.cwd(actor))
         .envs(overlay)
-        .stdin(Stdio::null())
+        .stdin(
+            if matches!(action, readonly::NativePhaseHelperAction::Handshake) {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            },
+        )
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0)
@@ -566,12 +678,13 @@ impl NativeSessions {
             actor,
             _correspondence: correspondence,
             commit,
+            contract: original.metadata_contract()?,
         });
         original.retain_completion(completion.clone())?;
         drop(admission);
         Ok(completion)
     }
-    async fn run_phase_helper(
+    pub(super) async fn run_phase_helper(
         &self,
         original: Arc<NativePreparationCustody>,
         actor: Arc<NativePreparationActor>,
@@ -583,8 +696,23 @@ impl NativeSessions {
             Arc::ptr_eq(plan.actor(), &actor),
             "version original actor differs"
         );
+        let identity = actor.program.get().context("fresh P identity absent")?;
+        if !matches!(plan.action(), readonly::NativePhaseHelperAction::Git(_)) {
+            identity
+                .verify(
+                    actor.identity_cancellation(),
+                    tokio::time::Instant::now() + Duration::from_secs(30),
+                )
+                .await
+                .map_err(|_| anyhow::anyhow!("P helper executable changed"))?;
+        }
+        actor.validate_open()?;
         let helper = Arc::new(NativeVersionHelperCustody {
             plan: plan.clone(),
+            ipc: super::super::ipc::PreparationIpcSink::new(
+                &self.owner,
+                actor.launch().allocation().unit_snapshot(),
+            ),
             raw: Mutex::new(process::RetainedRawProcess::default()),
             state: Mutex::new(HelperState::default()),
             cancelled: AtomicBool::new(false),
@@ -593,6 +721,7 @@ impl NativeSessions {
             git_lease: Mutex::new(lease),
         });
         original.retain_helper(helper.clone())?;
+        self.owner.register_preparation_ipc(&helper.ipc)?;
         let (sender, receiver) = tokio::sync::oneshot::channel();
         let mut kick = CaptureKick {
             sender: Some(sender),
@@ -619,6 +748,10 @@ impl NativeSessions {
                 readonly::NativePhaseHelperAction::Version => {
                     store.reserve_phase_version_intent(plan.clone(), &admission)?
                 }
+                readonly::NativePhaseHelperAction::Schema
+                | readonly::NativePhaseHelperAction::Handshake => {
+                    store.reserve_phase_metadata_intent(plan.clone(), &admission)?
+                }
                 readonly::NativePhaseHelperAction::Git(_) => {
                     store.reserve_phase_git_intent(plan.clone(), &admission)?
                 }
@@ -633,11 +766,22 @@ impl NativeSessions {
         admission.validate_for(&launch)?;
         // One-shot state records attempted creation even when spawn gives no
         // handle. The command is fixed and no API can retry this producer.
-        helper.state().attempted = true;
+        if !matches!(plan.action(), readonly::NativePhaseHelperAction::Git(_)) {
+            identity.stat()?;
+        }
+        if let Some(dir) = plan.directory() {
+            dir.verify(&actor)?;
+        }
+        {
+            let mut state = helper.state();
+            state.attempted = true;
+            state.started = Some(tokio::time::Instant::now());
+        }
         let spawned = rrx_spawn_hygiene::spawn_tokio(command);
         if let Ok(child) = spawned {
             // FIRST action after spawn success is the infallible custody move.
             helper.raw().adopt(child);
+            helper.ipc.start();
         }
         drop(admission);
         kick.start();
@@ -662,10 +806,33 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
         limit: helper.output_limit,
         ..Default::default()
     };
-    let mut complete = false;
+    let mut handshake = helper
+        .plan
+        .contract()
+        .cloned()
+        .map(super::super::codex_wire::Handshake::new);
+    let mut valid = true;
+    let mut pending = Vec::new();
     let mut exit = None;
+    let mut stdout_eof = false;
+    let mut stderr_eof = false;
+    let mut signalled_after_grace = false;
     let returned_child = helper.raw().has_child();
-    let attempted = helper.state().attempted;
+    let (attempted, started) = {
+        let state = helper.state();
+        (state.attempted, state.started)
+    };
+    let action_deadline = started.unwrap_or_else(tokio::time::Instant::now)
+        + Duration::from_secs(match helper.plan.action() {
+            readonly::NativePhaseHelperAction::Schema => 60,
+            readonly::NativePhaseHelperAction::Handshake => 90,
+            _ => 30,
+        });
+    let deadline = helper
+        .plan
+        .git_seal()
+        .and_then(|s| s.deadline())
+        .map_or(action_deadline, |d| d.min(action_deadline));
     let qualified = helper.raw().qualify().is_ok();
     let pipes = if qualified {
         helper.raw().pipes().ok()
@@ -674,64 +841,118 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
     };
     let intent = helper.state().intent.clone();
     if let (Some(pipes), Some(intent)) = (pipes, intent) {
-        pipes.stdin.lock().await.take();
+        let mut response_deadline = handshake
+            .as_ref()
+            .map(|_| deadline.min(tokio::time::Instant::now() + Duration::from_secs(30)));
+        if let Some(protocol) = &handshake {
+            valid = send_handshake(
+                &pipes.stdin,
+                protocol.initial().ok(),
+                response_deadline.unwrap(),
+                helper.plan.actor(),
+            )
+            .await;
+        } else {
+            pipes.stdin.lock().await.take();
+        }
         let (mut out, mut err) = (pipes.stdout, pipes.stderr);
         let mut out_open = true;
         let mut err_open = true;
         let mut out_buffer = [0u8; 4096];
         let mut err_buffer = [0u8; 4096];
-        let action_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        let deadline = helper
-            .plan
-            .git_seal()
-            .and_then(|s| s.deadline())
-            .map_or(action_deadline, |d| d.min(action_deadline));
-        let mut drain_deadline = None;
+        let mut grace = None;
+        let mut drain = None;
+        let mut finishing = false;
         let mut exited = false;
-        // Admission has been released before this task is kicked.
         let mut fence = tokio::time::interval(Duration::from_millis(50));
         fence.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
-            if helper.cancelled.load(Ordering::Acquire) {
-                break;
-            }
             if exited && !out_open && !err_open {
-                complete = true;
                 break;
             }
-            let end = drain_deadline.unwrap_or(deadline).min(deadline);
+            let now = tokio::time::Instant::now();
+            if helper.cancelled.load(Ordering::Acquire) {
+                valid = false;
+            }
+            if response_deadline.is_some_and(|d| now >= d) {
+                valid = false;
+                response_deadline = None;
+            }
+            if now >= deadline {
+                valid = false;
+                break;
+            }
+            if !finishing && (!valid || handshake.as_ref().is_some_and(|h| h.complete())) {
+                finishing = true;
+                response_deadline = None;
+                pipes.stdin.lock().await.take();
+                if !exited {
+                    grace = Some((now + Duration::from_secs(5)).min(deadline));
+                }
+            }
+            if grace.is_some_and(|d| now >= d) {
+                helper.raw().hygiene();
+                signalled_after_grace = true;
+                grace = None;
+                drain.get_or_insert((now + Duration::from_secs(2)).min(deadline));
+            }
+            if drain.is_some_and(|d| now >= d) {
+                break;
+            }
+            let end = [Some(deadline), response_deadline, grace, drain]
+                .into_iter()
+                .flatten()
+                .min()
+                .unwrap();
             let read_len = output.read_window();
             tokio::select! {
-                read = out.read(&mut out_buffer[..read_len]), if out_open => {
-                    match read {
-                        Ok(0) => out_open = false,
-                        Ok(n) => {
-                            if !output.observe(&out_buffer[..n],true) { break; }
-                        }, Err(_) => break,
+                read=out.read(&mut out_buffer[..read_len]), if out_open => match read {
+                    Ok(0) => { out_open=false; stdout_eof=true; },
+                    Ok(n) => {
+                        if !output.observe(&out_buffer[..n],true) { valid=false; }
+                        if valid && let Some(protocol)=&mut handshake {
+                            pending.extend_from_slice(&out_buffer[..n]);
+                            while let Some(newline)=pending.iter().position(|b| *b==b'\n') {
+                                let line: Vec<_>=pending.drain(..=newline).collect();
+                                match protocol.observe(&line[..line.len()-1]) {
+                                    Ok(outgoing) => {
+                                        let progressed=!outgoing.is_empty();
+                                        for value in outgoing {
+                                            if !send_handshake(&pipes.stdin,Some(value),end,helper.plan.actor()).await { valid=false; break; }
+                                        }
+                                        if !valid { break; }
+                                        if protocol.complete() { response_deadline=None; }
+                                        else if progressed { response_deadline=Some((tokio::time::Instant::now()+Duration::from_secs(30)).min(deadline)); }
+                                    },
+                                    Err(_) => { valid=false; break; },
+                                }
+                            }
+                        }
+                    },
+                    Err(_) => { valid=false;out_open=false; },
+                },
+                read=err.read(&mut err_buffer[..read_len]), if err_open => match read {
+                    Ok(0) => { err_open=false;stderr_eof=true; },
+                    Ok(n) => { if !output.observe(&err_buffer[..n],false) { valid=false; } },
+                    Err(_) => { valid=false;err_open=false; },
+                },
+                _=tokio::time::sleep_until(end)=>{},
+                _=fence.tick()=>{
+                    if !finishing {
+                        let current=owner.upgrade().is_some_and(|owner| owner.store.lock().ok().is_some_and(|mut store| store.validate_phase_version_fence(&helper.plan,&intent).is_ok()));
+                        if !current { valid=false; }
                     }
-                },
-                read = err.read(&mut err_buffer[..read_len]), if err_open => {
-                    match read { Ok(0) => err_open = false, Ok(n) => {
-                        if !output.observe(&err_buffer[..n],false) { break; }
-                    }, Err(_) => break }
-                },
-                _ = tokio::time::sleep_until(end) => break,
-                _ = fence.tick() => {
-                    let valid = owner.upgrade().is_some_and(|owner| {
-                        owner.store.lock().ok().is_some_and(|mut store|
-                            store.validate_phase_version_fence(&helper.plan,&intent).is_ok())
-                    });
-                    if !valid { break; }
                     if !exited {
-                        // End the raw guard before the arm may run hygiene,
-                        // which takes the same custody mutex again.
-                        let observed_exit = { helper.raw().exited_unreaped() };
-                        match observed_exit {
-                            Ok(true) => {
-                                exited = true;
-                                let _ = helper.raw().hygiene();
-                                drain_deadline = Some(tokio::time::Instant::now()+Duration::from_secs(2));
-                            }, Ok(false) => {}, Err(_) => break,
+                        let observed={helper.raw().exited_unreaped()};
+                        match observed {
+                            Ok(true)=>{
+                                exited=true;
+                                helper.raw().hygiene();
+                                grace=None;
+                                drain.get_or_insert((tokio::time::Instant::now()+Duration::from_secs(2)).min(deadline));
+                            },
+                            Ok(false)=>{},
+                            Err(_)=>{ valid=false;break; },
                         }
                     }
                 },
@@ -739,7 +960,7 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
         }
     }
     let group_hygiene = helper.raw().hygiene();
-    let stop_deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let stop_deadline = (tokio::time::Instant::now() + Duration::from_secs(10)).min(deadline);
     loop {
         if !helper.raw().has_child() {
             break;
@@ -757,22 +978,56 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    complete &= exit.is_some();
+    let complete = stdout_eof && stderr_eof && exit.is_some();
     let observation = Arc::new(NativeVersionObservation {
         plan: helper.plan.clone(),
         stdout: output.stdout,
         bytes: output.bytes,
         exit,
         complete,
+        stdout_eof,
+        stderr_eof,
+        valid,
         group_hygiene,
         attempted,
         returned_child,
         qualification: std::sync::OnceLock::new(),
+        schema: std::sync::OnceLock::new(),
+        handshake: valid
+            && pending.is_empty()
+            && handshake.as_ref().is_some_and(|h| h.complete())
+            && exit.is_some_and(|s| s.success() || (signalled_after_grace && s.code().is_none())),
+        ipc: helper.ipc.finish(),
     });
-    // This original observation precedes optional parsing, hashing and SQL.
+    // Retain the physical original before optional Schema parsing, hashing or SQL.
     helper.state().observation = Some(observation);
     release_git_serialization(&helper.raw(), &helper.git_lease);
     drop(guard);
+}
+
+async fn send_handshake(
+    stdin: &Arc<tokio::sync::Mutex<Option<ChildStdin>>>,
+    value: Option<Value>,
+    deadline: tokio::time::Instant,
+    actor: &NativePreparationActor,
+) -> bool {
+    let Some(value) = value else {
+        return false;
+    };
+    let Ok(mut bytes) = serde_json::to_vec(&value) else {
+        return false;
+    };
+    bytes.push(b'\n');
+    tokio::time::timeout_at(deadline, async {
+        let mut guard = stdin.lock().await;
+        actor.validate_open()?;
+        let pipe = guard.as_mut().context("P handshake stdin closed")?;
+        pipe.write_all(&bytes).await?;
+        pipe.flush().await?;
+        Ok::<_, anyhow::Error>(())
+    })
+    .await
+    .is_ok_and(|r| r.is_ok())
 }
 
 /// Serialization only: drops THIS helper's lease clone after a known leader

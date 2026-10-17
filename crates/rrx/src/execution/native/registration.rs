@@ -30,6 +30,18 @@ impl PreparedNativePhase {
         self.validate_original()?;
         self.actor.validate_open()
     }
+    /// The production Session receives only this SAME P's accepted in-memory additions.
+    pub(super) fn session_contract(&self) -> Result<super::super::codex_wire::CodexWireContract> {
+        self.validate_open()?;
+        if self.launch().allocation().facts().provider == "codex" {
+            self.completion
+                .contract
+                .clone()
+                .context("same P Schema contract absent")
+        } else {
+            Ok(super::super::codex_wire::CodexWireContract::default())
+        }
+    }
     pub(crate) fn governing_digest(&self) -> Result<String> {
         let original = self.launch().marker().original_plan();
         crate::state::execution_governing_digest(original.project().0, original.goal().0)

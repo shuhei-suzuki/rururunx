@@ -21,10 +21,10 @@ pub(crate) fn native_effect_budget(
     role: SessionRole,
 ) -> Result<NativeEffectBudget> {
     let (version, git, prepared) = match (provider, role) {
-        ("codex", SessionRole::Executor) => (234, 235, 248),
-        ("codex", SessionRole::Reviewer) => (238, 239, 248),
-        ("claude", SessionRole::Executor) => (238, 239, 252),
-        ("claude", SessionRole::Reviewer) => (242, 243, 252),
+        ("codex", SessionRole::Executor) => (230, 233, 246),
+        ("codex", SessionRole::Reviewer) => (232, 235, 248),
+        ("claude", SessionRole::Executor) => (237, 238, 252),
+        ("claude", SessionRole::Reviewer) => (237, 238, 252),
         _ => anyhow::bail!("unsupported Native preparation provider or role"),
     };
     Ok(NativeEffectBudget {

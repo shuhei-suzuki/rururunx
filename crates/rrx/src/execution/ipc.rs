@@ -155,11 +155,20 @@ fn current(
         unit.owner_epoch == owner.epoch && unit.cookie == request.cookie,
         "tool belongs to retired/foreign runtime"
     );
-    owner
+    let validation = owner
         .store
         .lock()
         .map_err(|_| anyhow::anyhow!("state poisoned"))?
-        .validate_execution(&unit.authority(), true, false)?;
+        .validate_execution(&unit.authority(), true, false);
+    if let Err(error) = validation {
+        let classification = if error.is::<crate::state::MarkerBoundDriverRefused>() {
+            PreparationIpcRefusal::CookieAcceptedMarkerRefused
+        } else {
+            PreparationIpcRefusal::OtherRefused
+        };
+        owner.observe_preparation_ipc(&unit, classification);
+        return Err(error);
+    }
     let profile = resources::ResourceManager::new(owner.clone()).profile(&unit)?;
     Ok((unit, profile))
 }
@@ -424,6 +433,77 @@ async fn execute(
     .await??;
     observed?;
     Ok((receipt.status.code(), bytes))
+}
+
+/// An original P helper owns this slot; the Runtime only retains a weak sink.
+/// No request chooses a helper ID and no receipt can construct a slot.
+pub(crate) struct PreparationIpcSink {
+    instance: String,
+    epoch: u64,
+    unit: UnitId,
+    generation: u64,
+    observation: std::sync::Mutex<(bool, PreparationIpcObservation)>,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PreparationIpcRefusal {
+    CookieAcceptedMarkerRefused,
+    OtherRefused,
+}
+#[derive(Clone, Default)]
+pub(crate) struct PreparationIpcObservation {
+    pub(crate) refusals: Vec<PreparationIpcRefusal>, // bounded sequence, memory only
+    pub(crate) invalid: bool,
+}
+impl PreparationIpcSink {
+    pub(in crate::execution) fn new(owner: &RuntimeOwner, unit: &ExecutionUnit) -> Arc<Self> {
+        Arc::new(Self {
+            instance: owner.instance.clone(),
+            epoch: owner.epoch,
+            unit: unit.id,
+            generation: unit.generation,
+            observation: std::sync::Mutex::new((false, PreparationIpcObservation::default())),
+        })
+    }
+    pub(in crate::execution) fn start(&self) {
+        self.observation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .0 = true;
+    }
+    pub(in crate::execution) fn candidate(
+        &self,
+        owner: &RuntimeOwner,
+        unit: &ExecutionUnit,
+    ) -> bool {
+        self.instance == owner.instance
+            && self.epoch == owner.epoch
+            && unit.owner_epoch == owner.epoch
+            && unit.id == self.unit
+            && unit.generation == self.generation
+            && unit.native_effects_open
+            && self.observation.lock().is_ok_and(|v| v.0)
+    }
+    pub(in crate::execution) fn record(&self, marker: Option<PreparationIpcRefusal>) {
+        let mut state = self
+            .observation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !state.0 {
+            return;
+        }
+        match marker {
+            Some(marker) if state.1.refusals.len() < 32 => state.1.refusals.push(marker),
+            _ => state.1.invalid = true,
+        }
+    }
+    pub(in crate::execution) fn finish(&self) -> PreparationIpcObservation {
+        let mut state = self
+            .observation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.0 = false;
+        state.1.clone()
+    }
 }
 
 #[cfg(test)]

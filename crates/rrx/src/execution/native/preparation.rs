@@ -18,6 +18,7 @@ pub(crate) struct PreparationFacts {
     pub revoked: bool,
     pub helpers_completed: bool,
     pub no_dispatch: bool,
+    pub parked: bool,
     pub transport: bool,
     pub closure: bool,
     pub closed: bool,
@@ -68,6 +69,7 @@ impl NativePreparationCustody {
             revoked: state.actor.as_ref().is_some_and(|a| a.is_revoked()),
             helpers_completed: state.completion.is_some(),
             no_dispatch: state.no_dispatch.is_some(),
+            parked: state.parked.is_some(),
             transport: state.transport.is_some(),
             closure: state.closure.is_some(),
             closed: state.closed.is_some(),
@@ -557,7 +559,13 @@ impl NativePreparationCustody {
         let helpers = state.helpers.clone();
         drop(state);
         ensure!(
-            helpers.len() == super::readonly::GIT_ACTIONS + 1,
+            helpers.len()
+                == super::readonly::GIT_ACTIONS
+                    + if actor.launch().allocation().facts().provider == "codex" {
+                        3
+                    } else {
+                        1
+                    },
             "finite complete helper manifest absent"
         );
         for helper in helpers {
@@ -777,6 +785,52 @@ impl NativePreparationCustody {
         })?;
         super::readonly::next_output_budget(helpers.len(), captured, action)
     }
+    pub(super) fn metadata_contract(
+        &self,
+    ) -> Result<Option<crate::execution::codex_wire::CodexWireContract>> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("preparation custody poisoned"))?;
+        let actor = state.actor.as_ref().context("P actor absent")?;
+        if actor.launch().allocation().facts().provider != "codex" {
+            return Ok(None);
+        }
+        let schema = state.helpers.get(1).context("fresh P Schema absent")?;
+        let handshake = state.helpers.get(2).context("fresh P Handshake absent")?;
+        ensure!(
+            schema.matches_actor(actor) && handshake.matches_actor(actor),
+            "metadata belongs to another P actor"
+        );
+        schema.closed()?;
+        handshake.closed()?;
+        Ok(Some(schema.observation()?.schema_contract()?))
+    }
+    #[cfg(test)]
+    pub(crate) fn observed_session_contract(
+        &self,
+    ) -> Result<crate::execution::codex_wire::CodexWireContract> {
+        let prepared = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("custody poisoned"))?
+            .prepared
+            .clone()
+            .context("Prepared absent")?;
+        prepared.session_contract()
+    }
+    #[cfg(test)]
+    pub(crate) fn observed_helper_history(
+        &self,
+    ) -> Result<Vec<Arc<crate::state::NativeHelperSettlementCommit>>> {
+        self.state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("custody poisoned"))?
+            .helpers
+            .iter()
+            .map(|h| h.closed())
+            .collect()
+    }
     pub(super) fn qualified_history(
         &self,
     ) -> Result<Vec<Arc<crate::state::NativeHelperSettlementCommit>>> {
@@ -911,10 +965,14 @@ pub(crate) struct NativePreparationActor {
     launch: Arc<PhaseLaunchParts>,
     sessions: Weak<NativeSessions>,
     custody: Weak<NativePreparationCustody>,
-    revoked: AtomicBool,
+    revoked: Arc<AtomicBool>,
+    pub(super) program: std::sync::OnceLock<crate::runtime::startup::probe::Program>,
     _start: Mutex<Option<tokio::sync::OwnedMutexGuard<()>>>,
 }
 impl NativePreparationActor {
+    pub(super) fn identity_cancellation(&self) -> Arc<AtomicBool> {
+        self.revoked.clone()
+    }
     pub(crate) fn is_revoked(&self) -> bool {
         self.revoked.load(Ordering::Acquire)
     }
@@ -1010,7 +1068,8 @@ impl NativeSessions {
             launch: launch.clone(),
             sessions: Arc::downgrade(&adapter.sessions),
             custody: Arc::downgrade(&custody),
-            revoked: AtomicBool::new(false),
+            revoked: Arc::new(AtomicBool::new(false)),
+            program: std::sync::OnceLock::new(),
             _start: Mutex::new(Some(
                 gate.try_lock_owned()
                     .map_err(|_| anyhow::anyhow!("same-Unit Native start remains held"))?,
@@ -1049,11 +1108,39 @@ impl NativeSessions {
         };
         custody.retain_commit(commit)?;
         drop(admission);
+        #[cfg(test)]
+        self.observe_preparation(PreparationObservation::VersionReady)
+            .await;
         let compat = super::compat::qualify_compat_static(&actor)?;
+        let identity = crate::runtime::startup::probe::Program::read(
+            actor.launch().allocation().facts().program,
+            actor.identity_cancellation(),
+            tokio::time::Instant::now() + Duration::from_secs(30),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("fresh P executable identity unavailable"))?;
+        actor.validate_open()?;
+        ensure!(
+            self.owner
+                .startup_programs
+                .lock()
+                .map_err(|_| anyhow::anyhow!("S identities poisoned"))?
+                .get(actor.launch().allocation().facts().program)
+                == Some(&identity),
+            "fresh P program differs from all-alias S identity"
+        );
+        actor
+            .program
+            .set(identity)
+            .map_err(|_| anyhow::anyhow!("P identity already installed"))?;
         let version = self.prepare_phase_version(custody.clone()).await?;
-        let completion = self
-            .prepare_phase_git(custody.clone(), version.clone())
-            .await?;
+        let prefix = if actor.launch().allocation().facts().provider == "codex" {
+            self.prepare_phase_metadata(custody.clone(), version.clone())
+                .await?
+        } else {
+            version.clone()
+        };
+        let completion = self.prepare_phase_git(custody.clone(), prefix).await?;
         let compat = compat.observe(version)?;
         #[cfg(test)]
         self.observe_preparation(PreparationObservation::BeforeCommand)

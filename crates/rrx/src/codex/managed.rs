@@ -14,8 +14,11 @@ pub(crate) fn initialization(value: &Value) -> Result<()> {
     verify_initialize(value)?;
     Ok(())
 }
-pub(crate) fn frame(value: &Value) -> Result<crate::execution::codex_wire::Frame> {
-    crate::execution::codex_wire::CodexWireContract::default().frame(value.clone())
+pub(crate) fn frame(
+    value: &Value,
+    contract: &crate::execution::codex_wire::CodexWireContract,
+) -> Result<crate::execution::codex_wire::Frame> {
+    contract.frame(value.clone())
 }
 pub(crate) struct Approvals {
     ledger: ApprovalLedger,

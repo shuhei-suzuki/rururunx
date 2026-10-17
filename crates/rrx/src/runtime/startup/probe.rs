@@ -24,8 +24,8 @@ fn interruption(cancelled: &AtomicBool, deadline: Instant) -> Option<StartupRefu
         None
     }
 }
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub(super) struct Program {
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub(crate) struct Program {
     path: PathBuf,
     dev: u64,
     ino: u64,
@@ -35,7 +35,10 @@ pub(super) struct Program {
     sha256: String,
 }
 impl Program {
-    pub(super) async fn read(
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+    pub(crate) async fn read(
         path: &Path,
         cancelled: Arc<AtomicBool>,
         deadline: Instant,
@@ -108,7 +111,7 @@ impl Program {
         identity.stat()?;
         Ok(identity)
     }
-    fn stat(&self) -> Result<()> {
+    pub(crate) fn stat(&self) -> Result<()> {
         let m = self.path.metadata()?;
         ensure!(
             m.is_file()
@@ -133,7 +136,7 @@ impl Program {
         );
         Ok(())
     }
-    async fn verify(
+    pub(crate) async fn verify(
         &self,
         cancelled: Arc<AtomicBool>,
         deadline: Instant,

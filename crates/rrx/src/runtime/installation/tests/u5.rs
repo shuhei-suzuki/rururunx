@@ -1,0 +1,1041 @@
+//! Installed fresh P controls. Peers are account-free, never qualification of an official CLI.
+use super::*;
+use crate::execution::native::PreparationObservation;
+use crate::runtime::startup::StartupState;
+
+const PRELUDE: &str = r#"
+P=bool(os.environ.get('RRX_UNIT_ID'))
+step='version' if sys.argv[1:]==['--version'] else ('schema' if 'generate-json-schema' in sys.argv else 'handshake')
+if P:
+    with open(os.path.join(TRACE,os.environ['RRX_UNIT_ID']), 'a') as f: f.write(step+'\n')
+    if step=='schema' and CASE.startswith('ipc'):
+        import socket, struct, uuid
+        if CASE=='ipc-ambiguous':
+            import time
+            with open(os.path.join(TRACE,'ready'),'w') as f: f.write('ready')
+            while not os.path.exists(os.path.join(TRACE,'release')): time.sleep(0.01)
+        peer=socket.socket(socket.AF_UNIX);peer.connect(os.environ['RRX_RUNTIME_SOCKET'])
+        request={'unit':os.environ['RRX_UNIT_ID'],'cookie':os.environ['RRX_PROCESS_COOKIE'],'tool':'git','args':['init','must-not-exist'],'cwd':os.getcwd(),'git_parent':None}
+        if CASE=='ipc-bad': request['cookie']='bad-cookie'
+        if CASE=='ipc-missing': del request['cookie']
+        if CASE=='ipc-foreign': request['unit']=str(uuid.uuid4())
+        def exact(n):
+            out=b''
+            while len(out)<n:
+                more=peer.recv(n-len(out))
+                if not more: raise RuntimeError('EOF')
+                out+=more
+            return out
+        for i in range(33 if CASE=='ipc-overflow' else 1):
+            if i:
+                peer=socket.socket(socket.AF_UNIX);peer.connect(os.environ['RRX_RUNTIME_SOCKET'])
+            data=json.dumps(request).encode();peer.sendall(struct.pack('!I',len(data))+data)
+            try:
+                frame=json.loads(exact(struct.unpack('!I',exact(4))[0]))
+                assert frame=={'type':'refused','value':'managed tool refused or observation incomplete'},frame
+            except (ConnectionResetError,RuntimeError):
+                assert CASE=='ipc-missing'
+            peer.close()
+    if CASE=='schema-fail' and step=='schema': sys.exit(0)
+    if CASE=='schema-stderr' and step=='schema': sys.stderr.write('x'*(64*1024+1));sys.stderr.flush()
+    if CASE=='version-stderr' and step=='version': sys.stderr.write('x'*(64*1024+1));sys.stderr.flush()
+    if CASE=='handshake-stderr' and step=='handshake': sys.stderr.write('x'*(1024*1024+1));sys.stderr.flush()
+    if CASE=='handshake-silent' and step=='handshake':
+        import time
+        time.sleep(120)
+    if CASE=='handshake-tail': SCENARIO='tail'
+    if CASE=='handshake-flood' and step=='handshake':
+        for i in range(1025): print(json.dumps({'method':'u5/added','params':{}}),flush=True)
+    if CASE=='handshake-fail': SCENARIO='schema-only'
+    if CASE=='identity-schema' and step=='schema':
+        with open(sys.argv[0],'a') as f: f.write('\n# identity changed\n')
+    if CASE=='version-fail' and step=='version': print('unqualified');sys.exit(0)
+"#;
+fn fixture_p(case: &str) -> ControlFixture {
+    fixture_with("codex", true, |config| {
+        for (alias, agent) in &mut config.agents {
+            let old = std::path::PathBuf::from(&agent.command[0]);
+            let path = old.with_file_name(format!("u5-{alias}"));
+            let trace = old.with_file_name("u5-trace");
+            std::fs::create_dir_all(&trace).unwrap();
+            let pair = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/codex-contract/basis-pair.json");
+            let peer = u4::PEER.replace(
+                "print('arbitrary updated CLI 88.1')",
+                "print('codex-cli 0.160.0' if P else 'arbitrary updated CLI 88.1')",
+            );
+            let peer = peer.replace("with open(PAIR) as f: files=json.load(f)['files']", "with open(PAIR) as f: files=json.load(f)['files']\n    if P and CASE in ('additions','handshake-flood'):\n        files['ServerNotification']['oneOf'].append({'type':'object','properties':{'method':{'type':'string','enum':['u5/added']},'params':{'type':'object','properties':{}}},'required':['method','params']})");
+            let peer =
+                peer + "\nif P and CASE=='handshake-grace':\n    import time\n    time.sleep(1)\n";
+            let script = format!(
+                "#!/usr/bin/python3\nimport json, os, sys\nCASE={case:?}\nPROVIDER={:?}\nSCENARIO='normal'\nTRACE={:?}\nPAIR={:?}\nFILES={}\n{PRELUDE}\n{peer}",
+                agent.provider.as_deref().unwrap(),
+                trace.to_str().unwrap(),
+                pair.to_str().unwrap(),
+                serde_json::to_string(crate::execution::native::schema::FILES).unwrap()
+            );
+            std::fs::write(&path, script).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+            agent.command = vec![path.to_str().unwrap().into()];
+        }
+    })
+}
+async fn wait(mut predicate: impl FnMut() -> bool, label: &str) {
+    let end = tokio::time::Instant::now() + Duration::from_secs(60);
+    while !predicate() {
+        assert!(tokio::time::Instant::now() < end, "{label}");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+fn sessions(f: &ControlFixture) -> Arc<crate::execution::native::NativeSessions> {
+    f.runtime
+        .installed
+        .as_ref()
+        .ok()
+        .unwrap()
+        .registry
+        .native_phase_port("worker")
+        .unwrap()
+        .selected_adapter()
+        .unwrap()
+        .sessions
+        .clone()
+}
+fn park(
+    f: &ControlFixture,
+    stage: PreparationObservation,
+) -> (Arc<tokio::sync::Semaphore>, Arc<tokio::sync::Semaphore>) {
+    let arrived = Arc::new(tokio::sync::Semaphore::new(0));
+    let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let (a, r) = (arrived.clone(), release.clone());
+    sessions(f).set_preparation_observer(Some(Arc::new(move |seen| {
+        let (a, r) = (a.clone(), r.clone());
+        Box::pin(async move {
+            if seen == stage {
+                a.add_permits(1);
+                r.acquire().await.unwrap().forget();
+            }
+        })
+    })));
+    (arrived, release)
+}
+async fn arrive(f: &ControlFixture, a: &tokio::sync::Semaphore) {
+    let end = tokio::time::Instant::now() + Duration::from_secs(60);
+    loop {
+        if let Ok(permit) = a.try_acquire() {
+            permit.forget();
+            return;
+        }
+        let jobs = f.runtime.phase_jobs.observed_jobs();
+        assert!(
+            !jobs.iter().any(|j| j.finished),
+            "genuine P ended before required stage: {jobs:?}"
+        );
+        assert!(
+            tokio::time::Instant::now() < end,
+            "genuine P did not reach stage"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+fn no_session(f: &ControlFixture) {
+    let db = raw(f);
+    for kind in ["native_input", "native_phase_transport", "native_setup"] {
+        let n: usize = db
+            .query_row(
+                "SELECT count(*) FROM managed_effects WHERE json_extract(body,'$.kind')=?1",
+                [kind],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 0, "U5 pre-registration boundary: {kind}");
+    }
+    let n: usize = db
+        .query_row(
+            "SELECT count(*) FROM records WHERE kind='session'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 0, "U5 Session registered");
+}
+fn effects(
+    f: &ControlFixture,
+    unit: crate::execution::UnitId,
+) -> Vec<crate::execution::ManagedEffect> {
+    f.owner.store.lock().unwrap().managed_effects(unit).unwrap()
+}
+
+/// S-5/I-P: same-actor fresh metadata and Git13 reach the original receipt reader, isolated across live Units.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_fresh_p_and_ipc_original_survive_complete_inventory_read() {
+    let mut f = fixture_p("ipc");
+    f.register_real_git_project();
+    let (_, tasks) = accept(&f, 2).await;
+    let (a, r) = park(&f, PreparationObservation::BeforeCommand);
+    f.runtime.start().await.unwrap();
+    assert_eq!(u4::settled_s(&f).await.state, StartupState::Passed);
+    arrive(&f, &a).await;
+    arrive(&f, &a).await;
+    let jobs = f.runtime.phase_jobs.observed_jobs();
+    assert_eq!(jobs.len(), 2);
+    for job in &jobs {
+        let rows = effects(&f, job.unit);
+        let p: Vec<_> = rows
+            .iter()
+            .filter(|e| e.kind.starts_with("native_phase_"))
+            .collect();
+        assert_eq!(p.len(), 16, "fresh Version/Schema/Handshake/Git13 missing");
+        assert!(
+            p.iter()
+                .all(|e| e.state == crate::execution::EffectState::Confirmed)
+        );
+        assert_eq!(
+            p.iter()
+                .filter(|e| e.kind == "native_phase_schema"
+                    && e.receipt.get("ipc_marker_refused").map(String::as_str) == Some("1"))
+                .count(),
+            1,
+            "I-P: CookieAcceptedMarkerRefused=1 lost between helper original and read"
+        );
+        assert!(
+            p.iter()
+                .filter(|e| e.kind != "native_phase_schema")
+                .all(|e| e.receipt.get("ipc_marker_refused").map(String::as_str) == Some("0")),
+            "I-P: cross-helper or cross-Unit attribution"
+        );
+        assert!(
+            p.iter()
+                .all(|e| e.receipt.get("ipc_invalid").map(String::as_str) == Some("false"))
+        );
+        let trace =
+            std::fs::read_to_string(f._dir.path().join("u5-trace").join(job.unit.to_string()))
+                .unwrap();
+        assert_eq!(
+            trace, "version\nschema\nhandshake\n",
+            "S was reused as P or metadata order changed"
+        );
+        let custody = f
+            .runtime
+            .phase_jobs
+            .observed_preparation_custody(job.unit)
+            .unwrap();
+        let history = custody.observed_helper_history().unwrap();
+        let launch = history[0].observed_plan().actor().launch().clone();
+        let admission = launch.admission().enter(launch.clone()).await.unwrap();
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .confirm_phase_helper_history(history.clone(), &admission)
+            .unwrap();
+        for missing in 0..history.len() {
+            let mut changed = history.clone();
+            changed.remove(missing);
+            assert!(
+                f.owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .confirm_phase_helper_history(changed, &admission)
+                    .is_err(),
+                "missing P/Git step {missing}"
+            );
+        }
+        let other = jobs.iter().find(|j| j.unit != job.unit).unwrap();
+        let foreign = f
+            .runtime
+            .phase_jobs
+            .observed_preparation_custody(other.unit)
+            .unwrap()
+            .observed_helper_history()
+            .unwrap();
+        for index in [0, 1, 2, 3, 15] {
+            let mut changed = history.clone();
+            changed[index] = foreign[index].clone();
+            assert!(
+                f.owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .confirm_phase_helper_history(changed, &admission)
+                    .is_err(),
+                "foreign actor step {index}"
+            );
+        }
+        drop(admission);
+    }
+    no_session(&f);
+    r.add_permits(tasks.len());
+    wait(
+        || {
+            f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .all(|j| j.finished)
+        },
+        "U6 refusal did not finish",
+    )
+    .await;
+    no_session(&f);
+    f.runtime.shutdown().await.unwrap();
+    finish(f).await;
+}
+
+/// Bad context cannot become marker evidence, and overflow invalidates the same original helper.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_ipc_bad_context_and_overflow_do_not_qualify_marker_evidence() {
+    for case in ["ipc-bad", "ipc-missing", "ipc-foreign", "ipc-overflow"] {
+        let mut f = fixture_p(case);
+        f.register_real_git_project();
+        let _ = accept(&f, 1).await;
+        f.runtime.start().await.unwrap();
+        wait(
+            || {
+                f.runtime
+                    .phase_jobs
+                    .observed_jobs()
+                    .iter()
+                    .any(|j| j.finished)
+            },
+            "P negative did not end",
+        )
+        .await;
+        let jobs = f.runtime.phase_jobs.observed_jobs();
+        assert_eq!(jobs.len(), 1);
+        let rows = effects(&f, jobs[0].unit);
+        let schema = rows
+            .iter()
+            .find(|e| e.kind == "native_phase_schema")
+            .expect("fresh Schema absent");
+        assert_eq!(
+            schema.receipt["ipc_marker_refused"],
+            if case == "ipc-overflow" { "32" } else { "0" }
+        );
+        assert_eq!(
+            schema.receipt["ipc_invalid"],
+            if case == "ipc-overflow" {
+                "true"
+            } else {
+                "false"
+            }
+        );
+        assert_eq!(
+            jobs[0].preparation.helpers_completed,
+            case != "ipc-overflow"
+        );
+        no_session(&f);
+        // Known refusal closes through the existing nongrant path. An invalid
+        // prefix remains Held; it cannot invent completion/no-dispatch.
+        let _ = f.runtime.shutdown().await;
+        finish(f).await;
+    }
+}
+
+/// S Passed never fills a missing P step, and an executable swap prevents the next Native helper.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_missing_fresh_steps_and_program_swap_never_reach_prepared() {
+    for case in [
+        "version-fail",
+        "schema-fail",
+        "handshake-fail",
+        "identity-schema",
+    ] {
+        let mut f = fixture_p(case);
+        f.register_real_git_project();
+        let _ = accept(&f, 1).await;
+        f.runtime.start().await.unwrap();
+        assert_eq!(u4::settled_s(&f).await.state, StartupState::Passed);
+        wait(
+            || {
+                f.runtime.phase_jobs.observed_jobs().iter().any(|j| {
+                    j.finished
+                        || effects(&f, j.unit)
+                            .iter()
+                            .any(|e| e.kind == "native_phase_git")
+                })
+            },
+            "failed P did not settle",
+        )
+        .await;
+        let jobs = f.runtime.phase_jobs.observed_jobs();
+        assert!(
+            !jobs.is_empty(),
+            "missing fresh P step was incorrectly closed as a completed prefix"
+        );
+        let job = jobs.into_iter().next().unwrap();
+        assert!(
+            !job.preparation.helpers_completed
+                && !job.preparation.no_dispatch
+                && !job.preparation.transport
+        );
+        let rows = effects(&f, job.unit);
+        assert!(
+            !rows.iter().any(|e| e.kind == "native_phase_git"),
+            "Git dispatched after missing fresh step"
+        );
+        no_session(&f);
+        let _ = f.runtime.shutdown().await;
+        finish(f).await;
+    }
+}
+
+/// A known U6 refusal retains the nongrant closure and explicit retry wait rather than registering a Session.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_pre_registration_refusal_closes_and_requires_explicit_retry() {
+    let mut f = fixture_p("normal");
+    f.register_real_git_project();
+    let (_, tasks) = accept(&f, 1).await;
+    let (a, r) = park(&f, PreparationObservation::BeforeTransport);
+    f.runtime.start().await.unwrap();
+    arrive(&f, &a).await;
+    let jobs = f.runtime.phase_jobs.observed_jobs();
+    assert_eq!(jobs.len(), 1);
+    assert!(jobs[0].preparation.helpers_completed && jobs[0].preparation.no_dispatch);
+    let n: usize = raw(&f)
+        .query_row(
+            "SELECT count(*) FROM quota_leases WHERE active=1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 1, "Admit lost its lease");
+    let original_unit = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .execution_unit(jobs[0].unit)
+        .unwrap();
+    let service = Arc::new(nonsuccess::ServicePark::default());
+    let open = nonsuccess::OpenPark(service.clone());
+    let hook = service.clone();
+    service.close();
+    *f.runtime.before_service_reconcile.lock().unwrap() = Some(Arc::new(move || hook.visit()));
+    f.runtime.wake.notify_one();
+    wait(
+        || service.parked(),
+        "service did not park before typed refusal",
+    )
+    .await;
+    no_session(&f);
+    r.add_permits(1);
+    wait(
+        || {
+            f.runtime.phase_jobs.observed_jobs().iter().any(|j| {
+                j.refusal.as_deref().is_some_and(|s| {
+                    s.contains("Codex Executor unavailable before registration (U6)")
+                })
+            })
+        },
+        "typed U6 refusal absent",
+    )
+    .await;
+    service.open();
+    wait(
+        || {
+            raw(&f)
+                .query_row(
+                    "SELECT count(*) FROM audit WHERE kind='rrx.private.workflow.phase_closed'",
+                    [],
+                    |r| r.get::<_, usize>(0),
+                )
+                .unwrap()
+                == 1
+        },
+        "Known nongrant closure missing",
+    )
+    .await;
+    let records = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .records(&tasks[0].scope(), RecordKind::Workflow)
+        .unwrap();
+    let snapshot: crate::workflow::WorkflowSnapshot =
+        serde_json::from_value(records[0].data.clone()).unwrap();
+    let attempt = &snapshot.history[snapshot.active.unwrap()];
+    assert_eq!(attempt.state, crate::workflow::AttemptState::Failed);
+    assert_eq!(
+        attempt.detail.as_deref(),
+        Some("native start ended before dispatch; explicit retry required")
+    );
+    let before = serde_json::to_string(&effects(&f, original_unit.id)).unwrap();
+    let response = retired_request(&f, &original_unit).await;
+    assert_eq!(
+        response,
+        serde_json::json!({"type":"refused","value":"managed tool refused or observation incomplete"})
+    );
+    assert_eq!(
+        serde_json::to_string(&effects(&f, original_unit.id)).unwrap(),
+        before,
+        "retired request rewrote an old P receipt"
+    );
+    drop(open);
+    no_session(&f);
+    f.runtime.shutdown().await.unwrap();
+    finish(f).await;
+}
+
+fn commit_files(f: &ControlFixture, files: usize) {
+    for index in 0..files {
+        std::fs::write(
+            f.project.root.join(format!("budget-{index}.txt")),
+            format!("ordinary {index}\n"),
+        )
+        .unwrap();
+    }
+    for argv in [
+        vec!["add", "--", "."],
+        vec![
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "budget corpus",
+        ],
+    ] {
+        let mut command = std::process::Command::new("/usr/bin/git");
+        command.current_dir(&f.project.root).args(argv);
+        assert!(rrx_spawn_hygiene::status_std(command).unwrap().success());
+    }
+}
+/// B-1: real committed blobs produce the baseline, P adds 16 rows, and B+1 refuses before Version.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_installed_history_budget_boundary_and_plus_one() {
+    let mut base = None;
+    for target in [0, 230, 231] {
+        let mut f = fixture_p("normal");
+        f.register_real_git_project();
+        let files = if target == 0 {
+            0
+        } else {
+            target - base.unwrap()
+        };
+        commit_files(&f, files);
+        let _ = accept(&f, 1).await;
+        let (a, r) = park(&f, PreparationObservation::VersionReady);
+        f.runtime.start().await.unwrap();
+        arrive(&f, &a).await;
+        let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+        let baseline = effects(&f, job.unit);
+        assert!(baseline.iter().all(|e| e.kind == "git_helper"
+            && matches!(
+                e.state,
+                crate::execution::EffectState::Confirmed | crate::execution::EffectState::Resolved
+            )));
+        if target == 0 {
+            base = Some(baseline.len());
+            assert!(baseline.len() < 230);
+        } else {
+            assert_eq!(
+                baseline.len(),
+                target,
+                "real Source producer baseline differs"
+            );
+        }
+        if target == 230 {
+            let (prepared, go) = park(&f, PreparationObservation::BeforeTransport);
+            r.add_permits(1);
+            arrive(&f, &prepared).await;
+            assert_eq!(
+                effects(&f, job.unit).len(),
+                246,
+                "Prepared must consume the complete 16-helper prefix"
+            );
+            let installed_rows = effects(&f, job.unit).len();
+            let budget = crate::execution::native::native_effect_budget(
+                "codex",
+                crate::domain::SessionRole::Executor,
+            )
+            .unwrap();
+            budget.check_prepared(installed_rows).unwrap();
+            assert!(
+                budget.check_prepared(installed_rows + 1).is_err(),
+                "Prepared +1 exceeded actual installed tail reserve"
+            );
+            let custody = f
+                .runtime
+                .phase_jobs
+                .observed_preparation_custody(job.unit)
+                .unwrap();
+            assert!(
+                custody.observed_facts().helpers_completed && custody.observed_facts().no_dispatch
+            );
+            go.add_permits(1);
+        } else {
+            r.add_permits(1);
+        }
+        wait(
+            || {
+                f.runtime
+                    .phase_jobs
+                    .observed_jobs()
+                    .iter()
+                    .all(|j| j.finished)
+            },
+            "budget P did not end",
+        )
+        .await;
+        if target == 231 {
+            let rows = effects(&f, job.unit);
+            assert_eq!(rows.len(), 231, "baseline+1 ran a Native helper");
+            assert!(rows.iter().all(|e| e.kind == "git_helper"));
+        }
+        no_session(&f);
+        let _ = f.runtime.shutdown().await;
+        finish(f).await;
+    }
+}
+
+/// A current epoch change invalidates an otherwise complete original history without minting a replacement.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_complete_history_rejects_epoch_drift() {
+    let mut f = fixture_p("normal");
+    f.register_real_git_project();
+    let _ = accept(&f, 1).await;
+    let (a, r) = park(&f, PreparationObservation::BeforeCommand);
+    f.runtime.start().await.unwrap();
+    arrive(&f, &a).await;
+    let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+    let custody = f
+        .runtime
+        .phase_jobs
+        .observed_preparation_custody(job.unit)
+        .unwrap();
+    let history = custody.observed_helper_history().unwrap();
+    let launch = history[0].observed_plan().actor().launch().clone();
+    let admission = launch.admission().enter(launch.clone()).await.unwrap();
+    f.owner
+        .store
+        .lock()
+        .unwrap()
+        .confirm_phase_helper_history(history.clone(), &admission)
+        .unwrap();
+    // Negative corruption only: no successful observation, actor or receipt is seeded.
+    raw(&f)
+        .execute(
+            "UPDATE runtime_epoch SET epoch=epoch+1 WHERE singleton=1",
+            [],
+        )
+        .unwrap();
+    assert!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .confirm_phase_helper_history(history, &admission)
+            .is_err()
+    );
+    drop(admission);
+    r.add_permits(1);
+    no_session(&f);
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+
+/// Q-1: Wait parks with no input; a due recovery Admit retains both the real lease and the pool's probe.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_quota_wait_and_recovery_admit_preserve_original_tail_and_probe() {
+    for recovery in [false, true] {
+        let mut f = fixture_p("normal");
+        f.register_real_git_project();
+        let _ = accept(&f, 1).await;
+        let now = crate::domain::now_ms();
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .observe_quota(&crate::execution::QuotaObservation {
+                provider: "codex".into(),
+                account_key: "unknown".into(),
+                bucket: "primary".into(),
+                window_id: "u5-window".into(),
+                status: crate::execution::QuotaStatus::Exhausted,
+                used_percent: Some(100.0),
+                resets_at: Some(if recovery { now - 1 } else { now + 3_600_000 }),
+                observed_at: now,
+                source_version: "fixture".into(),
+                confirmed_subscription: true,
+            })
+            .unwrap();
+        let (a, r) = park(&f, PreparationObservation::BeforeTransport);
+        f.runtime.start().await.unwrap();
+        if recovery {
+            arrive(&f, &a).await;
+            let jobs = f.runtime.phase_jobs.observed_jobs();
+            assert_eq!(jobs.len(), 1);
+            let (lease,probe):(usize,String)=raw(&f).query_row("SELECT (SELECT count(*) FROM quota_leases WHERE active=1),probe_unit FROM quota_pools WHERE provider='codex' AND account_key='unknown'",[],|row|Ok((row.get(0)?,row.get(1)?))).unwrap();
+            assert_eq!(lease, 1);
+            assert_eq!(
+                probe,
+                jobs[0].unit.to_string(),
+                "recovery Admit lost original probe"
+            );
+            assert!(jobs[0].preparation.no_dispatch && jobs[0].preparation.helpers_completed);
+            no_session(&f);
+            r.add_permits(1);
+        } else {
+            wait(
+                || {
+                    raw(&f)
+                        .query_row(
+                            "SELECT count(*) FROM managed_phase_readiness WHERE state='parked'",
+                            [],
+                            |row| row.get::<_, usize>(0),
+                        )
+                        .unwrap()
+                        == 1
+                },
+                "quota Wait was not Parked",
+            )
+            .await;
+            assert_eq!(
+                raw(&f)
+                    .query_row(
+                        "SELECT count(*) FROM quota_leases WHERE active=1",
+                        [],
+                        |row| row.get::<_, usize>(0)
+                    )
+                    .unwrap(),
+                0
+            );
+            assert_eq!(a.available_permits(), 0, "Wait reached Prepared");
+            let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+            assert!(
+                job.preparation.helpers_completed
+                    && job.preparation.no_dispatch
+                    && job.preparation.parked
+            );
+            no_session(&f);
+        }
+        let _ = f.runtime.shutdown().await;
+        finish(f).await;
+    }
+}
+
+/// Only the same Unit's fresh Schema additions reach the production Session decoder contract.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_fresh_schema_additions_are_memory_only_session_decoder_input() {
+    let mut f = fixture_p("additions");
+    f.register_real_git_project();
+    let _ = accept(&f, 1).await;
+    let (a, r) = park(&f, PreparationObservation::BeforeTransport);
+    f.runtime.start().await.unwrap();
+    arrive(&f, &a).await;
+    let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+    let custody = f
+        .runtime
+        .phase_jobs
+        .observed_preparation_custody(job.unit)
+        .unwrap();
+    let contract = custody.observed_session_contract().unwrap();
+    let notification = serde_json::json!({"method":"u5/added","params":{"ignored":"memory only"}});
+    assert!(crate::codex::managed::frame(&notification, &contract).is_ok());
+    assert!(
+        crate::codex::managed::frame(
+            &notification,
+            &crate::execution::codex_wire::CodexWireContract::default()
+        )
+        .is_err()
+    );
+    let rows = effects(&f, job.unit);
+    let schema = rows
+        .iter()
+        .find(|e| e.kind == "native_phase_schema")
+        .unwrap();
+    assert!(schema.receipt["schema_counts"].ends_with(":1"));
+    assert!(
+        !serde_json::to_string(&rows).unwrap().contains("u5/added"),
+        "accepted names persisted"
+    );
+    no_session(&f);
+    r.add_permits(1);
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+
+/// Ambiguous active candidates cannot receive marker attribution even with a genuine helper's current cookie.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_ipc_ambiguous_original_candidates_invalidate_observation() {
+    let mut f = fixture_p("ipc-ambiguous");
+    f.register_real_git_project();
+    let _ = accept(&f, 1).await;
+    f.runtime.start().await.unwrap();
+    let trace = f._dir.path().join("u5-trace");
+    wait(
+        || trace.join("ready").exists(),
+        "actual Schema helper absent",
+    )
+    .await;
+    let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+    let unit = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .execution_unit(job.unit)
+        .unwrap();
+    f.owner.duplicate_active_preparation_sink(&unit).unwrap();
+    std::fs::write(trace.join("release"), "release").unwrap();
+    wait(
+        || {
+            f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .any(|j| j.finished)
+        },
+        "ambiguous P did not end",
+    )
+    .await;
+    let rows = effects(&f, job.unit);
+    let schema = rows
+        .iter()
+        .find(|e| e.kind == "native_phase_schema")
+        .unwrap();
+    assert_eq!(schema.receipt["ipc_marker_refused"], "0");
+    assert_eq!(schema.receipt["ipc_invalid"], "true");
+    assert!(
+        !f.runtime.phase_jobs.observed_jobs()[0]
+            .preparation
+            .helpers_completed
+    );
+    no_session(&f);
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+
+async fn retired_request(
+    f: &ControlFixture,
+    unit: &crate::execution::ExecutionUnit,
+) -> serde_json::Value {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut stream = tokio::net::UnixStream::connect(f.owner.ipc_path())
+        .await
+        .unwrap();
+    let request=serde_json::to_vec(&serde_json::json!({"unit":unit.id,"cookie":unit.cookie,"tool":"git","args":["init","must-not-exist"],"cwd":unit.worktree,"git_parent":null})).unwrap();
+    stream.write_u32(request.len() as u32).await.unwrap();
+    stream.write_all(&request).await.unwrap();
+    let n = stream.read_u32().await.unwrap() as usize;
+    assert!(n <= 128 * 1024);
+    let mut bytes = vec![0; n];
+    stream.read_exact(&mut bytes).await.unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+/// An unmatchable post-Admit inventory stays Held with the lease; no receipt image may manufacture a close.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_uncertain_original_inventory_keeps_admitted_lease() {
+    let mut f = fixture_p("normal");
+    f.register_real_git_project();
+    let _ = accept(&f, 1).await;
+    let (a, r) = park(&f, PreparationObservation::BeforeTransport);
+    f.runtime.start().await.unwrap();
+    arrive(&f, &a).await;
+    let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+    let rows = effects(&f, job.unit);
+    let original = rows
+        .iter()
+        .find(|e| e.kind == "native_phase_handshake")
+        .unwrap();
+    // A negative corruption, never a success seed or a new authority object.
+    let mut unknown = original.clone();
+    unknown.state = crate::execution::EffectState::Unknown;
+    raw(&f)
+        .execute(
+            "UPDATE managed_effects SET state='unknown',body=?1 WHERE id=?2",
+            rusqlite::params![
+                serde_json::to_string(&unknown).unwrap(),
+                original.id.to_string()
+            ],
+        )
+        .unwrap();
+    r.add_permits(1);
+    wait(
+        || {
+            f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .any(|j| j.attention == Some("original preparation Held"))
+        },
+        "uncertain original was not Held",
+    )
+    .await;
+    assert_eq!(
+        raw(&f)
+            .query_row(
+                "SELECT count(*) FROM quota_leases WHERE active=1",
+                [],
+                |row| row.get::<_, usize>(0)
+            )
+            .unwrap(),
+        1,
+        "Held released original lease"
+    );
+    assert_eq!(
+        raw(&f)
+            .query_row(
+                "SELECT count(*) FROM audit WHERE kind='rrx.private.workflow.phase_closed'",
+                [],
+                |row| row.get::<_, usize>(0)
+            )
+            .unwrap(),
+        0,
+        "unmatched inventory issued closure"
+    );
+    no_session(&f);
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+
+/// Executable replacement after S and after Prepared is rejected at the original identity boundary before any new spawn.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_program_identity_is_checked_before_p_and_before_transport() {
+    for stage in [
+        PreparationObservation::VersionReady,
+        PreparationObservation::BeforeTransport,
+    ] {
+        let mut f = fixture_p("normal");
+        f.register_real_git_project();
+        let _ = accept(&f, 1).await;
+        let (a, r) = park(&f, stage);
+        f.runtime.start().await.unwrap();
+        arrive(&f, &a).await;
+        let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+        let path = std::path::PathBuf::from(&f.runtime.config.agents["worker"].command[0]);
+        let mut changed = std::fs::read(&path).unwrap();
+        changed.extend_from_slice(b"\n# replacement after S\n");
+        std::fs::write(path, changed).unwrap();
+        // Hold Root so the precise original refusal can be inspected before its nongrant close.
+        let service = Arc::new(nonsuccess::ServicePark::default());
+        let open = nonsuccess::OpenPark(service.clone());
+        let hook = service.clone();
+        service.close();
+        *f.runtime.before_service_reconcile.lock().unwrap() = Some(Arc::new(move || hook.visit()));
+        f.runtime.wake.notify_one();
+        wait(|| service.parked(), "service did not park").await;
+        r.add_permits(1);
+        wait(
+            || {
+                f.runtime
+                    .phase_jobs
+                    .observed_jobs()
+                    .iter()
+                    .any(|j| j.finished)
+            },
+            "identity refusal did not end",
+        )
+        .await;
+        let jobs = f.runtime.phase_jobs.observed_jobs();
+        let text = jobs[0].refusal.as_deref().unwrap();
+        assert!(
+            text.contains(if stage == PreparationObservation::VersionReady {
+                "fresh P program differs from all-alias S identity"
+            } else {
+                "transport executable changed"
+            }),
+            "wrong refusal: {text}"
+        );
+        if stage == PreparationObservation::VersionReady {
+            assert!(effects(&f, job.unit).iter().all(|e| e.kind == "git_helper"));
+        }
+        no_session(&f);
+        service.open();
+        drop(open);
+        let _ = f.runtime.shutdown().await;
+        finish(f).await;
+    }
+}
+
+/// Fresh P deadlines, aggregate stream capture, notification counts and malformed tails cannot be substituted by S success.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_metadata_limits_and_tails_refuse_before_git() {
+    for case in [
+        "version-stderr",
+        "schema-stderr",
+        "handshake-stderr",
+        "handshake-tail",
+        "handshake-flood",
+        "handshake-silent",
+    ] {
+        let mut f = fixture_p(case);
+        f.register_real_git_project();
+        let _ = accept(&f, 1).await;
+        f.runtime.start().await.unwrap();
+        assert_eq!(u4::settled_s(&f).await.state, StartupState::Passed);
+        wait(
+            || {
+                f.runtime.phase_jobs.observed_jobs().iter().any(|j| {
+                    j.finished
+                        || effects(&f, j.unit)
+                            .iter()
+                            .any(|e| e.kind == "native_phase_git")
+                })
+            },
+            "bounded P did not end",
+        )
+        .await;
+        let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+        let rows = effects(&f, job.unit);
+        assert!(
+            !rows.iter().any(|e| e.kind == "native_phase_git"),
+            "failed P metadata reached Git: {case}"
+        );
+        if case == "handshake-tail" {
+            let handshake = rows
+                .iter()
+                .find(|e| e.kind == "native_phase_handshake")
+                .unwrap();
+            assert_eq!(
+                handshake.state,
+                crate::execution::EffectState::Confirmed,
+                "EOF and reap known, malformed tail is a Known negative"
+            );
+            assert_eq!(handshake.receipt["expectation"], "mismatch");
+        }
+        assert!(!job.preparation.helpers_completed && !job.preparation.no_dispatch);
+        no_session(&f);
+        let _ = f.runtime.shutdown().await;
+        finish(f).await;
+    }
+}
+
+/// A correlated Handshake gets its fixed spontaneous-exit grace before any group signal is attempted.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5_handshake_spontaneous_exit_grace_precedes_signal() {
+    let mut f = fixture_p("handshake-grace");
+    f.register_real_git_project();
+    let _ = accept(&f, 1).await;
+    let (a, r) = park(&f, PreparationObservation::BeforeCommand);
+    f.runtime.start().await.unwrap();
+    arrive(&f, &a).await;
+    let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+    let rows = effects(&f, job.unit);
+    let handshake = rows
+        .iter()
+        .find(|e| e.kind == "native_phase_handshake")
+        .unwrap();
+    assert_eq!(handshake.state, crate::execution::EffectState::Confirmed);
+    assert_eq!(
+        handshake.receipt["exit"], "0",
+        "Handshake was signalled before its self-exit grace"
+    );
+    assert_eq!(
+        handshake.receipt["capture"],
+        "stdout_eof=true;stderr_eof=true;leader_reaped=true"
+    );
+    no_session(&f);
+    r.add_permits(1);
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}

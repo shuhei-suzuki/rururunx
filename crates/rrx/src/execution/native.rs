@@ -20,6 +20,7 @@ use tokio::{
 };
 mod budget;
 pub(crate) mod compat;
+pub(crate) mod metadata;
 pub(crate) use budget::{NativeEffectBudget, native_effect_budget};
 mod nonsuccess;
 #[cfg(test)]
@@ -189,6 +190,7 @@ pub struct NativeSessions {
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PreparationObservation {
+    VersionReady,
     BeforeCommand,
     BeforeTransport,
 }
@@ -881,6 +883,7 @@ struct Lines {
     next: u64,
     limit: usize,
     evidence: Option<native_result::WireEvidence>,
+    contract: super::codex_wire::CodexWireContract,
 }
 impl Lines {
     fn new(stdin: ChildStdin, stdout: ChildStdout, limit: usize) -> Self {
@@ -895,6 +898,7 @@ impl Lines {
             next: 1,
             limit,
             evidence: None,
+            contract: super::codex_wire::CodexWireContract::default(),
         }
     }
     async fn send(&mut self, value: &Value) -> Result<()> {
@@ -1025,15 +1029,15 @@ impl Lines {
         let id = self.next;
         self.next = self.next.checked_add(1).context("RPC identity exhausted")?;
         let request = json!({"id":id,"method":method,"params":params});
-        super::codex_wire::CodexWireContract::default().sent(&request)?;
+        self.contract.sent(&request)?;
         self.send(&request).await?;
         let response = self.response(id).await?;
-        super::codex_wire::CodexWireContract::default().response(method, &response)?;
+        self.contract.response(method, &response)?;
         Ok(response)
     }
     async fn response(&mut self, id: u64) -> Result<Value> {
         tokio::time::timeout(Duration::from_secs(30),async {loop {
-            let value=self.line().await?;crate::codex::managed::frame(&value)?;
+            let value=self.line().await?;crate::codex::managed::frame(&value, &self.contract)?;
             if value.get("method").is_none() && value["id"]==id {
                 if value.get("error").is_some() {
                     anyhow::bail!(if value["error"]["code"] == -32601 {NativeFailure::UnsupportedCapability}else{NativeFailure::ProtocolFailure});
@@ -2307,7 +2311,7 @@ impl Core {
         loop {
             tokio::select! {
                 frame=self.wire.receive()=>{
-                    let frame=frame?;let validated=crate::codex::managed::frame(&frame)?;
+                    let frame=frame?;let validated=crate::codex::managed::frame(&frame, &self.wire.contract)?;
                     let p=&frame["params"];
                     if frame.get("id").is_some() && frame.get("method").is_some(){
                         self.authority()?;let pending=approvals.insert(&validated)?;self.update.send_modify(|s|s.pending.push(pending));continue;
@@ -2319,16 +2323,16 @@ impl Core {
                     if matches!(frame["method"].as_str(),Some("item/autoApprovalReview/started"|"item/autoApprovalReview/completed"|"autoApprovalReview/strictReviewRequired"|"item/mcpToolCall/progress")) {
                         return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));
                     }
-                    if matches!(frame["method"].as_str(),Some("item/started"|"item/completed")) && !super::codex_wire::Item::decode(&p["item"],&super::codex_wire::CodexWireContract::default())?.permitted() {
+                    if matches!(frame["method"].as_str(),Some("item/started"|"item/completed")) && !super::codex_wire::Item::decode(&p["item"],&self.wire.contract)?.permitted() {
                         return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));
                     }
-                    if frame["method"]=="turn/completed" && !super::codex_wire::Turn::decode(&p["turn"],&super::codex_wire::CodexWireContract::default())?.permitted() {
+                    if frame["method"]=="turn/completed" && !super::codex_wire::Turn::decode(&p["turn"],&self.wire.contract)?.permitted() {
                         return Ok((WorkOutcome::Unknown,Disposition::ProtocolError,None));
                     }
                     match frame["method"].as_str() {
-                        Some("item/started")=>{approvals.item(super::codex_wire::Item::decode(&p["item"], &super::codex_wire::CodexWireContract::default())?)?; if p["threadId"]==thread_id && p["turnId"]==turn_id {self.collector.codex_item(super::codex_wire::Item::decode(&p["item"], &super::codex_wire::CodexWireContract::default())?,false);}},
-                        Some("item/completed") if p["threadId"]==thread_id && p["turnId"]==turn_id=>self.collector.codex_item(super::codex_wire::Item::decode(&p["item"], &super::codex_wire::CodexWireContract::default())?,true),
-                        Some("item/agentMessage/delta") if p["threadId"]==thread_id && p["turnId"]==turn_id=>self.collector.codex_delta(super::codex_wire::Delta::decode(p, &super::codex_wire::CodexWireContract::default())?),
+                        Some("item/started")=>{approvals.item(super::codex_wire::Item::decode(&p["item"], &self.wire.contract)?)?; if p["threadId"]==thread_id && p["turnId"]==turn_id {self.collector.codex_item(super::codex_wire::Item::decode(&p["item"], &self.wire.contract)?,false);}},
+                        Some("item/completed") if p["threadId"]==thread_id && p["turnId"]==turn_id=>self.collector.codex_item(super::codex_wire::Item::decode(&p["item"], &self.wire.contract)?,true),
+                        Some("item/agentMessage/delta") if p["threadId"]==thread_id && p["turnId"]==turn_id=>self.collector.codex_delta(super::codex_wire::Delta::decode(p, &self.wire.contract)?),
                         Some("error") if p["threadId"]==thread_id && p["turnId"]==turn_id && quota::codex_subscription_error(&p["error"])=>{
                             quota_ended = !p["willRetry"].as_bool().context("native retry flag missing")?;
                             self.observe_quota(&QuotaObservation {provider:"codex".into(),account_key:"unknown".into(),bucket:"native.subscription".into(),window_id:"unknown-native".into(),
@@ -2341,7 +2345,7 @@ impl Core {
                         Some("turn/completed") if p["threadId"]==thread_id && p["turn"]["id"]==turn_id=>{
                             let status=p["turn"]["status"].as_str().context("native turn status missing")?;
                             if matches!(status,"completed"|"failed") {
-                                self.collector.codex_terminal(&super::codex_wire::Turn::decode(&p["turn"], &super::codex_wire::CodexWireContract::default())?);
+                                self.collector.codex_terminal(&super::codex_wire::Turn::decode(&p["turn"], &self.wire.contract)?);
                             }
                             if status=="failed" && !p["turn"]["error"]["codexErrorInfo"].is_null() && super::codex_wire::error_kind(&p["turn"]["error"]["codexErrorInfo"])? == super::codex_wire::CodexErrorKind::Unclassified {
                                 self.update.send_modify(|s|s.diagnostic=Some("codex error kind unclassified"));
