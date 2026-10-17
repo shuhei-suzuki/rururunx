@@ -368,9 +368,8 @@ fn project(s: &Value, name: &str) -> Value {
 struct Compare<'a> {
     basis: &'a Document,
     live: &'a Document,
-    names: BTreeMap<String, String>, // live definition -> basis definition
-    visited: BTreeSet<(String, String)>,
-    strict: BTreeSet<String>,
+    visited: BTreeSet<String>,
+    reached: BTreeSet<String>,
     work: usize,
     additions: &'a mut CodexWireContract,
 }
@@ -407,13 +406,13 @@ impl Compare<'_> {
             let (Some((an, av)), Some((bn, bv))) = (ar, br) else {
                 return Err(mismatch(Mismatch::Constraint, path));
             };
+            ensure!(an == bn, mismatch(Mismatch::Constraint, path));
             // Never merge siblings into a target: draft-07 ignores them.
             let sa = ref_siblings(a, path)?;
             let sb = ref_siblings(b, path)?;
-            self.strict.insert(an.into());
-            self.names.insert(bn.into(), an.into());
+            self.reached.insert(an.into());
             let bare = sa == json!({}) && sb == json!({});
-            if bare && !self.visited.insert((an.into(), bn.into())) {
+            if bare && !self.visited.insert(an.into()) {
                 return Ok(());
             }
             self.node_at(&sa, &sb, "", path, depth.child())?;
@@ -543,11 +542,7 @@ impl Compare<'_> {
                     for a in aa {
                         let mut found = None;
                         for (i, b) in bb.iter().enumerate().filter(|(i, _)| !used.contains(i)) {
-                            let saved = (
-                                self.names.clone(),
-                                self.visited.clone(),
-                                self.strict.clone(),
-                            );
+                            let saved = (self.visited.clone(), self.reached.clone());
                             match self.node_at(a, b, "", &p, depth.child()) {
                                 Ok(()) => {
                                     found = Some(i);
@@ -561,7 +556,7 @@ impl Compare<'_> {
                                 }
                                 Err(_) => {}
                             }
-                            (self.names, self.visited, self.strict) = saved;
+                            (self.visited, self.reached) = saved;
                         }
                         used.insert(found.ok_or_else(|| mismatch(Mismatch::Branch, &p))?);
                     }
@@ -700,10 +695,17 @@ fn owner_nullable(d: &Document, s: &Value) -> Result<bool> {
         _ => Err(refuse(Reason::OwnershipKey, "ownership type")),
     }
 }
+fn insert_anchor(out: &mut BTreeMap<String, Value>, key: String, value: Value) -> Result<()> {
+    if let Some(existing) = out.get(&key) {
+        ensure!(existing == &value, mismatch(Mismatch::Constraint, &key));
+    } else {
+        out.insert(key, value);
+    }
+    Ok(())
+}
 fn anchors(
     d: &Document,
-    names: &BTreeMap<String, String>,
-    strict: &BTreeSet<String>,
+    reached: &BTreeSet<String>,
     notifications: bool,
 ) -> Result<BTreeMap<String, Value>> {
     let mut out = BTreeMap::new();
@@ -717,14 +719,12 @@ fn anchors(
                 o.remove("threadId");
                 o.remove("turnId");
             }
-            out.insert(method, p);
+            insert_anchor(&mut out, method, p)?;
         }
     }
-    for (local, def) in &d.defs {
-        let name = names.get(local).map_or(local.as_str(), String::as_str);
-        if !strict.contains(name) {
-            continue;
-        }
+    for name in reached {
+        let def = &d.defs[name];
+        let name = name.as_str();
         match name {
             "ThreadItem" => {
                 for (kind, mut branch) in branches(def, "type")? {
@@ -735,7 +735,7 @@ fn anchors(
                         o.remove("id");
                         o.remove("type");
                     }
-                    out.insert(format!("ThreadItem[{kind}]"), branch);
+                    insert_anchor(&mut out, format!("ThreadItem[{kind}]"), branch)?;
                 }
             }
             "Thread" | "Config" | "TurnError" | "McpServerStatus" => {
@@ -745,14 +745,15 @@ fn anchors(
                     .context("mixed properties absent")?
                 {
                     if kept["properties"].get(key).is_none() {
-                        out.insert(format!("{name}.{key}"), v.clone());
+                        insert_anchor(&mut out, format!("{name}.{key}"), v.clone())?;
                     }
                 }
                 if name == "McpServerStatus" {
-                    out.insert(
+                    insert_anchor(
+                        &mut out,
                         "McpServerStatus.tools".into(),
                         def["properties"]["tools"]["additionalProperties"].clone(),
-                    );
+                    )?;
                 }
             }
             _ => {}
@@ -760,33 +761,33 @@ fn anchors(
     }
     if d.root["properties"].get("origins").is_some() && d.root["properties"].get("config").is_some()
     {
-        out.insert(
+        insert_anchor(
+            &mut out,
             "ConfigReadResponse.origins".into(),
             d.root["properties"]["origins"].clone(),
-        );
-        out.insert(
+        )?;
+        insert_anchor(
+            &mut out,
             "ConfigReadResponse.layers".into(),
             d.root["properties"]["layers"]["items"].clone(),
-        );
+        )?;
     }
     Ok(out)
 }
 fn reaches(
     d: &Document,
     anchors: &BTreeMap<String, Value>,
-    names: &BTreeMap<String, String>,
-    strict: &BTreeSet<String>,
+    reached: &BTreeSet<String>,
 ) -> Result<BTreeSet<(String, String)>> {
     fn walk(
         d: &Document,
         s: &Value,
-        policy: (&BTreeMap<String, String>, &BTreeSet<String>),
+        reached: &BTreeSet<String>,
         seen: &mut BTreeSet<String>,
         found: &mut BTreeSet<String>,
         work: &mut usize,
         depth: Depth,
     ) -> Result<()> {
-        let (names, strict) = policy;
         depth.check()?;
         *work += 1;
         ensure!(
@@ -794,16 +795,15 @@ fn reaches(
             Refusal(Reason::Limit, None, "reach work".into())
         );
         if let Some((n, t)) = d.target(s)? {
-            let mapped = names.get(n).map_or(n, String::as_str);
-            if strict.contains(mapped) {
-                found.insert(mapped.into());
+            if reached.contains(n) {
+                found.insert(n.into());
             }
             if seen.insert(n.into()) {
-                walk(d, t, policy, seen, found, work, depth.reference())?;
+                walk(d, t, reached, seen, found, work, depth.reference())?;
             }
         }
         for (_, s) in children(s)? {
-            walk(d, s, policy, seen, found, work, depth.child())?;
+            walk(d, s, reached, seen, found, work, depth.child())?;
         }
         Ok(())
     }
@@ -814,7 +814,7 @@ fn reaches(
         walk(
             d,
             s,
-            (names, strict),
+            reached,
             &mut BTreeSet::new(),
             &mut found,
             &mut work,
@@ -882,9 +882,8 @@ fn compare_source(
     let mut cmp = Compare {
         basis,
         live,
-        names: BTreeMap::new(),
         visited: BTreeSet::new(),
-        strict: BTreeSet::new(),
+        reached: BTreeSet::new(),
         work: 0,
         additions: contract,
     };
@@ -964,20 +963,10 @@ fn compare_source(
             source,
         )?,
     }
-    let ba = anchors(
-        basis,
-        &BTreeMap::new(),
-        &cmp.strict,
-        source == "ServerNotification",
-    )?;
-    let la = anchors(
-        live,
-        &cmp.names,
-        &cmp.strict,
-        source == "ServerNotification",
-    )?;
-    let br = reaches(basis, &ba, &BTreeMap::new(), &cmp.strict)?;
-    let lr = reaches(live, &la, &cmp.names, &cmp.strict)?;
+    let ba = anchors(basis, &cmp.reached, source == "ServerNotification")?;
+    let la = anchors(live, &cmp.reached, source == "ServerNotification")?;
+    let br = reaches(basis, &ba, &cmp.reached)?;
+    let lr = reaches(live, &la, &cmp.reached)?;
     for (anchor, name) in lr.difference(&br) {
         if structured(basis, &basis.defs[name], &mut BTreeSet::new())? {
             return Err(refuse(
@@ -1268,9 +1257,8 @@ mod tests {
             let mut cmp = Compare {
                 basis: &d,
                 live: &d,
-                names: BTreeMap::new(),
                 visited: BTreeSet::new(),
-                strict: BTreeSet::new(),
+                reached: BTreeSet::new(),
                 work: 0,
                 additions: &mut contract,
             };
@@ -1352,9 +1340,8 @@ mod tests {
                     let mut cmp = Compare {
                         basis: &a,
                         live: &b,
-                        names: BTreeMap::new(),
                         visited: BTreeSet::new(),
-                        strict: BTreeSet::new(),
+                        reached: BTreeSet::new(),
                         work: 0,
                         additions: &mut contract,
                     };
@@ -1396,9 +1383,8 @@ mod tests {
             let result = Compare {
                 basis: &a,
                 live: &b,
-                names: BTreeMap::new(),
                 visited: BTreeSet::new(),
-                strict: BTreeSet::new(),
+                reached: BTreeSet::new(),
                 work: 0,
                 additions: &mut contract,
             }
@@ -1451,6 +1437,157 @@ mod tests {
         assert!(gate.contract.is_none());
         assert_eq!(gate.receipt.reason, Some(Reason::StrictMismatch));
     }
+    /// Renamed references refuse even when their target bodies match exactly.
+    #[test]
+    fn u4r4_definition_renames_are_typed_refusals() {
+        let a = Document {
+            root: json!({"$ref":"#/definitions/Leaf"}),
+            defs: BTreeMap::from([("Leaf".into(), json!({"type":"string"}))]),
+        };
+        let b = Document {
+            root: json!({"$ref":"#/definitions/RenamedLeaf"}),
+            defs: BTreeMap::from([("RenamedLeaf".into(), json!({"type":"string"}))]),
+        };
+        let mut contract = CodexWireContract::default();
+        let error = Compare {
+            basis: &a,
+            live: &b,
+            visited: BTreeSet::new(),
+            reached: BTreeSet::new(),
+            work: 0,
+            additions: &mut contract,
+        }
+        .node(&a.root, &b.root, "", "rename")
+        .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<Refusal>().unwrap().0,
+            Reason::StrictMismatch
+        );
+
+        let mut files = fixture();
+        let body = definition(&mut files, "ServerNotification", "Thread").clone();
+        *definition(&mut files, "ServerNotification", "RenamedThread") = body;
+        definition(
+            &mut files,
+            "ServerNotification",
+            "ThreadStartedNotification",
+        )["properties"]["thread"] = json!({"$ref":"#/definitions/RenamedThread"});
+        let gate = compare(&files);
+        assert!(!gate.receipt.pass);
+        assert!(gate.contract.is_none());
+        assert_eq!(gate.receipt.reason, Some(Reason::StrictMismatch));
+    }
+    /// Alias targets cannot hide structured reaches behind unchanged definitions.
+    #[test]
+    fn u4r4_aliases_with_unreferenced_originals_are_typed_refusals() {
+        for (name, target, redirect_all) in [
+            ("Thread", "Turn", true),
+            ("ThreadItem", "Turn", false),
+            ("ThreadItem", "CommandAction", true),
+        ] {
+            let mut files = fixture();
+            let original = definition(&mut files, "ServerNotification", name).clone();
+            let mut alias = original.clone();
+            let (notification, field) = if name == "Thread" {
+                alias["properties"]["extra"] = json!({"$ref":format!("#/definitions/{target}")});
+                ("ThreadStartedNotification", "thread")
+            } else {
+                let branch = alias["oneOf"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .find(|b| tag(b, "type").as_deref() == Some("userMessage"))
+                    .unwrap();
+                branch["properties"]["extra"] = json!({"$ref":format!("#/definitions/{target}")});
+                ("ItemStartedNotification", "item")
+            };
+            // Redirect all uses when that leaves an acyclic graph.
+            fn redirect(value: &mut Value, name: &str) {
+                match value {
+                    Value::Object(o) => {
+                        if o.get("$ref") == Some(&json!(format!("#/definitions/{name}"))) {
+                            o.insert("$ref".into(), json!(format!("#/definitions/A{name}")));
+                        }
+                        for value in o.values_mut() {
+                            redirect(value, name);
+                        }
+                    }
+                    Value::Array(a) => {
+                        for value in a {
+                            redirect(value, name);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if redirect_all {
+                redirect(files.get_mut("ServerNotification").unwrap(), name);
+            } else {
+                definition(&mut files, "ServerNotification", notification)["properties"][field] =
+                    json!({"$ref":format!("#/definitions/A{name}")});
+            }
+            *definition(&mut files, "ServerNotification", &format!("A{name}")) = alias;
+            if redirect_all {
+                assert!(
+                    !serde_json::to_string(&files["ServerNotification"])
+                        .unwrap()
+                        .contains(&format!("\"$ref\":\"#/definitions/{name}\""))
+                );
+            }
+            assert_eq!(
+                definition(&mut files, "ServerNotification", name),
+                &original
+            );
+            assert_eq!(
+                definition(&mut files, "ServerNotification", notification)["properties"][field],
+                json!({"$ref":format!("#/definitions/A{name}")})
+            );
+            let gate = compare(&files);
+            assert!(!gate.receipt.pass, "{name}: {:?}", gate.receipt);
+            assert!(gate.contract.is_none());
+            assert_eq!(gate.receipt.reason, Some(Reason::StrictMismatch), "{name}");
+        }
+    }
+    /// Unreferenced definitions cannot contribute tolerated anchors or changes.
+    #[test]
+    fn u4r4_unreferenced_definitions_do_not_contribute_anchors() {
+        let mut files = fixture();
+        *definition(&mut files, "ClientNotification", "Thread") =
+            json!({"type":"object","properties":{"extra":{"type":"string"}}});
+        *definition(&mut files, "ClientNotification", "ThreadItem") = json!({"oneOf":[{"type":"object","properties":{"id":{"type":"string"},"type":{"type":"string","enum":["unused"]},"extra":{"type":"string"}},"required":["id","type"]}]});
+        let gate = compare(&files);
+        assert!(gate.receipt.pass, "{:?}", gate.receipt);
+        assert!(gate.contract.is_some());
+        assert_eq!(gate.receipt.tolerated_changes, 0);
+        let d = Document::live(files["ClientNotification"].clone()).unwrap();
+        assert!(anchors(&d, &BTreeSet::new(), false).unwrap().is_empty());
+    }
+    /// Anchor content collisions refuse while identical duplicate content remains valid.
+    #[test]
+    fn u4r4_anchor_content_collisions_are_typed_refusals() {
+        for equal in [true, false] {
+            let mut files = fixture();
+            definition(&mut files, "ServerNotification", "Thread")["properties"]["extra"] =
+                json!({"type":"object"});
+            let params = if equal {
+                json!({"type":"object"})
+            } else {
+                json!({"type":"string"})
+            };
+            files.get_mut("ServerNotification").unwrap()["oneOf"].as_array_mut().unwrap()
+                .push(json!({"type":"object","properties":{"method":{"type":"string","enum":["Thread.extra"]},"params":params},"required":["method","params"]}));
+            let gate = compare(&files);
+            if equal {
+                assert!(gate.receipt.pass, "{:?}", gate.receipt);
+                assert!(gate.contract.is_some());
+            } else {
+                assert!(!gate.receipt.pass);
+                assert!(gate.contract.is_none());
+                assert_eq!(gate.receipt.reason, Some(Reason::StrictMismatch));
+                assert_eq!(gate.receipt.kind, Some(Mismatch::Constraint));
+            }
+        }
+    }
     /// Siblings at the first use cannot disguise an empty target at later strict uses.
     #[test]
     fn u4r2_ref_targets_cannot_be_poisoned_by_first_use_siblings() {
@@ -1458,9 +1595,8 @@ mod tests {
         for name in ["Turn", "TurnError"] {
             let mut files = fixture();
             let body = project(definition(&mut files, "ServerNotification", name), name);
-            let alias = format!("{name}X");
-            definition(&mut files, "ServerNotification", &alias).clone_from(&json!({}));
-            let bare = json!({"$ref":format!("#/definitions/{alias}")});
+            definition(&mut files, "ServerNotification", name).clone_from(&json!({}));
+            let bare = json!({"$ref":format!("#/definitions/{name}")});
             let mut first = body;
             first["$ref"] = bare["$ref"].clone();
             if name == "Turn" {
@@ -1561,9 +1697,8 @@ mod tests {
             let mut cmp = Compare {
                 basis: &b,
                 live: &l,
-                names: BTreeMap::new(),
                 visited: BTreeSet::new(),
-                strict: BTreeSet::new(),
+                reached: BTreeSet::new(),
                 work: 0,
                 additions: &mut additions,
             };
@@ -1582,14 +1717,8 @@ mod tests {
                 )
                 .unwrap();
             }
-            let a = anchors(
-                &b,
-                &BTreeMap::new(),
-                &cmp.strict,
-                *source == "ServerNotification",
-            )
-            .unwrap();
-            for (anchor, n) in reaches(&b, &a, &BTreeMap::new(), &cmp.strict).unwrap() {
+            let a = anchors(&b, &cmp.reached, *source == "ServerNotification").unwrap();
+            for (anchor, n) in reaches(&b, &a, &cmp.reached).unwrap() {
                 assert!(
                     !structured(&b, &b.defs[&n], &mut BTreeSet::new()).unwrap(),
                     "structured basis reach"

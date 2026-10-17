@@ -555,11 +555,11 @@ PのSchema出力先はSAME Unitの既存tmp直下にrrxが新規作成する専�
 
 **新しいCLIの判定（C1）**: gateは生成schemaの各位置を§7の二分類で照合し、次の順で判定する。番号・raw hashは使わない。
 
-1. strict位置の一致: 各strict位置について、ref解決後の宣言が契約と意味的に等しいことを要求する。等しいとは、property名集合（optional／nullableを含む）、required集合、type集合（null枝を含む）、enum値集合、枝集合と各枝の構造（oneOf／anyOf／allOfの区別を含む）、数値・文字列・配列の制約、additionalProperties、defaultがすべて一致することである。default／enum／constはJSON値として完全一致を比較する。definition名の変更は構造が同じなら一致とする。property・枝・enum値の追加、削除、変更はどれも不一致とする（optional／nullableの追加を含む）。strict到達集合（規則2）の各definitionは、tolerated anchorからも到達していても本規則で比較する。
+1. strict位置の一致: 各strict位置について、ref解決後の宣言が契約と意味的に等しいことを要求する。等しいとは、property名集合（optional／nullableを含む）、required集合、type集合（null枝を含む）、enum値集合、枝集合と各枝の構造（oneOf／anyOf／allOfの区別を含む）、数値・文字列・配列の制約、additionalProperties、defaultがすべて一致することである。default／enum／constはJSON値として完全一致を比較する。両側のrefをたどるときはdefinition名も一致することを要求し、構造が同じでもrenameはstrict_mismatchで拒否して§8bのrefresh手順へ回す。property・枝・enum値の追加、削除、変更はどれも不一致とする（optional／nullableの追加を含む）。strict到達集合（規則2）の各definitionは、tolerated anchorからも到達していても本規則で比較する。
 2. strict到達と新しい到達: 次の手順をsource fileごとに、basisと生成schemaの両方へ同じ関数で適用する。
    - strict到達集合: strict位置からref解決をたどって到達するdefinitionの集合。strictとtoleratedが混在するdefinitionでは、tolerated部分位置へは降りない。混在definitionと部分位置は、Thread（core以外のproperty）、ThreadItem（agentMessage・commandExecution・fileChange以外の枝のid／type以外）、TurnError（misalignment）、Config（web_search以外の宣言property）、McpServerStatus（name・tools・toolsError以外のpropertyとtools mapの値）、ConfigReadResponse（originsとlayersの内容）である。
-   - tolerated anchor: T-notifyの各method（所有キーを除くparams）、T-itemの各枝の内容、上記の各tolerated部分位置。名前はmethod名、`ThreadItem[<type>]`、`<definition>.<property>`とする。
-   - 到達組: 各anchorから閉包全体をたどって届くstrict到達集合のdefinitionとの組（anchor, definition）。definitionは規則1で対応付けたbasis側の名前で表す。
+   - tolerated anchor: T-notifyの各method（所有キーを除くparams）、T-itemの各枝の内容、上記の各tolerated部分位置。名前はmethod名、`ThreadItem[<type>]`、`<definition>.<property>`とする。definition由来のanchorは比較rootから比較が実際に到達したdefinitionだけから作り、未参照definitionは寄与させない。同じanchor keyに異なる内容が届けばstrict_mismatchで拒否する。
+   - 到達組: 各anchorから閉包全体をたどって届くstrict到達集合のdefinitionとの組（anchor, definition）。definitionは両側で一致を確認した名前で表す。
    - 構造の判定: ref解決後のschemaに`$ref`・`properties`・`patternProperties`・schemaとしての`additionalProperties`・`items`・`prefixItems`、またはtypeとして`object`／`array`を含むdefinitionを「構造をもつ」とし、それ以外（type・enum・const・format・数値／文字列制約だけで表せるもの）を「スカラー葉」とする。
    - 判定: 生成schemaの到達組のうち、definitionが構造をもち、かつbasisの到達組集合にない組があれば`strict_reach`で拒否する。新しいanchor（新通知、新ThreadItem type、tolerated位置の新property）はbasisの組を持たないため、構造をもつstrict到達definitionへ届けば拒否となる。スカラー葉への組は新旧とも拒否理由にしない。スカラー値は効果や結果の構造を運べず、同じ値をinlineの`string`で宣言されれば本規則では検出できないため、ここで止めても防げる範囲は増えない。スカラー葉の宣言自体は規則1でstrictに比較される。
    - basisの値: 0.162.1 basisでは、tolerated anchorからstrict到達definitionへの組はServerNotificationに13組（`hook/started`・`hook/completed`・`fs/changed`・`item/autoApprovalReview/started`・`completed`→AbsolutePathBuf、`item/autoApprovalReview/*`・Thread.environments・`ThreadItem[imageView]`→LegacyAppPathString、Thread.reasoningEffort・`ThreadItem[collabAgentToolCall]`・`ThreadItem[subAgentActivity]`→ReasoningEffort、`ThreadItem[imageGeneration]`→AbsolutePathBuf）、ThreadStartResponseに6組、TurnStartResponseに1組あり、すべてスカラー葉である。構造をもつdefinitionへの組は0である（執筆時に§7の分類で求めた補助計算。実装ではgateの同じ関数をbasisへ適用して組集合をfixture manifestに記録し、この件数と照合する）。したがって無変更のbasisは本規則を通り、既存hook通知も通る。
@@ -567,6 +567,8 @@ PのSchema出力先はSAME Unitの既存tmp直下にrrxが新規作成する専�
 3. tolerated位置: 追加・削除・変更を許容する。所有キーの宣言は型（string／nullable string）とrequired性が契約と一致することを要求する。
 4. 新しい宣言: §7の表に従う。server request methodの追加、strict通知・送信methodの削除、used enumの新値は拒否する。許容追加はThreadItem type 32件・通知method 64件まで、名前は§7の文字種と長さに限る。超えたら拒否する。
 5. 既存の生成file sink、JSON、ref、memo、work-node上限は変えず、tolerated位置の読取りにも同じ上限を適用する。
+
+決定記録（SEC-R4-01）: 同型のgate不備が反復したため、definition名変換と全live definitionからのanchor収集を廃止する。これは受理範囲の縮小であり、§8b手順8により追加のオーナー承認は不要。
 
 結果は`Pass{ tolerated_changes, accepted_item_types, accepted_notifications }`か`Refused{ reason }`の有限値であり、journalには結果、有限reason、件数、strict不一致の最初の8件の位置だけを記録する。reasonは`strict_mismatch`（kind: added／removed／type／required／enum／branch／constraint／closed／default）、`strict_reach`、`ownership_key`、`server_request_added`、`strict_removed`、`addition_limit`、`addition_name`、`ref`、`limit`、`file`のいずれか。位置はsource名（固定manifestの名前）と、definition名・property path（`strict_reach`ではanchor名とdefinition名）があれば§10の版数と同じ規則（96 bytes以下かつ`[A-Za-z0-9 ._()+/:-]`なら原文、それ以外はSHA-256とnonrecordable）で記録する。生schema、schema本文の抜粋、tolerated位置の内容は保存しない。S bodyの4096 bytesとreceiptの既存上限を増やさず、超える分は件数だけにする。Passはcapability・authorityを発行せず、許容追加の集合は§7のとおりメモリ上でだけdecoderへ渡す。
 
