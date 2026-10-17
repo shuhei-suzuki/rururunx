@@ -58,6 +58,18 @@ Deferred and recorded: U4-I08 (outgoing image source keys refused; fail-closed, 
 
 At `8521fd71` (`.rrx/u3/host/full5/`, `.rrx/u3/host/mut-u4r1/`): fmt, clippy and build pass; lib 800 / 119 / 27; every integration target and both helper crates pass except `daemon_native` 1 / 2 / 0. All 121 failures were rerun alone: three pass alone (grok ×2 and `u3_aggregate…`, parallel-only kinds); the 118 that fail alone are exactly the earlier set. 157 operators ran: 153 killed at the intended check with passing restored runs; 36, 105 and 110 are layered bounds (105 because part A added the shared traversal depth guard) and their combined mutants **36s, 105s and 110s** are killed; 126 was rerun on `runtime_cli` and `goal_cli` and killed on both.
 
+## Review round 2
+
+At `73a93275` each reporter re-reviewed only its fix diff. Sol approved part B (U4-I01, I04–I07 resolved; I08 deferred; the `ApprovalLedger` whole-array comparison stays recorded for U6). Opus found two new defects introduced by part A, fixed by Sol in `ec25c193`:
+
+| ID | Severity | Defect | Fix |
+|---|---|---|---|
+| SEC-R2-01 | Medium | Comparing a target merged with its `$ref` siblings recorded the pair in the `visited` memo, so a sibling-bearing first use could make later bare references skip comparison of a structured strict target (Turn, TurnError). | One-sided `$ref` with non-annotation siblings refuses; with refs on both sides siblings and targets are compared separately; the memo is used only for bare references. |
+| SEC-R2-03 (Info) | — | Branch-candidate clone cost is not counted in work (pre-existing). | Recorded for a follow-up issue. |
+| SEC-R2-02 | Low | A boolean live schema at a ThreadItem position panicked in the remainder extraction. | Non-object values at ThreadItem and projected positions are typed StrictMismatch refusals (three more projection writes fixed in the same class). |
+
+Verification at `ec25c193` (`.rrx/u3/host/full6/`, `.rrx/u3/host/mut-u4r2/`; only `schema.rs` changed): fmt, clippy and build pass; lib 804 / 118 / 27; every integration target and both helper crates pass except `daemon_native` 1 / 2 / 0. Failures outside the 118-test alone baseline (eight `adapter::git_owner` / `cli::endpoint` parallel-only cases) were rerun alone and all pass. The 24 operators targeting `schema.rs` (including five new `u4r2-` operators) ran: 22 killed at the intended check with passing restored runs; 105 and 110 are layered bounds and their combined mutants 105s and 110s are killed at this HEAD.
+
 ## Limits
 
 - Live confirmation on the Mac (owner-run) is still required: the installed CLI's `generate-json-schema --experimental` output against the 0.162.1 basis, the ThreadStart sandbox shape, config/read features and mcp_servers shapes, and `thread/settings/updated`.
