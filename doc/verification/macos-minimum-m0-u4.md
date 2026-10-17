@@ -35,6 +35,29 @@ All 138 operators ran at `85daecf0` (`.rrx/u3/host/mut-u4/index.tsv`, logs under
 | Equivalent (layered bound) | 2 | 36 (Rust intent bound; SQL CHECK still refuses) with supplemental 36s killed earlier; 110 (schema file pre-check; `decode_schema`'s 1 MiB frame bound still refuses) with supplemental **110s** (both bounds widened) killed at `file-plus-one`. |
 | Not selected by the harness, rerun by hand | 1 | 126 has an id without its integration target; rerun on `runtime_cli` and `goal_cli`, killed at "startup did not settle normally" on both, restored runs pass. |
 
+## Review round 1 corrections
+
+The initial review ran at `7d8fcafa` (Sol implementation diff, Opus security and contracts, both high). A read-only verifier confirmed 12 findings and 1 partial against the code. Each was fixed by the family that did not report it.
+
+| ID (reporter) | Severity | Defect | Fix (fixer, commit) |
+|---|---|---|---|
+| SEC-U4-01 (Opus) | Medium | Schema gate traversals had no combined depth bound; crafted CLI output could overflow the stack and abort the daemon. | Every traversal is bounded by ref depth 16 and nesting 64 and refuses with Limit (Sol, `83a13177`). Removing the guard reproduces the abort (SIGABRT) in operator 138. |
+| SEC-U4-02 (Opus) | Medium | A notification whose params directly `$ref` a structured strict definition escaped rule 2. | Anchors keep unresolved params; the 20 basis pairs are unchanged (Sol, `83a13177`). |
+| SEC-U4-03 = U4-I03 (both) | Low / Medium | ThreadItem root keywords other than `oneOf` were not compared. | The root remainder is compared strictly (Sol, `83a13177`; re-review by Opus). |
+| SEC-U4-04 = U4-I02 (both) | Low / Medium | A one-sided `$ref` dropped sibling keywords. | Siblings are kept and compared in all forms (Sol, `83a13177`; re-review by Opus). |
+| SEC-U4-05, SEC-U4-06 (Opus) | Low | Lossy `--out`; an empty alias set published Passed. | cwd-relative `schema-out`; typed Configuration refusal for zero aliases (Sol, `83a13177`). |
+| U4-I01 (Sol) | High | `account/rateLimits/updated` was decoded as a read response, so undeclared fields changed quota observations or the Handshake. | The notification has its own input contract and uses only the declared snapshot (Opus, `8521fd71`). |
+| U4-I04 (Sol) | Medium | Answer identity hashed the whole agentMessage Value including undeclared fields. | Identity projects the declared strict fields; `terminal_sha256` unchanged (Opus, `8521fd71`). |
+| U4-I05 (Sol) | Medium | Operator 115 died by a 20 s timeout after breaking the normal Handshake path. | Replaced by an acceptance-predicate mutant killed at the `schema-only` assertion (Opus, `8521fd71`). |
+| U4-I06 (Sol) | Medium | No +1 negatives for the 32 / 64 addition limits. | 33 / 65, name-length and Handshake-notification +1 negatives with operators (Opus, `8521fd71`). |
+| U4-I07 (Sol) | Medium | I-S (a request from an S child reaches the server and is refused without managed context) was not exercised. | Schema and Handshake children send real ToolServer requests; each is refused, no Grant effect (Opus, `8521fd71`). |
+
+Deferred and recorded: U4-I08 (outgoing image source keys refused; fail-closed, M0 sends text only), SEC-U4-07 (cleanup re-scan; fail-closed), SEC-U4-08 (pass gate additions to the Session decoder, U5), and `ApprovalLedger::observe_item` comparing the whole `fileChange` changes array (fail-closed and keeps approval binding; reviewed when U6 enables approvals). The part-B fixer's sandbox could not run Cargo; the orchestrator ran fmt (re-wrap only) and clippy on the host before committing.
+
+### Verification of the round 1 fixes
+
+At `8521fd71` (`.rrx/u3/host/full5/`, `.rrx/u3/host/mut-u4r1/`): fmt, clippy and build pass; lib 800 / 119 / 27; every integration target and both helper crates pass except `daemon_native` 1 / 2 / 0. All 121 failures were rerun alone: three pass alone (grok ×2 and `u3_aggregate…`, parallel-only kinds); the 118 that fail alone are exactly the earlier set. 157 operators ran: 153 killed at the intended check with passing restored runs; 36, 105 and 110 are layered bounds (105 because part A added the shared traversal depth guard) and their combined mutants **36s, 105s and 110s** are killed; 126 was rerun on `runtime_cli` and `goal_cli` and killed on both.
+
 ## Limits
 
 - Live confirmation on the Mac (owner-run) is still required: the installed CLI's `generate-json-schema --experimental` output against the 0.162.1 basis, the ThreadStart sandbox shape, config/read features and mcp_servers shapes, and `thread/settings/updated`.
