@@ -354,11 +354,7 @@ pub(super) async fn run(
             "generate-json-schema".into(),
             "--experimental".into(),
             "--out".into(),
-            plan.directory
-                .path
-                .join("schema-out")
-                .to_string_lossy()
-                .into_owned(),
+            "schema-out".into(),
         ]
     } else if codex.is_some() {
         match crate::execution::native::prepared::command_argv(

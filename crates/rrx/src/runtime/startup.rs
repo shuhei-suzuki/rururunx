@@ -299,6 +299,10 @@ impl Startup {
             self.fail(StartupRefusal::Installation);
             return;
         };
+        if ports.is_empty() {
+            self.fail(StartupRefusal::Configuration);
+            return;
+        }
         if ports.len() > 32 {
             self.fail(StartupRefusal::Budget);
             return;
@@ -498,6 +502,26 @@ impl std::error::Error for FreshPreparationUnavailable {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// An installation without configured aliases never publishes startup Passed.
+    #[tokio::test]
+    async fn u4r1a_empty_aliases_are_configuration_refusal() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+        let startup = Startup::new(owner);
+        let checked = Arc::new(crate::execution::claude_wire::decoder_selfcheck().unwrap());
+        startup
+            .run(
+                Config::default(),
+                Some((uuid::Uuid::new_v4(), checked, vec![])),
+                Instant::now() + Duration::from_secs(10),
+            )
+            .await;
+        let status = startup.snapshot().unwrap();
+        assert_eq!(status.state, StartupState::Refused);
+        assert_eq!(status.reason, Some(StartupRefusal::Configuration));
+        assert!(startup.children.lock().unwrap().is_empty());
+        assert!(startup.require_qualified().is_err());
+    }
     /// Planning refusal settles all committed unspawned originals without consuming unknown capacity on restart.
     #[tokio::test]
     async fn planning_refusal_settles_earlier_aliases_before_restart() {

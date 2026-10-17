@@ -161,6 +161,33 @@ fn children(s: &Value) -> Result<Vec<(&str, &Value)>> {
     }
     Ok(out)
 }
+/// Count reference expansion and schema nesting together, independently of memoization.
+#[derive(Clone, Copy, Default)]
+struct Depth {
+    refs: usize,
+    json: usize,
+}
+impl Depth {
+    fn check(self) -> Result<()> {
+        ensure!(
+            self.refs <= 16 && self.json <= 64,
+            Refusal(Reason::Limit, None, "traversal depth".into())
+        );
+        Ok(())
+    }
+    fn reference(self) -> Self {
+        Self {
+            refs: self.refs + 1,
+            ..self
+        }
+    }
+    fn child(self) -> Self {
+        Self {
+            json: self.json + 1,
+            ..self
+        }
+    }
+}
 struct Document {
     root: Value,
     defs: BTreeMap<String, Value>,
@@ -218,7 +245,9 @@ impl Document {
             stack: &mut BTreeSet<String>,
             memo: &mut BTreeSet<String>,
             work: &mut usize,
+            depth: Depth,
         ) -> Result<()> {
+            depth.check()?;
             *work += 1;
             ensure!(*work <= 262144, Refusal(Reason::Limit, None, "work".into()));
             if let Some((name, target)) = d.target(s)? {
@@ -232,13 +261,13 @@ impl Document {
                         Refusal(Reason::Limit, None, "ref bound".into())
                     );
                     stack.insert(name.into());
-                    visit(d, target, stack, memo, work)?;
+                    visit(d, target, stack, memo, work, depth.reference())?;
                     stack.remove(name);
                     memo.insert(name.into());
                 }
             }
             for (_, s) in children(s)? {
-                visit(d, s, stack, memo, work)?;
+                visit(d, s, stack, memo, work, depth.child())?;
             }
             Ok(())
         }
@@ -248,6 +277,7 @@ impl Document {
             &mut BTreeSet::new(),
             &mut BTreeSet::new(),
             &mut 0,
+            Depth::default(),
         )
     }
     fn resolve<'a>(&'a self, mut s: &'a Value) -> Result<&'a Value> {
@@ -337,8 +367,37 @@ struct Compare<'a> {
     work: usize,
     additions: &'a mut CodexWireContract,
 }
+fn ref_siblings(target: Value, reference: &Value) -> Value {
+    let mut siblings = reference.as_object().unwrap().clone();
+    siblings.retain(|k, _| k != "$ref" && !annotation(k));
+    if siblings.is_empty() {
+        return target;
+    }
+    if let Some(mut merged) = target.as_object().cloned()
+        && siblings
+            .iter()
+            .all(|(k, v)| merged.get(k).is_none_or(|t| t == v))
+    {
+        merged.extend(siblings);
+        Value::Object(merged)
+    } else {
+        // Both constraints apply when a keyword occurs on the target and the reference.
+        json!({"allOf":[target, Value::Object(siblings)]})
+    }
+}
 impl Compare<'_> {
     fn node(&mut self, a: &Value, b: &Value, name: &str, path: &str) -> Result<()> {
+        self.node_at(a, b, name, path, Depth::default())
+    }
+    fn node_at(
+        &mut self,
+        a: &Value,
+        b: &Value,
+        name: &str,
+        path: &str,
+        depth: Depth,
+    ) -> Result<()> {
+        depth.check()?;
         self.work += 1;
         ensure!(
             self.work <= 262144,
@@ -348,14 +407,6 @@ impl Compare<'_> {
         let br = self.live.target(b)?;
         if ar.is_some() || br.is_some() {
             // `$ref` is a schema keyword, not permission to discard sibling constraints/defaults.
-            if ar.is_some() && br.is_some() {
-                let siblings = |v: &Value| {
-                    let mut o = v.as_object().unwrap().clone();
-                    o.remove("$ref");
-                    Value::Object(o)
-                };
-                self.node(&siblings(a), &siblings(b), "", path)?;
-            }
             let (an, av) = ar.unwrap_or((name, a));
             let (bn, bv) = br.unwrap_or((name, b));
             if ar.is_some() {
@@ -363,15 +414,31 @@ impl Compare<'_> {
             }
             if ar.is_some() && br.is_some() {
                 self.names.insert(bn.into(), an.into());
-                if !self.visited.insert((an.into(), bn.into())) {
+                if !self.visited.insert((an.into(), bn.into()))
+                    && [a, b].iter().all(|s| {
+                        s.as_object()
+                            .unwrap()
+                            .keys()
+                            .all(|k| k == "$ref" || annotation(k))
+                    })
+                {
                     return Ok(());
                 }
             }
-            return self.node(
-                &project(av, an),
-                &project(bv, an),
+            return self.node_at(
+                &if ar.is_some() {
+                    ref_siblings(project(av, an), a)
+                } else {
+                    project(av, an)
+                },
+                &if br.is_some() {
+                    ref_siblings(project(bv, an), b)
+                } else {
+                    project(bv, an)
+                },
                 an,
                 &format!("{path}/{an}"),
+                depth.reference(),
             );
         }
         if name == "Config" {
@@ -382,6 +449,12 @@ impl Compare<'_> {
             );
         }
         if name == "ThreadItem" && a.get("oneOf").is_some() {
+            let remainder = |v: &Value| {
+                let mut o = v.as_object().unwrap().clone();
+                o.remove("oneOf");
+                Value::Object(o)
+            };
+            self.node_at(&remainder(a), &remainder(b), "", path, depth.child())?;
             let aa = branches(a, "type")?;
             let bb = branches(b, "type")?;
             for (kind, av) in &aa {
@@ -389,13 +462,14 @@ impl Compare<'_> {
                     .get(kind)
                     .ok_or_else(|| mismatch(Mismatch::Removed, path))?;
                 if ["agentMessage", "commandExecution", "fileChange"].contains(&kind.as_str()) {
-                    self.node(av, bv, "", &format!("{path}/{kind}"))?;
+                    self.node_at(av, bv, "", &format!("{path}/{kind}"), depth.child())?;
                 } else {
-                    self.node(
+                    self.node_at(
                         &item_keys(av),
                         &item_keys(bv),
                         "",
                         &format!("{path}/{kind}"),
+                        depth.child(),
                     )?;
                 }
             }
@@ -467,7 +541,7 @@ impl Compare<'_> {
                         ));
                     }
                     for (key, a) in am {
-                        self.node(a, &bm[key], "", &format!("{p}/{key}"))?;
+                        self.node_at(a, &bm[key], "", &format!("{p}/{key}"), depth.child())?;
                     }
                 }
                 "allOf" | "anyOf" | "oneOf" | "prefixItems" => {
@@ -486,9 +560,18 @@ impl Compare<'_> {
                                 self.visited.clone(),
                                 self.strict.clone(),
                             );
-                            if self.node(a, b, "", &p).is_ok() {
-                                found = Some(i);
-                                break;
+                            match self.node_at(a, b, "", &p, depth.child()) {
+                                Ok(()) => {
+                                    found = Some(i);
+                                    break;
+                                }
+                                Err(e)
+                                    if e.downcast_ref::<Refusal>()
+                                        .is_some_and(|r| r.0 == Reason::Limit) =>
+                                {
+                                    return Err(e);
+                                }
+                                Err(_) => {}
                             }
                             (self.names, self.visited, self.strict) = saved;
                         }
@@ -508,7 +591,7 @@ impl Compare<'_> {
                 | "then"
                 | "else"
                 | "unevaluatedProperties"
-                | "unevaluatedItems" => self.node(av, bv, "", &p)?,
+                | "unevaluatedItems" => self.node_at(av, bv, "", &p, depth.child())?,
                 _ => {
                     let equal = if matches!(k.as_str(), "enum" | "required" | "type")
                         && av.is_array()
@@ -587,8 +670,11 @@ fn owner_schema(d: &Document, branch: &Value) -> Result<(Ownership, Value)> {
     Ok((owner, json!({"properties":fields,"required":req})))
 }
 fn owner_nullable(d: &Document, s: &Value) -> Result<bool> {
-    fn domain(d: &Document, s: &Value) -> Result<u8> {
-        let s = d.resolve(s)?;
+    fn domain(d: &Document, s: &Value, depth: Depth) -> Result<u8> {
+        depth.check()?;
+        if let Some((_, target)) = d.target(s)? {
+            return domain(d, target, depth.reference());
+        }
         if let Some(t) = s.get("type") {
             let mut bits = 0;
             for ty in t.as_array().map_or_else(|| vec![t], |a| a.iter().collect()) {
@@ -608,7 +694,7 @@ fn owner_nullable(d: &Document, s: &Value) -> Result<bool> {
                 );
                 let mut bits = if key == "allOf" { 3 } else { 0 };
                 for branch in a {
-                    let b = domain(d, branch)?;
+                    let b = domain(d, branch, depth.child())?;
                     if key == "allOf" {
                         bits &= b;
                     } else {
@@ -620,7 +706,7 @@ fn owner_nullable(d: &Document, s: &Value) -> Result<bool> {
         }
         Err(refuse(Reason::OwnershipKey, "ownership type"))
     }
-    match domain(d, s)? {
+    match domain(d, s, Depth::default())? {
         1 => Ok(false),
         3 => Ok(true),
         _ => Err(refuse(Reason::OwnershipKey, "ownership type")),
@@ -638,7 +724,7 @@ fn anchors(
             if codex_wire::STRICT_NOTIFICATIONS.contains(&method.as_str()) {
                 continue;
             }
-            let mut p = d.resolve(&branch["properties"]["params"])?.clone();
+            let mut p = branch["properties"]["params"].clone();
             if let Some(o) = p.get_mut("properties").and_then(Value::as_object_mut) {
                 o.remove("threadId");
                 o.remove("turnId");
@@ -706,12 +792,14 @@ fn reaches(
     fn walk(
         d: &Document,
         s: &Value,
-        names: &BTreeMap<String, String>,
-        strict: &BTreeSet<String>,
+        policy: (&BTreeMap<String, String>, &BTreeSet<String>),
         seen: &mut BTreeSet<String>,
         found: &mut BTreeSet<String>,
         work: &mut usize,
+        depth: Depth,
     ) -> Result<()> {
+        let (names, strict) = policy;
+        depth.check()?;
         *work += 1;
         ensure!(
             *work <= 262144,
@@ -723,11 +811,11 @@ fn reaches(
                 found.insert(mapped.into());
             }
             if seen.insert(n.into()) {
-                walk(d, t, names, strict, seen, found, work)?;
+                walk(d, t, policy, seen, found, work, depth.reference())?;
             }
         }
         for (_, s) in children(s)? {
-            walk(d, s, names, strict, seen, found, work)?;
+            walk(d, s, policy, seen, found, work, depth.child())?;
         }
         Ok(())
     }
@@ -738,11 +826,11 @@ fn reaches(
         walk(
             d,
             s,
-            names,
-            strict,
+            (names, strict),
             &mut BTreeSet::new(),
             &mut found,
             &mut work,
+            Depth::default(),
         )?;
         for n in found {
             out.insert((anchor.clone(), n));
@@ -751,10 +839,19 @@ fn reaches(
     Ok(out)
 }
 fn structured(d: &Document, s: &Value, seen: &mut BTreeSet<String>) -> Result<bool> {
+    structured_at(d, s, seen, Depth::default())
+}
+fn structured_at(
+    d: &Document,
+    s: &Value,
+    seen: &mut BTreeSet<String>,
+    depth: Depth,
+) -> Result<bool> {
+    depth.check()?;
     if let Some((n, t)) = d.target(s)?
         && seen.insert(n.into())
     {
-        return structured(d, t, seen);
+        return structured_at(d, t, seen, depth.reference());
     }
     if s.as_object().is_some_and(|o| {
         [
@@ -779,7 +876,7 @@ fn structured(d: &Document, s: &Value, seen: &mut BTreeSet<String>) -> Result<bo
         return Ok(true);
     }
     for (_, s) in children(s)? {
-        if structured(d, s, seen)? {
+        if structured_at(d, s, seen, depth.child())? {
             return Ok(true);
         }
     }
@@ -1107,6 +1204,184 @@ mod tests {
         name: &str,
     ) -> &'a mut Value {
         &mut files.get_mut(source).unwrap()["definitions"][name]
+    }
+    /// Memoized preflight targets cannot bypass traversal depth refusals.
+    #[test]
+    fn u4r1a_memo_prefilled_chain_refuses_limit() {
+        let mut defs = BTreeMap::new();
+        let mut prefill = serde_json::Map::new();
+        for i in 0..511 {
+            let name = format!("D{i:03}");
+            let mut target = if i == 0 {
+                json!({"type":"string"})
+            } else {
+                json!({"$ref":format!("#/definitions/D{:03}", i - 1)})
+            };
+            for _ in 0..24 {
+                target = json!({"items":target});
+            }
+            defs.insert(name.clone(), target);
+            prefill.insert(
+                name.clone(),
+                json!({"$ref":format!("#/definitions/{name}")}),
+            );
+        }
+        let notification = |method: &str, params: Value| {
+            json!({
+                "type":"object", "properties":{"method":{"type":"string","enum":[method]},"params":params},
+                "required":["method","params"]
+            })
+        };
+        let basis = Document {
+            root: json!({"oneOf":[]}),
+            defs: BTreeMap::new(),
+        };
+        let live = Document {
+            root: json!({"oneOf":[
+                notification("aaa/prefill", json!({"properties":prefill})),
+                notification("zzz/chain", json!({"$ref":"#/definitions/D510"}))
+            ]}),
+            defs,
+        };
+        // The reverse chain is already memoized before the final anchor is visited.
+        live.bounds().unwrap();
+        let mut receipt = compare(&fixture()).receipt;
+        let error = compare_source(
+            "ServerNotification",
+            &basis,
+            &live,
+            &mut CodexWireContract::default(),
+            &mut receipt,
+        )
+        .unwrap_err();
+        assert_eq!(error.downcast_ref::<Refusal>().unwrap().0, Reason::Limit);
+    }
+    /// Every recursive schema consumer enforces both reference and JSON depth.
+    #[test]
+    fn u4r1a_recursive_consumers_are_bounded() {
+        for (refs, nesting) in [(17, 0), (1, 65)] {
+            let mut defs = BTreeMap::new();
+            for i in 0..refs {
+                let mut v = if i + 1 == refs {
+                    json!({"type":"string"})
+                } else {
+                    json!({"$ref":format!("#/definitions/D{}", i + 1)})
+                };
+                for _ in 0..nesting {
+                    v = json!({"allOf":[v]});
+                }
+                defs.insert(format!("D{i}"), v);
+            }
+            let d = Document {
+                root: json!({"$ref":"#/definitions/D0"}),
+                defs,
+            };
+            let mut contract = CodexWireContract::default();
+            let mut cmp = Compare {
+                basis: &d,
+                live: &d,
+                names: BTreeMap::new(),
+                visited: BTreeSet::new(),
+                strict: BTreeSet::new(),
+                work: 0,
+                additions: &mut contract,
+            };
+            for error in [
+                cmp.node(&d.root, &d.root, "", "test").unwrap_err(),
+                structured(&d, &d.root, &mut BTreeSet::new()).unwrap_err(),
+                owner_nullable(&d, &d.root).unwrap_err(),
+            ] {
+                assert_eq!(error.downcast_ref::<Refusal>().unwrap().0, Reason::Limit);
+            }
+        }
+    }
+    /// Direct params references count as new structured strict reaches.
+    #[test]
+    fn u4r1a_direct_params_strict_reach() {
+        for target in ["ThreadStatus", "CommandAction"] {
+            for known in [false, true] {
+                let mut files = fixture();
+                let root = files.get_mut("ServerNotification").unwrap();
+                let branches = root["oneOf"].as_array_mut().unwrap();
+                if known {
+                    let branch = branches
+                        .iter_mut()
+                        .find(|b| tag(b, "method").as_deref() == Some("skills/changed"))
+                        .unwrap();
+                    branch["properties"]["params"] =
+                        json!({"$ref":format!("#/definitions/{target}")});
+                } else {
+                    branches.push(json!({"type":"object","properties":{"method":{"type":"string","enum":["new/direct"]},"params":{"$ref":format!("#/definitions/{target}")}},"required":["method","params"]}));
+                }
+                let gate = compare(&files);
+                assert_eq!(
+                    gate.receipt.reason,
+                    Some(Reason::StrictReach),
+                    "{target}/{known}: {:?}",
+                    gate.receipt
+                );
+            }
+        }
+    }
+    /// ThreadItem permits new variants while preserving every root keyword.
+    #[test]
+    fn u4r1a_thread_item_root_is_strict() {
+        for (key, value) in [
+            ("properties", json!({"new":{"type":"string"}})),
+            ("allOf", json!([{"type":"object"}])),
+            ("default", json!({})),
+            ("required", json!(["new"])),
+        ] {
+            let mut files = fixture();
+            definition(&mut files, "ServerNotification", "ThreadItem")[key] = value;
+            assert_eq!(
+                compare(&files).receipt.reason,
+                Some(Reason::StrictMismatch),
+                "{key}"
+            );
+        }
+        let mut files = fixture();
+        definition(&mut files, "ServerNotification", "ThreadItem")["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"id":{"type":"string"},"type":{"type":"string","enum":["newKind"]}},"required":["id","type"]}));
+        assert!(compare(&files).receipt.pass);
+    }
+    /// Ref rewrites preserve sibling constraints and defaults on either side.
+    #[test]
+    fn u4r1a_ref_siblings_survive_rewrites() {
+        for key in ["default", "const"] {
+            for (ar, br) in [(false, true), (true, false), (true, true)] {
+                for different in [false, true] {
+                    let document = |reference, value| Document {
+                        root: if reference {
+                            json!({"$ref":"#/definitions/Leaf", key:value})
+                        } else {
+                            json!({"type":"string", key:value})
+                        },
+                        defs: BTreeMap::from([("Leaf".into(), json!({"type":"string", key:"a"}))]),
+                    };
+                    let a = document(ar, "a");
+                    let b = document(br, if different { "b" } else { "a" });
+                    let mut contract = CodexWireContract::default();
+                    let mut cmp = Compare {
+                        basis: &a,
+                        live: &b,
+                        names: BTreeMap::new(),
+                        visited: BTreeSet::new(),
+                        strict: BTreeSet::new(),
+                        work: 0,
+                        additions: &mut contract,
+                    };
+                    let result = cmp.node(&a.root, &b.root, "", "test");
+                    if different {
+                        assert_eq!(
+                            result.unwrap_err().downcast_ref::<Refusal>().unwrap().0,
+                            Reason::StrictMismatch
+                        );
+                    } else {
+                        result.unwrap();
+                    }
+                }
+            }
+        }
     }
     /// CX-7 unchanged tag evidence passes with the approved reach-pair set and no structured reach.
     #[test]
