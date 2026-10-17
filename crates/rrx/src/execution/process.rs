@@ -157,6 +157,17 @@ impl RetainedRawProcess {
         // Adoption precedes every fallible identity/pipe check.
         self.child = Some(child);
     }
+    /// Read-only attribution of an owned, unreaped leader's process group.
+    /// Spawn sets process_group(0); this is never a signalling authority.
+    pub(crate) fn group_id(&self) -> Option<Pid> {
+        if self.reaped {
+            return None;
+        }
+        self.child
+            .as_ref()?
+            .id()
+            .and_then(|raw| Pid::from_raw(i32::try_from(raw).ok()?))
+    }
     pub(crate) fn qualify(&mut self) -> Result<()> {
         let raw = self
             .child

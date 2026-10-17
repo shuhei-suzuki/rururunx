@@ -33,6 +33,17 @@ impl SchemaDirectory {
         identity(&parent)?;
         let name = format!("p-schema-{}", uuid::Uuid::new_v4());
         rustix::fs::mkdirat(&parent, name.as_str(), Mode::from_raw_mode(0o700))?;
+        // Record the leftover before any later open, planning or helper failure.
+        // This finite factual audit grants no cleanup or preparation authority.
+        owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .audit(
+                actor.launch().allocation().facts().scope,
+                "native.phase.schema_directory",
+                serde_json::json!({"cleanup":"not_cleaned"}),
+            )?;
         let directory = File::from(openat(&parent, name.as_str(), DIRECTORY, Mode::empty())?);
         let value = Arc::new(Self {
             actor: actor.clone(),
@@ -113,6 +124,15 @@ impl NativeSessions {
             .await?;
         schema.closed()?;
         directory.cleanup()?;
+        self.owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .audit(
+                actor.launch().allocation().facts().scope,
+                "native.phase.schema_directory",
+                serde_json::json!({"cleanup":"cleaned"}),
+            )?;
         let plan = crate::state::Store::plan_phase_metadata_intent(
             &self.owner,
             schema.closed()?,

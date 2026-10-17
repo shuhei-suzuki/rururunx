@@ -417,6 +417,7 @@ impl RuntimeOwner {
         &self,
         unit: &super::ExecutionUnit,
         marker: super::ipc::PreparationIpcRefusal,
+        peer_group: Option<rustix::process::Pid>,
     ) {
         let candidates = match self.preparation_ipc.lock() {
             Ok(sinks) => sinks.iter().filter_map(Weak::upgrade).collect::<Vec<_>>(),
@@ -424,7 +425,7 @@ impl RuntimeOwner {
         };
         let candidates = candidates
             .into_iter()
-            .filter(|s| s.candidate(self, unit))
+            .filter(|s| s.candidate(self, unit) && s.matches_peer(peer_group))
             .collect::<Vec<_>>();
         if let [helper] = candidates.as_slice() {
             helper.record(Some(marker));

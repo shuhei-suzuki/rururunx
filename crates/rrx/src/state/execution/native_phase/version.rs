@@ -131,12 +131,20 @@ impl EffectImage {
             serde_json::to_value(&effect.receipt)? == value["receipt"],
             "Native receipt classification lost during deserialize"
         );
+        // This inventory includes every kind, including older dispatch and
+        // Docker rows. Only P helpers produce the finite 16/128 vocabulary.
         ensure!(
-            effect.receipt.len() <= 16
+            !matches!(
+                effect.kind.as_str(),
+                "native_phase_version"
+                    | "native_phase_schema"
+                    | "native_phase_handshake"
+                    | "native_phase_git"
+            ) || (effect.receipt.len() <= 16
                 && effect
                     .receipt
                     .iter()
-                    .all(|(k, v)| k.len() <= 128 && v.len() <= 128),
+                    .all(|(k, v)| k.len() <= 128 && v.len() <= 128)),
             "Native finite receipt bound exceeded"
         );
         let (p, g, t) = scope_keys(&effect.scope)?;
@@ -1151,6 +1159,7 @@ mod inventory_tests {
         let mut c = database();
         let unit = UnitId::new();
         let mut effect = image(unit).decode(unit).unwrap();
+        effect.kind = "native_phase_schema".into();
         effect.receipt = BTreeMap::from([
             ("ipc_marker_refused".into(), "1".into()),
             ("ipc_invalid".into(), "false".into()),
@@ -1171,6 +1180,39 @@ mod inventory_tests {
         assert!(EffectImage::generated(&effect).is_err());
         effect.receipt = BTreeMap::from([("key".into(), "x".repeat(129))]);
         assert!(EffectImage::generated(&effect).is_err());
+    }
+
+    /// Shared inventories preserve existing dispatch and Docker receipt values.
+    #[test]
+    fn u5r1a_inventory_preserves_nonhelper_receipts() {
+        let mut c = database();
+        let unit = UnitId::new();
+        for (kind, key, value) in [
+            ("native_dispatch", "detail", "x".repeat(129)),
+            ("native_dispatch", "detail", "x".repeat(256)),
+            ("docker_target", "config", "61".repeat(200)),
+        ] {
+            let mut effect = image(unit).decode(unit).unwrap();
+            effect.kind = kind.into();
+            effect.state = EffectState::Unknown;
+            effect.receipt.insert(key.into(), value);
+            insert(&c, &EffectImage::generated(&effect).unwrap());
+        }
+        let tx = c.transaction().unwrap();
+        let inventory = Inventory::read(&tx, unit).unwrap();
+        assert_eq!(inventory.rows.len(), 3);
+        for row in inventory.rows {
+            assert!(
+                row.decode(unit)
+                    .unwrap()
+                    .receipt
+                    .values()
+                    .next()
+                    .unwrap()
+                    .len()
+                    > 128
+            );
+        }
     }
 
     #[test]

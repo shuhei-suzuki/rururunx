@@ -6,6 +6,7 @@ use crate::state::{
     NativeVersionClosurePlan, NativeVersionHelperPlan,
 };
 use std::io::Read;
+use std::os::unix::process::ExitStatusExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::AsyncReadExt;
 
@@ -84,12 +85,30 @@ pub(crate) struct NativeVersionObservation {
     stderr_eof: bool,
     valid: bool,
     group_hygiene: bool,
+    stop_method: StopMethod,
     attempted: bool,
     returned_child: bool,
     qualification: std::sync::OnceLock<bool>,
     schema: std::sync::OnceLock<schema::Gate>,
     handshake: bool,
     ipc: super::super::ipc::PreparationIpcObservation,
+}
+#[derive(Clone, Copy)]
+enum StopMethod {
+    Unknown,
+    SelfExit,
+    GraceSignal,
+    ForcedSignal,
+}
+impl StopMethod {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::SelfExit => "self",
+            Self::GraceSignal => "grace_signal",
+            Self::ForcedSignal => "forced_signal",
+        }
+    }
 }
 impl NativeVersionObservation {
     pub(crate) fn qualified(&self) -> bool {
@@ -223,17 +242,28 @@ impl NativeVersionObservation {
             (
                 "capture".into(),
                 format!(
-                    "stdout_eof={};stderr_eof={};leader_reaped={}",
+                    "stdout_eof={};stderr_eof={};leader_reaped={};stop={}",
                     self.stdout_eof,
                     self.stderr_eof,
-                    self.exit.is_some()
+                    self.exit.is_some(),
+                    self.stop_method.label()
                 ),
             ),
             (
                 "exit".into(),
-                self.exit
-                    .and_then(|status| status.code())
-                    .map_or_else(|| "unknown_or_signal".into(), |n| n.to_string()),
+                self.exit.map_or_else(
+                    || "unknown".into(),
+                    |status| {
+                        status.code().map_or_else(
+                            || {
+                                status
+                                    .signal()
+                                    .map_or_else(|| "unknown".into(), |n| format!("signal:{n}"))
+                            },
+                            |n| n.to_string(),
+                        )
+                    },
+                ),
             ),
             ("bytes".into(), self.bytes.to_string()),
             ("stdout_sha256".into(), native_result::digest(&self.stdout)),
@@ -781,7 +811,7 @@ impl NativeSessions {
         if let Ok(child) = spawned {
             // FIRST action after spawn success is the infallible custody move.
             helper.raw().adopt(child);
-            helper.ipc.start();
+            helper.ipc.start(helper.raw().group_id());
         }
         drop(admission);
         kick.start();
@@ -817,6 +847,7 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
     let mut stdout_eof = false;
     let mut stderr_eof = false;
     let mut signalled_after_grace = false;
+    let mut stop_method = StopMethod::Unknown;
     let returned_child = helper.raw().has_child();
     let (attempted, started) = {
         let state = helper.state();
@@ -863,6 +894,8 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
         let mut grace = None;
         let mut drain = None;
         let mut finishing = false;
+        let mut stop_requested = !valid;
+        let mut protocol_refused = false;
         let mut exited = false;
         let mut fence = tokio::time::interval(Duration::from_millis(50));
         fence.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -873,16 +906,29 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
             let now = tokio::time::Instant::now();
             if helper.cancelled.load(Ordering::Acquire) {
                 valid = false;
+                stop_requested = true;
             }
             if response_deadline.is_some_and(|d| now >= d) {
                 valid = false;
+                stop_requested = true;
                 response_deadline = None;
             }
             if now >= deadline {
                 valid = false;
+                stop_method = StopMethod::ForcedSignal;
                 break;
             }
-            if !finishing && (!valid || handshake.as_ref().is_some_and(|h| h.complete())) {
+            if stop_requested && drain.is_none() {
+                valid = false;
+                finishing = true;
+                response_deadline = None;
+                grace = None;
+                helper.raw().hygiene();
+                stop_method = StopMethod::ForcedSignal;
+                drain = Some((now + Duration::from_secs(2)).min(deadline));
+            }
+            if !finishing && (protocol_refused || handshake.as_ref().is_some_and(|h| h.complete()))
+            {
                 finishing = true;
                 response_deadline = None;
                 pipes.stdin.lock().await.take();
@@ -893,6 +939,7 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
             if grace.is_some_and(|d| now >= d) {
                 helper.raw().hygiene();
                 signalled_after_grace = true;
+                stop_method = StopMethod::GraceSignal;
                 grace = None;
                 drain.get_or_insert((now + Duration::from_secs(2)).min(deadline));
             }
@@ -909,7 +956,7 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
                 read=out.read(&mut out_buffer[..read_len]), if out_open => match read {
                     Ok(0) => { out_open=false; stdout_eof=true; },
                     Ok(n) => {
-                        if !output.observe(&out_buffer[..n],true) { valid=false; }
+                        if !output.observe(&out_buffer[..n],true) { valid=false; stop_requested=true; }
                         if valid && let Some(protocol)=&mut handshake {
                             pending.extend_from_slice(&out_buffer[..n]);
                             while let Some(newline)=pending.iter().position(|b| *b==b'\n') {
@@ -918,46 +965,50 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
                                     Ok(outgoing) => {
                                         let progressed=!outgoing.is_empty();
                                         for value in outgoing {
-                                            if !send_handshake(&pipes.stdin,Some(value),end,helper.plan.actor()).await { valid=false; break; }
+                                            if !send_handshake(&pipes.stdin,Some(value),end,helper.plan.actor()).await { valid=false; stop_requested=true; break; }
                                         }
                                         if !valid { break; }
                                         if protocol.complete() { response_deadline=None; }
                                         else if progressed { response_deadline=Some((tokio::time::Instant::now()+Duration::from_secs(30)).min(deadline)); }
                                     },
-                                    Err(_) => { valid=false; break; },
+                                    Err(_) => { valid=false; protocol_refused=true; break; },
                                 }
                             }
                         }
                     },
-                    Err(_) => { valid=false;out_open=false; },
+                    Err(_) => { valid=false;stop_requested=true;out_open=false; },
                 },
                 read=err.read(&mut err_buffer[..read_len]), if err_open => match read {
                     Ok(0) => { err_open=false;stderr_eof=true; },
-                    Ok(n) => { if !output.observe(&err_buffer[..n],false) { valid=false; } },
-                    Err(_) => { valid=false;err_open=false; },
+                    Ok(n) => { if !output.observe(&err_buffer[..n],false) { valid=false;stop_requested=true; } },
+                    Err(_) => { valid=false;stop_requested=true;err_open=false; },
                 },
                 _=tokio::time::sleep_until(end)=>{},
                 _=fence.tick()=>{
-                    if !finishing {
+                    if !stop_requested {
                         let current=owner.upgrade().is_some_and(|owner| owner.store.lock().ok().is_some_and(|mut store| store.validate_phase_version_fence(&helper.plan,&intent).is_ok()));
-                        if !current { valid=false; }
+                        if !current { valid=false;stop_requested=true; }
                     }
                     if !exited {
                         let observed={helper.raw().exited_unreaped()};
                         match observed {
                             Ok(true)=>{
                                 exited=true;
+                                if matches!(stop_method, StopMethod::Unknown) { stop_method=StopMethod::SelfExit; }
                                 helper.raw().hygiene();
                                 grace=None;
                                 drain.get_or_insert((tokio::time::Instant::now()+Duration::from_secs(2)).min(deadline));
                             },
                             Ok(false)=>{},
-                            Err(_)=>{ valid=false;break; },
+                            Err(_)=>{ valid=false;stop_method=StopMethod::ForcedSignal;break; },
                         }
                     }
                 },
             }
         }
+    }
+    if returned_child && matches!(stop_method, StopMethod::Unknown) {
+        stop_method = StopMethod::ForcedSignal;
     }
     let group_hygiene = helper.raw().hygiene();
     let stop_deadline = (tokio::time::Instant::now() + Duration::from_secs(10)).min(deadline);
@@ -989,6 +1040,7 @@ async fn capture_version(guard: CaptureOwner, owner: Weak<RuntimeOwner>) {
         stderr_eof,
         valid,
         group_hygiene,
+        stop_method,
         attempted,
         returned_child,
         qualification: std::sync::OnceLock::new(),

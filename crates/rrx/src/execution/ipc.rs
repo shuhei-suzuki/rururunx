@@ -142,9 +142,14 @@ impl Drop for ToolServer {
     }
 }
 
+enum IpcCheck {
+    Request(Option<rustix::process::Pid>),
+    Revalidation,
+}
 fn current(
     owner: &Arc<RuntimeOwner>,
     request: &ToolRequest,
+    check: IpcCheck,
 ) -> Result<(ExecutionUnit, resources::ResourceProfile)> {
     let unit = owner
         .store
@@ -166,21 +171,55 @@ fn current(
         } else {
             PreparationIpcRefusal::OtherRefused
         };
-        owner.observe_preparation_ipc(&unit, classification);
+        if let IpcCheck::Request(peer_group) = check {
+            owner.observe_preparation_ipc(&unit, classification, peer_group);
+        }
         return Err(error);
     }
     let profile = resources::ResourceManager::new(owner.clone()).profile(&unit)?;
     Ok((unit, profile))
 }
+/// Exercise monitoring against an existing real Unit; creates no authority.
+#[cfg(test)]
+pub(crate) fn revalidate_preparation_for_test(
+    owner: &Arc<RuntimeOwner>,
+    unit: &ExecutionUnit,
+) -> Result<()> {
+    current(
+        owner,
+        &ToolRequest {
+            unit: unit.id,
+            cookie: unit.cookie.clone(),
+            tool: "git".into(),
+            args: Vec::new(),
+            cwd: unit.worktree.clone(),
+            git_parent: None,
+            git_index: None,
+            docker_routing: None,
+        },
+        IpcCheck::Revalidation,
+    )
+    .map(|_| ())
+}
 async fn serve(owner: Arc<RuntimeOwner>, mut stream: UnixStream) -> Result<()> {
+    let peer = stream.peer_cred()?;
     ensure!(
-        stream.peer_cred()?.uid() == rustix::process::geteuid().as_raw(),
+        peer.uid() == rustix::process::geteuid().as_raw(),
         "IPC peer user differs"
     );
+    // Kernel peer credentials and a read-only process query add no authority.
+    // Platforms without a peer PID retain the single-helper time-window rule.
+    let peer_group = peer
+        .pid()
+        .map(|raw| {
+            let pid = rustix::process::Pid::from_raw(raw).context("IPC peer PID invalid")?;
+            Ok::<_, anyhow::Error>(rustix::process::getpgid(Some(pid))?)
+        })
+        .transpose()?;
     let request: ToolRequest =
         tokio::time::timeout(Duration::from_secs(10), read_frame(&mut stream)).await??;
     let admitted=async {
-        let (unit,profile)=current(&owner,&request)?;
+        let (unit,profile)=current(&owner,&request,IpcCheck::Request(peer_group))?;
         ensure!(request.cwd.canonicalize()?==request.cwd && [profile.worktree.as_path(),profile.temp.as_path(),profile.output.as_path(),profile.cache.as_path()]
             .iter().any(|root|request.cwd.starts_with(root)),"tool cwd outside declared namespace");
         let operation=OperationId::new();let mut plan=tools::plan(&profile,&unit,&request.tool,&request.args,operation)?;
@@ -247,7 +286,7 @@ async fn serve(owner: Arc<RuntimeOwner>, mut stream: UnixStream) -> Result<()> {
                     },
                     _=tokio::time::sleep_until(deadline)=>anyhow::bail!("tool receipt deadline exceeded"),
                     _=tokio::time::sleep(Duration::from_millis(100)),if !cancelled=>{
-                        if current(&owner,&request).is_err(){
+                        if current(&owner,&request,IpcCheck::Revalidation).is_err(){
                             cancelled=true;deadline=tokio::time::Instant::now()+Duration::from_secs(15);
                             write_frame(&mut writer,&Frame::Cancel).await?;
                         }
@@ -442,7 +481,11 @@ pub(crate) struct PreparationIpcSink {
     epoch: u64,
     unit: UnitId,
     generation: u64,
-    observation: std::sync::Mutex<(bool, PreparationIpcObservation)>,
+    observation: std::sync::Mutex<(
+        bool,
+        Option<rustix::process::Pid>,
+        PreparationIpcObservation,
+    )>,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PreparationIpcRefusal {
@@ -461,14 +504,19 @@ impl PreparationIpcSink {
             epoch: owner.epoch,
             unit: unit.id,
             generation: unit.generation,
-            observation: std::sync::Mutex::new((false, PreparationIpcObservation::default())),
+            observation: std::sync::Mutex::new((false, None, PreparationIpcObservation::default())),
         })
     }
-    pub(in crate::execution) fn start(&self) {
-        self.observation
+    pub(in crate::execution) fn start(&self, group: Option<rustix::process::Pid>) {
+        let mut state = self
+            .observation
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .0 = true;
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.0 = true;
+        state.1 = group;
+    }
+    pub(in crate::execution) fn matches_peer(&self, group: Option<rustix::process::Pid>) -> bool {
+        group.is_none() || self.observation.lock().is_ok_and(|state| state.1 == group)
     }
     pub(in crate::execution) fn candidate(
         &self,
@@ -492,8 +540,8 @@ impl PreparationIpcSink {
             return;
         }
         match marker {
-            Some(marker) if state.1.refusals.len() < 32 => state.1.refusals.push(marker),
-            _ => state.1.invalid = true,
+            Some(marker) if state.2.refusals.len() < 32 => state.2.refusals.push(marker),
+            _ => state.2.invalid = true,
         }
     }
     pub(in crate::execution) fn finish(&self) -> PreparationIpcObservation {
@@ -502,7 +550,7 @@ impl PreparationIpcSink {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.0 = false;
-        state.1.clone()
+        state.2.clone()
     }
 }
 

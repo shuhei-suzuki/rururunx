@@ -10,7 +10,7 @@ if P:
     with open(os.path.join(TRACE,os.environ['RRX_UNIT_ID']), 'a') as f: f.write(step+'\n')
     if step=='schema' and CASE.startswith('ipc'):
         import socket, struct, uuid
-        if CASE=='ipc-ambiguous':
+        if CASE in ('ipc-ambiguous','ipc-wait'):
             import time
             with open(os.path.join(TRACE,'ready'),'w') as f: f.write('ready')
             while not os.path.exists(os.path.join(TRACE,'release')): time.sleep(0.01)
@@ -37,6 +37,14 @@ if P:
                 assert CASE=='ipc-missing'
             peer.close()
     if CASE=='schema-fail' and step=='schema': sys.exit(0)
+    if CASE in ('stop-wait','stop-overflow','stop-stdout-overflow','stop-refusal') and step==('handshake' if CASE=='stop-refusal' else 'schema'):
+        import time
+        with open(os.path.join(TRACE,'ready'),'w') as f: f.write(str(os.getpid()))
+        while not os.path.exists(os.path.join(TRACE,'release')): time.sleep(0.01)
+        if CASE=='stop-overflow': sys.stderr.write('x'*(64*1024+1));sys.stderr.flush()
+        if CASE=='stop-stdout-overflow': sys.stdout.write('x'*(64*1024+1));sys.stdout.flush()
+        if CASE=='stop-refusal': print('invalid-protocol',flush=True)
+        time.sleep(120)
     if CASE=='schema-stderr' and step=='schema': sys.stderr.write('x'*(64*1024+1));sys.stderr.flush()
     if CASE=='version-stderr' and step=='version': sys.stderr.write('x'*(64*1024+1));sys.stderr.flush()
     if CASE=='handshake-stderr' and step=='handshake': sys.stderr.write('x'*(1024*1024+1));sys.stderr.flush()
@@ -65,8 +73,8 @@ fn fixture_p(case: &str) -> ControlFixture {
                 "print('codex-cli 0.160.0' if P else 'arbitrary updated CLI 88.1')",
             );
             let peer = peer.replace("with open(PAIR) as f: files=json.load(f)['files']", "with open(PAIR) as f: files=json.load(f)['files']\n    if P and CASE in ('additions','handshake-flood'):\n        files['ServerNotification']['oneOf'].append({'type':'object','properties':{'method':{'type':'string','enum':['u5/added']},'params':{'type':'object','properties':{}}},'required':['method','params']})");
-            let peer =
-                peer + "\nif P and CASE=='handshake-grace':\n    import time\n    time.sleep(1)\n";
+            let peer = peer
+                + "\nif P and step=='handshake' and CASE in ('handshake-grace','handshake-signal'):\n    import time\n    time.sleep(1 if CASE=='handshake-grace' else 120)\n";
             let script = format!(
                 "#!/usr/bin/python3\nimport json, os, sys\nCASE={case:?}\nPROVIDER={:?}\nSCENARIO='normal'\nTRACE={:?}\nPAIR={:?}\nFILES={}\n{PRELUDE}\n{peer}",
                 agent.provider.as_deref().unwrap(),
@@ -1059,10 +1067,317 @@ async fn u5_handshake_spontaneous_exit_grace_precedes_signal() {
     );
     assert_eq!(
         handshake.receipt["capture"],
-        "stdout_eof=true;stderr_eof=true;leader_reaped=true"
+        "stdout_eof=true;stderr_eof=true;leader_reaped=true;stop=self"
     );
     no_session(&f);
     r.add_permits(1);
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+
+/// Existing producer receipts stay readable through preparation and nongrant closure.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5r1a_existing_receipts_survive_preparation_and_closure() {
+    let mut f = fixture_p("normal");
+    f.register_real_git_project();
+    let (_, tasks) = accept(&f, 1).await;
+    let (a, r) = park(&f, PreparationObservation::VersionReady);
+    f.runtime.start().await.unwrap();
+    arrive(&f, &a).await;
+    let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+    let row = effects(&f, job.unit)
+        .into_iter()
+        .find(|e| e.kind == "git_helper" && e.state == crate::execution::EffectState::Confirmed)
+        .unwrap();
+    // Use the existing compatible writer, never a successful SQL seed.
+    f.owner
+        .store
+        .lock()
+        .unwrap()
+        .reconcile_managed_effect(
+            row.id,
+            row.version,
+            row.state,
+            std::collections::BTreeMap::from([
+                ("dispatch_detail".into(), "x".repeat(129)),
+                ("config".into(), "a".repeat(256)),
+            ]),
+        )
+        .unwrap();
+    r.add_permits(1);
+    wait_closed(&f, &tasks).await;
+    let rows = effects(&f, job.unit);
+    assert_eq!(
+        rows.iter().find(|e| e.id == row.id).unwrap().receipt["config"].len(),
+        256
+    );
+    assert_eq!(
+        rows.iter()
+            .filter(|e| e.kind.starts_with("native_phase_"))
+            .count(),
+        16
+    );
+    assert_eq!(
+        raw(&f)
+            .query_row(
+                "SELECT count(*) FROM quota_leases WHERE active=1",
+                [],
+                |r| r.get::<_, usize>(0)
+            )
+            .unwrap(),
+        0
+    );
+    no_session(&f);
+    f.runtime.shutdown().await.unwrap();
+    finish(f).await;
+}
+
+/// Abandon, lost fences and either stream overflow signal an actual helper without self-exit grace.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5r1a_cancel_fence_and_overflow_signal_without_grace() {
+    for cause in ["abandon", "fence", "stop-overflow", "stop-stdout-overflow"] {
+        let mut f = fixture_p(if cause.starts_with("stop-") {
+            cause
+        } else {
+            "stop-wait"
+        });
+        f.register_real_git_project();
+        let _ = accept(&f, 1).await;
+        f.runtime.start().await.unwrap();
+        let ready = f._dir.path().join("u5-trace/ready");
+        wait(
+            || std::fs::read_to_string(&ready).is_ok_and(|v| v.parse::<i32>().is_ok()),
+            "helper did not reach stop barrier",
+        )
+        .await;
+        let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+        let pid = std::fs::read_to_string(&ready)
+            .unwrap()
+            .parse::<i32>()
+            .unwrap();
+        let start = tokio::time::Instant::now();
+        match cause {
+            "abandon" => f
+                .runtime
+                .phase_jobs
+                .observed_preparation_custody(job.unit)
+                .unwrap()
+                .abandon(),
+            "fence" => {
+                raw(&f)
+                    .execute(
+                        "UPDATE runtime_epoch SET epoch=epoch+1 WHERE singleton=1",
+                        [],
+                    )
+                    .unwrap();
+            }
+            _ => std::fs::write(f._dir.path().join("u5-trace/release"), "release").unwrap(),
+        }
+        if cause == "fence" {
+            // Retiring the runtime owner also forbids SQL settlement. Observe
+            // the actual sleeping child disappear, while its row stays Held.
+            let pid = rustix::process::Pid::from_raw(pid).unwrap();
+            wait(
+                || rustix::process::getpgid(Some(pid)) == Err(rustix::io::Errno::SRCH),
+                "fenced helper was not reaped",
+            )
+            .await;
+            assert!(
+                start.elapsed() < Duration::from_secs(3),
+                "fence received self-exit grace"
+            );
+            assert!(
+                effects(&f, job.unit)
+                    .iter()
+                    .any(|e| e.kind == "native_phase_schema"
+                        && e.state == crate::execution::EffectState::Pending
+                        && e.receipt.is_empty())
+            );
+            no_session(&f);
+            let _ = f.runtime.shutdown().await;
+            finish(f).await;
+            continue;
+        }
+        wait(
+            || {
+                effects(&f, job.unit)
+                    .iter()
+                    .any(|e| e.kind == "native_phase_schema" && e.receipt.contains_key("exit"))
+            },
+            "stopped helper did not retain its physical receipt",
+        )
+        .await;
+        let rows = effects(&f, job.unit);
+        let schema = rows
+            .iter()
+            .find(|e| e.kind == "native_phase_schema")
+            .unwrap();
+        assert_eq!(schema.receipt["exit"], "signal:9", "{cause}");
+        assert_eq!(
+            schema.receipt["capture"],
+            "stdout_eof=true;stderr_eof=true;leader_reaped=true;stop=forced_signal",
+            "{cause}"
+        );
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "{cause} received self-exit grace"
+        );
+        assert_eq!(schema.receipt["expectation"], "mismatch");
+        no_session(&f);
+        let _ = f.runtime.shutdown().await;
+        finish(f).await;
+    }
+}
+
+/// Completed and refused Handshakes retain the grace and record its signal separately from exit.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5r1a_handshake_completion_and_refusal_keep_signal_grace() {
+    for case in ["handshake-signal", "stop-refusal"] {
+        let mut f = fixture_p(case);
+        f.register_real_git_project();
+        let _ = accept(&f, 1).await;
+        let (a, r) = park(&f, PreparationObservation::BeforeCommand);
+        let start = tokio::time::Instant::now();
+        f.runtime.start().await.unwrap();
+        if case == "stop-refusal" {
+            let ready = f._dir.path().join("u5-trace/ready");
+            wait(|| ready.exists(), "Handshake refusal barrier absent").await;
+            std::fs::write(f._dir.path().join("u5-trace/release"), "release").unwrap();
+        }
+        if case == "handshake-signal" {
+            arrive(&f, &a).await;
+        } else {
+            wait(
+                || {
+                    f.runtime.phase_jobs.observed_jobs().iter().any(|j| {
+                        effects(&f, j.unit).iter().any(|e| {
+                            e.kind == "native_phase_handshake" && e.receipt.contains_key("exit")
+                        })
+                    })
+                },
+                "Handshake refusal did not settle",
+            )
+            .await;
+        }
+        let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+        let rows = effects(&f, job.unit);
+        let handshake = rows
+            .iter()
+            .find(|e| e.kind == "native_phase_handshake")
+            .unwrap();
+        assert_eq!(handshake.receipt["exit"], "signal:9");
+        assert!(handshake.receipt["capture"].ends_with("stop=grace_signal"));
+        assert_eq!(
+            handshake.receipt["expectation"],
+            if case == "handshake-signal" {
+                "match"
+            } else {
+                "mismatch"
+            }
+        );
+        assert!(start.elapsed() >= Duration::from_secs(5));
+        assert!(
+            handshake.receipt.len() <= 16
+                && handshake
+                    .receipt
+                    .iter()
+                    .all(|(k, v)| k.len() <= 128 && v.len() <= 128)
+        );
+        no_session(&f);
+        r.add_permits(1);
+        let _ = f.runtime.shutdown().await;
+        finish(f).await;
+    }
+}
+
+/// Monitoring failures and a foreign process group do not become an active helper's IPC evidence.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5r1a_ipc_monitor_and_foreign_group_are_not_helper_requests() {
+    let mut f = fixture_p("ipc-wait");
+    f.register_real_git_project();
+    let _ = accept(&f, 1).await;
+    let (a, r) = park(&f, PreparationObservation::BeforeCommand);
+    f.runtime.start().await.unwrap();
+    let ready = f._dir.path().join("u5-trace/ready");
+    wait(|| ready.exists(), "Schema IPC barrier absent").await;
+    let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+    let unit = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .execution_unit(job.unit)
+        .unwrap();
+    for _ in 0..33 {
+        assert!(crate::execution::ipc::revalidate_preparation_for_test(&f.owner, &unit).is_err());
+    }
+    // This authenticated request originates in the test process, outside the helper group.
+    let response = retired_request(&f, &unit).await;
+    assert_eq!(response["type"], "refused");
+    std::fs::write(f._dir.path().join("u5-trace/release"), "release").unwrap();
+    arrive(&f, &a).await;
+    let rows = effects(&f, job.unit);
+    let schema = rows
+        .iter()
+        .find(|e| e.kind == "native_phase_schema")
+        .unwrap();
+    assert_eq!(schema.receipt["ipc_marker_refused"], "1");
+    assert_eq!(schema.receipt["ipc_other_refused"], "0");
+    assert_eq!(schema.receipt["ipc_invalid"], "false");
+    r.add_permits(1);
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+
+/// Schema creation is audited as not cleaned even when Schema qualification refuses.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5r1a_schema_refusal_retains_audited_directory() {
+    let mut f = fixture_p("schema-fail");
+    f.register_real_git_project();
+    let (_, tasks) = accept(&f, 1).await;
+    f.runtime.start().await.unwrap();
+    wait(
+        || {
+            f.runtime.phase_jobs.observed_jobs().iter().any(|j| {
+                effects(&f, j.unit)
+                    .iter()
+                    .any(|e| e.kind == "native_phase_schema" && e.receipt.contains_key("exit"))
+            })
+        },
+        "Schema refusal did not settle",
+    )
+    .await;
+    let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+    let unit = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .execution_unit(job.unit)
+        .unwrap();
+    let profile = crate::execution::resources::ResourceManager::new(f.owner.clone())
+        .profile(&unit)
+        .unwrap();
+    assert!(std::fs::read_dir(&profile.temp).unwrap().any(|e| {
+        e.unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("p-schema-")
+    }));
+    let events = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .events(&tasks[0].scope(), 0, 10000)
+        .unwrap();
+    let cleanups: Vec<_> = events
+        .iter()
+        .filter(|e| e.kind == "native.phase.schema_directory")
+        .map(|e| e.data["cleanup"].as_str().unwrap())
+        .collect();
+    assert_eq!(cleanups, ["not_cleaned"]);
+    no_session(&f);
     let _ = f.runtime.shutdown().await;
     finish(f).await;
 }
