@@ -83,6 +83,17 @@ Verification at `a71cf138` (`.rrx/u3/host/full7/`, `.rrx/u3/host/mut-u4r3/`): fm
 
 Follow-up issues to open (title, severity and status only, public repository): SEC-R2-03 (branch-candidate clone cost outside the work budget), SEC-R3-02 (poisoning fixtures for ThreadItem and ThreadStatus), U4-I08 (outgoing image source keys), SEC-U4-07 (cleanup re-scan).
 
+## Simplification after repeated same-class findings
+
+At `79d80963` Opus confirmed SEC-R3-01 resolved and found SEC-R4-01 (Medium, pre-existing): a live alias definition mapped to a basis name, plus an unreferenced unchanged original, let the original overwrite the alias's anchors, so a tolerated reference to Turn escaped the reach check. SEC-R2-01, SEC-R3-01 and SEC-R4-01 share two root mechanisms, so instead of another point fix both were removed (Sol, `14368517`):
+
+- **No definition renames.** A strict reference must name the same definition as the basis; a rename is a typed StrictMismatch and goes through the §8b refresh procedure.
+- **Reached-only anchors.** Anchors come only from definitions the comparison actually reached; unreferenced definitions contribute nothing; conflicting content at one anchor key refuses.
+
+This narrows acceptance (no owner approval under §8b step 8); design §8 rule 1 was updated in the same commit. SEC-R4-02 (an unreachable defensive branch) is left as is.
+
+Verification at `14368517` (`.rrx/u3/host/full8/`, `.rrx/u3/host/mut-u4r4/`): fmt, clippy and build pass; lib 811 / 117 / 27; the four failures outside the alone baseline (`adapter::git_owner` parallel-only kinds) pass alone; every integration target and both helper crates pass except `daemon_native` 1 / 2 / 0. The 30 operators targeting `schema.rs` (including the new `u4r4-` operators) ran: 28 killed with passing restored runs; 105 and 110 remain layered bounds and 105s / 110s are killed at this HEAD.
+
 ## Limits
 
 - Live confirmation on the Mac (owner-run) is still required: the installed CLI's `generate-json-schema --experimental` output against the 0.162.1 basis, the ThreadStart sandbox shape, config/read features and mcp_servers shapes, and `thread/settings/updated`.
