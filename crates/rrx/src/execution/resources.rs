@@ -7,7 +7,7 @@ use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    os::unix::fs::symlink,
+    os::unix::fs::{DirBuilderExt, symlink},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -290,19 +290,27 @@ impl ResourceManager {
             .reserve_execution_leases(&unit.authority(), &leases)
     }
     pub(crate) fn materialize(&self, profile: &ResourceProfile) -> Result<()> {
-        std::fs::create_dir_all(profile.root.parent().context("unit root parent missing")?)?;
+        // Preserve ordinary read/traverse access (including bind-mounted
+        // resource children under Docker --user), without umask 000 ever
+        // granting another UID permission to replace a P Schema output name.
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o755)
+            .create(profile.root.parent().context("unit root parent missing")?)?;
         ensure!(
             !profile.root.exists() && profile.root.symlink_metadata().is_err(),
             "unit namespace is never reused"
         );
-        std::fs::create_dir(&profile.root)?;
+        std::fs::DirBuilder::new()
+            .mode(0o755)
+            .create(&profile.root)?;
         for path in [
             &profile.temp,
             &profile.output,
             &profile.cache,
             &profile.tool_bin,
         ] {
-            std::fs::create_dir(path)?;
+            std::fs::DirBuilder::new().mode(0o755).create(path)?;
         }
         durable_file(
             &profile.root.join("profile.json"),

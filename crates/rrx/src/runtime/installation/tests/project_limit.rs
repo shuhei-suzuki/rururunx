@@ -26,6 +26,10 @@ fn keys(f: &ControlFixture) -> Vec<CandidateKey> {
     }
 }
 async fn wait_claims(f: &ControlFixture, expected: usize) {
+    assert_eq!(
+        u4::settled_s(f).await.state,
+        crate::runtime::startup::StartupState::Passed
+    );
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     while count(f, "task_drivers") != expected {
         assert!(
@@ -78,7 +82,7 @@ fn store_legacy_limit(f: &ControlFixture, project: &mut crate::domain::Project, 
 /// while the first is occupied.
 #[tokio::test]
 async fn c_s2a_candidate_never_lists_second_task_while_first_is_occupied() {
-    let f = fixture("codex", true);
+    let f = u5::fixture_p("normal");
     let (_, tasks) = accept(&f, 2).await;
     assert_eq!(
         keys(&f).len(),
@@ -108,7 +112,7 @@ async fn c_s2a_candidate_never_lists_second_task_while_first_is_occupied() {
 /// with no Driver row and no claim audit for B.
 #[tokio::test]
 async fn c_s2a2_final_claim_refuses_second_task_typed() {
-    let f = fixture("codex", true);
+    let f = u5::fixture_p("normal");
     accept(&f, 2).await;
     let page = keys(&f);
     assert_eq!(page.len(), 2, "SETUP: both Tasks are candidates while idle");
@@ -147,7 +151,7 @@ async fn c_s2a2_final_claim_refuses_second_task_typed() {
 /// claimed and never rewritten; the supported Project still runs.
 #[tokio::test]
 async fn c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten() {
-    let mut f = fixture("codex", true);
+    let mut f = u5::fixture_p("normal");
     // L2 (Sol 6071558338, 6072320376): more legacy-limit Tasks than the
     // eligible LIMIT (65) sort before the supported Task, so excluding them
     // after the LIMIT would leave the supported Task off the first page. Two
@@ -222,15 +226,19 @@ async fn c_s2a3_stored_legacy_limits_are_excluded_and_never_rewritten() {
 /// it stores 4, is refused at planning, typed, with nothing written.
 #[tokio::test]
 async fn d3_plan_guard_refuses_stored_legacy_limit_without_writes() {
-    let f = fixture("codex", true);
+    let f = u5::fixture_p("normal");
     accept(&f, 1).await;
     let key = keys(&f).remove(0);
     let mut project = f.project.clone();
     store_legacy_limit(&f, &mut project, 4);
     let row = project_row(&f, &project.id.to_string());
-    let audits = count(&f, "audit");
     f.runtime.start().await.unwrap();
+    assert_eq!(
+        u4::settled_s(&f).await.state,
+        crate::runtime::startup::StartupState::Passed
+    );
     let guard = f.runtime.control_admission.lock().await;
+    let audits = count(&f, "audit");
     assert!(matches!(
         f.runtime.evaluate_driver_candidate(&guard, &key).unwrap(),
         AdmitOutcome::Skipped(SkipReason::ProjectLimitUnsupported)
@@ -333,7 +341,7 @@ async fn status(f: &ControlFixture, goal: GoalId) -> (UnavailableReason, Option<
 /// the repair clears it.
 #[tokio::test]
 async fn d4_status_reports_stored_legacy_limit_read_only_until_repair() {
-    let mut f = fixture("codex", true);
+    let mut f = u5::fixture_p("normal");
     let (accepted, _) = accept(&f, 1).await;
     let proposed = match f
         .runtime
@@ -418,7 +426,7 @@ async fn wait_until(mut condition: impl FnMut() -> bool, label: &str) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn c_s2a_held_phase_operation_alone_keeps_second_task_out() {
     use crate::execution::native::PreparationObservation;
-    let mut f = fixture("codex", true);
+    let mut f = u5::fixture_p("normal");
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
         panic!("SETUP: {}", refusal);
@@ -544,7 +552,7 @@ async fn c_s2a_held_phase_operation_alone_keeps_second_task_out() {
 /// Driver is A's only occupancy. B, in the same Goal, is never listed.
 #[tokio::test]
 async fn c_s2a_retained_driver_alone_keeps_second_task_out() {
-    let f = fixture("codex", true);
+    let f = u5::fixture_p("normal");
     let (_, tasks) = accept(&f, 2).await;
     f.runtime.start().await.unwrap();
     wait_claims(&f, 1).await;

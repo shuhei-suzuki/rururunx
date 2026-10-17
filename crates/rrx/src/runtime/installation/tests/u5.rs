@@ -8,6 +8,10 @@ P=bool(os.environ.get('RRX_UNIT_ID'))
 step='version' if sys.argv[1:]==['--version'] else ('schema' if 'generate-json-schema' in sys.argv else 'handshake')
 if P:
     with open(os.path.join(TRACE,os.environ['RRX_UNIT_ID']), 'a') as f: f.write(step+'\n')
+    if CASE.startswith('writable-') and step=='version':
+        target=os.environ['RRX_TMPDIR']
+        for _ in range(int(CASE.split('-')[1])): target=os.path.dirname(target)
+        os.chmod(target,0o777)
     if step=='schema' and CASE.startswith('ipc'):
         import socket, struct, uuid
         if CASE in ('ipc-ambiguous','ipc-wait'):
@@ -59,7 +63,7 @@ if P:
         with open(sys.argv[0],'a') as f: f.write('\n# identity changed\n')
     if CASE=='version-fail' and step=='version': print('unqualified');sys.exit(0)
 "#;
-fn fixture_p(case: &str) -> ControlFixture {
+pub(super) fn fixture_p(case: &str) -> ControlFixture {
     fixture_with("codex", true, |config| {
         for (alias, agent) in &mut config.agents {
             let old = std::path::PathBuf::from(&agent.command[0]);
@@ -87,6 +91,94 @@ fn fixture_p(case: &str) -> ControlFixture {
             agent.command = vec![path.to_str().unwrap().into()];
         }
     })
+}
+
+/// Writable P ancestors refuse the next helper spawn and leave unrelated output unchanged.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5r1b_writable_p_ancestors_refuse_before_schema_spawn() {
+    for (level, before_version) in (0..=3).flat_map(|level| [(level, true), (level, false)]) {
+        let case = if before_version {
+            "normal".into()
+        } else {
+            format!("writable-{level}")
+        };
+        let mut f = fixture_p(&case);
+        f.register_real_git_project();
+        let sentinel = f._dir.path().join("outside-sentinel");
+        std::fs::write(&sentinel, "unchanged").unwrap();
+        accept(&f, 1).await;
+        let parked = before_version.then(|| park(&f, PreparationObservation::VersionReady));
+        f.runtime.start().await.unwrap();
+        assert_eq!(u4::settled_s(&f).await.state, StartupState::Passed);
+        if let Some((arrived, release)) = parked {
+            arrive(&f, &arrived).await;
+            let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+            let mut target = f
+                .owner
+                .root
+                .join("units")
+                .join(job.unit.to_string())
+                .join("tmp");
+            for _ in 0..level {
+                target.pop();
+            }
+            std::fs::set_permissions(target, std::fs::Permissions::from_mode(0o777)).unwrap();
+            release.add_permits(1);
+        }
+        wait(
+            || {
+                f.runtime
+                    .phase_jobs
+                    .observed_jobs()
+                    .iter()
+                    .any(|j| j.finished)
+                    || raw(&f)
+                        .query_row(
+                            "SELECT count(*) FROM managed_effects WHERE kind='native_phase_schema'",
+                            [],
+                            |r| r.get::<_, usize>(0),
+                        )
+                        .unwrap()
+                        > 0
+            },
+            "unsafe P did not refuse",
+        )
+        .await;
+        let jobs = f.runtime.phase_jobs.observed_jobs();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(
+            jobs[0].refusal.as_deref(),
+            Some("P directory ownership or mode refused")
+        );
+        let trace = f
+            ._dir
+            .path()
+            .join("u5-trace")
+            .join(jobs[0].unit.to_string());
+        if before_version {
+            assert!(
+                !trace.try_exists().unwrap(),
+                "Version spawned under a writable ancestor"
+            );
+        } else {
+            assert_eq!(std::fs::read_to_string(trace).unwrap(), "version\n");
+        }
+        no_session(&f);
+        assert_eq!(std::fs::read_to_string(sentinel).unwrap(), "unchanged");
+        // Restore only fixture-owned modes so its ordinary shutdown can inspect custody.
+        let mut target = f
+            .owner
+            .root
+            .join("units")
+            .join(jobs[0].unit.to_string())
+            .join("tmp");
+        for _ in 0..level {
+            target.pop();
+        }
+        std::fs::set_permissions(target, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let _ = f.runtime.shutdown().await;
+        finish(f).await;
+    }
 }
 pub(super) async fn wait(mut predicate: impl FnMut() -> bool, label: &str) {
     let end = tokio::time::Instant::now() + Duration::from_secs(60);
@@ -270,6 +362,12 @@ async fn u5_fresh_p_and_ipc_original_survive_complete_inventory_read() {
             .unwrap()
             .observed_helper_history()
             .unwrap();
+        let seal = history[3].observed_plan().git_seal().unwrap();
+        assert!(seal.matches_actor(history[3].observed_plan().actor()));
+        assert!(
+            !seal.matches_actor(foreign[3].observed_plan().actor()),
+            "foreign genuine Git seal accepted another Preparing actor"
+        );
         for index in [0, 1, 2, 3, 15] {
             let mut changed = history.clone();
             changed[index] = foreign[index].clone();
@@ -375,6 +473,13 @@ async fn u5_missing_fresh_steps_and_program_swap_never_reach_prepared() {
             "missing fresh P step was incorrectly closed as a completed prefix"
         );
         let job = jobs.into_iter().next().unwrap();
+        if case == "identity-schema" {
+            assert_eq!(
+                job.refusal.as_deref(),
+                Some("P helper executable changed"),
+                "executable replacement must be refused by helper hash verification"
+            );
+        }
         assert!(
             !job.preparation.helpers_completed
                 && !job.preparation.no_dispatch

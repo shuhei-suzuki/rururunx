@@ -73,10 +73,10 @@ fn workflow(f: &ControlFixture, task: &Task) -> crate::domain::Record {
         .unwrap()
         .remove(0)
 }
-/// Only the configured executable is changed, after genuine helpers completed.
-/// Neither hook supplies an error: the production physical-profile check does.
+/// Genuine helpers precede a physical executable fault; Known retires custody while pre-no-dispatch stays Held.
 async fn physical_refusal(provider: &str, stage: PreparationObservation, preparation_busy: bool) {
-    let mut f = fixture(provider, true);
+    assert_eq!(provider, "codex");
+    let mut f = u5::fixture_p("normal");
     f.register_real_git_project();
     if let Err(refusal) = &f.runtime.installed {
         // Diagnose only the physical fixture-local IPC syscall. This probe
@@ -184,11 +184,13 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation, prepara
     .await;
     let refused = f.runtime.phase_jobs.observed_jobs();
     assert!(
-        refused[0]
-            .refusal
-            .as_ref()
-            .unwrap()
-            .contains("original Native program/worktree physical profile differs"),
+        refused[0].refusal.as_ref().unwrap().contains(
+            if stage == PreparationObservation::BeforeTransport {
+                "transport executable changed"
+            } else {
+                "original Native program/worktree physical profile differs"
+            }
+        ),
         "wrong refusal: {refused:?}"
     );
     assert!(refused[0].preparation.revoked && !refused[0].preparation.transport);
@@ -284,6 +286,10 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation, prepara
         assert!(
             f.runtime.phase_jobs.observed_jobs().is_empty(),
             "ack did not retire same finished job"
+        );
+        assert!(
+            f.runtime.observe_source_handoff(task.id).unwrap().is_none(),
+            "Known closure did not retire the original Source handoff"
         );
         let after = f
             .owner
@@ -404,19 +410,22 @@ async fn physical_refusal(provider: &str, stage: PreparationObservation, prepara
     drop(port);
     park.open();
     drop(open);
-    let shutdown = f.runtime.shutdown().await.unwrap_err();
-    assert!(
-        shutdown
-            .to_string()
-            .contains("Source phase shutdown remains pending")
-            || shutdown
+    if stage == PreparationObservation::BeforeTransport {
+        f.runtime.shutdown().await.unwrap();
+    } else {
+        let shutdown = f.runtime.shutdown().await.unwrap_err();
+        assert!(
+            shutdown
                 .to_string()
-                .contains("Source handoff shutdown remains pending")
-            || shutdown
-                .to_string()
-                .contains("Native phase shutdown remains pending"),
-        "unexpected shutdown: {shutdown}"
-    );
+                .contains("Source phase shutdown remains pending")
+                || shutdown
+                    .to_string()
+                    .contains("Native phase shutdown remains pending"),
+            "unexpected Held shutdown: {shutdown}"
+        );
+        assert_eq!(f.runtime.phase_jobs.observed_jobs().len(), 1);
+        assert!(f.runtime.observe_source_handoff(task.id).unwrap().is_some());
+    }
     finish(f).await;
 }
 

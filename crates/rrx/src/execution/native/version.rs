@@ -492,6 +492,7 @@ pub(super) fn qualified_physical_profile(
     let allocation = actor.launch().allocation();
     let unit = allocation.unit_snapshot();
     let facts = allocation.facts();
+    super::metadata::validate_unit_temp(owner, unit.id)?;
     ensure!(
         facts.program.is_absolute()
             && facts.program.canonicalize()? == facts.program
