@@ -403,34 +403,20 @@ impl Compare<'_> {
         let ar = self.basis.target(a)?;
         let br = self.live.target(b)?;
         if ar.is_some() || br.is_some() {
+            // Inline bodies have no named anchor for their tolerated positions.
+            let (Some((an, av)), Some((bn, bv))) = (ar, br) else {
+                return Err(mismatch(Mismatch::Constraint, path));
+            };
             // Never merge siblings into a target: draft-07 ignores them.
-            let (an, av) = ar.unwrap_or((name, a));
-            let (bn, bv) = br.unwrap_or((name, b));
-            let siblings_a = ar.map(|_| ref_siblings(a, path)).transpose()?;
-            let siblings_b = br.map(|_| ref_siblings(b, path)).transpose()?;
-            if ar.is_some() {
-                self.strict.insert(an.into());
+            let sa = ref_siblings(a, path)?;
+            let sb = ref_siblings(b, path)?;
+            self.strict.insert(an.into());
+            self.names.insert(bn.into(), an.into());
+            let bare = sa == json!({}) && sb == json!({});
+            if bare && !self.visited.insert((an.into(), bn.into())) {
+                return Ok(());
             }
-            if let (Some(sa), Some(sb)) = (&siblings_a, &siblings_b) {
-                self.names.insert(bn.into(), an.into());
-                let bare = sa == &json!({}) && sb == &json!({});
-                if bare && !self.visited.insert((an.into(), bn.into())) {
-                    return Ok(());
-                }
-                self.node_at(sa, sb, "", path, depth.child())?;
-            } else {
-                ensure!(
-                    siblings_a
-                        .iter()
-                        .chain(&siblings_b)
-                        .all(|s| s == &json!({})),
-                    Refusal(
-                        Reason::StrictMismatch,
-                        Some(Mismatch::Constraint),
-                        path.into()
-                    )
-                );
-            }
+            self.node_at(&sa, &sb, "", path, depth.child())?;
             return self.node_at(
                 &project(av, an),
                 &project(bv, an),
@@ -1407,7 +1393,7 @@ mod tests {
             let a = document(ar);
             let b = document(br);
             let mut contract = CodexWireContract::default();
-            Compare {
+            let result = Compare {
                 basis: &a,
                 live: &b,
                 names: BTreeMap::new(),
@@ -1416,9 +1402,54 @@ mod tests {
                 work: 0,
                 additions: &mut contract,
             }
-            .node(&a.root, &b.root, "", "annotations")
-            .unwrap();
+            .node(&a.root, &b.root, "", "annotations");
+            if ar != br {
+                assert_eq!(
+                    result.unwrap_err().downcast_ref::<Refusal>().unwrap().0,
+                    Reason::StrictMismatch
+                );
+            } else {
+                result.unwrap();
+            }
         }
+    }
+    /// Inline Thread payloads cannot hide tolerated references outside named anchors.
+    #[test]
+    fn u4r3_inline_thread_is_a_typed_refusal() {
+        let mut files = fixture();
+        let mut body = project(
+            definition(&mut files, "ServerNotification", "Thread"),
+            "Thread",
+        );
+        body["properties"]["extra"] = json!({"$ref":"#/definitions/Turn"});
+        definition(
+            &mut files,
+            "ServerNotification",
+            "ThreadStartedNotification",
+        )["properties"]["thread"] = body;
+        let gate = compare(&files);
+        assert!(!gate.receipt.pass, "{:?}", gate.receipt);
+        assert!(gate.contract.is_none());
+        assert_eq!(gate.receipt.reason, Some(Reason::StrictMismatch));
+    }
+    /// Inline ThreadItem payloads cannot hide tolerated references outside named anchors.
+    #[test]
+    fn u4r3_inline_thread_item_is_a_typed_refusal() {
+        let mut files = fixture();
+        let mut body = definition(&mut files, "ServerNotification", "ThreadItem").clone();
+        let branch = body["oneOf"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|b| tag(b, "type").as_deref() == Some("userMessage"))
+            .unwrap();
+        branch["properties"]["extra"] = json!({"$ref":"#/definitions/Turn"});
+        definition(&mut files, "ServerNotification", "ItemStartedNotification")["properties"]["item"] =
+            body;
+        let gate = compare(&files);
+        assert!(!gate.receipt.pass, "{:?}", gate.receipt);
+        assert!(gate.contract.is_none());
+        assert_eq!(gate.receipt.reason, Some(Reason::StrictMismatch));
     }
     /// Siblings at the first use cannot disguise an empty target at later strict uses.
     #[test]
