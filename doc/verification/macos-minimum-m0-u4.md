@@ -70,6 +70,19 @@ At `73a93275` each reporter re-reviewed only its fix diff. Sol approved part B (
 
 Verification at `ec25c193` (`.rrx/u3/host/full6/`, `.rrx/u3/host/mut-u4r2/`; only `schema.rs` changed): fmt, clippy and build pass; lib 804 / 118 / 27; every integration target and both helper crates pass except `daemon_native` 1 / 2 / 0. Failures outside the 118-test alone baseline (eight `adapter::git_owner` / `cli::endpoint` parallel-only cases) were rerun alone and all pass. The 24 operators targeting `schema.rs` (including five new `u4r2-` operators) ran: 22 killed at the intended check with passing restored runs; 105 and 110 are layered bounds and their combined mutants 105s and 110s are killed at this HEAD.
 
+## Review round 3
+
+At `2827899f` Opus re-reviewed the round 2 fix diff: SEC-R2-01 and SEC-R2-02 resolved (no unguarded `unwrap`/`expect`/indexing on live schema values remains). It found one pre-existing defect, classified for fixing after the third round because it affects the owner-approved acceptance rule C1 rule 2:
+
+| ID | Severity | Defect | Fix |
+|---|---|---|---|
+| SEC-R3-01 | Medium | A referenced basis position compared against an inline live body went through the named projection, while anchors only cover named definitions, so an inline Thread or ThreadItem could carry a tolerated reference to Turn past the reach check. | Whenever either side is a `$ref`, both must be; one-sided references are a typed StrictMismatch (Sol, `a71cf138`). The unchanged basis and its 20 reach pairs pass. |
+| SEC-R3-02 | Low (optional) | The poisoning fixtures cover Turn and TurnError only. | Recorded for a follow-up issue. |
+
+Verification at `a71cf138` (`.rrx/u3/host/full7/`, `.rrx/u3/host/mut-u4r3/`): fmt, clippy and build pass; lib 808 / 116 / 27 with no failure outside the alone baseline; every integration target and both helper crates pass except `daemon_native` 1 / 2 / 0. The 26 operators targeting `schema.rs` ran: 24 killed with passing restored runs; 105 and 110 remain layered bounds and 105s / 110s are killed at this HEAD.
+
+Follow-up issues to open (title, severity and status only, public repository): SEC-R2-03 (branch-candidate clone cost outside the work budget), SEC-R3-02 (poisoning fixtures for ThreadItem and ThreadStatus), U4-I08 (outgoing image source keys), SEC-U4-07 (cleanup re-scan).
+
 ## Limits
 
 - Live confirmation on the Mac (owner-run) is still required: the installed CLI's `generate-json-schema --experimental` output against the 0.162.1 basis, the ThreadStart sandbox shape, config/read features and mcp_servers shapes, and `thread/settings/updated`.
