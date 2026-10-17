@@ -104,8 +104,8 @@ impl SchemaDirectory {
         let parents = UnitTemp::new(owner, profile.unit)?;
         let parent = &parents.temp;
         let name = format!("p-schema-{}", uuid::Uuid::new_v4());
-        rustix::fs::mkdirat(parent, name.as_str(), Mode::from_raw_mode(0o700))?;
-        // Record the leftover before any later open, planning or helper failure.
+        // Record potential leftovers before creation, so audit failure cannot
+        // leave an unrecorded directory behind.
         // This finite factual audit grants no cleanup or preparation authority.
         owner
             .store
@@ -114,8 +114,9 @@ impl SchemaDirectory {
             .audit(
                 actor.launch().allocation().facts().scope,
                 "native.phase.schema_directory",
-                serde_json::json!({"cleanup":"not_cleaned"}),
+                serde_json::json!({"cleanup":"not_cleaned","unit":profile.unit}),
             )?;
+        rustix::fs::mkdirat(parent, name.as_str(), Mode::from_raw_mode(0o700))?;
         let directory = File::from(openat(parent, name.as_str(), DIRECTORY, Mode::empty())?);
         let value = Arc::new(Self {
             actor: actor.clone(),
@@ -198,7 +199,7 @@ impl NativeSessions {
             .audit(
                 actor.launch().allocation().facts().scope,
                 "native.phase.schema_directory",
-                serde_json::json!({"cleanup":"cleaned"}),
+                serde_json::json!({"cleanup":"cleaned","unit":actor.launch().allocation().facts().unit_id}),
             )?;
         let plan = crate::state::Store::plan_phase_metadata_intent(
             &self.owner,
@@ -221,6 +222,24 @@ mod tests {
     /// P retains only owned, non-writable ancestors and refuses replacement without touching outside data.
     #[test]
     fn u5r1b_p_ancestors_bind_private_materialization_and_refuse_replacement() {
+        const TEST: &str = "execution::native::metadata::tests::u5r1b_p_ancestors_bind_private_materialization_and_refuse_replacement";
+        const CHILD: &str = "RRX_U5R2_UMASK_CHILD";
+        if std::env::var(CHILD).as_deref() != Ok(TEST) {
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command
+                .args(["--exact", TEST, "--nocapture"])
+                .env(CHILD, TEST);
+            let output = rrx_spawn_hygiene::output_std(command).unwrap();
+            assert!(
+                output.status.success(),
+                "umask-0 child failed: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+        // Only this dedicated child runs with a process-wide permissive umask.
+        rustix::process::umask(Mode::empty());
         let dir = tempfile::tempdir().unwrap();
         let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
         std::fs::set_permissions(&owner.root, std::fs::Permissions::from_mode(0o755)).unwrap();

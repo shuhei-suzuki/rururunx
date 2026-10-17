@@ -77,6 +77,10 @@ pub(super) fn fixture_p(case: &str) -> ControlFixture {
                 "print('codex-cli 0.160.0' if P else 'arbitrary updated CLI 88.1')",
             );
             let peer = peer.replace("with open(PAIR) as f: files=json.load(f)['files']", "with open(PAIR) as f: files=json.load(f)['files']\n    if P and CASE in ('additions','handshake-flood'):\n        files['ServerNotification']['oneOf'].append({'type':'object','properties':{'method':{'type':'string','enum':['u5/added']},'params':{'type':'object','properties':{}}},'required':['method','params']})");
+            let peer = peer.replace(
+                "    send({'id':999 if SCENARIO=='id' else v['id'],'result':result})",
+                "    if P and CASE=='handshake-signal' and index==5:\n        import time\n        with open(os.path.join(TRACE,'ready'),'w') as f: f.write('ready')\n        while not os.path.exists(os.path.join(TRACE,'release')): time.sleep(0.01)\n    send({'id':999 if SCENARIO=='id' else v['id'],'result':result})",
+            );
             let peer = peer
                 + "\nif P and step=='handshake' and CASE in ('handshake-grace','handshake-signal'):\n    import time\n    time.sleep(1 if CASE=='handshake-grace' else 120)\n";
             let script = format!(
@@ -132,20 +136,23 @@ async fn u5r1b_writable_p_ancestors_refuse_before_schema_spawn() {
                     .observed_jobs()
                     .iter()
                     .any(|j| j.finished)
-                    || raw(&f)
-                        .query_row(
-                            "SELECT count(*) FROM managed_effects WHERE kind='native_phase_schema'",
-                            [],
-                            |r| r.get::<_, usize>(0),
-                        )
-                        .unwrap()
-                        > 0
+                    || f.runtime.phase_jobs.observed_jobs().iter().any(|j| {
+                        effects(&f, j.unit)
+                            .iter()
+                            .any(|e| e.kind == "native_phase_schema")
+                    })
             },
             "unsafe P did not refuse",
         )
         .await;
         let jobs = f.runtime.phase_jobs.observed_jobs();
         assert_eq!(jobs.len(), 1);
+        assert!(
+            effects(&f, jobs[0].unit)
+                .iter()
+                .all(|e| e.kind != "native_phase_schema"),
+            "Schema intent recorded under a writable ancestor"
+        );
         assert_eq!(
             jobs[0].refusal.as_deref(),
             Some("P directory ownership or mode refused")
@@ -368,6 +375,17 @@ async fn u5_fresh_p_and_ipc_original_survive_complete_inventory_read() {
             !seal.matches_actor(foreign[3].observed_plan().actor()),
             "foreign genuine Git seal accepted another Preparing actor"
         );
+        let foreign_seal = foreign[3].observed_plan().git_seal().unwrap();
+        let error = crate::state::Store::plan_phase_git_intent(
+            &f.owner,
+            history[2].clone(),
+            crate::execution::native::readonly::PhaseGitAction::SourceTop,
+            foreign_seal.clone(),
+            None,
+        )
+        .err()
+        .expect("foreign genuine Git seal accepted by intent planner");
+        assert_eq!(error.to_string(), "Git seal original actor differs");
         for index in [0, 1, 2, 3, 15] {
             let mut changed = history.clone();
             changed[index] = foreign[index].clone();
@@ -1342,27 +1360,26 @@ async fn u5r1a_handshake_completion_and_refusal_keep_signal_grace() {
         f.register_real_git_project();
         let _ = accept(&f, 1).await;
         let (a, r) = park(&f, PreparationObservation::BeforeCommand);
-        let start = tokio::time::Instant::now();
         f.runtime.start().await.unwrap();
-        if case == "stop-refusal" {
-            let ready = f._dir.path().join("u5-trace/ready");
-            wait(|| ready.exists(), "Handshake refusal barrier absent").await;
-            std::fs::write(f._dir.path().join("u5-trace/release"), "release").unwrap();
-        }
+        let ready = f._dir.path().join("u5-trace/ready");
+        wait(|| ready.exists(), "Handshake response barrier absent").await;
+        // Both peers emit completion/refusal immediately after this release.
+        let start = tokio::time::Instant::now();
+        std::fs::write(f._dir.path().join("u5-trace/release"), "release").unwrap();
+        wait(
+            || {
+                f.runtime.phase_jobs.observed_jobs().iter().any(|j| {
+                    effects(&f, j.unit).iter().any(|e| {
+                        e.kind == "native_phase_handshake" && e.receipt.contains_key("exit")
+                    })
+                })
+            },
+            "Handshake did not settle",
+        )
+        .await;
+        assert!(start.elapsed() >= Duration::from_secs(5));
         if case == "handshake-signal" {
             arrive(&f, &a).await;
-        } else {
-            wait(
-                || {
-                    f.runtime.phase_jobs.observed_jobs().iter().any(|j| {
-                        effects(&f, j.unit).iter().any(|e| {
-                            e.kind == "native_phase_handshake" && e.receipt.contains_key("exit")
-                        })
-                    })
-                },
-                "Handshake refusal did not settle",
-            )
-            .await;
         }
         let job = f.runtime.phase_jobs.observed_jobs().remove(0);
         let rows = effects(&f, job.unit);
@@ -1380,7 +1397,6 @@ async fn u5r1a_handshake_completion_and_refusal_keep_signal_grace() {
                 "mismatch"
             }
         );
-        assert!(start.elapsed() >= Duration::from_secs(5));
         assert!(
             handshake.receipt.len() <= 16
                 && handshake
@@ -1479,9 +1495,74 @@ async fn u5r1a_schema_refusal_retains_audited_directory() {
     let cleanups: Vec<_> = events
         .iter()
         .filter(|e| e.kind == "native.phase.schema_directory")
-        .map(|e| e.data["cleanup"].as_str().unwrap())
+        .map(|e| {
+            assert_eq!(e.data["unit"], serde_json::json!(job.unit));
+            assert_eq!(e.data.as_object().unwrap().len(), 2);
+            e.data["cleanup"].as_str().unwrap()
+        })
         .collect();
     assert_eq!(cleanups, ["not_cleaned"]);
+    no_session(&f);
+    let _ = f.runtime.shutdown().await;
+    finish(f).await;
+}
+
+/// A failed residual audit prevents Schema directory creation and helper intent.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u5r2_schema_audit_failure_leaves_no_unrecorded_directory() {
+    let mut f = fixture_p("normal");
+    f.register_real_git_project();
+    accept(&f, 1).await;
+    let (arrived, release) = park(&f, PreparationObservation::VersionReady);
+    f.runtime.start().await.unwrap();
+    arrive(&f, &arrived).await;
+    let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+    let unit = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .execution_unit(job.unit)
+        .unwrap();
+    let profile = crate::execution::resources::ResourceManager::new(f.owner.clone())
+        .profile(&unit)
+        .unwrap();
+    // Failure injection only: no authority or successful helper row is seeded.
+    raw(&f)
+        .execute_batch("CREATE TRIGGER u5r2_refuse_schema_audit BEFORE INSERT ON audit WHEN NEW.kind='native.phase.schema_directory' BEGIN SELECT RAISE(ABORT,'u5r2 schema audit refused'); END;")
+        .unwrap();
+    release.add_permits(1);
+    wait(
+        || {
+            f.runtime
+                .phase_jobs
+                .observed_jobs()
+                .iter()
+                .any(|j| j.finished)
+        },
+        "audit failure did not refuse P",
+    )
+    .await;
+    let job = f.runtime.phase_jobs.observed_jobs().remove(0);
+    assert!(job.refusal.unwrap().contains("u5r2 schema audit refused"));
+    assert!(std::fs::read_dir(&profile.temp).unwrap().all(|e| {
+        !e.unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("p-schema-")
+    }));
+    assert!(
+        effects(&f, job.unit)
+            .iter()
+            .all(|e| e.kind != "native_phase_schema")
+    );
+    assert_eq!(
+        std::fs::read_to_string(f._dir.path().join("u5-trace").join(job.unit.to_string())).unwrap(),
+        "version\n"
+    );
+    raw(&f)
+        .execute_batch("DROP TRIGGER u5r2_refuse_schema_audit")
+        .unwrap();
     no_session(&f);
     let _ = f.runtime.shutdown().await;
     finish(f).await;

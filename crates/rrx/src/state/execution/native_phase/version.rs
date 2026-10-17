@@ -134,17 +134,12 @@ impl EffectImage {
         // This inventory includes every kind, including older dispatch and
         // Docker rows. Only P helpers produce the finite 16/128 vocabulary.
         ensure!(
-            !matches!(
-                effect.kind.as_str(),
-                "native_phase_version"
-                    | "native_phase_schema"
-                    | "native_phase_handshake"
-                    | "native_phase_git"
-            ) || (effect.receipt.len() <= 16
-                && effect
-                    .receipt
-                    .iter()
-                    .all(|(k, v)| k.len() <= 128 && v.len() <= 128)),
+            !effect.kind.starts_with("native_phase_")
+                || (effect.receipt.len() <= 16
+                    && effect
+                        .receipt
+                        .iter()
+                        .all(|(k, v)| k.len() <= 128 && v.len() <= 128)),
             "Native finite receipt bound exceeded"
         );
         let (p, g, t) = scope_keys(&effect.scope)?;
@@ -1172,14 +1167,17 @@ mod inventory_tests {
             .unwrap();
         assert_eq!(decoded.receipt, effect.receipt);
         tx.rollback().unwrap();
-        effect.receipt = (0..16)
-            .map(|i| (format!("k{i}"), "x".repeat(128)))
-            .collect();
-        EffectImage::generated(&effect).unwrap();
-        effect.receipt.insert("extra".into(), "x".into());
-        assert!(EffectImage::generated(&effect).is_err());
-        effect.receipt = BTreeMap::from([("key".into(), "x".repeat(129))]);
-        assert!(EffectImage::generated(&effect).is_err());
+        for kind in ["native_phase_schema", "native_phase_future"] {
+            effect.kind = kind.into();
+            effect.receipt = (0..16)
+                .map(|i| (format!("k{i}"), "x".repeat(128)))
+                .collect();
+            EffectImage::generated(&effect).unwrap();
+            effect.receipt.insert("extra".into(), "x".into());
+            assert!(EffectImage::generated(&effect).is_err());
+            effect.receipt = BTreeMap::from([("key".into(), "x".repeat(129))]);
+            assert!(EffectImage::generated(&effect).is_err());
+        }
     }
 
     /// Shared inventories preserve existing dispatch and Docker receipt values.
