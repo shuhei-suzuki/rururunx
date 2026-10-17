@@ -2313,7 +2313,7 @@ impl Core {
                         self.authority()?;let pending=approvals.insert(&validated)?;self.update.send_modify(|s|s.pending.push(pending));continue;
                     }
                     if frame["method"]=="account/rateLimits/updated" {
-                        for observation in quota::codex_windows(p,now_ms())?{self.observe_quota(&observation,false)?;}continue;
+                        for observation in quota::codex_notification_windows(p,now_ms())?{self.observe_quota(&observation,false)?;}continue;
                     }
                     if validated.foreign(&thread_id,&turn_id) {continue;}
                     if matches!(frame["method"].as_str(),Some("item/autoApprovalReview/started"|"item/autoApprovalReview/completed"|"autoApprovalReview/strictReviewRequired"|"item/mcpToolCall/progress")) {

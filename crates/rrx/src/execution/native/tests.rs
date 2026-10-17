@@ -605,6 +605,49 @@ async fn structured_quota_terminals_wait_without_converting_ordinary_failures() 
     }
 }
 
+/// A live Codex rate notification is observed only through its declared snapshot.
+#[tokio::test]
+async fn u4r1b_codex_rate_notification_uses_only_the_declared_snapshot() {
+    for payload in [
+        "rate-notification-declared",
+        "rate-notification-map",
+        "rate-notification-flag",
+    ] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, "codex", "Implement", None)
+            .await
+            .unwrap();
+        let NativeStart::Launched(handle) = sessions
+            .start_inner(
+                input(&unit, payload),
+                None,
+                None,
+                Some(program(dir.path(), "codex")),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("fixture queued")
+        };
+        let result = terminal(&sessions, &handle).await;
+        assert_eq!(result.work, Some(WorkOutcome::Failure), "{payload}");
+        assert_eq!(result.disposition, Disposition::Completed, "{payload}");
+        let notified = owner
+            .store
+            .lock()
+            .unwrap()
+            .quota_observations("codex", "unknown")
+            .unwrap()
+            .into_iter()
+            .filter(|o| o.bucket == "notified/primary")
+            .map(|o| o.status)
+            .collect::<Vec<_>>();
+        assert_eq!(notified, vec![QuotaStatus::Exhausted], "{payload}");
+    }
+}
+
 #[tokio::test]
 async fn version_preparation_abort_and_retirement_do_not_leave_launch_authority() {
     for abort in [true, false] {

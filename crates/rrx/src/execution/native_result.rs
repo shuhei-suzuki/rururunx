@@ -99,6 +99,57 @@ mod u4_tests {
             "integrity digest became status/answer input"
         );
     }
+    /// Answer identity reads only strict agentMessage fields; undeclared keys change only the terminal digest.
+    #[test]
+    fn u4r1b_undeclared_agent_message_fields_do_not_change_answer_identity() {
+        let run = |completed: &[&Value], terminal: &Value| {
+            let c = CodexWireContract::default();
+            let mut collector = Collector::default();
+            for item in completed {
+                collector.codex_item(Item::decode(item, &c).unwrap(), true);
+            }
+            let turn = json!({"id":"turn","status":"completed","items":[terminal]});
+            collector.codex_terminal(&Turn::decode(&turn, &c).unwrap());
+            collector.confirm_complete();
+            collector.content()
+        };
+        let item = json!({"id":"answer","type":"agentMessage","text":"answer","phase":"final_answer",
+            "memoryCitation":{"entries":[{"path":"p","lineStart":1,"lineEnd":2,"note":"n"}],"threadIds":["t"]}});
+        let baseline = run(&[&item], &item);
+        assert_eq!(baseline.acquisition, AcquisitionStatus::Complete);
+        let mut tolerated = item.clone();
+        tolerated["undeclared"] = json!({"text":"foreign","phase":"commentary"});
+        tolerated["memoryCitation"]["undeclared"] = json!(1);
+        tolerated["memoryCitation"]["entries"][0]["undeclared"] = json!(true);
+        for (completed, terminal) in [
+            (vec![&item], &tolerated),
+            (vec![&tolerated], &item),
+            (vec![&item, &tolerated], &item),
+        ] {
+            let content = run(&completed, terminal);
+            assert_eq!(semantic(&content), semantic(&baseline));
+            assert_eq!(
+                content.terminal_sha256 != baseline.terminal_sha256,
+                std::ptr::eq(terminal, &tolerated)
+            );
+        }
+        for (path, value) in [
+            ("/text", json!("CHANGED answer")),
+            ("/phase", json!("commentary")),
+            ("/memoryCitation/entries/0/note", json!("changed")),
+        ] {
+            let mut strict = item.clone();
+            *strict.pointer_mut(path).unwrap() = value;
+            let content = run(&[&item], &strict);
+            assert_eq!(content.acquisition, AcquisitionStatus::Ambiguous, "{path}");
+            assert!(
+                content
+                    .diagnostics
+                    .contains(&"answer_terminal_unobserved_or_changed".to_owned()),
+                "{path}"
+            );
+        }
+    }
     /// CX-4 partial_answer remains a non-final observation and cannot create a complete answer.
     #[test]
     fn u4_partial_answer_never_becomes_final() {
@@ -217,6 +268,45 @@ pub struct NativeResultReceipt {
 pub(crate) fn digest(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     format!("{:x}", Sha256::digest(bytes))
+}
+/// Answer identity covers only the strict agentMessage fields (design §7);
+/// undeclared keys stay in the item and the whole-Turn digest, never here.
+fn agent_message_signature(item: &serde_json::Value) -> String {
+    fn pick(v: &serde_json::Value, keys: &[&str]) -> serde_json::Value {
+        let Some(object) = v.as_object() else {
+            return v.clone();
+        };
+        serde_json::Value::Object(
+            keys.iter()
+                .filter_map(|k| object.get(*k).map(|v| ((*k).to_owned(), v.clone())))
+                .collect(),
+        )
+    }
+    let mut strict = pick(
+        item,
+        &[
+            "id",
+            "type",
+            "text",
+            "delivery",
+            "memoryCitation",
+            "phase",
+            "questions",
+        ],
+    );
+    if let Some(citation) = strict.get_mut("memoryCitation") {
+        let mut projected = pick(citation, &["entries", "threadIds"]);
+        if let Some(entries) = projected
+            .get_mut("entries")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            for entry in entries {
+                *entry = pick(entry, &["path", "lineStart", "lineEnd", "note"]);
+            }
+        }
+        *citation = projected;
+    }
+    digest(&serde_json::to_vec(&strict).expect("Value encoding"))
 }
 fn sha(value: &str) -> bool {
     value.len() == 64
@@ -537,7 +627,7 @@ impl Collector {
                 .or_insert((kind.into(), String::new()));
             return;
         }
-        let signature = digest(&serde_json::to_vec(item).expect("Value encoding"));
+        let signature = agent_message_signature(item);
         if let Some((_, old)) = self.items.get(id)
             && !old.is_empty()
         {
@@ -624,8 +714,7 @@ impl Collector {
                     continue;
                 };
                 if self.items.get(id).is_none_or(|(_, signature)| {
-                    signature.is_empty()
-                        || signature != &digest(&serde_json::to_vec(item).expect("Value encoding"))
+                    signature.is_empty() || signature != &agent_message_signature(item)
                 }) {
                     self.poison(
                         AcquisitionStatus::Ambiguous,

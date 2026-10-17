@@ -4,10 +4,34 @@ use crate::runtime::startup::{FreshPreparationUnavailable, ProbeState, StartupSt
 const PEER: &str = r#"
 import json, os, sys
 def send(v): print(json.dumps(v),flush=True)
+def shim(role):
+    # A real Runtime IPC tool request from this S child. S has no Unit, so only
+    # the server's refusal frame can produce 'refused'; any failure is recorded.
+    import socket, struct, subprocess, uuid
+    try:
+        with open(os.path.join(EVIDENCE,'socket')) as f: path=f.read()
+        peer=socket.socket(socket.AF_UNIX);peer.connect(path)
+        data=json.dumps({'unit':str(uuid.uuid4()),'cookie':'s-child','tool':'git','args':['init',os.path.join(EVIDENCE,'granted-effect')],'cwd':os.getcwd(),'git_parent':None}).encode()
+        peer.sendall(struct.pack('!I',len(data))+data)
+        def exact(n):
+            out=b''
+            while len(out)<n:
+                chunk=peer.recv(n-len(out))
+                if not chunk: raise RuntimeError('EOF')
+                out+=chunk
+            return out
+        frame=json.loads(exact(struct.unpack('!I',exact(4))[0]))
+        if frame['type']=='granted':
+            subprocess.run([frame['value']['program']]+frame['value']['args'],cwd=os.getcwd())
+        outcome=frame['type']
+    except Exception as e:
+        outcome='error:'+type(e).__name__
+    with open(os.path.join(EVIDENCE,ALIAS+'-'+role),'w') as f: f.write(outcome)
 args=sys.argv[1:]
 if args==['--version']:
     print('arbitrary updated CLI 88.1')
     sys.exit(0)
+if SCENARIO=='shim': shim('schema' if args[:1]==['app-server'] and 'generate-json-schema' in args else 'handshake')
 if args[:3]==['app-server','generate-json-schema','--experimental']:
     assert PROVIDER=='codex' and args[3]=='--out'
     with open(PAIR) as f: files=json.load(f)['files']
@@ -18,7 +42,9 @@ if args[:3]==['app-server','generate-json-schema','--experimental']:
     sys.exit(0)
 if PROVIDER=='codex': assert args==['app-server','--listen','stdio://']
 else: assert args[-2:]==['--permission-mode','plan']
-if SCENARIO=='schema-only' and PROVIDER=='codex': sys.exit(0)
+if SCENARIO=='schema-only' and PROVIDER=='codex':
+    sys.stdin.readline()
+    sys.exit(0)
 expected=['initialize','initialized','account/read','environment/status','account/rateLimits/read']
 index=0
 for line in sys.stdin:
@@ -51,6 +77,8 @@ for line in sys.stdin:
     send({'id':999 if SCENARIO=='id' else v['id'],'result':result})
     if SCENARIO=='tail' and index==5: print('{',flush=True)
 "#;
+/// Directory beside the peers where each S child records its IPC outcome.
+const EVIDENCE: &str = "u4-shim-evidence";
 fn fixture_s(scenario: &str) -> ControlFixture {
     fixture_with("codex", true, |config| {
         for (alias, agent) in config.agents.iter_mut() {
@@ -58,9 +86,11 @@ fn fixture_s(scenario: &str) -> ControlFixture {
             let path = old.with_file_name(format!("u4-{alias}"));
             let pair = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("tests/fixtures/codex-contract/basis-pair.json");
+            let evidence = old.with_file_name(EVIDENCE);
             let script = format!(
-                "#!/usr/bin/python3\nPROVIDER={:?}\nSCENARIO={scenario:?}\nPAIR={:?}\nFILES={}\n{PEER}",
+                "#!/usr/bin/python3\nPROVIDER={:?}\nSCENARIO={scenario:?}\nALIAS={alias:?}\nEVIDENCE={:?}\nPAIR={:?}\nFILES={}\n{PEER}",
                 agent.provider.as_deref().unwrap(),
+                evidence.to_str().unwrap(),
                 pair.to_str().unwrap(),
                 serde_json::to_string(crate::execution::native::schema::FILES).unwrap()
             );
@@ -128,6 +158,45 @@ async fn u4_all_alias_s_pass_keeps_admission_zero() {
         f.runtime.shutdown().await.unwrap();
         finish(f).await;
     }
+}
+/// I-S: tool requests from Schema and Handshake children reach the real server and are refused without managed context.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn u4r1b_s_children_shim_requests_reach_server_and_are_refused() {
+    let f = fixture_s("shim");
+    let evidence = f._dir.path().join(EVIDENCE);
+    std::fs::create_dir(&evidence).unwrap();
+    std::fs::write(
+        evidence.join("socket"),
+        f.owner.ipc_path().to_str().unwrap(),
+    )
+    .unwrap();
+    let (_, tasks) = accept(&f, 1).await;
+    f.runtime.start().await.unwrap();
+    let status = settled_s(&f).await;
+    assert_eq!(status.state, StartupState::Passed, "{status:?}");
+    for record in [
+        "worker-schema",
+        "worker-handshake",
+        "rev-a-handshake",
+        "rev-b-handshake",
+    ] {
+        assert_eq!(
+            std::fs::read_to_string(evidence.join(record))
+                .ok()
+                .as_deref(),
+            Some("refused"),
+            "{record}: request did not reach a refusing server"
+        );
+    }
+    assert!(
+        !evidence.join("granted-effect").exists(),
+        "helper-external effect from an S child"
+    );
+    assert!(f.runtime.installed_driver_composition(&tasks[0]).is_err());
+    let _ = f.runtime.admit_ready_tasks();
+    assert_no_execution_effects(&f);
+    f.runtime.shutdown().await.unwrap();
+    finish(f).await;
 }
 /// Schema conformance cannot replace correlated successful account/environment/rate RPCs or tolerate a malformed tail.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

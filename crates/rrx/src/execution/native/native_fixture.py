@@ -127,6 +127,13 @@ for line in sys.stdin:
                 if payload == "capacity-retry-success":
                     send({"method":"error", "params":{"threadId":os.environ["RRX_UNIT_ID"], "turnId":"fixture-turn", "willRetry":True, "error":{"message":"fixture","codexErrorInfo":info}}})
                 send({"method":"turn/completed", "params":{"threadId":os.environ["RRX_UNIT_ID"], "turn":{"id":"fixture-turn", "items":[],"status":"completed" if payload == "capacity-retry-success" else "failed", "error":{"message":"fixture","codexErrorInfo":info}}}})
+            elif payload.startswith("rate-notification-"):
+                # The declared snapshot is exhausted; response-only keys are undeclared here.
+                params = {"rateLimits": {"limitId": "notified", "primary": {"usedPercent": 100, "resetsAt": int(time.time()) + 3600}}}
+                if payload == "rate-notification-map": params["rateLimitsByLimitId"] = {}
+                if payload == "rate-notification-flag": params["ordinaryUsageAllowed"] = 1
+                send({"method": "account/rateLimits/updated", "params": params})
+                send({"method": "turn/completed", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turn": {"id": "fixture-turn", "items":[],"status": "failed", "error": {"message":"fixture","codexErrorInfo":"other"}}}})
             elif payload in ("quota-terminal", "quota-retry-terminal", "quota-retry-held", "ordinary-failure"):
                 if payload in ("quota-retry-terminal", "quota-retry-held"):
                     send({"method": "error", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turnId": "fixture-turn", "willRetry": True, "error": {"message":"fixture","codexErrorInfo": "usageLimitExceeded"}}})

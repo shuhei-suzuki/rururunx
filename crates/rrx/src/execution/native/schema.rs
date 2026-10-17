@@ -1591,6 +1591,83 @@ mod tests {
             }
         }
     }
+    /// CX-7 each tolerated-addition ceiling admits its limit and refuses one more without a contract.
+    #[test]
+    fn u4r1b_addition_limits_refuse_one_over_each_ceiling() {
+        for (items, notifications) in [(32, 0), (33, 0), (0, 64), (0, 65)] {
+            let mut f = fixture();
+            let notification = f.get_mut("ServerNotification").unwrap();
+            for index in 0..items {
+                notification["definitions"]["ThreadItem"]["oneOf"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!({"type":"object","properties":{"id":{"type":"string"},"type":{"type":"string","enum":[format!("extraItem{index}")]}},"required":["id","type"]}));
+            }
+            for index in 0..notifications {
+                notification["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"method":{"type":"string","enum":[format!("extra/notification{index}")]},"params":{"type":"object"}},"required":["method","params"]}));
+            }
+            let gate = compare(&f);
+            if items <= 32 && notifications <= 64 {
+                assert!(
+                    gate.receipt.pass,
+                    "{items}/{notifications}: {:?}",
+                    gate.receipt
+                );
+                assert_eq!(
+                    (
+                        gate.receipt.accepted_item_types,
+                        gate.receipt.accepted_notifications
+                    ),
+                    (items, notifications)
+                );
+                assert!(gate.contract.is_some());
+            } else {
+                assert!(!gate.receipt.pass, "{items}/{notifications}");
+                assert_eq!(
+                    gate.receipt.reason,
+                    Some(Reason::AdditionLimit),
+                    "{items}/{notifications}: {:?}",
+                    gate.receipt
+                );
+                assert!(gate.contract.is_none(), "{items}/{notifications}");
+            }
+        }
+    }
+    /// CX-7 added item kinds and notification methods admit their name-length limit and refuse one more byte.
+    #[test]
+    fn u4r1b_addition_names_refuse_one_over_each_length() {
+        for (kind, method) in [
+            ("k".repeat(64), None),
+            ("k".repeat(65), None),
+            (String::new(), Some(format!("m/{}", "n".repeat(126)))),
+            (String::new(), Some(format!("m/{}", "n".repeat(127)))),
+        ] {
+            let mut f = fixture();
+            let notification = f.get_mut("ServerNotification").unwrap();
+            let length = if let Some(method) = &method {
+                notification["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"method":{"type":"string","enum":[method]},"params":{"type":"object"}},"required":["method","params"]}));
+                (method.len(), 128)
+            } else {
+                notification["definitions"]["ThreadItem"]["oneOf"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!({"type":"object","properties":{"id":{"type":"string"},"type":{"type":"string","enum":[kind]}},"required":["id","type"]}));
+                (kind.len(), 64)
+            };
+            let gate = compare(&f);
+            if length.0 <= length.1 {
+                assert!(gate.receipt.pass, "{length:?}: {:?}", gate.receipt);
+            } else {
+                assert_eq!(
+                    gate.receipt.reason,
+                    Some(Reason::AdditionName),
+                    "{length:?}: {:?}",
+                    gate.receipt
+                );
+                assert!(gate.contract.is_none(), "{length:?}");
+            }
+        }
+    }
     /// CX-2 reference depth, distinct memo targets, cycle detection and work are separately bounded.
     #[test]
     fn u4_ref_bounds_and_value_positions() {

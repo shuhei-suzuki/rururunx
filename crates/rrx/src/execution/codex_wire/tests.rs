@@ -96,6 +96,63 @@ fn u4_rate_snapshot_required_at_both_inbound_boundaries() {
     c.frame(json!({"method":"account/rateLimits/updated","params":empty}))
         .unwrap();
 }
+/// The Handshake admits its notification bound and refuses one more notification.
+#[test]
+fn u4r1b_handshake_notification_bound_refuses_one_more() {
+    let bytes = serde_json::to_vec(&json!({"method":"skills/changed","params":{}})).unwrap();
+    for count in [1024, 1025] {
+        let mut h = Handshake::new(CodexWireContract::default());
+        h.initial().unwrap();
+        let accepted = (0..count).all(|_| h.observe(&bytes).is_ok());
+        assert_eq!(accepted, count == 1024, "{count}");
+    }
+}
+/// A Handshake rate notification is judged only by its declared `rateLimits` snapshot.
+#[test]
+fn u4r1b_handshake_rate_notification_ignores_undeclared_fields() {
+    let run = |params: &Value| -> Result<Option<bool>> {
+        let mut h = Handshake::new(CodexWireContract::default());
+        h.initial()?;
+        let responses = [
+            init(),
+            json!({"requiresOpenaiAuth":true,"account":{"type":"chatgpt","email":null,"planType":"pro"}}),
+            json!({"status":"ready"}),
+            json!({"rateLimits":{}}),
+        ];
+        for (i, r) in responses.into_iter().enumerate() {
+            if i == 3 {
+                let n = json!({"method":"account/rateLimits/updated","params":params.clone()});
+                ensure!(
+                    h.observe(&serde_json::to_vec(&n)?)?.is_empty(),
+                    "notification produced a request"
+                );
+            }
+            h.observe(&serde_json::to_vec(&json!({"id":i+1,"result":r}))?)?;
+        }
+        ensure!(h.complete(), "handshake incomplete");
+        Ok(h.rate)
+    };
+    let declared = json!({"rateLimits":{"primary":{"usedPercent":100}}});
+    assert_eq!(run(&declared).unwrap(), Some(false));
+    for (key, undeclared) in [
+        ("ordinaryUsageAllowed", json!(1)),
+        ("ordinaryUsageAllowed", json!("future")),
+        ("rateLimitsByLimitId", json!({"x":null})),
+        ("rateLimitsByLimitId", json!([])),
+        ("rateLimitsByLimitId", json!({})),
+    ] {
+        let mut params = declared.clone();
+        params[key] = undeclared;
+        assert_eq!(run(&params).unwrap(), Some(false), "{params}");
+    }
+    for malformed in [
+        json!({"rateLimits":{"primary":true}}),
+        json!({"rateLimits":{"primary":{"usedPercent":"100"}}}),
+        json!({"rateLimits":null,"rateLimitsByLimitId":{}}),
+    ] {
+        assert!(run(&malformed).is_err(), "{malformed}");
+    }
+}
 /// CX-4 key-tags, nested domains, refinements and four RPC forms are checked before consumers.
 #[test]
 fn u4_nested_types_and_rpc_forms() {

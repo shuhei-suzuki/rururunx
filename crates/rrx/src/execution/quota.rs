@@ -122,6 +122,13 @@ struct RateWindow {
     window_duration_mins: Option<i64>,
 }
 impl CodexRate {
+    /// `account/rateLimits/updated` declares only `rateLimits`; response-only
+    /// keys on the notification are retained by the frame and never read here.
+    /// The declared snapshot alone reaches the shared snapshot rules.
+    pub(crate) fn decode_notification(value: &Value) -> Result<Self> {
+        super::codex_wire::rate_notification(value)?;
+        Self::decode(&serde_json::json!({"rateLimits": value["rateLimits"]}))
+    }
     pub(crate) fn decode(value: &Value) -> Result<Self> {
         super::codex_wire::CodexWireContract::default()
             .response("account/rateLimits/read", value)?;
@@ -252,6 +259,11 @@ pub fn codex_windows(value: &Value, at: i64) -> Result<Vec<QuotaObservation>> {
     Ok(CodexRate::decode(value)
         .context(NativeFailure::ProtocolFailure)?
         .observations(at))
+}
+pub fn codex_notification_windows(value: &Value, at: i64) -> Result<Vec<QuotaObservation>> {
+    CodexRate::decode_notification(value)
+        .map(|rate| rate.observations(at))
+        .context(NativeFailure::ProtocolFailure)
 }
 pub fn codex_subscription_error(error: &Value) -> bool {
     super::codex_wire::error_kind(&error["codexErrorInfo"])
@@ -481,5 +493,49 @@ mod r1_tests {
             .is_err(),
             "R-1: unselected malformed fallback hidden"
         );
+    }
+
+    /// A rate notification is observed only through its declared `rateLimits` snapshot.
+    #[test]
+    fn u4r1b_rate_notification_reads_only_the_declared_snapshot() {
+        let declared =
+            json!({"rateLimits":{"limitId":"codex","primary":{"usedPercent":100,"resetsAt":123}}});
+        let baseline =
+            serde_json::to_value(codex_notification_windows(&declared, 1).unwrap()).unwrap();
+        assert_eq!(baseline.as_array().unwrap().len(), 1);
+        assert_eq!(baseline[0]["status"], json!(QuotaStatus::Exhausted));
+        for (key, undeclared) in [
+            ("rateLimitsByLimitId", json!({})),
+            (
+                "rateLimitsByLimitId",
+                json!({"other":{"primary":{"usedPercent":20}}}),
+            ),
+            ("rateLimitsByLimitId", json!({"x":null})),
+            ("ordinaryUsageAllowed", json!(1)),
+            ("ordinaryUsageAllowed", json!(true)),
+        ] {
+            let mut value = declared.clone();
+            value[key] = undeclared;
+            assert_eq!(
+                serde_json::to_value(codex_notification_windows(&value, 1).unwrap()).unwrap(),
+                baseline,
+                "{value}"
+            );
+        }
+        for malformed in [
+            json!({}),
+            json!({"rateLimits":null}),
+            json!({"rateLimits":{"primary":true}}),
+            json!({"rateLimits":{"primary":{"usedPercent":"100"}}}),
+            json!({"rateLimits":[null,[20,null,null],null,null,null]}),
+        ] {
+            assert_eq!(
+                codex_notification_windows(&malformed, 1)
+                    .unwrap_err()
+                    .downcast_ref::<NativeFailure>(),
+                Some(&NativeFailure::ProtocolFailure),
+                "{malformed}"
+            );
+        }
     }
 }

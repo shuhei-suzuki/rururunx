@@ -502,6 +502,16 @@ impl CodexWireContract {
 fn check_optional(v: Option<&Value>, ty: &str, c: &CodexWireContract) -> Result<()> {
     v.map_or(Ok(()), |v| check(ty, v, c))
 }
+/// Input contract of `AccountRateLimitsUpdatedNotification`, distinct from the
+/// `account/rateLimits/read` response contract.
+pub(crate) fn rate_notification(v: &Value) -> Result<()> {
+    record(
+        v,
+        "rateLimits:RateSnapshot",
+        false,
+        &CodexWireContract::default(),
+    )
+}
 
 /// Validated frame. Consumers can request only typed strict payloads.
 pub(crate) struct Frame {
@@ -539,7 +549,7 @@ impl Frame {
             ensure!(p["success"] == true, "contradictory login notification");
         }
         if v["method"] == "account/rateLimits/updated" {
-            super::quota::CodexRate::decode(p)?;
+            super::quota::CodexRate::decode_notification(p)?;
         }
         Ok(())
     }
