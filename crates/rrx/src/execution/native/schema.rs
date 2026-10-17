@@ -342,16 +342,23 @@ fn project(s: &Value, name: &str) -> Value {
             }
         }
         "ConfigReadResponse" => {
-            if p["properties"].get("origins").is_some() {
-                p["properties"]["origins"]["additionalProperties"] = json!(true);
-            }
-            if p["properties"].get("layers").is_some() {
-                p["properties"]["layers"]["items"] = json!(true);
+            for (field, keyword) in [("origins", "additionalProperties"), ("layers", "items")] {
+                if let Some(o) = p
+                    .get_mut("properties")
+                    .and_then(|v| v.get_mut(field))
+                    .and_then(Value::as_object_mut)
+                {
+                    o.insert(keyword.into(), json!(true));
+                }
             }
         }
         "McpServerStatus" => {
-            if p["properties"].get("tools").is_some() {
-                p["properties"]["tools"]["additionalProperties"] = json!(true);
+            if let Some(o) = p
+                .get_mut("properties")
+                .and_then(|v| v.get_mut("tools"))
+                .and_then(Value::as_object_mut)
+            {
+                o.insert("additionalProperties".into(), json!(true));
             }
         }
         _ => {}
@@ -367,23 +374,13 @@ struct Compare<'a> {
     work: usize,
     additions: &'a mut CodexWireContract,
 }
-fn ref_siblings(target: Value, reference: &Value) -> Value {
-    let mut siblings = reference.as_object().unwrap().clone();
+fn ref_siblings(reference: &Value, path: &str) -> Result<Value> {
+    let mut siblings = reference
+        .as_object()
+        .ok_or_else(|| mismatch(Mismatch::Type, path))?
+        .clone();
     siblings.retain(|k, _| k != "$ref" && !annotation(k));
-    if siblings.is_empty() {
-        return target;
-    }
-    if let Some(mut merged) = target.as_object().cloned()
-        && siblings
-            .iter()
-            .all(|(k, v)| merged.get(k).is_none_or(|t| t == v))
-    {
-        merged.extend(siblings);
-        Value::Object(merged)
-    } else {
-        // Both constraints apply when a keyword occurs on the target and the reference.
-        json!({"allOf":[target, Value::Object(siblings)]})
-    }
+    Ok(Value::Object(siblings))
 }
 impl Compare<'_> {
     fn node(&mut self, a: &Value, b: &Value, name: &str, path: &str) -> Result<()> {
@@ -406,36 +403,37 @@ impl Compare<'_> {
         let ar = self.basis.target(a)?;
         let br = self.live.target(b)?;
         if ar.is_some() || br.is_some() {
-            // `$ref` is a schema keyword, not permission to discard sibling constraints/defaults.
+            // Never merge siblings into a target: draft-07 ignores them.
             let (an, av) = ar.unwrap_or((name, a));
             let (bn, bv) = br.unwrap_or((name, b));
+            let siblings_a = ar.map(|_| ref_siblings(a, path)).transpose()?;
+            let siblings_b = br.map(|_| ref_siblings(b, path)).transpose()?;
             if ar.is_some() {
                 self.strict.insert(an.into());
             }
-            if ar.is_some() && br.is_some() {
+            if let (Some(sa), Some(sb)) = (&siblings_a, &siblings_b) {
                 self.names.insert(bn.into(), an.into());
-                if !self.visited.insert((an.into(), bn.into()))
-                    && [a, b].iter().all(|s| {
-                        s.as_object()
-                            .unwrap()
-                            .keys()
-                            .all(|k| k == "$ref" || annotation(k))
-                    })
-                {
+                let bare = sa == &json!({}) && sb == &json!({});
+                if bare && !self.visited.insert((an.into(), bn.into())) {
                     return Ok(());
                 }
+                self.node_at(sa, sb, "", path, depth.child())?;
+            } else {
+                ensure!(
+                    siblings_a
+                        .iter()
+                        .chain(&siblings_b)
+                        .all(|s| s == &json!({})),
+                    Refusal(
+                        Reason::StrictMismatch,
+                        Some(Mismatch::Constraint),
+                        path.into()
+                    )
+                );
             }
             return self.node_at(
-                &if ar.is_some() {
-                    ref_siblings(project(av, an), a)
-                } else {
-                    project(av, an)
-                },
-                &if br.is_some() {
-                    ref_siblings(project(bv, an), b)
-                } else {
-                    project(bv, an)
-                },
+                &project(av, an),
+                &project(bv, an),
                 an,
                 &format!("{path}/{an}"),
                 depth.reference(),
@@ -449,6 +447,10 @@ impl Compare<'_> {
             );
         }
         if name == "ThreadItem" && a.get("oneOf").is_some() {
+            ensure!(
+                b.is_object(),
+                Refusal(Reason::StrictMismatch, Some(Mismatch::Type), path.into())
+            );
             let remainder = |v: &Value| {
                 let mut o = v.as_object().unwrap().clone();
                 o.remove("oneOf");
@@ -1344,9 +1346,9 @@ mod tests {
         definition(&mut files, "ServerNotification", "ThreadItem")["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"id":{"type":"string"},"type":{"type":"string","enum":["newKind"]}},"required":["id","type"]}));
         assert!(compare(&files).receipt.pass);
     }
-    /// Ref rewrites preserve sibling constraints and defaults on either side.
+    /// Ref siblings stay separate from targets and cannot bypass comparison through memoization.
     #[test]
-    fn u4r1a_ref_siblings_survive_rewrites() {
+    fn u4r2_ref_siblings_are_compared_separately() {
         for key in ["default", "const"] {
             for (ar, br) in [(false, true), (true, false), (true, true)] {
                 for different in [false, true] {
@@ -1370,16 +1372,144 @@ mod tests {
                         work: 0,
                         additions: &mut contract,
                     };
-                    let result = cmp.node(&a.root, &b.root, "", "test");
-                    if different {
+                    let result = cmp.node(&a.root, &b.root, "", "first");
+                    if different || ar != br {
                         assert_eq!(
                             result.unwrap_err().downcast_ref::<Refusal>().unwrap().0,
                             Reason::StrictMismatch
                         );
                     } else {
                         result.unwrap();
+                        let bare = json!({"$ref":"#/definitions/Leaf", "description":"annotation"});
+                        cmp.node(&bare, &bare, "", "second").unwrap();
+                        let changed = json!({"$ref":"#/definitions/Leaf", key:"changed"});
+                        assert_eq!(
+                            cmp.node(&a.root, &changed, "", "third")
+                                .unwrap_err()
+                                .downcast_ref::<Refusal>()
+                                .unwrap()
+                                .0,
+                            Reason::StrictMismatch
+                        );
                     }
                 }
+            }
+        }
+        for (ar, br) in [(false, true), (true, false), (true, true)] {
+            let document = |reference| Document {
+                root: if reference {
+                    json!({"$ref":"#/definitions/Leaf", "title":"annotation"})
+                } else {
+                    json!({"type":"string"})
+                },
+                defs: BTreeMap::from([("Leaf".into(), json!({"type":"string"}))]),
+            };
+            let a = document(ar);
+            let b = document(br);
+            let mut contract = CodexWireContract::default();
+            Compare {
+                basis: &a,
+                live: &b,
+                names: BTreeMap::new(),
+                visited: BTreeSet::new(),
+                strict: BTreeSet::new(),
+                work: 0,
+                additions: &mut contract,
+            }
+            .node(&a.root, &b.root, "", "annotations")
+            .unwrap();
+        }
+    }
+    /// Siblings at the first use cannot disguise an empty target at later strict uses.
+    #[test]
+    fn u4r2_ref_targets_cannot_be_poisoned_by_first_use_siblings() {
+        let mut reasons = vec![];
+        for name in ["Turn", "TurnError"] {
+            let mut files = fixture();
+            let body = project(definition(&mut files, "ServerNotification", name), name);
+            let alias = format!("{name}X");
+            definition(&mut files, "ServerNotification", &alias).clone_from(&json!({}));
+            let bare = json!({"$ref":format!("#/definitions/{alias}")});
+            let mut first = body;
+            first["$ref"] = bare["$ref"].clone();
+            if name == "Turn" {
+                definition(&mut files, "ServerNotification", "Thread")["properties"]["turns"]["items"] =
+                    first;
+                for notification in ["TurnStartedNotification", "TurnCompletedNotification"] {
+                    definition(&mut files, "ServerNotification", notification)["properties"]["turn"] =
+                        bare.clone();
+                }
+            } else {
+                definition(&mut files, "ServerNotification", "ErrorNotification")["properties"]["error"] =
+                    first;
+                definition(&mut files, "ServerNotification", "Turn")["properties"]["error"]["anyOf"]
+                    [0] = bare;
+            }
+            let gate = compare(&files);
+            assert!(!gate.receipt.pass);
+            assert!(gate.contract.is_none());
+            reasons.push((name, gate.receipt.reason));
+        }
+        for (name, reason) in reasons {
+            assert_eq!(reason, Some(Reason::StrictMismatch), "{name}");
+        }
+    }
+    /// Boolean ThreadItem schemas refuse with a typed mismatch at every strict entry point.
+    #[test]
+    fn u4r2_boolean_thread_items_are_typed_refusals() {
+        for location in ["item", "items", "definition"] {
+            for value in [json!(true), json!(false)] {
+                let mut files = fixture();
+                match location {
+                    "item" => {
+                        definition(&mut files, "ServerNotification", "ItemStartedNotification")["properties"]
+                            ["item"] = value
+                    }
+                    "items" => {
+                        definition(&mut files, "ServerNotification", "Turn")["properties"]["items"]
+                            ["items"] = value
+                    }
+                    _ => *definition(&mut files, "ServerNotification", "ThreadItem") = value,
+                }
+                let gate = compare(&files);
+                assert_eq!(
+                    gate.receipt.reason,
+                    Some(Reason::StrictMismatch),
+                    "{location}"
+                );
+                assert!(!gate.receipt.pass);
+                assert!(gate.contract.is_none());
+            }
+        }
+    }
+    /// Non-object projected fields and absent property maps refuse without panicking.
+    #[test]
+    fn u4r2_projection_nonobjects_are_typed_refusals() {
+        for (source, name, field) in [
+            ("ConfigReadResponse", "", "origins"),
+            ("ConfigReadResponse", "", "layers"),
+            ("ListMcpServerStatusResponse", "McpServerStatus", "tools"),
+        ] {
+            for missing_properties in [false, true] {
+                let mut files = fixture();
+                let schema = if name.is_empty() {
+                    files.get_mut(source).unwrap()
+                } else {
+                    definition(&mut files, source, name)
+                };
+                if missing_properties {
+                    schema.as_object_mut().unwrap().remove("properties");
+                } else {
+                    schema["properties"][field] = json!(true);
+                }
+                let gate = compare(&files);
+                assert_eq!(
+                    gate.receipt.reason,
+                    Some(Reason::StrictMismatch),
+                    "{source}/{field}/{missing_properties}"
+                );
+                assert!(!gate.receipt.pass);
+                assert!(gate.contract.is_none());
             }
         }
     }
