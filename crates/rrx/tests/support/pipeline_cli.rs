@@ -16,7 +16,7 @@ pub fn config(
 ) -> crate::config::PipelineConfig {
     let codex = FakeCli::new(root, true);
     let claude = FakeCli::new(root, false);
-    let work_root = owner.ipc_path().parent().unwrap().to_path_buf();
+    let work_root = std::fs::canonicalize(owner.ipc_path().parent().unwrap()).unwrap();
     std::fs::set_permissions(&work_root, std::fs::Permissions::from_mode(0o700)).unwrap();
     crate::config::PipelineConfig {
         // Reuse the existing owner/IPC fixture's short, private directory.
@@ -30,6 +30,8 @@ pub fn config(
 }
 impl FakeCli {
     pub fn new(root: &Path, codex: bool) -> Self {
+        // Host TMPDIR may contain a symlink (e.g. /var on macOS).
+        let root = std::fs::canonicalize(root).unwrap();
         let name = if codex { "codex" } else { "claude" };
         let directory = root.join(name);
         std::fs::create_dir_all(&directory).unwrap();

@@ -162,7 +162,7 @@ async fn b2_fix1_rowid_replace() {
         } else {
             super::round2::populated(table).await
         };
-        let native = fixture_with_owner(false, Some(f.owner.clone())).await;
+        let native = fixture_with_modes(false, true, Some(f.owner.clone())).await;
         let goal = format!("'{}'", native.goal);
         let project = format!("'{}'", native.project);
         let ref_name = format!("'refs/heads/rrx/goal/{}'", native.goal);

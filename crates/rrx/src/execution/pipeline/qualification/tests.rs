@@ -12,10 +12,12 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
-        let codex = FakeCli::new(dir.path(), true);
-        let claude = FakeCli::new(dir.path(), false);
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let codex = FakeCli::new(&root, true);
+        let claude = FakeCli::new(&root, false);
         let config = PipelineConfig {
-            work_root: dir.path().into(),
+            work_root: root,
             path_prefix: vec![],
             clis: PipelineClis {
                 codex: codex.cli.clone(),
@@ -391,7 +393,7 @@ async fn b3_q_requires_current_epoch() {
     let path = f._dir.path().join("state/state.db");
     let owner = RuntimeOwner::open_mode(&path, crate::config::ExecutionMode::CliPipeline).unwrap();
     let mut config = f.config.clone();
-    config.work_root = owner.ipc_path().parent().unwrap().to_path_buf();
+    config.work_root = std::fs::canonicalize(owner.ipc_path().parent().unwrap()).unwrap();
     std::fs::set_permissions(&config.work_root, std::fs::Permissions::from_mode(0o700)).unwrap();
     CliQualifier::qualify(&owner, &config).await.unwrap();
     CliQualifier::current(&owner, &config).unwrap();
@@ -606,7 +608,8 @@ async fn b3_q_path_parents() {
     )
     .unwrap();
     let mut config = crate::execution::pipeline::test_support::config(&owner, dir.path());
-    let parent = dir.path().join("prefix");
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let parent = root.join("prefix");
     let leaf = parent.join("bin");
     std::fs::create_dir_all(&leaf).unwrap();
     config.path_prefix = vec![leaf.clone()];
@@ -630,8 +633,8 @@ async fn b3_q_path_parents() {
 #[test]
 fn b3_q_path_alias() {
     let f = Fixture::new();
-    let target = f._dir.path().join("target");
-    let parent = f._dir.path().join("writable");
+    let target = f.config.work_root.join("target");
+    let parent = f.config.work_root.join("writable");
     std::fs::create_dir(&target).unwrap();
     std::fs::create_dir(&parent).unwrap();
     let mut config = f.config.clone();
