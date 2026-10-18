@@ -260,6 +260,22 @@ Goal view should show:
 
 ## 14. Persistence and recovery
 
+Accepted pipeline Goals have an immutable execution-profile row, written in the
+same transaction as their accepted definition. Goals without that row belong to
+native execution. Pipeline runs, versioned step attempts, ref journals, provider
+waits, qualifications, operator recovery records, and completion evidence persist
+in SQLite. Store writes validate the current Runtime instance and epoch inside
+an immediate transaction; advancing writes also require a Running Goal.
+
+Recovery checks a saved request acknowledgement before examining current row
+versions. It then writes the acknowledgement, operator record, journal decision,
+abandoned step, updated run, and optional new attempt atomically. A repeated
+request returns the stored response. Unknown steps require operator recovery;
+takeover alone changes ownership and versions, without asserting process death.
+The read-only mode inventory reports retained work and cookies for the caller to
+inspect. Startup reconciliation and command routing are not connected to these
+Store operations.
+
 Persist:
 
 - Goal entity

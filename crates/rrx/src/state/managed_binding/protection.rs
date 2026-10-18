@@ -21,6 +21,12 @@ impl Store {
         let goal = scope
             .goal_id
             .context("native classification requires Goal")?;
+        let pipeline: bool = self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM goal_execution_profiles WHERE goal_id=?1)",
+            [goal.to_string()],
+            |r| r.get(0),
+        )?;
+        ensure!(!pipeline, "ExecutionModeMismatch");
         let task = scope
             .task_id
             .context("native classification requires Task")?;

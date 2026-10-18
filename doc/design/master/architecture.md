@@ -432,7 +432,7 @@ numbers and PIDs are metadata, not global identity. Goal snapshots preserve expl
 criteria/DAG data; task workflow and process state are separate from phase.
 
 SQLite (bundled via rusqlite) stores indexed ownership columns with JSON snapshots.
-`PRAGMA user_version = 3` marks the current snapshot format and
+`PRAGMA user_version = 12` marks the current snapshot format and
 `application_id = 0x52525831` identifies rrx databases. Tagged v1/v2 databases upgrade
 atomically through ordered v2/v3 markers; Project blocked_reason defaults to None,
 v3 adds authoritative Task Workflow records, and SQL
@@ -448,6 +448,16 @@ edges, duplicate ordered pairs and hard cycles; advisory cycles are permitted.
 TaskDag::hard_order returns deterministic hard ordering only. Managed readiness
 and verified completion authority remain pending.
 Snapshot revision checks reject stale writers.
+
+Pipeline storage has eight separate tables: `goal_execution_profiles`,
+`pipeline_runs`, `pipeline_steps`, `pipeline_recoveries`, `pipeline_ref_journal`,
+`pipeline_qualifications`, `pipeline_goal_completions`, and `pipeline_limit_wait`.
+Its installer runs after the existing writer guards; historical mutable-table
+inventories remain separate. Fresh, unprotected, binding, and indexed databases
+upgrade in one immediate transaction with complete catalog validation before commit.
+Run, step, ref-journal, and provider-wait writes carry the current epoch and an
+independent row version. All eight tables reject replacement and deletion;
+provenance records also reject updates. Store operations perform no process or Git I/O.
 
 Snapshot mutations and their scoped audit events commit in the same immediate
 transaction. Audit sequences are monotonic and SQL triggers reject UPDATE/DELETE/REPLACE and

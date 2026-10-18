@@ -436,7 +436,7 @@ async fn canonical_directory(path: PathBuf) -> Result<PathBuf> {
 }
 
 /// Constructed solely from the actual accepted socket, never Deserialize/Clone/public constructor.
-pub(crate) struct HumanIngress {
+pub struct HumanIngress {
     uid: u32,
     instance: String,
     epoch: u64,
@@ -445,7 +445,7 @@ impl HumanIngress {
     pub(crate) fn identity(&self) -> (&str, u64, u32) {
         (&self.instance, self.epoch, self.uid)
     }
-    fn from_connection(runtime: &Runtime, stream: &UnixStream) -> Result<Self> {
+    pub(crate) fn from_connection(runtime: &Runtime, stream: &UnixStream) -> Result<Self> {
         let uid = stream.peer_cred()?.uid();
         ensure!(
             uid == rustix::process::getuid().as_raw(),

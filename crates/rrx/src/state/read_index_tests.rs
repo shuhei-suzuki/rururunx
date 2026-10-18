@@ -131,6 +131,9 @@ fn genuine_v10(path: &Path) {
         store.put_project(&mut project).unwrap();
     }
     let c = contract_writer(path, SCHEMA_VERSION);
+    for table in pipeline::PIPELINE_TABLES {
+        c.execute_batch(&format!("DROP TABLE {table}")).unwrap();
+    }
     c.execute_batch("DROP INDEX goals_by_project").unwrap();
     for (name, sql) in writer_guards(&c) {
         assert!(sql.contains(&format!("<>{SCHEMA_VERSION}")), "{name}");
@@ -150,7 +153,7 @@ fn fresh_schema_11_has_the_read_index_and_seek_plans() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("state.db");
     let store = Store::open(&path).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 11);
+    assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
     assert!(index_present(&store.connection));
     managed_binding::validate_current_layout(&store.connection).unwrap();
     assert_seeks(&store.connection);
@@ -178,6 +181,7 @@ fn genuine_v10_migrates_to_11_adding_only_the_index_and_guards() {
     // re-created writer guards and the version.
     let rows = |f: &[String]| -> Vec<String> {
         f.iter()
+            .filter(|l| !pipeline::PIPELINE_TABLES.iter().any(|t| l.contains(t)))
             .filter(|l| !l.starts_with("trigger|writer_") && !l.starts_with("user_version"))
             .filter(|l| !l.starts_with("index|goals_by_project"))
             .cloned()
@@ -196,7 +200,10 @@ fn genuine_v10_migrates_to_11_adding_only_the_index_and_guards() {
             .is_err()
     );
     let tables: usize = writer_guards(&old).len();
-    assert_eq!(tables, 3 * execution::MUTABLE_TABLES.len());
+    assert_eq!(
+        tables,
+        3 * (execution::MUTABLE_TABLES.len() + pipeline::PIPELINE_TABLES.len())
+    );
 }
 
 /// One labelled change to a genuine v10 copy.

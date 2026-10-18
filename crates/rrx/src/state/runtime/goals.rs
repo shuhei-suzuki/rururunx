@@ -32,6 +32,16 @@ impl Store {
         validated: &ValidatedGoalPlan,
         policy_sha256: &str,
     ) -> Result<ControlResponse> {
+        self.accept_runtime_goal_with_pipeline(ingress, request, validated, policy_sha256, None)
+    }
+    pub(in crate::state) fn accept_runtime_goal_with_pipeline(
+        &mut self,
+        ingress: &HumanIngress,
+        request: &ControlRequest,
+        validated: &ValidatedGoalPlan,
+        policy_sha256: &str,
+        pipeline: Option<&crate::state::pipeline::PipelineProfile>,
+    ) -> Result<ControlResponse> {
         let ControlAction::CreateGoal {
             project,
             expected_project,
@@ -49,7 +59,11 @@ impl Store {
             policy_sha256.len() == 64 && policy_sha256.bytes().all(|b| b.is_ascii_hexdigit()),
             "policy digest invalid"
         );
-        let encoded = serde_json::to_vec(request)?;
+        let encoded = if let Some(profile) = pipeline {
+            serde_json::to_vec(&(request, profile))?
+        } else {
+            serde_json::to_vec(request)?
+        };
         ensure!(
             encoded.len() <= 1024 * 1024,
             "control request exceeds bound"
@@ -188,6 +202,19 @@ impl Store {
             [sequence],
         )?;
         tx.execute("INSERT INTO goal_authority(goal_id,project_id,definition_sha256,accepted_epoch,ingress_uid,policy_sha256,version) VALUES(?1,?2,?3,?4,?5,?6,1)",params![goal.id.to_string(),project.to_string(),validated.definition_sha256(),epoch,uid,policy_sha256])?;
+        if let Some(profile) = pipeline {
+            ensure!(
+                profile.policy_sha256 == policy_sha256,
+                "pipeline accepted policy mismatch"
+            );
+            ensure!(
+                d.criteria
+                    .iter()
+                    .all(|c| c.evaluator == CriterionEvaluator::RequiredTasksVerified),
+                "pipeline requires verified Task criteria"
+            );
+            tx.execute("INSERT INTO goal_execution_profiles(goal_id,project_id,profile,policy_sha256,tests_profile_digest,accepted_epoch,body) VALUES(?1,?2,'cli_pipeline',?3,?4,?5,?6)",params![goal.id.to_string(),project.to_string(),profile.policy_sha256,profile.tests_profile_digest,epoch,serde_json::to_string(&profile.body)?])?;
+        }
         let response = ControlResponse::GoalAccepted {
             goal: goal.id,
             version: goal.version,
@@ -207,7 +234,11 @@ impl Store {
     }
 }
 
-pub(super) fn current_goal(tx: &Transaction<'_>, project: ProjectId, id: GoalId) -> Result<Goal> {
+pub(in crate::state) fn current_goal(
+    tx: &Transaction<'_>,
+    project: ProjectId,
+    id: GoalId,
+) -> Result<Goal> {
     let size: usize = tx.query_row(
         "SELECT length(CAST(body AS BLOB)) FROM goals WHERE id=?1 AND project_id=?2",
         params![id.to_string(), project.to_string()],
@@ -421,6 +452,12 @@ impl Store {
                 GoalState::Failed
             }
             GoalControl::Resume => {
+                let pipeline: bool = tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM goal_execution_profiles WHERE goal_id=?1)",
+                    [id.to_string()],
+                    |r| r.get(0),
+                )?;
+                ensure!(!pipeline, "ExecutionModeMismatch");
                 ensure!(
                     matches!(
                         goal.state,

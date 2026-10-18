@@ -366,6 +366,8 @@ impl Store {
             plan.scope.validate_current(&tx)?;
             let task=plan.scope.task();
             fresh(&tx,task)?;
+            let pipeline:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM goal_execution_profiles WHERE goal_id=?1)",[task.goal_id.to_string()],|r|r.get(0))?;
+            ensure!(!pipeline,"ExecutionModeMismatch");
             validate_prerequisites(&tx, &plan)?;
 
             let ranks:(u64,u64,u64)=tx.query_row("SELECT s.queue_sequence,p.rotation,g.rotation FROM scheduler_tasks s JOIN scheduler_projects p ON p.project_id=s.project_id JOIN scheduler_goals g ON g.goal_id=s.goal_id AND g.project_id=s.project_id WHERE s.task_id=?1 AND s.goal_id=?2 AND s.project_id=?3",params![task.id.to_string(),task.goal_id.to_string(),task.project_id.to_string()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)))?;

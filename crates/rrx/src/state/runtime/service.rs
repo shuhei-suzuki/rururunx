@@ -22,7 +22,7 @@ impl Store {
             current == (instance.to_owned(), epoch) && epoch > 0,
             "Runtime control owner retired"
         );
-        let mut query=tx.prepare("SELECT s.task_id,s.goal_id,s.project_id,s.queue_sequence,s.attention,EXISTS(SELECT 1 FROM task_drivers d WHERE d.task_id=s.task_id AND d.goal_id=s.goal_id AND d.project_id=s.project_id AND d.owner_epoch=?2 AND d.state='driving') FROM scheduler_tasks s WHERE s.queue_sequence>?1 ORDER BY s.queue_sequence LIMIT 257")?;
+        let mut query=tx.prepare("SELECT s.task_id,s.goal_id,s.project_id,s.queue_sequence,s.attention,EXISTS(SELECT 1 FROM task_drivers d WHERE d.task_id=s.task_id AND d.goal_id=s.goal_id AND d.project_id=s.project_id AND d.owner_epoch=?2 AND d.state='driving') FROM scheduler_tasks s WHERE s.queue_sequence>?1 AND NOT EXISTS(SELECT 1 FROM goal_execution_profiles ep WHERE ep.goal_id=s.goal_id) ORDER BY s.queue_sequence LIMIT 257")?;
         let mut rows = query
             .query_map(params![after, epoch], |r| {
                 Ok((
@@ -67,7 +67,7 @@ impl Store {
             for (task, goal, project, sequence, old) in changed {
                 // Attention is factual only. A concurrent change loses this CAS,
                 // leaving its actual durable value for the next read-only sweep.
-                tx.execute("UPDATE scheduler_tasks SET attention=?1 WHERE task_id=?2 AND goal_id=?3 AND project_id=?4 AND queue_sequence=?5 AND attention IS ?6 AND NOT EXISTS(SELECT 1 FROM task_drivers d WHERE d.task_id=scheduler_tasks.task_id AND d.goal_id=scheduler_tasks.goal_id AND d.project_id=scheduler_tasks.project_id AND d.owner_epoch=?7 AND d.state='driving')",params![held,task,goal,project,sequence,old,epoch])?;
+                tx.execute("UPDATE scheduler_tasks SET attention=?1 WHERE task_id=?2 AND goal_id=?3 AND project_id=?4 AND queue_sequence=?5 AND attention IS ?6 AND NOT EXISTS(SELECT 1 FROM goal_execution_profiles ep WHERE ep.goal_id=scheduler_tasks.goal_id) AND NOT EXISTS(SELECT 1 FROM task_drivers d WHERE d.task_id=scheduler_tasks.task_id AND d.goal_id=scheduler_tasks.goal_id AND d.project_id=scheduler_tasks.project_id AND d.owner_epoch=?7 AND d.state='driving')",params![held,task,goal,project,sequence,old,epoch])?;
             }
             tx.commit()?;
         }

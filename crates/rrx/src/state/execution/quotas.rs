@@ -473,7 +473,7 @@ impl Store {
         Ok(unit)
     }
 }
-fn windows(
+pub(super) fn windows(
     connection: &Connection,
     provider: &str,
     account: &str,

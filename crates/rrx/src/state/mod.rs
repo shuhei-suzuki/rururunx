@@ -29,7 +29,8 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 11;
+pub const SCHEMA_VERSION: i64 = 12;
+pub(crate) const READ_INDEX_LAYOUT_VERSION: i64 = 11;
 /// The managed-binding layout was introduced at 10 and is unchanged at 11.
 pub(crate) const BINDING_LAYOUT_VERSION: i64 = 10;
 pub(crate) use execution::source_recovery::SourceReadBinding;
@@ -53,6 +54,7 @@ pub(crate) use execution::native_phase::{
     RegistrationProbe, SettledTerminalImages,
 };
 pub(crate) use execution::native_phase::{NativeLiveQuotaPlan, replan_shared_quota};
+pub use execution::pipeline;
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
 /// True when `error` is a lost snapshot CAS (`StateGuardError::SnapshotChanged`).
@@ -228,7 +230,13 @@ impl Store {
                 managed_binding::install_schema(&tx)?;
                 execution::install_schema(&tx)?;
                 install_read_indexes(&tx)?;
+                pipeline::install_schema(&tx)?;
                 tx.pragma_update(None, "application_id", APPLICATION_ID)?;
+                tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            } else if locked_version == READ_INDEX_LAYOUT_VERSION {
+                managed_binding::schema::validate_layout(&tx, READ_INDEX_LAYOUT_VERSION)?;
+                execution::install_writer_guards(&tx)?;
+                pipeline::install_schema(&tx)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else if locked_version == BINDING_LAYOUT_VERSION {
                 // S4 D6-R3 R8: a protected v10 is checked exactly first, and
@@ -240,6 +248,7 @@ impl Store {
                 managed_binding::validate_exact_v10_layout(&tx)?;
                 install_read_indexes(&tx)?;
                 execution::install_writer_guards(&tx)?;
+                pipeline::install_schema(&tx)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else {
                 ensure!(
@@ -283,11 +292,14 @@ impl Store {
                         execution::native_results::install_schema(&tx)?;
                         execution::install_writer_guards(&tx)?;
                     }
-                    if matches!(next, 7..=11) {
+                    if matches!(next, 7..=12) {
                         execution::install_writer_guards(&tx)?;
                     }
                     if next == 11 {
                         install_read_indexes(&tx)?;
+                    }
+                    if next == 12 {
+                        pipeline::install_schema(&tx)?;
                     }
                     tx.pragma_update(None, "user_version", next)?;
                 }

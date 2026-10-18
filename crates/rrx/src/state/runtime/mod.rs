@@ -1,6 +1,6 @@
 //! Runtime integration; routing observations carry no executable authority.
 pub(crate) mod driver;
-mod goals;
+pub(in crate::state) mod goals;
 mod proposals;
 pub(crate) mod read;
 mod recorded;

@@ -254,7 +254,7 @@ pub(in crate::state) fn validate_current_layout(c: &Connection) -> Result<()> {
 pub(in crate::state) fn validate_exact_v10_layout(c: &Connection) -> Result<()> {
     validate_layout(c, crate::state::BINDING_LAYOUT_VERSION)
 }
-fn validate_layout(c: &Connection, version: i64) -> Result<()> {
+pub(in crate::state) fn validate_layout(c: &Connection, version: i64) -> Result<()> {
     // Bound/read the selected snapshot FIRST, before creating the reference.
     let actual = catalog(c)?;
     let mut reference = Connection::open_in_memory()?;
@@ -265,10 +265,14 @@ fn validate_layout(c: &Connection, version: i64) -> Result<()> {
     install_schema(&tx)?;
     crate::state::execution::install_schema(&tx)?;
     install_retained_guards(&tx)?;
-    if version == SCHEMA_VERSION {
+    if version >= crate::state::READ_INDEX_LAYOUT_VERSION {
         crate::state::install_read_indexes(&tx)?;
-    } else {
+    }
+    if version != SCHEMA_VERSION {
         crate::state::execution::install_writer_guards_at(&tx, version)?;
+    }
+    if version >= 12 {
+        crate::state::pipeline::install_schema(&tx)?;
     }
     let expected = catalog(&tx)?;
     ensure!(

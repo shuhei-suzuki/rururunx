@@ -28,7 +28,7 @@ mod protection;
 mod publication;
 #[cfg(test)]
 pub(crate) use publication::{arm_driver_publication_fault, check_native_contract_integrity};
-mod schema;
+pub(in crate::state) mod schema;
 #[cfg(test)]
 mod schema_tests;
 mod session_identity;

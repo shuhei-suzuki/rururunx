@@ -113,6 +113,17 @@ rather than Issue number alone.
 
 ## 7. Global scheduler
 
+Native candidate enumeration, native claim, and legacy native classification
+exclude Goals with a pipeline execution-profile row. Pipeline claims require that
+row and a Registered Project, a Running Goal, completed hard prerequisites, and
+an unoccupied Project slot. Both running and held pipeline runs occupy the slot.
+
+Pipeline storage permits one unresolved process step across Projects and keeps
+provider backoff in a single daemon-wide row. Waiting cannot become clear through
+time passage; a recorded successful probe is required. Native Exhausted quota
+observations are read without changing quota tables or treating elapsed time as
+availability. The mode inventory is read-only and is not yet wired into startup.
+
 Scheduling has multiple resource scopes:
 
 1. Runtime-global
