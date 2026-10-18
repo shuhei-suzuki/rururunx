@@ -1,7 +1,7 @@
 use super::argv::{CLAUDE_FLAGS, CODEX_FLAGS};
 use crate::{
     config::{PipelineCli, PipelineConfig},
-    execution::{RuntimeOwner, process::capture_probe},
+    execution::RuntimeOwner,
     state::pipeline::PipelineQualification,
 };
 use anyhow::{Context, Result, ensure};
@@ -10,10 +10,11 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeSet,
-    fs::File,
+    fs::{File, OpenOptions},
     io::Read,
-    os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt},
+    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -32,13 +33,57 @@ impl QualifiedCli {
         Ok(())
     }
 }
+#[cfg(test)]
+thread_local! { static HASH_COUNT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) }; }
+
+const PROBE_BOUND: Duration = Duration::from_secs(5);
+fn regular_file(path: &Path) -> Result<File> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32)
+        .open(path)?;
+    ensure!(
+        file.metadata()?.is_file(),
+        "qualification input is not a regular file"
+    );
+    Ok(file)
+}
 fn executable(path: &Path) -> Result<QualifiedCli> {
+    executable_until(path, Instant::now() + PROBE_BOUND)
+}
+fn executable_until(path: &Path, deadline: Instant) -> Result<QualifiedCli> {
     let realpath = path.canonicalize()?;
-    let mut file = File::open(&realpath)?;
-    ensure!(file.metadata()?.is_file(), "CLI executable is not a file");
+    let mut file = regular_file(&realpath)?;
+    ensure!(
+        file.metadata()?.permissions().mode() & 0o111 != 0,
+        "CLI is not executable"
+    );
+    let mut magic = [0; 4];
+    file.read_exact(&mut magic)?;
+    ensure!(
+        matches!(
+            magic,
+            [0xcf, 0xfa, 0xed, 0xfe]
+                | [0xfe, 0xed, 0xfa, 0xcf]
+                | [0xce, 0xfa, 0xed, 0xfe]
+                | [0xfe, 0xed, 0xfa, 0xce]
+                | [0xca, 0xfe, 0xba, 0xbe]
+                | [0xbe, 0xba, 0xfe, 0xca]
+                | [0xca, 0xfe, 0xba, 0xbf]
+                | [0xbf, 0xba, 0xfe, 0xca]
+        ),
+        "CLI must be a native Mach-O binary"
+    );
+    #[cfg(test)]
+    HASH_COUNT.with(|n| n.set(n.get() + 1));
     let mut hash = Sha256::new();
+    hash.update(magic);
     let mut buffer = [0; 16384];
     loop {
+        ensure!(
+            Instant::now() < deadline,
+            "qualification input deadline exceeded"
+        );
         let n = file.read(&mut buffer)?;
         if n == 0 {
             break;
@@ -69,7 +114,18 @@ fn required_flags(help: &str, required: &[&str]) -> bool {
     required.iter().all(|flag| flags.contains(flag))
 }
 
-fn codex_config(home: &Path) -> Result<()> {
+fn reports_parser_error(out: &[u8], err: &[u8]) -> bool {
+    [out, err].iter().any(|bytes| {
+        String::from_utf8_lossy(bytes).lines().any(|line| {
+            let line = line.trim_start().to_ascii_lowercase();
+            line.starts_with("error:")
+                || line.starts_with("error ")
+                || line.starts_with("invalid value")
+        })
+    })
+}
+
+fn codex_config(home: &Path, deadline: Instant) -> Result<()> {
     ensure!(
         home.is_absolute() && home.is_dir(),
         "dedicated CODEX_HOME must be an existing absolute directory"
@@ -84,7 +140,11 @@ fn codex_config(home: &Path) -> Result<()> {
         return Ok(());
     }
     let mut bytes = Vec::new();
-    File::open(path)?.take(16385).read_to_end(&mut bytes)?;
+    regular_file(&path)?.take(16385).read_to_end(&mut bytes)?;
+    ensure!(
+        Instant::now() < deadline,
+        "qualification input deadline exceeded"
+    );
     ensure!(bytes.len() <= 16384, "CODEX_HOME config exceeds bound");
     let table: toml::Table = toml::from_str(std::str::from_utf8(&bytes)?)?;
     // The contract does not enumerate a positive allowlist. Only these inert
@@ -154,15 +214,19 @@ async fn qualify_cli(
         "{:x}",
         Sha256::digest(serde_json::to_vec(config).expect("serializable pipeline config"))
     ));
+    let deadline = Instant::now() + PROBE_BOUND;
     let result = async {
         row.body["stage"] = json!("executable");
-        let pinned = executable(&cli.executable)?;
+        let pinned = executable_until(&cli.executable, deadline)?;
         row.executable_sha256 = Some(pinned.sha256.clone());
         row.body["realpath"] = json!(pinned.realpath);
         let codex = subject == "codex";
         row.body["stage"] = json!("config");
         if codex {
-            codex_config(cli.codex_home.as_ref().context("CODEX_HOME missing")?)?;
+            codex_config(
+                cli.codex_home.as_ref().context("CODEX_HOME missing")?,
+                deadline,
+            )?;
         }
         let cookie = uuid::Uuid::new_v4().simple().to_string();
         row.body["stage"] = json!("environment");
@@ -174,7 +238,7 @@ async fn qualify_cli(
                 .env_clear()
                 .envs(env.clone())
                 .current_dir(tmp);
-            capture_probe(command)
+            crate::execution::process::capture_probe_until(command, deadline.into())
         };
         row.body["stage"] = json!("version_probe");
         let (receipt, out, _) = probe(&["--version"]).await?;
@@ -205,10 +269,18 @@ async fn qualify_cli(
         if !codex {
             // Parser-only qualification: this never supplies -p or a prompt.
             row.body["stage"] = json!("settings_probe");
-            let (receipt, _, _) = probe(&["--setting-sources", "", "--help"]).await?;
+            let (invalid, out, err) = probe(&["--setting-sources", "bogus", "--help"]).await?;
+            let rejects_invalid = !invalid.status.success() || reports_parser_error(&out, &err);
+            row.body["reason"] = json!("setting_sources_validation_unproven");
+            ensure!(
+                rejects_invalid,
+                "setting sources value validation not demonstrated"
+            );
+            row.body.as_object_mut().unwrap().remove("reason");
+            let (receipt, out, err) = probe(&["--setting-sources", "", "--help"]).await?;
             row.body["stage"] = json!("settings_check");
             ensure!(
-                receipt.status.success(),
+                receipt.status.success() && !reports_parser_error(&out, &err),
                 "CLI empty setting sources refused"
             );
         }
@@ -216,13 +288,17 @@ async fn qualify_cli(
         let (receipt, _, _) = probe(if codex {
             &["login", "status"]
         } else {
-            &["auth", "status"]
+            &["--setting-sources", "", "auth", "status"]
         })
         .await?;
         row.body["stage"] = json!("login_check");
         ensure!(receipt.status.success(), "CLI login status refused");
         row.body["stage"] = json!("image_recheck");
-        pinned.recheck(cli)?;
+        let final_image = executable_until(&cli.executable, deadline)?;
+        ensure!(
+            final_image.realpath == pinned.realpath && final_image.sha256 == pinned.sha256,
+            "qualified executable changed"
+        );
         row.body["stage"] = json!("done");
         Ok::<_, anyhow::Error>(())
     }
@@ -230,13 +306,41 @@ async fn qualify_cli(
     match result {
         Ok(()) => row.state = "qualified".into(),
         // Paths, credentials and tool output are not copied into durable errors.
-        Err(_) => row.body["reason"] = json!("cli_qualification_failed"),
+        Err(_) => {
+            if row.body.get("reason").is_none() {
+                row.body["reason"] = json!("cli_qualification_failed");
+            }
+        }
     }
     row
 }
 
+pub(crate) struct QualificationRecord(PipelineQualification);
+impl QualificationRecord {
+    pub(crate) fn row(&self) -> &PipelineQualification {
+        &self.0
+    }
+}
+
 pub struct CliQualifier;
 impl CliQualifier {
+    pub(in crate::execution) fn record_quiescence(
+        owner: &RuntimeOwner,
+        body: serde_json::Value,
+    ) -> Result<()> {
+        let row = QualificationRecord(PipelineQualification {
+            subject: "mode_quiescence".into(),
+            state: "qualified".into(),
+            executable_sha256: None,
+            version_text: None,
+            body,
+        });
+        owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .pipeline_record_qualification(owner, &row)
+    }
     /// Run Q once per owner epoch, with no Store/control mutex across a probe.
     pub async fn qualify(owner: &RuntimeOwner, config: &PipelineConfig) -> Result<()> {
         config.validate()?;
@@ -256,7 +360,7 @@ impl CliQualifier {
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .pipeline_record_qualification(owner, &platform)?;
+            .pipeline_record_qualification(owner, &QualificationRecord(platform.clone()))?;
         ensure!(platform.state == "qualified", "pipeline platform refused");
         let root = &config.work_root;
         if !root.exists() {
@@ -265,42 +369,7 @@ impl CliQualifier {
                 .mode(0o700)
                 .create(root)?;
         }
-        let metadata = std::fs::symlink_metadata(root)?;
-        ensure!(
-            metadata.is_dir()
-                && metadata.permissions().mode() & 0o777 == 0o700
-                && metadata.uid() == rustix::process::getuid().as_raw(),
-            "work_root must be owned directory mode 0700"
-        );
-        let root = root.canonicalize()?;
-        ensure!(
-            root == config.work_root,
-            "work_root must be canonical without symlink aliases"
-        );
-        ensure!(
-            !root.starts_with(owner.state_path().parent().context("state parent absent")?)
-                && !owner.state_path().starts_with(&root),
-            "work_root overlaps state"
-        );
-        let projects = owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .projects()?;
-        for project in projects {
-            let project = project.root.canonicalize()?;
-            ensure!(
-                !root.starts_with(&project) && !project.starts_with(&root),
-                "work_root overlaps Project"
-            );
-        }
-        for dir in &config.path_prefix {
-            let m = dir.metadata()?;
-            ensure!(
-                m.is_dir() && m.permissions().mode() & 0o002 == 0,
-                "world-writable pipeline PATH directory"
-            );
-        }
+        Self::check_layout(owner, config)?;
         let temp_root = root.join("t");
         std::fs::create_dir_all(&temp_root)?;
         let tmp = tempfile::Builder::new()
@@ -327,14 +396,51 @@ impl CliQualifier {
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .pipeline_record_qualification(owner, &row)?;
+                .pipeline_record_qualification(owner, &QualificationRecord(row))?;
         }
         ensure!(all, "pipeline startup qualification refused");
         Ok(())
     }
 
-    /// No work may be admitted using another epoch, pin or executable image.
+    fn check_layout(owner: &RuntimeOwner, config: &PipelineConfig) -> Result<()> {
+        let root = &config.work_root;
+        private_directory(root).context("work_root")?;
+        let home = config
+            .clis
+            .codex
+            .codex_home
+            .as_ref()
+            .context("CODEX_HOME missing")?;
+        private_directory(home).context("CODEX_HOME")?;
+        for (left, right) in [
+            (root.as_path(), home.as_path()),
+            (root.as_path(), owner.state_root()),
+            (home.as_path(), owner.state_root()),
+        ] {
+            ensure!(
+                !overlaps(left, right),
+                "pipeline private directories overlap"
+            );
+        }
+        for project in owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .projects()?
+        {
+            let project = project.root.canonicalize()?;
+            config.check_project_root(&project)?;
+        }
+        trusted_path_prefix(config)?;
+        Ok(())
+    }
+
+    /// Idle currency checks read only immutable current-epoch rows and the config digest.
     pub fn current(owner: &RuntimeOwner, config: &PipelineConfig) -> Result<()> {
+        ensure!(
+            owner.execution_mode() == crate::config::ExecutionMode::CliPipeline,
+            "pipeline requires CliPipeline owner"
+        );
         let rows = owner
             .store
             .lock()
@@ -360,21 +466,87 @@ impl CliQualifier {
                     row.version_text.as_deref() == Some(&cli.version),
                     "pipeline Q pin changed"
                 );
-                if subject == "codex" {
-                    codex_config(cli.codex_home.as_ref().context("CODEX_HOME missing")?)?;
-                }
-                QualifiedCli {
-                    realpath: serde_json::from_value(row.body["realpath"].clone())?,
-                    sha256: row
-                        .executable_sha256
-                        .clone()
-                        .context("pipeline Q hash missing")?,
-                }
-                .recheck(cli)?;
             }
         }
         Ok(())
     }
+
+    /// B4 must call this outside the Store transaction, between tx1 and spawn.
+    pub fn before_launch(owner: &RuntimeOwner, config: &PipelineConfig) -> Result<()> {
+        Self::current(owner, config)?;
+        let deadline = Instant::now() + PROBE_BOUND;
+        Self::check_layout(owner, config)?;
+        codex_config(
+            config
+                .clis
+                .codex
+                .codex_home
+                .as_ref()
+                .context("CODEX_HOME missing")?,
+            deadline,
+        )?;
+        let rows = owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .pipeline_qualifications(owner)?;
+        for (subject, cli) in [
+            ("codex", &config.clis.codex),
+            ("claude", &config.clis.claude),
+        ] {
+            let row = rows
+                .iter()
+                .find(|r| r.subject == subject)
+                .context("pipeline Q missing")?;
+            let image = executable_until(&cli.executable, deadline)?;
+            ensure!(
+                Some(&image.sha256) == row.executable_sha256.as_ref()
+                    && serde_json::to_value(&image.realpath)? == row.body["realpath"],
+                "qualified executable changed"
+            );
+        }
+        Ok(())
+    }
+}
+
+fn overlaps(a: &Path, b: &Path) -> bool {
+    a.starts_with(b) || b.starts_with(a)
+}
+fn private_directory(path: &Path) -> Result<()> {
+    let m = std::fs::symlink_metadata(path)?;
+    ensure!(m.is_dir(), "pipeline private directory must be a directory");
+    ensure!(
+        m.permissions().mode() & 0o777 == 0o700,
+        "pipeline private directory requires mode 0700"
+    );
+    ensure!(
+        m.uid() == rustix::process::getuid().as_raw(),
+        "pipeline private directory has wrong owner"
+    );
+    ensure!(
+        path.canonicalize()? == path,
+        "pipeline private directory must be canonical"
+    );
+    Ok(())
+}
+fn trusted_path_prefix(config: &PipelineConfig) -> Result<()> {
+    for configured in &config.path_prefix {
+        let dir = configured.canonicalize()?;
+        ensure!(
+            &dir == configured,
+            "pipeline PATH directory must be canonical"
+        );
+        for parent in dir.ancestors() {
+            let m = parent.metadata()?;
+            ensure!(
+                m.is_dir()
+                    && m.permissions().mode() & 0o022 == 0
+                    && [0, rustix::process::getuid().as_raw()].contains(&m.uid()),
+                "untrusted pipeline PATH directory or parent"
+            );
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

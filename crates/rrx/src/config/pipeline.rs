@@ -41,10 +41,41 @@ pub struct PipelineCli {
     pub executable: PathBuf,
     pub version: String,
     pub model: String,
-    pub effort: Option<String>,
+    pub effort: Option<ReasoningEffort>,
     pub codex_home: Option<PathBuf>,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningEffort {
+    Low,
+    Medium,
+    High,
+    Xhigh,
+}
+impl std::fmt::Display for ReasoningEffort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Xhigh => "xhigh",
+        })
+    }
+}
 impl PipelineConfig {
+    pub(crate) fn check_project_root(&self, project: &std::path::Path) -> Result<()> {
+        for private in [Some(&self.work_root), self.clis.codex.codex_home.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            let private = private.canonicalize()?;
+            ensure!(
+                !project.starts_with(&private) && !private.starts_with(project),
+                "Project overlaps pipeline private directory"
+            );
+        }
+        Ok(())
+    }
     pub fn validate(&self) -> Result<()> {
         let root = self.work_root.as_os_str().as_encoded_bytes();
         ensure!(
@@ -70,10 +101,7 @@ impl PipelineConfig {
                 cli.executable.is_absolute(),
                 "pipeline executable must be absolute"
             );
-            for text in [Some(&cli.version), Some(&cli.model), cli.effort.as_ref()]
-                .into_iter()
-                .flatten()
-            {
+            for text in [Some(&cli.version), Some(&cli.model)].into_iter().flatten() {
                 ensure!(
                     !text.trim().is_empty()
                         && !text.starts_with('-')

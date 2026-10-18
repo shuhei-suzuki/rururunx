@@ -17,6 +17,76 @@ fn config() -> Config {
     );
     c
 }
+
+/// Pipeline control refuses a Goal plan without an execution profile before any publication.
+#[tokio::test]
+async fn b3_pipeline_goal_profile_required() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open_mode(
+        &dir.path().join("state/state.db"),
+        crate::config::ExecutionMode::CliPipeline,
+    )
+    .unwrap();
+    let mut config = config();
+    config.execution.mode = crate::config::ExecutionMode::CliPipeline;
+    config.pipeline = Some(crate::execution::pipeline::test_support::config(
+        &owner,
+        dir.path(),
+    ));
+    let runtime = Runtime::new(owner.clone(), config).unwrap();
+    let (socket, _peer) = tokio::net::UnixStream::pair().unwrap();
+    let request = ControlRequest {
+        request_id: Uuid::new_v4(),
+        instance: owner.instance_id().into(),
+        epoch: owner.epoch(),
+        action: ControlAction::CreateGoal {
+            project: crate::domain::ProjectId::new(),
+            expected_project: 1,
+            plan: plan(),
+        },
+    };
+    assert!(
+        runtime
+            .handle_control(&socket, request)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("cli_pipeline CreateGoal requires an execution profile")
+    );
+}
+
+/// A stale Q is visible in RuntimeStatus after the sweep currency check fails.
+#[tokio::test]
+async fn b3_pipeline_stale_q_status() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open_mode(
+        &dir.path().join("state/state.db"),
+        crate::config::ExecutionMode::CliPipeline,
+    )
+    .unwrap();
+    let pipeline = crate::execution::pipeline::test_support::config(&owner, dir.path());
+    crate::execution::pipeline::CliQualifier::qualify(&owner, &pipeline)
+        .await
+        .unwrap();
+    let mut config = config();
+    config.execution.mode = crate::config::ExecutionMode::CliPipeline;
+    config.pipeline = Some(pipeline);
+    let mut runtime = Runtime::new(owner.clone(), config).unwrap();
+    runtime.check_pipeline_currency().unwrap();
+    runtime.config.pipeline.as_mut().unwrap().clis.codex.model = "changed".into();
+    assert!(runtime.check_pipeline_currency().is_err());
+    let (socket, _peer) = tokio::net::UnixStream::pair().unwrap();
+    let request = ControlRequest {
+        request_id: Uuid::new_v4(),
+        instance: owner.instance_id().into(),
+        epoch: owner.epoch(),
+        action: ControlAction::RuntimeStatus,
+    };
+    let status = runtime.handle_control(&socket, request).await.unwrap();
+    assert!(
+        matches!(status, ControlResponse::RuntimeMetadata { pipeline_qualification_error: Some(reason), .. } if reason == "pipeline_qualification_stale")
+    );
+}
 fn definition() -> GoalDefinition {
     GoalDefinition {
         title: "t".into(),

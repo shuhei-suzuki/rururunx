@@ -1,7 +1,6 @@
 //! Owned-child hygiene, without process census or a descendant-death claim.
 use anyhow::{Context, Result, ensure};
 use rustix::process::{Pid, Signal, WaitId, WaitIdOptions, kill_process_group, waitid};
-#[cfg(test)]
 use std::process::Stdio;
 use std::{process::ExitStatus, time::Duration};
 use tokio::{
@@ -346,60 +345,95 @@ pub(crate) async fn capture_child(mut child: OwnedProcess) -> Result<CommandCapt
     })
 }
 
-/// Move custody with the inspector so cancellation cannot reap/reuse its PID.
-async fn signal_probe_group(child: &mut Option<OwnedProcess>) -> Result<Option<String>> {
-    let owned = child.take().context("probe custody absent")?;
-    let (owned, result) = tokio::task::spawn_blocking(move || {
-        let result = (|| -> Result<()> {
-            ensure!(owned.unreaped, "probe child has already been reaped");
-            let result = kill_process_group(owned.pid, Signal::KILL);
-            #[cfg(target_os = "macos")]
-            let result = crate::adapter::resolve_macos_signal_result(result, || {
-                crate::adapter::macos_group_is_dead(owned.pid)
-            });
-            #[cfg(not(target_os = "macos"))]
-            let result: std::io::Result<()> = match result {
-                Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
-                Err(e) => Err(e.into()),
-            };
-            result.context("signal probe unreaped process group")
-        })();
-        (owned, result)
+/// Signal only an unreaped owned group; EPERM requires confirmed-dead inspection.
+fn resolve_probe_signal(
+    owned: &OwnedProcess,
+    signal: std::result::Result<(), rustix::io::Errno>,
+    inspect: impl FnOnce() -> std::io::Result<bool>,
+) -> Result<()> {
+    ensure!(owned.unreaped, "probe child has already been reaped");
+    #[cfg(any(target_os = "macos", test))]
+    let result = crate::adapter::resolve_macos_signal_result(signal, inspect);
+    #[cfg(not(any(target_os = "macos", test)))]
+    let result: std::io::Result<()> = {
+        let _ = inspect;
+        match signal {
+            Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    };
+    result.context("signal probe unreaped process group")
+}
+fn signal_probe_group(owned: &OwnedProcess) -> Result<()> {
+    ensure!(owned.unreaped, "probe child has already been reaped");
+    let result = kill_process_group(owned.pid, Signal::KILL);
+    resolve_probe_signal(owned, result, || {
+        #[cfg(target_os = "macos")]
+        {
+            crate::adapter::macos_group_is_dead(owned.pid)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            Ok(false)
+        }
     })
-    .await
-    .context("probe cleanup worker failed")?;
-    *child = Some(owned);
-    Ok(result.err().map(|e| format!("{e:#}")))
 }
 
-/// Startup probes retain the same unreaped group custody and bounded readers.
-pub(crate) async fn capture_probe(
-    mut command: Command,
+/// Startup probes retain unreaped custody until cleanup and direct wait finish.
+#[cfg(test)]
+pub(crate) async fn capture_probe(command: Command) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
+    capture_probe_until(
+        command,
+        tokio::time::Instant::now() + Duration::from_secs(5),
+    )
+    .await
+}
+pub(crate) async fn capture_probe_until(
+    command: Command,
+    deadline: tokio::time::Instant,
 ) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
+    capture_probe_with_cleanup(command, deadline, signal_probe_group).await
+}
+async fn capture_probe_with_cleanup(
+    mut command: Command,
+    deadline: tokio::time::Instant,
+    cleanup: impl FnOnce(&OwnedProcess) -> Result<()> + Send + 'static,
+) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
+    ensure!(
+        tokio::time::Instant::now() < deadline,
+        "probe timed out before spawn"
+    );
     command
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = OwnedProcess::spawn(command)?;
     let stdout = child.child.stdout.take().context("probe stdout missing")?;
     let stderr = child.child.stderr.take().context("probe stderr missing")?;
-    let mut child = Some(child);
     let readers =
         async { tokio::try_join!(bounded_read(stdout, 4096), bounded_read(stderr, 4096)) };
     tokio::pin!(readers);
-    let collected = tokio::time::timeout(Duration::from_secs(5), async {
+    let mut bytes = None;
+    let observed = tokio::time::timeout_at(deadline, async {
         tokio::select! {
-            bytes = &mut readers => { let bytes = bytes?; child.as_ref().unwrap().exited().await?; Ok::<_, anyhow::Error>(bytes) },
-            exit = child.as_ref().unwrap().exited() => {
-                exit?;
-                let group_error = signal_probe_group(&mut child).await?;
-                ensure!(group_error.is_none(), "probe group cleanup failed: {group_error:?}");
-                tokio::time::timeout(Duration::from_secs(2), &mut readers).await.context("probe drain incomplete")?
-            }
+            read = &mut readers => { bytes = Some(read?); child.exited().await?; },
+            exit = child.exited() => { exit?; }
         }
-    }).await;
-    let group_error = signal_probe_group(&mut child).await?;
-    let mut child = child.context("probe custody absent after cleanup")?;
+        Ok::<_, anyhow::Error>(())
+    })
+    .await;
+    // No cleanup await is inside the observation timeout. A timeout while the
+    // inspector runs retains this handle and collects its custody/result first.
+    let mut worker = tokio::task::spawn_blocking(move || {
+        let result = cleanup(&child);
+        (child, result)
+    });
+    let (joined, cleanup_timed_out) = match tokio::time::timeout_at(deadline, &mut worker).await {
+        Ok(result) => (result, false),
+        Err(_) => (worker.await, true),
+    };
+    let (mut child, cleanup) = joined.context("probe cleanup worker failed")?;
+    let group_error = cleanup.err().map(|e| format!("{e:#}"));
     if group_error.is_some() {
         let _ = child.child.start_kill();
     }
@@ -414,7 +448,17 @@ pub(crate) async fn capture_probe(
         "probe group cleanup failed: {:?}",
         receipt.group_error
     );
-    let (out, err) = collected.context("probe timed out")??;
+    observed.context("probe timed out")??;
+    ensure!(!cleanup_timed_out, "probe timed out during cleanup");
+    let (out, err) = match bytes {
+        Some(bytes) => bytes,
+        None => tokio::time::timeout_at(
+            deadline.min(tokio::time::Instant::now() + Duration::from_secs(2)),
+            &mut readers,
+        )
+        .await
+        .context("probe drain incomplete")??,
+    };
     ensure!(
         out.len() + err.len() <= 4096,
         "probe output exceeded its bound"
@@ -424,6 +468,68 @@ pub(crate) async fn capture_probe(
 
 #[cfg(test)]
 mod probe_tests {
+    use super::*;
+
+    /// A deadline during blocking cleanup cannot release custody before its result and reap.
+    #[tokio::test]
+    async fn b3_probe_cleanup_deadline() {
+        let completed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let done = completed.clone();
+        let pid = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
+        let observed_pid = pid.clone();
+        let started = std::time::Instant::now();
+        let result = capture_probe_with_cleanup(
+            Command::new("/usr/bin/true"),
+            tokio::time::Instant::now() + Duration::from_millis(500),
+            move |owned| {
+                observed_pid.store(
+                    owned.pid.as_raw_nonzero().get(),
+                    std::sync::atomic::Ordering::SeqCst,
+                );
+                std::thread::sleep(Duration::from_millis(700));
+                let result = resolve_probe_signal(owned, Err(rustix::io::Errno::PERM), || Ok(true));
+                done.store(true, std::sync::atomic::Ordering::SeqCst);
+                result
+            },
+        )
+        .await;
+        assert!(
+            result
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("probe timed out during cleanup")
+        );
+        assert!(started.elapsed() >= Duration::from_millis(700));
+        assert!(completed.load(std::sync::atomic::Ordering::SeqCst));
+        let pid =
+            rustix::process::Pid::from_raw(pid.load(std::sync::atomic::Ordering::SeqCst)).unwrap();
+        assert_eq!(
+            rustix::process::waitid(
+                rustix::process::WaitId::Pid(pid),
+                rustix::process::WaitIdOptions::EXITED | rustix::process::WaitIdOptions::NOHANG
+            )
+            .unwrap_err(),
+            rustix::io::Errno::CHILD
+        );
+    }
+
+    /// A live-group EPERM on the actual probe cleanup path refuses its result after reaping.
+    #[tokio::test]
+    async fn b3_probe_live_group_refused() {
+        let error = capture_probe_with_cleanup(
+            Command::new("/usr/bin/true"),
+            tokio::time::Instant::now() + Duration::from_secs(5),
+            |owned| resolve_probe_signal(owned, Err(rustix::io::Errno::PERM), || Ok(false)),
+        )
+        .await
+        .err()
+        .unwrap();
+        assert!(
+            error.to_string().contains("probe group cleanup failed"),
+            "{error:#}"
+        );
+    }
     /// Only confirmed dead groups resolve EPERM; every uncertain observation refuses.
     #[test]
     fn b3_probe_macos_signal_resolution() {

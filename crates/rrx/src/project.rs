@@ -375,6 +375,9 @@ pub(crate) fn plan_add(
     }
     runtime.validate()?;
     let root = source_root(path)?;
+    if let Some(pipeline) = &runtime.pipeline {
+        pipeline.check_project_root(&root)?;
+    }
     let previous = snapshot.iter().find(|p| p.root == root).cloned();
     let base = options
         .base_branch

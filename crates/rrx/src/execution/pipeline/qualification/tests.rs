@@ -1,8 +1,7 @@
 use super::*;
 use crate::config::PipelineClis;
-#[path = "../../../../tests/support/pipeline_cli.rs"]
-mod harness;
-use harness::FakeCli;
+use crate::execution::pipeline::test_support::FakeCli;
+use crate::execution::process::capture_probe;
 
 struct Fixture {
     _dir: tempfile::TempDir,
@@ -126,7 +125,9 @@ async fn b3_q_recheck_changed_sha() {
         sha256: row.executable_sha256.unwrap(),
     };
     qualified.recheck(&f.codex.cli).unwrap();
-    std::fs::write(&f.codex.cli.executable, "#!/bin/sh\nexit 0\n").unwrap();
+    let mut changed = std::fs::read(&f.codex.cli.executable).unwrap();
+    changed.extend_from_slice(b"changed image");
+    std::fs::write(&f.codex.cli.executable, changed).unwrap();
     assert!(qualified.recheck(&f.codex.cli).is_err());
 }
 /// Probe environments are subsets of the approved environment variables.
@@ -147,11 +148,7 @@ async fn b3_q_environment() {
             "NO_COLOR",
             "RRX_PROCESS_COOKIE",
             "CODEX_HOME",
-            "PWD",
-            "SHLVL",
-            "_",
         ];
-        // Shells add PWD, SHLVL and _ themselves; verify the actual Command input separately.
         assert!(
             environment
                 .lines()
@@ -204,11 +201,125 @@ async fn b3_q_output_bound() {
 #[tokio::test]
 async fn b3_fake_exec_interface() {
     let f = Fixture::new();
-    for fake in [&f.codex, &f.claude] {
+    use crate::execution::pipeline::{PipelineRole, step_arguments};
+    for (role, fake, expected) in [
+        (
+            PipelineRole::Implement,
+            &f.codex,
+            vec![
+                "exec",
+                "--sandbox",
+                "workspace-write",
+                "-c",
+                "sandbox_workspace_write.network_access=false",
+                "-c",
+                "projects./work.trust_level=\"untrusted\"",
+                "-m",
+                "fixture-model",
+                "-c",
+                "model_reasoning_effort=high",
+                "-C",
+                "/work",
+                "-o",
+                "/attempt/last.md",
+                "--json",
+                "--color",
+                "never",
+                "-",
+            ],
+        ),
+        (
+            PipelineRole::Fix,
+            &f.codex,
+            vec![
+                "exec",
+                "--sandbox",
+                "workspace-write",
+                "-c",
+                "sandbox_workspace_write.network_access=false",
+                "-c",
+                "projects./work.trust_level=\"untrusted\"",
+                "-m",
+                "fixture-model",
+                "-c",
+                "model_reasoning_effort=high",
+                "-C",
+                "/work",
+                "-o",
+                "/attempt/last.md",
+                "--json",
+                "--color",
+                "never",
+                "-",
+            ],
+        ),
+        (
+            PipelineRole::Confirm,
+            &f.codex,
+            vec![
+                "exec",
+                "--sandbox",
+                "read-only",
+                "-c",
+                "projects./work.trust_level=\"untrusted\"",
+                "-m",
+                "fixture-model",
+                "-c",
+                "model_reasoning_effort=high",
+                "-C",
+                "/work",
+                "--output-schema",
+                "/attempt/confirm.schema.json",
+                "-o",
+                "/attempt/last.json",
+                "--json",
+                "--color",
+                "never",
+                "-",
+            ],
+        ),
+        (
+            PipelineRole::Review,
+            &f.claude,
+            vec![
+                "-p",
+                "--permission-mode",
+                "plan",
+                "--tools",
+                "Read,Grep,Glob",
+                "--disallowedTools",
+                "Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch,Task",
+                "--strict-mcp-config",
+                "--mcp-config",
+                "/attempt/mcp.json",
+                "--setting-sources",
+                "",
+                "--disable-slash-commands",
+                "--model",
+                "fixture-model",
+                "--output-format",
+                "json",
+                "--json-schema",
+                "{}",
+            ],
+        ),
+    ] {
+        fake.expect_arguments(&expected);
         fake.control("exec-status", "7\n");
         fake.control("exec-output", "exec fixture\n");
         let mut command = tokio::process::Command::new(&fake.cli.executable);
-        command.arg("exec").env_clear();
+        command
+            .args(
+                step_arguments(
+                    role,
+                    &fake.cli,
+                    Path::new("/work"),
+                    Path::new("/attempt"),
+                    "{}",
+                )
+                .unwrap(),
+            )
+            .env_clear();
         let (receipt, out, _) = capture_probe(command).await.unwrap();
         assert_eq!(receipt.status.code(), Some(7));
         assert_eq!(out, b"exec fixture\n");
@@ -277,16 +388,25 @@ async fn b3_q_outside_store_locks() {
 #[tokio::test]
 async fn b3_q_requires_current_epoch() {
     let f = Fixture::new();
-    let path = f._dir.path().join("state.db");
+    let path = f._dir.path().join("state/state.db");
     let owner = RuntimeOwner::open_mode(&path, crate::config::ExecutionMode::CliPipeline).unwrap();
-    for fake in [&f.codex, &f.claude] {
-        fake.control("version", "wrong\n");
+    let mut config = f.config.clone();
+    config.work_root = owner.ipc_path().parent().unwrap().to_path_buf();
+    std::fs::set_permissions(&config.work_root, std::fs::Permissions::from_mode(0o700)).unwrap();
+    CliQualifier::qualify(&owner, &config).await.unwrap();
+    CliQualifier::current(&owner, &config).unwrap();
+    let rows = owner
+        .store
+        .lock()
+        .unwrap()
+        .pipeline_qualifications(&owner)
+        .unwrap();
+    for subject in ["platform", "mode_quiescence", "codex", "claude"] {
+        assert_eq!(
+            rows.iter().find(|r| r.subject == subject).unwrap().state,
+            "qualified"
+        );
     }
-    assert!(
-        CliQualifier::record_clis(&owner, &f.config, f._dir.path())
-            .await
-            .is_err()
-    );
     drop(owner);
     let owner = RuntimeOwner::open_mode(&path, crate::config::ExecutionMode::CliPipeline).unwrap();
     assert_eq!(
@@ -299,5 +419,232 @@ async fn b3_q_requires_current_epoch() {
             .len(),
         1
     );
-    assert!(CliQualifier::current(&owner, &f.config).is_err());
+    assert!(CliQualifier::current(&owner, &config).is_err());
+}
+
+/// Help that bypasses value validation cannot prove empty settings are accepted.
+#[tokio::test]
+async fn b3_q_settings_help_short_circuit() {
+    let f = Fixture::new();
+    assert_eq!(f.q(false).await.state, "qualified");
+    f.claude.control("help-before-validation", "");
+    let mut help = std::fs::read_to_string(f.claude.directory.join("help")).unwrap();
+    help.push_str("--verbose <LEVEL>  Include error messages\n");
+    f.claude.control("help", &help);
+    let row = f.q(false).await;
+    assert_eq!(row.state, "refused");
+    assert_eq!(row.body["reason"], "setting_sources_validation_unproven");
+}
+
+/// An empty value reporting a parser error cannot qualify even with a successful exit.
+#[tokio::test]
+async fn b3_q_empty_settings_error() {
+    let f = Fixture::new();
+    assert_eq!(f.q(false).await.state, "qualified");
+    f.claude.control("settings-error", "");
+    let row = f.q(false).await;
+    assert_eq!(row.state, "refused");
+    assert_eq!(row.body["stage"], "settings_check");
+}
+
+/// Interpreter scripts cannot stand in for the executable image pinned by Q.
+#[test]
+fn b3_q_native_image_required() {
+    let f = Fixture::new();
+    executable(&f.codex.cli.executable).unwrap();
+    std::fs::write(&f.codex.cli.executable, "#!/bin/sh\nexit 0\n").unwrap();
+    assert!(
+        executable(&f.codex.cli.executable)
+            .unwrap_err()
+            .to_string()
+            .contains("native Mach-O")
+    );
+}
+
+/// FIFO executable and config inputs are refused within the qualification deadline.
+#[test]
+fn b3_q_special_files() {
+    let f = Fixture::new();
+    let pinned = executable(&f.codex.cli.executable).unwrap();
+    let home = f.codex.cli.codex_home.as_ref().unwrap();
+    codex_config(home, Instant::now() + PROBE_BOUND).unwrap();
+    let config = f.codex.cli.codex_home.as_ref().unwrap().join("config.toml");
+    for path in [&config, &f.codex.cli.executable] {
+        if path.exists() {
+            std::fs::remove_file(path).unwrap();
+        }
+        let mut mkfifo = std::process::Command::new("/usr/bin/mkfifo");
+        mkfifo.arg(path);
+        assert!(rrx_spawn_hygiene::status_std(mkfifo).unwrap().success());
+        let started = std::time::Instant::now();
+        let result = if path == &config {
+            codex_config(home, Instant::now() + PROBE_BOUND)
+        } else {
+            executable(path).map(|_| ())
+        };
+        assert!(started.elapsed() < std::time::Duration::from_secs(6));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("not a regular file")
+        );
+        if path == &f.codex.cli.executable {
+            assert!(pinned.recheck(&f.codex.cli).is_err());
+            assert!(started.elapsed() < std::time::Duration::from_secs(6));
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+}
+
+/// Idle sweeps do not hash images; each launch rechecks both pins exactly once.
+#[tokio::test]
+async fn b3_q_launch_hash_frequency() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open_mode(
+        &dir.path().join("state/state.db"),
+        crate::config::ExecutionMode::CliPipeline,
+    )
+    .unwrap();
+    let config = crate::execution::pipeline::test_support::config(&owner, dir.path());
+    CliQualifier::qualify(&owner, &config).await.unwrap();
+    let before = HASH_COUNT.with(|n| n.get());
+    for _ in 0..20 {
+        CliQualifier::current(&owner, &config).unwrap();
+    }
+    assert_eq!(HASH_COUNT.with(|n| n.get()), before);
+    for launches in 1..=2 {
+        CliQualifier::before_launch(&owner, &config).unwrap();
+        assert_eq!(HASH_COUNT.with(|n| n.get()), before + launches * 2);
+    }
+    std::fs::write(&config.clis.codex.executable, "changed").unwrap();
+    CliQualifier::current(&owner, &config).unwrap();
+    assert!(CliQualifier::before_launch(&owner, &config).is_err());
+}
+
+/// Reviewer login uses the same empty settings condition as its step template.
+#[tokio::test]
+async fn b3_q_login_settings() {
+    let f = Fixture::new();
+    assert_eq!(f.q(false).await.state, "qualified");
+    let calls = std::fs::read_to_string(f.claude.directory.join("calls")).unwrap();
+    assert!(calls.lines().any(|s| s == "--setting-sources  auth status"));
+    assert!(!calls.lines().any(|s| s == "auth status"));
+}
+
+/// CODEX_HOME stays separate from work, state and every registered Project.
+#[test]
+fn b3_q_home_separation() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open_mode(
+        &dir.path().join("state/state.db"),
+        crate::config::ExecutionMode::CliPipeline,
+    )
+    .unwrap();
+    let mut config = crate::execution::pipeline::test_support::config(&owner, dir.path());
+    CliQualifier::check_layout(&owner, &config).unwrap();
+    std::fs::set_permissions(owner.state_root(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    for home in [&config.work_root, &owner.state_root().to_path_buf()] {
+        let mut invalid = config.clone();
+        invalid.clis.codex.codex_home = Some(home.clone());
+        assert!(
+            CliQualifier::check_layout(&owner, &invalid)
+                .unwrap_err()
+                .to_string()
+                .contains("overlap")
+        );
+    }
+    let source = dir.path().join("source");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut project = crate::domain::Project::new(
+        "source".into(),
+        source.canonicalize().unwrap(),
+        "fixture".into(),
+        "main".into(),
+    );
+    owner
+        .store
+        .lock()
+        .unwrap()
+        .put_project(&mut project)
+        .unwrap();
+    config.clis.codex.codex_home = Some(source.canonicalize().unwrap());
+    assert!(
+        CliQualifier::check_layout(&owner, &config)
+            .unwrap_err()
+            .to_string()
+            .contains("Project overlaps")
+    );
+}
+
+/// Home permissions are rechecked before launch even when config and Q are unchanged.
+#[tokio::test]
+async fn b3_q_home_permissions() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open_mode(
+        &dir.path().join("state/state.db"),
+        crate::config::ExecutionMode::CliPipeline,
+    )
+    .unwrap();
+    let config = crate::execution::pipeline::test_support::config(&owner, dir.path());
+    CliQualifier::qualify(&owner, &config).await.unwrap();
+    CliQualifier::before_launch(&owner, &config).unwrap();
+    let home = config.clis.codex.codex_home.as_ref().unwrap();
+    std::fs::set_permissions(home, std::fs::Permissions::from_mode(0o750)).unwrap();
+    let error = CliQualifier::before_launch(&owner, &config).unwrap_err();
+    assert!(format!("{error:#}").contains("mode 0700"));
+}
+
+/// PATH prefixes and their parents cannot become group or world writable before a launch.
+#[tokio::test]
+async fn b3_q_path_parents() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open_mode(
+        &dir.path().join("state/state.db"),
+        crate::config::ExecutionMode::CliPipeline,
+    )
+    .unwrap();
+    let mut config = crate::execution::pipeline::test_support::config(&owner, dir.path());
+    let parent = dir.path().join("prefix");
+    let leaf = parent.join("bin");
+    std::fs::create_dir_all(&leaf).unwrap();
+    config.path_prefix = vec![leaf.clone()];
+    CliQualifier::qualify(&owner, &config).await.unwrap();
+    CliQualifier::before_launch(&owner, &config).unwrap();
+    for path in [&leaf, &parent] {
+        for mode in [0o775, 0o757] {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
+            assert!(
+                CliQualifier::before_launch(&owner, &config)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("untrusted pipeline PATH")
+            );
+        }
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
+/// A PATH symlink cannot hide a writable parent behind a trusted canonical target.
+#[test]
+fn b3_q_path_alias() {
+    let f = Fixture::new();
+    let target = f._dir.path().join("target");
+    let parent = f._dir.path().join("writable");
+    std::fs::create_dir(&target).unwrap();
+    std::fs::create_dir(&parent).unwrap();
+    let mut config = f.config.clone();
+    config.path_prefix = vec![target.clone()];
+    trusted_path_prefix(&config).unwrap();
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o777)).unwrap();
+    let alias = parent.join("bin");
+    std::os::unix::fs::symlink(&target, &alias).unwrap();
+    config.path_prefix = vec![alias];
+    assert!(
+        trusted_path_prefix(&config)
+            .unwrap_err()
+            .to_string()
+            .contains("canonical")
+    );
 }

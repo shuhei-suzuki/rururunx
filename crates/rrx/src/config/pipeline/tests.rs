@@ -68,3 +68,25 @@ fn b3_config_paths() {
     config.pipeline.as_mut().unwrap().clis.codex.executable = "relative".into();
     assert!(config.validate().is_err());
 }
+
+/// Only the supported reasoning efforts can reach fixed Codex configuration argv.
+#[test]
+fn b3_config_effort_enum() {
+    let encoded = toml::to_string(&configured()).unwrap();
+    for effort in ["low", "medium", "high", "xhigh"] {
+        assert!(
+            toml::from_str::<Config>(
+                &encoded.replace("effort = \"high\"", &format!("effort = \"{effort}\""))
+            )
+            .is_ok()
+        );
+    }
+    for effort in ["arbitrary", "max", "high,other=true"] {
+        assert!(
+            toml::from_str::<Config>(
+                &encoded.replace("effort = \"high\"", &format!("effort = \"{effort}\""))
+            )
+            .is_err()
+        );
+    }
+}

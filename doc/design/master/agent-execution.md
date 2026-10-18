@@ -12,31 +12,43 @@ inherit every descriptor not marked CLOEXEC, as with the original operation.
 Other targets refuse launch with `ENOSYS`. The rrx crate continues to forbid
 unsafe code.
 
-Issue #106 B3 adds `RuntimeOwner::open_mode`; `open` retains the native default.
-While holding the exclusive owner lock, startup reads the B2 typed opposite-mode
+`RuntimeOwner::open_mode` selects the execution mode; `open` retains the native
+default. Under the exclusive owner lock, startup reads the typed opposite-mode
 inventory before `begin_execution_epoch`. Busy inventories refuse startup.
-Cookie-discovery verdicts require every supplied cookie to have complete
-`rrx-process-tracker` coverage and zero matches; discovery errors and excessive
-inventories refuse startup. No epoch advancement is used as death evidence.
-Successful pipeline startup records its pre-epoch inventory/discovery summary
-under the new epoch as `mode_quiescence`.
+Cookie discovery requires every supplied cookie to have complete tracker coverage
+and zero matches; errors and excessive inventories refuse. Epoch advancement is
+never death evidence. Successful pipeline startup records the pre-epoch
+inventory/discovery summary as `mode_quiescence` under its new epoch.
 
-Pipeline Q probes reuse `execution::process::OwnedProcess` (spawn hygiene,
-unreaped identity, group signaling before reap, direct-child fallback and Drop
-custody) and `bounded_read`; their own capture uses five seconds and four KiB
-combined output. Group-signal failure refuses qualification rather than claiming
-descendant death. On macOS, only the probe path reuses the adapter's EPERM
-resolution: confirmed all-dead group inspection can resolve the signal error;
-live, unknown or failed inspection refuses. Custody moves with inspection to a
-blocking worker while the leader remains unreaped. The shared `signal_group`
-and `stop_and_reap` paths are unchanged.
-CLI results are recorded only after each probe has released
-its process wait, with no Store mutex/transaction or control guard spanning the
-probe. The owner flock remains retained for the whole Runtime lifetime.
-Current-epoch Q gates pipeline claims and launch intents; runtime startup and
-pipeline sweeps also recheck qualification configuration and executable hashes.
-The B3 pipeline sweep remains idle pending B6 and never enters native
-reconciliation or admission. Native S and native capture bounds are unchanged.
+Pipeline Q reuses `execution::process::OwnedProcess` and `bounded_read`: spawn
+hygiene, unreaped identity, group signaling before reap and direct-child fallback.
+Image/config reads and probe observation share a five-second qualification
+deadline, with four KiB combined probe output. Nonblocking open and descriptor
+checks refuse special files. Probe-only macOS EPERM resolution accepts only a
+confirmed all-dead group inspection; live/unknown/failed inspection refuses Q.
+The blocking worker's JoinHandle and unreaped custody remain retained when the
+deadline fires. Cleanup result and direct-child reap precede qualification
+publication or another probe. Shared `signal_group`, `stop_and_reap` and native
+capture bounds are unchanged. No Store mutex/transaction or control guard spans
+a probe; the owner flock remains held for the Runtime lifetime.
+
+Pipeline claims and launch intents require a `CliPipeline` owner and all four
+qualified current-epoch subjects. Idle sweeps check DB rows and config digest;
+`CliQualifier::before_launch` re-hashes both images immediately before launch,
+outside Store transactions, between tx1 and spawn. PATH prefixes and every parent
+must be root/current-user owned with no group/world write permission and are
+rechecked there. Work root and CODEX_HOME must be canonical, user-owned 0700
+directories separate from each other, state and Projects. Project registration
+and re-registration also reject overlaps before publication. Other Codex layers
+(managed/system config, AGENTS.md and rules) are not inspected and remain an
+operator-controlled residual risk. Probe cookies are not recorded; escaped
+probe descendants are outside the durable mode cookie inventory.
+
+The pipeline sweep has no step executor and never enters native reconciliation
+or admission. A stale Q ends the sweep and appears as
+`pipeline_qualification_error` in RuntimeStatus. The pipeline CreateGoal control
+refuses plans without an execution profile and does not publish pipeline Goals.
+Native S is unchanged.
 
 The six functions delegate to their corresponding original methods. Tokio
 output/status spawn synchronously before returning the future. Stdio defaults,

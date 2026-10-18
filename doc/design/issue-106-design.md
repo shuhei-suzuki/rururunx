@@ -1194,6 +1194,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | D13 | `rrx task recover --abandon-step` | `rrx pipeline recover <run-id> --abandon-step --then retry|abandon-run` | Goal 完了確認の run は Task を持たない。run で指定すれば、両方の kind に同じ command を使える。attempt の上限に達した run を終わらせる出口が要る |
 | D14 | rrx commit を trailer で識別する | 記録した commit SHA と tree だけで識別する | trailer と親は Agent も作れるので、作成主体の証明にならない |
 | D15 | quota lease を使う | v1 は daemon 全体で 1 step ずつ動かし、quota の表を書かない。provider の上限は既知の終了だけを daemon 全体の 1 つの記録（`pipeline_limit_wait`）の backoff で待ち、期限の後は 1 つの起動が既知の成功で終わるまで次を起動しない。native の Exhausted の観測は読むだけで、残る間は起動しない | `quota_leases` / `quota_waiters` は `execution_units` への FK を持つ（`state/execution.sql:130-142`）。native の規則（provider ごとの上限の集約、probe、公平性）を条件ごと移し替えると、改訂のたびに弱まりが見つかった。1 step ずつはどの同時実行の上限よりも厳しく、Stage 1（1 Project・直列の step）の要求を満たす。時間をまたぐ制約（待ちと、期限後の単一の起動）は、account を区別しない 1 つの記録で保守的に保つ |
+| D16 | CLI の入口のファイルを hash で固定する | Q は Mach-O の native binary だけを受け付け、`#!` の入口は拒否する（制約の強化）。npm Codex では `…/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex` を設定する | interpreter・vendor の実体が入口の hash と独立に入れ替わる経路を pin から除く |
 
 **オーケストレーターの簡素化の指示から外した点**
 

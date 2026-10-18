@@ -1,6 +1,188 @@
 use super::*;
 use crate::config::ExecutionMode;
 
+fn refuses_pipeline(legacy: &crate::runtime::LegacyFixture, store: &Store) {
+    let before = store.pipeline_mode_inventory().unwrap();
+    let epoch = store.connection_epoch_for_test();
+    let error =
+        RuntimeOwner::open_mode(&legacy.path().join("state.db"), ExecutionMode::CliPipeline)
+            .err()
+            .unwrap();
+    assert!(
+        error
+            .downcast_ref::<crate::execution::owner::ExecutionModeNotQuiescent>()
+            .is_some(),
+        "{error:#}"
+    );
+    assert_eq!(store.connection_epoch_for_test(), epoch);
+    assert_eq!(store.pipeline_mode_inventory().unwrap(), before);
+}
+
+/// An open native Unit is detected through its normal reservation and blocks pipeline startup.
+#[test]
+fn b3_owner_native_unit() {
+    let (legacy, store, unit) = round2::native_open_inventory_fixture();
+    assert!(unit.native_effects_open && unit.result_finalization_open);
+    assert_eq!(store.pipeline_mode_inventory().unwrap().native_units, 1);
+    let before = store.execution_unit(unit.id).unwrap();
+    refuses_pipeline(&legacy, &store);
+    assert_eq!(
+        serde_json::to_value(store.execution_unit(unit.id).unwrap()).unwrap(),
+        serde_json::to_value(before).unwrap()
+    );
+}
+
+/// A real active native quota lease is inventoried and retained on pipeline startup refusal.
+#[test]
+fn b3_owner_native_lease() {
+    let (legacy, mut store, unit) = round2::native_open_inventory_fixture();
+    store
+        .reserve_execution_quota(&unit.authority(), "codex", "unknown", 6, 2, 3, now_ms())
+        .unwrap();
+    assert_eq!(store.pipeline_mode_inventory().unwrap().native_leases, 1);
+    let leases: Vec<(String, bool)> = store
+        .connection
+        .prepare("SELECT unit_id,active FROM quota_leases ORDER BY unit_id")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    refuses_pipeline(&legacy, &store);
+    let after: Vec<(String, bool)> = store
+        .connection
+        .prepare("SELECT unit_id,active FROM quota_leases ORDER BY unit_id")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert_eq!(after, leases);
+}
+
+fn native_effect(unknown: bool) {
+    let (legacy, mut store, unit) = round2::native_open_inventory_fixture();
+    let effect = ManagedEffect {
+        id: OperationId::new(),
+        unit_id: unit.id,
+        scope: unit.scope.clone(),
+        kind: "publish".into(),
+        idempotency_key: "publish-once".into(),
+        expected_target: "fixture-target".into(),
+        state: EffectState::Pending,
+        receipt: BTreeMap::new(),
+        version: 1,
+    };
+    store
+        .reserve_managed_effect(&unit.authority(), &effect)
+        .unwrap();
+    if unknown {
+        store
+            .reconcile_managed_effect(effect.id, 1, EffectState::Unknown, BTreeMap::new())
+            .unwrap();
+    }
+    let before = store.managed_effect(effect.id).unwrap();
+    assert_eq!(
+        before.state,
+        if unknown {
+            EffectState::Unknown
+        } else {
+            EffectState::Pending
+        }
+    );
+    assert_eq!(store.pipeline_mode_inventory().unwrap().native_effects, 1);
+    refuses_pipeline(&legacy, &store);
+    assert_eq!(
+        serde_json::to_value(store.managed_effect(effect.id).unwrap()).unwrap(),
+        serde_json::to_value(before).unwrap()
+    );
+}
+
+/// A pending native effect is detected from its real reservation and blocks pipeline startup.
+#[test]
+fn b3_owner_native_pending_effect() {
+    native_effect(false);
+}
+
+/// An unknown native effect is detected from reconciliation and blocks pipeline startup.
+#[test]
+fn b3_owner_native_unknown_effect() {
+    native_effect(true);
+}
+
+/// A native owner cannot reserve pipeline work even for an otherwise accepted Goal.
+#[tokio::test]
+async fn b3_native_owner_claim_refused() {
+    let accepted = fixture().await;
+    accepted.claim();
+    let f = fixture_mode(false).await;
+    let id = Uuid::new_v4().to_string();
+    let run = PipelineRun {
+        id: id.clone(),
+        kind: "task".into(),
+        task_id: Some(f.task),
+        goal_id: f.goal,
+        project_id: f.project,
+        owner_epoch: f.owner.epoch(),
+        version: 0,
+        state: "running".into(),
+        round: 0,
+        base_commit: "a".repeat(40),
+        head_commit: "a".repeat(40),
+        worktree: Some(format!("/pipeline/{id}")),
+        branch: Some(format!("rrx/pipeline/{id}")),
+        body: json!({}),
+    };
+    let error = f
+        .store()
+        .pipeline_claim_run(
+            &f.owner,
+            &run,
+            1,
+            &planned(&id, 1, 1, "prepare"),
+            Some(&create_journal(&f)),
+        )
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("pipeline requires CliPipeline owner"),
+        "{error:#}"
+    );
+    assert!(
+        f.store()
+            .pipeline_goal_view(f.goal)
+            .unwrap()
+            .runs
+            .is_empty()
+    );
+}
+
+/// A native owner cannot write launch intent through the pipeline Store API.
+#[tokio::test]
+async fn b3_native_owner_launch_refused() {
+    let accepted = fixture().await;
+    let id = accepted.claim();
+    let cursor = accepted.cursor(&id);
+    accepted
+        .store()
+        .pipeline_begin_launch(&accepted.owner, &cursor, None, &json!({}))
+        .unwrap();
+    let f = fixture_mode(false).await;
+    let before = f.store().pipeline_goal_view(f.goal).unwrap();
+    let error = f
+        .store()
+        .pipeline_begin_launch(&f.owner, &cursor, None, &json!({}))
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("pipeline requires CliPipeline owner"),
+        "{error:#}"
+    );
+    assert_eq!(f.store().pipeline_goal_view(f.goal).unwrap(), before);
+}
+
 async fn refuses_native(f: Fixture) {
     let path = f.owner.state_path().to_path_buf();
     let before = f.store().pipeline_mode_inventory().unwrap();
@@ -92,6 +274,73 @@ async fn b3_owner_provider_wait() {
         0
     );
     assert_eq!(inventory.provider_wait.unwrap().state, "waiting");
+    refuses_native(f).await;
+}
+
+/// An expired real provider wait still blocks a mode change without changing its evidence.
+#[tokio::test]
+async fn b3_owner_expired_wait() {
+    let f = fixture().await;
+    let id = f.claim();
+    f.launching(&id, "implement");
+    let cursor = f.cursor(&id);
+    with_pipeline_clock(0, || {
+        f.store()
+            .pipeline_record_exit(&f.owner, &cursor, &death(), Some("limit"), &json!({}))
+            .unwrap()
+    });
+    fix1::cancel(&f);
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_cancel_run(&f.owner, &cursor, None)
+        .unwrap();
+    let inventory = f.store().pipeline_mode_inventory().unwrap();
+    assert_eq!(
+        inventory.pipeline_runs + inventory.pipeline_journals + inventory.pipeline_processes,
+        0
+    );
+    let wait = inventory.provider_wait.unwrap();
+    assert_eq!(wait.state, "waiting");
+    assert!(wait.not_before < now_ms());
+    refuses_native(f).await;
+}
+
+/// A real designated limit probe blocks a mode change and retains its exact wait state.
+#[tokio::test]
+async fn b3_owner_probing_wait() {
+    let f = fixture().await;
+    let id = f.claim();
+    f.launching(&id, "implement");
+    let cursor = f.cursor(&id);
+    with_pipeline_clock(0, || {
+        f.store()
+            .pipeline_record_exit(&f.owner, &cursor, &death(), Some("limit"), &json!({}))
+            .unwrap()
+    });
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_hold(&f.owner, &cursor, "limit", None)
+        .unwrap();
+    let request = recovery(&f, &id, "retry");
+    f.store()
+        .pipeline_recover(&f.owner, &f.ingress, &request, &recovery_evidence())
+        .unwrap();
+    let cursor = f.cursor(&id);
+    assert!(matches!(
+        f.store()
+            .pipeline_begin_launch(&f.owner, &cursor, Some("probe-cookie-012345"), &json!({}))
+            .unwrap(),
+        PipelineLaunch::Started
+    ));
+    assert_eq!(
+        f.store()
+            .pipeline_mode_inventory()
+            .unwrap()
+            .provider_wait
+            .unwrap()
+            .state,
+        "probing"
+    );
     refuses_native(f).await;
 }
 /// Expired native exhaustion across any account prevents pipeline startup before epoch retirement.
@@ -267,7 +516,9 @@ async fn b3_q_blocks_claim() {
                 &planned(&id, 1, 1, "prepare"),
                 Some(&create)
             )
-            .is_err()
+            .unwrap_err()
+            .to_string()
+            .contains("pipeline startup Q is not current")
     );
     assert!(store.pipeline_goal_view(f.goal).unwrap().runs.is_empty());
 }
@@ -302,7 +553,9 @@ async fn b3_q_blocks_internal_launch() {
     assert!(
         store
             .pipeline_begin_launch(&owner, &cursor, None, &json!({}))
-            .is_err()
+            .unwrap_err()
+            .to_string()
+            .contains("pipeline startup Q is not current")
     );
     assert_eq!(store.pipeline_goal_view(f.goal).unwrap(), before);
 }

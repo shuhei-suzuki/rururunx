@@ -451,7 +451,7 @@ async fn b2_fix2_recovery_then_retries() {
 #[tokio::test]
 async fn b2_fix2_nonpositive_rowid() {
     for rowid in [0, -1, -2] {
-        let f = fixture().await;
+        let f = fixture_mode(false).await;
         let store = f.store();
         // Qualification has no other producer preconditions; this isolates the rowid guard.
         rejected(
@@ -468,8 +468,8 @@ async fn b2_fix2_nonpositive_rowid() {
 /// Implicit inserts use the negative BEFORE sentinel and persist positive rowids.
 #[tokio::test]
 async fn b2_fix2_implicit_rowid() {
-    let f = fixture().await;
-    let mut store = f.store();
+    let f = fixture_mode(false).await;
+    let store = f.store();
     let c = &store.connection;
     permitted(
         c,
@@ -485,18 +485,7 @@ async fn b2_fix2_implicit_rowid() {
     )
     .unwrap();
     for subject in ["platform", "mode_quiescence"] {
-        store
-            .pipeline_record_qualification(
-                &f.owner,
-                &PipelineQualification {
-                    subject: subject.into(),
-                    state: "refused".into(),
-                    executable_sha256: None,
-                    version_text: None,
-                    body: json!({}),
-                },
-            )
-            .unwrap();
+        store.connection.execute("INSERT INTO pipeline_qualifications(owner_epoch,subject,state,body) VALUES(?1,?2,'refused','{}')", params![f.owner.epoch, subject]).unwrap();
     }
     let c = &store.connection;
     assert_eq!(

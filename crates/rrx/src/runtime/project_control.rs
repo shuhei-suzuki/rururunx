@@ -217,6 +217,9 @@ impl Runtime {
     /// version the current row must still have, or `None` for a new row).
     async fn commit_project(&self, project: &mut Project, expected: Option<u64>) -> Result<()> {
         let _admission = self.control_admission.lock().await;
+        if let Some(pipeline) = &self.config.pipeline {
+            pipeline.check_project_root(&project.root.canonicalize()?)?;
+        }
         let (instance, epoch) = (self.owner.instance_id().to_owned(), self.owner.epoch());
         let stopping = self.stopping.clone();
         // M1: the in-flight set stays locked until the write has committed,
@@ -569,6 +572,70 @@ mod tests {
     fn runtime(dir: &std::path::Path) -> Runtime {
         let owner = RuntimeOwner::open(&dir.join("state.db")).unwrap();
         Runtime::new(owner, Config::default()).unwrap()
+    }
+
+    /// Registration and re-registration refuse private pipeline overlaps without changing rows.
+    #[tokio::test]
+    async fn b3_project_private_overlap() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = RuntimeOwner::open_mode(
+            &dir.path().join("state/state.db"),
+            crate::config::ExecutionMode::CliPipeline,
+        )
+        .unwrap();
+        let pipeline = crate::execution::pipeline::test_support::config(&owner, dir.path());
+        let config = Config {
+            execution: crate::config::ExecutionConfig {
+                mode: crate::config::ExecutionMode::CliPipeline,
+            },
+            pipeline: Some(pipeline.clone()),
+            ..Default::default()
+        };
+        let runtime = Runtime::new(owner.clone(), config).unwrap();
+        let source = dir.path().join("source");
+        std::fs::create_dir(&source).unwrap();
+        let mut project = Project::new(
+            "separate".into(),
+            source.canonicalize().unwrap(),
+            "fixture".into(),
+            "main".into(),
+        );
+        runtime.commit_project(&mut project, None).await.unwrap();
+        let before = serde_json::to_value(runtime.project_snapshot().unwrap()).unwrap();
+        for root in [
+            pipeline.work_root.clone(),
+            pipeline.work_root.parent().unwrap().to_path_buf(),
+            pipeline.clis.codex.codex_home.clone().unwrap(),
+        ] {
+            let mut new = Project::new(
+                "overlap".into(),
+                root.clone(),
+                "fixture".into(),
+                "main".into(),
+            );
+            assert!(
+                runtime
+                    .commit_project(&mut new, None)
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Project overlaps")
+            );
+            let mut registered = project.clone();
+            registered.root = root;
+            assert!(
+                runtime
+                    .commit_project(&mut registered, Some(project.version))
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Project overlaps")
+            );
+            assert_eq!(
+                serde_json::to_value(runtime.project_snapshot().unwrap()).unwrap(),
+                before
+            );
+        }
     }
 
     /// C-S3d4 (Sol 6080740320 L1): the Runtime's own cut-off answers only

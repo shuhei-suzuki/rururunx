@@ -185,38 +185,51 @@ A generic adapter should be possible for tools that support:
 
 Generic adapters may have fewer capabilities than first-party adapters.
 
-Issue #106 B3 adds a separate `execution::pipeline::CliQualifier`; it does not
-use `GenericCliAdapter`. Runtime-only `execution.mode` defaults to
-`managed_native`. Default execution and absent pipeline settings are omitted
-from serialization to preserve the existing native policy digest. Project
-overlays cannot set either section. Pipeline settings accept executable paths,
-exact version pins, models, Codex effort and dedicated `CODEX_HOME`, extra PATH
-directories and a work root; command templates are fixed in code.
+The separate `execution::pipeline::CliQualifier` does not use `GenericCliAdapter`.
+Runtime-only `execution.mode` defaults to `managed_native`. Default execution and
+absent pipeline settings are omitted from serialization to preserve the native
+policy digest. Project overlays cannot set either section. Pipeline settings
+accept executable paths, exact version pins, models, Codex effort (`low`, `medium`,
+`high`, `xhigh`), dedicated `CODEX_HOME`, extra PATH directories and a work root;
+command templates are fixed in code.
 
-For `cli_pipeline`, startup Q records platform, pre-epoch mode quiescence, and
-Codex/Claude observations through the Store qualification API. CLI checks cover
-realpath/SHA-256, exact trimmed version, exact help option tokens, and successful
-`login status` / `auth status`. Codex configuration currently permits only
-string `model` and `model_reasoning_effort` keys; other keys refuse Q. Probe
-commands clear the environment and use a bounded capture (five seconds, four KiB
-combined output), retained process-group custody and `rrx-spawn-hygiene`.
-Probe cleanup reuses the adapter's macOS EPERM resolver/inspector on a blocking
-worker retaining the unreaped leader. Only confirmed all-dead group inspection
-resolves EPERM; live/unknown/inspection-error observations refuse Q. Shared native
-`OwnedProcess` signal/reap behavior is unchanged.
-Cleanup signal failure refuses Q. No Store mutex, SQLite transaction or control
-admission guard spans a probe. Startup refuses work until Q is current;
-configuration and executable images are rechecked outside Store transactions.
-Claude additionally receives a parser-only `--setting-sources "" --help` probe;
-the Q path never sends `-p` or an Agent prompt.
+For `cli_pipeline`, startup Q records platform, pre-epoch mode quiescence and
+Codex/Claude observations. Only the qualifier and mode-aware owner startup can
+produce sealed qualification records. Pipeline claim and launch APIs require a
+`CliPipeline` owner and all four qualified subjects in its epoch. CLI checks cover
+native Mach-O realpath/SHA-256, exact trimmed version, exact help option tokens and
+successful `login status` / `--setting-sources "" auth status`. Operators configure
+the native binary itself; npm Codex uses
+`…/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex`.
+Interpreter scripts cannot pin the image and refuse Q. Codex config permits only
+string `model` and `model_reasoning_effort`; other keys refuse Q.
+
+Probe commands clear the environment. Image/config reads and probe observation
+share a five-second qualification deadline, with four KiB combined output per
+probe. Nonblocking open and descriptor checks refuse special files. Launch uses
+`rrx-spawn-hygiene` with retained process-group custody. Probe cleanup reuses the
+adapter's macOS EPERM resolver/inspector on a blocking worker retaining the
+unreaped leader. Only confirmed all-dead inspection resolves EPERM;
+live/unknown/inspection-error observations refuse Q. Worker handle and custody
+remain retained across the observation deadline; cleanup and direct reap finish
+before Q publication or another probe. Shared native signal/reap behavior is
+unchanged. No Store mutex, SQLite transaction or control guard spans a probe.
+
+Idle currency checks read current-epoch rows and the config digest.
+`CliQualifier::before_launch` rechecks images, Codex config, directory separation
+and PATH integrity outside Store transactions, between launch-intent commit and
+spawn. Claude receives differential parser-only `--setting-sources bogus --help`
+and `--setting-sources "" --help` probes: invalid values must fail or report an
+error and the empty value must succeed. Help that bypasses value validation
+refuses with `setting_sources_validation_unproven`. Q sends no `-p` or Agent prompt.
 
 The output classifiers accept complete structured output and fail closed on
 missing, malformed, duplicate-key, overflowed or unrecognized-version output.
-Only synthetic, explicitly named fixture wire versions currently have rules;
-no installed production CLI version has been qualified by these fixtures.
-Reusable file-controlled Codex/Claude executables in
-`crates/rrx/tests/support/pipeline_cli.*` implement probes and a later exec
-interface. B3 does not launch the fixed step templates or install the scheduler.
+Only synthetic fixture wire versions have rules; no production CLI version has
+been qualified by these fixtures. Native file-controlled executables in
+`crates/rrx/tests/support/pipeline_cli.*` implement probes and validate full step
+argv, including empty arguments. Fixed step templates and the scheduler are not
+installed as production execution paths.
 
 ## 11. MVP adapters
 

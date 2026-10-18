@@ -4,7 +4,7 @@ fn cli() -> PipelineCli {
         executable: "/codex".into(),
         version: "fixture".into(),
         model: "model".into(),
-        effort: Some("high".into()),
+        effort: Some(crate::config::ReasoningEffort::High),
         codex_home: Some("/home".into()),
     }
 }
@@ -21,14 +21,29 @@ fn b3_executor_template() {
             "{}",
         )
         .unwrap();
-        assert_eq!(&args[..3], ["exec", "--sandbox", "workspace-write"]);
-        assert!(
-            args.windows(2)
-                .any(|pair| pair == ["-c", "sandbox_workspace_write.network_access=false"])
-        );
-        assert!(
-            args.windows(2)
-                .any(|pair| pair == ["-c", "projects./work.trust_level=\"untrusted\""])
+        assert_eq!(
+            args,
+            [
+                "exec",
+                "--sandbox",
+                "workspace-write",
+                "-c",
+                "sandbox_workspace_write.network_access=false",
+                "-c",
+                "projects./work.trust_level=\"untrusted\"",
+                "-m",
+                "model",
+                "-c",
+                "model_reasoning_effort=high",
+                "-C",
+                "/work",
+                "-o",
+                "/attempt/last.md",
+                "--json",
+                "--color",
+                "never",
+                "-"
+            ]
         );
     }
 }
@@ -43,11 +58,29 @@ fn b3_readonly_templates() {
         "{}",
     )
     .unwrap();
-    assert_eq!(&confirm[..3], ["exec", "--sandbox", "read-only"]);
-    assert!(
-        confirm
-            .windows(2)
-            .any(|pair| pair == ["--output-schema", "/attempt/confirm.schema.json"])
+    assert_eq!(
+        confirm,
+        [
+            "exec",
+            "--sandbox",
+            "read-only",
+            "-c",
+            "projects./work.trust_level=\"untrusted\"",
+            "-m",
+            "model",
+            "-c",
+            "model_reasoning_effort=high",
+            "-C",
+            "/work",
+            "--output-schema",
+            "/attempt/confirm.schema.json",
+            "-o",
+            "/attempt/last.json",
+            "--json",
+            "--color",
+            "never",
+            "-"
+        ]
     );
     let review = step_arguments(
         PipelineRole::Review,
@@ -57,27 +90,30 @@ fn b3_readonly_templates() {
         "{\"schema\":1}",
     )
     .unwrap();
-    assert!(
-        review
-            .windows(2)
-            .any(|pair| pair == ["--permission-mode", "plan"])
+    assert_eq!(
+        review,
+        [
+            "-p",
+            "--permission-mode",
+            "plan",
+            "--tools",
+            "Read,Grep,Glob",
+            "--disallowedTools",
+            "Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch,Task",
+            "--strict-mcp-config",
+            "--mcp-config",
+            "/attempt/mcp.json",
+            "--setting-sources",
+            "",
+            "--disable-slash-commands",
+            "--model",
+            "model",
+            "--output-format",
+            "json",
+            "--json-schema",
+            "{\"schema\":1}"
+        ]
     );
-    assert!(
-        review
-            .windows(2)
-            .any(|pair| pair == ["--tools", "Read,Grep,Glob"])
-    );
-    assert!(
-        review
-            .windows(2)
-            .any(|pair| pair == ["--setting-sources", ""])
-    );
-    assert!(
-        review
-            .windows(2)
-            .any(|pair| pair == ["--json-schema", "{\"schema\":1}"])
-    );
-    assert!(review.contains(&"--strict-mcp-config".into()));
 }
 /// Template paths cannot introduce Codex dotted keys or unsafe path characters.
 #[test]

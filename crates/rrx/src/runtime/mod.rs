@@ -40,6 +40,7 @@ pub struct Runtime {
     started: AtomicBool,
     running: Arc<AtomicBool>,
     stopping: Arc<AtomicBool>,
+    pipeline_qualification_error: std::sync::Mutex<Option<String>>,
     wake: Arc<tokio::sync::Notify>,
     control_admission: Arc<tokio::sync::Mutex<()>>,
     /// S3 D5: Projects whose bounded preflight has not yet joined.
@@ -98,6 +99,7 @@ impl Runtime {
             started: AtomicBool::new(false),
             running,
             stopping,
+            pipeline_qualification_error: std::sync::Mutex::new(None),
             wake: Arc::new(tokio::sync::Notify::new()),
             control_admission,
             project_preflights: Arc::default(),

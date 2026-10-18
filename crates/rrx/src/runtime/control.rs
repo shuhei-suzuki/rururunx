@@ -339,6 +339,7 @@ pub enum ControlResponse {
         epoch: u64,
         operational: bool,
         service_running: bool,
+        pipeline_qualification_error: Option<String>,
         requested_global_sessions: usize,
         requested_tasks_per_project: usize,
     },
@@ -632,6 +633,10 @@ impl Runtime {
         }
         if let ControlAction::CreateGoal { plan, .. } = &request.action {
             ensure!(
+                self.config.execution.mode != crate::config::ExecutionMode::CliPipeline,
+                "cli_pipeline CreateGoal requires an execution profile"
+            );
+            ensure!(
                 !self.stopping.load(std::sync::atomic::Ordering::SeqCst),
                 "Runtime stopping; new Goal refused"
             );
@@ -755,6 +760,11 @@ impl Runtime {
                 epoch: self.owner.epoch(),
                 operational: false,
                 service_running: self.service_running(),
+                pipeline_qualification_error: self
+                    .pipeline_qualification_error
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("pipeline status poisoned"))?
+                    .clone(),
                 requested_global_sessions: self.config.scheduler.global_max_sessions,
                 requested_tasks_per_project: crate::config::MVP_PROJECT_TASKS,
             },

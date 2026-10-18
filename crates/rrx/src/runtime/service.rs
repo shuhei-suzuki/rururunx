@@ -20,6 +20,23 @@ impl Drop for Running {
 }
 
 impl Runtime {
+    pub(super) fn check_pipeline_currency(&self) -> Result<()> {
+        let result = crate::execution::pipeline::CliQualifier::current(
+            &self.owner,
+            self.config
+                .pipeline
+                .as_ref()
+                .expect("validated pipeline config"),
+        );
+        if result.is_err() {
+            *self
+                .pipeline_qualification_error
+                .lock()
+                .map_err(|_| anyhow::anyhow!("pipeline status poisoned"))? =
+                Some("pipeline_qualification_stale".into());
+        }
+        result
+    }
     pub(super) fn observe_task_drivers(&self) -> Result<usize> {
         #[cfg(test)]
         {
@@ -97,15 +114,8 @@ impl Runtime {
                     return Ok(());
                 }
                 if runtime.config.execution.mode == crate::config::ExecutionMode::CliPipeline {
-                    crate::execution::pipeline::CliQualifier::current(
-                        &runtime.owner,
-                        runtime
-                            .config
-                            .pipeline
-                            .as_ref()
-                            .expect("validated pipeline config"),
-                    )?;
-                    // B3 installs startup only. B6 supplies pipeline_tick here;
+                    runtime.check_pipeline_currency()?;
+                    // B3 installs startup only. B9 supplies pipeline_tick here;
                     // this mode cannot enter any native admission/reconciliation.
                     let wake = runtime.wake.clone();
                     drop(runtime);

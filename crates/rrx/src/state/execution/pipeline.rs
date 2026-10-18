@@ -14,6 +14,27 @@ pub const PIPELINE_TABLES: &[&str] = &[
     "pipeline_limit_wait",
 ];
 
+#[cfg(test)]
+thread_local! { static WAIT_CLOCK: std::cell::Cell<Option<i64>> = const { std::cell::Cell::new(None) }; }
+fn pipeline_now_ms() -> i64 {
+    #[cfg(test)]
+    if let Some(now) = WAIT_CLOCK.with(|clock| clock.get()) {
+        return now;
+    }
+    now_ms()
+}
+#[cfg(test)]
+fn with_pipeline_clock<T>(now: i64, run: impl FnOnce() -> T) -> T {
+    struct Reset(Option<i64>);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            WAIT_CLOCK.with(|clock| clock.set(self.0));
+        }
+    }
+    let _reset = Reset(WAIT_CLOCK.with(|clock| clock.replace(Some(now))));
+    run()
+}
+
 pub(in crate::state) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
     tx.execute_batch(include_str!("pipeline.sql"))?;
     let collisions = [
@@ -78,7 +99,11 @@ fn pipeline_owner_current(tx: &Transaction<'_>, owner: &RuntimeOwner) -> Result<
 }
 
 fn pipeline_startup_current(tx: &Transaction<'_>, owner: &RuntimeOwner) -> Result<()> {
-    if owner.execution_mode() == crate::config::ExecutionMode::CliPipeline {
+    ensure!(
+        owner.execution_mode() == crate::config::ExecutionMode::CliPipeline,
+        "pipeline requires CliPipeline owner"
+    );
+    {
         for subject in ["platform", "mode_quiescence", "codex", "claude"] {
             let qualified: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_qualifications WHERE owner_epoch=?1 AND subject=?2 AND state='qualified')", params![owner.epoch, subject], |r| r.get(0))?;
             ensure!(qualified, "pipeline startup Q is not current");
@@ -528,7 +553,7 @@ fn settle_wait(
     } else {
         w.state = "waiting".into();
         w.not_before = w.not_before.max(
-            now_ms()
+            pipeline_now_ms()
                 .checked_add(w.backoff_ms)
                 .context("pipeline wait deadline overflow")?,
         );
@@ -941,11 +966,12 @@ impl Store {
         Ok(out)
     }
 
-    pub fn pipeline_record_qualification(
+    pub(crate) fn pipeline_record_qualification(
         &mut self,
         owner: &RuntimeOwner,
-        qualification: &PipelineQualification,
+        record: &crate::execution::pipeline::QualificationRecord,
     ) -> Result<()> {
+        let qualification = record.row();
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1761,7 +1787,7 @@ impl Store {
                 ensure!(qualified, "pipeline CLI is not qualified in this epoch");
                 if let Some(mut wait) = wait {
                     match wait.state.as_str() {
-                        "waiting" if now_ms() >= wait.not_before => {
+                        "waiting" if pipeline_now_ms() >= wait.not_before => {
                             wait.state = "probing".into();
                             wait.probe_run = Some(run.id.clone());
                             wait.probe_seq = Some(step.seq);

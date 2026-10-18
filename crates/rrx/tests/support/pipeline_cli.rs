@@ -1,5 +1,5 @@
-//! Small file-controlled fake executables, following adapter.rs's shell harness.
-use super::PipelineCli;
+//! Native file-controlled fake executables, exercising the real Mach-O Q path.
+use crate::config::PipelineCli;
 use std::{
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
@@ -9,13 +9,49 @@ pub struct FakeCli {
     pub directory: PathBuf,
     pub cli: PipelineCli,
 }
+
+pub fn config(
+    owner: &crate::execution::RuntimeOwner,
+    root: &Path,
+) -> crate::config::PipelineConfig {
+    let codex = FakeCli::new(root, true);
+    let claude = FakeCli::new(root, false);
+    let work_root = owner.ipc_path().parent().unwrap().to_path_buf();
+    std::fs::set_permissions(&work_root, std::fs::Permissions::from_mode(0o700)).unwrap();
+    crate::config::PipelineConfig {
+        // Reuse the existing owner/IPC fixture's short, private directory.
+        work_root,
+        path_prefix: vec![],
+        clis: crate::config::PipelineClis {
+            codex: codex.cli,
+            claude: claude.cli,
+        },
+    }
+}
 impl FakeCli {
     pub fn new(root: &Path, codex: bool) -> Self {
         let name = if codex { "codex" } else { "claude" };
         let directory = root.join(name);
         std::fs::create_dir_all(&directory).unwrap();
         let executable = directory.join(name);
-        std::fs::write(&executable, include_str!("pipeline_cli.sh")).unwrap();
+        static NATIVE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+        let native = NATIVE.get_or_init(|| {
+            let dir = tempfile::Builder::new()
+                .prefix("b3-native-")
+                .tempdir()
+                .unwrap();
+            let source = dir.path().join("fake.c");
+            std::fs::write(&source, include_str!("pipeline_cli.c")).unwrap();
+            let mut compiler = std::process::Command::new("/usr/bin/cc");
+            compiler
+                .args(["-Wall", "-Wextra", "-Werror"])
+                .arg(&source)
+                .arg("-o")
+                .arg(dir.path().join("fake"));
+            assert!(rrx_spawn_hygiene::status_std(compiler).unwrap().success());
+            std::fs::read(dir.path().join("fake")).unwrap()
+        });
+        std::fs::write(&executable, native).unwrap();
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
         let version = format!("rrx-fixture-{name}-v1");
         let flags = if codex {
@@ -42,12 +78,20 @@ impl FakeCli {
                 executable,
                 version,
                 model: "fixture-model".into(),
-                effort: codex.then(|| "high".into()),
+                effort: codex.then_some(crate::config::ReasoningEffort::High),
                 codex_home: codex.then_some(home),
             },
         }
     }
     pub fn control(&self, name: &str, content: &str) {
         std::fs::write(self.directory.join(name), content).unwrap();
+    }
+    pub fn expect_arguments(&self, args: &[&str]) {
+        let mut bytes = Vec::new();
+        for arg in args {
+            bytes.extend_from_slice(arg.as_bytes());
+            bytes.push(0);
+        }
+        std::fs::write(self.directory.join("expected-argv"), bytes).unwrap();
     }
 }

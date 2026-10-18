@@ -4,7 +4,9 @@ use std::{collections::BTreeMap, fs, path::Path};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 mod pipeline;
-pub use pipeline::{ExecutionConfig, ExecutionMode, PipelineCli, PipelineClis, PipelineConfig};
+pub use pipeline::{
+    ExecutionConfig, ExecutionMode, PipelineCli, PipelineClis, PipelineConfig, ReasoningEffort,
+};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "UPPERCASE")]

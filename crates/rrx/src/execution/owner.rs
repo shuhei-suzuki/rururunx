@@ -1,8 +1,6 @@
 use super::{OperationId, UnitId};
 use crate::config::ExecutionMode;
-use crate::state::pipeline::{
-    PipelineModeInventory, PipelineQualification, PipelineQuiescenceVerdict,
-};
+use crate::state::pipeline::{PipelineModeInventory, PipelineQuiescenceVerdict};
 use crate::{adapter::SharedStore, state::Store};
 use anyhow::{Context, Result, ensure};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
@@ -325,28 +323,18 @@ impl RuntimeOwner {
             socket,
         });
         if mode == ExecutionMode::CliPipeline {
-            owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .pipeline_record_qualification(
-                    &owner,
-                    &PipelineQualification {
-                        subject: "mode_quiescence".into(),
-                        state: "qualified".into(),
-                        executable_sha256: None,
-                        version_text: None,
-                        body: serde_json::json!({"inventory": {
-                        "native_drivers":inventory.native_drivers,
-                        "native_units":inventory.native_units,
-                        "native_phases":inventory.native_phases,
-                        "native_leases":inventory.native_leases,
-                        "native_effects":inventory.native_effects,
-                        "native_cleanup_cookies":inventory.native_cookies.len(),
-                        "native_exhaustion":inventory.native_exhaustion.len()
-                    }, "discovery": discovery}),
-                    },
-                )?;
+            super::pipeline::CliQualifier::record_quiescence(
+                &owner,
+                serde_json::json!({"inventory": {
+                "native_drivers":inventory.native_drivers,
+                "native_units":inventory.native_units,
+                "native_phases":inventory.native_phases,
+                "native_leases":inventory.native_leases,
+                "native_effects":inventory.native_effects,
+                "native_cleanup_cookies":inventory.native_cookies.len(),
+                "native_exhaustion":inventory.native_exhaustion.len()
+            }, "discovery": discovery}),
+            )?;
         }
         Ok(owner)
     }

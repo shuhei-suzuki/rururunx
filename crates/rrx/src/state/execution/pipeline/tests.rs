@@ -170,11 +170,39 @@ async fn fixture_with_owner(
     pipeline: bool,
     shared: Option<std::sync::Arc<RuntimeOwner>>,
 ) -> Fixture {
+    fixture_with_modes(pipeline, pipeline, shared).await
+}
+async fn fixture_with_modes(
+    pipeline: bool,
+    pipeline_owner: bool,
+    shared: Option<std::sync::Arc<RuntimeOwner>>,
+) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("source");
     std::fs::create_dir(&root).unwrap();
-    let owner = shared.unwrap_or_else(|| RuntimeOwner::open(&dir.path().join("state.db")).unwrap());
+    let fresh = shared.is_none();
+    let owner = shared.unwrap_or_else(|| {
+        RuntimeOwner::open_mode(
+            &dir.path().join("state/state.db"),
+            if pipeline_owner {
+                crate::config::ExecutionMode::CliPipeline
+            } else {
+                crate::config::ExecutionMode::ManagedNative
+            },
+        )
+        .unwrap()
+    });
     let mut config = Config::default();
+    if pipeline_owner {
+        let pins = crate::execution::pipeline::test_support::config(&owner, dir.path());
+        if fresh {
+            crate::execution::pipeline::CliQualifier::qualify(&owner, &pins)
+                .await
+                .unwrap();
+        }
+        config.execution.mode = crate::config::ExecutionMode::CliPipeline;
+        config.pipeline = Some(pins);
+    }
     config.agents.insert(
         "codex".into(),
         AgentConfig {
@@ -379,28 +407,8 @@ impl Fixture {
         self.store()
             .pipeline_plan_next(&self.owner, &cursor, &planned(id, 2, 1, kind), true)
             .unwrap();
-        if let Some(provider) = &planned(id, 2, 1, kind).provider {
-            let qualified: bool = self.store().connection.query_row(
-                "SELECT EXISTS(SELECT 1 FROM pipeline_qualifications WHERE owner_epoch=?1 AND subject=?2)",
-                params![self.owner.epoch, provider], |r| r.get(0),
-            ).unwrap();
-            if qualified {
-                return;
-            }
-            self.store()
-                .pipeline_record_qualification(
-                    &self.owner,
-                    &PipelineQualification {
-                        subject: provider.clone(),
-                        state: "qualified".into(),
-                        executable_sha256: Some("a".repeat(64)),
-                        version_text: Some("fixture".into()),
-                        body: json!({}),
-                    },
-                )
-                .unwrap();
-        }
     }
+
     fn launching(&self, id: &str, kind: &str) {
         self.process_step(id, kind);
         let cursor = self.cursor(id);
@@ -653,7 +661,7 @@ async fn b2_wait_no_replace() {
 /// A pipeline claim refuses Goals without an accepted pipeline mode record.
 #[tokio::test]
 async fn b2_pipeline_refuses_native_goal() {
-    let f = fixture_mode(false).await;
+    let f = fixture_with_modes(false, true, None).await;
     let id = Uuid::new_v4().to_string();
     let run = PipelineRun {
         id: id.clone(),
