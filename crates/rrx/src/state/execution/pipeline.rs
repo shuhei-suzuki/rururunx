@@ -570,6 +570,24 @@ impl Store {
             ensure!(rows.len() <= 4096, "mode cookie inventory exceeds bound");
             Ok(rows)
         };
+        // Cleanup identifies a Unit by id; its cookie is in the validated body,
+        // not an indexed column. Missing Units or unusable cookies cannot prove
+        // quiescence, even when all indexed open flags have already been closed.
+        let native_cookies = {
+            let mut q =
+                tx.prepare("SELECT unit_id FROM cleanup_jobs ORDER BY unit_id LIMIT 4097")?;
+            let ids = q
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            ensure!(ids.len() <= 4096, "mode cookie inventory exceeds bound");
+            ids.into_iter()
+                .map(|id| {
+                    let unit = unit_tx(&tx, id.parse()?)?;
+                    Uuid::parse_str(&unit.cookie).context("native cleanup cookie unavailable")?;
+                    Ok(unit.cookie)
+                })
+                .collect::<Result<Vec<_>>>()?
+        };
         let out = PipelineModeInventory {
             native_drivers: count("SELECT count(*) FROM task_drivers WHERE state='driving'")?,
             native_units: count(
@@ -582,9 +600,7 @@ impl Store {
             native_effects: count(
                 "SELECT count(*) FROM managed_effects WHERE state IN ('pending','unknown')",
             )?,
-            native_cookies: cookies(
-                "SELECT u.cookie FROM execution_units u WHERE EXISTS(SELECT 1 FROM cleanup_jobs c WHERE c.unit_id=u.id) ORDER BY u.id LIMIT 4097",
-            )?,
+            native_cookies,
             native_exhaustion: native_exhaustion(&tx)?,
             pipeline_runs: count(
                 "SELECT count(*) FROM pipeline_runs WHERE state IN ('running','held')",

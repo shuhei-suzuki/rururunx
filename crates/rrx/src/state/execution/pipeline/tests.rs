@@ -161,10 +161,16 @@ async fn fixture() -> Fixture {
     fixture_mode(true).await
 }
 async fn fixture_mode(pipeline: bool) -> Fixture {
+    fixture_with_owner(pipeline, None).await
+}
+async fn fixture_with_owner(
+    pipeline: bool,
+    shared: Option<std::sync::Arc<RuntimeOwner>>,
+) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("source");
     std::fs::create_dir(&root).unwrap();
-    let owner = RuntimeOwner::open(&dir.path().join("state.db")).unwrap();
+    let owner = shared.unwrap_or_else(|| RuntimeOwner::open(&dir.path().join("state.db")).unwrap());
     let mut config = Config::default();
     config.agents.insert(
         "codex".into(),
@@ -189,7 +195,7 @@ async fn fixture_mode(pipeline: bool) -> Fixture {
     let mut project = Project::new(
         "pipeline".into(),
         root.canonicalize().unwrap(),
-        "local".into(),
+        format!("local-{}", Uuid::new_v4()),
         "main".into(),
     );
     store.put_project(&mut project).unwrap();
@@ -198,7 +204,7 @@ async fn fixture_mode(pipeline: bool) -> Fixture {
             id: "test".into(),
             category: Category::Tests,
             program: "/usr/bin/true".into(),
-            args: vec![],
+            args: vec![project.id.to_string()],
             cwd: ".".into(),
             timeout_seconds: 1,
             drain_seconds: 1,
@@ -376,6 +382,13 @@ impl Fixture {
             .pipeline_plan_next(&self.owner, &cursor, &planned(id, 2, 1, kind), true)
             .unwrap();
         if let Some(provider) = &planned(id, 2, 1, kind).provider {
+            let qualified: bool = self.store().connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pipeline_qualifications WHERE owner_epoch=?1 AND subject=?2)",
+                params![self.owner.epoch, provider], |r| r.get(0),
+            ).unwrap();
+            if qualified {
+                return;
+            }
             self.store()
                 .pipeline_record_qualification(
                     &self.owner,
@@ -850,8 +863,18 @@ async fn b2_stale_step_trigger_after_takeover() {
     let goal = f.goal;
     let task = f.task;
     drop(f.ingress);
+    let released = std::sync::Arc::downgrade(&f.owner);
     drop(f.owner);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    while released.upgrade().is_some() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "owner custody not released"
+        );
+        tokio::task::yield_now().await;
+    }
     let owner = RuntimeOwner::open(&path).unwrap();
+    assert!(owner.epoch > epoch);
     let mut store = owner.store.lock().unwrap();
     let expected = store.pipeline_takeover_view().unwrap();
     store.pipeline_take_over(&owner, &expected).unwrap();
@@ -869,6 +892,8 @@ async fn b2_stale_step_trigger_after_takeover() {
     );
     raw_step(&store, &step, owner.epoch, &step.state).unwrap();
 }
+
+mod round2;
 /// Step versions advance exactly once on every permitted update.
 #[tokio::test]
 async fn b2_step_version_is_monotonic() {
