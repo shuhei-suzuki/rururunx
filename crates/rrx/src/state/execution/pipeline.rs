@@ -1130,6 +1130,16 @@ impl Store {
                 tx.commit()?;
                 return Ok(());
             }
+            if step.state == "interrupted" {
+                // Keep the terminal attempt intact; create a recoverable cancellation target.
+                ensure!(step.attempt < 16, "pipeline attempts exhausted");
+                step.attempt += 1;
+                step.state = "planned".into();
+                step.version = 0;
+                step.body = json!({});
+                insert_step(&tx, owner, &step)?;
+                step.version = 1;
+            }
             if step.state == "planned" {
                 // An earlier attempt may have applied the ref. Recovery must observe it.
                 step.state = "held".into();

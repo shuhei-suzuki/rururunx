@@ -127,7 +127,7 @@ WHEN OLD.rowid<>NEW.rowid OR OLD.run_id<>NEW.run_id OR OLD.seq<>NEW.seq OR OLD.a
        OR (NEW.state IN ('exited','interrupted') AND OLD.state IN ('launching','running'))
        OR (NEW.state='abandoned' AND EXISTS(SELECT 1 FROM pipeline_recoveries r
            WHERE r.run_id=NEW.run_id AND r.seq=NEW.seq AND r.attempt=NEW.attempt))))
- OR (NEW.kind NOT IN ('prepare','release') AND OLD.state IN ('launching','running') AND NEW.state='exited'
+ OR (NEW.kind NOT IN ('prepare','release') AND OLD.state IN ('launching','running') AND NEW.state IN ('exited','interrupted')
      AND json_extract(NEW.body,'$.death_confirmed') IS NOT 1)
  OR (NEW.kind NOT IN ('prepare','release')
      AND json_extract(NEW.body,'$.death_confirmed') IS 1 AND OLD.state IN ('launching','running')
