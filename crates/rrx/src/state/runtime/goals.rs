@@ -207,6 +207,8 @@ impl Store {
                 profile.policy_sha256 == policy_sha256 && profile.policy_digest()? == policy_sha256,
                 "pipeline accepted policy mismatch"
             );
+            // Unreachable defense through public ingress: ValidatedGoalPlan has
+            // private immutable fields and GoalPlan::validate rejects empty criteria.
             ensure!(
                 !d.criteria.is_empty()
                     && d.criteria

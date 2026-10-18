@@ -1,11 +1,11 @@
 use super::round2::{copy, permitted, rejected, update};
 use super::*;
 
-fn latest(f: &Fixture, id: &str) -> PipelineStep {
+pub(super) fn latest(f: &Fixture, id: &str) -> PipelineStep {
     let c = f.cursor(id);
     read_step(&f.store().connection, id, c.seq, c.attempt).unwrap()
 }
-fn cancel(f: &Fixture) {
+pub(super) fn cancel(f: &Fixture) {
     let mut store = f.store();
     let goal = store.goal(f.goal).unwrap().unwrap();
     store

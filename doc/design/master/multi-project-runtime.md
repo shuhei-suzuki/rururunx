@@ -123,6 +123,9 @@ provider backoff in a single daemon-wide row. Waiting cannot become clear throug
 time passage; a recorded successful probe is required. Native Exhausted quota
 observations are read without changing quota tables or treating elapsed time as
 availability. The mode inventory is read-only and is not yet wired into startup.
+Each mode direction distinguishes busy database work, retained cookies requiring
+discovery, and quiescence. A rejected launch cookie still requires discovery after
+cancellation has abandoned its run.
 
 Scheduling has multiple resource scopes:
 

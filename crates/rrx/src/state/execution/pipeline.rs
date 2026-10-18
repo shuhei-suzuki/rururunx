@@ -27,8 +27,12 @@ pub(in crate::state) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
         "singleton=NEW.singleton",
     ];
     for (table, collision) in PIPELINE_TABLES.iter().zip(collisions) {
+        // BEFORE INSERT sees an unspecified rowid for implicit allocation (-1 in
+        // bundled SQLite, pinned by b2_fix2_implicit_rowid). Check positivity AFTER
+        // allocation so that this sentinel can never collide with a stored row.
         tx.execute_batch(&format!(
             "CREATE TRIGGER {table}_no_replace BEFORE INSERT ON {table} WHEN EXISTS(SELECT 1 FROM {table} WHERE ({collision}) OR rowid=NEW.rowid) BEGIN SELECT RAISE(ABORT,'pipeline row cannot be replaced'); END;
+             CREATE TRIGGER {table}_positive_rowid AFTER INSERT ON {table} WHEN NEW.rowid<=0 BEGIN SELECT RAISE(ABORT,'pipeline rowid must be positive'); END;
              CREATE TRIGGER {table}_no_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'pipeline history retained'); END;"
         ))?;
         for action in ["INSERT", "UPDATE", "DELETE"] {
@@ -1035,14 +1039,6 @@ impl Store {
             "pipeline journal step mismatch"
         );
         let goal = pipeline_goal(&tx, &run, false)?;
-        if j.kind == "goal_create" && goal.state == GoalState::Cancelled {
-            j.state = "aborted".into();
-            write_journal(&tx, owner, &j)?;
-            step.state = "interrupted".into();
-            write_step(&tx, owner, &step)?;
-            tx.commit()?;
-            return Ok(());
-        }
         if observed_commit == j.new_commit {
             // A held run requires an operator recovery record before completion.
             ensure!(
@@ -1067,10 +1063,11 @@ impl Store {
             if goal.state == GoalState::Cancelled {
                 j.state = "aborted".into();
                 write_journal(&tx, owner, &j)?;
-                if j.kind == "task_release" {
-                    step.state = "interrupted".into();
-                    write_step(&tx, owner, &step)?;
-                }
+                step.state = "interrupted".into();
+                write_step(&tx, owner, &step)?;
+            } else if goal.state == GoalState::Running && j.state == "held" {
+                j.state = "pending".into();
+                write_journal(&tx, owner, &j)?;
             }
         } else {
             ensure!(
@@ -1112,8 +1109,33 @@ impl Store {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         drop(q);
         for mut j in creates {
-            j.state = "aborted".into();
-            write_journal(&tx, owner, &j)?;
+            // begin_launch persists intent in the same write that enters running;
+            // all attempts retain it, including interrupted/recovered attempts.
+            let prepared: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE run_id=?1 AND kind='prepare' AND (state IN ('running','adopted','interrupted') OR json_type(body,'$.intent') IS NOT NULL))",
+                [&run.id], |r| r.get(0),
+            )?;
+            if j.body["creator_run_id"].as_str() == Some(&run.id) && !prepared {
+                j.state = "aborted".into();
+                write_journal(&tx, owner, &j)?;
+            }
+        }
+        let open_create: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pipeline_ref_journal WHERE goal_id=?1 AND kind='goal_create' AND state IN ('pending','held'))",
+            [run.goal_id.to_string()], |r| r.get(0),
+        )?;
+        if open_create && step.kind == "prepare" {
+            if step.state == "running" {
+                // Leave the running prepare usable by observation-only settlement.
+                tx.commit()?;
+                return Ok(());
+            }
+            if step.state == "planned" {
+                // An earlier attempt may have applied the ref. Recovery must observe it.
+                step.state = "held".into();
+                step.body["reason"] = json!("cancel_pending");
+                write_step(&tx, owner, &step)?;
+            }
         }
         match step.state.as_str() {
             "planned" => {
@@ -1173,7 +1195,7 @@ impl Store {
         }
         settle_wait(&tx, owner, wait, &step)?;
         let unsafe_step:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE run_id=?1 AND (state IN ('planned','launching','running','exited','committed','unknown') OR (state='held' AND kind NOT IN ('prepare','release') AND json_extract(body,'$.death_confirmed') IS NOT 1)))",[&run.id],|r|r.get(0))?;
-        let open_journal:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_ref_journal WHERE run_id=?1 AND state IN ('pending','held'))",[&run.id],|r|r.get(0))?;
+        let open_journal:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_ref_journal WHERE (run_id=?1 OR (goal_id=?2 AND kind='goal_create')) AND state IN ('pending','held'))",params![run.id,run.goal_id.to_string()],|r|r.get(0))?;
         if unsafe_step || open_journal {
             ensure!(
                 matches!(step.state.as_str(), "held" | "unknown" | "rejected"),
@@ -1428,7 +1450,10 @@ fn recovery_rows(
     }
     let journal=tx.query_row(&format!("SELECT {JOURNAL_COLUMNS} FROM pipeline_ref_journal WHERE (run_id=?1 OR (goal_id=?2 AND kind='goal_create')) AND state IN ('pending','held')"),params![run.id,run.goal_id.to_string()],journal_row).optional()?;
     ensure!(
-        !retry || journal.is_none(),
+        !retry
+            || journal.as_ref().is_none_or(|j| {
+                j.kind == "goal_create" && j.body["creator_run_id"].as_str() == Some(&run.id)
+            }),
         "pipeline retry requires journal settlement via abandon_run"
     );
     Ok((run, step, journal))
@@ -1504,13 +1529,10 @@ impl Store {
                         &j.id,
                         observed.version,
                     )?;
-                    let applied = if (j.kind == "goal_create"
-                        && pipeline_goal(&tx, &run, false)?.state == GoalState::Cancelled)
-                        || observed.observed_commit == j.old_commit
-                    {
-                        false
-                    } else if observed.observed_commit == j.new_commit {
+                    let applied = if observed.observed_commit == j.new_commit {
                         true
+                    } else if observed.observed_commit == j.old_commit {
+                        false
                     } else {
                         bail!("ref_unexpected");
                     };
@@ -2012,7 +2034,7 @@ impl Store {
                     && next.provider == previous.provider
                     && next.round == previous.round
                     && next.step_base == previous.step_base
-                    && next.body.get("command_id") == previous.body.get("command_id"),
+                    && next.body["command_id"] == previous.body["command_id"],
                 "invalid pipeline retry attempt"
             );
         } else {

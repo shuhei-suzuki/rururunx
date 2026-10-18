@@ -458,6 +458,10 @@ upgrade in one immediate transaction with complete catalog validation before com
 Run, step, ref-journal, and provider-wait writes carry the current epoch and an
 independent row version. All eight tables reject replacement and deletion;
 provenance records also reject updates. Store operations perform no process or Git I/O.
+Pipeline rowids must be positive after insertion; the replacement guard never
+collides with the bundled SQLite's negative implicit-rowid sentinel. Process steps
+enter exited with complete death evidence and confirmation in the same write;
+exited or committed steps cannot acquire confirmation later.
 
 Snapshot mutations and their scoped audit events commit in the same immediate
 transaction. Audit sequences are monotonic and SQL triggers reject UPDATE/DELETE/REPLACE and

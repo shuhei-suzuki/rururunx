@@ -981,7 +981,7 @@ async fn b2_provider_kind_matrix() {
     }
 }
 
-fn native_inventory_fixture() -> (crate::runtime::LegacyFixture, Store, ExecutionUnit) {
+pub(super) fn native_inventory_fixture() -> (crate::runtime::LegacyFixture, Store, ExecutionUnit) {
     let (legacy, mut store) = crate::runtime::legacy_store(vec![crate::runtime::LegacyTask {
         key: "task",
         executor: "codex",

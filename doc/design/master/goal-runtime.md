@@ -272,6 +272,12 @@ versions. It then writes the acknowledgement, operator record, journal decision,
 abandoned step, updated run, and optional new attempt atomically. A repeated
 request returns the stored response. Unknown steps require operator recovery;
 takeover alone changes ownership and versions, without asserting process death.
+Retry may retain the same run's open Goal-creation journal for its next prepare;
+an open Task-release journal requires settlement before retry. An observed new ref
+is recorded as done even after cancellation; cancellation aborts an old ref.
+Cancellation without a ref observation may abort Goal creation only if prepare
+never ran. Held runs can be abandoned through an operator recovery record or a
+Cancelled Goal, after unresolved process and journal facts have been settled.
 The read-only mode inventory reports retained work and cookies for the caller to
 inspect. Startup reconciliation and command routing are not connected to these
 Store operations.

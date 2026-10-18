@@ -51,7 +51,9 @@ WHEN OLD.rowid<>NEW.rowid OR OLD.id<>NEW.id OR OLD.kind<>NEW.kind OR OLD.task_id
  OR (OLD.state='held' AND NEW.state IN ('running','completed') AND NOT EXISTS(
      SELECT 1 FROM pipeline_recoveries r WHERE r.run_id=NEW.id AND r.consumed_version=NEW.version
       AND r.then_action=CASE NEW.state WHEN 'running' THEN 'retry' ELSE 'abandon_run' END))
- OR (OLD.state='held' AND NEW.state='abandoned' AND NOT EXISTS(SELECT 1 FROM pipeline_recoveries r
+ OR (OLD.state='held' AND NEW.state='abandoned'
+     AND (SELECT json_extract(body,'$.state') FROM goals WHERE id=NEW.goal_id AND project_id=NEW.project_id) IS NOT 'CANCELLED'
+     AND NOT EXISTS(SELECT 1 FROM pipeline_recoveries r
      WHERE r.run_id=NEW.id AND r.consumed_version=NEW.version AND r.then_action='abandon_run'))
  -- 放棄と held からの完了は、生きているかもしれない step が 1 つもないときだけ
  OR (((NEW.state='abandoned' AND OLD.state<>'abandoned') OR (OLD.state='held' AND NEW.state='completed')) AND EXISTS(
@@ -122,10 +124,12 @@ WHEN OLD.rowid<>NEW.rowid OR OLD.run_id<>NEW.run_id OR OLD.seq<>NEW.seq OR OLD.a
  -- Death facts change only on never-launched, observed-dead or audited recovery transitions.
  OR (json_extract(OLD.body,'$.death_confirmed') IS NOT 1 AND json_extract(NEW.body,'$.death_confirmed') IS 1
      AND NOT ((OLD.state='planned' AND NEW.state IN ('held','abandoned'))
-       OR (NEW.state IN ('exited','interrupted') AND OLD.state IN ('launching','running','exited','committed'))
+       OR (NEW.state IN ('exited','interrupted') AND OLD.state IN ('launching','running'))
        OR (NEW.state='abandoned' AND EXISTS(SELECT 1 FROM pipeline_recoveries r
            WHERE r.run_id=NEW.run_id AND r.seq=NEW.seq AND r.attempt=NEW.attempt))))
- OR (NEW.kind NOT IN ('prepare','release') AND json_extract(OLD.body,'$.death_confirmed') IS NOT 1
+ OR (NEW.kind NOT IN ('prepare','release') AND OLD.state IN ('launching','running') AND NEW.state='exited'
+     AND json_extract(NEW.body,'$.death_confirmed') IS NOT 1)
+ OR (NEW.kind NOT IN ('prepare','release')
      AND json_extract(NEW.body,'$.death_confirmed') IS 1 AND OLD.state IN ('launching','running')
      AND (json_extract(NEW.body,'$.death_evidence.leader_exit_observed') IS NOT 1
        OR json_extract(NEW.body,'$.death_evidence.group_kill_delivered') IS NOT 1
