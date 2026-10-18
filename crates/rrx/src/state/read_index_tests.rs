@@ -63,6 +63,7 @@ fn fingerprint(path: &Path) -> Vec<String> {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
                 r.get::<_, Option<String>>(3)?,
             ))
         })
@@ -70,8 +71,8 @@ fn fingerprint(path: &Path) -> Vec<String> {
         .map(Result::unwrap)
         .collect::<Vec<_>>();
     drop(q);
-    for (kind, name, sql) in &objects {
-        out.push(format!("{kind}|{name}|{sql:?}"));
+    for (kind, name, table, sql) in &objects {
+        out.push(format!("{kind}|{name}|{table}|{sql:?}"));
         if kind == "table" && !name.starts_with("sqlite_") {
             let mut rows = c.prepare(&format!("SELECT * FROM \"{name}\"")).unwrap();
             let n = rows.column_count();
@@ -90,6 +91,52 @@ fn fingerprint(path: &Path) -> Vec<String> {
         }
     }
     out
+}
+fn pipeline_fingerprint_object(line: &str) -> bool {
+    // Catalog membership comes from tbl_name, never SQL or persisted data.
+    let table =
+        if line.starts_with("table|") || line.starts_with("trigger|") || line.starts_with("index|")
+        {
+            line.split('|').nth(2)
+        } else {
+            line.split_once(':').map(|(table, _)| table)
+        };
+    table.is_some_and(|table| pipeline::PIPELINE_TABLES.contains(&table))
+}
+/// Pipeline names inside historical row bodies remain in the migration fingerprint.
+#[test]
+fn b2_fingerprint_preserves_pipeline_named_data() {
+    assert!(!pipeline_fingerprint_object(
+        "projects:Text(pipeline_steps)"
+    ));
+    assert!(!pipeline_fingerprint_object(
+        "trigger|legacy|projects|SELECT 'pipeline_steps'"
+    ));
+    assert!(pipeline_fingerprint_object(
+        "index|pipeline_step_one_open|pipeline_steps|SQL"
+    ));
+    assert!(pipeline_fingerprint_object("pipeline_steps:rows"));
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("state.db");
+    genuine_v10(&path);
+    let mut store = Store::open(&path).unwrap();
+    let mut project = store.projects().unwrap().pop().unwrap();
+    project.name = "contains pipeline_steps".into();
+    store.put_project(&mut project).unwrap();
+    let project_rows = || {
+        fingerprint(&path)
+            .into_iter()
+            .filter(|line| line.starts_with("projects:") && !pipeline_fingerprint_object(line))
+            .collect::<Vec<_>>()
+    };
+    let before = project_rows();
+    project.name.push_str(" changed");
+    store.put_project(&mut project).unwrap();
+    assert_ne!(
+        before,
+        project_rows(),
+        "historical data changes must remain visible"
+    );
 }
 /// A connection with only the given writer contract registered, as an
 /// older binary would have it. It holds no permit or Runtime authority.
@@ -181,7 +228,7 @@ fn genuine_v10_migrates_to_11_adding_only_the_index_and_guards() {
     // re-created writer guards and the version.
     let rows = |f: &[String]| -> Vec<String> {
         f.iter()
-            .filter(|l| !pipeline::PIPELINE_TABLES.iter().any(|t| l.contains(t)))
+            .filter(|l| !pipeline_fingerprint_object(l))
             .filter(|l| !l.starts_with("trigger|writer_") && !l.starts_with("user_version"))
             .filter(|l| !l.starts_with("index|goals_by_project"))
             .cloned()

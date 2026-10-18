@@ -28,7 +28,7 @@ pub(in crate::state) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
     ];
     for (table, collision) in PIPELINE_TABLES.iter().zip(collisions) {
         tx.execute_batch(&format!(
-            "CREATE TRIGGER {table}_no_replace BEFORE INSERT ON {table} WHEN EXISTS(SELECT 1 FROM {table} WHERE {collision}) BEGIN SELECT RAISE(ABORT,'pipeline row cannot be replaced'); END;
+            "CREATE TRIGGER {table}_no_replace BEFORE INSERT ON {table} WHEN EXISTS(SELECT 1 FROM {table} WHERE ({collision}) OR rowid=NEW.rowid) BEGIN SELECT RAISE(ABORT,'pipeline row cannot be replaced'); END;
              CREATE TRIGGER {table}_no_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'pipeline history retained'); END;"
         ))?;
         for action in ["INSERT", "UPDATE", "DELETE"] {
@@ -146,7 +146,15 @@ pub struct PipelineView {
     pub native_exhaustion: Vec<Value>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum PipelineQuiescenceVerdict {
+    Busy,
+    CookieDiscoveryRequired,
+    Quiescent,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PipelineModeInventory {
+    pub to_cli_pipeline: PipelineQuiescenceVerdict,
+    pub to_managed_native: PipelineQuiescenceVerdict,
     pub native_drivers: u64,
     pub native_units: u64,
     pub native_phases: u64,
@@ -321,6 +329,18 @@ fn insert_step(tx: &Transaction<'_>, owner: &RuntimeOwner, step: &PipelineStep) 
         step.version == 0 && step.state == "planned",
         "new step requires absent version"
     );
+    if step.kind == "test" {
+        let run = read_run(tx, &step.run_id)?;
+        let profile = admitted_profile(tx, run.goal_id)?;
+        ensure!(
+            step.body["command_id"].as_str().is_some_and(|id| profile
+                .proposal
+                .commands
+                .iter()
+                .any(|command| command.id == id)),
+            "pipeline planned command is not admitted"
+        );
+    }
     let body = stamped(&step.body, 1, "planned", owner.epoch)?;
     tx.execute("INSERT INTO pipeline_steps(run_id,seq,attempt,kind,provider,owner_epoch,round,state,version,cookie,pid,birth,step_base,input_sha256,result_commit,result_tree,body) VALUES(?1,?2,?3,?4,?5,?6,?7,'planned',1,NULL,NULL,NULL,?8,?9,NULL,NULL,?10)",params![step.run_id,step.seq,step.attempt,step.kind,step.provider,owner.epoch,step.round,step.step_base,step.input_sha256,body])?;
     Ok(())
@@ -376,6 +396,7 @@ pub struct PipelineTakeover {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PipelineProfile {
     pub policy_sha256: String,
+    pub clis_sha256: String,
     pub tests_profile_digest: String,
     pub body: Value,
 }
@@ -386,6 +407,45 @@ pub struct PipelineQualification {
     pub executable_sha256: Option<String>,
     pub version_text: Option<String>,
     pub body: Value,
+}
+
+impl PipelineProfile {
+    /// Canonical JSON binds execution policy, admitted tests and pinned CLIs.
+    pub fn policy_digest(&self) -> Result<String> {
+        use sha2::{Digest, Sha256};
+        ensure!(
+            self.body.is_object(),
+            "pipeline execution policy must be an object"
+        );
+        ensure!(
+            self.body["max_fix_rounds"].as_u64().is_some_and(|n| n <= 2),
+            "pipeline fix policy missing or invalid"
+        );
+        pipeline_max_limit_waits(&self.body)?;
+        ensure!(
+            self.clis_sha256.len() == 64
+                && self
+                    .clis_sha256
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()),
+            "pipeline CLI pin digest invalid"
+        );
+        Ok(format!(
+            "{:x}",
+            Sha256::digest(serde_json::to_vec(&json!({
+                "execution": self.body, "tests_profile_digest": self.tests_profile_digest,
+                "clis_sha256": self.clis_sha256
+            }))?)
+        ))
+    }
+}
+fn pipeline_max_limit_waits(body: &Value) -> Result<u64> {
+    let max = match body.get("max_limit_waits") {
+        None => 3,
+        Some(value) => value.as_u64().context("pipeline limit policy invalid")?,
+    };
+    ensure!(max <= 6, "pipeline limit policy exceeds bound");
+    Ok(max)
 }
 
 fn check_wait(
@@ -465,6 +525,15 @@ fn settle_wait(
     w.probe_attempt = None;
     write_wait(tx, owner, &w)
 }
+fn require_last_step(c: &Connection, step: &PipelineStep) -> Result<()> {
+    let later: bool = c.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE run_id=?1 AND (seq,attempt)>(?2,?3))",
+        params![step.run_id, step.seq, step.attempt],
+        |r| r.get(0),
+    )?;
+    ensure!(!later, "pipeline cursor is not last step");
+    Ok(())
+}
 fn cursor_rows(
     tx: &Transaction<'_>,
     owner: &RuntimeOwner,
@@ -510,10 +579,33 @@ fn held(
         json!({"run":run.id,"reason":reason,"seq":step.seq,"attempt":step.attempt}),
     )
 }
+fn journal_step_matches(j: &PipelineJournal, run: &PipelineRun, step: &PipelineStep) -> bool {
+    run.state == "running"
+        && step.state == "running"
+        && step.run_id == run.id
+        && ((j.kind == "task_release"
+            && j.run_id.as_deref() == Some(&run.id)
+            && step.kind == "release")
+            || (j.kind == "goal_create"
+                && j.body["creator_run_id"].as_str() == Some(&run.id)
+                && step.kind == "prepare"))
+}
 fn insert_journal(tx: &Transaction<'_>, owner: &RuntimeOwner, j: &PipelineJournal) -> Result<()> {
     ensure!(
         j.version == 0 && j.state == "pending",
         "new journal requires absent version"
+    );
+    ensure!(
+        j.ref_name == format!("refs/heads/rrx/goal/{}", j.goal_id),
+        "pipeline journal ref mismatch"
+    );
+    ensure!(
+        valid_oid(&j.old_commit) && valid_oid(&j.new_commit),
+        "pipeline journal OID invalid"
+    );
+    ensure!(
+        j.kind != "goal_create" || j.old_commit == "0".repeat(j.new_commit.len()),
+        "pipeline Goal create old is not zero"
     );
     tx.execute("INSERT INTO pipeline_ref_journal(id,goal_id,project_id,run_id,kind,ref_name,old_commit,new_commit,owner_epoch,state,version,body) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,'pending',1,?10)",params![j.id,j.goal_id.to_string(),j.project_id.to_string(),j.run_id,j.kind,j.ref_name,j.old_commit,j.new_commit,owner.epoch,serde_json::to_string(&j.body)?])?;
     Ok(())
@@ -588,7 +680,9 @@ impl Store {
                 })
                 .collect::<Result<Vec<_>>>()?
         };
-        let out = PipelineModeInventory {
+        let mut out = PipelineModeInventory {
+            to_cli_pipeline: PipelineQuiescenceVerdict::Busy,
+            to_managed_native: PipelineQuiescenceVerdict::Busy,
             native_drivers: count("SELECT count(*) FROM task_drivers WHERE state='driving'")?,
             native_units: count(
                 "SELECT count(*) FROM execution_units WHERE native_effects_open=1 OR result_finalization_open=1",
@@ -611,11 +705,41 @@ impl Store {
             pipeline_processes: count(
                 "SELECT count(*) FROM pipeline_steps WHERE kind NOT IN ('prepare','release') AND (state IN ('launching','running','unknown') OR (state='held' AND json_extract(body,'$.death_confirmed') IS NOT 1))",
             )?,
+            // Terminal death-confirmed steps cannot own a live process: only exit,
+            // never-launched intent or audited recovery can establish this fact,
+            // and triggers prevent rewriting it later (including takeover).
             pipeline_cookies: cookies(
-                "SELECT cookie FROM pipeline_steps WHERE cookie IS NOT NULL AND NOT (state='held' AND json_extract(body,'$.death_confirmed') IS 1) AND json_extract(body,'$.death_confirmed') IS NOT 1 ORDER BY run_id,seq,attempt LIMIT 4097",
+                "SELECT cookie FROM pipeline_steps WHERE cookie IS NOT NULL AND NOT (state IN ('exited','committed','adopted','rejected','limited','interrupted','held','abandoned') AND json_extract(body,'$.death_confirmed') IS 1) ORDER BY run_id,seq,attempt LIMIT 4097",
             )?,
             provider_wait: read_wait(&tx)?,
         };
+        let verdict = |busy: bool, cookies: &[String]| {
+            if busy {
+                PipelineQuiescenceVerdict::Busy
+            } else if !cookies.is_empty() {
+                PipelineQuiescenceVerdict::CookieDiscoveryRequired
+            } else {
+                PipelineQuiescenceVerdict::Quiescent
+            }
+        };
+        out.to_cli_pipeline = verdict(
+            out.native_drivers
+                + out.native_units
+                + out.native_phases
+                + out.native_leases
+                + out.native_effects
+                > 0
+                || !out.native_exhaustion.is_empty(),
+            &out.native_cookies,
+        );
+        out.to_managed_native = verdict(
+            out.pipeline_runs + out.pipeline_journals + out.pipeline_processes > 0
+                || out
+                    .provider_wait
+                    .as_ref()
+                    .is_some_and(|w| w.state != "clear"),
+            &out.pipeline_cookies,
+        );
         tx.commit()?;
         Ok(out)
     }
@@ -705,7 +829,12 @@ impl Store {
         let occupied:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_runs WHERE project_id=?1 AND state IN ('running','held'))",[run.project_id.to_string()],|r|r.get(0))?;
         ensure!(!occupied, "pipeline Project slot occupied");
         if let Some(task) = run.task_id {
-            let has_create: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_ref_journal WHERE goal_id=?1 AND kind='goal_create')", [run.goal_id.to_string()], |r| r.get(0))?;
+            let create_state: Option<String> = tx.query_row("SELECT state FROM pipeline_ref_journal WHERE goal_id=?1 AND kind='goal_create'", [run.goal_id.to_string()], |r| r.get(0)).optional()?;
+            let has_create = create_state.is_some();
+            ensure!(
+                !has_create || create_state.as_deref() == Some("done"),
+                "pipeline Goal create journal is not done"
+            );
             ensure!(
                 has_create != create.is_some(),
                 "first pipeline Task requires exactly one Goal create journal"
@@ -733,6 +862,11 @@ impl Store {
                 run.kind == "goal" && first.kind == "test",
                 "Goal run must begin with test"
             );
+            let last_release: String = tx.query_row("SELECT j.new_commit FROM pipeline_ref_journal j JOIN pipeline_runs r ON r.id=j.run_id WHERE j.goal_id=?1 AND j.kind='task_release' AND j.state='done' ORDER BY r.rowid DESC LIMIT 1", [goal.id.to_string()], |r| r.get(0))?;
+            ensure!(
+                run.base_commit == last_release,
+                "pipeline Goal base differs from last release"
+            );
             for task in &goal.dag.nodes {
                 let complete:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_runs WHERE task_id=?1 AND goal_id=?2 AND project_id=?3 AND state='completed')",params![task.to_string(),goal.id.to_string(),goal.project_id.to_string()],|r|r.get(0))?;
                 ensure!(complete, "pipeline Goal has incomplete Tasks");
@@ -751,7 +885,12 @@ impl Store {
                     && j.run_id.is_none(),
                 "Goal create journal mismatch"
             );
-            insert_journal(&tx, owner, j)?;
+            let mut j = j.clone();
+            j.body
+                .as_object_mut()
+                .context("pipeline Goal create body must be an object")?
+                .insert("creator_run_id".into(), json!(run.id));
+            insert_journal(&tx, owner, &j)?;
         }
         let out = read_run(&tx, &run.id)?;
         tx.commit()?;
@@ -891,7 +1030,19 @@ impl Store {
                 && matches!(j.state.as_str(), "pending" | "held"),
             "pipeline journal owner/scope/state changed"
         );
+        ensure!(
+            journal_step_matches(&j, &run, &step),
+            "pipeline journal step mismatch"
+        );
         let goal = pipeline_goal(&tx, &run, false)?;
+        if j.kind == "goal_create" && goal.state == GoalState::Cancelled {
+            j.state = "aborted".into();
+            write_journal(&tx, owner, &j)?;
+            step.state = "interrupted".into();
+            write_step(&tx, owner, &step)?;
+            tx.commit()?;
+            return Ok(());
+        }
         if observed_commit == j.new_commit {
             // A held run requires an operator recovery record before completion.
             ensure!(
@@ -929,7 +1080,6 @@ impl Store {
             j.state = "held".into();
             write_journal(&tx, owner, &j)?;
             step.state = "held".into();
-            step.body["death_confirmed"] = json!(true);
             step.body["reason"] = json!("ref_unexpected");
             write_step(&tx, owner, &step)?;
             held(&tx, owner, &mut run, &step, "ref_unexpected")?;
@@ -956,10 +1106,21 @@ impl Store {
             "pipeline cancel requires Cancelled Goal"
         );
         let wait = check_wait(&tx, owner, cursor.wait_version)?;
+        let mut q = tx.prepare(&format!("SELECT {JOURNAL_COLUMNS} FROM pipeline_ref_journal WHERE goal_id=?1 AND kind='goal_create' AND state IN ('pending','held')"))?;
+        let creates = q
+            .query_map([run.goal_id.to_string()], journal_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        drop(q);
+        for mut j in creates {
+            j.state = "aborted".into();
+            write_journal(&tx, owner, &j)?;
+        }
         match step.state.as_str() {
             "planned" => {
                 step.state = "abandoned".into();
-                step.body["death_confirmed"] = json!(true);
+                if !matches!(step.kind.as_str(), "prepare" | "release") {
+                    step.body["death_confirmed"] = json!(true);
+                }
                 write_step(&tx, owner, &step)?;
             }
             "exited" | "committed" => {
@@ -975,9 +1136,18 @@ impl Store {
                 }
                 write_step(&tx, owner, &step)?;
             }
+            "running" if matches!(step.kind.as_str(), "prepare" | "release") => {
+                step.state = "interrupted".into();
+                write_step(&tx, owner, &step)?;
+            }
             "running" => {
                 if let Some(death) = death {
                     death.validate()?;
+                    step.state = "exited".into();
+                    step.body["death_confirmed"] = json!(true);
+                    step.body["death_evidence"] = serde_json::to_value(death)?;
+                    write_step(&tx, owner, &step)?;
+                    step.version = next_version(step.version)?;
                     step.state = if step.attempt == 16 {
                         "held"
                     } else {
@@ -1002,7 +1172,7 @@ impl Store {
             _ => {}
         }
         settle_wait(&tx, owner, wait, &step)?;
-        let unsafe_step:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE run_id=?1 AND (state IN ('planned','launching','running','exited','committed','unknown') OR (state='held' AND json_extract(body,'$.death_confirmed') IS NOT 1)))",[&run.id],|r|r.get(0))?;
+        let unsafe_step:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE run_id=?1 AND (state IN ('planned','launching','running','exited','committed','unknown') OR (state='held' AND kind NOT IN ('prepare','release') AND json_extract(body,'$.death_confirmed') IS NOT 1)))",[&run.id],|r|r.get(0))?;
         let open_journal:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_ref_journal WHERE run_id=?1 AND state IN ('pending','held'))",[&run.id],|r|r.get(0))?;
         if unsafe_step || open_journal {
             ensure!(
@@ -1040,6 +1210,11 @@ impl Store {
                 && step.body.pointer("/exit/exit_code").and_then(Value::as_i64) == Some(0),
             "pipeline Goal check has not passed"
         );
+        require_last_step(&tx, &step)?;
+        ensure!(
+            step.body["command_id"].as_str() == Some(last_command),
+            "pipeline final command differs from plan"
+        );
         let mut goal = pipeline_goal(&tx, &run, true)?;
         cas(
             usize::from(goal.version == expected_goal),
@@ -1063,6 +1238,14 @@ impl Store {
                         .and_then(Value::as_i64)
                         == Some(0),
                 "pipeline Goal command evidence differs"
+            );
+            ensure!(
+                passed.body["command_id"].as_str()
+                    == passed
+                        .body
+                        .pointer("/adoption/command_id")
+                        .and_then(Value::as_str),
+                "pipeline adopted command differs from plan"
             );
             ids.insert(
                 passed
@@ -1243,7 +1426,11 @@ fn recovery_rows(
     if retry {
         ensure!(step.attempt < 16, "pipeline attempts exhausted");
     }
-    let journal=tx.query_row(&format!("SELECT {JOURNAL_COLUMNS} FROM pipeline_ref_journal WHERE run_id=?1 AND kind='task_release' AND state IN ('pending','held')"),[&run.id],journal_row).optional()?;
+    let journal=tx.query_row(&format!("SELECT {JOURNAL_COLUMNS} FROM pipeline_ref_journal WHERE (run_id=?1 OR (goal_id=?2 AND kind='goal_create')) AND state IN ('pending','held')"),params![run.id,run.goal_id.to_string()],journal_row).optional()?;
+    ensure!(
+        !retry || journal.is_none(),
+        "pipeline retry requires journal settlement via abandon_run"
+    );
     Ok((run, step, journal))
 }
 
@@ -1317,16 +1504,26 @@ impl Store {
                         &j.id,
                         observed.version,
                     )?;
-                    let applied = if observed.observed_commit == j.old_commit {
+                    let applied = if (j.kind == "goal_create"
+                        && pipeline_goal(&tx, &run, false)?.state == GoalState::Cancelled)
+                        || observed.observed_commit == j.old_commit
+                    {
                         false
                     } else if observed.observed_commit == j.new_commit {
                         true
                     } else {
                         bail!("ref_unexpected");
                     };
+                    ensure!(
+                        j.kind != "goal_create"
+                            || applied
+                            || pipeline_goal(&tx, &run, false)?.state == GoalState::Cancelled,
+                        "Running Goal create must be settled before abandonment"
+                    );
                     j.state = if applied { "done" } else { "aborted" }.into();
+                    let release_applied = applied && j.kind == "task_release";
                     settled = Some(j);
-                    applied
+                    release_applied
                 }
                 (None, None) => false,
                 _ => bail!("pipeline recovery journal inventory changed"),
@@ -1373,7 +1570,8 @@ impl Store {
             next.birth = None;
             next.result_commit = None;
             next.result_tree = None;
-            next.body = json!({"recovery":request.request_id});
+            next.body =
+                json!({"recovery":request.request_id,"command_id":step.body.get("command_id")});
             insert_step(&tx, owner, &next)?;
         }
         append_event(
@@ -1451,7 +1649,7 @@ impl Store {
             return Ok(PipelineLaunch::Held);
         }
         if !internal {
-            let busy:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE state IN ('launching','running','unknown') OR (state='held' AND json_extract(body,'$.death_confirmed') IS NOT 1))",[],|r|r.get(0))?;
+            let busy:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE kind NOT IN ('prepare','release') AND (state IN ('launching','running','unknown') OR (state='held' AND json_extract(body,'$.death_confirmed') IS NOT 1)))",[],|r|r.get(0))?;
             if busy {
                 tx.commit()?;
                 return Ok(PipelineLaunch::Waiting);
@@ -1564,19 +1762,37 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         pipeline_owner_current(&tx, owner)?;
         let (mut run, mut step) = cursor_rows(&tx, owner, cursor, false)?;
+        ensure!(
+            matches!(
+                step.state.as_str(),
+                "planned" | "launching" | "running" | "exited" | "committed"
+            ),
+            "pipeline stop source is held or terminal"
+        );
         ensure!(!reason.trim().is_empty(), "pipeline stop reason missing");
         if let Some(death) = death {
             death.validate()?;
         }
-        let confirmed = step.state == "planned"
+        let internal = matches!(step.kind.as_str(), "prepare" | "release");
+        let confirmed = internal
+            || step.state == "planned"
             || matches!(step.state.as_str(), "exited" | "committed")
             || death.is_some();
         if state == "interrupted" {
             ensure!(confirmed, "pipeline interruption needs death proof");
         }
+        if !internal && death.is_some() && matches!(step.state.as_str(), "launching" | "running") {
+            step.state = "exited".into();
+            step.body["death_confirmed"] = json!(true);
+            step.body["death_evidence"] = serde_json::to_value(death)?;
+            write_step(&tx, owner, &step)?;
+            step.version = next_version(step.version)?;
+        }
         let at_limit = state == "interrupted" && step.attempt == 16;
         step.state = if at_limit { "held" } else { state }.into();
-        step.body["death_confirmed"] = json!(confirmed);
+        if !internal {
+            step.body["death_confirmed"] = json!(confirmed);
+        }
         step.body["reason"] = json!(if at_limit { "attempt_limit" } else { reason });
         let wait = check_wait(&tx, owner, cursor.wait_version)?;
         write_step(&tx, owner, &step)?;
@@ -1623,6 +1839,7 @@ impl Store {
         let wait = check_wait(&tx, owner, cursor.wait_version)?;
         step.state = "exited".into();
         step.body["death_confirmed"] = json!(true);
+        step.body["death_evidence"] = serde_json::to_value(death)?;
         step.body["exit"] = evidence.clone();
         if let Some(outcome) = outcome {
             step.body["provider_outcome"] = json!(outcome);
@@ -1655,7 +1872,7 @@ impl Store {
             |r| r.get(0),
         )?;
         let profile: Value = serde_json::from_str(&profile)?;
-        let max = profile["max_limit_waits"].as_u64().unwrap_or(3);
+        let max = pipeline_max_limit_waits(&profile)?;
         ensure!(max <= 6, "invalid pipeline wait policy");
         let waits = run
             .body
@@ -1728,20 +1945,42 @@ impl Store {
         pipeline_owner_current(&tx, owner)?;
         let (mut run, mut step) = cursor_rows(&tx, owner, cursor, true)?;
         ensure!(run.state == "running", "pipeline run is held");
-        if matches!(step.kind.as_str(), "implement" | "fix") {
-            ensure!(
+        require_last_step(&tx, &step)?;
+        match step.kind.as_str() {
+            "implement" | "fix" => ensure!(
                 step.state == "committed",
                 "pipeline adoption needs recorded commit"
+            ),
+            "test" | "review" | "confirm" => ensure!(
+                step.state == "exited",
+                "pipeline adoption needs exited step"
+            ),
+            "prepare" => {
+                let done: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_ref_journal WHERE goal_id=?1 AND kind='goal_create' AND state='done')", [run.goal_id.to_string()], |r| r.get(0))?;
+                ensure!(
+                    step.state == "running" && done,
+                    "pipeline prepare requires done Goal create"
+                );
+            }
+            _ => bail!("pipeline release is adopted only by journal settlement"),
+        }
+        if step.kind == "test" {
+            ensure!(
+                step.body["command_id"].as_str().is_some()
+                    && step.body["command_id"].as_str() == evidence["command_id"].as_str(),
+                "pipeline adoption command differs from plan"
             );
+        }
+        step.state = "adopted".into();
+        step.body["adoption"] = evidence.clone();
+        write_step(&tx, owner, &step)?;
+        if matches!(step.kind.as_str(), "implement" | "fix") {
             run.head_commit = step
                 .result_commit
                 .clone()
                 .context("pipeline commit missing")?;
             write_run(&tx, owner, &run)?;
         }
-        step.state = "adopted".into();
-        step.body["adoption"] = evidence.clone();
-        write_step(&tx, owner, &step)?;
         tx.commit()?;
         Ok(())
     }
@@ -1772,7 +2011,8 @@ impl Store {
                     && next.kind == previous.kind
                     && next.provider == previous.provider
                     && next.round == previous.round
-                    && next.step_base == previous.step_base,
+                    && next.step_base == previous.step_base
+                    && next.body.get("command_id") == previous.body.get("command_id"),
                 "invalid pipeline retry attempt"
             );
         } else {

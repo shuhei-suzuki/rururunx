@@ -1,6 +1,6 @@
 use super::*;
 
-fn rejected(c: &Connection, sql: &str, reason: &str) {
+pub(super) fn rejected(c: &Connection, sql: &str, reason: &str) {
     c.execute_batch("SAVEPOINT b2_case").unwrap();
     let error = c.execute(sql, []).expect_err(sql);
     c.execute_batch("ROLLBACK TO b2_case; RELEASE b2_case")
@@ -8,7 +8,7 @@ fn rejected(c: &Connection, sql: &str, reason: &str) {
     assert!(error.to_string().contains(reason), "{sql}: {error}");
 }
 
-fn permitted(c: &Connection, sql: &str) {
+pub(super) fn permitted(c: &Connection, sql: &str) {
     c.execute_batch("SAVEPOINT b2_case").unwrap();
     assert_eq!(
         c.execute(sql, []).unwrap_or_else(|e| panic!("{sql}: {e}")),
@@ -18,7 +18,7 @@ fn permitted(c: &Connection, sql: &str) {
         .unwrap();
 }
 
-fn update(table: &str, changes: &str) -> String {
+pub(super) fn update(table: &str, changes: &str) -> String {
     let stamp = if table == "pipeline_ref_journal" {
         "body"
     } else {
@@ -29,7 +29,7 @@ fn update(table: &str, changes: &str) -> String {
     )
 }
 
-fn copy(c: &Connection, table: &str, changes: &[(&str, &str)]) -> String {
+pub(super) fn copy(c: &Connection, table: &str, changes: &[(&str, &str)]) -> String {
     let mut q = c.prepare(&format!("PRAGMA table_info({table})")).unwrap();
     let columns = q
         .query_map([], |r| r.get::<_, String>(1))
@@ -53,7 +53,7 @@ fn copy(c: &Connection, table: &str, changes: &[(&str, &str)]) -> String {
     )
 }
 
-async fn populated(table: &str) -> Fixture {
+pub(super) async fn populated(table: &str) -> Fixture {
     let f = fixture().await;
     if table == "pipeline_goal_completions" {
         complete_goal(&f);
@@ -546,10 +546,6 @@ async fn b2_cross_project_process_exclusion() {
             "UPDATE pipeline_steps SET state='launching',cookie='fedcba9876543210',version=version+1,body=json_set(body,'$.version',version+1,'$.state','launching') WHERE run_id='{br}' AND seq=2"
         );
         rejected(c, &sql, "invalid pipeline step transition");
-        if state == "held" {
-            c.execute(&format!("UPDATE pipeline_steps SET version=version+1,body=json_set(body,'$.version',version+1,'$.death_confirmed',json('true')) WHERE run_id='{ar}' AND seq=2"), []).unwrap();
-            permitted(c, &sql);
-        }
         c.execute_batch("ROLLBACK TO b2_incumbent; RELEASE b2_incumbent")
             .unwrap();
     }
@@ -725,6 +721,7 @@ async fn b2_initial_insert_rules() {
     let run = format!("'{br}'");
     let goal = format!("'{}'", d.goal);
     let project = format!("'{}'", d.project);
+    let ref_name = format!("'refs/heads/rrx/goal/{}'", d.goal);
     let epoch = a.owner.epoch.to_string();
     let wait_body = format!("'{{\"version\":1,\"state\":\"waiting\",\"epoch\":{epoch}}}'");
     let store = a.store();
@@ -755,7 +752,10 @@ async fn b2_initial_insert_rules() {
                 ("kind", "'test'"),
                 ("version", "1"),
                 ("state", "'planned'"),
-                ("body", "json_set(body,'$.version',1,'$.state','planned')"),
+                (
+                    "body",
+                    "json_set(body,'$.version',1,'$.state','planned','$.command_id','test')",
+                ),
             ],
             vec![
                 ("state", "'launching'"),
@@ -773,7 +773,7 @@ async fn b2_initial_insert_rules() {
                 ("id", "'new-journal'"),
                 ("goal_id", goal.as_str()),
                 ("project_id", project.as_str()),
-                ("ref_name", "'new-ref'"),
+                ("ref_name", ref_name.as_str()),
                 ("state", "'pending'"),
                 ("version", "1"),
             ],
@@ -918,9 +918,12 @@ async fn b2_takeover_changes_only_owner() {
         if table == "pipeline_steps" {
             c.execute(&format!("UPDATE pipeline_runs SET owner_epoch={epoch},version=version+1,body=json_set(body,'$.epoch',{epoch},'$.version',version+1)"), []).unwrap();
         }
-        let base = format!(
-            "UPDATE {table} SET owner_epoch={epoch},version=version+1,body=json_set(body,'$.epoch',{epoch},'$.version',version+1)"
-        );
+        let stamp = if table == "pipeline_ref_journal" {
+            "body".to_owned()
+        } else {
+            format!("json_set(body,'$.epoch',{epoch},'$.version',version+1)")
+        };
+        let base = format!("UPDATE {table} SET owner_epoch={epoch},version=version+1,body={stamp}");
         permitted(c, &base);
         for change in changes {
             // Merge state changes into the stamped body rather than overriding its epoch/version.
@@ -957,7 +960,10 @@ async fn b2_provider_kind_matrix() {
             ("provider", provider),
             ("version", "1"),
             ("state", "'planned'"),
-            ("body", "json_set(body,'$.version',1,'$.state','planned')"),
+            (
+                "body",
+                "json_set(body,'$.version',1,'$.state','planned','$.command_id','test')",
+            ),
         ];
         permitted(c, &copy(c, "pipeline_steps", &base));
         for bad in ["NULL", "'codex'", "'claude'"] {

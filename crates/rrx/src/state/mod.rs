@@ -234,6 +234,9 @@ impl Store {
                 tx.pragma_update(None, "application_id", APPLICATION_ID)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else if locked_version == READ_INDEX_LAYOUT_VERSION {
+                let application: i64 =
+                    tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
+                ensure!(application == APPLICATION_ID, "not an rrx state database");
                 managed_binding::schema::validate_layout(&tx, READ_INDEX_LAYOUT_VERSION)?;
                 execution::install_writer_guards(&tx)?;
                 pipeline::install_schema(&tx)?;

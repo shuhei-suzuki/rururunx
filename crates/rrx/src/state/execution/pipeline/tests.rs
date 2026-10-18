@@ -150,6 +150,9 @@ fn b2_rollback_v11() {
 }
 
 struct Fixture {
+    accepted: ControlRequest,
+    validated: ValidatedGoalPlan,
+    profile: PipelineProfile,
     _dir: tempfile::TempDir,
     owner: std::sync::Arc<RuntimeOwner>,
     ingress: HumanIngress,
@@ -272,18 +275,10 @@ async fn fixture_with_owner(
             plan,
         },
     };
+    let profile = fixture_profile(digest);
     let response = if pipeline {
         store
-            .pipeline_accept_goal(
-                &ingress,
-                &request,
-                &validated,
-                &PipelineProfile {
-                    policy_sha256: "a".repeat(64),
-                    tests_profile_digest: digest,
-                    body: json!({"max_fix_rounds":2,"max_limit_waits":3}),
-                },
-            )
+            .pipeline_accept_goal(&ingress, &request, &validated, &profile)
             .unwrap()
     } else {
         store
@@ -296,6 +291,9 @@ async fn fixture_with_owner(
     let task = store.tasks(project.id, Some(goal)).unwrap()[0].id;
     drop(store);
     Fixture {
+        accepted: request,
+        validated,
+        profile,
         _dir: dir,
         owner,
         ingress,
@@ -418,6 +416,16 @@ impl Fixture {
             .unwrap();
     }
 }
+fn fixture_profile(digest: String) -> PipelineProfile {
+    let mut profile = PipelineProfile {
+        policy_sha256: String::new(),
+        clis_sha256: "b".repeat(64),
+        tests_profile_digest: digest,
+        body: json!({"max_fix_rounds":2,"max_limit_waits":3}),
+    };
+    profile.policy_sha256 = profile.policy_digest().unwrap();
+    profile
+}
 fn planned(run: &str, seq: u32, attempt: u32, kind: &str) -> PipelineStep {
     PipelineStep {
         run_id: run.into(),
@@ -440,7 +448,11 @@ fn planned(run: &str, seq: u32, attempt: u32, kind: &str) -> PipelineStep {
         input_sha256: "a".repeat(64),
         result_commit: None,
         result_tree: None,
-        body: json!({}),
+        body: if kind == "test" {
+            json!({"command_id":"test"})
+        } else {
+            json!({})
+        },
     }
 }
 fn death() -> PipelineDeathEvidence {
@@ -1388,3 +1400,5 @@ async fn b2_recovery_refuses_unexpected_ref() {
         0
     );
 }
+
+mod fix1;

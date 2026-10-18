@@ -33,28 +33,34 @@ CREATE TRIGGER pipeline_runs_insert BEFORE INSERT ON pipeline_runs
 WHEN NEW.version<>1 OR NEW.state<>'running' OR NEW.round<>0 OR NEW.head_commit<>NEW.base_commit
 BEGIN SELECT RAISE(ABORT,'invalid pipeline run'); END;
 CREATE TRIGGER pipeline_runs_transition BEFORE UPDATE ON pipeline_runs
-WHEN OLD.id<>NEW.id OR OLD.kind<>NEW.kind OR OLD.task_id IS NOT NEW.task_id OR OLD.goal_id<>NEW.goal_id
+WHEN OLD.rowid<>NEW.rowid OR OLD.id<>NEW.id OR OLD.kind<>NEW.kind OR OLD.task_id IS NOT NEW.task_id OR OLD.goal_id<>NEW.goal_id
  OR OLD.project_id<>NEW.project_id OR OLD.base_commit<>NEW.base_commit
  OR OLD.worktree IS NOT NEW.worktree OR OLD.branch IS NOT NEW.branch
  OR NEW.version<>OLD.version+1
  OR NEW.owner_epoch<OLD.owner_epoch
  -- 引継ぎ（epoch を上げる更新）は owner だけを変える
- OR (NEW.owner_epoch>OLD.owner_epoch AND (NEW.state<>OLD.state OR NEW.round<>OLD.round OR NEW.head_commit<>OLD.head_commit))
+ OR (NEW.owner_epoch>OLD.owner_epoch AND (NEW.state<>OLD.state OR NEW.round<>OLD.round OR NEW.head_commit<>OLD.head_commit
+     OR json_remove(NEW.body,'$.version','$.epoch') IS NOT json_remove(OLD.body,'$.version','$.epoch')))
+ OR (NEW.head_commit<>OLD.head_commit AND NOT EXISTS(SELECT 1 FROM pipeline_steps s
+     WHERE s.run_id=NEW.id AND s.kind IN ('implement','fix') AND s.state='adopted' AND s.result_commit=NEW.head_commit))
  OR NEW.round<OLD.round OR NEW.round>OLD.round+1
  OR NOT (NEW.state=OLD.state
    OR (OLD.state='running' AND NEW.state IN ('held','completed','abandoned'))
    OR (OLD.state='held' AND NEW.state IN ('running','abandoned','completed')))
  -- held から running・completed へは、回復の記録があるときだけ（completed は release 済みの journal を決着させた abandon-run。§4.4）
  OR (OLD.state='held' AND NEW.state IN ('running','completed') AND NOT EXISTS(
-     SELECT 1 FROM pipeline_recoveries r WHERE r.run_id=NEW.id AND r.consumed_version=NEW.version))
+     SELECT 1 FROM pipeline_recoveries r WHERE r.run_id=NEW.id AND r.consumed_version=NEW.version
+      AND r.then_action=CASE NEW.state WHEN 'running' THEN 'retry' ELSE 'abandon_run' END))
+ OR (OLD.state='held' AND NEW.state='abandoned' AND NOT EXISTS(SELECT 1 FROM pipeline_recoveries r
+     WHERE r.run_id=NEW.id AND r.consumed_version=NEW.version AND r.then_action='abandon_run'))
  -- 放棄と held からの完了は、生きているかもしれない step が 1 つもないときだけ
  OR (((NEW.state='abandoned' AND OLD.state<>'abandoned') OR (OLD.state='held' AND NEW.state='completed')) AND EXISTS(
      SELECT 1 FROM pipeline_steps s WHERE s.run_id=NEW.id
       AND (s.state IN ('planned','launching','running','exited','committed','unknown')
-       OR (s.state='held' AND json_extract(s.body,'$.death_confirmed') IS NOT 1))))
+       OR (s.state='held' AND s.kind NOT IN ('prepare','release') AND json_extract(s.body,'$.death_confirmed') IS NOT 1))))
  -- 放棄は、その run の開いた release の journal がないときだけ（先に決着させる。§4.4・§9）
  OR (NEW.state='abandoned' AND OLD.state<>'abandoned' AND EXISTS(
-     SELECT 1 FROM pipeline_ref_journal j WHERE j.run_id=NEW.id AND j.state IN ('pending','held')))
+     SELECT 1 FROM pipeline_ref_journal j WHERE (j.run_id=NEW.id OR (j.goal_id=NEW.goal_id AND j.kind='goal_create')) AND j.state IN ('pending','held')))
  -- 完了は、kind ごとの完了の証拠が先に同じ tx で書かれていること
  OR (NEW.state='completed' AND OLD.state<>'completed' AND NOT (
      (NEW.kind='task' AND EXISTS(SELECT 1 FROM pipeline_ref_journal j
@@ -91,6 +97,8 @@ CREATE UNIQUE INDEX pipeline_step_one_open ON pipeline_steps(run_id)
  WHERE state IN ('planned','launching','running','exited','committed');
 CREATE TRIGGER pipeline_steps_insert BEFORE INSERT ON pipeline_steps
 WHEN NEW.state<>'planned' OR NEW.version<>1 OR NEW.cookie IS NOT NULL OR NEW.pid IS NOT NULL
+ OR json_extract(NEW.body,'$.death_confirmed') IS NOT NULL
+ OR (NEW.kind='test' AND (json_type(NEW.body,'$.command_id') IS NOT 'text' OR length(json_extract(NEW.body,'$.command_id'))=0))
  OR NEW.result_commit IS NOT NULL OR NEW.result_tree IS NOT NULL
  OR (SELECT state FROM pipeline_runs WHERE id=NEW.run_id) IS NOT 'running'
  -- 同じ seq の次の attempt は、前の attempt が interrupted / limited / abandoned のときだけ
@@ -101,13 +109,32 @@ WHEN NEW.state<>'planned' OR NEW.version<>1 OR NEW.cookie IS NOT NULL OR NEW.pid
       AND p.seq=NEW.seq-1 AND p.state='adopted'))
 BEGIN SELECT RAISE(ABORT,'invalid pipeline step insert'); END;
 CREATE TRIGGER pipeline_steps_transition BEFORE UPDATE ON pipeline_steps
-WHEN OLD.run_id<>NEW.run_id OR OLD.seq<>NEW.seq OR OLD.attempt<>NEW.attempt OR OLD.kind<>NEW.kind
+WHEN OLD.rowid<>NEW.rowid OR OLD.run_id<>NEW.run_id OR OLD.seq<>NEW.seq OR OLD.attempt<>NEW.attempt OR OLD.kind<>NEW.kind
  OR OLD.provider IS NOT NEW.provider OR OLD.round<>NEW.round OR OLD.step_base<>NEW.step_base
  OR OLD.input_sha256<>NEW.input_sha256 OR NEW.version<>OLD.version+1
+ OR json_extract(OLD.body,'$.command_id') IS NOT json_extract(NEW.body,'$.command_id')
  OR NEW.owner_epoch<OLD.owner_epoch
  -- 引継ぎは owner だけを変える
  OR (NEW.owner_epoch>OLD.owner_epoch AND (NEW.state<>OLD.state OR NEW.cookie IS NOT OLD.cookie
-     OR NEW.pid IS NOT OLD.pid OR NEW.result_commit IS NOT OLD.result_commit))
+     OR NEW.pid IS NOT OLD.pid OR NEW.birth IS NOT OLD.birth
+     OR NEW.result_commit IS NOT OLD.result_commit OR NEW.result_tree IS NOT OLD.result_tree
+     OR json_remove(NEW.body,'$.version','$.epoch') IS NOT json_remove(OLD.body,'$.version','$.epoch')))
+ -- Death facts change only on never-launched, observed-dead or audited recovery transitions.
+ OR (json_extract(OLD.body,'$.death_confirmed') IS NOT 1 AND json_extract(NEW.body,'$.death_confirmed') IS 1
+     AND NOT ((OLD.state='planned' AND NEW.state IN ('held','abandoned'))
+       OR (NEW.state IN ('exited','interrupted') AND OLD.state IN ('launching','running','exited','committed'))
+       OR (NEW.state='abandoned' AND EXISTS(SELECT 1 FROM pipeline_recoveries r
+           WHERE r.run_id=NEW.run_id AND r.seq=NEW.seq AND r.attempt=NEW.attempt))))
+ OR (NEW.kind NOT IN ('prepare','release') AND json_extract(OLD.body,'$.death_confirmed') IS NOT 1
+     AND json_extract(NEW.body,'$.death_confirmed') IS 1 AND OLD.state IN ('launching','running')
+     AND (json_extract(NEW.body,'$.death_evidence.leader_exit_observed') IS NOT 1
+       OR json_extract(NEW.body,'$.death_evidence.group_kill_delivered') IS NOT 1
+       OR json_extract(NEW.body,'$.death_evidence.leader_reaped') IS NOT 1
+       OR json_extract(NEW.body,'$.death_evidence.group_empty') IS NOT 1
+       OR json_extract(NEW.body,'$.death_evidence.discovery_complete') IS NOT 1
+       OR json_extract(NEW.body,'$.death_evidence.matching_processes') IS NOT 0))
+ OR (OLD.state IN ('adopted','interrupted','limited','abandoned') AND NEW.owner_epoch=OLD.owner_epoch)
+ OR (NEW.result_tree IS NOT NULL AND NEW.result_commit IS NULL)
  OR (OLD.cookie IS NOT NULL AND OLD.cookie IS NOT NEW.cookie)
  OR (OLD.cookie IS NULL AND NEW.cookie IS NOT NULL AND NOT (OLD.state='planned' AND NEW.state='launching'))
  OR (OLD.pid IS NOT NULL AND (OLD.pid IS NOT NEW.pid OR OLD.birth IS NOT NEW.birth))
@@ -121,6 +148,7 @@ WHEN OLD.run_id<>NEW.run_id OR OLD.seq<>NEW.seq OR OLD.attempt<>NEW.attempt OR O
  -- daemon 全体で、生きているかもしれない process の step は 1 つまで（§2.6）
  OR (OLD.state='planned' AND NEW.state='launching' AND EXISTS(SELECT 1 FROM pipeline_steps o
      WHERE NOT (o.run_id=NEW.run_id AND o.seq=NEW.seq AND o.attempt=NEW.attempt)
+      AND o.kind NOT IN ('prepare','release')
       AND (o.state IN ('launching','running','unknown')
        OR (o.state='held' AND json_extract(o.body,'$.death_confirmed') IS NOT 1))))
  -- Agent の step は、daemon 全体の上限待ちが clear か、この step が probe のときだけ起動する（§2.6）
@@ -158,12 +186,14 @@ CREATE TABLE pipeline_ref_journal (           -- Goal branch の作成と releas
  id TEXT PRIMARY KEY NOT NULL, goal_id TEXT NOT NULL, project_id TEXT NOT NULL,
  run_id TEXT REFERENCES pipeline_runs(id),
  kind TEXT NOT NULL CHECK(kind IN ('goal_create','task_release')),
- ref_name TEXT NOT NULL, old_commit TEXT NOT NULL, new_commit TEXT NOT NULL,
+ ref_name TEXT NOT NULL CHECK(ref_name='refs/heads/rrx/goal/' || goal_id),
+ old_commit TEXT NOT NULL CHECK(length(old_commit) IN (40,64) AND old_commit NOT GLOB '*[^0-9a-f]*'),
+ new_commit TEXT NOT NULL CHECK(length(new_commit) IN (40,64) AND new_commit NOT GLOB '*[^0-9a-f]*'),
  owner_epoch INTEGER NOT NULL CHECK(owner_epoch>0),
  state TEXT NOT NULL CHECK(state IN ('pending','done','held','aborted')),
  version INTEGER NOT NULL CHECK(version>0),
  body TEXT NOT NULL CHECK(json_valid(body) AND length(CAST(body AS BLOB))<=16384),
- CHECK((kind='goal_create' AND run_id IS NULL) OR (kind='task_release' AND run_id IS NOT NULL)),
+ CHECK((kind='goal_create' AND run_id IS NULL AND old_commit=hex(zeroblob(length(new_commit)/2))) OR (kind='task_release' AND run_id IS NOT NULL)),
  FOREIGN KEY(goal_id,project_id) REFERENCES goals(id,project_id)
 );
 CREATE UNIQUE INDEX pipeline_ref_one_create ON pipeline_ref_journal(goal_id) WHERE kind='goal_create';
@@ -213,13 +243,14 @@ CREATE TRIGGER pipeline_limit_wait_insert BEFORE INSERT ON pipeline_limit_wait
 WHEN NEW.version<>1 OR NEW.state<>'waiting' OR NEW.backoff_ms<>120000
 BEGIN SELECT RAISE(ABORT,'invalid pipeline limit wait'); END;
 CREATE TRIGGER pipeline_limit_wait_transition BEFORE UPDATE ON pipeline_limit_wait
-WHEN NEW.version<>OLD.version+1 OR NEW.owner_epoch<OLD.owner_epoch
+WHEN OLD.rowid<>NEW.rowid OR NEW.version<>OLD.version+1 OR NEW.owner_epoch<OLD.owner_epoch
  -- 期限は短くならない
  OR NEW.not_before<OLD.not_before
  -- 引継ぎは owner だけを変える
  OR (NEW.owner_epoch>OLD.owner_epoch AND (NEW.state<>OLD.state OR NEW.not_before<>OLD.not_before
      OR NEW.backoff_ms<>OLD.backoff_ms OR NEW.probe_run IS NOT OLD.probe_run
-     OR NEW.probe_seq IS NOT OLD.probe_seq OR NEW.probe_attempt IS NOT OLD.probe_attempt))
+     OR NEW.probe_seq IS NOT OLD.probe_seq OR NEW.probe_attempt IS NOT OLD.probe_attempt
+     OR json_remove(NEW.body,'$.version','$.epoch') IS NOT json_remove(OLD.body,'$.version','$.epoch')))
  OR NOT (NEW.owner_epoch>OLD.owner_epoch
    -- 延長: どの state からでも waiting へ。幅は倍（上限 30 分）
    OR (NEW.state='waiting' AND NEW.backoff_ms=MIN(OLD.backoff_ms*2,1800000))
@@ -237,11 +268,12 @@ CREATE TRIGGER pipeline_ref_journal_insert BEFORE INSERT ON pipeline_ref_journal
 WHEN NEW.version<>1 OR NEW.state<>'pending'
 BEGIN SELECT RAISE(ABORT,'invalid pipeline journal'); END;
 CREATE TRIGGER pipeline_ref_journal_transition BEFORE UPDATE ON pipeline_ref_journal
-WHEN OLD.id<>NEW.id OR OLD.goal_id<>NEW.goal_id OR OLD.project_id<>NEW.project_id
+WHEN OLD.rowid<>NEW.rowid OR OLD.id<>NEW.id OR OLD.goal_id<>NEW.goal_id OR OLD.project_id<>NEW.project_id
  OR OLD.run_id IS NOT NEW.run_id OR OLD.kind<>NEW.kind OR OLD.ref_name<>NEW.ref_name
  OR OLD.old_commit<>NEW.old_commit OR OLD.new_commit<>NEW.new_commit
  OR NEW.version<>OLD.version+1 OR NEW.owner_epoch<OLD.owner_epoch
- OR (NEW.owner_epoch>OLD.owner_epoch AND NEW.state<>OLD.state)
+ OR json_extract(OLD.body,'$.creator_run_id') IS NOT json_extract(NEW.body,'$.creator_run_id')
+ OR (NEW.owner_epoch>OLD.owner_epoch AND (NEW.state<>OLD.state OR NEW.body IS NOT OLD.body))
  OR NOT (NEW.state=OLD.state
    OR (OLD.state='pending' AND NEW.state IN ('done','held','aborted'))
    OR (OLD.state='held' AND NEW.state IN ('pending','done','aborted')))

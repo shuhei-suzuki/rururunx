@@ -204,13 +204,14 @@ impl Store {
         tx.execute("INSERT INTO goal_authority(goal_id,project_id,definition_sha256,accepted_epoch,ingress_uid,policy_sha256,version) VALUES(?1,?2,?3,?4,?5,?6,1)",params![goal.id.to_string(),project.to_string(),validated.definition_sha256(),epoch,uid,policy_sha256])?;
         if let Some(profile) = pipeline {
             ensure!(
-                profile.policy_sha256 == policy_sha256,
+                profile.policy_sha256 == policy_sha256 && profile.policy_digest()? == policy_sha256,
                 "pipeline accepted policy mismatch"
             );
             ensure!(
-                d.criteria
-                    .iter()
-                    .all(|c| c.evaluator == CriterionEvaluator::RequiredTasksVerified),
+                !d.criteria.is_empty()
+                    && d.criteria
+                        .iter()
+                        .all(|c| c.evaluator == CriterionEvaluator::RequiredTasksVerified),
                 "pipeline requires verified Task criteria"
             );
             tx.execute("INSERT INTO goal_execution_profiles(goal_id,project_id,profile,policy_sha256,tests_profile_digest,accepted_epoch,body) VALUES(?1,?2,'cli_pipeline',?3,?4,?5,?6)",params![goal.id.to_string(),project.to_string(),profile.policy_sha256,profile.tests_profile_digest,epoch,serde_json::to_string(&profile.body)?])?;
