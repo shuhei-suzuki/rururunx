@@ -1,6 +1,6 @@
 # Issue #106 設計書: Plan B — CLI サブプロセスによる Agent パイプライン
 
-Status: 提案中（B0・改訂 2）。基準の source は origin/main `79e4d273`。要件は `doc/requirements/issue-106-requirements.md`。ファイルパスは、断りがなければ `crates/rrx/src/` からの相対パスで書く。`crates/` で始まるパスはリポジトリのルートからの相対パスである。
+Status: 提案中（B0・改訂 3）。基準の source は origin/main `79e4d273`。要件は `doc/requirements/issue-106-requirements.md`。ファイルパスは、断りがなければ `crates/rrx/src/` からの相対パスで書く。`crates/` で始まるパスはリポジトリのルートからの相対パスである。
 
 改訂 2 では範囲を絞った。v1 は daemon 全体で process の step を同時に 1 つだけ動かし、provider ごとの枠・公平性・予約枠・probe を持たない（§2.6）。
 
@@ -25,7 +25,7 @@ Status: 提案中（B0・改訂 2）。基準の source は origin/main `79e4d27
 | `control_admission` | ✓ | | | `runtime/mod.rs:44`。native admission は `runtime/admission.rs:37-41` で `try_lock` と `service_running` を確かめる。制御側は `runtime/control.rs:641,667,711` で `lock().await`、shutdown は `runtime/service.rs:170` で 5 秒の timeout 付きで取る |
 | owner の起動順 | ✓ | | | `RuntimeOwner::open`（`execution/owner.rs:270-279`）が lock → `Store::open` → `begin_execution_epoch` の順に行う。`begin_execution_epoch` は死亡を確かめない（`state/execution.rs:535-536`） |
 | 現在の owner の検査 | ✓ | | | `owner_current`（`state/runtime/goals.rs:14-26`）、`validate_unit_authority_facts` の epoch 照合（`state/execution.rs:384-401`）。CAS の負けは `StateGuardError::SnapshotChanged`（`state/mod.rs:75-79`） |
-| native の exhaustion | ✓ | | | `windows`（`state/execution/quotas.rs:476-502`）が `quota_windows` を decode し、admission が Exhausted の有無を見る（`:181-189`）。回復には新しい観測が要る（`state/execution/quota_observation.rs:4-21`）。パイプラインは読むだけ |
+| native の exhaustion | ✓ | | | `windows`（`state/execution/quotas.rs:476-502`）が `quota_windows` を decode し、admission が保存された Exhausted の有無を見る（`:181-189`）。`quota_windows` は provider・account・bucket ごとに 1 行で、`observe_quota` は `applies`（`state/execution/quota_observation.rs:10-22`）が認める観測でだけ行を置き換える（`quotas.rs:76-84`）。Exhausted を置き換えるのは新しい Available の観測（新しい window か、native の probe による観測）だけで、時刻の経過では消えない。書き手は native の実行経路だけ（`execution/native.rs:1523` から `quotas.rs:17,22`、`state/execution/native_phase/live_quota.rs:370`）。パイプラインは読むだけ |
 | `crates/rrx-process-tracker` | ✓ | | | `discover` は `lib.rs:152`、cookie の環境変数は `lib.rs:22`、`Coverage::limited` は `lib.rs:100` |
 | `crates/rrx-spawn-hygiene` | ✓ | | | `spawn_std` は `lib.rs:31`、`spawn_tokio` は `lib.rs:58`。Tokio が失敗しても子が残りうることを `lib.rs:5-6` に明記している |
 | strict JSON decoder | ✓ | | | `execution/strict_json.rs:67`。重複キーと上限を検査する。未知フィールドは DTO の `deny_unknown_fields` で拒否する |
@@ -66,10 +66,10 @@ rrx CLI ──(Unix control socket)──► rrxd Runtime ── sweep loop (run
 
 | 起動するモード | 静止とみなす条件（すべて満たす） |
 |---|---|
-| `cli_pipeline` | ・`task_drivers` の `state='driving'` が 0 件。<br>・`execution_units` の `native_effects_open=1 OR result_finalization_open=1` が 0 件。<br>・`managed_phase_operations` の `phase_open=1` が 0 件。<br>・`quota_leases` の `active=1` が 0 件。<br>・`managed_effects` の `state IN ('pending','unknown')` が 0 件。<br>・`cleanup_jobs` を持つ各 Unit の cookie を `rrx_process_tracker::discover` で探し、どれも `coverage.limited()` が false で一致が 0 件（cleanup job は完了で消えない履歴なので、今回の探索の結果で判定する。件数が 4096 を超えれば確認不能として拒否）。<br>・未失効の native exhaustion がない（§2.6 の定義。provider と account を問わない）。 |
-| `managed_native` | ・`pipeline_runs` の `state IN ('running','held')` が 0 件。<br>・`pipeline_ref_journal` の `state IN ('pending','held')` が 0 件。<br>・process の step のうち、`launching`・`running`・`unknown`、または `body.death_confirmed` が true でない `held` が 0 件。<br>・死亡を確認済みでない step（`held` で確認済みのものを除く、cookie を持つもの）の cookie の探索が、完全な coverage で 0 件。<br>・どの run の `body.limit.not_before` も未到来でない（パイプラインが観測した provider の上限を native に引き継げないため、待ち終わるまで切り替えない）。 |
+| `cli_pipeline` | ・`task_drivers` の `state='driving'` が 0 件。<br>・`execution_units` の `native_effects_open=1 OR result_finalization_open=1` が 0 件。<br>・`managed_phase_operations` の `phase_open=1` が 0 件。<br>・`quota_leases` の `active=1` が 0 件。<br>・`managed_effects` の `state IN ('pending','unknown')` が 0 件。<br>・`cleanup_jobs` を持つ各 Unit の cookie を `rrx_process_tracker::discover` で探し、どれも `coverage.limited()` が false で一致が 0 件（cleanup job は完了で消えない履歴なので、今回の探索の結果で判定する。件数が 4096 を超えれば確認不能として拒否）。<br>・Exhausted の native の観測が残っていない（§2.6 の定義。時刻を見ず、provider と account を問わない）。 |
+| `managed_native` | ・`pipeline_runs` の `state IN ('running','held')` が 0 件。<br>・`pipeline_ref_journal` の `state IN ('pending','held')` が 0 件。<br>・process の step のうち、`launching`・`running`・`unknown`、または `body.death_confirmed` が true でない `held` が 0 件。<br>・死亡を確認済みでない step（`held` で確認済みのものを除く、cookie を持つもの）の cookie の探索が、完全な coverage で 0 件。<br>・`pipeline_limit_wait` の行がないか、`state='clear'`（§2.6。waiting と probing は、期限を過ぎていても native に引き継げないので、切り替えない）。 |
 
-満たさなければ、rrxd は epoch を進めずに `ExecutionModeNotQuiescent { reason }` で起動を失敗させ、何も書かない。`managed_native` の起動でパイプラインの行がなければ（既存の環境）、この確認は件数 0 で通り、挙動は変わらない。`cli_pipeline` で通った場合は、epoch E を得た後に `pipeline_qualifications` の `mode_quiescence` を qualified で書き、確認した件数と探索の要約を body に残す。native の痕跡（unknown の effect など）が native 側で解消されない限り、その state でパイプラインは起動できない（安全側）。
+満たさなければ、rrxd は epoch を進めずに `ExecutionModeNotQuiescent { reason }` で起動を失敗させ、何も書かない。`managed_native` の起動でパイプラインの行がなければ（既存の環境）、この確認は件数 0 で通り、挙動は変わらない。`cli_pipeline` で通った場合は、epoch E を得た後に `pipeline_qualifications` の `mode_quiescence` を qualified で書き、確認した件数と探索の要約を body に残す。native の痕跡（unknown の effect、Exhausted の観測など）が native 側で解消されない限り、その state でパイプラインは起動できない（安全側）。
 
 ### 1.2 実行境界
 
@@ -90,7 +90,7 @@ rrx CLI ──(Unix control socket)──► rrxd Runtime ── sweep loop (run
 | 種類 | 対象 | 規則 |
 |---|---|---|
 | 結果を進める書込み | committed・adopted・次の step と attempt の計画・release の journal と done・Goal の完了・回復の `--then retry` | tick か回復の command の中でだけ行う。どちらも guard を保持する。最終 tx で、現在の owner、**Goal が Running であること**、run と step の version（それぞれの期待値）を確かめ直す。Goal が Running でなければ何も書かずに終える。step は exited / committed のまま残り、resume の後の tick がやり直す。cancel なら §4.3 で interrupted にする |
-| 観測を記録する書込み | exited・interrupted・rejected・held・unknown・limited、run の held / abandoned、回復の `--then abandon-run` | Goal の状態に依らない。StepCustody の監視タスクは guard を取らずに書く（shutdown が guard を持ったまま step の停止を待つので、取ると互いに待つ）。どれも採用・release・完了・起動をしない |
+| 観測を記録する書込み | exited・interrupted・rejected・held・unknown・limited、run の held / abandoned、上限待ちの記録の延長と解除（§2.6）、回復の `--then abandon-run`（journal の決着を含む。§4.4） | Goal の状態に依らない。StepCustody の監視タスクは guard を取らずに書く（shutdown が guard を持ったまま step の停止を待つので、取ると互いに待つ）。どれも採用・起動をしない。`--then abandon-run` が release 済みの journal を done にして run を completed にするのは、すでに起きた ref の変化の記録である（§9 の settle と同じ） |
 
 このため、制御が guard を取った時点で、step は「起動していない（planned）」か「running として記録済み」か「launching から unknown にした」のどれかで、結果を進める書込みの途中ではない。pause・cancel・停止を guard の中で commit した後は、新しい起動も採用も release も Goal の完了も起こらない。launching のまま残るのは、rrxd が crash した場合だけである（§4.2 で unknown にする）。
 
@@ -157,7 +157,7 @@ v10 の参照（`MUTABLE_TABLES` の guard を版 10 で作り、読み取り in
 
 ### 2.2 表（`state/execution/pipeline.sql`）
 
-`PIPELINE_TABLES` は次の 7 表である。各表に共通の trigger（epoch・置換・削除）は §2.3 にまとめる。ここには表ごとの列と遷移だけを書く。
+`PIPELINE_TABLES` は次の 8 表である。各表に共通の trigger（epoch・置換・削除）は §2.3 にまとめる。ここには表ごとの列と遷移だけを書く。
 
 ```sql
 -- Goal のモードの記録。行がない Goal は managed_native。受入の tx で goal_authority と同時に作る。不変。
@@ -182,7 +182,7 @@ CREATE TABLE pipeline_runs (
  base_commit TEXT NOT NULL CHECK(length(base_commit) IN (40,64)),
  head_commit TEXT NOT NULL CHECK(length(head_commit) IN (40,64)),   -- 最後に採用した rrx commit。初期値は base
  worktree TEXT UNIQUE, branch TEXT UNIQUE,
- body TEXT NOT NULL CHECK(json_valid(body) AND length(CAST(body AS BLOB))<=131072      -- held の理由、limit {waits, not_before}
+ body TEXT NOT NULL CHECK(json_valid(body) AND length(CAST(body AS BLOB))<=131072      -- held の理由、limit {waits}（この run の上限待ちの回数）
    AND json_extract(body,'$.id') IS id AND json_extract(body,'$.version') IS version
    AND json_extract(body,'$.state') IS state AND json_extract(body,'$.epoch') IS owner_epoch),
  CHECK((kind='task' AND task_id IS NOT NULL AND worktree IS NOT NULL AND branch IS NOT NULL)
@@ -205,14 +205,18 @@ WHEN OLD.id<>NEW.id OR OLD.kind<>NEW.kind OR OLD.task_id IS NOT NEW.task_id OR O
  OR NEW.round<OLD.round OR NEW.round>OLD.round+1
  OR NOT (NEW.state=OLD.state
    OR (OLD.state='running' AND NEW.state IN ('held','completed','abandoned'))
-   OR (OLD.state='held' AND NEW.state IN ('running','abandoned')))
- OR (OLD.state='held' AND NEW.state='running' AND NOT EXISTS(
+   OR (OLD.state='held' AND NEW.state IN ('running','abandoned','completed')))
+ -- held から running・completed へは、回復の記録があるときだけ（completed は release 済みの journal を決着させた abandon-run。§4.4）
+ OR (OLD.state='held' AND NEW.state IN ('running','completed') AND NOT EXISTS(
      SELECT 1 FROM pipeline_recoveries r WHERE r.run_id=NEW.id AND r.consumed_version=NEW.version))
- -- 放棄は、生きているかもしれない step が 1 つもないときだけ
- OR (NEW.state='abandoned' AND OLD.state<>'abandoned' AND EXISTS(
+ -- 放棄と held からの完了は、生きているかもしれない step が 1 つもないときだけ
+ OR (((NEW.state='abandoned' AND OLD.state<>'abandoned') OR (OLD.state='held' AND NEW.state='completed')) AND EXISTS(
      SELECT 1 FROM pipeline_steps s WHERE s.run_id=NEW.id
       AND (s.state IN ('planned','launching','running','exited','committed','unknown')
        OR (s.state='held' AND json_extract(s.body,'$.death_confirmed') IS NOT 1))))
+ -- 放棄は、その run の開いた release の journal がないときだけ（先に決着させる。§4.4・§9）
+ OR (NEW.state='abandoned' AND OLD.state<>'abandoned' AND EXISTS(
+     SELECT 1 FROM pipeline_ref_journal j WHERE j.run_id=NEW.id AND j.state IN ('pending','held')))
  -- 完了は、kind ごとの完了の証拠が先に同じ tx で書かれていること
  OR (NEW.state='completed' AND OLD.state<>'completed' AND NOT (
      (NEW.kind='task' AND EXISTS(SELECT 1 FROM pipeline_ref_journal j
@@ -241,7 +245,7 @@ CREATE TABLE pipeline_steps (
  result_tree TEXT CHECK(result_tree IS NULL OR length(result_tree) IN (40,64)),
  body TEXT NOT NULL CHECK(json_valid(body) AND length(CAST(body AS BLOB))<=262144
    AND json_extract(body,'$.version') IS version AND json_extract(body,'$.state') IS state
-   AND json_extract(body,'$.epoch') IS owner_epoch),
+   AND json_extract(body,'$.epoch') IS owner_epoch),     -- Agent の kind は exited で provider_outcome（success / limit / other。§5.6）
  PRIMARY KEY(run_id,seq,attempt)
 );
 -- run ごとに、未終端の step は同時に 1 つまで
@@ -273,11 +277,18 @@ WHEN OLD.run_id<>NEW.run_id OR OLD.seq<>NEW.seq OR OLD.attempt<>NEW.attempt OR O
  OR (OLD.result_commit IS NOT NULL AND (OLD.result_commit IS NOT NEW.result_commit OR OLD.result_tree IS NOT NEW.result_tree))
  OR (OLD.result_commit IS NULL AND NEW.result_commit IS NOT NULL
      AND NOT (OLD.state='exited' AND NEW.state='committed' AND NEW.result_tree IS NOT NULL))
+ -- provider_outcome は一度書いたら変えない（上限待ちの解除の根拠。§2.6）
+ OR (json_extract(OLD.body,'$.provider_outcome') IS NOT NULL
+     AND json_extract(NEW.body,'$.provider_outcome') IS NOT json_extract(OLD.body,'$.provider_outcome'))
  -- daemon 全体で、生きているかもしれない process の step は 1 つまで（§2.6）
  OR (OLD.state='planned' AND NEW.state='launching' AND EXISTS(SELECT 1 FROM pipeline_steps o
      WHERE NOT (o.run_id=NEW.run_id AND o.seq=NEW.seq AND o.attempt=NEW.attempt)
       AND (o.state IN ('launching','running','unknown')
        OR (o.state='held' AND json_extract(o.body,'$.death_confirmed') IS NOT 1))))
+ -- Agent の step は、daemon 全体の上限待ちが clear か、この step が probe のときだけ起動する（§2.6）
+ OR (OLD.state='planned' AND NEW.state='launching' AND NEW.kind IN ('implement','fix','review','confirm') AND EXISTS(
+     SELECT 1 FROM pipeline_limit_wait w WHERE w.state<>'clear'
+      AND NOT (w.state='probing' AND w.probe_run=NEW.run_id AND w.probe_seq=NEW.seq AND w.probe_attempt=NEW.attempt)))
  OR NOT (NEW.state=OLD.state
    OR (OLD.state='planned'   AND NEW.state='launching' AND NEW.kind NOT IN ('prepare','release'))
    OR (OLD.state='planned'   AND NEW.state='running'   AND NEW.kind IN ('prepare','release'))
@@ -301,7 +312,7 @@ CREATE TABLE pipeline_recoveries (            -- 運用者の放棄記録。追�
  ingress_uid INTEGER NOT NULL, accepted_epoch INTEGER NOT NULL CHECK(accepted_epoch>0),
  then_action TEXT NOT NULL CHECK(then_action IN ('retry','abandon_run')),
  consumed_version INTEGER NOT NULL,           -- 回復で更新した後の run の version
- body TEXT NOT NULL CHECK(json_valid(body) AND length(CAST(body AS BLOB))<=65536),
+ body TEXT NOT NULL CHECK(json_valid(body) AND length(CAST(body AS BLOB))<=65536),  -- journal の決着（aborted / done と観測した ref）を含む
  FOREIGN KEY(run_id,seq,attempt) REFERENCES pipeline_steps(run_id,seq,attempt)
 );
 
@@ -321,7 +332,8 @@ CREATE UNIQUE INDEX pipeline_ref_one_create ON pipeline_ref_journal(goal_id) WHE
 CREATE UNIQUE INDEX pipeline_ref_one_release ON pipeline_ref_journal(run_id) WHERE kind='task_release';
 CREATE UNIQUE INDEX pipeline_ref_one_open ON pipeline_ref_journal(ref_name) WHERE state IN ('pending','held');
 -- transition: version+1、identity（id・goal・run・kind・ref・old・new）は不変、
--- 引継ぎは owner_epoch だけを変える、pending→done|held|aborted、held→pending|done|aborted、done と aborted は終端
+-- 引継ぎは owner_epoch だけを変える、pending→done|held|aborted、held→pending|done|aborted、done と aborted は終端。
+-- task_release の行は、run が abandoned なら変更できない（`(SELECT state FROM pipeline_runs WHERE id=NEW.run_id) IS 'abandoned'` で abort。放棄の前に決着させる。§4.4）
 
 CREATE TABLE pipeline_qualifications (        -- Q の結果。epoch ごと。不変
  owner_epoch INTEGER NOT NULL CHECK(owner_epoch>0),
@@ -340,21 +352,63 @@ CREATE TABLE pipeline_goal_completions (      -- 完了証明。不変
  body TEXT NOT NULL CHECK(json_valid(body) AND length(CAST(body AS BLOB))<=65536),
  FOREIGN KEY(goal_id,project_id) REFERENCES goals(id,project_id)
 );
+
+-- daemon 全体の、既知の provider の上限の待ち（§2.6）。1 行だけ。run に属さない。
+-- v1 は account を対応付けないので、provider・Project・run を区別しない。時刻はミリ秒
+CREATE TABLE pipeline_limit_wait (
+ singleton INTEGER PRIMARY KEY NOT NULL CHECK(singleton=1),
+ owner_epoch INTEGER NOT NULL CHECK(typeof(owner_epoch)='integer' AND owner_epoch>0),
+ version INTEGER NOT NULL CHECK(typeof(version)='integer' AND version>0),
+ state TEXT NOT NULL CHECK(state IN ('waiting','probing','clear')),
+ not_before INTEGER NOT NULL CHECK(typeof(not_before)='integer' AND not_before>0),
+ backoff_ms INTEGER NOT NULL CHECK(backoff_ms BETWEEN 60000 AND 1800000),   -- 次の延長の幅
+ probe_run TEXT, probe_seq INTEGER, probe_attempt INTEGER,                    -- probing のときの probe の step
+ body TEXT NOT NULL CHECK(json_valid(body) AND length(CAST(body AS BLOB))<=16384   -- 最後に延長・解除した step の参照と理由
+   AND json_extract(body,'$.version') IS version AND json_extract(body,'$.state') IS state
+   AND json_extract(body,'$.epoch') IS owner_epoch),
+ CHECK((state='probing') = (probe_run IS NOT NULL AND probe_seq IS NOT NULL AND probe_attempt IS NOT NULL)),
+ CHECK(state='probing' OR (probe_run IS NULL AND probe_seq IS NULL AND probe_attempt IS NULL)),
+ FOREIGN KEY(probe_run,probe_seq,probe_attempt) REFERENCES pipeline_steps(run_id,seq,attempt)
+);
+-- 最初の上限で作る（1 回目の待ちは 60 秒なので、作った時点の次の幅は 120 秒）
+CREATE TRIGGER pipeline_limit_wait_insert BEFORE INSERT ON pipeline_limit_wait
+WHEN NEW.version<>1 OR NEW.state<>'waiting' OR NEW.backoff_ms<>120000
+BEGIN SELECT RAISE(ABORT,'invalid pipeline limit wait'); END;
+CREATE TRIGGER pipeline_limit_wait_transition BEFORE UPDATE ON pipeline_limit_wait
+WHEN NEW.version<>OLD.version+1 OR NEW.owner_epoch<OLD.owner_epoch
+ -- 期限は短くならない
+ OR NEW.not_before<OLD.not_before
+ -- 引継ぎは owner だけを変える
+ OR (NEW.owner_epoch>OLD.owner_epoch AND (NEW.state<>OLD.state OR NEW.not_before<>OLD.not_before
+     OR NEW.backoff_ms<>OLD.backoff_ms OR NEW.probe_run IS NOT OLD.probe_run
+     OR NEW.probe_seq IS NOT OLD.probe_seq OR NEW.probe_attempt IS NOT OLD.probe_attempt))
+ OR NOT (NEW.owner_epoch>OLD.owner_epoch
+   -- 延長: どの state からでも waiting へ。幅は倍（上限 30 分）
+   OR (NEW.state='waiting' AND NEW.backoff_ms=MIN(OLD.backoff_ms*2,1800000))
+   -- 期限の後の最初の起動（期限の到来は API が tx1 で確かめる）
+   OR (OLD.state='waiting' AND NEW.state='probing'
+       AND NEW.not_before=OLD.not_before AND NEW.backoff_ms=OLD.backoff_ms)
+   -- 解除: probe の step が終わり、既知の成功に分類されたときだけ。waiting から clear へは移れない（時刻だけでは解除しない）
+   OR (OLD.state='probing' AND NEW.state='clear' AND NEW.backoff_ms=60000 AND NEW.not_before=OLD.not_before
+       AND EXISTS(SELECT 1 FROM pipeline_steps s WHERE s.run_id=OLD.probe_run AND s.seq=OLD.probe_seq
+        AND s.attempt=OLD.probe_attempt AND s.state NOT IN ('planned','launching','running')
+        AND json_extract(s.body,'$.provider_outcome') IS 'success')))
+BEGIN SELECT RAISE(ABORT,'invalid pipeline limit wait transition'); END;
 ```
 
 ### 2.3 全表に共通の trigger 規則
 
-`PIPELINE_TABLES` の 7 表すべてに、次を `pipeline::install_schema` で作る。
+`PIPELINE_TABLES` の 8 表すべてに、次を `pipeline::install_schema` で作る。
 
 | 規則 | 対象 | 内容 |
 |---|---|---|
-| R-epoch（行の owner） | `pipeline_runs`、`pipeline_steps`、`pipeline_ref_journal` | INSERT と UPDATE で、`NEW.owner_epoch IS NOT (SELECT epoch FROM runtime_epoch WHERE singleton=1)` なら abort する。**書込み API は、すべての UPDATE で `owner_epoch` に自分の epoch を明示して書く**（変えない列として省略しない）。そのため、引継ぎの後に古い epoch の書き手が行を更新すると、NEW.owner_epoch が古い値になり、trigger だけで拒否される |
+| R-epoch（行の owner） | `pipeline_runs`、`pipeline_steps`、`pipeline_ref_journal`、`pipeline_limit_wait` | INSERT と UPDATE で、`NEW.owner_epoch IS NOT (SELECT epoch FROM runtime_epoch WHERE singleton=1)` なら abort する。**書込み API は、すべての UPDATE で `owner_epoch` に自分の epoch を明示して書く**（変えない列として省略しない）。そのため、引継ぎの後に古い epoch の書き手が行を更新すると、NEW.owner_epoch が古い値になり、trigger だけで拒否される |
 | R-epoch（run の owner） | `pipeline_steps`、`pipeline_recoveries` | INSERT と UPDATE で、`(SELECT owner_epoch FROM pipeline_runs WHERE id=NEW.run_id) IS NOT (SELECT epoch FROM runtime_epoch WHERE singleton=1)` なら abort する |
 | R-epoch（記録の epoch） | `goal_execution_profiles`、`pipeline_qualifications`、`pipeline_goal_completions`、`pipeline_recoveries` | INSERT で、`accepted_epoch` / `owner_epoch` / `completed_epoch` が現在の epoch と違えば abort する |
 | R-immutable | `goal_execution_profiles`、`pipeline_recoveries`、`pipeline_qualifications`、`pipeline_goal_completions` | `no_update` |
-| R-replace | 7 表すべて | `no_replace`: `BEFORE INSERT WHEN EXISTS(…)` の条件を、主キーと、すべての UNIQUE 制約・部分 UNIQUE index の衝突条件の OR にする。例: `pipeline_steps` は `(run_id,seq,attempt)` の一致、または「NEW が未終端の state で、同じ run に未終端の step がある」。`pipeline_runs` は id・`task_id`（kind=task）・`goal_id`（kind=goal）・worktree・branch。`pipeline_ref_journal` は id・`goal_create` の goal・`task_release` の run・開いた ref_name。既存の `goal_authority_no_replace`・`task_drivers_no_replace`（`state/runtime/schema.sql:15-17,99-101`）と同じ形で、`recursive_triggers` が off でも `INSERT OR REPLACE` を拒否する |
-| R-delete | 7 表すべて | `no_delete` |
-| writer guard | 7 表すべて | `writer_<table>_{INSERT,UPDATE,DELETE}`（`rrx_writer_contract_version()<>12`） |
+| R-replace | 8 表すべて | `no_replace`: `BEFORE INSERT WHEN EXISTS(…)` の条件を、主キーと、すべての UNIQUE 制約・部分 UNIQUE index の衝突条件の OR にする。例: `pipeline_steps` は `(run_id,seq,attempt)` の一致、または「NEW が未終端の state で、同じ run に未終端の step がある」。`pipeline_runs` は id・`task_id`（kind=task）・`goal_id`（kind=goal）・worktree・branch。`pipeline_ref_journal` は id・`goal_create` の goal・`task_release` の run・開いた ref_name。`pipeline_limit_wait` は singleton の行があること。既存の `goal_authority_no_replace`・`task_drivers_no_replace`（`state/runtime/schema.sql:15-17,99-101`）と同じ形で、`recursive_triggers` が off でも `INSERT OR REPLACE` を拒否する |
+| R-delete | 8 表すべて | `no_delete` |
+| writer guard | 8 表すべて | `writer_<table>_{INSERT,UPDATE,DELETE}`（`rrx_writer_contract_version()<>12`） |
 
 **参照する TestsProfile の保護**: 既存の `verification_profiles` には `no_replace` がない（`state/execution/verification.sql:1-10`）。FK の検査が有効な接続では、`goal_execution_profiles` の FK `(project_id, tests_profile_digest)` があるので、digest を変える REPLACE は参照先が消えて失敗する。しかし、同じ `project_id`・`digest` のまま body だけを変える REPLACE は、文の終わりに参照先が存在するので FK では防げない。そこでパイプラインは、TestsProfile を読むたびに body と digest を照合する（§7.2）。不一致なら採用も起動もせず held にする。既存の表への `no_replace` の追加は別 Issue に記録する（§13.3）。
 
@@ -369,7 +423,7 @@ CREATE TABLE pipeline_goal_completions (      -- 完了証明。不変
 5. 結果を進める API（規則 G）は、同じ tx で Goal が Running であることを確かめる。
 6. trigger（§2.3）は、API の検査が抜けたときの第 2 の層である。
 
-API の一覧（B2 で作る。どれも spawn しない）: `pipeline_mode_inventory`（読み取り。epoch の前）、`pipeline_claim_run`、`pipeline_take_over`、`pipeline_begin_launch`（tx1）、`pipeline_record_running`（tx2）、`pipeline_record_launch_unknown`、`pipeline_record_exit`、`pipeline_record_limited`、`pipeline_record_commit`、`pipeline_adopt`、`pipeline_hold`、`pipeline_plan_next`、`pipeline_release_begin`、`pipeline_release_settle`、`pipeline_complete_goal`、`pipeline_cancel_run`、`pipeline_recover`、`pipeline_record_qualification`、読み取りの `pipeline_goal_view` / `pipeline_task_view`。
+API の一覧（B2 で作る。どれも spawn しない）: `pipeline_mode_inventory`（読み取り。epoch の前）、`pipeline_claim_run`、`pipeline_take_over`、`pipeline_begin_launch`（tx1）、`pipeline_record_running`（tx2）、`pipeline_record_launch_unknown`、`pipeline_record_exit`、`pipeline_record_limited`、`pipeline_record_commit`、`pipeline_adopt`、`pipeline_hold`、`pipeline_plan_next`、`pipeline_release_begin`、`pipeline_release_settle`、`pipeline_complete_goal`、`pipeline_cancel_run`、`pipeline_recover`、`pipeline_settle_limit_wait`（§2.6 の 4）、`pipeline_record_qualification`、読み取りの `pipeline_goal_view` / `pipeline_task_view`。step を launching / running から出す API（`pipeline_record_exit`・`pipeline_record_launch_unknown`・`pipeline_hold`・中断の記録など）は、その step が probe なら、同じ tx で上限待ちの記録を決着させる（§2.6）。
 
 ### 2.5 Goal plan の拡張
 
@@ -400,24 +454,41 @@ API の一覧（B2 で作る。どれも spawn しない）: `pipeline_mode_inve
 **1 process ずつ（v1）**: daemon 全体で、process の step（implement・test・review・confirm・fix）を同時に 1 つだけ動かす。
 
 - tx1 は、自分以外に「`launching`・`running`・`unknown`、または `body.death_confirmed` が true でない `held`」の step が 1 つでもあれば、起動しない（step は planned のまま、次の tick を待つ）。trigger も planned → launching で同じ条件を検査する（§2.2）。prepare / release は数えない。
-- これは native のどの上限（全体・provider・executor の予約枠）よりも厳しいので、quota の契約を弱めない。provider ごとの枠・公平性の順序・予約枠・probe は持たない。
+- これは native のどの同時実行の上限（全体・provider・executor の予約枠）よりも厳しい。provider ごとの枠・公平性の順序・予約枠は持たない。
 - 死亡を確認できない step が 1 つでもあれば、どの Project の step も起動しない（安全側）。運用者が `rrx pipeline recover` で解くまで待つ。
 - Project ごとの Task は 1（`config.rs:17`）。run の claim の occupied 検査は `pipeline_runs WHERE state IN ('running','held')` で行う。held の run も slot を使い続ける（worktree と残存プロセスが不確かなため）。native の occupied CTE（`candidates.rs:49`、`claim.rs:375`）は変えない。
 - 複数の step の並行実行と provider の容量の共有は Stage 2 で別に設計する。
 
-**native の exhaustion（読むだけ）**: tx1 は、未失効の native exhaustion があれば起動せず、step を planned → held（`native_quota_exhausted`、`death_confirmed=true`）、run を held にする。
+**native の exhaustion（読むだけ）**:
 
-- 未失効: `windows`（`state/execution/quotas.rs:476-502`。native の admission も同じ関数で Exhausted を判定する `:186-189`）で decode した観測の status が Exhausted で、`now < max(resets_at（なければ 0）, その pool の quota_pools.next_probe_at)` のもの。この時刻より前は native も probe を出さない。この時刻の後は、1 step ずつの起動が native の単一の probe に当たる。
-- パイプラインは CLI の account と native の account の対応を証明しないので、provider と account を問わず、1 つでも未失効なら拒否する。decode に失敗した行があっても拒否する。
-- パイプラインは quota の表を書かない。`windows` は `pub(super)` にするだけで、挙動を変えない。
+- **判定**: `windows`（`state/execution/quotas.rs:476-502`）で decode した `quota_windows` の行のうち、status が Exhausted のものが 1 つでもあれば「Exhausted の観測が残る」とする。`resets_at`・`quota_pools.next_probe_at`・現在時刻は見ない。`quota_windows` は provider・account・bucket ごとに 1 行で、native は `quota_observation::applies`（`quota_observation.rs:10-22`）が認める新しい Available の観測（新しい window か、native の probe による観測）でだけ Exhausted の行を置き換える（`quotas.rs:76-84`）。native の admission も、時刻ではなく保存された状態で判定する（`quotas.rs:186-189`）。パイプラインはこの規則に従い、時刻の経過で観測が解けたとはみなさない。
+- パイプラインは CLI の account と native の account の対応を証明しないので、provider と account を問わず、1 つでも残っていれば拒否する。decode に失敗した行があっても拒否する。
+- **起動時**: `cli_pipeline` の静止の確認で拒否する（§1.1。rrxd は起動しない）。
+- **tx1**: 同じ判定をする。残っていれば起動せず、同じ tx で step を planned → held（`native_quota_exhausted`、`death_confirmed=true`）、run を held にする。`cli_pipeline` の rrxd には `quota_windows` の書き手がない（書き手は native の実行経路の `execution/native.rs:1523` から呼ぶ `quotas.rs:17,22` と `state/execution/native_phase/live_quota.rs:370` だけで、`cli_pipeline` は native の admission を呼ばない）。そのため、起動時の確認を通った後にこの held になるのは想定外の書込みがあった場合だけで、tx1 の検査は第 2 の層である。
+- **運用者への表示**: `rrx goal status` の run の view に Held の理由 `native_quota_exhausted` を出し、`PipelineGoalView.native_exhaustion` に、残っている観測の provider・bucket・`resets_at` を出す（account は出さない。§10）。起動時の拒否は `rrx daemon start` の `ExecutionModeNotQuiescent { reason: native_quota_exhausted }` で示す。
+- **解除**: パイプラインは quota の表を書かない（`quota_pools`・`quota_windows`・`quota_leases`・`quota_waiters` のどれも）。観測を解けるのは native の新しい Available の観測だけである。運用者は、すべての run を終えて（`--then abandon-run` など）`managed_native` で起動し、native が観測を置き換えてから `cli_pipeline` に戻す。`--then retry` は受け付けるが、tx1 が同じ判定でまた held にする。
+- `windows` は `pub(super)` にするだけで、挙動を変えない。
 
-**provider の上限（既知の終了だけ）**:
+**provider の上限（既知の終了だけ・daemon 全体の 1 つの記録）**:
 
-1. step のプロセスが終了し、死亡を確認した（§3.5）。
-2. 出力が、pin した版の既知の上限の信号（§5.6）に一致したときだけ、その step を採用しない。exited → limited にし、同じ tx で run の `body.limit` を `waits = waits+1`、`not_before = now + min(60 秒 × 2^(waits−1), 30 分)`（1 回目 60 秒、以後倍）にする。
-3. 更新後の `waits` が Goal の `max_limit_waits` を超える場合、または attempt が 16 の場合は、limited ではなく held（`limit_waits_exhausted` / `attempt_limit`）にする。
-4. 次の attempt は tick が計画する（§4.2）。Goal が Running で `not_before` を過ぎた後に、§6.4 で step_base に初期化して検証し、attempt+1 を planned で作る。
-5. 一致しないものは上限として扱わない。通常の失敗（rejected → run held）か、判断が要るもの（held）になる。起動結果が不明な attempt（unknown）は再実行しない。
+v1 は CLI の account と provider の account を対応付けないので、上限の待ちは、provider・account・Project・run を区別しない 1 つの記録 `pipeline_limit_wait`（§2.2）に置く。run と step から独立しているので、run の放棄・回復・rrxd の再起動の後も残る（再起動時は §4.1 で owner だけを引き継ぐ）。すべての Project の、すべての Agent の step（implement・fix・review・confirm）の tx1 がこの記録を確かめる。test の step は provider を呼ばないので、この待ちの対象にも probe にもならない。
+
+| 記録の state | 意味 | Agent の step の tx1 |
+|---|---|---|
+| 行なし / `clear` | 待ちなし | 起動できる |
+| `waiting` | 既知の上限か、probe の既知の成功以外の終了の後 | `now < not_before` なら起動しない（step は planned のまま。§10 で WaitingQuota）。`now >= not_before` なら、同じ tx1 で記録を `probing` にしてこの step を probe として書き、続いて step を launching にする |
+| `probing` | 期限の後の最初の起動が、まだ決着していない | probe の step 以外は起動しない |
+
+1. **分類**: StepCustody が死亡を確認して running → exited を書く tx（観測の書込み）で、Agent の step の出力を §5.6 で分類し、`body.provider_outcome` を `success`・`limit`・`other` のどれかにする（一度書いたら変えない。trigger）。`other` は、認証の失敗・分類できない失敗を含む、`success` と `limit` 以外のすべてである。
+2. **延長**: 次のどれかを書く tx は、同じ tx で記録を延長する。延長は `not_before = max(旧 not_before, now + backoff_ms)`、`backoff_ms = min(backoff_ms × 2, 30 分)`、`state='waiting'`、probe を空にする。行がなければ `not_before = now + 60 秒`、`backoff_ms = 120 秒` で作る。
+   - どの step でも、`provider_outcome = limit` の exited。
+   - probe の step が、launching / running から exited 以外（unknown・held・interrupted・rejected）に出たとき（中断・死亡の未確認・起動結果の不明・起動前の失敗）。
+   - probe の step の exited で、`provider_outcome` が `success` でないもの（認証の失敗を含む）。
+3. **解除**: probe の step の exited で `provider_outcome = success` なら、同じ tx で記録を `clear` にし、`backoff_ms` を 60 秒に戻す。時刻の経過だけでは解除しない（trigger は waiting → clear を許さず、probing → clear は probe の step の `provider_outcome = success` を要求する）。
+4. **決着の取りこぼし**: tick と §4.1 の照合は、記録が `probing` で probe の step が launching / running でなければ、その step の `provider_outcome` が `success` なら 3、それ以外なら 2 の延長を書く（`pipeline_settle_limit_wait`）。
+5. **run ごとの回数**: `provider_outcome = limit` の step を、tick が exited → limited にする tx で、run の `body.limit.waits` を +1 する。更新後の `waits` が Goal の `max_limit_waits` を超える場合、または attempt が 16 の場合は、limited ではなく held（`limit_waits_exhausted` / `attempt_limit`）にする。
+6. **次の attempt**: Goal が Running なら tick が計画する（§4.2）。§6.4 で step_base に初期化して検証し、attempt+1 を planned で作る。起動を待つのは tx1 で、上の表に従う。
+7. 一致しないものは上限として扱わない。通常の失敗（rejected → run held）か、判断が要るもの（held）になる。起動結果が不明な attempt（unknown）は再実行しない。
 
 ## 3. 状態機械
 
@@ -431,8 +502,9 @@ API の一覧（B2 で作る。どれも spawn しない）: `pipeline_mode_inve
 | running → held | tick / StepCustody / 復旧 | Held の理由を持つ step（held / unknown / rejected）が同じ tx で書かれていること。`body.held` に理由と step の参照を書き、監査イベント `rrx.private.pipeline.run_held` を残す |
 | held → running | `rrx pipeline recover --then retry` | `pipeline_recoveries` の行（`consumed_version` = 新しい version） |
 | running → completed（kind=task） | release の settle | `task_release` の journal が done（trigger が検査する） |
+| held → completed（kind=task） | `rrx pipeline recover --then abandon-run`（release 済みの journal の決着。§4.4） | `task_release` の journal が done、`pipeline_recoveries` の行（`consumed_version` = 新しい version）、生きているかもしれない step がない（trigger が検査する） |
 | running → completed（kind=goal） | Goal 完了の tx | `pipeline_goal_completions` の行（trigger が検査する） |
-| running/held → abandoned | Goal cancel の後の tick、または `rrx pipeline recover --then abandon-run` | 生きているかもしれない step が 1 つもない（trigger が検査する。§2.2）。Project の slot が空く |
+| running/held → abandoned | Goal cancel の後の tick、または `rrx pipeline recover --then abandon-run` | 生きているかもしれない step が 1 つもなく、その run の `task_release` の journal が pending / held でない（trigger が検査する。§2.2）。Project の slot が空く |
 
 **不変条件**: run が held のとき、最後の step はちょうど 1 つの held / unknown / rejected の step である。運用者は常にその step を `rrx pipeline recover` の対象にできる。
 
@@ -440,15 +512,15 @@ API の一覧（B2 で作る。どれも spawn しない）: `pipeline_mode_inve
 
 | 遷移 | 主体 | 必要な根拠 |
 |---|---|---|
-| planned → launching | StepLauncher の tx1 | 次をすべて確認したうえで、cookie（UUIDv4 を英数字にしたもの）、attempt ディレクトリ、argv・env の digest を書く。<br>・現在の owner と、run.owner_epoch = 現在の epoch。<br>・run.state = running、run.version と step.version がそれぞれの期待値と一致。<br>・Goal が Running。<br>・`stopping` が false（実行境界の中で確認）。<br>・他に生きているかもしれない process の step がない（§2.6）。<br>・run の `body.limit.not_before` を過ぎている。<br>・その epoch で該当の CLI が qualified。 |
-| planned → held | tick（起動前の検査） | 未失効の native exhaustion（§2.6）、作業領域の検証の失敗（`worktree_drift`。§4.2）、TestsProfile の digest の不一致（§7.2）。spawn していないので `death_confirmed=true` |
+| planned → launching | StepLauncher の tx1 | 次をすべて確認したうえで、cookie（UUIDv4 を英数字にしたもの）、attempt ディレクトリ、argv・env の digest を書く。<br>・現在の owner と、run.owner_epoch = 現在の epoch。<br>・run.state = running、run.version と step.version がそれぞれの期待値と一致。<br>・Goal が Running。<br>・`stopping` が false（実行境界の中で確認）。<br>・他に生きているかもしれない process の step がない（§2.6）。<br>・Exhausted の native の観測が残っていない（§2.6。残っていれば下の planned → held）。<br>・Agent の kind なら、daemon 全体の上限待ち（§2.6）が行なし / clear か、waiting で `not_before` を過ぎている（同じ tx1 で probing にし、この step を probe にする）。<br>・その epoch で該当の CLI が qualified。 |
+| planned → held | tick（起動前の検査） | Exhausted の native の観測（§2.6）、作業領域の検証の失敗（`worktree_drift`。§4.2）、TestsProfile の digest の不一致（§7.2）。spawn していないので `death_confirmed=true` |
 | planned → running（prepare / release） | tick | 現在の owner。cookie・pid は持たない |
 | planned → abandoned | Goal cancel の後の tick | 起動していない |
 | launching → running | StepLauncher の tx2 | spawn が Ok を返したこと。pid、pgid（=pid）、birth（`rrx-process-tracker` の identity による開始時刻） |
 | launching → unknown | StepLauncher / 復旧 | spawn が Err を返した（子が残りうる。`crates/rrx-spawn-hygiene/src/lib.rs:5-6`）か、再起動時に launching を見つけた |
 | launching → rejected | StepLauncher | spawn を呼ぶ前の失敗（attempt ディレクトリの作成、sha256 の不一致、test の `recheck` の失敗など）。spawn を呼んでいないことを同じプロセスの中で確実に知っている場合だけ |
 | launching → exited | StepLauncher | tx2 が失敗したあと、group を kill して死亡を確認した場合（`body.exit=killed_after_record_failure`）。確認できなければ launching のまま残す（再起動時に unknown になる） |
-| running → exited | StepCustody | §3.5 の死亡確認がすべて成功した。終了の状態、出力の sha256、上限を超えたかどうか |
+| running → exited | StepCustody | §3.5 の死亡確認がすべて成功した。終了の状態、出力の sha256、上限を超えたかどうか、Agent の kind では `provider_outcome`（§2.6・§5.6） |
 | running → interrupted | 停止 / Goal の pause・cancel | kill して死亡を確認した。attempt が 16 なら interrupted ではなく held（`attempt_limit`、`death_confirmed=true`） |
 | running → held | StepCustody / 復旧 | 死亡を確認できない（group が空にならない、discovery が limited、cookie を持つプロセスが見つかる）。または古い epoch の running（custody の喪失） |
 | running → unknown | StepCustody | 監視タスク自体の異常（panic・join の失敗）で観測が途切れた |
@@ -458,12 +530,14 @@ API の一覧（B2 で作る。どれも spawn しない）: `pipeline_mode_inve
 | committed → held | AdoptionChecker / 復旧 | ref が step_base でも `result_commit` でもない |
 | exited → adopted | VerdictDecoder / PipelineTestRunner（規則 G） | test / review / confirm。kind ごとの採用条件（§7・§8）を満たした |
 | exited → rejected | 同上 | 非 0 終了（Agent）、出力の上限超過、schema 違反、scope 違反、Agent が自分で commit したなど、確定した不合格 |
-| exited → limited | 同上 | provider の上限（§2.6） |
+| exited → limited | 同上 | provider の上限（§2.6。`provider_outcome = limit`） |
 | exited → held | 同上 | 秘密スキャンへの該当、snapshot の変化、model の不一致、`.git` の変化、判定による保留（§8.5）、上限待ちの回数の超過など、運用者の判断が必要なもの |
 | exited / committed → interrupted | Goal cancel の後の tick | 採用せずに終える。死亡は確認済み |
 | unknown/held/rejected → abandoned | `rrx pipeline recover --abandon-step` | `pipeline_recoveries` の行（trigger が検査する） |
 
 `unknown` から別の状態へ移るのは、運用者の記録による `abandoned` だけ。Unknown の step は、どの経路からも再起動しない。同じ seq の新しい attempt は、`interrupted`・`limited`・`abandoned` の後にだけ、作業領域を初期化して検証してから作る（trigger が検査する）。attempt は 16 までで、16 回目の attempt は interrupted・limited にならず held になるので、自動で 17 を作ろうとすることはない。
+
+probe の step（§2.6）を launching / running から出す tx は、どの遷移でも、同じ tx で上限待ちの記録を決着させる（exited で `provider_outcome = success` なら解除、それ以外は延長）。
 
 ### 3.3 起動の手順
 
@@ -510,8 +584,9 @@ StepCustody の監視タスクは、次を 1 つの `tokio::select!` で並行�
 
 rrxd は、owner lock を取り `Store::open` した後、モードの静止の確認（§1.1）を行い、通れば `begin_execution_epoch`（`state/execution.rs:537-599`）で epoch E を得る。続いて Q（§5.2）を行う。Q がすべて qualified なら、最初の sweep で `control_admission.lock().await` を取り、次を順に行う。
 
-1. **引継ぎ**（1 つの tx）: `owner_epoch < E` の、running / held の run と、それぞれの最後の step（最大の seq・attempt）、pending / held の journal を、状態を変えずに `owner_epoch=E` にする（version+1）。held の run も引き継ぐので、回復の command は現在の epoch の run を対象にできる。監査イベント `rrx.private.pipeline.taken_over` を残す。引継ぎの後、古い epoch の書き手は、run・step・journal のどれも trigger で拒否される（§2.3）。
+1. **引継ぎ**（1 つの tx）: `owner_epoch < E` の、running / held の run と、それぞれの最後の step（最大の seq・attempt）、pending / held の journal、`pipeline_limit_wait` の行（あれば）を、状態を変えずに `owner_epoch=E` にする（version+1）。held の run も引き継ぐので、回復の command は現在の epoch の run を対象にできる。上限待ちの記録は、期限・幅・probe を変えずに引き継ぐ。監査イベント `rrx.private.pipeline.taken_over` を残す。引継ぎの後、古い epoch の書き手は、run・step・journal・上限待ちの記録のどれも trigger で拒否される（§2.3）。
 2. **step の照合**: §4.2 の表を、引き継いだ各 run の最後の step に当てる。
+3. **上限待ちの照合**: §2.6 の 4（probing のまま probe の step が launching / running でなければ決着させる）。
 
 その後は、各 sweep で変化した行だけを見る。
 
@@ -523,17 +598,18 @@ rrxd は、owner lock を取り `Store::open` した後、モードの静止の�
 |---|---|---|
 | step planned（process の kind） | 起動前に作業領域を検証する（§6.4 の検証。implement / fix は Task worktree、test は checkout、review / confirm は snapshot を作り直す） | 合格すれば通常どおり起動する（§3.3）。不合格なら planned → held（`worktree_drift`）、run を held |
 | step planned（prepare / release） | 通常どおり実行する | |
-| step launching | 再実行しない | step を unknown、run を held（`launch_unknown`） |
-| step running（process の kind） | custody を失ったとして、cookie で探索する | 見つかった → held（`alive_orphan`、pid を記録）。見つからず coverage が完全 → held（`custody_lost`、`death_confirmed=false`）。limited → held（`custody_unobservable`） |
+| step launching | 再実行しない | step を unknown、run を held（`launch_unknown`）。probe なら同じ tx で上限待ちを延長（§2.6） |
+| step running（process の kind） | custody を失ったとして、cookie で探索する | 見つかった → held（`alive_orphan`、pid を記録）。見つからず coverage が完全 → held（`custody_lost`、`death_confirmed=false`）。limited → held（`custody_unobservable`）。probe ならどれも同じ tx で上限待ちを延長（§2.6） |
 | step running（prepare） | Git の状態を調べる | branch・worktree・登録がどれもない → interrupted（次の行で attempt+1）。branch が base、worktree が登録済みで HEAD == base かつ clean → adopted。それ以外 → held（`materialization_partial`） |
 | step running（release） | §9 の settle の規則 | done / pending のまま / held / aborted |
 | step exited（implement / fix） | §6 の検査を最初からやり直す（規則 G）。HEAD == step_base かつ branch の ref == step_base でなければ rejected（`agent_commit`）か held（`head_moved`） | committed / rejected / held |
 | step committed | Task branch の ref を読む。== step_base なら §6.3 の update-ref からやり直す。== `result_commit` なら、その commit の tree == `result_tree` かつ親 == step_base を確かめて §6.3 を続ける。それ以外は held（`ref_moved`） | adopted / held |
 | step exited（test / review / confirm） | 採用の検査をやり直す（規則 G） | adopted / rejected / held / limited |
-| step interrupted / limited | Goal が Running で、limited なら run の `not_before` を過ぎてから、§6.4 で初期化して検証し、attempt+1 を作る。検証に失敗したら作らずに run を held（`worktree_drift`。最後の step は新しい planned を held にしたもの） | 新しい planned |
+| step interrupted / limited | Goal が Running なら、§6.4 で初期化して検証し、attempt+1 を作る。起動の待ちは tx1 が daemon 全体の上限待ち（§2.6）で行う。検証に失敗したら作らずに run を held（`worktree_drift`。最後の step は新しい planned を held にしたもの） | 新しい planned |
 | step unknown / held / rejected | 何もしない | run は held のまま（運用者を待つ） |
 | step adopted（最後のもの） | 次の step を計画する（§8。規則 G） | planned |
 | ref journal pending / held | §9 の settle の規則 | |
+| `pipeline_limit_wait` が probing で、probe の step が launching / running でない | §2.6 の 4 | clear または waiting |
 | run completed / abandoned | 何もしない | |
 | `pipeline_qualifications` に E の行がない | Q を実行する | qualified でなければパイプラインは起動しない |
 
@@ -554,20 +630,27 @@ interrupted / limited の後に検証が失敗した場合は、新しい attemp
 kind=task と kind=goal の両方の run を対象にする（Goal 完了確認の run は Task を持たないため、command を run で指定する）。必要な値はすべて `rrx goal status` / `rrx goal tasks` で得られる（§10）。
 
 - 新しい `ControlAction::PipelineRecover` を足す（`runtime/control.rs:24-139`）。運用者は `HumanIngress` の OS UID で識別する（`runtime/control.rs:439-470`）。要求の instance と epoch が現在のものと違えば、`HumanIngress::check` が拒否する（`:460-469`）。
+- **再送の照会**は、次の 3 か所で行う。どれも同じ規則で、`runtime_control_acks` に同じ request ID があれば、要求の同一性（instance・action と引数の digest・UID）を確かめ、一致すれば保存した応答を返して以降を何も行わない。違えば拒否する。どれも現在の状態の検査より先に行う（`state/runtime/goals.rs:397-408` と同じ順序）。
 - daemon は次の順に行う。
-  1. **再送の照会**（副作用の前）: `runtime_control_acks` に同じ request ID があれば、要求の同一性（action と引数の digest）を確かめ、一致すれば保存した応答を返す。違えば拒否する。ここまで何も変えない（`state/runtime/goals.rs:397-408` と同じ順序）。
+  1. **再送の照会**（guard の前、副作用の前）。ここまで何も変えない。
   2. `control_admission.lock().await` を取る。以下は guard の中で行う。
-  3. **前提の検査**（読み取りの tx。ファイルを変えない）: 現在の owner。run が held で `version == v`。対象の step が run の最後の step で、unknown / held / rejected で `version == w`。`retry` なら Goal が Running で `k < 16`。`abandon-run` は Goal の状態を問わない（終わらせる書込みだけで、起動・採用・release・完了をしないため。規則 G の観測の書込み）。一致しなければ `SnapshotChanged` か理由付きで拒否し、何も変えない。
+  3. **前提の検査**（読み取りの tx。ファイルを変えない）: **最初に再送の照会をやり直す**（1 と 2 の間に、同じ request ID の別の要求が guard の中で成功していれば、ここで保存した応答を返す）。ack がなければ: 現在の owner。run が held で `version == v`。対象の step が run の最後の step で、unknown / held / rejected で `version == w`。`retry` なら Goal が Running で `k < 16`。`abandon-run` は Goal の状態を問わない（終わらせる書込みだけで、起動・採用をしないため。規則 G の観測の書込み）。`abandon-run` なら、その run の `task_release` の journal が pending / held かを読み、あれば id・version・old・new を控える。一致しなければ `SnapshotChanged` か理由付きで拒否し、何も変えない。
   4. process の kind で cookie があれば、cookie で探索し直す。1 件でも見つかれば、pid を示して拒否する（運用者に止めてもらう）。coverage が limited の場合も拒否する。
   5. `retry` のときだけ、§6.4 で作業領域を初期化して検証する。失敗すれば拒否する（初期化は rrx が所有する領域だけを対象とし、繰り返しても同じ結果になる）。
-  6. **最終の tx**: 3 の検査を（ack がまだないことを含めて）すべてやり直し、次の順に書く。この順序は FK と trigger の条件に合わせたものである。
-     - `runtime_control_acks`（応答の body。新しい attempt の番号と各 version を含む）
-     - `pipeline_recoveries`（UID、request、reason、`then_action`、`consumed_version = v+1`、discovery の要約、初期化の結果）
+  6. `abandon-run` で開いた journal があれば、`PipelineGit` で journal の ref を読む（guard の中、10 秒の timeout、ref は変えない）。ref == old なら「中止」、ref == new なら「release 済み」とする。それ以外なら `ref_unexpected` で拒否し、何も変えない（run は held のまま。journal は §9 の settle の規則に従う）。
+  7. **最終の tx**: **最初に再送の照会をやり直す**（ack があれば何も書かずに保存した応答を返す）。続いて 3 の検査（journal の version を含む）をすべてやり直し、次の順に書く。この順序は FK と trigger の条件に合わせたものである。
+     - `runtime_control_acks`（応答の body。新しい attempt の番号、各 version、`abandon-run` の結果（abandoned / completed）を含む）
+     - `pipeline_recoveries`（UID、request、reason、`then_action`、`consumed_version = v+1`、discovery の要約、初期化の結果、journal の決着と観測した ref）
+     - `abandon-run` で開いた journal があれば: 「中止」は journal を aborted に、「release 済み」は done に（期待 version で CAS。どちらも journal の更新の権限をここで閉じる）
      - step を abandoned に（期待 version `w` で CAS。trigger が recoveries の行を確かめる）
      - `retry`: run を held → running に（期待 version `v` で CAS。trigger が `consumed_version` を確かめる）。続いて attempt k+1 の planned を INSERT する（trigger は run が running で、前の attempt が abandoned であることを確かめる）
-     - `abandon-run`: run を held → abandoned に（期待 version `v` で CAS。trigger が生きているかもしれない step がないことを確かめる）
+     - `abandon-run`（journal なし、または「中止」）: run を held → abandoned に（期待 version `v` で CAS。trigger が、生きているかもしれない step と開いた journal がないことを確かめる）
+     - `abandon-run`（「release 済み」）: run を held → completed に（期待 version `v` で CAS。trigger が done の journal・recoveries の行・生きているかもしれない step がないことを確かめる）。Goal branch はすでにこの Task の承認済みの commit を指している（journal は §9 の手順 1 で承認の後にだけ作る）ので、放棄すると Git と DB が食い違う。completed にしてその事実を記録する。応答は completed（`release_applied`）で、`wake` で次の Task へ進む
      - 監査イベント `rrx.private.pipeline.step_abandoned`
+- 同じ request ID の要求を重複して送った場合、guard が要求を直列にし、後の要求は 3 の再照会で保存した応答を受け取る。cookie の探索・作業領域の初期化・ref の読取り・書込みは、最初の要求の 1 回だけである。
 - 古い attempt は再実行しない。cookie も再利用しない。最終の tx のどこかで失敗すれば、全体が rollback される。
+- 放棄の後は、その run に開いた journal は残らず、§9 の settle は abandoned の run の journal に `update-ref` を実行しない。どの tick・再起動も、その run を理由に ref を変えない。
+- `goal_create` の journal は run ではなく Goal に属するので、run の放棄では変えない（Goal が Running なら §9 の settle が作成を終え、Cancelled なら aborted にする）。
 
 ## 5. CLI の契約
 
@@ -673,12 +756,17 @@ attempt ディレクトリは `<work_root>/runs/<run>/<seq>-<attempt>/`（0700�
 
 ### 5.6 provider の上限の分類器（既知の終了だけ）
 
-死亡を確認した後に、pin した版ごとにコードへ固定した規則で分類する。
+死亡を確認した後に、pin した版ごとにコードへ固定した規則で分類し、`provider_outcome` を書く（§2.6 の 1）。
 
-- codex: `--json` の最後の error / turn 失敗の event の、固定したフィールドと、版の文書にある固定の文字列（利用上限・rate limit）。
-- claude: 外側の封筒の `is_error=true` と、固定したフィールド（API の status と、利用上限を示す固定の文字列）。
+- `limit`:
+  - codex: `--json` の最後の error / turn 失敗の event の、固定したフィールドと、版の文書にある固定の文字列（利用上限・rate limit）。
+  - claude: 外側の封筒の `is_error=true` と、固定したフィールド（API の status と、利用上限を示す固定の文字列）。
+- `success`（既知の成功。上限待ちの解除に使える唯一の分類）:
+  - codex: 終了コード 0 で、`--json` の最後の event が turn の完了の event で、error / turn 失敗の event がない。
+  - claude: 終了コード 0 で、外側の封筒が `type=result`・`subtype=success`・`is_error=false`。
+- `other`: 上のどれにも当たらないもの（認証の失敗、分類できない失敗、出力の欠落・上限超過を含む）。
 
-規則は版ごとの fixture（B3 で、偽 CLI と、取得できた実出力から作る）で検査する。どの規則にも当たらない失敗は上限として扱わない（§2.6 の 5）。使用率などの観測は読まない。
+`success` は provider の呼び出しが上限なしで終わったことだけを表し、採用の判定（§6〜§8）とは別である。規則は版ごとの fixture（B3 で、偽 CLI と、取得できた実出力から作る）で検査する。どの規則にも当たらない失敗は上限として扱わない（§2.6 の 7）が、上限待ちを解除する根拠にもしない。使用率などの観測は読まない。
 
 ### 5.7 verdict の JSON schema
 
@@ -866,9 +954,10 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
   4. tx: Goal が Running であることを確かめ直し、ref == new なら journal を done、step を adopted、run を completed にする。ref が old でも new でもなければ held。
   - Project の slot は 1 つなので、Goal branch が release 以外で動くことはなく、常に fast-forward になる。
 - **settle の規則**（再起動時と、held の journal の各 sweep）: 実行境界の中で ref を読む。
+  - `task_release` の journal で、その run が abandoned なら、何もしない（`update-ref` を実行しない。§4.4 で放棄の前に決着させるので、通常は起こらない。trigger も abandoned の run の journal の変更を拒否する）。
   - ref == new: done（update-ref は境界の中で行い、制御は境界を待つので、release は後の pause・cancel より前に起きている）。done を書く tx は Goal の状態に依らない（すでに起きた ref の変化の記録であるため）。run の completed も同じ tx で書く。
   - ref == old: Goal が Running なら手順 3 からやり直す。Paused なら pending のまま待つ。Cancelled なら journal を aborted、step を interrupted にする（run は §4.3 の cancel で abandoned）。
-  - それ以外: held。運用者が ref を old か new に戻した場合だけ、回復の command で新しい attempt が読み直す。
+  - それ以外: held。運用者が ref を old か new に戻した場合だけ、回復の command で新しい attempt が読み直す（`--then abandon-run` は §4.4 の 6 で決着させる）。
 - **次の Task**: run が completed になったら `wake.notify_one()` を呼び、次の tick で次の READY な Task を claim する。ユーザーのプロンプトは要らない。
 - **Goal の完了**: DAG の全 Task の run が completed になったら、kind=goal の run を claim する（§3.1）。TestsProfile の各コマンドを、Goal branch の head の clean checkout で test step として実行する。最後のコマンドの採用は tick の中（guard を保持）で行い、その tx で次をすべて確かめる: 現在の owner、**Goal が Running**、run と step の version、全コマンドが pass。満たせば、同じ tx で次を書く:
   - `pipeline_goal_completions` の行（全 run の ID と head を canonical にした sha256）
@@ -882,14 +971,14 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 
 `rrx goal status` / `rrx goal tasks` / `rrx events` で、CLI だけで状態を照会し、回復の command に必要な値を得られるようにする。読み取りは既存どおり短い Store lock の中の read-only の tx で行い（`runtime/control.rs:546-548`）、Git・プロセスの I/O をしない。
 
-`PipelineRunView` を 1 つ定義し、Task の run と Goal 完了確認の run の両方に使う。内容: run の ID・kind・version・state・round・head、最後の step の seq・attempt・kind・state・version、Held の理由（固定の定数）、`limit`（`waits` と `not_before`）、他の step の実行待ちかどうか。
+`PipelineRunView` を 1 つ定義し、Task の run と Goal 完了確認の run の両方に使う。内容: run の ID・kind・version・state・round・head、最後の step の seq・attempt・kind・state・version、Held の理由（固定の定数）、`limit_waits`（この run の上限待ちの回数）、他の step の実行待ちか daemon 全体の上限待ちかどうか。
 
 | 対象 | 変更 |
 |---|---|
-| `ControlResponse::GoalFacts`（`runtime/control.rs:275-288`） | `pipeline: Option<PipelineGoalView>` を足す（`#[serde(default, skip_serializing_if = "Option::is_none")]`）。内容: モード、Goal branch の名前と journal の head、run の state ごとの件数、**Goal 完了確認の run の `PipelineRunView`**、完了の記録（head・`runs_sha256`・epoch） |
+| `ControlResponse::GoalFacts`（`runtime/control.rs:275-288`） | `pipeline: Option<PipelineGoalView>` を足す（`#[serde(default, skip_serializing_if = "Option::is_none")]`）。内容: モード、Goal branch の名前と journal の head、run の state ごとの件数、**Goal 完了確認の run の `PipelineRunView`**、完了の記録（head・`runs_sha256`・epoch）、`provider_wait`（daemon 全体の上限待ちの記録: state・`not_before`・`backoff_ms`・probe の step の参照。daemon 全体のものなので、どの Project の Goal にも同じ値を出す。行なし / clear なら省略）、`native_exhaustion`（Exhausted の native の観測の provider・bucket・`resets_at` の一覧。account は出さない。なければ省略） |
 | `TaskFacts`（`runtime/control.rs:362-370`） | `pipeline: Option<PipelineRunView>` を足す |
 | `TaskFacts.state` / `GoalFacts.states` | パイプラインの Goal では、run と最後の step から導く（下の表）。`tasks` の行の state は書き換えない |
-| `GoalFacts.attention` / `goal_attention`（`state/runtime/goals.rs:632-649`） | パイプラインの Goal では、`UnavailableReason` の新しい値を返す: `PipelineHeld`（held の run がある）、`PipelineProviderWait`（provider の上限で待機中）、`PipelineUnqualified`（Q が refused）、`ExecutionModeMismatch`（rrxd のモードと違う）、`PipelineActive`（それ以外。`dispatch_available=true` のときの値） |
+| `GoalFacts.attention` / `goal_attention`（`state/runtime/goals.rs:632-649`） | パイプラインの Goal では、`UnavailableReason` の新しい値を返す: `PipelineHeld`（held の run がある。理由が `native_quota_exhausted` のときは `native_exhaustion` も出る）、`PipelineProviderWait`（daemon 全体の上限待ちが clear でなく、run の最後の step が planned の Agent の step）、`PipelineUnqualified`（Q が refused）、`ExecutionModeMismatch`（rrxd のモードと違う）、`PipelineActive`（それ以外。`dispatch_available=true` のときの値） |
 | `runtime_goal_facts` / `runtime_goal_task_page`（`state/runtime/goals.rs:300-360,520-626`） | パイプラインの Goal では、`waiting::observe` の代わりに上の view を作る。page の上限（`GOAL_TASK_PAGE_BYTES`）の検査は既存どおり |
 | `rrx events` | パイプラインの監査イベントを、既存の scope で返す |
 
@@ -897,7 +986,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 |---|---|
 | run なし | 保存された Task の state |
 | run held | WaitingHuman |
-| step planned で run の `not_before` が未到来 / 他の step の実行中 | WaitingQuota / WaitingCapacity |
+| step planned（Agent の kind）で daemon 全体の上限待ちが clear でない / 他の step の実行中 | WaitingQuota / WaitingCapacity |
 | prepare / implement | Implementing |
 | test | Testing |
 | review / confirm | Reviewing |
@@ -941,11 +1030,12 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | admit 後のテストの差し替え | TestsProfile を読むたびに body と digest を照合し、各起動の直前に `recheck` でコマンドと実行ファイルの hash を照合する（§7.2） | 照合から exec までの短い窓での差し替え（既存の経路と同じ） |
 | network | Codex のツールは network を拒否する。Claude には Bash も web もない。テストは Seatbelt で拒否する | CLI 自身が provider と通信する（仕様どおり） |
 | 信頼しない verdict JSON | strict decode と上限、未知フィールドの拒否、ID の一意性、ラベル集合の一致、存在しない file / line は invalid、quote と行の照合 | なし |
-| 古い owner・二重の rrxd | `owner.lock` の flock（`execution/owner.rs:225`）、全書込み API での現在の owner と version の検査（§2.4）、run・step・journal の行に書いた epoch の trigger（§2.3）、control 要求の epoch の照合（`runtime/control.rs:460-469`） | なし |
+| 古い owner・二重の rrxd | `owner.lock` の flock（`execution/owner.rs:225`）、全書込み API での現在の owner と version の検査（§2.4）、run・step・journal・上限待ちの記録の行に書いた epoch の trigger（§2.3）、control 要求の epoch の照合（`runtime/control.rs:460-469`） | なし |
 | モードの切替で、もう一方の経路のプロセスが残る | epoch の前の静止の確認（永続状態と cookie の探索。§1.1）。epoch の更新を死亡の根拠にしない | cookie を消した孤児と、group を抜けた子孫は検出できない（記録して受け入れる） |
 | 停止・cancel と起動・採用・release・完了の競合 | `control_admission` による直列化（§1.2）と規則 G（最終 tx での Goal の Running の検査） | なし |
+| 回復の要求の重複と、放棄した run の ref の更新 | 再送の照会を guard の前・guard の中の読み取り・最終 tx の 3 か所で、現在の状態の検査より先に行う。`--then abandon-run` は開いた release の journal を先に決着させ、abandoned の run の journal は trigger で変更できない（§4.4・§9） | 決着の ref の読取りと最終 tx の間に、運用者が手で ref を動かす窓（記録した ref と食い違えば、次の settle が held にする） |
 | 起動結果が不明・孤児プロセス | Unknown / Held、cookie による探索、再実行しない。死亡を確認できない間は全 Project の起動を止める | cookie を消した孤児と、group を抜けた子孫は検出できない（記録して受け入れる） |
-| provider の上限を使い切る | daemon 全体で 1 step ずつ、既知の上限の終了だけ backoff、native の未失効の exhaustion を読んで起動しない（§2.6） | 分類器が上限を認識できない失敗は、運用者の判断になる（Held に倒す） |
+| provider の上限を使い切る | daemon 全体で 1 step ずつ。既知の上限の終了は daemon 全体の 1 つの記録で backoff を待ち、期限の後は 1 つの起動が既知の成功で終わるまで次を起動しない（それ以外の終わり方は延長）。native の Exhausted の観測が残る間は起動しない（§2.6） | 分類器が上限を認識できない失敗は、上限待ちを始めない（運用者の判断になり、Held に倒す） |
 | Goal branch の破損 | ref-CAS の journal、fast-forward だけ、checkout 中なら拒否 | 運用者が手で ref を動かした場合は held になる |
 
 ## 13. 影響範囲分析
@@ -956,13 +1046,13 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 |---|---|---|---|---|
 | 定数 | `SCHEMA_VERSION` 11→12、`READ_INDEX_LAYOUT_VERSION`=11 を追加 | `state/mod.rs:32,189-193,202-307`、`rrx_writer_contract_version`（`state/mod.rs:135-141`） | 互換性（v12 の DB は旧バイナリが拒否する。仕様どおり） | §2.1 の 4 経路 |
 | 関数 | `validate_layout`（版による参照 layout の組立て） | `state/managed_binding/schema.rs:249-281` | 互換性 | §2.1。v10 と actual9 の参照は変えない |
-| 定数 | `PIPELINE_TABLES`（新規、7 表）。`MUTABLE_TABLES` は変えない | `MUTABLE_TABLES` の消費者: `state/managed_binding/schema.rs:160,190`、`state/read_index_tests.rs:199`、`state/managed_binding/schema_tests.rs:32,318`、`state/execution/verification.rs:1149,1187`、`state/execution/tests.rs:370,413`、`state/execution/source_recovery.rs:594,633`、`state/runtime/tests.rs:29,65`、`state/execution/native_results_tests.rs:24,83` | テスト（writer guard の総数を数える `read_index_tests.rs:199`・`execution/tests.rs:413` は、v12 で 7 表 ×3 だけ増える） | 総数の検査を `MUTABLE_TABLES` と `PIPELINE_TABLES` の合計にする。各表の guard を照合するテストは、`PIPELINE_TABLES` にも同じ検査を当てる |
-| DB | 新しい表 7 つと trigger | `state/execution/pipeline.sql`、`state/sqlite_build_tests.rs` | 機能 | 追加する |
+| 定数 | `PIPELINE_TABLES`（新規、8 表）。`MUTABLE_TABLES` は変えない | `MUTABLE_TABLES` の消費者: `state/managed_binding/schema.rs:160,190`、`state/read_index_tests.rs:199`、`state/managed_binding/schema_tests.rs:32,318`、`state/execution/verification.rs:1149,1187`、`state/execution/tests.rs:370,413`、`state/execution/source_recovery.rs:594,633`、`state/runtime/tests.rs:29,65`、`state/execution/native_results_tests.rs:24,83` | テスト（writer guard の総数を数える `read_index_tests.rs:199`・`execution/tests.rs:413` は、v12 で 8 表 ×3 だけ増える） | 総数の検査を `MUTABLE_TABLES` と `PIPELINE_TABLES` の合計にする。各表の guard を照合するテストは、`PIPELINE_TABLES` にも同じ検査を当てる |
+| DB | 新しい表 8 つと trigger | `state/execution/pipeline.sql`、`state/sqlite_build_tests.rs` | 機能 | 追加する |
 | 関数 | `RuntimeOwner::open`（モードを受け取り、`Store::open` と `begin_execution_epoch` の間で静止を確かめる） | `execution/owner.rs:270-279`。呼び出し元は daemon の起動と多数のテスト | 起動・互換性 | `open` は `managed_native` のまま残し、モード付きの入口を足す。パイプラインの行がない DB では確認が件数 0 で通り、挙動は変わらない |
-| 関数 | `quotas::windows` | `state/execution/quotas.rs:476-502`、呼び出し元 `:186` | なし（private → `pub(super)`。挙動は変えない） | パイプラインは読むだけ |
+| 関数 | `quotas::windows` | `state/execution/quotas.rs:476-502`、呼び出し元 `:76,94,186` | なし（private → `pub(super)`。挙動は変えない） | パイプラインは読むだけ。`quota_windows` の書き手（`quotas.rs:83`、`native_phase/live_quota.rs:370`）は変えない |
 | 型 | `Config.execution`・`Config.pipeline`（任意） | `config.rs:226,376-428`、`runtime/control.rs:540-545`（policy digest） | 互換性 | 既定値は serialize しない。未設定なら digest が変わらないことをテストで確かめる |
 | loop | sweep | `runtime/service.rs:76-161`（`:130` をモードで分ける）、`:168-200`、`runtime/stop.rs:7-34`（`PipelineSteps` を足す） | 機能・停止 | tick と停止の site を加える |
-| 境界 | `control_admission` | `runtime/admission.rs:37-41`、`runtime/control.rs:641,667,711`、`runtime/service.rs:59,170`、`runtime/task_driver.rs:79`、`runtime/phase_supervisor.rs:1021-1322`、`runtime/installation.rs:110-251`、`runtime/project_control.rs:219` | 停止・応答時間（tick が spawn・短い Git 操作・採用の検査の間だけ保持する） | try_lock で取り、CLI の実行や終了待ちは外で行う。他の消費者の保持の仕方は変えない |
+| 境界 | `control_admission` | `runtime/admission.rs:37-41`、`runtime/control.rs:641,667,711`、`runtime/service.rs:59,170`、`runtime/task_driver.rs:79`、`runtime/phase_supervisor.rs:1021-1322`、`runtime/installation.rs:110-251`、`runtime/project_control.rs:219` | 停止・応答時間（tick が spawn・短い Git 操作・採用の検査の間だけ保持する。回復の `abandon-run` は journal の ref の読取り 1 回を足す） | try_lock で取り、CLI の実行や終了待ちは外で行う。他の消費者の保持の仕方は変えない |
 | SQL | native の除外 | `state/runtime/driver/candidates.rs:49`、`claim.rs:365-369` | セキュリティ（経路の分離） | `NOT EXISTS goal_execution_profiles` |
 | 関数 | `reconcile_runtime_attention` | `state/runtime/service.rs:25,45-48,70` | 表示 | パイプラインの Goal の Task を除く |
 | 関数 | `accept_runtime_goal` | `state/runtime/goals.rs:28-207` | 機能 | モードの検査、プロファイルの行の挿入、検査の追加 |
@@ -975,13 +1065,14 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | 可視性 | `retain` / `inspect` | `execution/verification/collector.rs:218,240` | なし（`pub(super)` → `pub(crate)`。挙動は変えない） | 既存の呼び出し元（verification の中）はそのまま |
 | 環境変数 | `RRX_PROCESS_COOKIE` | 既存の消費者は `execution/resources.rs:75`、`execution/cleanup.rs:85` | なし（値の空間は UUID で別） | パイプラインの値も UUID から作る。静止の確認は native の cookie を探索するだけで signal を送らない |
 | 環境変数 | `CODEX_HOME`・`TMPDIR`・`PATH`、rrx の Git の `GIT_CONFIG_NOSYSTEM`・`GIT_CONFIG_GLOBAL`・`GIT_ATTR_NOSYSTEM`・`GIT_INDEX_FILE` | 子プロセスの中だけ（rrxd 自身の環境は変えない） | パスの長さ（TMPDIR は 60 byte 以下） | 起動時に検査する |
-| 入力の一覧 | 必須 flag・許可する環境変数・固定の拒否パス・秘密の pattern・上限の分類規則・driver の拒否キー | パイプラインだけ | 安全 | 広がる向きを検出するテストにする |
+| 入力の一覧 | 必須 flag・許可する環境変数・固定の拒否パス・秘密の pattern・上限と成功の分類規則・driver の拒否キー | パイプラインだけ | 安全 | 広がる向きを検出するテストにする |
 | 定数 | `global_max_sessions` の既定 12（`config.rs:64`）、`MVP_PROJECT_TASKS`=1（`config.rs:17`）、`PHASE_SLOTS_PER_PROJECT`=4（`runtime/phase_supervisor.rs:22`）、native の上限の既定（`execution/quota.rs:18-20`） | 変えない | | パイプラインは 1 step ずつなので、`MVP_PROJECT_TASKS` だけを使う |
+| 定数 | 上限待ちの backoff（初回 60 秒、倍、上限 30 分）。native の `quota_pools.backoff` の範囲（`quotas.rs:317`、`:508`）と同じ値 | `pipeline_limit_wait` の CHECK と trigger、§2.6 | なし（パイプラインだけ。native の値は読まない・変えない） | trigger とテストで固定する |
 
 ### 13.2 影響なしの根拠
 
 - **native の `start_phase` 経路**: `managed_native` の rrxd では、`cli_pipeline` の Goal を candidate と claim の段階で除くことと、起動時の静止の確認（パイプラインの行がなければ件数 0 で通る）だけで、その他は変えない。既存の Goal には `goal_execution_profiles` の行がない。`cli_pipeline` の rrxd は native の admission を呼ばない。
-- **quota の表**: パイプラインは `quota_pools`・`quota_windows`・`quota_leases`・`quota_waiters` を書かない。読むのは、静止の確認と tx1 での `quota_windows`・`quota_pools.next_probe_at` と、静止の確認での `quota_leases` の件数だけ。`quota_policy` は使わない。
+- **quota の表**: パイプラインは `quota_pools`・`quota_windows`・`quota_leases`・`quota_waiters` を書かない。読むのは、静止の確認と tx1 と読み取り API での `quota_windows`（`windows` 経由）と、静止の確認での `quota_leases` の件数だけ。`quota_pools` と `quota_policy` は使わない。
 - **`GenericCliAdapter` と `ProcessGroup`**: 変えない（§16 D5）。`cleanup_group`・`observe_exit`・`reap` は既存の `pub(crate)` をそのまま使う。
 - **`collector::collect`**: 呼ばない。可視性を変えるのは `retain` / `inspect` だけ。
 - **Docker・Grok・`ResultStore`・`AttemptManager`**: パイプラインから呼ばない。
@@ -1000,7 +1091,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 - **偽の CLI**: `crates/rrx/tests/support/fake_codex.py` と `fake_claude.py`（既存の `crates/rrx/tests/support/grok_fake.py` と同じ流儀）。
   - 環境は空から組み立てるので、シナリオは同じディレクトリの `scenario.json` から読む。テストごとに別のディレクトリへ置く。
   - `--version`、`--help`、`login status` / `auth status`、`exec` / `-p` を実装する。
-  - 書くもの、出力、終了コード、遅延、stdin を読まない・先に大量に出力する、子プロセスの fork（cookie を持ったままのもの・消したもの）、フィールドの欠落・重複、provider の上限の出力を、シナリオで指定する。
+  - 書くもの、出力、終了コード、遅延、stdin を読まない・先に大量に出力する、子プロセスの fork（cookie を持ったままのもの・消したもの）、フィールドの欠落・重複、provider の上限の出力、認証の失敗の出力を、シナリオで指定する。
 - **障害注入マトリクス（AC-8）**:
 
 | ID | 注入 | 期待する結果 |
@@ -1009,7 +1100,9 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | F-a2 | 出力の上限を超える / timeout / stdin を読まない / stdin を読む前に大量に出力する | 期限内に group を kill し、死亡を確認して rejected。launching のまま残らない |
 | F-a3 | scope 外を変更する / symlink / 秘密の pattern / 自分で commit する（正しい親と偽の trailer を含む） | rejected または held。commit を採用しない |
 | F-a4 | repo に filter driver の宣言（`.gitattributes` の深い階層、repo の設定） | prepare か採用検査で held。driver のコードは実行されない（偽 driver が作る印のファイルがないことで確かめる） |
-| F-a5 | provider の上限の出力で終了する / 回数の上限まで繰り返す / 分類できない失敗 / native の `quota_windows` に未失効の exhaustion | limited、run に記録した backoff の後に step_base へ初期化して attempt+1。回数を超えたら held。分類できない失敗は rejected。未失効の exhaustion があれば起動せず held |
+| F-a5 | provider の上限の出力で終了する / 回数の上限まで繰り返す / 分類できない失敗 / native の `quota_windows` に Exhausted の観測（`resets_at` と `next_probe_at` を過ぎたものを含む） | limited、上限待ちの記録の期限の後に step_base へ初期化した attempt+1 が起動する。回数を超えたら held。分類できない失敗は rejected で、上限待ちを始めない。Exhausted の観測があれば、時刻にかかわらず起動せず held（`native_quota_exhausted`）で、`rrx goal status` に理由と観測の要約が出る。パイプラインは quota の表を書かない |
+| F-a6 | Project A の step が既知の上限で終了した後、Project B の Agent の step を計画する / A の run を `--then abandon-run` で放棄する / rrxd を再起動する | B の step は期限の前に起動しない（WaitingQuota、`provider_wait` が表示される）。放棄と再起動の後も、記録の期限・幅・state が変わらない。期限の後は Agent の step が 1 つだけ起動する |
+| F-a7 | 期限の後の最初の step（probe）を、中断（停止）・認証の失敗・unknown（spawn の Err）・死亡の未確認・分類できない失敗で終わらせる / 既知の成功で終わらせる | 前者はどれも記録が同じ backoff で延長され、延長した期限まで次の Agent の step を起動しない（probe の終了の直後に別の Project の step も起動しない）。後者は clear になり、通常どおり起動する。時刻の経過だけで clear にはならない |
 | F-b1 | `request_changes`、指摘が Confirmed | fix に入り、round が +1 |
 | F-b2 | 上限で承認に至らない（N=0・1・2）/ Unclear の blocking / Confirmed の blocking がない request_changes | すべて held。N 回目の fix の後のレビューまで行われる |
 | F-b3 | verdict の未知フィールド・重複キー・重複 ID・存在しない行・model の不一致・snapshot の変化、ラベルの余分・欠落・空 quote・`evidence.line` が 0 / 範囲外 / quote の開始行と不一致 | rejected または held（quote と行の不一致は Unclear に落ちて held） |
@@ -1023,15 +1116,17 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | F-d3 | release の `update-ref` の前後で crash する | ref==old なら（Goal が Running のときだけ）やり直し、ref==new なら done、それ以外は held |
 | F-d4 | tx1 の後・spawn の前、および journal の作成の後・ref 更新の前に、pause / cancel / stop を割り込ませる | 制御は境界を待ち、制御の受理の後に新しい起動も release も起きない |
 | F-d5 | step の exited の後・採用の前、および最後の test の exited の後・Goal 完了の前に、pause / cancel を割り込ませる | 採用も Goal の Completed も起きない。pause は resume の後に採用・完了をやり直す。cancel は interrupted と run の abandoned |
-| F-e1 | 引継ぎの後に、古い epoch の書き手が tx1 / tx2 / step の終了の記録 / 採用 / run の完了 / recovery / journal の settle / Goal の完了を書く | API の検査と trigger の両方で拒否する（片方を外しても、もう片方で拒否されることを確かめる。step の更新も trigger だけで拒否される）。spawn しない |
+| F-e1 | 引継ぎの後に、古い epoch の書き手が tx1 / tx2 / step の終了の記録 / 採用 / run の完了 / recovery / journal の settle / Goal の完了 / 上限待ちの記録の更新を書く | API の検査と trigger の両方で拒否する（片方を外しても、もう片方で拒否されることを確かめる。step の更新も trigger だけで拒否される）。spawn しない |
 | F-e2 | 再起動の前から held の run に `rrx pipeline recover` | 引継ぎ済みの現在の epoch で新しい attempt を作る。旧 attempt は再実行しない |
-| F-f1 | tick と `pipeline recover` が同じ step を同時に更新する / 同じ期待 version の recover を 2 つ | 片方だけが成功し、負けた側は何も書かず spawn しない |
+| F-f1 | tick と `pipeline recover` が同じ step を同時に更新する / 同じ期待 version の recover を 2 つ（request ID は別） | 片方だけが成功し、負けた側は何も書かず spawn しない |
 | F-f2 | 新しい request ID の初回の recover（retry と abandon-run）、その再送、古い期待 version、途中の失敗 | 初回は成功（tx の順序）。再送は作業領域を変えずに同じ応答。古い version はファイルを変えずに拒否。途中の失敗は全体が rollback |
+| F-f3 | 同じ request ID の recover を 2 つ同時に送る（どちらも guard の前の照会で ack を見ない状態にする） | 両方が同じ保存応答を受け取る。cookie の探索・作業領域の初期化・ref の読取り・書込みは 1 回だけ（後の要求は guard の中の照会で返る） |
 | F-g1 | Project A の run を死亡確認済みで held にする / A に死亡を確認できない step を残す | 前者は Project B の run が完了まで進む。後者は B も起動を待ち、理由が表示される |
 | F-g2 | Goal run の合格 / 不合格 | 合格なら Goal Completed と run completed で、同じ Project の別 Goal が進む。不合格なら held で、Goal の view だけで recover を組み立てて再テストできる |
 | F-h1 | `abandon-step` を実行したとき、cookie を持つプロセスが残っている | 拒否する |
 | F-h2 | attempt 16 の step が中断・上限で終わる / その run に `--then retry` と `--then abandon-run` / cancel で全 step の死亡を確認できる場合とできない場合 | 16 回目は held。retry は拒否、abandon-run で run が abandoned になり slot が空く。cancel は確認できれば abandoned、できなければ held のまま |
-| F-m1 | モードの切替の前に、もう一方の作業を 1 種類ずつ残す（native: open な Unit・pending の effect・cookie を持つ残存プロセス・未失効の exhaustion。pipeline: held の run・unknown の step・開いた journal・未到来の上限待ち） | rrxd は epoch を進めずに起動を失敗させ、何も書かない。片付けた後は起動する |
+| F-h3 | `task_release` の journal が pending / held の run（checkout 中で held にしたもの、ref を手で動かしたもの）に `--then abandon-run`。ref が old / new / それ以外 | old: journal が aborted、run が abandoned。その後の tick・再起動で ref が変わらず、開いた journal が残らない。new: journal が done、run が completed（`release_applied`）で次の Task へ進む。それ以外: 拒否し、何も変わらず Held のまま。abandoned の run の journal は trigger で変更できず、settle は `update-ref` を実行しない |
+| F-m1 | モードの切替の前に、もう一方の作業を 1 種類ずつ残す（native: open な Unit・pending の effect・cookie を持つ残存プロセス・Exhausted の観測（期限を過ぎたものを含む）。pipeline: held の run・unknown の step・開いた journal・waiting（期限を過ぎたものを含む）/ probing の上限待ちの記録） | rrxd は epoch を進めずに起動を失敗させ、何も書かない。片付けた後は起動する |
 | F-t1 | admit の後にテストの実行ファイルを差し替える / 同じ key の REPLACE で profile の body を変える | 起動せず rejected / held。合格として採用しない |
 | F-i1 | `INSERT OR REPLACE` で各表の主キー・UNIQUE・部分 UNIQUE に衝突させる（`recursive_triggers=false`）/ Agent の kind で provider が NULL の step を INSERT する | すべて拒否され、元の行が残る |
 
@@ -1041,12 +1136,14 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
     - 静止の確認を epoch の後に動かす / cookie の探索を消す
     - tick で `control_admission` を取らないようにする / spawn の前に Store lock を解放しないようにする
     - tx1 の epoch 照合・Goal の Running の検査・1 process の検査を消す
+    - tx1 の上限待ちの検査を自分の run・自分の Project の記録だけにする / probe の決着で既知の成功以外を解除にする / 時刻の経過で native の Exhausted を外す
     - 採用・release・Goal 完了・回復の最終 tx の Goal の Running の検査を消す
     - `pipeline_tick` を呼ばないようにする
     - rrx の Git の `GIT_CONFIG_GLOBAL` / `--no-filters` を外す
     - 秘密スキャンを prompt の書込みの前から外す
     - test の起動前の `recheck` / profile の digest 照合を消す
-    - 回復で、再送の照会を作業領域の初期化の後に動かす
+    - 回復で、再送の照会を作業領域の初期化の後に動かす / guard の中と最終 tx の再送の照会を消す
+    - `abandon-run` の journal の決着を消す / settle の abandoned の run の検査を消す
   - 部分一致と存在の検査:
     - scope の glob を前方一致にする
     - quote の照合を緩める（空を許す / 開始行を見ない）
@@ -1054,7 +1151,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
     - 許可する環境変数を広げる
     - ラベル集合の一致を「部分集合」にする
   - 「この検査が保証する」と書いた箇所:
-    - step / run / journal の trigger の各条件（epoch・遷移・完了の EXISTS・放棄の NOT EXISTS・1 process の EXISTS）
+    - step / run / journal / 上限待ちの記録の trigger の各条件（epoch・遷移・完了の EXISTS・放棄の NOT EXISTS（step と journal）・1 process の EXISTS・上限待ちの EXISTS・期限の単調性・解除の `provider_outcome`）
     - 書込み API が `owner_epoch` を明示して書くこと（省略すると F-e1 の trigger 単独の拒否が落ちる）
     - 死亡確認の 5 条件の一つずつ
     - `unknown` から `abandoned` への EXISTS
@@ -1067,9 +1164,9 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | Unit | 内容 | 進める AC | Unit の中の局所の受入 | 更新するマスター設計書 |
 |---|---|---|---|---|
 | B1 | 基準の決定（§0）、main の CI を `gh` で確認、偽 CLI の基盤 | 前提 | — | なし（`doc/verification/issue-106-b1.md`） |
-| B2 | schema v12 と版上げの 4 経路、Store API（spawn しない）、trigger、native の除外、`pipeline_mode_inventory` | AC-2、AC-7、AC-8(e)(f) | (1) v0・v9・v10・v11 → v12 と、途中の失敗での rollback。(2) 各 trigger 規則の正負の SQL テスト（引継ぎ後の古い step の更新を trigger 単独で拒否、Agent の kind の NULL provider の拒否、放棄の条件を含む）。(3) 回復の tx が retry・abandon-run とも初回で成功し、再送が同じ応答を返す | `architecture.md` §13、`goal-runtime.md` §14、`multi-project-runtime.md` §7 |
-| B3 | `ExecutionConfig` / `PipelineConfig`、モード付きの `RuntimeOwner::open` と静止の確認、CLI の pin、Q、上限の分類器の fixture | AC-1 | F-m1 の各行 | `agent-adapter.md` §10、`agent-execution.md` の「Process launch boundary」 |
-| B4 | StepLauncher と StepCustody、実行境界、1 process の規則、native の exhaustion の読み取り | AC-8(c)(d) | — | `agent-execution.md` §2・§4 |
+| B2 | schema v12 と版上げの 4 経路、Store API（spawn しない）、trigger、native の除外、`pipeline_mode_inventory` | AC-2、AC-7、AC-8(e)(f) | (1) v0・v9・v10・v11 → v12 と、途中の失敗での rollback。(2) 各 trigger 規則の正負の SQL テスト（引継ぎ後の古い step の更新を trigger 単独で拒否、Agent の kind の NULL provider の拒否、放棄の条件、上限待ちの記録の遷移を含む）。(3) 回復の tx が retry・abandon-run とも初回で成功し、再送が同じ応答を返す | `architecture.md` §13、`goal-runtime.md` §14、`multi-project-runtime.md` §7 |
+| B3 | `ExecutionConfig` / `PipelineConfig`、モード付きの `RuntimeOwner::open` と静止の確認、CLI の pin、Q、上限と成功の分類器の fixture | AC-1 | F-m1 の各行 | `agent-adapter.md` §10、`agent-execution.md` の「Process launch boundary」 |
+| B4 | StepLauncher と StepCustody、実行境界、1 process の規則、native の exhaustion の読み取り、daemon 全体の上限待ち | AC-8(c)(d) | — | `agent-execution.md` §2・§4 |
 | B5 | Executor と AdoptionChecker、`PipelineGit`、prepare、作業領域の初期化（§6.4） | AC-3 | — | `agent-execution.md`、`architecture.md` §10・§14 |
 | B6 | `PipelineTestRunner`、Seatbelt、`ProjectAdmitTests`、profile の照合 | AC-3 | — | `workflow-engine.md` §17、`agent-execution.md` §5 |
 | B7 | Reviewer と VerdictDecoder、snapshot、秘密スキャン | AC-4 | — | `workflow-engine.md` §6、`agent-adapter.md` §7 |
@@ -1096,7 +1193,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | D12 | `ProcessGroup` の macOS での「孤児は Held のまま」 | 計画どおり。加えて、見つかった pid に signal を送らない | `crates/rrx-process-tracker/src/macos.rs:12-23` は、探索で見つけたプロセスへの signal を無効にしている |
 | D13 | `rrx task recover --abandon-step` | `rrx pipeline recover <run-id> --abandon-step --then retry|abandon-run` | Goal 完了確認の run は Task を持たない。run で指定すれば、両方の kind に同じ command を使える。attempt の上限に達した run を終わらせる出口が要る |
 | D14 | rrx commit を trailer で識別する | 記録した commit SHA と tree だけで識別する | trailer と親は Agent も作れるので、作成主体の証明にならない |
-| D15 | quota lease を使う | v1 は daemon 全体で 1 step ずつ動かし、quota の表を書かない。provider の上限は既知の終了だけを run の backoff で待ち、native の exhaustion は読むだけ | `quota_leases` / `quota_waiters` は `execution_units` への FK を持つ（`state/execution.sql:130-142`）。native の規則（provider ごとの上限の集約、probe、公平性）を条件ごと移し替えると、改訂のたびに弱まりが見つかった。1 step ずつはどの上限よりも厳しく、Stage 1（1 Project・直列の step）の要求を満たす |
+| D15 | quota lease を使う | v1 は daemon 全体で 1 step ずつ動かし、quota の表を書かない。provider の上限は既知の終了だけを daemon 全体の 1 つの記録（`pipeline_limit_wait`）の backoff で待ち、期限の後は 1 つの起動が既知の成功で終わるまで次を起動しない。native の Exhausted の観測は読むだけで、残る間は起動しない | `quota_leases` / `quota_waiters` は `execution_units` への FK を持つ（`state/execution.sql:130-142`）。native の規則（provider ごとの上限の集約、probe、公平性）を条件ごと移し替えると、改訂のたびに弱まりが見つかった。1 step ずつはどの同時実行の上限よりも厳しく、Stage 1（1 Project・直列の step）の要求を満たす。時間をまたぐ制約（待ちと、期限後の単一の起動）は、account を区別しない 1 つの記録で保守的に保つ |
 
 **オーケストレーターの簡素化の指示から外した点**
 
@@ -1105,25 +1202,11 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | repo の設定と global の設定に driver があれば拒否する | repo の設定の driver は拒否する。global / system の設定は、rrx の Git から外す（`GIT_CONFIG_GLOBAL=/dev/null`、`GIT_CONFIG_NOSYSTEM=1`） | オーナーの Mac では global の git-lfs の filter が一般的で、拒否にすると全 Project が使えなくなる。外せば driver は rrx の Git で起動できず、目的（rrx が driver を実行しないこと）は同じに満たす |
 | tick は tx1 → spawn → tx2 の間 `control_admission` を保持する | それに加えて、claim・rrx 内部の step・採用・release・Goal の完了も、tick の中で境界を保持して行う | 結果を進める書込みを、pause・cancel と直列化するため（規則 G） |
 
-## 17. Revision 2
+## 17. Revision 3
 
 | 指摘 | 解決 | 節 |
 |---|---|---|
-| 範囲の絞り込み | daemon 全体で process の step を 1 つずつ。provider ごとの上限・公平性・予約枠・probe と `pipeline_provider_limits` を削除。並行実行と容量の共有は Stage 2 | §2.6、要件 §3 |
-| E-01 | モードの静止を両方向で定義し、`begin_execution_epoch` の前に owner lock を持ったまま確かめる。永続状態（開いた Unit・effect・lease・run・journal・上限待ち）と cookie の探索（完全な coverage で 0 件）を要求し、epoch の更新を根拠にしない | §1.1、§4.1、§5.2 |
-| E-02 | 既知の上限の終了だけを run の backoff で待つ。step の起動前に native の未失効の exhaustion（provider と account を問わない）を読み、あれば held。`managed_native` への切替は上限待ちが残る間は拒否 | §2.6、§1.1、§5.6 |
-| E-03 | 1 step ずつにして、provider ごとの上限の計算をなくした | §2.6 |
-| E-04 | probe をなくした（1 step ずつの起動が、native の probe 時刻の後の単一の起動に当たる） | §2.6 |
-| E-05 | 回復の最終 tx を ack → recovery → step の abandoned → run の遷移 → 新しい step の INSERT の順にした | §4.4 |
-| E-06 | 規則 G: 採用・release・Goal 完了・回復は境界の中で、最終 tx で Goal の Running と version を確かめ直す。Paused / Cancelled では完了も release もしない | §1.2、§9、§6.3 |
-| E-07 | 再送の照会と期待 version の検査を、作業領域の変更より前に行う。最終 tx でやり直す | §4.4 |
-| E-08 | step に `owner_epoch` を持たせ、書込み API は毎回自分の epoch を明示して書く。引継ぎの後の古い書込みを trigger だけで拒否する | §2.2、§2.3、§2.4、§4.1 |
-| E-09 | `PipelineRunView` を Task の run と Goal 完了確認の run の両方に出す | §10 |
-| E-10 | 16 回目の attempt は held。`--then abandon-run` で新しい attempt を作らずに run を放棄して slot を空ける。cancel は死亡を確認できれば run を放棄する | §3.1、§3.2、§4.3、§4.4 |
-| E-11 | 各 test の起動直前に `AdmittedProfile::recheck` を呼ぶ | §3.3、§7.2 |
-| E-12 | FK で守られるという説明を訂正した。パイプラインは読むたびに body と digest を照合し、不一致なら held | §2.3、§7.2、§13.3 |
-| E-13 | 公平性の先頭の選択をなくした | §2.6 |
-| E-14 | Agent の kind で `provider IS 'codex'` / `IS 'claude'` を要求し、NULL を CHECK で拒否する | §2.2 |
-| E-15 | `evidence.line` は 1 以上で範囲内、quote の出現の開始行と一致すること。不一致は Unclear | §5.7、§8.3 |
-| E-16 | 対応なし（指摘は実在しない。改訂 1 の DDL は 8 表で記述と一致していた）。改訂 2 で 1 表を削除し、7 表と記述した | §2.2、§2.3 |
-| E-17 | B2 と B9 に、Unit の中の局所の受入を置いた | §15 |
+| F-01 | 時刻（`resets_at`・`next_probe_at`）で native の Exhausted を外す判定を削除した。`quota_windows` に Exhausted の観測が 1 つでも残る間（`applies` が認める新しい Available の観測で置き換わるまで）は、`cli_pipeline` の起動を拒否し、tx1 でも step を held（`native_quota_exhausted`）にする。運用者は `rrx goal status` の Held の理由と `native_exhaustion`（provider・bucket・`resets_at`）で知る。パイプラインは quota の表を書かず、解除は native の観測だけ。単一の起動を native の probe とみなす記述を削除した | §0、§1.1、§2.6、§3.2、§10、§12、§14 F-a5・F-m1、要件 §6・§7・§8 項目 1・7 |
+| F-02 | 上限待ちを run の body から、daemon 全体の 1 行の表 `pipeline_limit_wait`（state・`not_before`・`backoff_ms`・probe の step）に移した。trigger は R-epoch・`no_replace`・`no_delete`、期限の単調性、waiting → clear の禁止、解除に probe の step の `provider_outcome = success` を要求する。すべての Project の Agent の step の tx1 が確かめる。期限の後は最初の 1 つ（probe）だけを起動し、既知の成功以外の終わり方（中断・認証の失敗・unknown・死亡の未確認・分類できない失敗）は同じ backoff で延長する。run の放棄・回復・再起動で失われない（再起動時は owner だけを引き継ぐ）。`rrx goal status` に `provider_wait` を出す。`managed_native` への切替は記録が clear のときだけ | §1.1、§1.2、§2.2、§2.3、§2.4、§2.6、§3.2、§4.1、§4.2、§5.6、§10、§12、§13.1、§14 F-a6・F-a7・F-m1、§16 D15、要件 §2・§5 AC-8・§6・§8 項目 1・7 |
+| F-03 | guard の中の読み取りの tx と最終の tx で、現在の状態の検査より先に ack と要求の同一性を照会し直す（`goals.rs:397-408` と同じ順序）。同じ request ID の重複は、どれも同じ保存応答を受け取り、副作用は 1 回だけ | §4.4、§12、§14 F-f3、要件 §7・§8 項目 3 |
+| F-04 | `--then abandon-run` は、その run の開いた `task_release` の journal を先に決着させる。guard の中で ref を読み、old なら journal を aborted にしてから run を abandoned、new なら journal を done にして run を held → completed（Goal branch は承認済みの commit を指しているので、放棄すると Git と DB が食い違う）、それ以外は拒否して Held のまま。run の trigger は、開いた journal が残る放棄を拒否し、held → completed には回復の記録を要求する。abandoned の run の journal は trigger で変更できず、settle は `update-ref` を実行しない | §2.2、§3.1、§4.4、§9、§12、§14 F-h3、要件 §8 項目 3・6 |
