@@ -148,8 +148,10 @@ async fn b3_q_environment() {
             "RRX_PROCESS_COOKIE",
             "CODEX_HOME",
             "PWD",
+            "SHLVL",
+            "_",
         ];
-        // POSIX sh adds PWD itself; verify the actual Command input separately.
+        // Shells add PWD, SHLVL and _ themselves; verify the actual Command input separately.
         assert!(
             environment
                 .lines()
