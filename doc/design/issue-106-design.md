@@ -1,6 +1,6 @@
 # Issue #106 設計書: Plan B — CLI サブプロセスによる Agent パイプライン
 
-Status: 提案中（B0・改訂 3）。基準の source は origin/main `79e4d273`。要件は `doc/requirements/issue-106-requirements.md`。ファイルパスは、断りがなければ `crates/rrx/src/` からの相対パスで書く。`crates/` で始まるパスはリポジトリのルートからの相対パスである。
+Status: 承認済み（B0・改訂 3。設計レビュー 4 巡で承認、2026-10-18 にオーナーが要件 §8 の 9 項目を承認）。任意の G-01（§9 の手動 ref 変更の検知の説明）は残余リスクの記述として B9 で直す。基準の source は origin/main `79e4d273`。要件は `doc/requirements/issue-106-requirements.md`。ファイルパスは、断りがなければ `crates/rrx/src/` からの相対パスで書く。`crates/` で始まるパスはリポジトリのルートからの相対パスである。
 
 改訂 2 では範囲を絞った。v1 は daemon 全体で process の step を同時に 1 つだけ動かし、provider ごとの枠・公平性・予約枠・probe を持たない（§2.6）。
 

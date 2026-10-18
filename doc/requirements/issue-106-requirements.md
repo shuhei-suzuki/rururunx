@@ -1,6 +1,6 @@
 # Issue #106 要件定義: Plan B — CLI サブプロセスによる Agent パイプライン（Stage 1・1 Project）
 
-Status: 提案中（B0・改訂 3）。オーナーの承認が必要な事項は §8 に挙げる。基準の source は origin/main `79e4d273`。この文書は「何を、なぜ作るか」を定める。「どう作るか」は `doc/design/issue-106-design.md` に書く。ファイルパスは、断りがなければ `crates/rrx/src/` からの相対パスで書く。
+Status: 承認済み（B0・改訂 3）。非執筆側の設計レビューは 4 巡で承認（`80a60250`）。オーナーは 2026-10-18 に §8 の 9 項目をすべて承認し、項目 9 の残余リスクを受け入れた。基準の source は origin/main `79e4d273`。この文書は「何を、なぜ作るか」を定める。「どう作るか」は `doc/design/issue-106-design.md` に書く。ファイルパスは、断りがなければ `crates/rrx/src/` からの相対パスで書く。
 
 ## 1. 目的
 
