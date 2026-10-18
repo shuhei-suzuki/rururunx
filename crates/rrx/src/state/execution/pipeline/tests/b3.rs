@@ -143,26 +143,36 @@ fn b3_owner_native_exhaustion() {
 /// A retained native cleanup cookie with a live process blocks pipeline startup without writes.
 #[tokio::test]
 async fn b3_owner_native_cookie_process() {
+    // Re-exec this test binary so readiness follows process initialization,
+    // with the cookie in the initial environment read by KERN_PROCARGS2.
+    if let Some(marker) = std::env::var_os("RRX_B3_COOKIE_WORKER_READY") {
+        std::fs::write(marker, b"ready").unwrap();
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        return;
+    }
     let (legacy, store, unit) = round2::native_inventory_fixture();
     let path = legacy.path().join("state.db");
     let epoch = store.connection_epoch_for_test();
     let before = store.pipeline_mode_inventory().unwrap();
-    let mut command = tokio::process::Command::new("/bin/sh");
+    let marker = legacy.path().join("cookie-worker-ready");
+    let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
     command
-        .args(["-c", "printf ready; exec /bin/sleep 30"])
+        .args([
+            "--exact",
+            "state::execution::pipeline::tests::b3::b3_owner_native_cookie_process",
+        ])
         .env("RRX_PROCESS_COOKIE", &unit.cookie)
-        .stdout(std::process::Stdio::piped());
+        .env("RRX_B3_COOKIE_WORKER_READY", &marker)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     let mut child = crate::execution::process::OwnedProcess::spawn(command).unwrap();
-    let mut stdout = child.child.stdout.take().unwrap();
-    let mut ready = [0; 5];
-    tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        tokio::io::AsyncReadExt::read_exact(&mut stdout, &mut ready),
-    )
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while !marker.exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
     .await
-    .unwrap()
     .unwrap();
-    assert_eq!(&ready, b"ready");
     let found = rrx_process_tracker::discover(
         &rrx_process_tracker::Cookie::new(&unit.cookie).unwrap(),
         Default::default(),
@@ -172,9 +182,24 @@ async fn b3_owner_native_cookie_process() {
         .processes
         .iter()
         .any(|p| Some(p.identity().pid) == child.child.id());
+    let running = rustix::process::waitid(
+        rustix::process::WaitId::Pid(
+            rustix::process::Pid::from_raw(child.child.id().unwrap() as i32).unwrap(),
+        ),
+        rustix::process::WaitIdOptions::EXITED
+            | rustix::process::WaitIdOptions::NOWAIT
+            | rustix::process::WaitIdOptions::NOHANG,
+    )
+    .unwrap()
+    .is_none();
     let refused = RuntimeOwner::open_mode(&path, ExecutionMode::CliPipeline).is_err();
     child.stop_and_reap().await.unwrap();
-    assert!(matched, "fixture process cookie was not visible");
+    assert!(running, "fixture process exited before discovery");
+    assert!(
+        matched,
+        "fixture process cookie was not visible: {:?}",
+        found.coverage
+    );
     assert!(refused);
     assert_eq!(store.connection_epoch_for_test(), epoch);
     assert_eq!(store.pipeline_mode_inventory().unwrap(), before);

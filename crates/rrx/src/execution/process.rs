@@ -346,6 +346,32 @@ pub(crate) async fn capture_child(mut child: OwnedProcess) -> Result<CommandCapt
     })
 }
 
+/// Move custody with the inspector so cancellation cannot reap/reuse its PID.
+async fn signal_probe_group(child: &mut Option<OwnedProcess>) -> Result<Option<String>> {
+    let owned = child.take().context("probe custody absent")?;
+    let (owned, result) = tokio::task::spawn_blocking(move || {
+        let result = (|| -> Result<()> {
+            ensure!(owned.unreaped, "probe child has already been reaped");
+            let result = kill_process_group(owned.pid, Signal::KILL);
+            #[cfg(target_os = "macos")]
+            let result = crate::adapter::resolve_macos_signal_result(result, || {
+                crate::adapter::macos_group_is_dead(owned.pid)
+            });
+            #[cfg(not(target_os = "macos"))]
+            let result: std::io::Result<()> = match result {
+                Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
+                Err(e) => Err(e.into()),
+            };
+            result.context("signal probe unreaped process group")
+        })();
+        (owned, result)
+    })
+    .await
+    .context("probe cleanup worker failed")?;
+    *child = Some(owned);
+    Ok(result.err().map(|e| format!("{e:#}")))
+}
+
 /// Startup probes retain the same unreaped group custody and bounded readers.
 pub(crate) async fn capture_probe(
     mut command: Command,
@@ -357,20 +383,32 @@ pub(crate) async fn capture_probe(
     let mut child = OwnedProcess::spawn(command)?;
     let stdout = child.child.stdout.take().context("probe stdout missing")?;
     let stderr = child.child.stderr.take().context("probe stderr missing")?;
+    let mut child = Some(child);
     let readers =
         async { tokio::try_join!(bounded_read(stdout, 4096), bounded_read(stderr, 4096)) };
     tokio::pin!(readers);
     let collected = tokio::time::timeout(Duration::from_secs(5), async {
         tokio::select! {
-            bytes = &mut readers => { let bytes = bytes?; child.exited().await?; Ok::<_, anyhow::Error>(bytes) },
-            exit = child.exited() => {
+            bytes = &mut readers => { let bytes = bytes?; child.as_ref().unwrap().exited().await?; Ok::<_, anyhow::Error>(bytes) },
+            exit = child.as_ref().unwrap().exited() => {
                 exit?;
-                child.signal_group()?;
+                let group_error = signal_probe_group(&mut child).await?;
+                ensure!(group_error.is_none(), "probe group cleanup failed: {group_error:?}");
                 tokio::time::timeout(Duration::from_secs(2), &mut readers).await.context("probe drain incomplete")?
             }
         }
     }).await;
-    let receipt = child.stop_and_reap().await?;
+    let group_error = signal_probe_group(&mut child).await?;
+    let mut child = child.context("probe custody absent after cleanup")?;
+    if group_error.is_some() {
+        let _ = child.child.start_kill();
+    }
+    let status = tokio::time::timeout(Duration::from_secs(10), child.child.wait()).await??;
+    child.unreaped = false;
+    let receipt = ProcessReceipt {
+        status,
+        group_error,
+    };
     ensure!(
         receipt.group_error.is_none(),
         "probe group cleanup failed: {:?}",
@@ -382,6 +420,25 @@ pub(crate) async fn capture_probe(
         "probe output exceeded its bound"
     );
     Ok((receipt, out, err))
+}
+
+#[cfg(test)]
+mod probe_tests {
+    /// Only confirmed dead groups resolve EPERM; every uncertain observation refuses.
+    #[test]
+    fn b3_probe_macos_signal_resolution() {
+        use crate::adapter::resolve_macos_signal_result as resolve;
+        use rustix::io::Errno;
+        assert!(resolve(Err(Errno::PERM), || Ok(true)).is_ok());
+        assert!(resolve(Err(Errno::PERM), || Ok(false)).is_err());
+        for kind in [
+            std::io::ErrorKind::InvalidData,
+            std::io::ErrorKind::TimedOut,
+        ] {
+            assert!(resolve(Err(Errno::PERM), || Err(std::io::Error::from(kind))).is_err());
+        }
+        assert!(resolve(Err(Errno::ACCESS), || Ok(true)).is_err());
+    }
 }
 
 pub(crate) async fn capture_scoped(

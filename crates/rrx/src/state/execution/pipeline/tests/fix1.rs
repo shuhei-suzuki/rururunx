@@ -47,12 +47,19 @@ async fn b2_fix1_rehold_api() {
     held_process(&f, &id);
     let c = f.cursor(&id);
     let before = latest(&f, &id);
-    assert!(
-        f.store()
-            .pipeline_hold(&f.owner, &c, "dead", Some(&death()))
-            .is_err()
-    );
-    assert_eq!(latest(&f, &id), before);
+    let run_before = read_run(&f.store().connection, &id).unwrap();
+    for evidence in [Some(death()), None] {
+        let error = f
+            .store()
+            .pipeline_hold(&f.owner, &c, "dead", evidence.as_ref())
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "pipeline stop source is held or terminal"
+        );
+        assert_eq!(latest(&f, &id), before);
+        assert_eq!(read_run(&f.store().connection, &id).unwrap(), run_before);
+    }
 }
 /// SQL cannot turn unconfirmed held custody into confirmed death.
 #[tokio::test]
@@ -384,11 +391,16 @@ async fn b2_fix1_adopt_source() {
         let id = f.claim();
         f.process_step(&id, kind);
         let c = f.cursor(&id);
-        assert!(
-            f.store()
-                .pipeline_adopt(&f.owner, &c, &json!({"command_id":"test"}))
-                .is_err()
-        );
+        let error = f
+            .store()
+            .pipeline_adopt(&f.owner, &c, &json!({"command_id":"test"}))
+            .unwrap_err();
+        let expected = if kind == "release" {
+            "pipeline release is adopted only by journal settlement"
+        } else {
+            "pipeline adoption needs exited step"
+        };
+        assert_eq!(error.to_string(), expected);
     }
 }
 /// A terminal step cannot be rewritten in place by adoption or direct SQL.
@@ -504,11 +516,11 @@ async fn b2_fix1_journal_ref_scope() {
     let mut j = release_journal(&f, &id);
     j.ref_name = "refs/heads/main".into();
     let c = f.cursor(&id);
-    assert!(
-        f.store()
-            .pipeline_release_begin(&f.owner, &c, &j, &json!({}))
-            .is_err()
-    );
+    let error = f
+        .store()
+        .pipeline_release_begin(&f.owner, &c, &j, &json!({}))
+        .unwrap_err();
+    assert_eq!(error.to_string(), "pipeline journal ref mismatch");
     let store = f.store();
     let changes = vec![
         ("id", "'other'"),

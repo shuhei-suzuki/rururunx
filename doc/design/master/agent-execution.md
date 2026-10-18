@@ -25,7 +25,12 @@ Pipeline Q probes reuse `execution::process::OwnedProcess` (spawn hygiene,
 unreaped identity, group signaling before reap, direct-child fallback and Drop
 custody) and `bounded_read`; their own capture uses five seconds and four KiB
 combined output. Group-signal failure refuses qualification rather than claiming
-descendant death. CLI results are recorded only after each probe has released
+descendant death. On macOS, only the probe path reuses the adapter's EPERM
+resolution: confirmed all-dead group inspection can resolve the signal error;
+live, unknown or failed inspection refuses. Custody moves with inspection to a
+blocking worker while the leader remains unreaped. The shared `signal_group`
+and `stop_and_reap` paths are unchanged.
+CLI results are recorded only after each probe has released
 its process wait, with no Store mutex/transaction or control guard spanning the
 probe. The owner flock remains retained for the whole Runtime lifetime.
 Current-epoch Q gates pipeline claims and launch intents; runtime startup and

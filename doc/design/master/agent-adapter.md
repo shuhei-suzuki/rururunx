@@ -200,6 +200,10 @@ realpath/SHA-256, exact trimmed version, exact help option tokens, and successfu
 string `model` and `model_reasoning_effort` keys; other keys refuse Q. Probe
 commands clear the environment and use a bounded capture (five seconds, four KiB
 combined output), retained process-group custody and `rrx-spawn-hygiene`.
+Probe cleanup reuses the adapter's macOS EPERM resolver/inspector on a blocking
+worker retaining the unreaped leader. Only confirmed all-dead group inspection
+resolves EPERM; live/unknown/inspection-error observations refuse Q. Shared native
+`OwnedProcess` signal/reap behavior is unchanged.
 Cleanup signal failure refuses Q. No Store mutex, SQLite transaction or control
 admission guard spans a probe. Startup refuses work until Q is current;
 configuration and executable images are rechecked outside Store transactions.
