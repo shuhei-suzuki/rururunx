@@ -885,7 +885,7 @@ async fn b2_stale_step_trigger_after_takeover() {
         );
         tokio::task::yield_now().await;
     }
-    let owner = RuntimeOwner::open(&path).unwrap();
+    let owner = RuntimeOwner::open_mode(&path, crate::config::ExecutionMode::CliPipeline).unwrap();
     assert!(owner.epoch > epoch);
     let mut store = owner.store.lock().unwrap();
     let expected = store.pipeline_takeover_view().unwrap();
@@ -905,6 +905,7 @@ async fn b2_stale_step_trigger_after_takeover() {
     raw_step(&store, &step, owner.epoch, &step.state).unwrap();
 }
 
+mod b3;
 mod round2;
 /// Step versions advance exactly once on every permitted update.
 #[tokio::test]

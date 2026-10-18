@@ -12,6 +12,27 @@ inherit every descriptor not marked CLOEXEC, as with the original operation.
 Other targets refuse launch with `ENOSYS`. The rrx crate continues to forbid
 unsafe code.
 
+Issue #106 B3 adds `RuntimeOwner::open_mode`; `open` retains the native default.
+While holding the exclusive owner lock, startup reads the B2 typed opposite-mode
+inventory before `begin_execution_epoch`. Busy inventories refuse startup.
+Cookie-discovery verdicts require every supplied cookie to have complete
+`rrx-process-tracker` coverage and zero matches; discovery errors and excessive
+inventories refuse startup. No epoch advancement is used as death evidence.
+Successful pipeline startup records its pre-epoch inventory/discovery summary
+under the new epoch as `mode_quiescence`.
+
+Pipeline Q probes reuse `execution::process::OwnedProcess` (spawn hygiene,
+unreaped identity, group signaling before reap, direct-child fallback and Drop
+custody) and `bounded_read`; their own capture uses five seconds and four KiB
+combined output. Group-signal failure refuses qualification rather than claiming
+descendant death. CLI results are recorded only after each probe has released
+its process wait, with no Store mutex/transaction or control guard spanning the
+probe. The owner flock remains retained for the whole Runtime lifetime.
+Current-epoch Q gates pipeline claims and launch intents; runtime startup and
+pipeline sweeps also recheck qualification configuration and executable hashes.
+The B3 pipeline sweep remains idle pending B6 and never enters native
+reconciliation or admission. Native S and native capture bounds are unchanged.
+
 The six functions delegate to their corresponding original methods. Tokio
 output/status spawn synchronously before returning the future. Stdio defaults,
 cancellation, kill_on_drop, process group, original locks and immediate Child

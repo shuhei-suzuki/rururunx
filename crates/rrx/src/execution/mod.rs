@@ -13,6 +13,7 @@ pub mod ipc;
 pub mod native;
 pub mod native_result;
 pub(crate) mod phase;
+pub mod pipeline;
 pub mod process;
 pub mod quota;
 pub mod resources;

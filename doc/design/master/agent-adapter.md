@@ -185,6 +185,35 @@ A generic adapter should be possible for tools that support:
 
 Generic adapters may have fewer capabilities than first-party adapters.
 
+Issue #106 B3 adds a separate `execution::pipeline::CliQualifier`; it does not
+use `GenericCliAdapter`. Runtime-only `execution.mode` defaults to
+`managed_native`. Default execution and absent pipeline settings are omitted
+from serialization to preserve the existing native policy digest. Project
+overlays cannot set either section. Pipeline settings accept executable paths,
+exact version pins, models, Codex effort and dedicated `CODEX_HOME`, extra PATH
+directories and a work root; command templates are fixed in code.
+
+For `cli_pipeline`, startup Q records platform, pre-epoch mode quiescence, and
+Codex/Claude observations through the Store qualification API. CLI checks cover
+realpath/SHA-256, exact trimmed version, exact help option tokens, and successful
+`login status` / `auth status`. Codex configuration currently permits only
+string `model` and `model_reasoning_effort` keys; other keys refuse Q. Probe
+commands clear the environment and use a bounded capture (five seconds, four KiB
+combined output), retained process-group custody and `rrx-spawn-hygiene`.
+Cleanup signal failure refuses Q. No Store mutex, SQLite transaction or control
+admission guard spans a probe. Startup refuses work until Q is current;
+configuration and executable images are rechecked outside Store transactions.
+Claude additionally receives a parser-only `--setting-sources "" --help` probe;
+the Q path never sends `-p` or an Agent prompt.
+
+The output classifiers accept complete structured output and fail closed on
+missing, malformed, duplicate-key, overflowed or unrecognized-version output.
+Only synthetic, explicitly named fixture wire versions currently have rules;
+no installed production CLI version has been qualified by these fixtures.
+Reusable file-controlled Codex/Claude executables in
+`crates/rrx/tests/support/pipeline_cli.*` implement probes and a later exec
+interface. B3 does not launch the fixed step templates or install the scheduler.
+
 ## 11. MVP adapters
 
 Required:

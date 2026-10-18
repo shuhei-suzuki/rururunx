@@ -3,6 +3,8 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+mod pipeline;
+pub use pipeline::{ExecutionConfig, ExecutionMode, PipelineCli, PipelineClis, PipelineConfig};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -224,6 +226,10 @@ pub struct WorkflowOverlay {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    #[serde(skip_serializing_if = "ExecutionConfig::is_default")]
+    pub execution: ExecutionConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pipeline: Option<PipelineConfig>,
     pub scheduler: SchedulerConfig,
     pub context: ContextConfig,
     pub minimum_workflow: WorkflowClass,
@@ -374,6 +380,12 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<()> {
+        if self.execution.mode == ExecutionMode::CliPipeline && self.pipeline.is_none() {
+            bail!("cli_pipeline requires [pipeline]");
+        }
+        if let Some(pipeline) = &self.pipeline {
+            pipeline.validate()?;
+        }
         self.native.validate()?;
         if self.scheduler.global_max_sessions == 0 || self.scheduler.max_tasks_per_project == 0 {
             bail!("scheduler limits must be positive");

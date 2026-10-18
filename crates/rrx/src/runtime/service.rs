@@ -56,6 +56,20 @@ impl Runtime {
     /// Start exactly once on the existing owner. Missing native binding stays a
     /// named durable hold; the service does not instantiate another owner epoch.
     pub async fn start(self: &Arc<Self>) -> Result<()> {
+        if self.config.execution.mode == crate::config::ExecutionMode::CliPipeline {
+            ensure!(
+                !self.started.load(Ordering::SeqCst),
+                "Runtime already started"
+            );
+            crate::execution::pipeline::CliQualifier::qualify(
+                &self.owner,
+                self.config
+                    .pipeline
+                    .as_ref()
+                    .expect("validated pipeline config"),
+            )
+            .await?;
+        }
         let _admission = self.control_admission.lock().await;
         ensure!(
             !self.stopping.load(Ordering::SeqCst),
@@ -81,6 +95,22 @@ impl Runtime {
                 super::stop::park::wait(runtime.owner.state_path());
                 if runtime.stopping.load(Ordering::SeqCst) {
                     return Ok(());
+                }
+                if runtime.config.execution.mode == crate::config::ExecutionMode::CliPipeline {
+                    crate::execution::pipeline::CliQualifier::current(
+                        &runtime.owner,
+                        runtime
+                            .config
+                            .pipeline
+                            .as_ref()
+                            .expect("validated pipeline config"),
+                    )?;
+                    // B3 installs startup only. B6 supplies pipeline_tick here;
+                    // this mode cannot enter any native admission/reconciliation.
+                    let wake = runtime.wake.clone();
+                    drop(runtime);
+                    tokio::select! { () = wake.notified() => {}, () = tokio::time::sleep(Duration::from_millis(250)) => {} }
+                    continue;
                 }
                 let (next, more) = runtime
                     .owner

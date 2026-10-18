@@ -346,6 +346,44 @@ pub(crate) async fn capture_child(mut child: OwnedProcess) -> Result<CommandCapt
     })
 }
 
+/// Startup probes retain the same unreaped group custody and bounded readers.
+pub(crate) async fn capture_probe(
+    mut command: Command,
+) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = OwnedProcess::spawn(command)?;
+    let stdout = child.child.stdout.take().context("probe stdout missing")?;
+    let stderr = child.child.stderr.take().context("probe stderr missing")?;
+    let readers =
+        async { tokio::try_join!(bounded_read(stdout, 4096), bounded_read(stderr, 4096)) };
+    tokio::pin!(readers);
+    let collected = tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::select! {
+            bytes = &mut readers => { let bytes = bytes?; child.exited().await?; Ok::<_, anyhow::Error>(bytes) },
+            exit = child.exited() => {
+                exit?;
+                child.signal_group()?;
+                tokio::time::timeout(Duration::from_secs(2), &mut readers).await.context("probe drain incomplete")?
+            }
+        }
+    }).await;
+    let receipt = child.stop_and_reap().await?;
+    ensure!(
+        receipt.group_error.is_none(),
+        "probe group cleanup failed: {:?}",
+        receipt.group_error
+    );
+    let (out, err) = collected.context("probe timed out")??;
+    ensure!(
+        out.len() + err.len() <= 4096,
+        "probe output exceeded its bound"
+    );
+    Ok((receipt, out, err))
+}
+
 pub(crate) async fn capture_scoped(
     child: OwnedProcess,
     owner: &super::RuntimeOwner,

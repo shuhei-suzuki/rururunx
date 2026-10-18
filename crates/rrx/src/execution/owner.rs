@@ -1,4 +1,8 @@
 use super::{OperationId, UnitId};
+use crate::config::ExecutionMode;
+use crate::state::pipeline::{
+    PipelineModeInventory, PipelineQualification, PipelineQuiescenceVerdict,
+};
 use crate::{adapter::SharedStore, state::Store};
 use anyhow::{Context, Result, ensure};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
@@ -11,6 +15,7 @@ use std::{
 
 /// The kernel lock fences schedulers, never claims their descendants are dead.
 pub struct RuntimeOwner {
+    mode: ExecutionMode,
     _lock: File,
     _database_file: File,
     state_path: PathBuf,
@@ -268,6 +273,10 @@ impl OwnerLock {
 
 impl RuntimeOwner {
     pub fn open(state: &Path) -> Result<Arc<Self>> {
+        Self::open_mode(state, ExecutionMode::ManagedNative)
+    }
+    /// Check the opposite mode under the owner lock, before epoch retirement.
+    pub fn open_mode(state: &Path, mode: ExecutionMode) -> Result<Arc<Self>> {
         let LockedStateRoot {
             path,
             root,
@@ -275,6 +284,23 @@ impl RuntimeOwner {
             database_file,
         } = lock_state_root(state)?;
         let mut store = Store::open(&path)?;
+        let inventory =
+            store
+                .pipeline_mode_inventory_for(mode)
+                .map_err(|_| ExecutionModeNotQuiescent {
+                    reason: "inventory_unavailable".into(),
+                })?;
+        let discovery = check_mode_inventory(&inventory, mode, |cookie| {
+            let found = rrx_process_tracker::discover(
+                &rrx_process_tracker::Cookie::new(cookie)?,
+                Default::default(),
+            )?;
+            Ok((
+                found.coverage.limited(),
+                found.processes.len(),
+                found.coverage.inspected,
+            ))
+        })?;
         let (instance, epoch) = store.begin_execution_epoch()?;
         let ipc = tempfile::Builder::new().prefix("rrx-").tempdir_in("/tmp")?;
         let socket = ipc.path().canonicalize()?.join("runtime.sock");
@@ -282,7 +308,8 @@ impl RuntimeOwner {
             socket.as_os_str().len() < 100,
             "Runtime IPC path exceeds Unix socket limit"
         );
-        Ok(Arc::new(Self {
+        let owner = Arc::new(Self {
+            mode,
             _lock: lock,
             _database_file: database_file,
             state_path: path,
@@ -296,7 +323,35 @@ impl RuntimeOwner {
             runtime_drivers: Mutex::new(Weak::new()),
             _ipc: ipc,
             socket,
-        }))
+        });
+        if mode == ExecutionMode::CliPipeline {
+            owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .pipeline_record_qualification(
+                    &owner,
+                    &PipelineQualification {
+                        subject: "mode_quiescence".into(),
+                        state: "qualified".into(),
+                        executable_sha256: None,
+                        version_text: None,
+                        body: serde_json::json!({"inventory": {
+                        "native_drivers":inventory.native_drivers,
+                        "native_units":inventory.native_units,
+                        "native_phases":inventory.native_phases,
+                        "native_leases":inventory.native_leases,
+                        "native_effects":inventory.native_effects,
+                        "native_cleanup_cookies":inventory.native_cookies.len(),
+                        "native_exhaustion":inventory.native_exhaustion.len()
+                    }, "discovery": discovery}),
+                    },
+                )?;
+        }
+        Ok(owner)
+    }
+    pub fn execution_mode(&self) -> ExecutionMode {
+        self.mode
     }
     pub fn store(&self) -> SharedStore {
         self.store.clone()
@@ -371,6 +426,60 @@ impl RuntimeOwner {
     }
 }
 
+#[derive(Debug)]
+pub struct ExecutionModeNotQuiescent {
+    pub reason: String,
+}
+impl std::fmt::Display for ExecutionModeNotQuiescent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ExecutionModeNotQuiescent {{ reason: {} }}", self.reason)
+    }
+}
+impl std::error::Error for ExecutionModeNotQuiescent {}
+
+fn check_mode_inventory(
+    inventory: &PipelineModeInventory,
+    mode: ExecutionMode,
+    mut discover: impl FnMut(&str) -> Result<(bool, usize, usize)>,
+) -> Result<serde_json::Value> {
+    let (verdict, cookies) = match mode {
+        ExecutionMode::CliPipeline => (&inventory.to_cli_pipeline, &inventory.native_cookies),
+        ExecutionMode::ManagedNative => (&inventory.to_managed_native, &inventory.pipeline_cookies),
+    };
+    let refuse = |reason: &str| ExecutionModeNotQuiescent {
+        reason: reason.into(),
+    };
+    match verdict {
+        PipelineQuiescenceVerdict::Busy => {
+            let reason =
+                if mode == ExecutionMode::CliPipeline && !inventory.native_exhaustion.is_empty() {
+                    "native_quota_exhausted"
+                } else {
+                    "opposite_mode_busy"
+                };
+            Err(refuse(reason).into())
+        }
+        PipelineQuiescenceVerdict::Quiescent => Ok(serde_json::json!({"cookies":0,"inspected":0})),
+        PipelineQuiescenceVerdict::CookieDiscoveryRequired => {
+            ensure!(
+                cookies.len() <= 4096 && !cookies.is_empty(),
+                refuse("cookie_inventory_invalid")
+            );
+            let mut inspected = 0;
+            for cookie in cookies {
+                let (limited, matches, count) =
+                    discover(cookie).map_err(|_| refuse("cookie_discovery_failed"))?;
+                ensure!(
+                    !limited && matches == 0,
+                    refuse("cookie_discovery_not_quiescent")
+                );
+                inspected += count;
+            }
+            Ok(serde_json::json!({"cookies":cookies.len(),"inspected":inspected}))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -394,3 +503,6 @@ mod tests {
         assert_eq!(successor.epoch(), epoch + 1);
     }
 }
+
+#[cfg(test)]
+mod b3_tests;

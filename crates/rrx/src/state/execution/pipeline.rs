@@ -77,6 +77,16 @@ fn pipeline_owner_current(tx: &Transaction<'_>, owner: &RuntimeOwner) -> Result<
     Ok(())
 }
 
+fn pipeline_startup_current(tx: &Transaction<'_>, owner: &RuntimeOwner) -> Result<()> {
+    if owner.execution_mode() == crate::config::ExecutionMode::CliPipeline {
+        for subject in ["platform", "mode_quiescence", "codex", "claude"] {
+            let qualified: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_qualifications WHERE owner_epoch=?1 AND subject=?2 AND state='qualified')", params![owner.epoch, subject], |r| r.get(0))?;
+            ensure!(qualified, "pipeline startup Q is not current");
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PipelineRun {
     pub id: String,
@@ -656,8 +666,25 @@ impl Store {
     }
     /// Coherent read-only inventory; cookie discovery remains the caller's responsibility.
     pub fn pipeline_mode_inventory(&self) -> Result<PipelineModeInventory> {
+        self.pipeline_mode_inventory_selected(None)
+    }
+    /// Startup inspects the opposite mode only; own-mode recovery is independent.
+    pub fn pipeline_mode_inventory_for(
+        &self,
+        mode: crate::config::ExecutionMode,
+    ) -> Result<PipelineModeInventory> {
+        self.pipeline_mode_inventory_selected(Some(mode))
+    }
+    fn pipeline_mode_inventory_selected(
+        &self,
+        mode: Option<crate::config::ExecutionMode>,
+    ) -> Result<PipelineModeInventory> {
+        let read_native = mode != Some(crate::config::ExecutionMode::ManagedNative);
+        let read_pipeline = mode != Some(crate::config::ExecutionMode::CliPipeline);
         let tx = self.connection.unchecked_transaction()?;
         let count = |sql: &str| -> Result<u64> { Ok(tx.query_row(sql, [], |r| r.get(0))?) };
+        let native_count = |sql| if read_native { count(sql) } else { Ok(0) };
+        let pipeline_count = |sql| if read_pipeline { count(sql) } else { Ok(0) };
         let cookies = |sql: &str| -> Result<Vec<String>> {
             let mut q = tx.prepare(sql)?;
             let rows = q
@@ -669,7 +696,7 @@ impl Store {
         // Cleanup identifies a Unit by id; its cookie is in the validated body,
         // not an indexed column. Missing Units or unusable cookies cannot prove
         // quiescence, even when all indexed open flags have already been closed.
-        let native_cookies = {
+        let native_cookies = if read_native {
             let mut q =
                 tx.prepare("SELECT unit_id FROM cleanup_jobs ORDER BY unit_id LIMIT 4097")?;
             let ids = q
@@ -683,39 +710,51 @@ impl Store {
                     Ok(unit.cookie)
                 })
                 .collect::<Result<Vec<_>>>()?
+        } else {
+            Vec::new()
         };
         let mut out = PipelineModeInventory {
             to_cli_pipeline: PipelineQuiescenceVerdict::Busy,
             to_managed_native: PipelineQuiescenceVerdict::Busy,
-            native_drivers: count("SELECT count(*) FROM task_drivers WHERE state='driving'")?,
-            native_units: count(
+            native_drivers: native_count(
+                "SELECT count(*) FROM task_drivers WHERE state='driving'",
+            )?,
+            native_units: native_count(
                 "SELECT count(*) FROM execution_units WHERE native_effects_open=1 OR result_finalization_open=1",
             )?,
-            native_phases: count(
+            native_phases: native_count(
                 "SELECT count(*) FROM managed_phase_operations WHERE phase_open=1",
             )?,
-            native_leases: count("SELECT count(*) FROM quota_leases WHERE active=1")?,
-            native_effects: count(
+            native_leases: native_count("SELECT count(*) FROM quota_leases WHERE active=1")?,
+            native_effects: native_count(
                 "SELECT count(*) FROM managed_effects WHERE state IN ('pending','unknown')",
             )?,
             native_cookies,
-            native_exhaustion: native_exhaustion(&tx)?,
-            pipeline_runs: count(
+            native_exhaustion: if read_native {
+                native_exhaustion(&tx)?
+            } else {
+                Vec::new()
+            },
+            pipeline_runs: pipeline_count(
                 "SELECT count(*) FROM pipeline_runs WHERE state IN ('running','held')",
             )?,
-            pipeline_journals: count(
+            pipeline_journals: pipeline_count(
                 "SELECT count(*) FROM pipeline_ref_journal WHERE state IN ('pending','held')",
             )?,
-            pipeline_processes: count(
+            pipeline_processes: pipeline_count(
                 "SELECT count(*) FROM pipeline_steps WHERE kind NOT IN ('prepare','release') AND (state IN ('launching','running','unknown') OR (state='held' AND json_extract(body,'$.death_confirmed') IS NOT 1))",
             )?,
             // Terminal death-confirmed steps cannot own a live process: only exit,
             // never-launched intent or audited recovery can establish this fact,
             // and triggers prevent rewriting it later (including takeover).
-            pipeline_cookies: cookies(
-                "SELECT cookie FROM pipeline_steps WHERE cookie IS NOT NULL AND NOT (state IN ('exited','committed','adopted','rejected','limited','interrupted','held','abandoned') AND json_extract(body,'$.death_confirmed') IS 1) ORDER BY run_id,seq,attempt LIMIT 4097",
-            )?,
-            provider_wait: read_wait(&tx)?,
+            pipeline_cookies: if read_pipeline {
+                cookies(
+                    "SELECT cookie FROM pipeline_steps WHERE cookie IS NOT NULL AND NOT (state IN ('exited','committed','adopted','rejected','limited','interrupted','held','abandoned') AND json_extract(body,'$.death_confirmed') IS 1) ORDER BY run_id,seq,attempt LIMIT 4097",
+                )?
+            } else {
+                Vec::new()
+            },
+            provider_wait: if read_pipeline { read_wait(&tx)? } else { None },
         };
         let verdict = |busy: bool, cookies: &[String]| {
             if busy {
@@ -814,6 +853,7 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         pipeline_owner_current(&tx, owner)?;
+        pipeline_startup_current(&tx, owner)?;
         ensure!(
             run.version == 0
                 && run.state == "running"
@@ -913,6 +953,31 @@ impl Store {
         tx.execute("INSERT INTO pipeline_qualifications(owner_epoch,subject,state,executable_sha256,version_text,body) VALUES(?1,?2,?3,?4,?5,?6)",params![owner.epoch,qualification.subject,qualification.state,qualification.executable_sha256,qualification.version_text,serde_json::to_string(&qualification.body)?])?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// Only the current owner's immutable Q observations are returned.
+    pub fn pipeline_qualifications(
+        &self,
+        owner: &RuntimeOwner,
+    ) -> Result<Vec<PipelineQualification>> {
+        let tx = self.connection.unchecked_transaction()?;
+        pipeline_owner_current(&tx, owner)?;
+        let rows = {
+            let mut query = tx.prepare("SELECT subject,state,executable_sha256,version_text,body FROM pipeline_qualifications WHERE owner_epoch=?1 ORDER BY subject")?;
+            query
+                .query_map([owner.epoch], |r| {
+                    Ok(PipelineQualification {
+                        subject: r.get(0)?,
+                        state: r.get(1)?,
+                        executable_sha256: r.get(2)?,
+                        version_text: r.get(3)?,
+                        body: serde_json::from_str(&r.get::<_, String>(4)?).map_err(sql_decode)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        tx.commit()?;
+        Ok(rows)
     }
 
     pub fn pipeline_goal_view(&self, goal: GoalId) -> Result<PipelineView> {
@@ -1664,6 +1729,7 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         pipeline_owner_current(&tx, owner)?;
+        pipeline_startup_current(&tx, owner)?;
         let (mut run, mut step) = cursor_rows(&tx, owner, cursor, true)?;
         ensure!(
             run.state == "running" && step.state == "planned",

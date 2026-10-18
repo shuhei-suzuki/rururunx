@@ -54,6 +54,10 @@ impl Runtime {
     /// Retains the existing owner, never opens another epoch or starts an Agent.
     pub fn new(owner: Arc<RuntimeOwner>, config: Config) -> Result<Self> {
         config.validate()?;
+        anyhow::ensure!(
+            owner.execution_mode() == config.execution.mode,
+            "Runtime owner execution mode mismatch"
+        );
         let drivers = driver::DriverRegistry::new(&owner);
         owner.attach_runtime_drivers(&drivers)?;
         let running = Arc::new(AtomicBool::new(false));

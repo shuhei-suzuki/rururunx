@@ -87,8 +87,9 @@ fn announce(owner: &RuntimeOwner) -> Result<()> {
     Ok(())
 }
 
-fn open_owner(state: &Path) -> Result<Arc<RuntimeOwner>> {
-    RuntimeOwner::open(state)
+fn open_owner(state: &Path, config: &Config) -> Result<Arc<RuntimeOwner>> {
+    config.validate()?;
+    RuntimeOwner::open_mode(state, config.execution.mode)
         .map_err(|error| {
             if error.downcast_ref::<rustix::io::Errno>() == Some(&rustix::io::Errno::WOULDBLOCK) {
                 error.context(OwnerBusy)
@@ -100,9 +101,16 @@ fn open_owner(state: &Path) -> Result<Arc<RuntimeOwner>> {
 }
 
 pub async fn serve(state: &Path, config: Config, detached: bool) -> Result<()> {
-    let owner = open_owner(state)?;
+    let pipeline = config.execution.mode == crate::config::ExecutionMode::CliPipeline;
+    let owner = open_owner(state, &config)?;
     let runtime =
         Arc::new(Runtime::new(owner.clone(), config).context("Construct Runtime service")?);
+    if pipeline {
+        runtime
+            .start()
+            .await
+            .context("Qualify pipeline Runtime service")?;
+    }
     let endpoint =
         ControlEndpoint::bind(owner.clone()).context("Bind private Runtime control endpoint")?;
     if detached {
@@ -111,7 +119,9 @@ pub async fn serve(state: &Path, config: Config, detached: bool) -> Result<()> {
         announce(&owner)?;
     }
     drop(owner);
-    runtime.start().await.context("Start Runtime service")?;
+    if !pipeline {
+        runtime.start().await.context("Start Runtime service")?;
+    }
     let stop = Arc::new(Notify::new());
     let stop_failed = Arc::new(AtomicBool::new(false));
     let permits = Arc::new(Semaphore::new(MAX_CONNECTIONS));
