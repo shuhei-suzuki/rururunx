@@ -375,6 +375,66 @@ async fn b5_f2_ignored_build_output() {
     );
 }
 
+/// Agent-written ignore rules cannot hide protected paths even with `.gitignore` in scope.
+#[tokio::test]
+async fn b5_f3_gitignore_scope_build() {
+    let scope = [".gitignore".to_owned(), "src/**".to_owned()];
+    let f = Fixture::new().await;
+    f.change();
+    file(f.work.git.root(), ".gitignore", b"/scratch/\n");
+    file(f.work.git.root(), "scratch/CLAUDE.md", b"instruction\n");
+    assert_eq!(
+        AdoptionChecker::build(&f.work, &f.step, &scope, &f.attempt)
+            .await
+            .err()
+            .unwrap()
+            .to_string(),
+        "protected_path"
+    );
+    assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
+    assert!(!f.attempt.join("diff.patch").exists());
+    // Base ignore rules still admit ordinary ignored output under the same scope.
+    let mut f = Fixture::new().await;
+    let rules = b"/target/\n";
+    let oid = f.blob(rules).await;
+    f.set_base(format!("100644 blob {oid}\t.gitignore\n").as_bytes())
+        .await;
+    file(f.work.git.root(), ".gitignore", rules);
+    file(f.work.git.root(), "target/output", b"ordinary output\n");
+    f.change();
+    AdoptionChecker::build(&f.work, &f.step, &scope, &f.attempt)
+        .await
+        .unwrap();
+}
+
+/// A staged rename source is a path record, never an ignored entry.
+#[tokio::test]
+async fn b5_f3_rename_source_not_ignored() {
+    let mut f = Fixture::new().await;
+    let oid = f.blob(b"notes\n").await;
+    f.set_base(format!("100644 blob {oid}\t!! CLAUDE.md\n").as_bytes())
+        .await;
+    file(f.work.git.root(), "!! CLAUDE.md", b"notes\n");
+    std::fs::create_dir(f.work.git.root().join("src")).unwrap();
+    f.work
+        .git
+        .run(&["mv", "!! CLAUDE.md", "src/moved.md"])
+        .await
+        .unwrap();
+    assert_eq!(
+        f.work
+            .git
+            .run(&["status", "--porcelain=v1", "-z"])
+            .await
+            .unwrap(),
+        b"R  src/moved.md\0!! CLAUDE.md\0",
+        "the fixture must produce a rename record"
+    );
+    AdoptionChecker::build(&f.work, &f.step, &["**".into()], &f.attempt)
+        .await
+        .unwrap();
+}
+
 /// Unicode attribute aliases in the selected tree are inspected even before materialization.
 #[tokio::test]
 async fn b5_f2_tree_attribute_unicode() {

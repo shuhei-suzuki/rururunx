@@ -198,6 +198,7 @@ impl PipelineGit {
                 "-z",
                 "--ignored=matching",
                 "--untracked-files=all",
+                "--no-renames",
                 "--ignore-submodules=all",
             ])
             .await?;

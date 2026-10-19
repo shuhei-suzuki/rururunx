@@ -351,6 +351,11 @@ fn changes(root: &Path, status: &[u8], scope: &[String]) -> Result<Vec<Change>> 
             scope.iter().any(|glob| glob_match(glob, path)),
             "scope_violation"
         );
+        // Ignore rules decide which paths status can see, so no scope may change them.
+        ensure!(
+            super::git::fold_name(path.rsplit('/').next().unwrap_or(path)) != ".gitignore",
+            "protected_path"
+        );
         ensure!(
             !protected(path) || scope.iter().any(|glob| explicit(glob, path)),
             "protected_path"

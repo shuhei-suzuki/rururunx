@@ -127,6 +127,46 @@ fn b5_f3_ignored_non_utf8_components() {
         );
     }
 }
+/// Ignore rules are refused at any depth and casing even when the scope names them.
+#[test]
+fn b5_f3_gitignore_explicit() {
+    let tracked = |kind: &str, mode: &str, path: &str| {
+        format!(
+            "1 {kind} N... 100644 100644 {mode} {} {} {path}\0",
+            "a".repeat(40),
+            "b".repeat(40)
+        )
+        .into_bytes()
+    };
+    for path in [".gitignore", "src/.gitignore", ".GitIgnore"] {
+        let scope = [path.to_owned(), "src/**".to_owned()];
+        let (present, absent) = (root(), root());
+        file(present.path(), path, b"/scratch/\n");
+        for (dir, rows) in [
+            (&present, status(path)),
+            (&present, tracked(".M", "100644", path)),
+            (&absent, tracked(".D", "000000", path)),
+        ] {
+            assert_eq!(
+                changes(dir.path(), &rows, &scope)
+                    .err()
+                    .unwrap()
+                    .to_string(),
+                "protected_path",
+                "{path}"
+            );
+        }
+    }
+    // Other protected names keep the explicit-scope exception.
+    for path in ["AGENTS.md", ".gitignore.bak"] {
+        let dir = root();
+        file(dir.path(), path, b"data");
+        assert!(
+            changes(dir.path(), &status(path), &[path.into(), "src/**".into()]).is_ok(),
+            "{path}"
+        );
+    }
+}
 /// Only a regular file enters the captured change set.
 #[test]
 fn b5_symlink_refused() {
