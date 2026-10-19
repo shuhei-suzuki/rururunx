@@ -955,6 +955,32 @@ async fn b3_q_sequential_probe_budget() {
     assert!(start.elapsed() > PROBE_BOUND);
 }
 
+/// A probe exceeding its own bound is refused while the overall CLI budget remains.
+#[tokio::test]
+async fn b3_q_per_probe_bound() {
+    let f = Fixture::new();
+    assert_eq!(f.q(true).await.state, "qualified");
+    f.codex.control("delay-ms", "5100");
+    let overall_bound = Duration::from_secs(20);
+    let start = Instant::now();
+    let row = qualify_cli_with_bound(
+        &f.config,
+        "codex",
+        &f.codex.cli,
+        f._dir.path(),
+        overall_bound,
+    )
+    .await;
+    let elapsed = start.elapsed();
+    assert_eq!(row.state, "refused", "{row:?}");
+    assert_eq!(row.body["stage"], "version_probe", "{row:?}");
+    assert_eq!(row.body["reason"], "cli_qualification_failed", "{row:?}");
+    assert!(
+        elapsed >= PROBE_BOUND && elapsed < overall_bound,
+        "{elapsed:?}"
+    );
+}
+
 /// Q refuses a delayed native probe at the overall CLI bound, before version validation.
 #[tokio::test]
 async fn b3_q_overall_cli_bound() {
