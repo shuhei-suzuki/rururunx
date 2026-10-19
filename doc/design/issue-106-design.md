@@ -518,7 +518,7 @@ v1 は CLI の account と provider の account を対応付けないので、�
 | planned → abandoned | Goal cancel の後の tick | 起動していない |
 | launching → running | StepLauncher の tx2 | spawn が Ok を返したこと。pid、pgid（=pid）、birth（`rrx-process-tracker` の identity による開始時刻） |
 | launching → unknown | StepLauncher / 復旧 | spawn が Err を返した（子が残りうる。`crates/rrx-spawn-hygiene/src/lib.rs:5-6`）か、再起動時に launching を見つけた |
-| launching → rejected | StepLauncher | spawn を呼ぶ前の失敗（attempt ディレクトリの作成、sha256 の不一致、test の `recheck` の失敗など）。spawn を呼んでいないことを同じプロセスの中で確実に知っている場合だけ |
+| launching → rejected | StepLauncher | spawn を呼ぶ前の失敗（attempt ディレクトリの作成、sha256 の不一致、test の `recheck` の失敗など）。spawn の前の rejected は、spawn を呼んでいないことを同じプロセスの中で確実に知っている場合だけ（spawn の後の rejected は、次の行の場合だけ） |
 | launching → rejected | StepLauncher | tx2 が失敗したあと、group を kill して死亡を確認した場合。`pipeline_finish_step` で死亡の根拠、`body.exit.issue=record_failed`、`reason=record_failed`、step の rejected と run の held、probe の待ちの決着を 1 commit で記録する。確認できなければ launching のまま残す（再起動時に unknown になる） |
 | running → exited | StepCustody | §3.5 の死亡確認がすべて成功した。終了の状態、出力の sha256、上限を超えたかどうか、Agent の kind では `provider_outcome`（§2.6・§5.6） |
 | running → interrupted | 停止 / Goal の pause・cancel | kill して死亡を確認した。attempt が 16 なら interrupted ではなく held（`attempt_limit`、`death_confirmed=true`） |

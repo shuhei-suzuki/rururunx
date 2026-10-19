@@ -112,9 +112,10 @@ current qualification, native exhaustion and the daemon-wide process and provide
 wait gates. `StepLauncher` releases the Store mutex before directory work,
 qualification rechecks and `rrx_spawn_hygiene::spawn_tokio`. It records an intent
 before spawning, then records the owned leader's PID, equal PGID and tracker birth
-before sending input. Spawn errors become unknown; only pre-spawn failures can
-be launch rejections. Failed running receipts retain launching unless death is
-proved, in which case the exit records `killed_after_record_failure`.
+before sending input. Spawn errors become unknown. A launch is rejected before
+spawn only when the failure is known to precede spawn. A failed running receipt
+keeps the step launching unless death is proved; with proof, one Store commit
+records the death evidence, rejects the step with `record_failed` and holds the run.
 
 Process steps count globally across Projects, including unknown and held without
 confirmed death. Prepare and release do not count. Native Exhausted observations
@@ -175,7 +176,8 @@ producer policy is covered by local protocol controls, not actual account recove
 CLI pipeline `StepCustody` concurrently handles stdin, bounded stdout/stderr,
 leader exit, deadlines and stop notifications after releasing the control boundary.
 Exit evidence, provider outcome, probe-wait settlement and final step classification
-(rejected or interrupted, including any run hold) are written in one Store commit.
+(rejected, interrupted, or held at the attempt limit, including any run hold) are
+written in one Store commit.
 Captured evidence is retained as private read-only files and read back with its
 length and SHA-256 before provider classification. Stdout overflow rejects the
 result after death confirmation; stderr retains its bounded tail and records
