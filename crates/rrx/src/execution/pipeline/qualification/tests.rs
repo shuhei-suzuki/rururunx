@@ -791,6 +791,24 @@ async fn b3_q_blocked_project_root() {
     CliQualifier::qualify(&owner, &config).await.unwrap();
     CliQualifier::before_launch(&owner, &config).unwrap();
 
+    blocked.state = ProjectState::Registered;
+    owner
+        .store
+        .lock()
+        .unwrap()
+        .put_project(&mut blocked)
+        .unwrap();
+    assert!(CliQualifier::check_layout(&owner, &config).is_err());
+    assert!(CliQualifier::check_launch_paths(&owner, &config).is_err());
+    assert!(CliQualifier::before_launch(&owner, &config).is_err());
+    blocked.state = ProjectState::Blocked;
+    owner
+        .store
+        .lock()
+        .unwrap()
+        .put_project(&mut blocked)
+        .unwrap();
+
     // A symlink loop reliably produces an error other than NotFound, even as root.
     std::os::unix::fs::symlink(&deleted, &deleted).unwrap();
     assert_ne!(

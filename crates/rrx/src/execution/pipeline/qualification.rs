@@ -449,12 +449,12 @@ impl CliQualifier {
                 "pipeline private directories overlap"
             );
         }
-        for project in owner
+        let projects = owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .projects()?
-        {
+            .projects()?;
+        for project in projects {
             if let Some(root) = project_root_for_exclusion(&project)? {
                 config.check_project_root(&root)?;
             }
@@ -479,12 +479,12 @@ impl CliQualifier {
                 .context("state needs parent")?
                 .to_path_buf(),
         ];
-        for project in owner
+        let projects = owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .projects()?
-        {
+            .projects()?;
+        for project in projects {
             if let Some(root) = project_root_for_exclusion(&project)? {
                 excluded.push(root);
             }
