@@ -222,6 +222,24 @@ where
     );
     // Without the extension Git ignores config.worktree and may refuse --worktree.
     if enabled == b"true\n" {
+        let path = read(&[
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "config.worktree",
+        ])
+        .await?;
+        let path = Path::new(
+            std::str::from_utf8(&path)?
+                .strip_suffix('\n')
+                .context("Git path missing newline")?,
+        );
+        ensure!(path.is_absolute(), "worktree config path is not absolute");
+        match std::fs::symlink_metadata(path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(bytes),
+            Ok(metadata) => ensure!(metadata.is_file(), "worktree config is not a regular file"),
+            Err(error) => return Err(error.into()),
+        }
         bytes.extend(
             read(&[
                 "config",

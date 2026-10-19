@@ -3,6 +3,7 @@ use super::*;
 /// Repository inspection reads exactly the scopes Git enables and preserves their union.
 #[tokio::test]
 async fn b5_config_active_scopes() {
+    let config = tempfile::NamedTempFile::new().unwrap();
     for enabled in [false, true] {
         let mut calls = 0;
         let bytes = read_local_config(|args| {
@@ -13,6 +14,8 @@ async fn b5_config_active_scopes() {
                 } else {
                     b"false\n".to_vec()
                 }
+            } else if args.contains(&"--git-path") {
+                format!("{}\n", config.path().display()).into_bytes()
             } else if args.contains(&"--worktree") {
                 assert!(enabled, "disabled worktree scope must not be read");
                 b"file:config.worktree\0filter.fixture.clean\nfalse\0".to_vec()
@@ -28,20 +31,23 @@ async fn b5_config_active_scopes() {
             expected.extend(b"file:config.worktree\0filter.fixture.clean\nfalse\0");
         }
         assert_eq!(bytes, expected);
-        assert_eq!(calls, if enabled { 3 } else { 2 });
+        assert_eq!(calls, if enabled { 4 } else { 2 });
     }
 }
 
 /// Failure to inspect any active configuration source refuses the whole inspection.
 #[tokio::test]
 async fn b5_config_read_failure() {
-    for failing_call in 0..3 {
+    let config = tempfile::NamedTempFile::new().unwrap();
+    for failing_call in 0..4 {
         let mut call = 0;
         let result = read_local_config(|args| {
             let result = if call == failing_call {
                 Err(anyhow::anyhow!("fixture config read failure"))
             } else if args.contains(&"--get") {
                 Ok(b"true\n".to_vec())
+            } else if args.contains(&"--git-path") {
+                Ok(format!("{}\n", config.path().display()).into_bytes())
             } else {
                 Ok(Vec::new())
             };
@@ -54,6 +60,59 @@ async fn b5_config_read_failure() {
             "fixture config read failure"
         );
         assert_eq!(call, failing_call + 1);
+    }
+}
+
+/// An absent enabled worktree config contributes no bytes and needs no scope read.
+#[tokio::test]
+async fn b5_config_absent_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.worktree");
+    let bytes = read_local_config(|args| {
+        std::future::ready(Ok(if args.contains(&"--get") {
+            b"true\n".to_vec()
+        } else if args.contains(&"--git-path") {
+            format!("{}\n", path.display()).into_bytes()
+        } else {
+            assert!(args.contains(&"--local"), "absent scope must not be read");
+            b"file:config\0core.bare\nfalse\0".to_vec()
+        }))
+    })
+    .await
+    .unwrap();
+    assert_eq!(bytes, b"file:config\0core.bare\nfalse\0");
+}
+
+/// Nonregular worktree config paths refuse inspection without following symlinks.
+#[cfg(unix)]
+#[tokio::test]
+async fn b5_config_nonregular_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let regular = dir.path().join("regular");
+    std::fs::write(&regular, b"").unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&regular, &link).unwrap();
+    let dangling = dir.path().join("dangling");
+    std::os::unix::fs::symlink(dir.path().join("absent"), &dangling).unwrap();
+    for path in [dir.path(), link.as_path(), dangling.as_path()] {
+        let result = read_local_config(|args| {
+            std::future::ready(Ok(if args.contains(&"--get") {
+                b"true\n".to_vec()
+            } else if args.contains(&"--git-path") {
+                format!("{}\n", path.display()).into_bytes()
+            } else {
+                assert!(
+                    args.contains(&"--local"),
+                    "nonregular scope must not be read"
+                );
+                Vec::new()
+            }))
+        })
+        .await;
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "worktree config is not a regular file"
+        );
     }
 }
 

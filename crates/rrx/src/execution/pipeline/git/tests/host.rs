@@ -78,6 +78,7 @@ async fn b5_config_linked_with_extension() {
         .run(&["config", "--local", "extensions.worktreeConfig", "on"])
         .await
         .unwrap();
+    assert!(!f.config.try_exists().unwrap());
     f.git.reject_drivers(&f.base).await.unwrap();
     let included = f.config.with_file_name("driver.inc");
     std::fs::write(&included, b"[filter \"fixture\"]\nclean = false\n").unwrap();
