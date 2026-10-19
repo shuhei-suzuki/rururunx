@@ -659,12 +659,12 @@ StepCustody の監視タスクは、次を 1 つの `tokio::select!` で並行�
   どちらの場合も、A は t0 に作成を終えて生きていて、cookie を持ち（P1）、同じ実効 uid である（P2）。
 - R2 に当たらず `truncated` でもなければ、t0 の `allproc` の走査は終わっている。したがって P3・P6 により、A の PID p は S に入る。
 - 最後の巡での p の扱いは、次のどれかになる。
-  - 照合済みの場合: 記録は最後の一覧より前の巡の読取りで作られ、最後の巡の読取りで同じ（PID、開始時刻）を観測した。P4 により両者は同じプロセスで、P5 によりそのプロセスはその間ずっと p にいた。したがって t0 に p にいたのはそのプロセスであり、A である。zombie の記録なら、A は t0 より前に zombie だったことになり、t0 に生きていたことと矛盾する。生の記録なら、A は前の巡で `processes` に入ったか、cookie が一致しなかったとして記録されたかである。後者では、identity1 と identity2 の birth が key と等しいので、その間に読んだ環境は A のものである（P4）。その環境に cookie がないことは P1 と矛盾する。
+  - 照合済みの場合: 記録は最後の一覧より前の巡の読取りで作られ、最後の巡の読取りで同じ（PID、開始時刻）を観測した。P4 により両者は同じプロセスで、P5 によりそのプロセスはその間ずっと p にいた。したがって t0 に p にいたのはそのプロセスであり、A である。zombie の記録なら、A は t0 より前に zombie だったことになり、t0 に生きていたことと矛盾する。生の記録なら、A は前の巡で `processes` に入ったか、cookie が一致しなかったとして記録されたかである。後者では、identity1 と identity2 の birth が key と等しいので、その間に読んだ環境は A のものである（P4）。その環境に cookie がないことは P1 と矛盾する。`discover_launched` で環境が absent のときに作る記録（§3.5.2 の系譜の判定の 1・2 だけ）なら、§3.5.2 の安全性の論証により A ではありえない（時計の条件の下で。外れれば R3）。`discover` は absent も不一致として記録するので、この矛盾は環境を観測できる場合だけに成り立つ（下の `discover` の保証）。
   - 記録があって照合されなかった場合: identity1 が読めていれば `reused`（新しい不在）になる。読めなければ、照会で zombie・消えた PID（新しい不在）か、不明（limited）になる。
-  - 記録がない場合: identity1 が読めなければ、新しい不在か limited になる。identity1 で読めたプロセス Q が A なら、次のどれかになる。4 は P2 に反する。5 の失敗は、新しい不在か limited になる。6 で cookie が一致すれば、`processes` に入るか `identity_changed`（limited）になる。一致せず identity2 が等しい場合、環境が読めていれば A の環境に cookie がないことになり、矛盾する。環境が absent なら、§3.5.2 の補題により limited になる（実行ファイルが 4 つの場所の外なら残余 R7）。等しくない場合は `reused`（新しい不在）になる。Q が A でなければ、A は t0 の後、その読取りの前に p を離れ、p は Q に割り当てられた。これが残余 R1 である。
+  - 記録がない場合: identity1 が読めなければ、新しい不在か limited になる。identity1 で読めたプロセス Q が A なら、次のどれかになる。4 は P2 に反する。5 の失敗は、新しい不在か limited になる。6 で cookie が一致すれば、`processes` に入るか `identity_changed`（limited）になる。一致せず identity2 が等しい場合、環境が読めていれば A の環境に cookie がないことになり、矛盾する（引数の領域の偽装は残余 R6）。環境が absent なら、`discover_launched` では §3.5.2 の補題により limited になる（補題の条件が成り立たないのは、残余 R3・R7・R8 の場合である）。`discover` では一致しないとして扱うので、見落とす（下の `discover` の保証）。等しくない場合は `reused`（新しい不在）になる。Q が A でなければ、A は t0 の後、その読取りの前に p を離れ、p は Q に割り当てられた。これが残余 R1 である。
 - 最後の巡には新しい不在がなく、結果は limited でない。したがって、残るのは `processes` に入る場合だけである。
 
-したがって、limited でなく一致が 0 件の結果は、R1・R2 に当たらない限り、走査の終わりに cookie を持つ生きたプロセスがないことを意味する。そのときは、その後に cookie を持つプロセスが作られることもない（親になれるものがいない）。§3.5 の 5 と下の消費者が使うのは、この意味だけである。macOS での §3.5 の「死亡を確認した」は、R1・R2 を除いた主張である。
+したがって、`discover_launched` の結果が limited でなく一致が 0 件なら、残余 R1・R2（この節）と R3・R6・R7・R8（§3.5.2）に当たらない限り、走査の終わりに cookie を持つ生きたプロセスはない。そのときは、その後に cookie を持つプロセスが作られることもない（親になれるものがいない）。R5（§3.5.2）のプロセスは cookie を持たないので、この主張の例外ではないが、cookie の探索では見つからない（今と同じ）。`discover`（launch なし）は、環境が absent のプロセスを今と同じく一致しないとして扱う。そのため `discover` の結果が言えるのは、環境を観測できるプロセスについて、R1・R2 を除いて同じことだけである（今の tracker と同じ）。§3.5 の 5 と、下の消費者のうち死亡確認・復旧表・回復の command が使うのは、`discover_launched` の意味である。macOS での §3.5 の「死亡を確認した」は、R1・R2・R3・R6・R7・R8 を除いた主張である。
 
 保証は P1〜P6 に依る。P1・P2・P4 は今の tracker と同じ前提で、P3・P5・P6 は XNU のソースで確かめた事実である。同じ PID を 2 回読む間（identity1 と identity2 の間、記録と後の巡の読取りの間）の再利用は、P4 により必ず見分けられる。見分けられないのは、t0 から記録のない PID の最初の読取りまでの間だけである（R1）。
 
@@ -710,11 +710,11 @@ StepCustody の監視タスクは、次を 1 つの `tokio::select!` で並行�
 
 | 消費者 | 影響 |
 |---|---|
-| 死亡確認（`custody.rs:126-134`） | 無関係な zombie や、走査中に exit した PID では held にならない。記録した PID の主が変わった場合と、環境の読取りの前後で主が変わった場合は、再列挙するか limited になる（今の tracker より強い）。R1・R2 は見落とし、死亡を誤って確認しうる（今の tracker にも同じ形である）。出入りが止まらなければ `time_exceeded` で held になる。条件の式は変えない |
+| 死亡確認（`custody.rs:126-134`） | 無関係な zombie や、走査中に exit した PID では held にならない。記録した PID の主が変わった場合と、環境の読取りの前後で主が変わった場合は、再列挙するか limited になる（今の tracker より強い）。R1・R2（今の tracker にも同じ形である）と §3.5.2 の R3・R6・R7・R8 は見落とし、死亡を誤って確認しうる。出入りが止まらなければ `time_exceeded` で held になる。条件の式は変えない |
 | leader の birth の読取り | 探索を使わない（§3.5.3） |
-| モードの静止の確認（`execution/owner.rs:291-301`） | 無関係な zombie で起動を拒否しなくなる。出入りが続けば、今と同じく limited で拒否する。R1・R2 に当たれば、cookie を持つ生きたプロセスがあっても静止とみなしうる。渡す組（limited・件数・inspected）の形は変えない。`inspected` は、全巡の全部の検査の数になる（照合だけの読取りは数えない）。`discover` のまま（§13.3） |
+| モードの静止の確認（`execution/owner.rs:291-301`） | 無関係な zombie で起動を拒否しなくなる。出入りが続けば、今と同じく limited で拒否する。R1・R2 に当たれば、cookie を持つ生きたプロセスがあっても静止とみなしうる。`discover` は §3.5.2 の判定を行わないので、環境が absent の cookie のプロセス（platform binary）も、今と同じく見落とす。渡す組（limited・件数・inspected）の形は変えない。`inspected` は、全巡の全部の検査の数になる（照合だけの読取りは数えない）。`discover` のまま（§13.3） |
 | execution cleanup（`execution/cleanup.rs:83-122`） | `cookie_scan` の文字列に `zombie`・`vanished`・`reused`・`relistings` を足す。outcome の決め方（`remaining` だけを見る）は変わらない。zombie は `processes` に入らないので、terminate しない。`discover` のまま（§13.3） |
-| 復旧表の running の行（§4.2）と、回復の command の 4（§4.4） | 同じ探索を使う。無関係な zombie では `custody_unobservable` にならず、拒否もされない。保証は死亡確認と同じである（limited でなく 0 件なら、R1・R2 を除き、cookie を持つ生きたプロセスはない） |
+| 復旧表の running の行（§4.2）と、回復の command の 4（§4.4） | 同じ探索を使う。無関係な zombie では `custody_unobservable` にならず、拒否もされない。保証は死亡確認と同じである（`discover_launched` が limited でなく 0 件なら、R1・R2 と §3.5.2 の R3・R6・R7・R8 を除き、cookie を持つ生きたプロセスはない） |
 | Linux（`crates/rrx-process-tracker/src/linux.rs`） | 変えない。今回の観測は macOS だけである。Linux での zombie と PID の再利用の扱いは実機で確かめておらず、この変更の範囲外とする |
 
 **テスト**
@@ -808,7 +808,7 @@ Agent や test のコマンドが platform binary を起動し、それが group
 |---|---|---|
 | P7 | `KERN_PROCARGS2` は、同じ利用者の platform binary について成功し、argc・実行パス・引数だけを返す。sandbox-exec の下でも同じである。platform binary でないプロセスでは、環境が返る | オーナーの Mac で実測した（`/bin/sleep`・`/usr/bin/perl`・setsid の後の perl・sandbox-exec の下の perl では cookie がない。Homebrew の `python3` では、sandbox-exec の下でも cookie がある） |
 | P8 | `proc_bsdinfo` は `pbi_ppid`・`pbi_flags`・`pbi_start_tvsec/usec` を持つ。`kinfo_proc` は `kp_proc.p_starttime`・`p_stat`・`p_flag`・`p_pid`・`kp_eproc.e_ppid` を持つ。`PROC_FLAG_TRACED`=2、`P_TRACED`=0x800、`SIDL`〜`SZOMB`=1〜5 | 公開 SDK の `sys/proc_info.h`・`sys/sysctl.h`・`sys/proc.h` で確かめた |
-| P9 | プロセスの親が変わるのは、親が exit して launchd（pid 1）に引き取られるときだけである。ptrace の attach は除き、追跡中の印で見分ける。subreaper はない | 記憶による。HE5 で、抜けた子孫の ppid が 1 になることを確かめる |
+| P9 | プロセスの親が変わるのは、親が exit して launchd（pid 1）に引き取られるときだけである。引き取りは親の exit の処理の中で行われ、親が回収されるより前に終わる。ptrace の attach は除き、追跡中の印で見分ける。subreaper はない | 記憶による（XNU の `proc_exit`）。HE5 で、抜けた子孫の ppid が 1 になることを確かめる。§3.5.2 の系譜の (e) は 2 文目に依る |
 | P10 | 利用者でない UID のプロセス（root の `login` など）も、`sysctl(KERN_PROC_PID)` で読める | 未確認。HE2 |
 | P11 | exec で開始時刻は変わらない | 未確認。HE4。外れたら §3.5.3 の照合を止めて設計に戻る |
 | P12 | `kern.bootsessionuuid` は boot ごとに変わり、同じ boot の中では変わらない。rrxd（sandbox の外）から読める | 未確認。HE3。読めない環境では、別の boot の除外を行わない（安全側。回復が止まりうる） |
@@ -839,47 +839,52 @@ P10〜P12 の確認が外れたら、実装を止めて設計に戻る。黙っ�
 
 **系譜の判定**（`discover_launched` だけで行う）
 
-§3.5.1 の巡の扱いの 6 で、次のすべてを満たすプロセス X を対象にする。
+§3.5.1 の巡の扱いの 5 で環境が absent だったプロセス X を、次の順に扱う。birth・ppid・flags は identity の読取り（`PROC_PIDTBSDINFO`）から取る。
 
-- cookie が一致しない。
-- identity2 が identity1 と等しい。
-- 環境が absent である。
-- 実行ファイルの場所（`proc_pidpath`、`PROC_PIDPATHINFO`）の親ディレクトリが、`/bin`・`/usr/bin`・`/sbin`・`/usr/sbin` のどれかと一致する。`proc_pidpath` が失敗した場合も対象にする（安全側）。それ以外の場所の absent のプロセスは、`environment_absent_elsewhere += 1` として生の記録にし、除外する（残余 R7。オーナーの決定）。
+1. `other_boot`（下の開始時の確認）なら、追加の読取りをせず §3.5.1 の 6 に進む。identity2 が identity1 と等しければ、`environment_absent += 1` とし、今と同じく検査済み（生の記録）にして終える。
+2. identity1 の birth < F なら、追加の読取りをせず §3.5.1 の 6 に進む。identity2 が等しければ、`environment_absent += 1` とし、除外して生の記録を作る。
+3. それ以外は、identity2 の前に、実行ファイルの場所 L1（`proc_pidpath`、`PROC_PIDPATHINFO`）・環境（env2）・場所 L2 をこの順に読む。続けて §3.5.1 の 6 のとおり identity2 を読み、等しくないか読めなければ、今と同じく `reused` とする。等しければ `environment_absent += 1` とし、次のどれかにする。
+   - env2 が absent でない（一致・不一致・読めない）か、L1 と L2 がどちらも読めて値が違う: 「確認できない」とする（6）。
+   - L1 と L2 がどちらも読めて等しく、その親ディレクトリが `/bin`・`/usr/bin`・`/sbin`・`/usr/sbin` のどれとも一致しない: `environment_absent_elsewhere += 1` として除外する。記録は作らない（残余 R7・R8。オーナーの決定）。
+   - それ以外（親ディレクトリが 4 つのどれかと一致する。L1・L2 のどちらかが読めない場合も、安全側としてここに入る）: 4 に進む。
 
-以下の birth・ppid・flags は identity2 の読取り（`PROC_PIDTBSDINFO`）から取る。
-
-1. `environment_absent += 1` とする。
-2. launch の boot と今の `kern.bootsessionuuid` がどちらも読めて、値が違う場合は `other_boot = true` とする。今と同じく検査済み（生の記録）にして終える。
-3. X の birth < F なら除外し、生の記録を作る。
+   P11 により、exec は PID と birth を変えない。そのため identity の比較だけでは、環境と場所が同じ実行イメージの観測かどうか分からない。env2 を L1 と L2 の間に読み、L1 = L2 を求めることで、読取りの間の 1 回の exec を見分ける（2 回の exec は残余 R8）。最初の環境の読取りは、この読み直しを始める合図にだけ使う。
 4. X の `pbi_flags` に `PROC_FLAG_TRACED` があれば「確認できない」とする。
 5. 子 c = X として、次の (a)〜(h) を最大 32 段（`ANCESTRY_DEPTH`）繰り返す。q は c の親の PID である。
    - (a) q が 0・1・自分（rrxd）の PID、またはこの判定で既に訪れた PID なら「確認できない」。
    - (b) `check_time` の後に `sysctl(KERN_PROC_PID, q)` を行い（`query_pid`）、`ancestors_read += 1` とする。
    - (c) 状態が 0 でない、長さが `size_of::<kinfo_proc>()` と一致しない、または `p_pid ≠ q` なら「確認できない」。長さ 0（消えた）もここに入る。
    - (d) `p_stat` が SRUN・SSLEEP・SSTOP のどれでもない（SZOMB・SIDL・未知の値）か、`p_flag` に `P_TRACED` があれば「確認できない」。
-   - (e) `p_starttime` が 0 か、c の birth より後なら「確認できない」。後者は、c が ppid を読まれた後に引き取られ、q が再利用されたことを表しうる。P5 により、元の親の後に q を得たプロセスは、c より後に生まれている。
-   - (f) `p_starttime` < F なら除外し、X に生の記録を作る（起動前に生まれた、生きている祖先）。
+   - (e) `p_starttime` が 0 なら「確認できない」。続けて c を読み直す（c = X なら `proc_pidinfo(PROC_PIDTBSDINFO)`、祖先なら `query_pid`。c を前に読んだのと同じ出どころである）。読めない、c が同じプロセスでない（X では identity が identity2 と違い、祖先では開始時刻が c の birth と違う）、親の PID が q でない、追跡中の印がある、祖先で `p_stat` が SRUN・SSLEEP・SSTOP のどれでもない、のどれかなら「確認できない」。これで、q を読んだときの q が c の本当の親であることを確かめる（下の補題）。c の読み直しは `ancestors_read` に数えない。q と c の開始時刻の前後は比べない（時計が少し戻るだけで逆転するので、安全性の根拠にしない）。
+   - (f) `p_starttime` < F なら、X を除外する（起動前に生まれた、生きている祖先）。記録は作らない。
    - (g) それ以外は、c =（q、`p_starttime`、`e_ppid`）として続ける。
    - (h) 32 段を超えたら「確認できない」。
 6. 「確認できない」場合は次のようにする。
    - `ancestry_unconfirmed += 1` とする。`Discovery.unconfirmed` に X の `Identity` を足す（最大 16 件）。記録は作らない。
    - その巡の残りの PID は今と同じく検査し（一致の発見を続ける）、巡の終わりで limited として返す（再列挙しない）。
 
-**除外するもの**: 次の 2 つだけである。
+**除外するもの**: 次の 3 つだけである。
 
-- 開始時刻が F より前のプロセス
+- 開始時刻が F より前のプロセス（生の記録を作る）
 - 系譜をたどって、開始時刻が F より前で生きている祖先 Y に達するプロセス。Y は pid 1 と rrxd 自身ではないものに限る。ほかの UID の祖先も含む。
+- 場所 L1 = L2 の親ディレクトリが 4 つの場所の外のプロセス（残余 R7・R8）
 
-途中の祖先がすべて F 以上で pid 1 か rrxd に達するもの、読めない・zombie・再利用の疑いがある祖先を持つもの、追跡中のものは、limited にする。
+途中の祖先がすべて F 以上で pid 1 か rrxd に達するもの、読めない・zombie・親を確かめられない祖先を持つもの、追跡中のもの、環境と場所を同じ実行イメージに結び付けられないものは、limited にする。
 
 **§3.5.1（D17）との関係**
 
 - `ancestry_unconfirmed` と `clock_behind` は `limited()` に入れる。`environment_absent`・`ancestors_read`・`other_boot` は入れない。
 - どれも新しい不在ではなく、再列挙を起こさない。limited になった後は、今と同じく次の巡を行わない。
-- 除外した X の生の記録は、D17 の記録と同じに扱う。後の巡では、identity を 1 回読んで照合するだけで、祖先は読まない。除外の根拠（開始時刻、または fork の系譜にある起動前の Y）は時間が経っても変わらないからである（下の論証）。
-- 祖先の読取りは `inspected`・`same_user` に数えず、記録も作らない。時間は同じ `limits.time` の中で使う。
-- 開始時の確認: 今の壁時計が `launch.wall` − M より前なら、`clock_behind = true`（limited）とする。走査は続け、一致は数える。
-- `discover`（launch なし）は、`environment_absent` を数えるだけで、系譜の判定も時計の確認も行わない。今の挙動と同じである。
+- §3.5.1 の記録との照合（identity だけを読み、環境を読まない）は、記録の根拠が exec の後も変わらない場合にだけ使う。生の記録を作ってよいのは次の 3 つで、zombie の記録は今と同じである。
+  - 環境が読めて cookie が一致しなかったもの（P1 により、exec の後も cookie は現れない）と、`processes` に入れたもの（§3.5.1 のまま）
+  - absent で birth < F のもの（上の 2。birth は exec で変わらない。P11）
+  - `other_boot` の absent のもの（上の 1。前の boot のプロセスは存在しない）
+- 場所か系譜で除外した absent のプロセスには記録を作らず、後の巡でも全部の検査（環境・場所・系譜）をやり直す。場所は、PID と birth を保ったままの exec で変わるからである。系譜は exec では変わらないが、記録を使ってよい場合を上の 3 つに絞るため、同じ扱いにする。新しい不在には数えないので、再列挙は起こさない。
+- 祖先の読取り、c の読み直し、場所と env2 の読取りは `inspected`・`same_user` に数えず、記録も作らない。時間は同じ `limits.time` の中で使う。
+- 開始時の確認（`discover_launched` の最初に 1 度だけ、この順に行う）:
+  1. 今の `kern.bootsessionuuid` を読む。launch の boot と今の値がどちらも読めて違えば、`other_boot = true` とし、時計の確認を行わない。前の boot のプロセスは存在できないので（P12）、前の boot の壁時計と今の時計を比べる意味がない。
+  2. それ以外（同じ boot、今の値が読めない、launch の boot が null）は、今の壁時計が F より前なら `clock_behind = true`（limited）とする。境は F だけを使う（§16 D20 の要約と同じ）。走査は続け、一致は数える。
+- `discover`（launch なし）は、`environment_absent` を数えるだけで、場所・env2 の読取りも、系譜の判定も、時計の確認も行わない。今の挙動と同じである。
 - 死亡確認のやり直し（§3.5。`DEATH_BOUND` の中で limited の結果だけを独立に探索し直す）は変えない。短命の無関係なプロセスによる limited は、このやり直しで解ける。
 
 **公開 API の追加**（`crates/rrx-process-tracker/src/lib.rs`）
@@ -897,26 +902,34 @@ P10〜P12 の確認が外れたら、実装を止めて設計に戻る。黙っ�
 §3.5.1 の論証の「記録がない場合」の 6 で、cookie が一致せず identity2 が等しい Q = A について:
 
 - 環境が読めた場合は、今と同じく矛盾する。
-- 環境が absent の場合は、次の補題により、A は `ancestry_unconfirmed`（limited）か `time_exceeded`（limited）になる。
+- 環境が absent の場合は、次の補題により、A は「確認できない」（`ancestry_unconfirmed`、limited）か `time_exceeded`（limited）になる。補題の条件が成り立たない場合は、残余 R3・R7・R8 である。
 
-「照合済み」の生の記録のうち absent で作ったものは、除外の根拠を確かめたときだけ作るので、補題により A ではありえない。
+「照合済み」の生の記録のうち absent で作るものは、上の 1・2 のときだけである。2 の記録は birth < F で作り、birth は exec で変わらない（P11）。補題の証明の 2 つ目と同じ理由で、時計の条件の下では A のものではありえない。1 の記録では、A が存在しない（補題の boot の条件）。場所か系譜で除外したものは記録しないので、最後の巡で「記録がない場合」として全部の検査を受け、その読取りに補題を当てる。
 
-**補題**: R3 に当たらない限り、cookie を持つ生きたプロセス A（leader の子孫、または leader）は除外されない。
+**補題**: 次の 3 つの条件を満たすとき、cookie を持つ生きたプロセス A（leader か leader の子孫）で、最後の巡に環境が absent と読まれ identity2 が等しいものは、除外されない。到達先は「確認できない」か時間切れ（どちらも limited）だけである。
 
-- A の fork の系譜は、A → … → leader → rrxd である。leader とその子孫はすべて、leader の誕生の後に生まれている。時計が M より大きく戻らなければ（P13）、その開始時刻は F 以上である。したがって 3 では除外されない。
-- 系譜をたどる各段の親は、P9 により、fork の親か pid 1 である。そのため、A から pid 1 か rrxd に達するまでに出会うのは、leader の子孫か leader だけである。leader が reap されていれば、その子は pid 1 に引き取られている。生きていれば、その親は rrxd である。
-- (e) により、たどった PID が別のプロセスに変わっていれば「確認できない」になる。そのため、系譜は本物の親の列である。
-- したがって、F より前に生まれた生きた祖先 Y（pid 1・rrxd 以外）に (f) で達することはない。到達先は (a)・(c)〜(e)・(h) の「確認できない」だけである。
+- 場所: 最後の巡の A の読取りで、L1 と L2 がどちらも読めて等しく、その親ディレクトリが 4 つの場所の外、ということがない。そうであれば A は除外され、残余 R7（A がその場所の platform binary）か R8（読取りの窓の中の 2 回の exec）に当たる。
+- boot: `other_boot` でない。`other_boot` なら、P12 により step は前の boot で起動しているので、A は存在しない。
+- 時計: step の起動から最後の巡までに、壁時計が M より大きく戻っていない（P13。外れれば残余 R3）。今の時計が F より前なら `clock_behind` で limited になるので、それ以外の場合を考えればよい。
 
-**残余**（オーナーの受入を求める）
+証明:
+
+- 3 で、env2 が absent でないか L1 と L2 が違えば「確認できない」になる。場所の条件により、それ以外は 4 に進む。
+- A の fork の系譜は、A → … → leader → rrxd である。leader とその子孫はすべて、leader の誕生の後に生まれている。時計の条件と P13 により、その開始時刻は F 以上である。したがって 2 では除外されない。
+- 系譜をたどる各段で、(e) の読み直しは、c が同じプロセスのまま（P4）、q を読む前と後の両方で親の PID が q であることを確かめる。P9 により、c の親が exit すれば、その親が回収されるより前に c は pid 1 に引き取られ、親の PID が q に戻ることはない。そのため、q を読んだとき c の元の親はまだ回収されておらず、P5 により PID q は元の親のものだった。つまり、読んだ q は c の本当の親である。この確かめは、開始時刻の前後にも時計にも依らない。
+- 本当の親は、P9 により fork の親か pid 1 である。そのため、A から pid 1 か rrxd に達するまでに出会うのは、leader の子孫か leader だけであり、時計の条件によりその開始時刻はすべて F 以上である。leader が reap されていれば、その子は pid 1 に引き取られている。生きていれば、その親は rrxd である。
+- したがって、F より前に生まれた生きた祖先 Y（pid 1・rrxd 以外）に (f) で達することはない。到達先は 3・4・(a)・(c)〜(e)・(h) の「確認できない」か、時間切れだけである。
+
+**残余**（R3・R5・R6・R7・R8 は、どれもオーナーが受け入れた）
 
 - **R3（時計の戻り）**: step の間に、壁時計が M（60 秒）より大きく戻り、その間に子孫が生まれた場合。
-  - 戻ったままなら `clock_behind` で limited になる。
+  - 戻ったままなら `clock_behind` で limited になる（別の boot と確かめられた場合は、時計を確かめない）。
   - 戻った後に進み直していれば、探索の時点では見分けられない。
-  - 系譜の (e) の比較も同じ前提に依る。
-- **R5（子孫でない代理の起動）**: step が、起動前からあるプロセスにプロセスを作らせた場合（`launchctl submit`・`open -a`・XPC・Terminal への AppleScript など）。そのプロセスは子孫ではなく cookie を持たない。今の tracker と同じく対象外（P1）である。platform binary で launchd の子なら、偶然 limited になる。
-- **R6（協力しないプロセス）**: platform binary が自分の引数の領域を書き換えて、環境があるように見せる場合。P1 と同じく対象外とする。
+  - 時計に依るのは、2 の F との比較と、系譜の (f) の比較である。(e) の親の確かめは時計に依らない。
+- **R5（子孫でない代理の起動）**: step が、起動前からあるプロセスにプロセスを作らせた場合（`launchctl submit`・`open -a`・XPC・Terminal への AppleScript など）。そのプロセスは子孫ではなく cookie を持たない。今の tracker と同じく対象外（P1）である。platform binary で launchd の子なら、偶然 limited になる。cookie を持たないので、補題の対象でなく、§3.5.1 の主張（cookie を持つ生きたプロセスがない）の例外にも数えない。死亡確認がこの処理の終わりを確かめないことは、今と同じである。
+- **R6（協力しないプロセス）**: platform binary が自分の引数の領域を書き換えて、環境があるように見せる場合。P1 と同じく対象外とする。環境が読めて一致しないとして扱われるので補題は当たらず、§3.5.1 の主張の例外になる。
 - **R7（4 つの場所の外の platform binary）**: `/System/Library` や `/usr/libexec` などにある platform binary で、任意のコードを実行できるもの（JavaScriptCore の `jsc` など）を使って group を抜けた子孫は、環境が absent でも除外されるので、見落とす。可用性を保つために、オーナーが受け入れた残余である（4 つの場所に絞らないと、オーナーの Mac では 5 分を超える step がほぼすべて held になると実測した）。
+- **R8（読取りの窓の中の 2 回の exec）**: 最後の巡で、cookie を持つ X が、L1 の後に 4 つの場所の platform binary へ exec し、env2 の後、L2 の前に、L1 と同じ実行ファイルへ exec し直した場合である。L1 = L2 が 4 つの場所の外なら除外するので、L1 の実行ファイルが platform binary でなければ、環境を観測できるはずのプロセスを見落とす。P11 により PID と birth では exec を見分けられず、公開 SDK に exec の回数を表す値もないので、閉じない。1 回の exec は L1 ≠ L2 か env2 で見分け（EA24）、巡の間の exec は記録を使わずに毎巡読み直すことで見分ける（EA25）。R1 と同じく、読取りと時刻がたまたま重なった協力的なプロセスだけが当たる。
 - **R1・R2**: 変わらない（§3.5.1）。
 - **可用性の残余**（見落としではなく held の原因）:
   - 同じ利用者で、launchd の子として F の後に起動した platform binary が、`DEATH_BOUND` を超えて生きている場合。ユーザーが Dock・Spotlight から開いた Apple のアプリ、その XPC service（Safari の WebContent など）、要求で起動するエージェント（`mdworker_shared` など）が当たる。
@@ -927,10 +940,10 @@ P10〜P12 の確認が外れたら、実装を止めて設計に戻る。黙っ�
 
 - 場所で絞る前: step の起動から 10 秒・5 分・30 分・60 分で、確認できないと判定されるプロセスは 0・5・6・7 個だった（`mdworker_shared`・`spotlightknowledged.updater`・`com.apple.iCloudHelper`・`remindd`）。5 分を超える step はほぼすべて held になる。
 - 場所で絞った後: どの長さでも 0 個だった。held は、利用者が step の間に 4 つの場所の platform binary を launchd の子として残した場合（Terminal を閉じた後の `nohup` など）に限られる見込みである。
-- 1 回の探索で増えるのは、absent で F 以上の 4 つの場所のプロセスごとに `proc_pidpath` を 1 回と `sysctl(KERN_PROC_PID)` を数回（通常 1〜3 段、最大 32 段）である。`limits.time` は変えない。
+- 1 回の探索で増えるのは、absent で F 以上のプロセスごとに `proc_pidpath` 2 回と環境の読取り 1 回、そのうち 4 つの場所のものでは、さらに 1 段ごとに 2 回の読取り（親の照会と子の読み直し。通常 1〜3 段、最大 32 段）である。場所か系譜で除外したものは記録しないので、巡ごとにこれを繰り返す。`limits.time` は変えない。
 - held の step の回復（§4.4 の 4）は、F の後に生まれた対象のプロセスが残る限り拒否される。拒否の応答に `unconfirmed` の PID を示すので、運用者はそれらを終了させるか、再起動する。再起動の後は `other_boot` で判定が外れ、回復できる。
 
-**テスト**（fake。`Source` の環境を 3 値にし、祖先の照会（`e_ppid` を含む）・自分の PID・時計・boot を差し替えられるようにする）
+**テスト**（fake。`Source` の環境を 3 値にし、祖先の照会（`e_ppid` を含む）・場所・自分の PID・時計・boot を差し替えられるようにする。読取りは、呼ばれた順に記録する。場所の既定は L1 = L2 = `/usr/bin/x`、env2 の既定は最初の環境の読取りと同じ値、読み直しの既定は前の読取りと同じ値である）
 
 | ID | 入力 | 期待 |
 |---|---|---|
@@ -941,28 +954,38 @@ P10〜P12 の確認が外れたら、実装を止めて設計に戻る。黙っ�
 | EA5 | X → q（F 以上）→ 1 | 確認できない |
 | EA6 | ppid が自分の PID / X → q（F 以上）→ 自分 | 確認できない。前者は祖先を読まない |
 | EA7 | 祖先の照会が、失敗・長さ 0・短い長さ・長すぎる長さ・pid の不一致・SZOMB・SIDL・未知の状態・開始 0・`P_TRACED` | それぞれ確認できない |
-| EA8 | X（birth 100）→ q（開始 150、生）→ r（開始 < F、生） | 確認できない（再利用の疑い） |
+| EA8 | X → q（生）→ r（開始 < F、生）。q を読んだ後の X の読み直しが、ppid 1 / 別の birth（ppid は q のまま）/ 失敗 / `PROC_FLAG_TRACED` を返す。r を読んだ後の q の読み直しが、`e_ppid` 1 / 別の開始（`e_ppid` は r のまま）/ 長さ 0 / SZOMB を返す | それぞれ確認できない（親を確かめられない）。X の読み直しの場合は r を読まない（`ancestors_read=1`） |
 | EA9 | 循環（q の ppid が X）/ 33 段の鎖 / 32 段目で開始 < F | 確認できない / 確認できない / 除外 |
 | EA10 | 境界: birth = F / birth = F − 1µs。F は min(wall, leader_birth) − M（leader_birth が wall より前の場合を含む） | 確認の対象 / 除外 |
-| EA11 | boot が A と B / 今の boot が読めない / launch の boot が null | `other_boot`・limited でない / 判定する / 判定する |
-| EA12 | 今の時計 < wall − M、プロセスなし | `clock_behind`、limited |
+| EA11 | absent・F 以上・ppid 1 の X がある。boot が A と B / 今の boot が読めない / launch の boot が null | `other_boot`・limited でなく、場所も祖先も読まない / 確認できない / 確認できない |
+| EA12 | プロセスなし、今の時計 < F。boot が A と A / 今の boot が読めない / launch の boot が null / A と B | `clock_behind`・limited / 同じ / 同じ / `other_boot`、`clock_behind` は false で limited でない |
 | EA13 | `discover`（launch なし）、absent・ppid 1 | `environment_absent=1`、limited でなく、祖先を読まない |
 | EA14 | 環境があり一致しない、F 以上、ppid 1 | 今と同じく検査済み（系譜を見ない） |
 | EA15 | 系譜の途中で時間切れ | `time_exceeded` |
-| EA16 | 除外した X があり、別の PID が消えて再列挙する | 2 巡目の X は identity の 1 回だけで、祖先を読まない |
+| EA16 | 1 巡目に、birth < F で除外した X1、系譜で除外した X2（EA4 の形）、場所で除外した X3（EA21 の形）がある。別の PID が消えて再列挙し、2 巡目の一覧も X1〜X3 を含む | 2 巡目の X1 は identity の 1 回だけ。X2・X3 は全部の検査をやり直し、環境・場所（X2 は祖先も）を読む |
 | EA17 | 新しい counter だけを持つ Coverage | `ancestry_unconfirmed`・`clock_behind` だけが limited にする |
 | EA18 | `KERN_PROCARGS2` の byte: 引数まで / 引数＋NUL / 引数＋`A=1` / 引数＋cookie | absent / absent / 不一致 / 一致 |
 | EA19 | 確認できないものが 20 件 | `ancestry_unconfirmed=20`、`unconfirmed` は 16 件 |
 | EA20 | X の `PROC_FLAG_TRACED` | 確認できない |
 | EA21 | absent、F 以上、ppid 1、場所が `/System/Library/...` / `/usr/libexec` | 除外。`environment_absent_elsewhere=1`、limited でない、祖先を読まない |
-| EA22 | absent、F 以上、ppid 1、`proc_pidpath` が失敗する / 場所が `/usr/bin` / `/usr/bin/x/y`（親が一致しない） | 確認できない / 確認できない / 除外 |
+| EA22 | absent、F 以上、ppid 1。L1 = L2 の親ディレクトリが `/bin` / `/usr/bin` / `/sbin` / `/usr/sbin`（`/bin/x` など） / L1 が読めない / L2 が読めない | それぞれ確認できない |
+| EA23 | 親の PID の再利用と小さな時計の戻り: F = 940、X の birth 2000、identity2 の ppid は q。q の照会は、開始 1999.5 の生きた Q を返す（`e_ppid` は開始 100 の生きた Y）。その後の X の読み直しは ppid 1 を返す（ppid の読取りの後に元の親が回収され、時計が 1 秒戻った後に Q が q を得た） | 確認できない、limited。Y を読まない（`ancestors_read=1`） |
+| EA24 | 読取りの間の 1 回の exec: absent、F 以上、ppid 1。L1 = `/usr/bin/perl`・env2 absent・L2 = `/opt/homebrew/bin/python3` / L1 = `/opt/homebrew/bin/python3`・env2 absent・L2 = `/usr/bin/perl` / L1 = L2 = `/opt/homebrew/bin/python3`・env2 が cookie を含む / env2 が `A=1` / env2 が読めない | それぞれ確認できない（limited）。どれも除外しない |
+| EA25 | 巡の間の exec: 1 巡目の X は absent、F 以上、L1 = L2 = `/System/Library/.../x`（除外）。別の PID が消える。2 巡目の X は同じ PID・birth で、環境に cookie がある | 2 巡目に X の環境を読み、X が `processes` に入る |
+| EA26 | identity2 の後の PID の再利用: X は absent、F 以上、L1 = L2 = `/usr/bin/perl`、ppid q。q の照会は開始 < F の生きたプロセスを返す。fake は、identity2 より後の X の読取りに、別の birth と別の親を返し、`proc_pidpath` には `/System/Library/.../x` を返す | 確認できない（(e) の読み直し）。identity2 の後に、X の `proc_pidpath` と環境を呼ばない |
+| EA27 | 時計の境: wall 1000、leader_birth 970（F = 910）、同じ boot、プロセスなし。今の時計 930 / 910 / 909.999999 | limited でない / limited でない / `clock_behind`、limited |
+| EA28 | absent、F 以上、ppid 1。L1 = L2 が `/usr/bin/x/y`（下位のディレクトリ）/ `/usr/binx/y` / `/binx/y` / `/usr/sbin2/y` / `/usr/local/bin/y`（隣接の名前） | それぞれ除外。`environment_absent_elsewhere=1`、祖先を読まない |
 
 **macOS の実機テスト**（`#[cfg(target_os = "macos")]`。HE1〜HE4 は前提の確認で、外れたら実装を止めて設計に戻る）
 
 1. **HE1**: cookie を環境に入れて起動した `/bin/sleep` が absent に分類される。テストの実行ファイル自身（platform binary でない）は一致に分類される。
 2. **HE2**: pid 1 の `KERN_PROC_PID` が、長さ・pid とも一致して成功する。自分の `e_ppid` が `getppid()` と等しい。`e_ppid` の offset は SDK から求め、layout テスト（`b4_zb_sdk_layout` と同じ流儀）で固定する。
 3. **HE3**: `kern.bootsessionuuid` が 36 文字で、2 回の読取りで同じ値になる。
-4. **HE4**: Seatbelt の下で `/usr/bin/sandbox-exec … /usr/bin/perl -e 'sleep 1'` を起動する。直後の `owned_leader` の birth と、zombie になった後の birth が等しい。
+4. **HE4**: Seatbelt の下で `/usr/bin/sandbox-exec … /usr/bin/perl -e '$|=1; print "r"; sysread(STDIN, $b, 1); exec "/bin/sleep", "1"'` を起動する。stdin と stdout は pipe にする。
+   - 子が stdout に `r` を書くまで待つ（同期点。sandbox-exec から perl への exec は済み、perl は stdin を待っている）。`owned_leader` の birth B0 と、`proc_pidpath` が `/usr/bin/perl` であることを読む。
+   - stdin に 1 byte 書いて exec させる。同じ PID の `proc_pidpath` が `/bin/sleep` になるまで待ち（最大 5 秒。ならなければ失敗）、birth B1 を読む。
+   - exit して zombie になった後、同じ PID の birth B2 を読む。
+   - B0 = B1 = B2 を確かめる。
 5. **HE5**: `launch_mark()` の後、cookie を入れ、`process_group(0)` で `/usr/bin/perl -e 'use POSIX; if (fork) { exit } POSIX::setsid(); sleep 30'` を起動する。leader の exit・group の kill・reap・group が空になることを待つ。
    - 抜けた子の ppid が 1 である（P9）。
    - `discover` は limited でなく、一致 0 件である（欠陥の再現）。
@@ -986,17 +1009,25 @@ P10〜P12 の確認が外れたら、実装を止めて設計に戻る。黙っ�
 | `ancestry_unconfirmed` を `limited()` から外す / `environment_absent` を入れる | EA17、EA2 / EA1、EA13 |
 | pid 1 を起動前の祖先として受け入れる | EA2、EA5 |
 | 自分の PID を祖先として受け入れる | EA6 |
-| (e) の開始時刻の比較を外す | EA8 |
+| (e) の子の読み直しを外す / 読み直しで親の PID を比べない / 読み直しで同じプロセスかを比べない | EA8、EA23 / EA8（ppid 1）、EA23 / EA8（別の birth） |
 | zombie・SIDL・未知の状態の祖先を生きているとする | EA7 |
 | `P_TRACED` / `PROC_FLAG_TRACED` を見ない | EA7、EA20 |
 | 深さの上限・訪問済みの検査を外す | EA9 |
 | M を引かない / ≥ を > にする / leader_birth との min を取らない | EA10 |
-| boot が読めないときも別の boot とする | EA11 |
+| boot が読めないときも別の boot とする | EA11、EA12 |
+| 時計の確認を boot の比較より前に行う（別の boot でも `clock_behind` にする） | EA12（A と B） |
+| 時計の確認の境を `launch.wall` − M にする | EA27 |
 | `clock_behind` を limited にしない | EA12 |
-| 除外した X を記録しない（毎巡祖先を読む） | EA16 |
+| birth < F で除外した X を記録しない（毎巡読む） | EA1、EA16 |
+| 場所か系譜で除外した X を記録し、後の巡で照合だけにする | EA16、EA25 |
+| env2 を読まない（最初の環境の読取りを使う） | EA24（env2 が cookie を含む） |
+| L1 か L2 の片方だけを読む / L1 と L2 を比べない | EA24（L1 と L2 の 2 つの順） |
+| 場所を identity2 の後に読む | EA26 |
 | `discover` でも系譜を判定する | EA13 |
 | `unconfirmed` の上限を外す | EA19 |
 | 場所の判定を外す（すべてを対象にする） / 4 つの場所を除外にする | EA21 / EA22 |
+| 4 つの場所のどれか 1 つを、単独で対象から外す（4 通り） | EA22（その場所の場合） |
+| 親ディレクトリでなく、前方一致か祖先のディレクトリで比べる | EA28 |
 | `proc_pidpath` の失敗を除外にする | EA22 |
 
 #### 3.5.3 leader の birth と cookie の確認
@@ -1486,7 +1517,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | モードの切替で、もう一方の経路のプロセスが残る | epoch の前の静止の確認（永続状態と cookie の探索。§1.1）。epoch の更新を死亡の根拠にしない | cookie を消した孤児と、group を抜けた子孫は検出できない。環境を消された platform binary の子孫も、`discover` のままなので検出できない（記録して受け入れる。§13.3） |
 | 停止・cancel と起動・採用・release・完了の競合 | `control_admission` による直列化（§1.2）と規則 G（最終 tx での Goal の Running の検査） | なし |
 | 回復の要求の重複と、放棄した run の ref の更新 | 再送の照会を guard の前・guard の中の読み取り・最終 tx の 3 か所で、現在の状態の検査より先に行う。`--then abandon-run` は開いた release の journal を先に決着させ、abandoned の run の journal は trigger で変更できない（§4.4・§9） | 決着の ref の読取りと最終 tx の間に、運用者が手で ref を動かす窓（記録した ref と食い違えば、次の settle が held にする） |
-| 起動結果が不明・孤児プロセス | Unknown / Held、cookie による探索、再実行しない。死亡を確認できない間は全 Project の起動を止める | cookie を自分で消した孤児は検出できない。環境を消された platform binary の子孫は、実行ファイルが 4 つの場所にあれば確認できないとして held にする（§3.5.2。R3・R5・R6・R7 は残る） |
+| 起動結果が不明・孤児プロセス | Unknown / Held、cookie による探索、再実行しない。死亡を確認できない間は全 Project の起動を止める | cookie を自分で消した孤児は検出できない。環境を消された platform binary の子孫は、実行ファイルが 4 つの場所にあれば確認できないとして held にする（§3.5.2。R3・R5・R6・R7・R8 は残る） |
 | provider の上限を使い切る | daemon 全体で 1 step ずつ。既知の上限の終了は daemon 全体の 1 つの記録で backoff を待ち、期限の後は 1 つの起動が既知の成功で終わるまで次を起動しない（それ以外の終わり方は延長）。native の Exhausted の観測が残る間は起動しない（§2.6） | 分類器が上限を認識できない失敗は、上限待ちを始めない（運用者の判断になり、Held に倒す） |
 | Goal branch の破損 | ref-CAS の journal、fast-forward だけ、checkout 中なら拒否 | 運用者が手で ref を動かした場合は held になる |
 
@@ -1666,7 +1697,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | D17 | §3.5 の 5: 探索の `coverage.limited()` が false であること（読めない PID はすべて limited） | macOS の tracker が、読めない PID を独立した `sysctl(KERN_PROC_PID)` で zombie・消えた PID・不明に分ける。前の 2 つは `limited()` から外す。列挙は `proc_listpids` のまま（lock の中の 1 時点の PID の集合）とする。検査した PID の identity の開始時刻と、zombie の照会の開始時刻を、種類とともに記録する。後の巡で記録と合わない PID と、identity と環境の読取りが同じ incarnation のものだと確かめられない PID（`reused`）も、limited から外して新しい不在に数える。新しい不在がなくなるまで再列挙し、limits を超えれば limited にする（§3.5.1） | オーナーの Mac では、親が回収しない同じ利用者の zombie が 1 つあるだけで、探索が常に limited になり、どの step も死亡を確認できない。zombie と消えた PID は何も実行できない。一覧の後の fork と、記録した PID や読取りの間での PID の再利用は、再列挙か limited に倒す。保証は「limited でなく一致 0 件なら、残余 R1・R2 を除き、走査の終わりに cookie を持つ生きたプロセスはない」であり、§3.5.1 の前提 P1〜P6 に依る（P3・P5・P6 は XNU のソースで確かめた）。R1 は、最後の一覧の後、記録のない PID を初めて読む前に、cookie を持つプロセスが一覧にない子を残して exit し、その PID が別のプロセスに割り当てられる順序である。XNU の割当て器では、そのプロセスの誕生から PID の counter が一巡し、その残りを 1 回の discover の中で進む必要がある。R2 は、一覧が kernel 内の容量（nprocs+20）で切られ、返った長さからそれが分からない順序である。どちらも今の tracker に同じ形であり、R1・R2 ともオーナーが受け入れた残余とする。出入りが止まらない Mac では、`time_exceeded` で held になりうる |
 | D18 | §6.2 の変更の一覧は `--ignore-submodules=none` | 対象の tree の gitlink（160000）を status より前に拒否し、すべての status を `--ignore-submodules=all` にする。共通の `-c` に `diff.ignoreSubmodules=all` と `submodule.recurse=false` を加える。あわせて、rrx の Git は `core.attributesFile=/dev/null`・`core.excludesFile=/dev/null`・`GIT_NO_LAZY_FETCH=1` で動かし、`diff-tree` には `--text` を付ける。拒否する属性に組み込みの macro `binary` と `ident` を加え、`.gitattributes` の名前を ASCII の大文字と小文字を区別せずに照合する。Task の worktree は `--no-checkout` で登録し、その context の設定と属性を検査してから checkout する | gitlink のパスに Agent が `<path>/.git` を置くと、status がその中で子の Git を起動し、submodule 自身の設定の filter を rrx の権限で実行しうる（§6.1 の前提が崩れる）。global の attributes・ignore、`binary`・`core.bigFileThreshold`・`ident`、大文字小文字の違う `.gitattributes` は、diff の追加行や status から変更を隠し、秘密スキャンや scope の検査を素通りさせる。Task の worktree だけで有効な条件付き include は、Project 側の検査の後の checkout で効く。どれも制約の強化で、秘密スキャンで見つかった内容を含む blob と commit は、参照のない loose object として common の objects に残る（§12） |
 | D19 | §6.2 の変更の一覧は ignored のファイルを含まない。保護する名前と `.gitattributes` の名前は ASCII の大文字と小文字だけを区別しない | build と `clean_at` は、`--ignored=matching` の status で ignored の項目を列挙し、保護する名前の成分を持つ項目を `protected_path` で拒否する（ignored の項目は変更にも drift にも数えない。ignored のディレクトリは 1 項目に畳まれる）。保護する名前と `.gitattributes` の名前の照合に、ASCII に加えて Unicode の大文字小文字の畳み込み（大文字にしてから小文字にする）を使う。`.gitignore` は scope の明示でも Executor に変えさせない。index の `assume-unchanged`・`skip-worktree` は拒否する | ignored のファイルは status に出ないので、scope と保護の検査を受けず、次の step の作業領域に残る（Agent が置いた `AGENTS.override.md` を Codex が読む）。Agent が置く `.gitignore` は変更か ignored の項目として必ず列挙され、scope を問わず拒否されるので、効く ignore 規則は Goal の base から来たものだけになり、隠せるのは対象の tree の ignore 規則が畳むディレクトリ（`node_modules/` など）の中だけになる。これは残余として受け入れる。通常の採用 → 次の step の経路では持ち越され、消えるのは retry の初期化（`clean -ffdx`）のときだけである。root は畳まれないので、Codex が読む root の指示ファイルは必ず列挙される。逆に、ディレクトリ自体に一致しない規則（`node_modules/**`・`*.pyc` など）は中のファイルを 1 件ずつ列挙させるので、依存物に含まれる `.github/`・`CLAUDE.md` などで `protected_path` に倒れることがある（安全側の誤検出）。index のフラグを付けた追跡ファイルは書き換えても status に出ないので、gitlink と同じく拒否する。retry の初期化（`reset --hard`）はフラグを消さないので、フラグが残った run は held のままになる（安全側）。運用者は Task worktree の index を消してから reset して復旧する。macOS の APFS は Unicode の畳み込みで名前を比べるので、`ſ`（U+017F）を含む名前が `.gitattributes`・`AGENTS.md` として開かれる（オーナーの Mac で確認）。どれも制約の強化 |
-| D20 | §3.5 の 5: 探索の `coverage.limited()` が false で一致 0 件。§3.3 の 6: leader の birth を cookie の探索で読む | macOS の tracker は、`KERN_PROCARGS2` が引数の後に何も返さないプロセスを「環境がない」とする。そのうち、実行ファイルの場所（`proc_pidpath`）の親が `/bin`・`/usr/bin`・`/sbin`・`/usr/sbin` のどれかのもの（`proc_pidpath` が読めないものを含む）について、次を limited（`ancestry_unconfirmed`）にする: (1) 開始時刻が起動の境 F 以上で、`e_ppid` をたどった系譜が、F 以上のプロセスだけを通って pid 1 か rrxd 自身に達するもの、(2) 祖先が読めない・zombie・再利用の疑い・追跡中・32 段を超えるもの。F は、tx1 の前に記録した壁時計（`body.launch`）と leader の birth の早い方から 60 秒を引いた値である。除外は、F より前に生まれたプロセスと、F より前に生まれた生きた祖先（pid 1・rrxd 以外）を系譜に持つプロセスだけとする。別の boot で起動した step には判定を当てない。今の時計が F より前なら limited にする。limited の結果は、今と同じく `DEATH_BOUND` の中でやり直し、得られなければ held にする。見つけたプロセスに signal は送らない（D12）。leader の birth は、spawn の直後に PID から `KERN_PROC_PID` で読む。cookie が leader に届いたことは、環境を 1 回読んで別に確かめる。死亡確認の reap の前に、zombie の開始時刻と照合する（§3.5.2・§3.5.3） | オーナーの Mac で、同じ利用者の platform binary の `KERN_PROCARGS2` が成功し、環境だけが消えることを実測した（`/bin/sleep`・`/usr/bin/perl`・setsid の後の perl・sandbox-exec の下の perl で cookie なし。Homebrew の python3 では cookie あり）。今の tracker はこれを「一致しない」とするので、setsid で group を抜けた platform binary の子孫が生きていても、死亡を確認してしまう（`origin/main` の tracker も同じ）。また、leader が platform binary の test（sandbox-exec の下の perl）は、birth の探索で見つからず、tx2 が `record_failed` になって held になっていた。オーナーは、残余として受け入れず、専用の macOS 利用者も今は使わず、検出して held に倒すことを選んだ。決定に加えた点は 4 つある。rrxd 自身を launchd と同じに扱う（生きた leader の除外を防ぐ）。別の boot を除外する（前の boot のプロセスは存在できない。これがないと再起動の後の回復が永久に拒否される）。時計に 60 秒の余裕を取る。起動時の cookie の確認を残す（既存の確認を弱めない）。公開 SDK に unique ID がないので、順序は壁時計の開始時刻で比べる。残余は R3（時計が 60 秒より大きく戻る）・R5（子孫でない代理の起動）・R6（引数の領域の偽装）で、R1・R2 は変わらない。費用として、step の間に起動した Apple のアプリ・XPC service が残ると held になり、held の回復はそれらの終了か再起動まで拒否される（HE9 で測る）。その後、オーナーの Mac で、場所で絞らないと 5 分を超える step がほぼすべて held になる（無関係な macOS の処理が 5 分で 5 個、60 分で 7 個）ことと、4 つの場所に絞ると 0 個になることを実測し、オーナーが場所で絞ることを選んだ。4 つの場所の外の platform binary で抜けた子孫は残余 R7 とする |
+| D20 | §3.5 の 5: 探索の `coverage.limited()` が false で一致 0 件。§3.3 の 6: leader の birth を cookie の探索で読む | macOS の tracker は、`KERN_PROCARGS2` が引数の後に何も返さないプロセスを「環境がない」とする。そのうち、実行ファイルの場所（`proc_pidpath`）の親が `/bin`・`/usr/bin`・`/sbin`・`/usr/sbin` のどれかのもの（`proc_pidpath` が読めないものを含む）について、次を limited（`ancestry_unconfirmed`）にする: (1) 開始時刻が起動の境 F 以上で、`e_ppid` をたどった系譜が、F 以上のプロセスだけを通って pid 1 か rrxd 自身に達するもの、(2) 祖先が読めない・zombie・親を確かめられない（祖先を読んだ後の子の読み直しで、子が変わるか親の PID が変わる）・追跡中・32 段を超えるもの、(3) 環境と場所を同じ実行イメージの観測に結び付けられないもの（場所を環境の読み直しの前後で読み、違えば limited）。F は、tx1 の前に記録した壁時計（`body.launch`）と leader の birth の早い方から 60 秒を引いた値である。除外は、F より前に生まれたプロセスと、F より前に生まれた生きた祖先（pid 1・rrxd 以外）を系譜に持つプロセスだけとする。場所か系譜で除外したものは記録せず、巡ごとに読み直す（exec は PID と開始時刻を変えない）。別の boot で起動したと確かめられた step には、判定も時計の確認も当てない。それ以外で、今の時計が F より前なら limited にする。limited の結果は、今と同じく `DEATH_BOUND` の中でやり直し、得られなければ held にする。見つけたプロセスに signal は送らない（D12）。leader の birth は、spawn の直後に PID から `KERN_PROC_PID` で読む。cookie が leader に届いたことは、環境を 1 回読んで別に確かめる。死亡確認の reap の前に、zombie の開始時刻と照合する（§3.5.2・§3.5.3） | オーナーの Mac で、同じ利用者の platform binary の `KERN_PROCARGS2` が成功し、環境だけが消えることを実測した（`/bin/sleep`・`/usr/bin/perl`・setsid の後の perl・sandbox-exec の下の perl で cookie なし。Homebrew の python3 では cookie あり）。今の tracker はこれを「一致しない」とするので、setsid で group を抜けた platform binary の子孫が生きていても、死亡を確認してしまう（`origin/main` の tracker も同じ）。また、leader が platform binary の test（sandbox-exec の下の perl）は、birth の探索で見つからず、tx2 が `record_failed` になって held になっていた。オーナーは、残余として受け入れず、専用の macOS 利用者も今は使わず、検出して held に倒すことを選んだ。決定に加えた点は 4 つある。rrxd 自身を launchd と同じに扱う（生きた leader の除外を防ぐ）。別の boot を除外する（前の boot のプロセスは存在できない。これがないと再起動の後の回復が永久に拒否される）。時計に 60 秒の余裕を取る。起動時の cookie の確認を残す（既存の確認を弱めない）。公開 SDK に unique ID がないので、起動との前後は壁時計の開始時刻で比べる。親の取り違えは、開始時刻の順序（時計が少し戻るだけで逆転する）ではなく、子の読み直しで見分ける。残余は R3（時計が 60 秒より大きく戻る）・R5（子孫でない代理の起動）・R6（引数の領域の偽装）で、R1・R2 は変わらない。費用として、step の間に起動した Apple のアプリ・XPC service が残ると held になり、held の回復はそれらの終了か再起動まで拒否される（HE9 で測る）。その後、オーナーの Mac で、場所で絞らないと 5 分を超える step がほぼすべて held になる（無関係な macOS の処理が 5 分で 5 個、60 分で 7 個）ことと、4 つの場所に絞ると 0 個になることを実測し、オーナーが場所で絞ることを選んだ。4 つの場所の外の platform binary で抜けた子孫は残余 R7 とする。場所を環境の前後で読んでも、読取りの窓の中で 2 回 exec して元の場所に戻ったものは見分けられず、残余 R8 とする（オーナーの受入を求める） |
 
 **オーケストレーターの簡素化の指示から外した点**
 
