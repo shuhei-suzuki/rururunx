@@ -52,7 +52,10 @@ fn b3_discovery_all_cookies() {
         })
         .unwrap();
         assert_eq!(&seen, expected);
-        assert_eq!(result, json!({"cookies":2,"inspected":10}));
+        assert_eq!(
+            result.into_body()["discovery"],
+            json!({"cookies":2,"inspected":10})
+        );
     }
 }
 /// A failed discovery cannot be treated as an empty successful scan.
@@ -103,6 +106,7 @@ fn b3_default_native_owner() {
 }
 /// Quiescence is recorded only after the successful pipeline owner epoch begins.
 #[test]
+#[cfg(target_os = "macos")]
 fn b3_pipeline_owner_records_quiescence() {
     let dir = tempfile::tempdir().unwrap();
     let owner =
@@ -116,4 +120,9 @@ fn b3_pipeline_owner_records_quiescence() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].subject, "mode_quiescence");
     assert_eq!(rows[0].state, "qualified");
+    assert_eq!(
+        rows[0].body["discovery"],
+        json!({"cookies":0,"inspected":0})
+    );
+    assert_eq!(rows[0].body["inventory"]["native_units"], 0);
 }

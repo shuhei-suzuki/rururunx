@@ -23,6 +23,7 @@ static int eq(int argc,char **argv,int n,const char **want) {
 int main(int argc,char **argv) {
     snprintf(base,sizeof base,"%s",argv[0]); char *slash=strrchr(base,'/'); if(!slash)return 93; *slash=0;
     if(exists("pause")){fclose(file("entered","w"));while(!exists("release"))usleep(10000);}
+    int delay=status("delay-ms"); if(delay>0)usleep((unsigned int)delay*1000);
     FILE *env=file("environment","w"); for(char **e=environ;*e;e++)fprintf(env,"%s\n",*e);fclose(env);
     FILE *calls=file("calls","a"); for(int i=1;i<argc;i++)fprintf(calls,"%s%s",i>1?" ":"",argv[i]);fprintf(calls,"\n");fclose(calls);
     if(eq(argc,argv,1,(const char*[]){"--version"})){output("version");return 0;}

@@ -19,11 +19,14 @@ Cookie discovery requires every supplied cookie to have complete tracker coverag
 and zero matches; errors and excessive inventories refuse. Epoch advancement is
 never death evidence. Successful pipeline startup records the pre-epoch
 inventory/discovery summary as `mode_quiescence` under its new epoch.
+Its writer consumes a sealed receipt constructed only by `check_mode_inventory`;
+an arbitrary JSON body cannot authorize a qualified quiescence observation.
 
 Pipeline Q reuses `execution::process::OwnedProcess` and `bounded_read`: spawn
 hygiene, unreaped identity, group signaling before reap and direct-child fallback.
-Image/config reads and probe observation share a five-second qualification
-deadline, with four KiB combined probe output. Nonblocking open and descriptor
+Each probe has a fresh five-second deadline, capped by a 35-second overall
+CLI qualification observation deadline covering image/config reads and all probes,
+with four KiB combined output per probe. Nonblocking open and descriptor
 checks refuse special files. Probe-only macOS EPERM resolution accepts only a
 confirmed all-dead group inspection; live/unknown/failed inspection refuses Q.
 The blocking worker's JoinHandle and unreaped custody remain retained when the
@@ -37,7 +40,9 @@ qualified current-epoch subjects. Idle sweeps check DB rows and config digest;
 `CliQualifier::before_launch` re-hashes both images immediately before launch,
 outside Store transactions, between tx1 and spawn. PATH prefixes and every parent
 must be root/current-user owned with no group/world write permission and are
-rechecked there. Work root and CODEX_HOME must be canonical, user-owned 0700
+rechecked there. PATH entries and executable paths (including canonical targets)
+must not overlap work root, CODEX_HOME, non-Removed Projects or the state directory.
+Work root and CODEX_HOME must be canonical, user-owned 0700
 directories separate from each other, state and Projects. Project registration
 and re-registration also reject overlaps before publication. Other Codex layers
 (managed/system config, AGENTS.md and rules) are not inspected and remain an
@@ -47,7 +52,8 @@ probe descendants are outside the durable mode cookie inventory.
 The pipeline sweep has no step executor and never enters native reconciliation
 or admission. A stale Q ends the sweep and appears as
 `pipeline_qualification_error` in RuntimeStatus. The pipeline CreateGoal control
-refuses plans without an execution profile and does not publish pipeline Goals.
+returns typed `PipelineGoalAcceptanceUnavailable` (pipeline Goal acceptance is
+not available yet) without publishing pipeline Goals.
 Native S is unchanged.
 
 The six functions delegate to their corresponding original methods. Tokio

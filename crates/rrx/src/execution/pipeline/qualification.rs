@@ -22,21 +22,16 @@ pub struct QualifiedCli {
     pub realpath: PathBuf,
     pub sha256: String,
 }
-impl QualifiedCli {
-    /// Rechecked outside Store transactions immediately before any future launch.
-    pub fn recheck(&self, configured: &PipelineCli) -> Result<()> {
-        let current = executable(&configured.executable)?;
-        ensure!(
-            current.realpath == self.realpath && current.sha256 == self.sha256,
-            "qualified executable changed"
-        );
-        Ok(())
-    }
-}
 #[cfg(test)]
 thread_local! { static HASH_COUNT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) }; }
 
 const PROBE_BOUND: Duration = Duration::from_secs(5);
+// Five Claude probes plus bounded image/config work; cleanup retains custody
+// even after observation expires and must finish before returning a refusal.
+const CLI_BOUND: Duration = Duration::from_secs(35);
+fn probe_deadline(now: Instant, overall: Instant) -> Instant {
+    (now + PROBE_BOUND).min(overall)
+}
 fn regular_file(path: &Path) -> Result<File> {
     let file = OpenOptions::new()
         .read(true)
@@ -48,6 +43,7 @@ fn regular_file(path: &Path) -> Result<File> {
     );
     Ok(file)
 }
+#[cfg(all(test, target_os = "macos"))]
 fn executable(path: &Path) -> Result<QualifiedCli> {
     executable_until(path, Instant::now() + PROBE_BOUND)
 }
@@ -214,7 +210,7 @@ async fn qualify_cli(
         "{:x}",
         Sha256::digest(serde_json::to_vec(config).expect("serializable pipeline config"))
     ));
-    let deadline = Instant::now() + PROBE_BOUND;
+    let deadline = Instant::now() + CLI_BOUND;
     let result = async {
         row.body["stage"] = json!("executable");
         let pinned = executable_until(&cli.executable, deadline)?;
@@ -238,7 +234,10 @@ async fn qualify_cli(
                 .env_clear()
                 .envs(env.clone())
                 .current_dir(tmp);
-            crate::execution::process::capture_probe_until(command, deadline.into())
+            crate::execution::process::capture_probe_until(
+                command,
+                probe_deadline(Instant::now(), deadline).into(),
+            )
         };
         row.body["stage"] = json!("version_probe");
         let (receipt, out, _) = probe(&["--version"]).await?;
@@ -326,14 +325,14 @@ pub struct CliQualifier;
 impl CliQualifier {
     pub(in crate::execution) fn record_quiescence(
         owner: &RuntimeOwner,
-        body: serde_json::Value,
+        proof: crate::execution::owner::ModeQuiescence,
     ) -> Result<()> {
         let row = QualificationRecord(PipelineQualification {
             subject: "mode_quiescence".into(),
             state: "qualified".into(),
             executable_sha256: None,
             version_text: None,
-            body,
+            body: proof.into_body(),
         });
         owner
             .store
@@ -414,8 +413,14 @@ impl CliQualifier {
         private_directory(home).context("CODEX_HOME")?;
         for (left, right) in [
             (root.as_path(), home.as_path()),
-            (root.as_path(), owner.state_root()),
-            (home.as_path(), owner.state_root()),
+            (
+                root.as_path(),
+                owner.state_path().parent().context("state needs parent")?,
+            ),
+            (
+                home.as_path(),
+                owner.state_path().parent().context("state needs parent")?,
+            ),
         ] {
             ensure!(
                 !overlaps(left, right),
@@ -428,10 +433,54 @@ impl CliQualifier {
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .projects()?
         {
+            if project.state == crate::domain::ProjectState::Removed {
+                continue;
+            }
             let project = project.root.canonicalize()?;
             config.check_project_root(&project)?;
         }
+        Self::check_launch_paths(owner, config)?;
         trusted_path_prefix(config)?;
+        Ok(())
+    }
+
+    fn check_launch_paths(owner: &RuntimeOwner, config: &PipelineConfig) -> Result<()> {
+        let mut excluded = vec![
+            config.work_root.clone(),
+            config
+                .clis
+                .codex
+                .codex_home
+                .clone()
+                .context("CODEX_HOME missing")?,
+            owner
+                .state_path()
+                .parent()
+                .context("state needs parent")?
+                .to_path_buf(),
+        ];
+        for project in owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .projects()?
+        {
+            if project.state != crate::domain::ProjectState::Removed {
+                excluded.push(project.root.canonicalize()?);
+            }
+        }
+        for path in config.path_prefix.iter().chain([
+            &config.clis.codex.executable,
+            &config.clis.claude.executable,
+        ]) {
+            let realpath = path.canonicalize()?;
+            for root in &excluded {
+                ensure!(
+                    !overlaps(path, root) && !overlaps(&realpath, root),
+                    "pipeline launch path overlaps writable or state directory"
+                );
+            }
+        }
         Ok(())
     }
 
@@ -549,5 +598,5 @@ fn trusted_path_prefix(config: &PipelineConfig) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests;

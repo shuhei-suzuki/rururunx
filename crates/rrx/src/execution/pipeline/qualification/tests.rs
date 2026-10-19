@@ -117,21 +117,6 @@ async fn b3_q_changed_sha() {
         assert_eq!(row.body["stage"], "image_recheck", "{row:?}");
     }
 }
-/// An executable changed after qualification fails the launch-time recheck.
-#[tokio::test]
-async fn b3_q_recheck_changed_sha() {
-    let f = Fixture::new();
-    let row = f.q(true).await;
-    let qualified = QualifiedCli {
-        realpath: serde_json::from_value(row.body["realpath"].clone()).unwrap(),
-        sha256: row.executable_sha256.unwrap(),
-    };
-    qualified.recheck(&f.codex.cli).unwrap();
-    let mut changed = std::fs::read(&f.codex.cli.executable).unwrap();
-    changed.extend_from_slice(b"changed image");
-    std::fs::write(&f.codex.cli.executable, changed).unwrap();
-    assert!(qualified.recheck(&f.codex.cli).is_err());
-}
 /// Probe environments are subsets of the approved environment variables.
 #[tokio::test]
 async fn b3_q_environment() {
@@ -467,7 +452,7 @@ fn b3_q_native_image_required() {
 #[test]
 fn b3_q_special_files() {
     let f = Fixture::new();
-    let pinned = executable(&f.codex.cli.executable).unwrap();
+    executable(&f.codex.cli.executable).unwrap();
     let home = f.codex.cli.codex_home.as_ref().unwrap();
     codex_config(home, Instant::now() + PROBE_BOUND).unwrap();
     let config = f.codex.cli.codex_home.as_ref().unwrap().join("config.toml");
@@ -492,7 +477,7 @@ fn b3_q_special_files() {
                 .contains("not a regular file")
         );
         if path == &f.codex.cli.executable {
-            assert!(pinned.recheck(&f.codex.cli).is_err());
+            assert!(executable(&f.codex.cli.executable).is_err());
             assert!(started.elapsed() < std::time::Duration::from_secs(6));
         }
         std::fs::remove_file(path).unwrap();
@@ -650,4 +635,219 @@ fn b3_q_path_alias() {
             .to_string()
             .contains("canonical")
     );
+}
+
+/// Launch checks detect image changes that preserve the native header.
+#[tokio::test]
+async fn b3_q_before_launch_sha() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open_mode(
+        &dir.path().join("state/state.db"),
+        crate::config::ExecutionMode::CliPipeline,
+    )
+    .unwrap();
+    let config = crate::execution::pipeline::test_support::config(&owner, dir.path());
+    CliQualifier::qualify(&owner, &config).await.unwrap();
+    CliQualifier::before_launch(&owner, &config).unwrap();
+    use std::io::Write;
+    OpenOptions::new()
+        .append(true)
+        .open(&config.clis.codex.executable)
+        .unwrap()
+        .write_all(b"changed image")
+        .unwrap();
+    let error = CliQualifier::before_launch(&owner, &config).unwrap_err();
+    assert!(
+        error.to_string().contains("qualified executable changed"),
+        "{error:#}"
+    );
+}
+
+/// Equal image bytes at a different realpath cannot reuse a launch qualification.
+#[tokio::test]
+async fn b3_q_before_launch_realpath() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open_mode(
+        &dir.path().join("state/state.db"),
+        crate::config::ExecutionMode::CliPipeline,
+    )
+    .unwrap();
+    let mut config = crate::execution::pipeline::test_support::config(&owner, dir.path());
+    let original = config.clis.codex.executable.clone();
+    let alias = original.with_file_name("alias");
+    let copy = original.with_file_name("copy");
+    std::fs::copy(&original, &copy).unwrap();
+    std::os::unix::fs::symlink(&original, &alias).unwrap();
+    config.clis.codex.executable = alias.clone();
+    CliQualifier::qualify(&owner, &config).await.unwrap();
+    CliQualifier::before_launch(&owner, &config).unwrap();
+    std::fs::remove_file(&alias).unwrap();
+    std::os::unix::fs::symlink(&copy, &alias).unwrap();
+    let error = CliQualifier::before_launch(&owner, &config).unwrap_err();
+    assert!(
+        error.to_string().contains("qualified executable changed"),
+        "{error:#}"
+    );
+}
+
+/// The entire state directory excludes sibling work and home directories.
+#[test]
+fn b3_q_state_directory_separation() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open_mode(
+        &dir.path().join("state/state.db"),
+        crate::config::ExecutionMode::CliPipeline,
+    )
+    .unwrap();
+    let config = crate::execution::pipeline::test_support::config(&owner, dir.path());
+    CliQualifier::check_layout(&owner, &config).unwrap();
+    let sibling = owner.state_path().parent().unwrap().join("sibling");
+    std::fs::create_dir(&sibling).unwrap();
+    std::fs::set_permissions(&sibling, std::fs::Permissions::from_mode(0o700)).unwrap();
+    for home in [false, true] {
+        let mut invalid = config.clone();
+        if home {
+            invalid.clis.codex.codex_home = Some(sibling.clone());
+        } else {
+            invalid.work_root = sibling.clone();
+        }
+        assert!(
+            CliQualifier::check_layout(&owner, &invalid)
+                .unwrap_err()
+                .to_string()
+                .contains("overlap")
+        );
+    }
+}
+
+/// Removed Projects neither block Q nor require an extant root at launch.
+#[tokio::test]
+async fn b3_q_removed_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open_mode(
+        &dir.path().join("state/state.db"),
+        crate::config::ExecutionMode::CliPipeline,
+    )
+    .unwrap();
+    let config = crate::execution::pipeline::test_support::config(&owner, dir.path());
+    for root in [dir.path().join("deleted"), config.work_root.clone()] {
+        let mut project =
+            crate::domain::Project::new("removed".into(), root, "fixture".into(), "main".into());
+        project.state = crate::domain::ProjectState::Removed;
+        owner
+            .store
+            .lock()
+            .unwrap()
+            .put_project(&mut project)
+            .unwrap();
+    }
+    CliQualifier::qualify(&owner, &config).await.unwrap();
+    CliQualifier::before_launch(&owner, &config).unwrap();
+}
+
+/// Agent writable and state paths cannot supply PATH entries or executable images.
+#[tokio::test]
+async fn b3_q_launch_path_separation() {
+    for location in 0..4 {
+        for image in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let owner = RuntimeOwner::open_mode(
+                &dir.path().join("state/state.db"),
+                crate::config::ExecutionMode::CliPipeline,
+            )
+            .unwrap();
+            // A separate owner epoch/DB tests startup Q without attempting to
+            // overwrite immutable Q observations from the positive control.
+            let checker = RuntimeOwner::open_mode(
+                &dir.path().join("state/checker.db"),
+                crate::config::ExecutionMode::CliPipeline,
+            )
+            .unwrap();
+            let mut config = crate::execution::pipeline::test_support::config(&owner, dir.path());
+            let source = dir.path().join("source");
+            std::fs::create_dir(&source).unwrap();
+            for state in [&owner, &checker] {
+                let mut project = crate::domain::Project::new(
+                    "source".into(),
+                    source.canonicalize().unwrap(),
+                    "fixture".into(),
+                    "main".into(),
+                );
+                state
+                    .store
+                    .lock()
+                    .unwrap()
+                    .put_project(&mut project)
+                    .unwrap();
+            }
+            let root = [
+                config.work_root.clone(),
+                config.clis.codex.codex_home.clone().unwrap(),
+                source.canonicalize().unwrap(),
+                owner.state_path().parent().unwrap().to_path_buf(),
+            ][location]
+                .clone();
+            let alias = dir.path().canonicalize().unwrap().join("safe-bin");
+            let target = root.join("image");
+            if image {
+                std::fs::copy(&config.clis.codex.executable, &target).unwrap();
+                std::os::unix::fs::symlink(&config.clis.codex.executable, &alias).unwrap();
+                config.clis.codex.executable = alias.clone();
+            } else {
+                std::fs::create_dir(&alias).unwrap();
+                config.path_prefix = vec![alias.clone()];
+            }
+            CliQualifier::qualify(&owner, &config).await.unwrap();
+            CliQualifier::before_launch(&owner, &config).unwrap();
+            if image {
+                std::fs::remove_file(&alias).unwrap();
+            } else {
+                std::fs::remove_dir(&alias).unwrap();
+            }
+            std::os::unix::fs::symlink(if image { &target } else { &root }, &alias).unwrap();
+            assert!(
+                CliQualifier::before_launch(&owner, &config)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("launch path overlaps")
+            );
+            assert!(
+                CliQualifier::qualify(&checker, &config)
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("launch path overlaps")
+            );
+        }
+    }
+}
+
+/// Each probe gets its own five seconds while the CLI has a finite overall budget.
+#[test]
+fn b3_q_probe_deadlines() {
+    let start = Instant::now();
+    let overall = start + CLI_BOUND;
+    let first = probe_deadline(start, overall);
+    let later = start + Duration::from_secs(4);
+    assert_eq!(first, start + Duration::from_secs(5));
+    assert_eq!(
+        probe_deadline(later, overall),
+        later + Duration::from_secs(5)
+    );
+    assert_eq!(
+        probe_deadline(overall - Duration::from_secs(1), overall),
+        overall
+    );
+    assert!(CLI_BOUND > PROBE_BOUND && CLI_BOUND <= Duration::from_secs(35));
+}
+
+/// Successful sequential probes may together exceed one probe's time budget.
+#[tokio::test]
+async fn b3_q_sequential_probe_budget() {
+    let f = Fixture::new();
+    f.claude.control("delay-ms", "1100");
+    let start = Instant::now();
+    let row = f.q(false).await;
+    assert_eq!(row.state, "qualified", "{row:?}");
+    assert!(start.elapsed() > PROBE_BOUND);
 }

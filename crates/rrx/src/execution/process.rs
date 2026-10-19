@@ -364,23 +364,29 @@ fn resolve_probe_signal(
     };
     result.context("signal probe unreaped process group")
 }
-fn signal_probe_group(owned: &OwnedProcess) -> Result<()> {
+fn signal_probe_group(
+    owned: &OwnedProcess,
+    kill: impl FnOnce(Pid, Signal) -> std::result::Result<(), rustix::io::Errno>,
+    inspect: impl FnOnce(Pid) -> std::io::Result<bool>,
+) -> Result<()> {
     ensure!(owned.unreaped, "probe child has already been reaped");
-    let result = kill_process_group(owned.pid, Signal::KILL);
-    resolve_probe_signal(owned, result, || {
-        #[cfg(target_os = "macos")]
-        {
-            crate::adapter::macos_group_is_dead(owned.pid)
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            Ok(false)
-        }
-    })
+    let result = kill(owned.pid, Signal::KILL);
+    resolve_probe_signal(owned, result, || inspect(owned.pid))
+}
+fn inspect_probe_group(pid: Pid) -> std::io::Result<bool> {
+    #[cfg(target_os = "macos")]
+    {
+        crate::adapter::macos_group_is_dead(pid)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = pid;
+        Ok(false)
+    }
 }
 
 /// Startup probes retain unreaped custody until cleanup and direct wait finish.
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 pub(crate) async fn capture_probe(command: Command) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
     capture_probe_until(
         command,
@@ -392,7 +398,10 @@ pub(crate) async fn capture_probe_until(
     command: Command,
     deadline: tokio::time::Instant,
 ) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
-    capture_probe_with_cleanup(command, deadline, signal_probe_group).await
+    capture_probe_with_cleanup(command, deadline, |owned| {
+        signal_probe_group(owned, kill_process_group, inspect_probe_group)
+    })
+    .await
 }
 async fn capture_probe_with_cleanup(
     mut command: Command,
@@ -530,6 +539,37 @@ mod probe_tests {
             "{error:#}"
         );
     }
+    /// The production signal wiring preserves the kill result and the supplied inspector.
+    #[tokio::test]
+    async fn b3_probe_signal_wiring() {
+        for (signal, dead, accepted) in [
+            (Err(rustix::io::Errno::PERM), true, true),
+            (Err(rustix::io::Errno::PERM), false, false),
+            (Err(rustix::io::Errno::ACCESS), true, false),
+        ] {
+            let error = capture_probe_with_cleanup(
+                Command::new("/usr/bin/true"),
+                tokio::time::Instant::now() + Duration::from_secs(5),
+                move |owned| {
+                    signal_probe_group(
+                        owned,
+                        |pid, kind| {
+                            assert_eq!(pid, owned.pid);
+                            assert_eq!(kind, Signal::KILL);
+                            signal
+                        },
+                        |pid| {
+                            assert_eq!(pid, owned.pid);
+                            Ok(dead)
+                        },
+                    )
+                },
+            )
+            .await;
+            assert_eq!(error.is_ok(), accepted, "{:?}", error.err());
+        }
+    }
+
     /// Only confirmed dead groups resolve EPERM; every uncertain observation refuses.
     #[test]
     fn b3_probe_macos_signal_resolution() {

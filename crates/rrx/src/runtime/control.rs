@@ -390,6 +390,8 @@ pub struct WorkflowWait {
 pub enum UnavailableReason {
     TaskDriverUnavailable,
     PlanningUnavailable,
+    /// Pipeline Goal acceptance is not available yet.
+    PipelineGoalAcceptanceUnavailable,
     NativeBindingUnavailable,
     NativeContinuationUnavailable,
     FreshBootstrapRecoveryUnavailable,
@@ -632,10 +634,12 @@ impl Runtime {
             return Ok(response);
         }
         if let ControlAction::CreateGoal { plan, .. } = &request.action {
-            ensure!(
-                self.config.execution.mode != crate::config::ExecutionMode::CliPipeline,
-                "cli_pipeline CreateGoal requires an execution profile"
-            );
+            if self.config.execution.mode == crate::config::ExecutionMode::CliPipeline {
+                return Ok(ControlResponse::Unavailable {
+                    request_id: request.request_id,
+                    reason: UnavailableReason::PipelineGoalAcceptanceUnavailable,
+                });
+            }
             ensure!(
                 !self.stopping.load(std::sync::atomic::Ordering::SeqCst),
                 "Runtime stopping; new Goal refused"

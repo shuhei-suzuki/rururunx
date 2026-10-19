@@ -323,18 +323,7 @@ impl RuntimeOwner {
             socket,
         });
         if mode == ExecutionMode::CliPipeline {
-            super::pipeline::CliQualifier::record_quiescence(
-                &owner,
-                serde_json::json!({"inventory": {
-                "native_drivers":inventory.native_drivers,
-                "native_units":inventory.native_units,
-                "native_phases":inventory.native_phases,
-                "native_leases":inventory.native_leases,
-                "native_effects":inventory.native_effects,
-                "native_cleanup_cookies":inventory.native_cookies.len(),
-                "native_exhaustion":inventory.native_exhaustion.len()
-            }, "discovery": discovery}),
-            )?;
+            super::pipeline::CliQualifier::record_quiescence(&owner, discovery)?;
         }
         Ok(owner)
     }
@@ -425,45 +414,77 @@ impl std::fmt::Display for ExecutionModeNotQuiescent {
 }
 impl std::error::Error for ExecutionModeNotQuiescent {}
 
-fn check_mode_inventory(
-    inventory: &PipelineModeInventory,
-    mode: ExecutionMode,
-    mut discover: impl FnMut(&str) -> Result<(bool, usize, usize)>,
-) -> Result<serde_json::Value> {
-    let (verdict, cookies) = match mode {
-        ExecutionMode::CliPipeline => (&inventory.to_cli_pipeline, &inventory.native_cookies),
-        ExecutionMode::ManagedNative => (&inventory.to_managed_native, &inventory.pipeline_cookies),
-    };
-    let refuse = |reason: &str| ExecutionModeNotQuiescent {
-        reason: reason.into(),
-    };
-    match verdict {
-        PipelineQuiescenceVerdict::Busy => {
-            let reason =
-                if mode == ExecutionMode::CliPipeline && !inventory.native_exhaustion.is_empty() {
+pub(in crate::execution) use mode_inventory::ModeQuiescence;
+use mode_inventory::check_mode_inventory;
+mod mode_inventory {
+    use super::*;
+
+    /// Only a checked opposite-mode inventory can produce this sealed receipt.
+    #[derive(Debug)]
+    pub(in crate::execution) struct ModeQuiescence(serde_json::Value);
+    impl ModeQuiescence {
+        pub(in crate::execution) fn into_body(self) -> serde_json::Value {
+            self.0
+        }
+    }
+    pub(super) fn check_mode_inventory(
+        inventory: &PipelineModeInventory,
+        mode: ExecutionMode,
+        mut discover: impl FnMut(&str) -> Result<(bool, usize, usize)>,
+    ) -> Result<ModeQuiescence> {
+        let checked = |discovery: serde_json::Value| {
+            ModeQuiescence(serde_json::json!({"inventory": {
+                "native_drivers":inventory.native_drivers,
+                "native_units":inventory.native_units,
+                "native_phases":inventory.native_phases,
+                "native_leases":inventory.native_leases,
+                "native_effects":inventory.native_effects,
+                "native_cleanup_cookies":inventory.native_cookies.len(),
+                "native_exhaustion":inventory.native_exhaustion.len()
+            }, "discovery": discovery}))
+        };
+        let (verdict, cookies) = match mode {
+            ExecutionMode::CliPipeline => (&inventory.to_cli_pipeline, &inventory.native_cookies),
+            ExecutionMode::ManagedNative => {
+                (&inventory.to_managed_native, &inventory.pipeline_cookies)
+            }
+        };
+        let refuse = |reason: &str| ExecutionModeNotQuiescent {
+            reason: reason.into(),
+        };
+        match verdict {
+            PipelineQuiescenceVerdict::Busy => {
+                let reason = if mode == ExecutionMode::CliPipeline
+                    && !inventory.native_exhaustion.is_empty()
+                {
                     "native_quota_exhausted"
                 } else {
                     "opposite_mode_busy"
                 };
-            Err(refuse(reason).into())
-        }
-        PipelineQuiescenceVerdict::Quiescent => Ok(serde_json::json!({"cookies":0,"inspected":0})),
-        PipelineQuiescenceVerdict::CookieDiscoveryRequired => {
-            ensure!(
-                cookies.len() <= 4096 && !cookies.is_empty(),
-                refuse("cookie_inventory_invalid")
-            );
-            let mut inspected = 0;
-            for cookie in cookies {
-                let (limited, matches, count) =
-                    discover(cookie).map_err(|_| refuse("cookie_discovery_failed"))?;
-                ensure!(
-                    !limited && matches == 0,
-                    refuse("cookie_discovery_not_quiescent")
-                );
-                inspected += count;
+                Err(refuse(reason).into())
             }
-            Ok(serde_json::json!({"cookies":cookies.len(),"inspected":inspected}))
+            PipelineQuiescenceVerdict::Quiescent => {
+                Ok(checked(serde_json::json!({"cookies":0,"inspected":0})))
+            }
+            PipelineQuiescenceVerdict::CookieDiscoveryRequired => {
+                ensure!(
+                    cookies.len() <= 4096 && !cookies.is_empty(),
+                    refuse("cookie_inventory_invalid")
+                );
+                let mut inspected = 0;
+                for cookie in cookies {
+                    let (limited, matches, count) =
+                        discover(cookie).map_err(|_| refuse("cookie_discovery_failed"))?;
+                    ensure!(
+                        !limited && matches == 0,
+                        refuse("cookie_discovery_not_quiescent")
+                    );
+                    inspected += count;
+                }
+                Ok(checked(
+                    serde_json::json!({"cookies":cookies.len(),"inspected":inspected}),
+                ))
+            }
         }
     }
 }

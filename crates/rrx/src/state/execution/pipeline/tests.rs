@@ -1,8 +1,11 @@
 use super::*;
+#[cfg(target_os = "macos")]
 use crate::config::{AgentConfig, Config, WorkflowClass};
+#[cfg(target_os = "macos")]
 use crate::execution::verification::{
     AdmittedProfile, Applicability, Category, TestCommand, TestsProfile,
 };
+#[cfg(target_os = "macos")]
 use crate::runtime::{
     Runtime,
     control::{ControlAction, ControlRequest, ControlResponse, HumanIngress},
@@ -149,6 +152,7 @@ fn b2_rollback_v11() {
     upgrade(11, true);
 }
 
+#[cfg(target_os = "macos")]
 struct Fixture {
     accepted: ControlRequest,
     validated: ValidatedGoalPlan,
@@ -160,18 +164,22 @@ struct Fixture {
     task: TaskId,
     project: ProjectId,
 }
+#[cfg(target_os = "macos")]
 async fn fixture() -> Fixture {
     fixture_mode(true).await
 }
+#[cfg(target_os = "macos")]
 async fn fixture_mode(pipeline: bool) -> Fixture {
     fixture_with_owner(pipeline, None).await
 }
+#[cfg(target_os = "macos")]
 async fn fixture_with_owner(
     pipeline: bool,
     shared: Option<std::sync::Arc<RuntimeOwner>>,
 ) -> Fixture {
     fixture_with_modes(pipeline, pipeline, shared).await
 }
+#[cfg(target_os = "macos")]
 async fn fixture_with_modes(
     pipeline: bool,
     pipeline_owner: bool,
@@ -330,6 +338,7 @@ async fn fixture_with_modes(
         project: project.id,
     }
 }
+#[cfg(target_os = "macos")]
 impl Fixture {
     fn store(&self) -> std::sync::MutexGuard<'_, Store> {
         self.owner.store.lock().unwrap()
@@ -424,6 +433,7 @@ impl Fixture {
             .unwrap();
     }
 }
+#[cfg(target_os = "macos")]
 fn fixture_profile(digest: String) -> PipelineProfile {
     let mut profile = PipelineProfile {
         policy_sha256: String::new(),
@@ -434,6 +444,7 @@ fn fixture_profile(digest: String) -> PipelineProfile {
     profile.policy_sha256 = profile.policy_digest().unwrap();
     profile
 }
+#[cfg(target_os = "macos")]
 fn planned(run: &str, seq: u32, attempt: u32, kind: &str) -> PipelineStep {
     PipelineStep {
         run_id: run.into(),
@@ -463,6 +474,7 @@ fn planned(run: &str, seq: u32, attempt: u32, kind: &str) -> PipelineStep {
         },
     }
 }
+#[cfg(target_os = "macos")]
 fn death() -> PipelineDeathEvidence {
     PipelineDeathEvidence {
         leader_exit_observed: true,
@@ -473,12 +485,14 @@ fn death() -> PipelineDeathEvidence {
         matching_processes: 0,
     }
 }
+#[cfg(target_os = "macos")]
 fn raw_step(store: &Store, step: &PipelineStep, epoch: u64, state: &str) -> Result<()> {
     let version = step.version + 1;
     let body = stamped(&step.body, version, state, epoch)?;
     store.connection.execute("UPDATE pipeline_steps SET owner_epoch=?1,version=?2,state=?3,body=?4 WHERE run_id=?5 AND seq=?6 AND attempt=?7",params![epoch,version,state,body,step.run_id,step.seq,step.attempt])?;
     Ok(())
 }
+#[cfg(target_os = "macos")]
 fn recovery(f: &Fixture, id: &str, action: &str) -> PipelineRecoveryRequest {
     PipelineRecoveryRequest {
         request_id: Uuid::new_v4(),
@@ -487,6 +501,7 @@ fn recovery(f: &Fixture, id: &str, action: &str) -> PipelineRecoveryRequest {
         reason: "operator decision".into(),
     }
 }
+#[cfg(target_os = "macos")]
 fn recovery_evidence() -> PipelineRecoveryEvidence {
     PipelineRecoveryEvidence {
         discovery_complete: true,
@@ -497,6 +512,7 @@ fn recovery_evidence() -> PipelineRecoveryEvidence {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn complete_task(f: &Fixture) -> String {
     let id = f.claim();
     f.advance_prepare(&id);
@@ -515,6 +531,7 @@ fn complete_task(f: &Fixture) -> String {
         .unwrap();
     id
 }
+#[cfg(target_os = "macos")]
 fn complete_goal(f: &Fixture) {
     complete_task(f);
     let id = Uuid::new_v4().to_string();
@@ -558,6 +575,7 @@ fn complete_goal(f: &Fixture) {
         .pipeline_complete_goal(&f.owner, &cursor, 1, "test")
         .unwrap();
 }
+#[cfg(target_os = "macos")]
 fn no_replace(f: &Fixture, table: &str) {
     let store = f.store();
     store
@@ -593,12 +611,14 @@ fn no_replace(f: &Fixture, table: &str) {
 }
 /// Accepted mode records reject replacement with recursive triggers disabled.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_profile_no_replace() {
     let f = fixture().await;
     no_replace(&f, "goal_execution_profiles");
 }
 /// Run identity cannot be replaced through a conflicting primary key.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_run_no_replace() {
     let f = fixture().await;
     f.claim();
@@ -606,6 +626,7 @@ async fn b2_run_no_replace() {
 }
 /// Step attempts cannot be replaced through a conflicting primary key.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_step_no_replace() {
     let f = fixture().await;
     f.claim();
@@ -613,6 +634,7 @@ async fn b2_step_no_replace() {
 }
 /// Operator recovery records reject replacement after their response is stored.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_recovery_no_replace() {
     let f = fixture().await;
     let id = f.claim();
@@ -625,6 +647,7 @@ async fn b2_recovery_no_replace() {
 }
 /// Ref journals reject replacement after release settlement.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_journal_no_replace() {
     let f = fixture().await;
     f.claim();
@@ -632,6 +655,7 @@ async fn b2_journal_no_replace() {
 }
 /// Epoch qualification records reject replacement of the same subject.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_qualification_no_replace() {
     let f = fixture().await;
     let id = f.claim();
@@ -640,6 +664,7 @@ async fn b2_qualification_no_replace() {
 }
 /// Goal completion evidence cannot be replaced after completion.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_completion_no_replace() {
     let f = fixture().await;
     complete_goal(&f);
@@ -647,6 +672,7 @@ async fn b2_completion_no_replace() {
 }
 /// The global provider wait cannot be reset by replacing its singleton row.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_wait_no_replace() {
     let f = fixture().await;
     {
@@ -660,6 +686,7 @@ async fn b2_wait_no_replace() {
 
 /// A pipeline claim refuses Goals without an accepted pipeline mode record.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_pipeline_refuses_native_goal() {
     let f = fixture_with_modes(false, true, None).await;
     let id = Uuid::new_v4().to_string();
@@ -695,6 +722,7 @@ async fn b2_pipeline_refuses_native_goal() {
 }
 /// A terminal step cannot return to a runnable state through raw SQL.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_terminal_step_cannot_restart() {
     let f = fixture().await;
     let id = f.claim();
@@ -705,6 +733,7 @@ async fn b2_terminal_step_cannot_restart() {
 }
 /// Release settlement preserves terminal journal decisions.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_terminal_journal_cannot_reopen() {
     let f = fixture().await;
     let id = complete_task(&f);
@@ -723,6 +752,7 @@ async fn b2_terminal_journal_cannot_reopen() {
 
 /// Recovery retry commits its first response once and replays it before stale versions.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_recover_retry_replays_once() {
     let f = fixture().await;
     let id = f.claim();
@@ -758,6 +788,7 @@ async fn b2_recover_retry_replays_once() {
 }
 /// Recovery abandonment commits its first response once and replays it after termination.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_recover_abandon_replays_once() {
     let f = fixture().await;
     let id = f.claim();
@@ -784,6 +815,7 @@ async fn b2_recover_abandon_replays_once() {
 }
 /// A recovery with stale independent step version writes no acknowledgement.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_recover_stale_step_rolls_back() {
     let f = fixture().await;
     let id = f.claim();
@@ -806,6 +838,7 @@ async fn b2_recover_stale_step_rolls_back() {
 }
 /// A live matching process prevents operator recovery even with current versions.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_recover_requires_empty_discovery() {
     let f = fixture().await;
     let id = f.claim();
@@ -821,6 +854,7 @@ async fn b2_recover_requires_empty_discovery() {
 }
 /// Unknown steps cannot become runnable without an operator recovery record.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_unknown_cannot_restart() {
     let f = fixture().await;
     let id = f.claim();
@@ -836,6 +870,7 @@ async fn b2_unknown_cannot_restart() {
 }
 /// Agent steps reject a NULL provider independently of Store validation.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_agent_null_provider_rejected() {
     let f = fixture().await;
     let id = f.claim();
@@ -851,6 +886,7 @@ async fn b2_agent_null_provider_rejected() {
 }
 /// A pipeline run cannot be abandoned while an unknown step may still be alive.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_abandon_rejects_unknown() {
     let f = fixture().await;
     let id = f.claim();
@@ -863,6 +899,7 @@ async fn b2_abandon_rejects_unknown() {
 }
 /// Native candidate enumeration excludes accepted pipeline Goals.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_native_candidates_exclude_pipeline() {
     let f = fixture().await;
     let page = f
@@ -874,6 +911,7 @@ async fn b2_native_candidates_exclude_pipeline() {
 
 /// A takeover fences stale step writes at the trigger without invoking the API guard.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_stale_step_trigger_after_takeover() {
     let f = fixture().await;
     let id = f.claim();
@@ -913,10 +951,13 @@ async fn b2_stale_step_trigger_after_takeover() {
     raw_step(&store, &step, owner.epoch, &step.state).unwrap();
 }
 
+#[cfg(target_os = "macos")]
 mod b3;
+#[cfg(target_os = "macos")]
 mod round2;
 /// Step versions advance exactly once on every permitted update.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_step_version_is_monotonic() {
     let f = fixture().await;
     let id = f.claim();
@@ -935,6 +976,7 @@ async fn b2_step_version_is_monotonic() {
 }
 /// Run versions advance exactly once on every permitted update.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_run_version_is_monotonic() {
     let f = fixture().await;
     let id = f.claim();
@@ -954,6 +996,7 @@ async fn b2_run_version_is_monotonic() {
 }
 /// A held run requires an operator recovery record before becoming running.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_held_run_requires_recovery() {
     let f = fixture().await;
     let id = f.claim();
@@ -966,6 +1009,7 @@ async fn b2_held_run_requires_recovery() {
 }
 /// A completed task run requires a done release journal in the same transaction.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_task_completion_requires_journal() {
     let f = fixture().await;
     let id = f.claim();
@@ -977,6 +1021,7 @@ async fn b2_task_completion_requires_journal() {
 }
 /// A new step sequence requires an adopted predecessor.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_step_sequence_requires_adoption() {
     let f = fixture().await;
     let id = f.claim();
@@ -987,6 +1032,7 @@ async fn b2_step_sequence_requires_adoption() {
 }
 /// A new attempt requires the previous attempt to be retryable.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_step_attempt_requires_retryable_predecessor() {
     let f = fixture().await;
     let id = f.claim();
@@ -997,6 +1043,7 @@ async fn b2_step_attempt_requires_retryable_predecessor() {
 }
 /// A recorded provider outcome cannot be changed after exit classification.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_provider_outcome_is_immutable() {
     let f = fixture().await;
     let id = f.claim();
@@ -1017,6 +1064,7 @@ async fn b2_provider_outcome_is_immutable() {
     step.body["provider_outcome"] = json!("success");
     assert!(write_step(&tx, &f.owner, &step).is_err());
 }
+#[cfg(target_os = "macos")]
 fn initial_wait(owner: &RuntimeOwner) -> PipelineLimitWait {
     PipelineLimitWait {
         owner_epoch: owner.epoch,
@@ -1032,6 +1080,7 @@ fn initial_wait(owner: &RuntimeOwner) -> PipelineLimitWait {
 }
 /// Time passage alone cannot clear a provider wait.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_wait_cannot_clear_from_waiting() {
     let f = fixture().await;
     let mut store = f.store();
@@ -1044,6 +1093,7 @@ async fn b2_wait_cannot_clear_from_waiting() {
 }
 /// A provider wait deadline cannot move backwards.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_wait_deadline_is_monotonic() {
     let f = fixture().await;
     let mut store = f.store();
@@ -1060,6 +1110,7 @@ async fn b2_wait_deadline_is_monotonic() {
 }
 /// A probe with a classified known success clears the global provider wait.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_wait_probe_success_clears() {
     let f = fixture().await;
     let id = f.claim();
@@ -1096,6 +1147,7 @@ async fn b2_wait_probe_success_clears() {
 }
 /// A probe with an unclassified failure extends rather than clears the wait.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_wait_probe_other_extends() {
     let f = fixture().await;
     let id = f.claim();
@@ -1131,6 +1183,7 @@ async fn b2_wait_probe_other_extends() {
 }
 /// An unresolved probe cannot be cleared before its recorded successful exit.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_wait_clear_requires_successful_probe() {
     let f = fixture().await;
     let id = f.claim();
@@ -1154,6 +1207,7 @@ async fn b2_wait_clear_requires_successful_probe() {
 }
 /// An open release journal prevents run abandonment until recovery settles it.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_abandon_requires_closed_journal() {
     let f = fixture().await;
     let id = f.claim();
@@ -1177,6 +1231,7 @@ async fn b2_abandon_requires_closed_journal() {
     run.state = "abandoned".into();
     assert!(write_run(&tx, &f.owner, &run).is_err());
 }
+#[cfg(target_os = "macos")]
 fn create_journal(f: &Fixture) -> PipelineJournal {
     let mut journal = release_journal(f, "");
     journal.run_id = None;
@@ -1184,6 +1239,7 @@ fn create_journal(f: &Fixture) -> PipelineJournal {
     journal.old_commit = "0".repeat(40);
     journal
 }
+#[cfg(target_os = "macos")]
 fn release_journal(f: &Fixture, id: &str) -> PipelineJournal {
     PipelineJournal {
         id: Uuid::new_v4().to_string(),
@@ -1202,6 +1258,7 @@ fn release_journal(f: &Fixture, id: &str) -> PipelineJournal {
 }
 /// A recovery failure after writing its ack rolls back the entire ordered transaction.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_recovery_midwrite_rollback() {
     let f = fixture().await;
     let id = f.claim();
@@ -1238,6 +1295,7 @@ async fn b2_recovery_midwrite_rollback() {
 }
 /// Request ID replay requires identical recovery action and arguments.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_recovery_replay_checks_identity() {
     let f = fixture().await;
     let id = f.claim();
@@ -1255,6 +1313,7 @@ async fn b2_recovery_replay_checks_identity() {
 }
 /// Native legacy classification refuses pipeline Goals at its owning gate.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_native_gate_excludes_pipeline() {
     let f = fixture().await;
     assert!(
@@ -1269,6 +1328,7 @@ async fn b2_native_gate_excludes_pipeline() {
 }
 /// Inventory preserves unknown process evidence without advancing the epoch.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_inventory_is_read_only() {
     let f = fixture().await;
     let id = f.claim();
@@ -1280,6 +1340,7 @@ async fn b2_inventory_is_read_only() {
     assert_eq!(f.cursor(&id).run_version, before.run_version);
 }
 
+#[cfg(target_os = "macos")]
 fn held_release(f: &Fixture) -> (String, PipelineJournal) {
     let id = f.claim();
     f.launching(&id, "implement");
@@ -1327,6 +1388,7 @@ fn held_release(f: &Fixture) -> (String, PipelineJournal) {
 }
 /// Abandon recovery closes an unapplied release journal before abandoning the run.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_recovery_aborts_unapplied_release() {
     let f = fixture().await;
     let (id, j) = held_release(&f);
@@ -1358,6 +1420,7 @@ async fn b2_recovery_aborts_unapplied_release() {
 }
 /// Abandon recovery records an already applied release as completed with stable replay.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_recovery_completes_applied_release() {
     let f = fixture().await;
     let (id, j) = held_release(&f);
@@ -1382,6 +1445,7 @@ async fn b2_recovery_completes_applied_release() {
 }
 /// Recovery refuses an unexpected ref without recording an acknowledgement.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b2_recovery_refuses_unexpected_ref() {
     let f = fixture().await;
     let (id, j) = held_release(&f);
@@ -1410,6 +1474,11 @@ async fn b2_recovery_refuses_unexpected_ref() {
     );
 }
 
+#[cfg(target_os = "macos")]
 mod fix1;
+#[cfg(target_os = "macos")]
 mod fix2;
+#[cfg(target_os = "macos")]
 mod fix3;
+
+mod portable;

@@ -217,9 +217,6 @@ impl Runtime {
     /// version the current row must still have, or `None` for a new row).
     async fn commit_project(&self, project: &mut Project, expected: Option<u64>) -> Result<()> {
         let _admission = self.control_admission.lock().await;
-        if let Some(pipeline) = &self.config.pipeline {
-            pipeline.check_project_root(&project.root.canonicalize()?)?;
-        }
         let (instance, epoch) = (self.owner.instance_id().to_owned(), self.owner.epoch());
         let stopping = self.stopping.clone();
         // M1: the in-flight set stays locked until the write has committed,
@@ -249,6 +246,12 @@ impl Runtime {
                 }
                 if in_flight {
                     return Err(InFlight.into());
+                }
+                if let Some(pipeline) = &self.config.pipeline
+                    && (planned.state == ProjectState::Registered
+                        || current.is_some_and(|row| row.root != planned.root))
+                {
+                    pipeline.check_project_root(&planned.root.canonicalize()?)?;
                 }
                 match (current, expected) {
                     (None, None) => Ok(()),
@@ -576,6 +579,7 @@ mod tests {
 
     /// Registration and re-registration refuse private pipeline overlaps without changing rows.
     #[tokio::test]
+    #[cfg(target_os = "macos")]
     async fn b3_project_private_overlap() {
         let dir = tempfile::tempdir().unwrap();
         let owner = RuntimeOwner::open_mode(
@@ -812,5 +816,78 @@ mod tests {
         );
         assert!(started.elapsed() < Duration::from_secs(5));
         assert!(runtime.project_preflights.try_lock().is_ok());
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod b3_fix2_tests {
+    use super::*;
+
+    async fn missing_root(remove: bool) {
+        let dir = tempfile::tempdir().unwrap();
+        let owner =
+            crate::execution::RuntimeOwner::open(&dir.path().join("state/state.db")).unwrap();
+        let config = crate::config::Config {
+            pipeline: Some(crate::execution::pipeline::test_support::config(
+                &owner,
+                dir.path(),
+            )),
+            ..Default::default()
+        };
+        let runtime = Runtime::new(owner.clone(), config).unwrap();
+        let root = dir.path().join("source");
+        std::fs::create_dir(&root).unwrap();
+        let mut project = Project::new(
+            "deleted".into(),
+            root.canonicalize().unwrap(),
+            "fixture".into(),
+            "main".into(),
+        );
+        runtime.commit_project(&mut project, None).await.unwrap();
+        std::fs::remove_dir(&root).unwrap();
+        if remove {
+            let request = ControlRequest {
+                request_id: uuid::Uuid::new_v4(),
+                instance: owner.instance_id().into(),
+                epoch: owner.epoch(),
+                action: ControlAction::ProjectRemove {
+                    project: project.id,
+                    expected_project: project.version,
+                },
+            };
+            assert!(matches!(
+                runtime.handle_project(&request).await.unwrap(),
+                Some(ControlResponse::ProjectSaved {
+                    project: Project {
+                        state: ProjectState::Removed,
+                        ..
+                    },
+                    changed: true
+                })
+            ));
+        } else {
+            let checked = runtime.reconcile_one(&project).await;
+            let saved = runtime
+                .project_snapshot()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.id == project.id)
+                .unwrap();
+            assert_eq!(saved.state, ProjectState::Blocked);
+            assert_eq!(checked.mark, ReconcileMark::Checked);
+            assert_eq!(checked.version, saved.version);
+        }
+    }
+
+    /// Removing a missing Project root remains possible with pipeline configured.
+    #[tokio::test]
+    async fn b3_project_remove_missing_root() {
+        missing_root(true).await;
+    }
+
+    /// Reconciliation persists Blocked when a configured pipeline Project root disappears.
+    #[tokio::test]
+    async fn b3_project_block_missing_root() {
+        missing_root(false).await;
     }
 }

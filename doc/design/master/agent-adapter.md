@@ -204,9 +204,11 @@ the native binary itself; npm Codex uses
 Interpreter scripts cannot pin the image and refuse Q. Codex config permits only
 string `model` and `model_reasoning_effort`; other keys refuse Q.
 
-Probe commands clear the environment. Image/config reads and probe observation
-share a five-second qualification deadline, with four KiB combined output per
-probe. Nonblocking open and descriptor checks refuse special files. Launch uses
+Probe commands clear the environment. Each probe has a fresh five-second deadline,
+capped by a 35-second overall
+CLI qualification observation deadline covering image/config reads and all probes,
+with four KiB combined output per probe. Nonblocking open and descriptor checks
+refuse special files. Launch uses
 `rrx-spawn-hygiene` with retained process-group custody. Probe cleanup reuses the
 adapter's macOS EPERM resolver/inspector on a blocking worker retaining the
 unreaped leader. Only confirmed all-dead inspection resolves EPERM;

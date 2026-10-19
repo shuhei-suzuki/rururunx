@@ -164,13 +164,10 @@ async fn b3_native_owner_launch_refused() {
     let accepted = fixture().await;
     let id = accepted.claim();
     let cursor = accepted.cursor(&id);
-    accepted
-        .store()
-        .pipeline_begin_launch(&accepted.owner, &cursor, None, &json!({}))
-        .unwrap();
     let f = fixture_mode(false).await;
-    let before = f.store().pipeline_goal_view(f.goal).unwrap();
-    let error = f
+    let before = accepted.store().pipeline_goal_view(accepted.goal).unwrap();
+    assert_eq!(before.steps[0].state, "planned");
+    let error = accepted
         .store()
         .pipeline_begin_launch(&f.owner, &cursor, None, &json!({}))
         .unwrap_err();
@@ -180,12 +177,36 @@ async fn b3_native_owner_launch_refused() {
             .contains("pipeline requires CliPipeline owner"),
         "{error:#}"
     );
-    assert_eq!(f.store().pipeline_goal_view(f.goal).unwrap(), before);
+    assert_eq!(
+        accepted.store().pipeline_goal_view(accepted.goal).unwrap(),
+        before
+    );
+    // Positive control on precisely the same rows and cursor proves launchability.
+    assert!(matches!(
+        accepted
+            .store()
+            .pipeline_begin_launch(&accepted.owner, &cursor, None, &json!({}))
+            .unwrap(),
+        PipelineLaunch::Started
+    ));
+}
+
+/// Reopening a launchable pipeline state as native refuses before retiring its epoch.
+#[tokio::test]
+async fn b3_native_reopen_launchable_refused() {
+    let f = fixture().await;
+    let id = f.claim();
+    let before = f.store().pipeline_goal_view(f.goal).unwrap();
+    assert_eq!(before.steps[0].state, "planned");
+    assert_eq!(f.cursor(&id).seq, 1);
+    refuses_native(f).await;
 }
 
 async fn refuses_native(f: Fixture) {
     let path = f.owner.state_path().to_path_buf();
     let before = f.store().pipeline_mode_inventory().unwrap();
+    let goal = f.goal;
+    let rows = f.store().pipeline_goal_view(goal).unwrap();
     let epoch = f.owner.epoch();
     let retained = std::sync::Arc::downgrade(&f.owner);
     drop(f.ingress);
@@ -206,6 +227,7 @@ async fn refuses_native(f: Fixture) {
     let store = Store::open(&path).unwrap();
     assert_eq!(store.connection_epoch_for_test(), epoch);
     assert_eq!(store.pipeline_mode_inventory().unwrap(), before);
+    assert_eq!(store.pipeline_goal_view(goal).unwrap(), rows);
 }
 
 /// A held pipeline run prevents native startup without advancing epoch or changing its evidence.

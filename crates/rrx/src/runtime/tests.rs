@@ -18,8 +18,9 @@ fn config() -> Config {
     c
 }
 
-/// Pipeline control refuses a Goal plan without an execution profile before any publication.
+/// Pipeline Goal acceptance returns a typed unavailable result without publication.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b3_pipeline_goal_profile_required() {
     let dir = tempfile::tempdir().unwrap();
     let owner = RuntimeOwner::open_mode(
@@ -35,28 +36,39 @@ async fn b3_pipeline_goal_profile_required() {
     ));
     let runtime = Runtime::new(owner.clone(), config).unwrap();
     let (socket, _peer) = tokio::net::UnixStream::pair().unwrap();
+    let project = crate::domain::ProjectId::new();
     let request = ControlRequest {
         request_id: Uuid::new_v4(),
         instance: owner.instance_id().into(),
         epoch: owner.epoch(),
         action: ControlAction::CreateGoal {
-            project: crate::domain::ProjectId::new(),
+            project,
             expected_project: 1,
             plan: plan(),
         },
     };
+    let response = runtime.handle_control(&socket, request).await.unwrap();
+    assert!(matches!(
+        response,
+        ControlResponse::Unavailable {
+            reason: UnavailableReason::PipelineGoalAcceptanceUnavailable,
+            ..
+        }
+    ));
     assert!(
-        runtime
-            .handle_control(&socket, request)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("cli_pipeline CreateGoal requires an execution profile")
+        owner
+            .store
+            .lock()
+            .unwrap()
+            .goals(project)
+            .unwrap()
+            .is_empty()
     );
 }
 
 /// A stale Q is visible in RuntimeStatus after the sweep currency check fails.
 #[tokio::test]
+#[cfg(target_os = "macos")]
 async fn b3_pipeline_stale_q_status() {
     let dir = tempfile::tempdir().unwrap();
     let owner = RuntimeOwner::open_mode(
