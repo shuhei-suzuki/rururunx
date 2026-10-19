@@ -129,7 +129,7 @@ impl TaskWorkspace {
                 && self.git.text(&["rev-parse", "HEAD"]).await? == commit,
             "worktree_drift"
         );
-        self.git.reject_index_gitlinks().await?;
+        self.git.reject_unsafe_index().await?;
         self.git.reject_ignored_protected().await?;
         ensure!(
             self.git

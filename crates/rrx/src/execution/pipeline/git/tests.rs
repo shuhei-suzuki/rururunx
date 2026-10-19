@@ -1,5 +1,32 @@
 use super::*;
 
+/// Index flags cannot hide any entry while ordinary tags and arbitrary path bytes remain valid.
+#[test]
+fn b5_f3_index_flags() {
+    reject_index_flags(b"").unwrap();
+    let mut ordinary = Vec::new();
+    for tag in b"HMRCK?" {
+        ordinary.extend([*tag, b' ']);
+        ordinary.extend(b"ordinary/S h\n\xff\0");
+    }
+    reject_index_flags(&ordinary).unwrap();
+    for tag in b'a'..=b'z' {
+        let mut entries = ordinary.clone();
+        entries.extend([tag, b' ', b'p', 0]);
+        assert_eq!(
+            reject_index_flags(&entries).unwrap_err().to_string(),
+            "git_driver_declared",
+            "tag {}",
+            char::from(tag)
+        );
+    }
+    ordinary.extend(b"S skip-worktree\0");
+    assert_eq!(
+        reject_index_flags(&ordinary).unwrap_err().to_string(),
+        "git_driver_declared"
+    );
+}
+
 /// Every index stage is checked for gitlinks without interpreting bytes inside paths.
 #[test]
 fn b5_f1h2_index_gitlink_entries() {

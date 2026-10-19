@@ -237,6 +237,50 @@ async fn b5_f1h2_index_gitlink_clean() {
     assert!(!marker.exists());
 }
 
+/// Hidden tracked instructions refuse adoption and clean verification without moving the Task ref.
+#[tokio::test]
+async fn b5_f3_hidden_index_instructions() {
+    for flag in ["--assume-unchanged", "--skip-worktree"] {
+        let mut f = Fixture::new().await;
+        let oid = f.blob(b"base instructions\n").await;
+        f.set_base(format!("100644 blob {oid}\tAGENTS.md\n").as_bytes())
+            .await;
+        file(f.work.git.root(), "AGENTS.md", b"base instructions\n");
+        f.work.clean_at(&f.step.step_base).await.unwrap();
+        f.work
+            .git
+            .run(&["update-index", flag, "AGENTS.md"])
+            .await
+            .unwrap();
+        file(f.work.git.root(), "AGENTS.md", b"hostile instructions\n");
+        assert!(
+            f.work
+                .git
+                .run(&["status", "--porcelain=v1", "-z"])
+                .await
+                .unwrap()
+                .is_empty(),
+            "the index flag must hide the rewritten tracked file"
+        );
+        assert_eq!(
+            f.build().await.err().unwrap().to_string(),
+            "git_driver_declared",
+            "{flag} build"
+        );
+        assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
+        assert_eq!(
+            f.work
+                .clean_at(&f.step.step_base)
+                .await
+                .unwrap_err()
+                .to_string(),
+            "git_driver_declared",
+            "{flag} clean"
+        );
+        assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
+    }
+}
+
 /// The binary macro in any tree attribute casing refuses secret-bearing changes.
 #[tokio::test]
 async fn b5_f1_binary_tree() {

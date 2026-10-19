@@ -183,9 +183,11 @@ impl PipelineGit {
         scan_attributes(&self.root)
     }
     /// The Agent's index can hide paths from status even when the base has no gitlinks.
-    pub(crate) async fn reject_index_gitlinks(&self) -> Result<()> {
+    pub(crate) async fn reject_unsafe_index(&self) -> Result<()> {
         let entries = self.run(&["ls-files", "--stage", "-z"]).await?;
-        reject_index_entries(&entries)
+        reject_index_entries(&entries)?;
+        let flags = self.run(&["ls-files", "-v", "-z"]).await?;
+        reject_index_flags(&flags)
     }
     /// Ignored instruction/control paths must not survive into the next step.
     pub(crate) async fn reject_ignored_protected(&self) -> Result<()> {
@@ -257,6 +259,16 @@ pub(super) fn fold_name(name: &str) -> String {
 fn reject_index_entries(entries: &[u8]) -> Result<()> {
     for entry in entries.split(|b| *b == 0).filter(|s| !s.is_empty()) {
         ensure!(!entry.starts_with(b"160000 "), "git_driver_declared");
+    }
+    Ok(())
+}
+fn reject_index_flags(entries: &[u8]) -> Result<()> {
+    for entry in entries.split(|b| *b == 0).filter(|s| !s.is_empty()) {
+        let tag = entry[0];
+        ensure!(
+            !tag.is_ascii_lowercase() && tag != b'S',
+            "git_driver_declared"
+        );
     }
     Ok(())
 }

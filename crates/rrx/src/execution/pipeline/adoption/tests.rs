@@ -108,6 +108,25 @@ fn b5_f2_ignored_components() {
         );
     }
 }
+/// Invalid UTF-8 components are ordinary without hiding adjacent protected components.
+#[test]
+fn b5_f3_ignored_non_utf8_components() {
+    reject_ignored_entries(b"!! target/\xff\0!! .git\xff/config\0!! AGENTS.md\xff\0").unwrap();
+    for path in [
+        b"\xff/AGENTS.md".as_slice(),
+        b"CLAUDE.md/\xff",
+        b"ordinary/\xff/.codex/config.toml",
+        "\u{fffd}/AGENTſ.md".as_bytes(),
+    ] {
+        let mut rows = b"!! target/\xff\0!! ".to_vec();
+        rows.extend(path);
+        rows.push(0);
+        assert_eq!(
+            reject_ignored_entries(&rows).unwrap_err().to_string(),
+            "protected_path"
+        );
+    }
+}
 /// Only a regular file enters the captured change set.
 #[test]
 fn b5_symlink_refused() {
