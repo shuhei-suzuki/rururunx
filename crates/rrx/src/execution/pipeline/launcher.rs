@@ -3,7 +3,7 @@ use crate::{
     adapter::ProcessGroup,
     config::PipelineConfig,
     execution::RuntimeOwner,
-    state::pipeline::{PipelineCursor, PipelineLaunch},
+    state::pipeline::{PipelineCursor, PipelineExit, PipelineLaunch},
 };
 use anyhow::{Context, Result, ensure};
 use serde_json::json;
@@ -225,18 +225,23 @@ impl StepLauncher {
                     .store
                     .lock()
                     .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .pipeline_record_exit(
+                    .pipeline_finish_step(
                         &self.owner,
                         &cursor,
                         &dead.evidence,
-                        Some("other"),
-                        &json!("killed_after_record_failure"),
+                        PipelineExit {
+                            outcome: Some("other"),
+                            evidence: &json!({"issue":"record_failed"}),
+                            issue: Some("record_failed"),
+                        },
                     );
             }
             self.wake.notify_one();
             return Ok(LaunchResult::RecordFailed);
         }
         cursor.step_version += 1;
+        #[cfg(all(test, target_os = "macos"))]
+        super::test_support::launch_checkpoint(super::test_support::LaunchPhase::Recorded).await;
         let pin = cli.version.clone();
         drop(boundary); // No stdin/output wait or monitoring under control_admission.
         Ok(LaunchResult::Started(StepCustody::start(

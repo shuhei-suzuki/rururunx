@@ -294,16 +294,29 @@ async fn b4_live_output_overflow() {
     h.close().await;
 }
 
-/// A failed running-record transaction cannot reject an already spawned attempt.
+/// A failed running-record transaction rejects and holds only after proven death.
 #[tokio::test]
 async fn b4_record_failure_death() {
     let h = Harness::new("implement").await;
     h.f.store().connection.execute_batch("CREATE TEMP TRIGGER b4_fail_running BEFORE UPDATE ON pipeline_steps WHEN NEW.state='running' BEGIN SELECT RAISE(ABORT,'injected running failure'); END;").unwrap();
-    let _result = h.launch().await;
+    assert!(matches!(h.launch().await, LaunchResult::RecordFailed));
     let step = h.step();
-    assert_eq!(step.state, "exited");
-    assert_eq!(step.body["exit"], "killed_after_record_failure");
+    assert_eq!(step.state, "rejected");
+    assert_eq!(step.body["exit"]["issue"], "record_failed");
+    assert_eq!(step.body["reason"], "record_failed");
+    assert_eq!(step.body["provider_outcome"], "other");
     assert_eq!(step.body["death_confirmed"], true);
+    assert_eq!(
+        h.f.store()
+            .pipeline_task_view(h.f.goal, h.f.task)
+            .unwrap()
+            .runs
+            .iter()
+            .find(|run| run.id == h.id)
+            .unwrap()
+            .state,
+        "held"
+    );
     h.close().await;
 }
 
@@ -773,47 +786,73 @@ async fn b4_group_not_empty_holds() {
 }
 
 /// Pause waits across tx1/spawn/tx2, but can finish while stdin is blocked.
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn b4_control_waits_for_launch_boundary() {
     use crate::execution::pipeline::test_support::{LaunchPhase, pause_launch};
     let h = Harness::with_prompt("implement", &vec![b'p'; 512 * 1024]).await;
     h.fake.control("exec-pause", "");
-    let release = pause_launch(LaunchPhase::Intent);
+    let mut checkpoint = Some(pause_launch(LaunchPhase::Intent));
     let launch = h.launch();
     tokio::pin!(launch);
-    assert!(futures_util::poll!(&mut launch).is_pending());
-    assert_eq!(h.step().state, "launching");
-    assert!(!h.fake.directory.join("exec-entered").exists());
     let control = pause(&h);
     tokio::pin!(control);
-    assert!(futures_util::poll!(&mut control).is_pending());
-    release.send(()).unwrap();
-    let LaunchResult::Started(custody) = launch.await else {
+    for (phase, next) in [
+        (LaunchPhase::Intent, Some(LaunchPhase::Verified)),
+        (LaunchPhase::Verified, Some(LaunchPhase::Recorded)),
+        (LaunchPhase::Recorded, None),
+    ] {
+        let (release, arrived) = checkpoint.take().unwrap();
+        tokio::select! {
+            _ = &mut launch => panic!("launch bypassed checkpoint"),
+            arrival = arrived => arrival.unwrap(),
+        }
+        assert_eq!(
+            h.step().state,
+            if phase == LaunchPhase::Recorded {
+                "running"
+            } else {
+                "launching"
+            }
+        );
+        if phase != LaunchPhase::Recorded {
+            assert!(!h.fake.directory.join("exec-entered").exists());
+        }
+        assert!(futures_util::poll!(&mut control).is_pending());
+        checkpoint = next.map(pause_launch);
+        release.send(()).unwrap();
+    }
+    let (launched, state_at_pause) = tokio::join!(launch, async {
+        tokio::time::timeout(std::time::Duration::from_secs(2), &mut control)
+            .await
+            .unwrap();
+        h.step().state
+    });
+    let LaunchResult::Started(custody) = launched else {
         panic!("launch did not start")
     };
     wait_for_file(&h.fake.directory.join("exec-entered")).await;
     // The fake has not read stdin; a 512 KiB write cannot fit into its pipe.
     assert!(!h.fake.directory.join("stdin").exists());
-    tokio::time::timeout(std::time::Duration::from_secs(2), &mut control)
-        .await
-        .unwrap();
-    assert_eq!(h.step().state, "running");
+    assert_eq!(state_at_pause, "running");
     custody.request_stop();
     custody.wait().await.unwrap();
     h.runtime.shutdown().await.unwrap();
 }
 
 /// Spawn uses the last verified image even if its configured symlink changes.
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn b4_spawn_verified_realpath() {
     use crate::execution::pipeline::test_support::{LaunchPhase, pause_launch};
     use std::os::unix::fs::symlink;
     let h = Harness::with_alias("implement", b"pipeline\n", true).await;
     let alias = &h.fake.cli.executable;
-    let release = pause_launch(LaunchPhase::Verified);
+    let (release, arrived) = pause_launch(LaunchPhase::Verified);
     let launch = h.runtime.launch_pipeline_step(h.f.cursor(&h.id), h.input());
     tokio::pin!(launch);
-    assert!(futures_util::poll!(&mut launch).is_pending());
+    tokio::select! {
+        _ = &mut launch => panic!("launch bypassed Verified checkpoint"),
+        arrival = arrived => arrival.unwrap(),
+    }
     std::fs::remove_file(alias).unwrap();
     symlink("/usr/bin/false", alias).unwrap();
     release.send(()).unwrap();

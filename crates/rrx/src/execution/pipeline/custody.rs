@@ -12,6 +12,7 @@ use rustix::process::{Pid, test_kill_process_group};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
+    collections::VecDeque,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -385,6 +386,7 @@ impl Monitor {
 
 struct Capture {
     bytes: Vec<u8>,
+    tail_bytes: VecDeque<u8>,
     seen: u64,
     limit: usize,
     tail: bool,
@@ -396,6 +398,7 @@ impl Capture {
     fn new(limit: usize, tail: bool) -> Self {
         Self {
             bytes: Vec::new(),
+            tail_bytes: VecDeque::with_capacity(if tail { limit } else { 0 }),
             seen: 0,
             limit,
             tail,
@@ -421,8 +424,10 @@ impl Capture {
         self.truncated |= overflow;
         let before = self.bytes.len();
         if self.tail {
-            let (file, _) = self.live.as_mut().context("stderr capture not started")?;
-            file.write_all(bytes)?;
+            let keep = &bytes[bytes.len().saturating_sub(self.limit)..];
+            let discard = (self.tail_bytes.len() + keep.len()).saturating_sub(self.limit);
+            self.tail_bytes.drain(..discard);
+            self.tail_bytes.extend(keep);
         } else {
             self.bytes.extend_from_slice(
                 &bytes[..bytes.len().min(self.limit.saturating_sub(self.bytes.len()))],
@@ -435,16 +440,13 @@ impl Capture {
         Ok(self.tail || !overflow)
     }
     fn retain(&self, root: &Path, name: &str, complete: bool) -> Result<StreamEvidence> {
-        use std::io::{Read, Seek, SeekFrom};
         if let Some((file, _)) = &self.live {
             file.sync_all()?;
         }
-        let mut tail = Vec::new();
+        let tail;
         let (bytes, digest) = if self.tail {
-            let (_, path) = self.live.as_ref().context("stderr capture not started")?;
-            let mut file = std::fs::File::open(path)?;
-            file.seek(SeekFrom::Start(self.seen.saturating_sub(self.limit as u64)))?;
-            file.take(self.limit as u64).read_to_end(&mut tail)?;
+            self.live.as_ref().context("stderr capture not started")?;
+            tail = self.tail_bytes.iter().copied().collect::<Vec<_>>();
             let digest = Sha256::digest(&tail);
             (tail.as_slice(), format!("{digest:x}"))
         } else {

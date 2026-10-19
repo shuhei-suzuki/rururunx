@@ -115,21 +115,40 @@ fn b4_stdout_bound() {
     assert!(capture.truncated);
 }
 
-/// Stderr overflow preserves the bounded tail without rejecting the process.
+/// Stderr retains the exact bounded tail without growing capture files or memory.
 #[test]
 fn b4_stderr_tail() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().canonicalize().unwrap();
-    let mut capture = Capture::new(4, true);
+    let mut capture = Capture::new(STDERR_BYTES, true);
     capture.start(&root.join("stderr.pending")).unwrap();
-    assert!(capture.append(b"abc").unwrap());
-    assert!(capture.append(b"def").unwrap());
-    assert_eq!(
-        std::fs::read(root.join("stderr.pending")).unwrap(),
-        b"abcdef"
-    );
+    let input: Vec<u8> = (0..5 * STDERR_BYTES + 137)
+        .map(|n| (n.wrapping_mul(31).wrapping_add(n / 251) % 256) as u8)
+        .collect();
+    let (large, rest) = input.split_at(2 * STDERR_BYTES + 19);
+    for chunk in std::iter::once(large).chain(rest.chunks(STDERR_BYTES / 3 + 17)) {
+        assert!(capture.append(chunk).unwrap());
+        assert!(capture.tail_bytes.len() <= STDERR_BYTES);
+        assert!(capture.tail_bytes.capacity() <= STDERR_BYTES);
+        assert!(capture.bytes.is_empty());
+        for file in std::fs::read_dir(&root).unwrap() {
+            assert!(file.unwrap().metadata().unwrap().len() <= STDERR_BYTES as u64);
+        }
+        assert_eq!(
+            std::fs::metadata(root.join("stderr.pending"))
+                .unwrap()
+                .len(),
+            0
+        );
+    }
+    let expected = &input[input.len() - STDERR_BYTES..];
     let evidence = capture.retain(&root, "stderr", true).unwrap();
-    assert_eq!(inspect(&root, "stderr", &evidence, 4).unwrap(), b"cdef");
+    assert_eq!(evidence.bytes, STDERR_BYTES as u64);
+    assert_eq!(evidence.sha256, format!("{:x}", Sha256::digest(expected)));
+    assert_eq!(
+        inspect(&root, "stderr", &evidence, STDERR_BYTES).unwrap(),
+        expected
+    );
     assert!(evidence.complete);
     assert!(!root.join("stderr.pending").exists());
     assert!(capture.truncated);

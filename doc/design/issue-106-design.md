@@ -423,7 +423,7 @@ BEGIN SELECT RAISE(ABORT,'invalid pipeline limit wait transition'); END;
 5. 結果を進める API（規則 G）は、同じ tx で Goal が Running であることを確かめる。
 6. trigger（§2.3）は、API の検査が抜けたときの第 2 の層である。
 
-API の一覧（B2 で作る。どれも spawn しない）: `pipeline_mode_inventory`（読み取り。epoch の前）、`pipeline_claim_run`、`pipeline_take_over`、`pipeline_begin_launch`（tx1）、`pipeline_record_running`（tx2）、`pipeline_record_launch_unknown`、`pipeline_record_exit`、`pipeline_record_limited`、`pipeline_record_commit`、`pipeline_adopt`、`pipeline_hold`、`pipeline_plan_next`、`pipeline_release_begin`、`pipeline_release_settle`、`pipeline_complete_goal`、`pipeline_cancel_run`、`pipeline_recover`、`pipeline_settle_limit_wait`（§2.6 の 4）、`pipeline_record_qualification`、読み取りの `pipeline_goal_view` / `pipeline_task_view`。step を launching / running から出す API（`pipeline_record_exit`・`pipeline_record_launch_unknown`・`pipeline_hold`・中断の記録など）は、その step が probe なら、同じ tx で上限待ちの記録を決着させる（§2.6）。
+API の一覧（B2 で作る。どれも spawn しない）: `pipeline_mode_inventory`（読み取り。epoch の前）、`pipeline_claim_run`、`pipeline_take_over`、`pipeline_begin_launch`（tx1）、`pipeline_record_running`（tx2）、`pipeline_record_launch_unknown`、`pipeline_record_exit`、`pipeline_finish_step`、`pipeline_record_limited`、`pipeline_record_commit`、`pipeline_adopt`、`pipeline_hold`、`pipeline_plan_next`、`pipeline_release_begin`、`pipeline_release_settle`、`pipeline_complete_goal`、`pipeline_cancel_run`、`pipeline_recover`、`pipeline_settle_limit_wait`（§2.6 の 4）、`pipeline_record_qualification`、読み取りの `pipeline_goal_view` / `pipeline_task_view`。step を launching / running から出す API（`pipeline_record_exit`・`pipeline_finish_step`・`pipeline_record_launch_unknown`・`pipeline_hold`・中断の記録など）は、その step が probe なら、同じ tx で上限待ちの記録を決着させる（§2.6）。
 
 ### 2.5 Goal plan の拡張
 
@@ -519,7 +519,7 @@ v1 は CLI の account と provider の account を対応付けないので、�
 | launching → running | StepLauncher の tx2 | spawn が Ok を返したこと。pid、pgid（=pid）、birth（`rrx-process-tracker` の identity による開始時刻） |
 | launching → unknown | StepLauncher / 復旧 | spawn が Err を返した（子が残りうる。`crates/rrx-spawn-hygiene/src/lib.rs:5-6`）か、再起動時に launching を見つけた |
 | launching → rejected | StepLauncher | spawn を呼ぶ前の失敗（attempt ディレクトリの作成、sha256 の不一致、test の `recheck` の失敗など）。spawn を呼んでいないことを同じプロセスの中で確実に知っている場合だけ |
-| launching → exited | StepLauncher | tx2 が失敗したあと、group を kill して死亡を確認した場合（`body.exit=killed_after_record_failure`）。確認できなければ launching のまま残す（再起動時に unknown になる） |
+| launching → rejected | StepLauncher | tx2 が失敗したあと、group を kill して死亡を確認した場合。`pipeline_finish_step` で死亡の根拠、`body.exit.issue=record_failed`、`reason=record_failed`、step の rejected と run の held、probe の待ちの決着を 1 commit で記録する。確認できなければ launching のまま残す（再起動時に unknown になる） |
 | running → exited | StepCustody | §3.5 の死亡確認がすべて成功した。終了の状態、出力の sha256、上限を超えたかどうか、Agent の kind では `provider_outcome`（§2.6・§5.6） |
 | running → interrupted | 停止 / Goal の pause・cancel | kill して死亡を確認した。attempt が 16 なら interrupted ではなく held（`attempt_limit`、`death_confirmed=true`） |
 | running → held | StepCustody / 復旧 | 死亡を確認できない（group が空にならない、discovery が limited、cookie を持つプロセスが見つかる）。または古い epoch の running（custody の喪失） |

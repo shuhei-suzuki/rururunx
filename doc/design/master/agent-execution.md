@@ -174,6 +174,8 @@ producer policy is covered by local protocol controls, not actual account recove
 
 CLI pipeline `StepCustody` concurrently handles stdin, bounded stdout/stderr,
 leader exit, deadlines and stop notifications after releasing the control boundary.
+Exit evidence, provider outcome, probe-wait settlement and final step classification
+(rejected or interrupted, including any run hold) are written in one Store commit.
 Captured evidence is retained as private read-only files and read back with its
 length and SHA-256 before provider classification. Stdout overflow rejects the
 result after death confirmation; stderr retains its bounded tail and records
