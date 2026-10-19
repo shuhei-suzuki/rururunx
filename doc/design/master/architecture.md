@@ -500,6 +500,9 @@ automatic-maintenance overrides, bounded output and a ten-second observation
 deadline. Repository configuration and tree/worktree attributes are inspected for
 drivers before checkout, reset, status or adoption. Diff commands disable external
 diff and text conversion; blob hashing uses `--no-filters` on captured bytes.
+Inspection combines local configuration with worktree configuration only when
+`extensions.worktreeConfig` is enabled in the common local configuration. Read
+failures refuse the operation; the control inventory always covers `config.worktree`.
 
 Prepare consumes the durable Goal-creation journal, creates an absent Task branch
 and registered private worktree, then verifies symbolic HEAD, base and clean state.

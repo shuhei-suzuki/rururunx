@@ -1,4 +1,79 @@
 use super::*;
+
+/// Repository inspection reads exactly the scopes Git enables and preserves their union.
+#[tokio::test]
+async fn b5_config_active_scopes() {
+    for enabled in [false, true] {
+        let mut calls = 0;
+        let bytes = read_local_config(|args| {
+            calls += 1;
+            std::future::ready(Ok(if args.contains(&"--get") {
+                if enabled {
+                    b"true\n".to_vec()
+                } else {
+                    b"false\n".to_vec()
+                }
+            } else if args.contains(&"--worktree") {
+                assert!(enabled, "disabled worktree scope must not be read");
+                b"file:config.worktree\0filter.fixture.clean\nfalse\0".to_vec()
+            } else {
+                assert!(args.contains(&"--local"));
+                b"file:config\0diff.external\nfalse\0".to_vec()
+            }))
+        })
+        .await
+        .unwrap();
+        let mut expected = b"file:config\0diff.external\nfalse\0".to_vec();
+        if enabled {
+            expected.extend(b"file:config.worktree\0filter.fixture.clean\nfalse\0");
+        }
+        assert_eq!(bytes, expected);
+        assert_eq!(calls, if enabled { 3 } else { 2 });
+    }
+}
+
+/// Failure to inspect any active configuration source refuses the whole inspection.
+#[tokio::test]
+async fn b5_config_read_failure() {
+    for failing_call in 0..3 {
+        let mut call = 0;
+        let result = read_local_config(|args| {
+            let result = if call == failing_call {
+                Err(anyhow::anyhow!("fixture config read failure"))
+            } else if args.contains(&"--get") {
+                Ok(b"true\n".to_vec())
+            } else {
+                Ok(Vec::new())
+            };
+            call += 1;
+            std::future::ready(result)
+        })
+        .await;
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "fixture config read failure"
+        );
+        assert_eq!(call, failing_call + 1);
+    }
+}
+
+/// An unrecognized extension result cannot disable inspection of worktree configuration.
+#[tokio::test]
+async fn b5_config_invalid_extension() {
+    let result = read_local_config(|args| {
+        std::future::ready(Ok(if args.contains(&"--get") {
+            b"invalid\n".to_vec()
+        } else {
+            Vec::new()
+        }))
+    })
+    .await;
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "invalid worktreeConfig value"
+    );
+}
+
 /// Git returns bounded output after verified cleanup of an exited leader's group.
 #[cfg(target_os = "macos")]
 #[tokio::test]
@@ -92,3 +167,6 @@ fn b5_git_environment() {
         assert!(args.contains(&required));
     }
 }
+
+#[cfg(target_os = "macos")]
+mod host;

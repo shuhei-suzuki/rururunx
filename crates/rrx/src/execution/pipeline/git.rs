@@ -159,29 +159,7 @@ impl PipelineGit {
         }
     }
     pub(crate) async fn local_config(&self) -> Result<Vec<u8>> {
-        // Git accepts only one scope switch: read each scope separately, including includes.
-        let mut bytes = self
-            .run(&[
-                "config",
-                "--includes",
-                "--list",
-                "--show-origin",
-                "-z",
-                "--local",
-            ])
-            .await?;
-        bytes.extend(
-            self.run(&[
-                "config",
-                "--includes",
-                "--list",
-                "--show-origin",
-                "-z",
-                "--worktree",
-            ])
-            .await?,
-        );
-        Ok(bytes)
+        read_local_config(|args| self.run(args)).await
     }
     pub(crate) async fn reject_drivers(&self, tree: &str) -> Result<()> {
         let config = self.local_config().await?;
@@ -212,6 +190,51 @@ impl PipelineGit {
         }
         Ok(())
     }
+}
+async fn read_local_config<F, Fut>(mut read: F) -> Result<Vec<u8>>
+where
+    F: FnMut(&'static [&'static str]) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<u8>>>,
+{
+    // Git accepts only one scope switch; includes and origins belong to each scope.
+    let mut bytes = read(&[
+        "config",
+        "--includes",
+        "--list",
+        "--show-origin",
+        "-z",
+        "--local",
+    ])
+    .await?;
+    let enabled = read(&[
+        "config",
+        "--includes",
+        "--local",
+        "--type=bool",
+        "--default=false",
+        "--get",
+        "extensions.worktreeConfig",
+    ])
+    .await?;
+    ensure!(
+        matches!(enabled.as_slice(), b"true\n" | b"false\n"),
+        "invalid worktreeConfig value"
+    );
+    // Without the extension Git ignores config.worktree and may refuse --worktree.
+    if enabled == b"true\n" {
+        bytes.extend(
+            read(&[
+                "config",
+                "--includes",
+                "--list",
+                "--show-origin",
+                "-z",
+                "--worktree",
+            ])
+            .await?,
+        );
+    }
+    Ok(bytes)
 }
 fn driver_key(key: &str) -> bool {
     key.starts_with("filter.")

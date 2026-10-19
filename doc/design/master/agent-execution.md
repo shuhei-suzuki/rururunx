@@ -66,6 +66,9 @@ StepLauncher supplies fixed Executor argv/environment and StepCustody retains
 process ownership; `ProcessGroup` remains in its shared native location. Before
 launch, the Executor scans its prompt, verifies the private bound checkout and
 saved Git controls, and rejects repository/worktree driver declarations.
+Worktree configuration is inspected only when the common local configuration
+enables `extensions.worktreeConfig`; configuration read failures refuse execution.
+The control inventory retains `config.worktree` even while the extension is disabled.
 
 Adoption re-reads retained stdout, stderr and last-message evidence, validating
 recorded length, SHA-256 and completeness before secret scanning. The Executor
