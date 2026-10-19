@@ -578,6 +578,121 @@ StepCustody の監視タスクは、次を 1 つの `tokio::select!` で並行�
 
 どれかが失敗したら「確認できない」とし、held にする（`body.death_confirmed=false`）。macOS では、見つかったプロセスに signal を送らない（`crates/rrx-process-tracker/src/macos.rs:12-23`）。
 
+#### 3.5.1 macOS の探索での zombie と消えた PID
+
+**問題**: §3.5 の 5 は `coverage.limited()` が false であることを求める。macOS の tracker は、同じ利用者の PID を `proc_listpids(PROC_UID_ONLY)` で列挙し、`proc_pidinfo(PROC_PIDTBSDINFO)` で identity を読む（`crates/rrx-process-tracker/src/macos.rs:24-53,103-127`）。zombie ではこの読取りが失敗し、`identity_unavailable` に数えられる（`macos.rs:133-137`）。そのため `limited()` が true になる（`lib.rs:100-108`）。親が回収しない zombie が 1 つ残るだけで、どの step も死亡を確認できず held になる。オーナーの Mac では、2 日以上残る zombie を観測した（`inspected=766, same_user=765, identity_unavailable=1`）。
+
+**分類の規則**: 第 1 の読取りが失敗した PID にだけ、独立した第 2 の照会 `sysctl({CTL_KERN, KERN_PROC, KERN_PROC_PID, pid})` を 1 回行う。第 1 の読取りとは、identity の読取り（`macos.rs:133`）か、環境の読取り（`macos.rs:144`）である。照会の出力先は `kinfo_proc` 1 つ分とする。
+
+| 第 2 の照会の結果 | 分類 | 数える先 |
+|---|---|---|
+| 成功し、返った長さが 0 | 消えた PID | `vanished` |
+| 成功し、長さが `size_of::<kinfo_proc>()` と一致し、`kp_proc.p_pid == pid` かつ `kp_proc.p_stat == SZOMB` | zombie | `zombie` |
+| それ以外（errno を問わない失敗、長さの不一致、pid の不一致、`p_stat` が `SIDL`・`SRUN`・`SSLEEP`・`SSTOP`） | 不明 | 元の失敗に応じて `identity_unavailable` か `environment_unavailable`（今と同じ） |
+
+- `SZOMB` の値は SDK の `sys/proc.h` の 5 である。`PROC_UID_ONLY` と同じく、SDK の出典を書いた定数として置く（`macos.rs:7-8`）。
+- 第 2 の照会は、失敗した読取りを分類し直すためだけに使う。第 1 の読取りが成功した PID の判断は変えない。cookie が一致した後の identity の再読取りの失敗（`macos.rs:154-157`）は、`identity_changed` のままにする。一致したプロセスは、その時点で生きていたからである。
+- `Coverage`（`lib.rs:87-97`）に `zombie: usize`、`vanished: usize`、`relistings: usize`（下の再列挙の回数）を足す。3 つとも `limited()` の条件に入れない。Linux の tracker はこれらを数えず、常に 0 になる。
+- この分類で `processes` に加わる PID はない。zombie と消えた PID は `TrackedProcess` にならず、signal の対象にならない。macOS では、見つかったプロセスにもともと signal を送らない（`macos.rs:12-23`）。
+
+**zombie と消えた PID が、cookie を持って動けない理由**: zombie は exit 済みで、命令を実行しない。アドレス空間（環境を含む）も fd も持たない。消えた PID は、プロセスとして存在しない。cookie の一致が意味を持つのは、まだ書込み・pipe の保持・fork ができるプロセスだけである。次の場合は、従来どおり limited に倒す。
+
+- 第 2 の照会が「生きている」か「作成中」を返す。
+- 照会そのものが失敗するか、結果が第 1 の読取りと食い違う。
+
+第 1 の読取りが失敗した後に、PID が生きた別のプロセスに再利用された場合も、`p_stat` が zombie でないので limited になる。
+
+**列挙後の fork（再列挙）**: 上の分類だけでは足りない。列挙の時点で生きていた、cookie を持つプロセス A が、列挙の後に子 C を作ってから exit したとする。A は zombie か消えた PID に分類され、C は一覧に含まれない。今の実装は A を `identity_unavailable` に数えて limited にするので、この見落としを防いでいる。zombie と消えた PID を limited から外すなら、この保護を別の手段で保たなければならない。二重 fork でデーモン化するツールが、この形に当たる。そこで、オーナーが選んだ分類に、次の再列挙を加える。
+
+1. 1 巡目は今と同じ走査を行い、上の分類を当てる。その巡で新たに `zombie` か `vanished` に分類した PID を「新しい不在」と呼ぶ。新しい不在がなければ終わる。zombie のない環境では、今と同じ結果と回数になる。
+2. 新しい不在があり、`limited()` がまだ false なら、その巡の分類をすべて終えた後に `proc_listpids` をやり直す（`relistings += 1`）。新しい一覧の各 PID を次のように扱う。
+   - 前の巡で生きていると分類した PID: identity を読み直す。前の値（pid・uid・birth）と一致すれば済みとする。一致しないか読めなければ、新しい PID として全部の検査を行う。
+   - 前の巡で zombie と分類した PID: 第 2 の照会をやり直す。zombie のままで、開始時刻（`kp_proc.p_starttime`。SDK の `p_un.__p_starttime`）が前と同じなら済みとする。違えば、新しい PID として扱う。
+   - それ以外（初めて見た PID、前に消えたと分類した PID）: 全部の検査を行う。
+3. 新しい不在が出なくなるまで 2 を繰り返す。各巡は同じ `Limits` の中で行う。時間の上限（`limits.time`）に当たれば `time_exceeded`、どれかの一覧が上限に当たれば `truncated` とし、どちらも limited になる。`inspected` と `same_user` は、全巡の全部の検査を数える。
+
+安全性の論証は次のとおり。結果が limited でないのに、走査の終わりに生きている cookie を持つプロセス X を見落としたと仮定する。
+
+- 最後の一覧 L に X がある場合: X は最後の巡で検査されたか、identity が変わっていないことを確かめた前の検査で、一致かどうかが決まっている。cookie を持つなら一致し、`processes` に入る。
+- L に X がない場合: X は L の後に作られた。cookie は親から引き継ぐので、L の時点で生きていて、L の後に fork した、cookie を持つ祖先 A がいる。A は L にある。
+  - A が生きていれば一致する。
+  - A が zombie として済みとされたなら、A は L より前の巡で既に zombie だった。L の時点で生きていたことと矛盾する。
+  - A が L の後に exit したなら、最後の巡で新しい不在になり、終了の条件に反する。
+
+したがって、limited でない結果は、L の時点で生きていた cookie を持つプロセスを見落とさない。前提は今の tracker と同じである。cookie は環境の引継ぎでだけ伝わり、プロセスが自分の環境から cookie を消すことは対象外とする（`lib.rs:1-6`）。
+
+実機の zombie で `p_starttime` が 0 なら、開始時刻で同一性を確かめられない。その場合は実装を止めて設計に戻る。黙って PID だけの比較にしない。
+
+**自分の子の zombie**: 死亡確認では、探索（`custody.rs:126-130`）の前に leader を reap する（`custody.rs:113-114`、§3.5 の 3）。reap が失敗すれば、`?` で探索の前に抜ける。leader の子孫は、leader の exit で launchd に引き取られ、rrx の子ではない。そのため、この経路で見える zombie は、launchd が回収する前の子孫か、無関係なプロセスの子である。万一、rrx 自身の未回収の子が zombie として見えても、死亡の主張は弱まらない。理由は次の 3 つである。
+
+- zombie は何も実行できない。
+- その子孫は、再列挙で覆われる。
+- leader の reap は、探索とは別の条件（`leader_reaped`）で確かめている。
+
+**消費者への影響**
+
+| 消費者 | 影響 |
+|---|---|
+| 死亡確認（`custody.rs:126-134`） | 無関係な zombie や、走査中に exit した PID では held にならない。条件の式は変えない |
+| leader の birth の読取り（`custody.rs:86-99`） | `processes` だけを見るので、結果は変わらない。leader が既に zombie なら、今と同じく `owned leader birth unavailable` になる（§3.3 の 6）。再列挙の分だけ時間が延びうるが、上限は同じ `Limits` |
+| モードの静止の確認（`execution/owner.rs:291-301`） | 無関係な zombie で起動を拒否しなくなる。渡す組（limited・件数・inspected）の形は変えない |
+| execution cleanup（`execution/cleanup.rs:83-122`） | `cookie_scan` の文字列に `zombie`・`vanished`・`relistings` を足す。outcome の決め方（`remaining` だけを見る）は変わらない。zombie は `processes` に入らないので、terminate しない |
+| 復旧表の running の行（§4.2）と、回復の command の 4（§4.4） | 同じ探索を使うので、無関係な zombie では `custody_unobservable` にならず、拒否もされない |
+| Linux（`crates/rrx-process-tracker/src/linux.rs`） | 変えない。今回の観測は macOS だけである。Linux での zombie の扱いは実機で確かめておらず、この変更の範囲外とする |
+
+**テスト**
+
+決定的なテストは、zombie があるかどうかに依らない。次の 2 つを fake で検査する。
+
+- 第 2 の照会の生の結果を受け取る、純粋な関数 `classify_unreadable`。
+- 列挙・identity・照会・環境の読取りを差し替えられる、走査の本体。
+
+| ID | 入力 | 期待 |
+|---|---|---|
+| ZB1 | 照会が成功し、長さが 0 | vanished |
+| ZB2 | 長さと pid が一致し、`p_stat = SZOMB` | zombie |
+| ZB3 | `p_stat` が SIDL / SRUN / SSLEEP / SSTOP | 不明（元の counter） |
+| ZB4 | 照会の失敗（ESRCH・EPERM・ENOMEM）、短い長さ、pid の不一致 | 不明 |
+| ZB5 | `zombie`・`vanished`・`relistings` だけが 0 でない Coverage | `limited()` が false。`identity_unavailable` が 1 でもあれば true |
+| ZB6 | 2 巡の一覧に、開始時刻も同じ zombie がある | 再列挙 1 回で終わり、limited でなく、`processes` は空 |
+| ZB7 | 1 巡目で cookie を持つ A が消え、2 巡目の一覧に cookie を持つ新しい C がある | C が `processes` に入る |
+| ZB8 | 前に生きていた PID が別の birth で再利用され、cookie を持つ | 全部の検査を行い、一致する |
+| ZB9 | zombie の PID が、開始時刻の違う zombie に再利用される | 新しい不在として、次の巡を行う |
+| ZB10 | 毎巡、新しい消えた PID が出る | `time_exceeded` で limited |
+| ZB11 | 環境の読取りが失敗し、照会は「生きている」を返す | `environment_unavailable`（limited） |
+| ZB12 | cookie の一致後に identity の再読取りが失敗し、照会は zombie を返す | `identity_changed`（limited） |
+
+macOS の実機テスト（`#[cfg(target_os = "macos")]`）では、zombie を自分で作る。
+
+1. 先に探索を 1 回行い、基準の counter を記録する。
+2. テスト用の cookie を環境に入れて `/usr/bin/true` を起動し、wait しない。第 2 の照会が zombie を返すまで、最大 5 秒待つ。返らなければ失敗とする。
+3. 次を確かめる。
+   - その PID の分類が zombie で、`p_starttime` が 0 でない。
+   - `discover(cookie)` の `zombie` が 1 以上で、`processes` にその PID がない。
+   - 基準が limited でなかったなら、今回も limited でない。基準が limited なら、counter を示して失敗させ、黙って飛ばさない。
+4. Drop guard で必ず reap する。reap の後、その PID の分類が vanished になる。PID が再利用されていたら、失敗として報告する。
+
+オーナーの Mac での受入では、長く残る zombie がある状態で次を確かめ、所要時間とともに記録する。
+
+- `discover` が `zombie=1`、`limited()=false` を返す。
+- パイプラインの step が死亡確認を通る。
+
+**変異**
+
+| 変異 | 落ちるテスト |
+|---|---|
+| `limited()` に `zombie != 0` か `vanished != 0` を入れる | ZB5、実機テストの 3 |
+| 照会の失敗を vanished にする | ZB4 |
+| `p_stat` を見ず、成功ならすべて zombie にする | ZB3 |
+| pid の一致を見ない | ZB4 |
+| 長さ 0 を不明にする | ZB1、実機テストの 4 |
+| 再列挙をしない | ZB7 |
+| 再列挙を 1 回で打ち切る | ZB10 |
+| 再列挙での同一性を PID だけで判断する（birth・開始時刻を見ない） | ZB8、ZB9 |
+| 環境の読取りが失敗したとき、照会せずに zombie にする | ZB11 |
+| cookie の一致後の失敗にも分類を当てる | ZB12 |
+| zombie を `processes` に入れる | ZB6、実機テストの 3 |
+
 ## 4. 復旧
 
 ### 4.1 起動時の照合
@@ -1195,6 +1310,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | D14 | rrx commit を trailer で識別する | 記録した commit SHA と tree だけで識別する | trailer と親は Agent も作れるので、作成主体の証明にならない |
 | D15 | quota lease を使う | v1 は daemon 全体で 1 step ずつ動かし、quota の表を書かない。provider の上限は既知の終了だけを daemon 全体の 1 つの記録（`pipeline_limit_wait`）の backoff で待ち、期限の後は 1 つの起動が既知の成功で終わるまで次を起動しない。native の Exhausted の観測は読むだけで、残る間は起動しない | `quota_leases` / `quota_waiters` は `execution_units` への FK を持つ（`state/execution.sql:130-142`）。native の規則（provider ごとの上限の集約、probe、公平性）を条件ごと移し替えると、改訂のたびに弱まりが見つかった。1 step ずつはどの同時実行の上限よりも厳しく、Stage 1（1 Project・直列の step）の要求を満たす。時間をまたぐ制約（待ちと、期限後の単一の起動）は、account を区別しない 1 つの記録で保守的に保つ |
 | D16 | CLI の入口のファイルを hash で固定する | Q は Mach-O の native binary だけを受け付け、`#!` の入口は拒否する（制約の強化）。npm Codex では `…/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex` を設定する | interpreter・vendor の実体が入口の hash と独立に入れ替わる経路を pin から除く |
+| D17 | §3.5 の 5: 探索の `coverage.limited()` が false であること（読めない PID はすべて limited） | macOS の tracker が、読めない PID を独立した `sysctl(KERN_PROC_PID)` で zombie・消えた PID・不明に分け、前の 2 つを `limited()` から外す。外したときは、新しい不在がなくなるまで再列挙する（§3.5.1） | オーナーの Mac では、親が回収しない同じ利用者の zombie が 1 つあるだけで探索が常に limited になり、どの step も死亡を確認できない。zombie と消えた PID は何も実行できない。列挙の後の fork による見落としは、再列挙で防ぐ |
 
 **オーケストレーターの簡素化の指示から外した点**
 
