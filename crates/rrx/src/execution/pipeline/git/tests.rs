@@ -1,5 +1,25 @@
 use super::*;
 
+/// Every index stage is checked for gitlinks without interpreting bytes inside paths.
+#[test]
+fn b5_f1h2_index_gitlink_entries() {
+    let regular = format!("100644 {} 0\tpath\n160000 fake\tname\0", "a".repeat(40));
+    reject_index_entries(b"").unwrap();
+    reject_index_entries(regular.as_bytes()).unwrap();
+    for stage in 0..=3 {
+        let entries = format!(
+            "{regular}160000 {} {stage}\tsub\tpath\nname\0",
+            "b".repeat(40)
+        );
+        assert_eq!(
+            reject_index_entries(entries.as_bytes())
+                .unwrap_err()
+                .to_string(),
+            "git_driver_declared"
+        );
+    }
+}
+
 /// Repository inspection reads exactly the scopes Git enables and preserves their union.
 #[tokio::test]
 async fn b5_config_active_scopes() {

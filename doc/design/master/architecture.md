@@ -500,7 +500,7 @@ The CLI pipeline uses `execution::pipeline::PipelineGit`, separate from the nati
 global/system Git configuration and system attributes disabled, fixed hook and
 automatic-maintenance overrides, bounded output and a ten-second observation
 deadline. Repository configuration and tree/worktree attributes are inspected for
-drivers before checkout, reset, status or adoption. Gitlink trees and the `binary`
+drivers before checkout, reset, status or adoption. Gitlinks in trees or the Task index and the `binary`
 and `ident` attributes are refused; attribute filenames are matched without ASCII
 case distinctions. All status calls ignore submodules and recursion is disabled.
 Global attribute/ignore files are redirected to `/dev/null` and lazy fetching is disabled.

@@ -1040,7 +1040,7 @@ attempt ディレクトリは `<work_root>/runs/<run>/<seq>-<attempt>/`（0700�
 - HEAD は Task branch への symbolic ref で、branch の ref == step_base（Agent が commit していない）。違えば rejected（`agent_commit`）。
 - `.git` ファイルの内容、common dir の `config`・`hooks/`・`info/`・その branch の ref、`git config --list --show-origin` の digest が、step の前と同じ。違えば held（`git_control_changed`）。
 - driver の拒否（§6.1）を、もう一度当てる。
-- 変更の一覧: `git status --porcelain=v2 -z --untracked-files=all --no-renames --ignore-submodules=all`（§16 D18）。対象の tree に gitlink（mode 160000）があれば、status より前に拒否する。
+- 変更の一覧: `git status --porcelain=v2 -z --untracked-files=all --no-renames --ignore-submodules=all`（§16 D18）。対象の tree または Task worktree の index に gitlink（mode 160000）があれば、status より前に拒否する。
 - 変更した各パスが Task scope の glob に一致する。固定の拒否リストに当たるパスは、scope が明示していない限り拒否する: `.git*`、`.gitattributes`、`.gitmodules`、`.claude/**`、`.codex/**`、`.mcp.json`、`AGENTS.md`、`AGENTS.override.md`、`CLAUDE.md`、`CLAUDE.local.md`、`**/CLAUDE.md`（名前の照合は ASCII の大文字と小文字を区別しない）。
 - 各パスを `lstat` し、通常ファイルだけを許す。mode は 100644 か 100755。symlink（120000）と gitlink（160000）は拒否する。
 - 各ファイルを 1 回だけ読み、bytes を保持する。変更は 200 ファイル以下、追加は合計 8 MiB 以下、1 ファイル 1 MiB 以下。NUL を含むもの（バイナリ）は拒否する。

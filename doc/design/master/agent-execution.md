@@ -72,7 +72,7 @@ The control inventory retains `config.worktree` even while the extension is disa
 Prepare inspects the selected tree and common `info/attributes`, registers the Task
 with `--no-checkout`, then inspects its own conditional includes and attributes before
 checkout. Only Task worktrees receive a recursive working-file attribute scan.
-Gitlink trees, driver attributes, `binary` and `ident` are refused before status;
+Gitlinks in trees or the Task index, driver attributes, `binary` and `ident` are refused before status;
 attribute filenames are matched without ASCII case distinctions. Every status ignores
 submodules. Global attributes/ignore files and lazy fetching are disabled.
 

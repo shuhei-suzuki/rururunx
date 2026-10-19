@@ -49,6 +49,7 @@ impl AdoptionChecker {
         ensure!(work.controls().await? == before, "git_control_changed");
         work.git.reject_drivers(&step.step_base).await?;
         evidence(step, attempt)?;
+        work.git.reject_index_gitlinks().await?;
         let status = work
             .git
             .run(&[

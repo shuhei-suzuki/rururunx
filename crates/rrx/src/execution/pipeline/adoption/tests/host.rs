@@ -209,6 +209,34 @@ async fn b5_f1_index_gitlink_filter() {
     assert!(!marker.exists());
 }
 
+/// Clean verification refuses an index-only gitlink before status can hide its directory.
+#[tokio::test]
+async fn b5_f1h2_index_gitlink_clean() {
+    let f = Fixture::new().await;
+    let marker = hostile_subrepo(&f).await;
+    f.work
+        .git
+        .run(&[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "160000",
+            &f.step.step_base,
+            "sub",
+        ])
+        .await
+        .unwrap();
+    assert_eq!(
+        f.work
+            .clean_at(&f.step.step_base)
+            .await
+            .unwrap_err()
+            .to_string(),
+        "git_driver_declared"
+    );
+    assert!(!marker.exists());
+}
+
 /// The binary macro in any tree attribute casing refuses secret-bearing changes.
 #[tokio::test]
 async fn b5_f1_binary_tree() {
