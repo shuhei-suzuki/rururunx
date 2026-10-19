@@ -549,7 +549,7 @@ probe の step（§2.6）を launching / running から出す tx は、どの遷
 4. `tokio::process::Command` を組み立てる。`env_clear()`、許可した環境変数だけ（§5.4）、`process_group(0)`、`kill_on_drop(true)`、stdin・stdout・stderr は pipe。`rrx_spawn_hygiene::spawn_tokio`（`crates/rrx-spawn-hygiene/src/lib.rs:58`）で起動する。
 5. Err の場合: tx で launching → unknown と run → held（`launch_unknown`）を書く。
 6. Ok の場合: `ProcessGroup::new`（`adapter.rs:482`）で包み、すぐに tx2 で launching → running（pid、birth）を書く。stdin にはまだ書かない。
-   - tx2 が失敗した場合: `cleanup_group` → `reap` → group が空になるのを待つ → discovery。確認できたら launching → exited を試みる。書けなければ何もしない（再起動時に unknown になる）。
+   - tx2 が失敗した場合: `cleanup_group` → `reap` → group が空になるのを待つ → discovery。確認できたら、§3.2 の表のとおり、1 回の commit で launching → rejected（`record_failed`）と run の held を記録する。書けなければ何もしない（再起動時に unknown になる）。
 7. guard を解放し、プロセスを StepCustody の監視タスクに渡す（§3.4）。
 
 ### 3.4 実行中の入出力
