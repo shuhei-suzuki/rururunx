@@ -1326,7 +1326,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | F-b3 | verdict の未知フィールド・重複キー・重複 ID・存在しない行・model の不一致・snapshot の変化、ラベルの余分・欠落・空 quote・`evidence.line` が 0 / 範囲外 / quote の開始行と不一致 | rejected または held（quote と行の不一致は Unclear に落ちて held） |
 | F-c1 | spawn が Err を返す（存在しない実行ファイルではなく、hook で注入する） | unknown、run held、再実行しない |
 | F-c2 | tx1 の後、spawn の前に crash する | 再起動時に unknown・held |
-| F-c3 | tx2 が失敗する | group を kill し、確認できれば exited、できなければ launching のまま→unknown |
+| F-c3 | tx2 が失敗する | group を kill し、確認できれば 1 回の commit で rejected（`record_failed`）と run の held、できなければ launching のまま（再起動時に unknown） |
 | F-c4 | claim の後、branch 作成の後、worktree の部分作成の後に crash する | 何もなければ再作成、完全なら採用、部分なら held。既存のものを消さない |
 | F-c5 | exited の記録の後 / committed の記録の後 / update-ref の後に crash する | §6.3 の表のとおり。記録した SHA だけを採用する |
 | F-d1 | running 中に正常停止する | interrupted、attempt+1 で再開する |
