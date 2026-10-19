@@ -802,12 +802,18 @@ async fn b3_q_blocked_project_root() {
     assert!(CliQualifier::before_launch(&owner, &config).is_err());
     std::fs::remove_file(&deleted).unwrap();
 
-    blocked.root = config.work_root.clone();
+    let mut work_overlap = Project::new(
+        "blocked-work-overlap".into(),
+        config.work_root.clone(),
+        "blocked-work-overlap".into(),
+        "main".into(),
+    );
+    work_overlap.state = ProjectState::Blocked;
     owner
         .store
         .lock()
         .unwrap()
-        .put_project(&mut blocked)
+        .put_project(&mut work_overlap)
         .unwrap();
     assert!(
         CliQualifier::check_layout(&owner, &config)
@@ -815,18 +821,33 @@ async fn b3_q_blocked_project_root() {
             .to_string()
             .contains("Project overlaps")
     );
-    blocked.root = config
-        .clis
-        .claude
-        .executable
-        .parent()
-        .unwrap()
-        .to_path_buf();
+    work_overlap.state = ProjectState::Removed;
     owner
         .store
         .lock()
         .unwrap()
-        .put_project(&mut blocked)
+        .put_project(&mut work_overlap)
+        .unwrap();
+    CliQualifier::check_layout(&owner, &config).unwrap();
+
+    let mut launch_overlap = Project::new(
+        "blocked-launch-overlap".into(),
+        config
+            .clis
+            .claude
+            .executable
+            .parent()
+            .unwrap()
+            .to_path_buf(),
+        "blocked-launch-overlap".into(),
+        "main".into(),
+    );
+    launch_overlap.state = ProjectState::Blocked;
+    owner
+        .store
+        .lock()
+        .unwrap()
+        .put_project(&mut launch_overlap)
         .unwrap();
     assert!(
         CliQualifier::check_launch_paths(&owner, &config)
@@ -835,6 +856,15 @@ async fn b3_q_blocked_project_root() {
             .contains("launch path overlaps")
     );
     assert!(CliQualifier::before_launch(&owner, &config).is_err());
+    launch_overlap.state = ProjectState::Removed;
+    owner
+        .store
+        .lock()
+        .unwrap()
+        .put_project(&mut launch_overlap)
+        .unwrap();
+    CliQualifier::check_launch_paths(&owner, &config).unwrap();
+    CliQualifier::before_launch(&owner, &config).unwrap();
 }
 
 /// Agent writable and state paths cannot supply PATH entries or executable images.
