@@ -454,6 +454,32 @@ async fn b5_f2_tree_attribute_unicode() {
     assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
 }
 
+/// Tree driver inspection rejects gitlinks and accepts ordinary blobs.
+#[tokio::test]
+async fn b5_f3_tree_gitlink_direct() {
+    let mut f = Fixture::new().await;
+    f.set_base(format!("160000 commit {}\tsub\n", f.step.step_base).as_bytes())
+        .await;
+    assert_eq!(
+        f.work
+            .git
+            .reject_tree_drivers(&f.step.step_base)
+            .await
+            .unwrap_err()
+            .to_string(),
+        "git_driver_declared"
+    );
+
+    let oid = f.blob(b"ordinary content\n").await;
+    f.set_base(format!("100644 blob {oid}\tfile\n").as_bytes())
+        .await;
+    f.work
+        .git
+        .reject_tree_drivers(&f.step.step_base)
+        .await
+        .unwrap();
+}
+
 /// A tiny binary threshold cannot omit secret-bearing text from the scan diff.
 #[tokio::test]
 async fn b5_f1_bigfile_secret() {
@@ -732,6 +758,40 @@ async fn b5_recorded_identity() {
     f.step.result_commit = Some(candidate.commit);
     f.step.result_tree = Some("f".repeat(40));
     assert!(AdoptionChecker::finish(&f.work, &f.step).await.is_err());
+}
+/// A recorded commit with the correct tree but a different parent cannot move the Task ref.
+#[tokio::test]
+async fn b5_f3_recorded_parent() {
+    let mut f = Fixture::new().await;
+    f.change();
+    let candidate = f.build().await.unwrap();
+    let commit = String::from_utf8(
+        f.work
+            .git
+            .invoke(
+                &["commit-tree", &candidate.tree],
+                b"other\n",
+                None,
+                true,
+                4096,
+            )
+            .await
+            .unwrap(),
+    )
+    .unwrap()
+    .trim()
+    .to_owned();
+    f.step.state = "committed".into();
+    f.step.result_commit = Some(commit);
+    f.step.result_tree = Some(candidate.tree);
+    assert_eq!(
+        AdoptionChecker::finish(&f.work, &f.step)
+            .await
+            .unwrap_err()
+            .to_string(),
+        "recorded_commit_changed"
+    );
+    assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
 }
 /// An unrelated ref move is preserved and held during committed recovery.
 #[tokio::test]
