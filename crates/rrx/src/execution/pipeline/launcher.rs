@@ -259,16 +259,7 @@ fn private_parents(root: &Path, path: &Path) -> Result<()> {
             "invalid private path"
         );
         current.push(component);
-        if !current.try_exists()? {
-            std::fs::DirBuilder::new().mode(0o700).create(&current)?;
-        }
-        let meta = std::fs::symlink_metadata(&current)?;
-        ensure!(
-            meta.is_dir()
-                && !meta.file_type().is_symlink()
-                && meta.permissions().mode() & 0o077 == 0,
-            "private directory changed"
-        );
+        super::ensure_private_directory(&current)?;
     }
     Ok(())
 }

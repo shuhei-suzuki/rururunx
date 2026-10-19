@@ -509,6 +509,56 @@ async fn b3_q_launch_hash_frequency() {
     assert!(CliQualifier::before_launch(&owner, &config).is_err());
 }
 
+/// Q creates a real private temp root.
+#[tokio::test]
+async fn b4_q_temp_root_private() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open_mode(
+        &dir.path().join("state/state.db"),
+        crate::config::ExecutionMode::CliPipeline,
+    )
+    .unwrap();
+    let config = crate::execution::pipeline::test_support::config(&owner, dir.path());
+    let temp_root = config.work_root.join("t");
+    assert!(!temp_root.try_exists().unwrap());
+    crate::execution::pipeline::test_support::qualify_fixture(&owner, &config)
+        .await
+        .unwrap();
+    let meta = std::fs::symlink_metadata(&temp_root).unwrap();
+    assert!(meta.is_dir() && !meta.file_type().is_symlink());
+    assert_eq!(meta.permissions().mode() & 0o777, 0o700);
+}
+
+/// Q refuses existing non-private temp roots without repairing their permissions.
+#[tokio::test]
+async fn b4_q_temp_root_refuses_non_private() {
+    for mode in [0o750, 0o705, 0o777] {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = RuntimeOwner::open_mode(
+            &dir.path().join("state/state.db"),
+            crate::config::ExecutionMode::CliPipeline,
+        )
+        .unwrap();
+        let config = crate::execution::pipeline::test_support::config(&owner, dir.path());
+        let temp_root = config.work_root.join("t");
+        std::fs::create_dir(&temp_root).unwrap();
+        std::fs::set_permissions(&temp_root, std::fs::Permissions::from_mode(mode)).unwrap();
+        let error = CliQualifier::qualify(&owner, &config).await.unwrap_err();
+        assert!(
+            error.to_string().contains("private directory changed"),
+            "{error:#}"
+        );
+        assert_eq!(
+            std::fs::symlink_metadata(&temp_root)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            mode
+        );
+    }
+}
+
 /// Reviewer login uses the same empty settings condition as its step template.
 #[tokio::test]
 async fn b3_q_login_settings() {

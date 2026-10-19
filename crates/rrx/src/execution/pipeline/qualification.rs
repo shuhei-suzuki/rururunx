@@ -392,10 +392,11 @@ impl CliQualifier {
         }
         Self::check_layout(owner, config)?;
         let temp_root = root.join("t");
-        std::fs::create_dir_all(&temp_root)?;
+        super::ensure_private_directory(&temp_root)?;
         let tmp = tempfile::Builder::new()
             .prefix("q")
             .rand_bytes(4)
+            .permissions(std::fs::Permissions::from_mode(0o700))
             .tempdir_in(temp_root)?;
         ensure!(
             tmp.path().as_os_str().len() <= 60,
