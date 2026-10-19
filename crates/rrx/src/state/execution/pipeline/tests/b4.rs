@@ -17,7 +17,19 @@ impl Harness {
         Self::with_prompt(kind, b"pipeline\n").await
     }
     async fn with_prompt(kind: &str, prompt: &[u8]) -> Self {
-        let f = fixture().await;
+        Self::with_alias(kind, prompt, false).await
+    }
+    async fn with_alias(kind: &str, prompt: &[u8], alias: bool) -> Self {
+        let mut f = fixture().await;
+        if alias {
+            let pins = f.config.pipeline.as_mut().unwrap();
+            let path = pins.clis.codex.executable.with_file_name("alias");
+            std::os::unix::fs::symlink(&pins.clis.codex.executable, &path).unwrap();
+            pins.clis.codex.executable = path;
+            crate::execution::pipeline::test_support::qualify_fixture(&f.owner, pins)
+                .await
+                .unwrap();
+        }
         let runtime = Arc::new(Runtime::new(f.owner.clone(), f.config.clone()).unwrap());
         runtime.start_qualified_service().await.unwrap();
         let pins = f.config.pipeline.as_ref().unwrap();
@@ -104,11 +116,34 @@ fn digest(bytes: &[u8]) -> String {
 #[tokio::test]
 async fn b4_launch_receipt_and_death() {
     let h = Harness::new("implement").await;
-    h.started().await.wait().await.unwrap();
+    h.fake.control("exec-pause", "");
+    let custody = h.started().await;
+    let running = h.step();
+    let pid = running.pid.unwrap();
+    let cookie = rrx_process_tracker::Cookie::new(running.cookie.as_ref().unwrap()).unwrap();
+    let identity = tokio::task::spawn_blocking(move || {
+        rrx_process_tracker::discover(&cookie, Default::default())
+            .unwrap()
+            .processes
+            .iter()
+            .map(|p| p.identity())
+            .find(|id| id.pid == pid)
+            .unwrap()
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        running.birth.as_deref(),
+        Some(format!("{}:{}", identity.birth.0, identity.birth.1).as_str())
+    );
+    let pgid = rustix::process::getpgid(rustix::process::Pid::from_raw(pid as i32)).unwrap();
+    assert_eq!(pgid.as_raw_nonzero().get() as u32, pid);
+    assert_eq!(running.body["pgid"], pgid.as_raw_nonzero().get());
+    h.fake.control("exec-release", "");
+    custody.wait().await.unwrap();
     let step = h.step();
     assert_eq!(step.state, "exited");
     assert_eq!(step.body["pgid"], step.pid.unwrap());
-    assert!(step.birth.as_ref().is_some_and(|b| b.contains(':')));
     assert_eq!(step.body["provider_outcome"], "success");
     let proof: PipelineDeathEvidence =
         serde_json::from_value(step.body["death_evidence"].clone()).unwrap();
@@ -563,4 +598,235 @@ async fn b4_probe_known_success() {
     assert_eq!(wait.state, "clear");
     assert_eq!(h.step().body["provider_outcome"], "success");
     h.close().await;
+}
+
+async fn wait_for_file(path: &std::path::Path) {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !path.exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("native fixture checkpoint not reached");
+}
+
+/// A failed output save settles a due probe once and atomically holds its run.
+#[tokio::test]
+async fn b4_probe_output_io_atomic() {
+    use std::future::Future;
+    let h = Harness::new("review").await;
+    h.fake.control("exec-output", "{\"type\":\"result\",\"is_error\":true,\"api_error\":{\"status\":429},\"result\":\"Rate limit exceeded\"}");
+    h.fake.control("exec-status", "1\n");
+    h.started().await.wait().await.unwrap();
+    assert!(
+        h.runtime
+            .record_pipeline_limit(&h.f.cursor(&h.id))
+            .await
+            .unwrap()
+    );
+    let mut retry = planned(&h.id, 2, 2, "review");
+    retry.input_sha256 = digest(&h.prompt);
+    let cursor = h.f.cursor(&h.id);
+    h.f.store()
+        .pipeline_plan_next(&h.f.owner, &cursor, &retry, true)
+        .unwrap();
+    let wait =
+        h.f.store()
+            .pipeline_mode_inventory()
+            .unwrap()
+            .provider_wait
+            .unwrap();
+    let attempt =
+        h.f.config
+            .pipeline
+            .as_ref()
+            .unwrap()
+            .work_root
+            .join("runs")
+            .join(&h.id)
+            .join("2-2");
+    let args = step_arguments(PipelineRole::Review, &h.fake.cli, &h.work, &attempt, "{}").unwrap();
+    h.fake
+        .expect_arguments(&args.iter().map(String::as_str).collect::<Vec<_>>());
+    h.fake.control("exec-pause", "");
+    h.fake.control("exec-status", "0\n");
+    h.fake.control(
+        "exec-output",
+        "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false}",
+    );
+    let result = {
+        let launch = h.launch();
+        tokio::pin!(launch);
+        std::future::poll_fn(|cx| with_pipeline_clock(wait.not_before, || launch.as_mut().poll(cx)))
+            .await
+    };
+    let LaunchResult::Started(custody) = result else {
+        panic!("due probe did not start")
+    };
+    let probing =
+        h.f.store()
+            .pipeline_mode_inventory()
+            .unwrap()
+            .provider_wait
+            .unwrap();
+    assert_eq!(probing.state, "probing");
+    // A directory at the retention leaf forces create_new to fail after death.
+    std::fs::create_dir(attempt.join("stdout")).unwrap();
+    h.fake.control("exec-release", "");
+    custody.wait().await.unwrap();
+    let after =
+        h.f.store()
+            .pipeline_mode_inventory()
+            .unwrap()
+            .provider_wait
+            .unwrap();
+    assert_eq!(after.version, probing.version + 1);
+    assert_eq!(after.state, "waiting");
+    assert_eq!(after.backoff_ms, (probing.backoff_ms * 2).min(1800000));
+    assert!(after.not_before > probing.not_before);
+    let step = h.step();
+    assert_eq!(step.state, "rejected");
+    assert_eq!(step.body["reason"], "output_io");
+    assert_eq!(step.body["exit"]["issue"], "output_io");
+    assert_eq!(
+        h.f.store()
+            .pipeline_task_view(h.f.goal, h.f.task)
+            .unwrap()
+            .runs
+            .last()
+            .unwrap()
+            .state,
+        "held"
+    );
+    h.close().await;
+}
+
+/// A failed final classification rolls back the exit observation and wait settlement.
+#[tokio::test]
+async fn b4_exit_classification_rollback() {
+    for output_save_failure in [false, true] {
+        let h = Harness::new("implement").await;
+        h.fake.control("exec-pause", "");
+        let custody = h.started().await;
+        if output_save_failure {
+            let attempt =
+                h.f.config
+                    .pipeline
+                    .as_ref()
+                    .unwrap()
+                    .work_root
+                    .join("runs")
+                    .join(&h.id)
+                    .join("2-1");
+            std::fs::create_dir(attempt.join("stdout")).unwrap();
+        }
+        h.f.store().connection.execute_batch("CREATE TEMP TRIGGER b4_fail_classification BEFORE UPDATE ON pipeline_steps WHEN NEW.state IN ('rejected','interrupted') BEGIN SELECT RAISE(ABORT,'injected classification failure'); END;").unwrap();
+        custody.request_stop();
+        custody.wait().await.unwrap(); // The supervisor can record unknown after rollback.
+        let step = h.step();
+        assert_eq!(step.state, "unknown");
+        assert!(step.body["exit"].is_null());
+        assert!(step.body["provider_outcome"].is_null());
+        assert_eq!(step.body["death_confirmed"], false);
+        h.close().await;
+    }
+}
+
+/// An unreaped group member prevents exit proof even with no live cookie matches.
+#[tokio::test]
+async fn b4_group_not_empty_holds() {
+    let h = Harness::new("implement").await;
+    h.fake.control("exec-pause", "");
+    let custody = h.started().await;
+    let pid = h.step().pid.unwrap();
+    let mut command = tokio::process::Command::new("/bin/sleep");
+    command
+        .arg("30")
+        .env_clear()
+        .process_group(pid as i32)
+        .kill_on_drop(true)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    // Keep this direct child's handle unreaped until the monitor has refused proof.
+    let mut member = rrx_spawn_hygiene::spawn_tokio(command).unwrap();
+    assert_eq!(
+        rustix::process::getpgid(rustix::process::Pid::from_raw(member.id().unwrap() as i32))
+            .unwrap()
+            .as_raw_nonzero()
+            .get() as u32,
+        pid
+    );
+    custody.request_stop();
+    let result = custody.wait().await;
+    let group_observation = rustix::process::test_kill_process_group(
+        rustix::process::Pid::from_raw(pid as i32).unwrap(),
+    );
+    let member_status = tokio::time::timeout(std::time::Duration::from_secs(10), member.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!member_status.success());
+    assert_ne!(group_observation, Err(rustix::io::Errno::SRCH));
+    result.unwrap();
+    let step = h.step();
+    assert_eq!(step.state, "held");
+    assert_eq!(step.body["reason"], "death_unconfirmed");
+    assert_eq!(step.body["death_confirmed"], false);
+    assert!(step.body["exit"].is_null());
+    h.close().await;
+}
+
+/// Pause waits across tx1/spawn/tx2, but can finish while stdin is blocked.
+#[tokio::test]
+async fn b4_control_waits_for_launch_boundary() {
+    use crate::execution::pipeline::test_support::{LaunchPhase, pause_launch};
+    let h = Harness::with_prompt("implement", &vec![b'p'; 512 * 1024]).await;
+    h.fake.control("exec-pause", "");
+    let release = pause_launch(LaunchPhase::Intent);
+    let launch = h.launch();
+    tokio::pin!(launch);
+    assert!(futures_util::poll!(&mut launch).is_pending());
+    assert_eq!(h.step().state, "launching");
+    assert!(!h.fake.directory.join("exec-entered").exists());
+    let control = pause(&h);
+    tokio::pin!(control);
+    assert!(futures_util::poll!(&mut control).is_pending());
+    release.send(()).unwrap();
+    let LaunchResult::Started(custody) = launch.await else {
+        panic!("launch did not start")
+    };
+    wait_for_file(&h.fake.directory.join("exec-entered")).await;
+    // The fake has not read stdin; a 512 KiB write cannot fit into its pipe.
+    assert!(!h.fake.directory.join("stdin").exists());
+    tokio::time::timeout(std::time::Duration::from_secs(2), &mut control)
+        .await
+        .unwrap();
+    assert_eq!(h.step().state, "running");
+    custody.request_stop();
+    custody.wait().await.unwrap();
+    h.runtime.shutdown().await.unwrap();
+}
+
+/// Spawn uses the last verified image even if its configured symlink changes.
+#[tokio::test]
+async fn b4_spawn_verified_realpath() {
+    use crate::execution::pipeline::test_support::{LaunchPhase, pause_launch};
+    use std::os::unix::fs::symlink;
+    let h = Harness::with_alias("implement", b"pipeline\n", true).await;
+    let alias = &h.fake.cli.executable;
+    let release = pause_launch(LaunchPhase::Verified);
+    let launch = h.runtime.launch_pipeline_step(h.f.cursor(&h.id), h.input());
+    tokio::pin!(launch);
+    assert!(futures_util::poll!(&mut launch).is_pending());
+    std::fs::remove_file(alias).unwrap();
+    symlink("/usr/bin/false", alias).unwrap();
+    release.send(()).unwrap();
+    let LaunchResult::Started(custody) = launch.await.unwrap() else {
+        panic!("verified image did not start")
+    };
+    custody.wait().await.unwrap();
+    assert_eq!(h.step().body["provider_outcome"], "success");
+    assert!(h.fake.directory.join("exec-entered").exists());
+    h.runtime.shutdown().await.unwrap();
 }

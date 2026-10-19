@@ -5,7 +5,7 @@ use crate::{
         RuntimeOwner,
         verification::{StreamEvidence, inspect, retain},
     },
-    state::pipeline::{PipelineCursor, PipelineDeathEvidence},
+    state::pipeline::{PipelineCursor, PipelineDeathEvidence, PipelineExit},
 };
 use anyhow::{Context, Result, ensure};
 use rustix::process::{Pid, test_kill_process_group};
@@ -94,21 +94,32 @@ impl StepCustody {
         let owner = monitor.owner.clone();
         let cursor = monitor.cursor.clone();
         let wake = monitor.wake.clone();
-        let task = tokio::spawn(async move {
-            let observed = tokio::spawn(monitor.run(receiver)).await;
-            let result = match observed {
-                Ok(Ok(())) => Ok(()),
-                _ => owner
+        let task = tokio::spawn(supervise_monitor(
+            tokio::spawn(monitor.run(receiver)),
+            wake,
+            move || {
+                owner
                     .store
                     .lock()
                     .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .pipeline_record_launch_unknown(&owner, &cursor, "custody_monitor_failed"),
-            };
-            wake.notify_one();
-            result
-        });
+                    .pipeline_record_launch_unknown(&owner, &cursor, "custody_monitor_failed")
+            },
+        ));
         Self { stop, task }
     }
+}
+
+async fn supervise_monitor(
+    observed: JoinHandle<Result<()>>,
+    wake: Arc<Notify>,
+    fallback: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    let result = match observed.await {
+        Ok(Ok(())) => Ok(()),
+        _ => fallback(),
+    };
+    wake.notify_one();
+    result
 }
 
 pub(super) struct Monitor {
@@ -320,21 +331,17 @@ impl Monitor {
                     .store
                     .lock()
                     .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .pipeline_record_exit(
+                    .pipeline_finish_step(
                         &self.owner,
                         &self.cursor,
                         &dead.evidence,
-                        Some("other"),
-                        &json!({"issue":"output_io"}),
+                        PipelineExit {
+                            outcome: Some("other"),
+                            evidence: &json!({"issue":"output_io"}),
+                            issue: Some("output_io"),
+                        },
                     )?;
-                let mut cursor = self.cursor.clone();
-                cursor.step_version += 1;
-                return self
-                    .owner
-                    .store
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .pipeline_reject(&self.owner, &cursor, "output_io");
+                return Ok(());
             }
         };
         if check_last(&self.attempt, matches!(self.role, PipelineRole::Confirm)).is_err() {
@@ -352,36 +359,25 @@ impl Monitor {
             ProviderOutcome::Limit => "limit",
             ProviderOutcome::Other => "other",
         };
-        let mut cursor = self.cursor;
         {
             let mut store = self
                 .owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            store.pipeline_record_exit(
+            store.pipeline_finish_step(
                 &self.owner,
-                &cursor,
+                &self.cursor,
                 &dead.evidence,
-                Some(outcome),
-                &json!({
+                PipelineExit {
+                    outcome: Some(outcome),
+                    evidence: &json!({
                     "code":dead.status.code(),"issue":issue,"stdout":stdout,"stderr":stderr,
                     "stdout_truncated":out.truncated,"stderr_truncated":err.truncated
-                }),
+                    }),
+                    issue,
+                },
             )?;
-            cursor.step_version += 1;
-            // Exit may have settled the global probe; observe its new CAS receipt.
-            cursor.wait_version = store
-                .pipeline_takeover_view()?
-                .limit_wait
-                .map(|w| w.version);
-            match issue {
-                Some("interrupted") => {
-                    store.pipeline_record_interrupted(&self.owner, &cursor, &dead.evidence)?
-                }
-                Some(reason) => store.pipeline_reject(&self.owner, &cursor, reason)?,
-                None => {}
-            }
         }
         Ok(())
     }
@@ -389,6 +385,7 @@ impl Monitor {
 
 struct Capture {
     bytes: Vec<u8>,
+    seen: u64,
     limit: usize,
     tail: bool,
     truncated: bool,
@@ -399,6 +396,7 @@ impl Capture {
     fn new(limit: usize, tail: bool) -> Self {
         Self {
             bytes: Vec::new(),
+            seen: 0,
             limit,
             tail,
             truncated: false,
@@ -417,48 +415,51 @@ impl Capture {
         Ok(())
     }
     fn append(&mut self, bytes: &[u8]) -> Result<bool> {
-        use std::io::{Seek, Write};
-        let overflow = self.bytes.len().saturating_add(bytes.len()) > self.limit;
+        use std::io::Write;
+        self.seen = self.seen.saturating_add(bytes.len() as u64);
+        let overflow = self.seen > self.limit as u64;
         self.truncated |= overflow;
         let before = self.bytes.len();
         if self.tail {
-            self.bytes.extend_from_slice(bytes);
-            if self.bytes.len() > self.limit {
-                self.bytes.drain(..self.bytes.len() - self.limit);
-            }
+            let (file, _) = self.live.as_mut().context("stderr capture not started")?;
+            file.write_all(bytes)?;
         } else {
             self.bytes.extend_from_slice(
                 &bytes[..bytes.len().min(self.limit.saturating_sub(self.bytes.len()))],
             );
-        }
-        if self.tail {
-            self.digest = Sha256::new();
-            self.digest.update(&self.bytes);
-        } else {
             self.digest.update(&self.bytes[before..]);
-        }
-        if let Some((file, _)) = &mut self.live {
-            if self.tail {
-                file.rewind()?;
-                file.write_all(&self.bytes)?;
-                file.set_len(self.bytes.len() as u64)?;
-            } else {
+            if let Some((file, _)) = &mut self.live {
                 file.write_all(&self.bytes[before..])?;
             }
         }
         Ok(self.tail || !overflow)
     }
     fn retain(&self, root: &Path, name: &str, complete: bool) -> Result<StreamEvidence> {
+        use std::io::{Read, Seek, SeekFrom};
         if let Some((file, _)) = &self.live {
             file.sync_all()?;
         }
-        retain(root, name, &self.bytes)?;
+        let mut tail = Vec::new();
+        let (bytes, digest) = if self.tail {
+            let (_, path) = self.live.as_ref().context("stderr capture not started")?;
+            let mut file = std::fs::File::open(path)?;
+            file.seek(SeekFrom::Start(self.seen.saturating_sub(self.limit as u64)))?;
+            file.take(self.limit as u64).read_to_end(&mut tail)?;
+            let digest = Sha256::digest(&tail);
+            (tail.as_slice(), format!("{digest:x}"))
+        } else {
+            (
+                self.bytes.as_slice(),
+                format!("{:x}", self.digest.clone().finalize()),
+            )
+        };
+        retain(root, name, bytes)?;
         if let Some((_, path)) = &self.live {
             std::fs::remove_file(path)?;
         }
         Ok(StreamEvidence {
-            bytes: self.bytes.len() as u64,
-            sha256: format!("{:x}", self.digest.clone().finalize()),
+            bytes: bytes.len() as u64,
+            sha256: digest,
             complete,
         })
     }
@@ -467,10 +468,11 @@ impl Capture {
 fn check_last(root: &Path, confirm: bool) -> Result<()> {
     use std::{io::Read, os::unix::fs::PermissionsExt};
     let path = root.join(if confirm { "last.json" } else { "last.md" });
-    if !path.try_exists()? {
-        return Ok(());
-    } // Diagnostic only; never an adoption result.
-    let meta = std::fs::symlink_metadata(&path)?;
+    let meta = match std::fs::symlink_metadata(&path) {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
     ensure!(
         meta.is_file() && !meta.file_type().is_symlink() && meta.len() <= LAST_BYTES as u64,
         "last output exceeds bound or aliases"

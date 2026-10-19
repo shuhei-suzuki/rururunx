@@ -12,7 +12,7 @@ mod argv;
 pub use argv::{PipelineRole, step_arguments};
 
 fn ensure_private_directory(path: &std::path::Path) -> anyhow::Result<()> {
-    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 
     match std::fs::DirBuilder::new().mode(0o700).create(path) {
         Ok(()) => {}
@@ -21,7 +21,10 @@ fn ensure_private_directory(path: &std::path::Path) -> anyhow::Result<()> {
     }
     let meta = std::fs::symlink_metadata(path)?;
     anyhow::ensure!(
-        meta.is_dir() && !meta.file_type().is_symlink() && meta.permissions().mode() & 0o077 == 0,
+        meta.is_dir()
+            && !meta.file_type().is_symlink()
+            && meta.permissions().mode() & 0o777 == 0o700
+            && meta.uid() == rustix::process::getuid().as_raw(),
         "private directory changed"
     );
     Ok(())

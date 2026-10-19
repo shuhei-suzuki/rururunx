@@ -188,6 +188,13 @@ with zero matches. A deadline cannot supply any of those facts. Incomplete proof
 holds the running step; monitor failure records unknown. No discovered PID is
 signalled on macOS.
 
+After leader reap, the group-empty observation and cookie discovery share one
+two-second deadline. Each limited, zero-match discovery may be retried as an
+independent scan within that same deadline; the first complete zero-match scan
+proves absence. Any matching process refuses proof immediately. The deadline is
+checked before and after each scan and bounds the awaited scan itself; expiry
+never supplies evidence or permits another scan.
+
 macOS cookie discovery retains `proc_listpids(PROC_UID_ONLY)` for same-user
 membership. Failed identity or environment reads receive one independent
 `sysctl(KERN_PROC_PID)` query per PID per pass. Only a successful empty query

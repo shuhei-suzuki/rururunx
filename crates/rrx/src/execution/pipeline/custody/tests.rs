@@ -118,11 +118,87 @@ fn b4_stdout_bound() {
 /// Stderr overflow preserves the bounded tail without rejecting the process.
 #[test]
 fn b4_stderr_tail() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
     let mut capture = Capture::new(4, true);
+    capture.start(&root.join("stderr.pending")).unwrap();
     assert!(capture.append(b"abc").unwrap());
     assert!(capture.append(b"def").unwrap());
-    assert_eq!(capture.bytes, b"cdef");
+    assert_eq!(
+        std::fs::read(root.join("stderr.pending")).unwrap(),
+        b"abcdef"
+    );
+    let evidence = capture.retain(&root, "stderr", true).unwrap();
+    assert_eq!(inspect(&root, "stderr", &evidence, 4).unwrap(), b"cdef");
+    assert!(evidence.complete);
+    assert!(!root.join("stderr.pending").exists());
     assert!(capture.truncated);
+}
+
+/// Both last-output names reject dangling and resolving symlinks.
+#[test]
+fn b4_last_output_refuses_symlinks() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    for confirm in [false, true] {
+        let last = root.join(if confirm { "last.json" } else { "last.md" });
+        assert!(check_last(root, confirm).is_ok());
+        let target = root.join("target");
+        symlink(&target, &last).unwrap();
+        assert!(check_last(root, confirm).is_err());
+        std::fs::write(&target, b"result").unwrap();
+        assert!(check_last(root, confirm).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"result");
+        std::fs::remove_file(last).unwrap();
+        std::fs::remove_file(target).unwrap();
+    }
+}
+
+/// Private directories require the owner's full 0700 permissions.
+#[test]
+fn b4_private_directory_exact_mode() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("private");
+    super::super::ensure_private_directory(&path).unwrap();
+    for mode in [0o500, 0o600, 0o750, 0o770] {
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+        let result = super::super::ensure_private_directory(&path);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(result.is_err(), "accepted mode {mode:o}");
+    }
+    super::super::ensure_private_directory(&path).unwrap();
+}
+
+/// A poisoned Store still wakes the runtime when monitor fallback fails.
+#[tokio::test]
+async fn b4_monitor_poison_wakes() {
+    let store = std::sync::Mutex::new(());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _store = store.lock().unwrap();
+            panic!("inject poisoned monitor fallback");
+        }))
+        .is_err()
+    );
+    let wake = Arc::new(Notify::new());
+    let result = supervise_monitor(
+        tokio::spawn(async { anyhow::bail!("monitor failed") }),
+        wake.clone(),
+        || {
+            let _store = store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            Ok(())
+        },
+    )
+    .await;
+    assert!(result.unwrap_err().to_string().contains("state poisoned"));
+    assert!(matches!(
+        futures_util::poll!(Box::pin(wake.notified())),
+        std::task::Poll::Ready(())
+    ));
 }
 
 /// Retained evidence is read back only when its full digest and length agree.

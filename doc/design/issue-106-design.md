@@ -89,8 +89,8 @@ rrx CLI ──(Unix control socket)──► rrxd Runtime ── sweep loop (run
 
 | 種類 | 対象 | 規則 |
 |---|---|---|
-| 結果を進める書込み | committed・adopted・次の step と attempt の計画・release の journal と done・Goal の完了・回復の `--then retry` | tick か回復の command の中でだけ行う。どちらも guard を保持する。最終 tx で、現在の owner、**Goal が Running であること**、run と step の version（それぞれの期待値）を確かめ直す。Goal が Running でなければ何も書かずに終える。step は exited / committed のまま残り、resume の後の tick がやり直す。cancel なら §4.3 で interrupted にする |
-| 観測を記録する書込み | exited・interrupted・rejected・held・unknown・limited、run の held / abandoned、上限待ちの記録の延長と解除（§2.6）、回復の `--then abandon-run`（journal の決着を含む。§4.4） | Goal の状態に依らない。StepCustody の監視タスクは guard を取らずに書く（shutdown が guard を持ったまま step の停止を待つので、取ると互いに待つ）。どれも採用・起動をしない。`--then abandon-run` が release 済みの journal を done にして run を completed にするのは、すでに起きた ref の変化の記録である（§9 の settle と同じ） |
+| 結果を進める書込み | committed・adopted・limited・次の step と attempt の計画・release の journal と done・Goal の完了・回復の `--then retry` | tick か回復の command の中でだけ行う。どちらも guard を保持する。最終 tx で、現在の owner、**Goal が Running であること**、run と step の version（それぞれの期待値）を確かめ直す。Goal が Running でなければ何も書かずに終える。step は exited / committed のまま残り、resume の後の tick がやり直す。cancel なら §4.3 で interrupted にする |
+| 観測を記録する書込み | exited・interrupted・rejected・held・unknown、run の held / abandoned、上限待ちの記録の延長と解除（§2.6）、回復の `--then abandon-run`（journal の決着を含む。§4.4） | Goal の状態に依らない。StepCustody の監視タスクは guard を取らずに書く（shutdown が guard を持ったまま step の停止を待つので、取ると互いに待つ）。どれも採用・起動をしない。`--then abandon-run` が release 済みの journal を done にして run を completed にするのは、すでに起きた ref の変化の記録である（§9 の settle と同じ） |
 
 このため、制御が guard を取った時点で、step は「起動していない（planned）」か「running として記録済み」か「launching から unknown にした」のどれかで、結果を進める書込みの途中ではない。pause・cancel・停止を guard の中で commit した後は、新しい起動も採用も release も Goal の完了も起こらない。launching のまま残るのは、rrxd が crash した場合だけである（§4.2 で unknown にする）。
 

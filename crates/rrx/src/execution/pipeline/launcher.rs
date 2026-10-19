@@ -125,7 +125,9 @@ impl StepLauncher {
             PipelineLaunch::Held => return Ok(LaunchResult::Held),
             PipelineLaunch::Started => {}
         }
-        let prepared = (|| -> Result<()> {
+        #[cfg(all(test, target_os = "macos"))]
+        super::test_support::launch_checkpoint(super::test_support::LaunchPhase::Intent).await;
+        let prepared = (|| -> Result<_> {
             CliQualifier::before_launch(&self.owner, &self.config)?;
             ensure!(
                 input.prompt.len() <= 512 * 1024 && hash(&input.prompt) == step.input_sha256,
@@ -167,16 +169,22 @@ impl StepLauncher {
             // Recheck last, after materialization and immediately before spawn.
             CliQualifier::before_launch(&self.owner, &self.config)
         })();
-        if prepared.is_err() {
-            self.owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .pipeline_reject(&self.owner, &cursor, "launch_preflight_failed")?;
-            self.wake.notify_one();
-            return Ok(LaunchResult::Held);
-        }
-        let mut command = tokio::process::Command::new(&cli.executable);
+        let images = match prepared {
+            Ok(images) => images,
+            Err(_) => {
+                self.owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .pipeline_reject(&self.owner, &cursor, "launch_preflight_failed")?;
+                self.wake.notify_one();
+                return Ok(LaunchResult::Held);
+            }
+        };
+        let image = &images[usize::from(!codex)];
+        #[cfg(all(test, target_os = "macos"))]
+        super::test_support::launch_checkpoint(super::test_support::LaunchPhase::Verified).await;
+        let mut command = tokio::process::Command::new(&image.realpath);
         command
             .args(args)
             .current_dir(&input.work)

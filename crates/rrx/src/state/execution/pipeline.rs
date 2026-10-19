@@ -1744,6 +1744,13 @@ pub enum PipelineLaunch {
     Held,
 }
 
+/// Exit observations and their final classification share one commit.
+pub struct PipelineExit<'a> {
+    pub outcome: Option<&'a str>,
+    pub evidence: &'a Value,
+    pub issue: Option<&'a str>,
+}
+
 impl Store {
     /// Read exactly the caller's launch snapshot without extending its authority.
     pub fn pipeline_launch_snapshot(
@@ -1960,34 +1967,82 @@ impl Store {
         outcome: Option<&str>,
         evidence: &Value,
     ) -> Result<()> {
+        self.pipeline_finish_step(
+            owner,
+            cursor,
+            death,
+            PipelineExit {
+                outcome,
+                evidence,
+                issue: None,
+            },
+        )
+    }
+
+    pub fn pipeline_finish_step(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+        death: &PipelineDeathEvidence,
+        exit: PipelineExit<'_>,
+    ) -> Result<()> {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         pipeline_owner_current(&tx, owner)?;
-        let (_, mut step) = cursor_rows(&tx, owner, cursor, false)?;
+        let (mut run, mut step) = cursor_rows(&tx, owner, cursor, false)?;
         death.validate()?;
+        ensure!(run.state == "running", "pipeline exit run is not Running");
         ensure!(
             matches!(step.state.as_str(), "running" | "launching"),
             "pipeline exit state changed"
         );
         if step.provider.is_some() {
             ensure!(
-                matches!(outcome, Some("success" | "limit" | "other")),
+                matches!(exit.outcome, Some("success" | "limit" | "other")),
                 "Agent exit requires classified provider outcome"
             );
         } else {
-            ensure!(outcome.is_none(), "non-Agent exit cannot classify provider");
+            ensure!(
+                exit.outcome.is_none(),
+                "non-Agent exit cannot classify provider"
+            );
+        }
+        if let Some(reason) = exit.issue {
+            ensure!(!reason.trim().is_empty(), "pipeline exit issue missing");
+            ensure!(
+                step.provider.is_none() || exit.outcome == Some("other"),
+                "failed exit cannot classify provider success or limit"
+            );
         }
         let wait = check_wait(&tx, owner, cursor.wait_version)?;
         step.state = "exited".into();
         step.body["death_confirmed"] = json!(true);
         step.body["death_evidence"] = serde_json::to_value(death)?;
-        step.body["exit"] = evidence.clone();
-        if let Some(outcome) = outcome {
+        step.body["exit"] = exit.evidence.clone();
+        if let Some(outcome) = exit.outcome {
             step.body["provider_outcome"] = json!(outcome);
         }
         write_step(&tx, owner, &step)?;
         settle_wait(&tx, owner, wait, &step)?;
+        if let Some(reason) = exit.issue {
+            step.version = next_version(step.version)?;
+            let at_limit = reason == "interrupted" && step.attempt == 16;
+            step.state = if at_limit {
+                "held"
+            } else if reason == "interrupted" {
+                "interrupted"
+            } else {
+                "rejected"
+            }
+            .into();
+            let reason = if at_limit { "attempt_limit" } else { reason };
+            step.body["reason"] = json!(reason);
+            write_step(&tx, owner, &step)?;
+            if step.state != "interrupted" {
+                held(&tx, owner, &mut run, &step, reason)?;
+            }
+        }
         tx.commit()?;
         Ok(())
     }

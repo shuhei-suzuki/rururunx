@@ -542,7 +542,10 @@ impl CliQualifier {
     }
 
     /// B4 must call this outside the Store transaction, between tx1 and spawn.
-    pub fn before_launch(owner: &RuntimeOwner, config: &PipelineConfig) -> Result<()> {
+    pub fn before_launch(
+        owner: &RuntimeOwner,
+        config: &PipelineConfig,
+    ) -> Result<[QualifiedCli; 2]> {
         Self::current(owner, config)?;
         let deadline = Instant::now() + PROBE_BOUND;
         Self::check_layout(owner, config)?;
@@ -560,6 +563,7 @@ impl CliQualifier {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .pipeline_qualifications(owner)?;
+        let mut images = Vec::new();
         for (subject, cli) in [
             ("codex", &config.clis.codex),
             ("claude", &config.clis.claude),
@@ -574,8 +578,11 @@ impl CliQualifier {
                     && serde_json::to_value(&image.realpath)? == row.body["realpath"],
                 "qualified executable changed"
             );
+            images.push(image);
         }
-        Ok(())
+        images
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("qualified CLI pair missing"))
     }
 }
 

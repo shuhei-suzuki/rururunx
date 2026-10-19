@@ -10,6 +10,40 @@ pub struct FakeCli {
     pub cli: PipelineCli,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum LaunchPhase {
+    Intent,
+    Verified,
+}
+
+thread_local! {
+    static LAUNCH_CHECKPOINT: std::cell::RefCell<Option<(LaunchPhase, tokio::sync::oneshot::Receiver<()>)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// A checkpoint delays execution only; it supplies no launch or Store authority.
+pub fn pause_launch(phase: LaunchPhase) -> tokio::sync::oneshot::Sender<()> {
+    let (release, wait) = tokio::sync::oneshot::channel();
+    LAUNCH_CHECKPOINT.with(|slot| {
+        assert!(slot.borrow().is_none());
+        *slot.borrow_mut() = Some((phase, wait));
+    });
+    release
+}
+
+pub async fn launch_checkpoint(phase: LaunchPhase) {
+    let wait = LAUNCH_CHECKPOINT.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.as_ref().is_some_and(|(target, _)| *target == phase) {
+            slot.take().map(|(_, wait)| wait)
+        } else {
+            None
+        }
+    });
+    if let Some(wait) = wait {
+        wait.await.expect("launch checkpoint abandoned");
+    }
+}
+
 pub async fn qualify_fixture(
     owner: &crate::execution::RuntimeOwner,
     config: &crate::config::PipelineConfig,
