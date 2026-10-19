@@ -578,6 +578,8 @@ StepCustody の監視タスクは、次を 1 つの `tokio::select!` で並行�
 
 どれかが失敗したら「確認できない」とし、held にする（`body.death_confirmed=false`）。macOS では、見つかったプロセスに signal を送らない（`crates/rrx-process-tracker/src/macos.rs:12-23`）。
 
+5 の探索は、結果が limited のときだけ、独立した新しい探索としてやり直す。やり直すのは、4 の後の同じ期限（`DEATH_BOUND`）の中だけで、各回の間に短く待つ。採るのは limited でない最初の結果だけである。どの回でも一致が 1 件でもあれば、その時点で「確認できない」とし、やり直さない。期限までに limited でない結果が得られなければ「確認できない」とする。各回の探索は §3.5.1 の保証をそれぞれ単独で満たすので、limited でない回を採ることは、最初の回でそれが得られた場合と同じ意味になる。やり直しの回数は `body.death_evidence` に記録する。他のプロセスが起動や exec の途中で一瞬読めないこと（照会は「生きている」を返す）で、死亡確認が held になるのを避けるためである。
+
 #### 3.5.1 macOS の探索での zombie と消えた PID
 
 **問題**: §3.5 の 5 は `coverage.limited()` が false であることを求める。macOS の tracker は、同じ利用者の PID を `proc_listpids(PROC_UID_ONLY)` で列挙し、`proc_pidinfo(PROC_PIDTBSDINFO)` で identity を読む（`crates/rrx-process-tracker/src/macos.rs:24-53,103-127`）。zombie ではこの読取りが失敗し、`identity_unavailable` に数えられる（`macos.rs:133-137`）。そのため `limited()` が true になる（`lib.rs:100-108`）。親が回収しない zombie が 1 つ残るだけで、どの step も死亡を確認できず held になる。オーナーの Mac では、2 日以上残る zombie を観測した（`inspected=766, same_user=765, identity_unavailable=1`）。
