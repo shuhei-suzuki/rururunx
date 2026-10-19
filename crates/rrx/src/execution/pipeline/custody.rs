@@ -131,8 +131,38 @@ pub(super) struct Monitor {
     pub cookie: String,
     pub attempt: PathBuf,
     pub prompt: Vec<u8>,
-    pub pin: String,
-    pub role: PipelineRole,
+    pub kind: MonitorKind,
+}
+
+pub(super) enum MonitorKind {
+    Agent { pin: String, role: PipelineRole },
+    Test(crate::execution::verification::TestCommand),
+}
+impl MonitorKind {
+    fn limits(&self) -> (u64, u64, usize, usize) {
+        match self {
+            Self::Test(c) => (
+                c.timeout_seconds,
+                c.drain_seconds,
+                c.stdout_bytes,
+                c.stderr_bytes,
+            ),
+            Self::Agent { role, .. } => (
+                match role {
+                    PipelineRole::Implement | PipelineRole::Fix => 3600,
+                    PipelineRole::Review => 1800,
+                    PipelineRole::Confirm => 1200,
+                },
+                10,
+                if matches!(role, PipelineRole::Review) {
+                    CLAUDE_BYTES
+                } else {
+                    CODEX_BYTES
+                },
+                STDERR_BYTES,
+            ),
+        }
+    }
 }
 
 pub(super) struct DeathReceipt {
@@ -226,10 +256,14 @@ impl Monitor {
             .stderr
             .take()
             .context("pipeline stderr missing")?;
-        let codex = !matches!(self.role, PipelineRole::Review);
-        let out_limit = if codex { CODEX_BYTES } else { CLAUDE_BYTES };
+        let (role, pin, test) = match &self.kind {
+            MonitorKind::Agent { pin, role } => (Some(*role), pin.as_str(), None),
+            MonitorKind::Test(command) => (None, "", Some(command)),
+        };
+        let codex = role.is_some_and(|r| !matches!(r, PipelineRole::Review));
+        let (seconds, drain_seconds, out_limit, err_limit) = self.kind.limits();
         let mut out = Capture::new(out_limit, false);
-        let mut err = Capture::new(STDERR_BYTES, true);
+        let mut err = Capture::new(err_limit, test.is_none());
         out.start(&self.attempt.join("stdout.pending"))?;
         err.start(&self.attempt.join("stderr.pending"))?;
         let mut out_buffer = [0u8; 8192];
@@ -247,11 +281,6 @@ impl Monitor {
             result
         });
         tokio::pin!(input);
-        let seconds = match self.role {
-            PipelineRole::Implement | PipelineRole::Fix => 3600,
-            PipelineRole::Review => 1800,
-            PipelineRole::Confirm => 1200,
-        };
         let mut deadline = Instant::now() + Duration::from_secs(seconds);
         loop {
             if observed_exit && out_done && err_done && input_done {
@@ -276,7 +305,11 @@ impl Monitor {
                 read = stderr.read(&mut err_buffer), if !err_done => {
                     match read {
                         Ok(0) => err_done = true,
-                        Ok(n) => if err.append(&err_buffer[..n]).is_err() { issue = Some("output_io"); break; },
+                        Ok(n) => match err.append(&err_buffer[..n]) {
+                            Ok(true) => {},
+                            Ok(false) => { issue = Some("output_overflow"); break; },
+                            Err(_) => { issue = Some("output_io"); break; }
+                        },
                         Err(_) => { issue = Some("output_io"); break; }
                     }
                 },
@@ -291,7 +324,7 @@ impl Monitor {
                                 .pipeline_hold(&self.owner, &self.cursor, "death_unconfirmed", None);
                         }
                     };
-                    deadline = Instant::now() + Duration::from_secs(10);
+                    deadline = Instant::now() + Duration::from_secs(drain_seconds);
                 },
                 _ = tokio::time::sleep_until(deadline) => { issue = Some(if observed_exit { "drain_incomplete" } else { "timeout" }); break; },
                 changed = stop.changed() => {
@@ -313,12 +346,18 @@ impl Monitor {
                     .pipeline_hold(&self.owner, &self.cursor, "death_unconfirmed", None);
             }
         };
-        let stdout_name = if codex { "stdout.jsonl" } else { "result.json" };
+        let stdout_name = if test.is_some() {
+            "stdout.log"
+        } else if codex {
+            "stdout.jsonl"
+        } else {
+            "result.json"
+        };
         let streams = (|| -> Result<_> {
             let stdout = out.retain(&self.attempt, "stdout", out_done)?;
             let stderr = err.retain(&self.attempt, "stderr", err_done)?;
             let bytes = inspect(&self.attempt, "stdout", &stdout, out_limit)?;
-            inspect(&self.attempt, "stderr", &stderr, STDERR_BYTES)?;
+            inspect(&self.attempt, "stderr", &stderr, err_limit)?;
             // Preserve the collector's exact leaf-name contract, then publish
             // the already verified, read-only files under the CLI artifact names.
             std::fs::rename(self.attempt.join("stdout"), self.attempt.join(stdout_name))?;
@@ -337,7 +376,7 @@ impl Monitor {
                         &self.cursor,
                         &dead.evidence,
                         PipelineExit {
-                            outcome: Some("other"),
+                            outcome: test.is_none().then_some("other"),
                             evidence: &json!({"issue":"output_io"}),
                             issue: Some("output_io"),
                         },
@@ -345,25 +384,40 @@ impl Monitor {
                 return Ok(());
             }
         };
-        let last = match check_last(&self.attempt, matches!(self.role, PipelineRole::Confirm)) {
-            Ok(last) => last,
-            Err(_) => {
-                issue.get_or_insert("last_output_invalid");
-                None
+        let last = if test.is_some() {
+            None
+        } else {
+            match check_last(&self.attempt, matches!(role, Some(PipelineRole::Confirm))) {
+                Ok(last) => last,
+                Err(_) => {
+                    issue.get_or_insert("last_output_invalid");
+                    None
+                }
             }
         };
-        let outcome = if issue.is_some() || !out_done {
-            ProviderOutcome::Other
-        } else if codex {
-            classify_codex(&self.pin, dead.status.code(), &bytes, out.truncated)
+        let outcome = if test.is_some() {
+            None
         } else {
-            classify_claude(&self.pin, dead.status.code(), &bytes, out.truncated)
+            let classified = if issue.is_some() || !out_done {
+                ProviderOutcome::Other
+            } else if codex {
+                classify_codex(pin, dead.status.code(), &bytes, out.truncated)
+            } else {
+                classify_claude(pin, dead.status.code(), &bytes, out.truncated)
+            };
+            Some(match classified {
+                ProviderOutcome::Success => "success",
+                ProviderOutcome::Limit => "limit",
+                ProviderOutcome::Other => "other",
+            })
         };
-        let outcome = match outcome {
-            ProviderOutcome::Success => "success",
-            ProviderOutcome::Limit => "limit",
-            ProviderOutcome::Other => "other",
-        };
+        let timed_out = issue == Some("timeout");
+        let overflow = issue == Some("output_overflow");
+        // Limits are complete observations of a failed test, not missing evidence.
+        if test.is_some() && (timed_out || overflow) {
+            issue = None;
+        }
+        use std::os::unix::process::ExitStatusExt;
         {
             let mut store = self
                 .owner
@@ -375,9 +429,9 @@ impl Monitor {
                 &self.cursor,
                 &dead.evidence,
                 PipelineExit {
-                    outcome: Some(outcome),
+                    outcome,
                     evidence: &json!({
-                    "code":dead.status.code(),"issue":issue,"stdout":stdout,"stderr":stderr,"last":last,
+                    "code":dead.status.code(),"exit_code":dead.status.code(),"signal":dead.status.signal(),"timed_out":timed_out,"overflow":overflow,"issue":issue,"stdout":stdout,"stderr":stderr,"last":last,
                     "stdout_truncated":out.truncated,"stderr_truncated":err.truncated
                     }),
                     issue,

@@ -1,4 +1,5 @@
 use super::*;
+mod b6;
 #[cfg(target_os = "macos")]
 use crate::config::{AgentConfig, Config, WorkflowClass};
 #[cfg(target_os = "macos")]
@@ -237,6 +238,17 @@ async fn fixture_with_service_and_alias(
     service: Option<(&Runtime, &Config)>,
     alias: bool,
 ) -> Fixture {
+    fixture_with_catalog(pipeline, pipeline_owner, shared, service, alias, None).await
+}
+#[cfg(target_os = "macos")]
+async fn fixture_with_catalog(
+    pipeline: bool,
+    pipeline_owner: bool,
+    shared: Option<std::sync::Arc<RuntimeOwner>>,
+    service: Option<(&Runtime, &Config)>,
+    alias: bool,
+    command: Option<TestCommand>,
+) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("source");
     std::fs::create_dir(&root).unwrap();
@@ -304,7 +316,7 @@ async fn fixture_with_service_and_alias(
     );
     store.put_project(&mut project).unwrap();
     let proposal = TestsProfile {
-        commands: vec![TestCommand {
+        commands: vec![command.unwrap_or(TestCommand {
             id: "test".into(),
             category: Category::Tests,
             program: "/usr/bin/true".into(),
@@ -314,7 +326,7 @@ async fn fixture_with_service_and_alias(
             drain_seconds: 1,
             stdout_bytes: 1024,
             stderr_bytes: 1024,
-        }],
+        })],
         applicability: BTreeMap::from([
             (Category::Tests, Applicability::Required),
             (
@@ -545,7 +557,7 @@ fn planned(run: &str, seq: u32, attempt: u32, kind: &str) -> PipelineStep {
         result_commit: None,
         result_tree: None,
         body: if kind == "test" {
-            json!({"command_id":"test"})
+            json!({"command_id":"test","command_index":0})
         } else {
             json!({})
         },
@@ -646,7 +658,7 @@ fn complete_goal(f: &Fixture) {
     let mut cursor = cursor;
     cursor.step_version = 2;
     f.store()
-        .pipeline_record_exit(&f.owner, &cursor, &death(), None, &json!({"exit_code":0}))
+        .pipeline_record_exit(&f.owner, &cursor, &death(), None, &json!({"exit_code":0,"signal":null,"timed_out":false,"overflow":false,"issue":null,"stdout":{"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","complete":true},"stderr":{"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","complete":true}}))
         .unwrap();
     cursor.step_version = 3;
     f.store()
@@ -1210,7 +1222,7 @@ async fn b2_wait_probe_success_clears() {
             &cursor,
             &death(),
             Some("success"),
-            &json!({"exit_code":0}),
+            &json!({"exit_code":0,"signal":null,"timed_out":false,"overflow":false,"issue":null,"stdout":{"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","complete":true},"stderr":{"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","complete":true}}),
         )
         .unwrap();
     assert_eq!(
@@ -1429,7 +1441,7 @@ fn held_release(f: &Fixture) -> (String, PipelineJournal) {
             &cursor,
             &death(),
             Some("success"),
-            &json!({"exit_code":0}),
+            &json!({"exit_code":0,"signal":null,"timed_out":false,"overflow":false,"issue":null,"stdout":{"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","complete":true},"stderr":{"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","complete":true}}),
         )
         .unwrap();
     let cursor = f.cursor(&id);

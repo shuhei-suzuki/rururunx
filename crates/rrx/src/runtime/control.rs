@@ -22,6 +22,11 @@ pub enum GoalControl {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ControlAction {
+    ProjectAdmitTests {
+        project: ProjectId,
+        expected_project: u64,
+        profile: crate::execution::verification::TestsProfile,
+    },
     ResolveProject {
         selector: Option<String>,
         cwd: PathBuf,
@@ -212,6 +217,10 @@ pub struct ControlRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ControlResponse {
+    ProjectTestsAdmitted {
+        project: ProjectId,
+        digest: String,
+    },
     /// Sanitized refusal; rejected raw frames and internal errors are never echoed.
     Rejected {
         request_id: Option<Uuid>,
@@ -621,6 +630,31 @@ impl Runtime {
     ) -> Result<ControlResponse> {
         let ingress = HumanIngress::from_connection(self, accepted)?;
         ingress.check(&request)?;
+        if let ControlAction::ProjectAdmitTests {
+            project,
+            expected_project,
+            profile,
+        } = &request.action
+        {
+            let _admission = self.control_admission.lock().await;
+            ensure!(
+                !self.stopping.load(std::sync::atomic::Ordering::SeqCst),
+                "Runtime stopping; test admission refused"
+            );
+            let sources = std::sync::Arc::new(
+                crate::execution::workflow_source::ManagedWorkflowSources::new(
+                    self.owner.clone(),
+                    self.config.clone(),
+                )?,
+            );
+            let verifier =
+                crate::execution::verification::ManagedVerifier::new(self.owner.clone(), sources)?;
+            let digest = verifier.admit_tests(*project, *expected_project, profile.clone())?;
+            return Ok(ControlResponse::ProjectTestsAdmitted {
+                project: *project,
+                digest,
+            });
+        }
         if let ControlAction::ResolveProject { selector, cwd } = &request.action {
             let selected = self.resolve_project_route(selector.as_deref(), cwd).await?;
             return Ok(ControlResponse::ProjectResolved {

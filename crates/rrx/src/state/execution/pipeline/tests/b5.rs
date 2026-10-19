@@ -1,5 +1,5 @@
 use super::*;
-fn step() -> PipelineStep {
+pub(super) fn step() -> PipelineStep {
     serde_json::from_value(json!({"run_id":"fixture","seq":2,"attempt":1,"kind":"implement","provider":"codex","owner_epoch":1,"round":0,"state":"exited","version":1,"cookie":null,"pid":null,"birth":null,"step_base":"a".repeat(40),"input_sha256":"b".repeat(64),"result_commit":null,"result_tree":null,"body":{"death_confirmed":true,"exit":{"issue":null}}})).unwrap()
 }
 /// Every adoption requires an explicit observation of certified death.
@@ -103,7 +103,13 @@ async fn prepare_fixture() -> (Fixture, std::sync::Arc<Runtime>, String) {
 }
 #[cfg(target_os = "macos")]
 async fn prepare_fixture_with_file(tracked: bool) -> (Fixture, std::sync::Arc<Runtime>, String) {
-    let f = fixture().await;
+    prepare_fixture_from(fixture().await, tracked).await
+}
+#[cfg(target_os = "macos")]
+pub(super) async fn prepare_fixture_from(
+    f: Fixture,
+    tracked: bool,
+) -> (Fixture, std::sync::Arc<Runtime>, String) {
     let runtime = std::sync::Arc::new(Runtime::new(f.owner.clone(), f.config.clone()).unwrap());
     runtime.start_qualified_service().await.unwrap();
     let project = f.store().project(f.project).unwrap().unwrap();

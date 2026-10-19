@@ -393,7 +393,7 @@ async fn b2_fix1_adopt_source() {
         let c = f.cursor(&id);
         let error = f
             .store()
-            .pipeline_adopt(&f.owner, &c, &json!({"command_id":"test"}))
+            .pipeline_adopt(&f.owner, &c, &json!({"command_id":"test","result":"pass"}))
             .unwrap_err();
         let expected = if kind == "release" {
             "pipeline release is adopted only by journal settlement"
@@ -415,11 +415,11 @@ async fn b2_fix1_terminal_rewrite() {
         .unwrap();
     let c = f.cursor(&id);
     f.store()
-        .pipeline_record_exit(&f.owner, &c, &death(), None, &json!({"exit_code":0}))
+        .pipeline_record_exit(&f.owner, &c, &death(), None, &json!({"exit_code":0,"signal":null,"timed_out":false,"overflow":false,"issue":null,"stdout":{"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","complete":true},"stderr":{"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","complete":true}}))
         .unwrap();
     let c = f.cursor(&id);
     f.store()
-        .pipeline_adopt(&f.owner, &c, &json!({"command_id":"test"}))
+        .pipeline_adopt(&f.owner, &c, &json!({"command_id":"test","result":"pass"}))
         .unwrap();
     let c = f.cursor(&id);
     assert!(
@@ -456,7 +456,7 @@ async fn b2_fix1_command_identity() {
         .unwrap();
     let c = f.cursor(&id);
     f.store()
-        .pipeline_record_exit(&f.owner, &c, &death(), None, &json!({"exit_code":0}))
+        .pipeline_record_exit(&f.owner, &c, &death(), None, &json!({"exit_code":0,"signal":null,"timed_out":false,"overflow":false,"issue":null,"stdout":{"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","complete":true},"stderr":{"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","complete":true}}))
         .unwrap();
     let c = f.cursor(&id);
     assert!(
@@ -737,7 +737,7 @@ async fn b2_fix1_complete_command_identity() {
         .unwrap();
     c.step_version = 2;
     f.store()
-        .pipeline_record_exit(&f.owner, &c, &death(), None, &json!({"exit_code":0}))
+        .pipeline_record_exit(&f.owner, &c, &death(), None, &json!({"exit_code":0,"signal":null,"timed_out":false,"overflow":false,"issue":null,"stdout":{"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","complete":true},"stderr":{"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","complete":true}}))
         .unwrap();
     c.step_version = 3;
     let error = f

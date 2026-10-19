@@ -368,20 +368,13 @@ fn insert_step(tx: &Transaction<'_>, owner: &RuntimeOwner, step: &PipelineStep) 
         step.version == 0 && step.state == "planned",
         "new step requires absent version"
     );
-    if step.kind == "test" {
-        let run = read_run(tx, &step.run_id)?;
-        let profile = admitted_profile(tx, run.goal_id)?;
-        ensure!(
-            step.body["command_id"].as_str().is_some_and(|id| profile
-                .proposal
-                .commands
-                .iter()
-                .any(|command| command.id == id)),
-            "pipeline planned command is not admitted"
-        );
-    }
     let body = stamped(&step.body, 1, "planned", owner.epoch)?;
     tx.execute("INSERT INTO pipeline_steps(run_id,seq,attempt,kind,provider,owner_epoch,round,state,version,cookie,pid,birth,step_base,input_sha256,result_commit,result_tree,body) VALUES(?1,?2,?3,?4,?5,?6,?7,'planned',1,NULL,NULL,NULL,?8,?9,NULL,NULL,?10)",params![step.run_id,step.seq,step.attempt,step.kind,step.provider,owner.epoch,step.round,step.step_base,step.input_sha256,body])?;
+    if step.kind == "test" {
+        let mut run = read_run(tx, &step.run_id)?;
+        let mut stored = read_step(tx, &step.run_id, step.seq, step.attempt)?;
+        check_test_profile(tx, owner, &mut run, &mut stored)?;
+    }
     Ok(())
 }
 fn write_step(tx: &Transaction<'_>, owner: &RuntimeOwner, step: &PipelineStep) -> Result<()> {
@@ -1346,7 +1339,11 @@ impl Store {
             &goal.id.to_string(),
             expected_goal,
         )?;
-        let profile = admitted_profile(&tx, goal.id)?;
+        let Some(profile) = check_test_profile(&tx, owner, &mut run, &mut step)? else {
+            tx.commit()?;
+            return Ok(());
+        };
+        ensure!(test_pass(&step)?, "pipeline Goal final test failed");
         let mut q=tx.prepare(&format!("SELECT {STEP_COLUMNS} FROM pipeline_steps WHERE run_id=?1 AND kind='test' AND state='adopted' ORDER BY seq,attempt"))?;
         let passed = q
             .query_map([&run.id], step_row)?
@@ -1354,6 +1351,7 @@ impl Store {
         drop(q);
         let mut ids = std::collections::BTreeSet::new();
         for passed in passed {
+            ensure!(test_pass(&passed)?, "pipeline Goal prior test failed");
             ensure!(
                 passed.step_base == run.head_commit
                     && passed
@@ -1400,7 +1398,7 @@ impl Store {
         runs.sort();
         let runs_sha256 = format!("{:x}", Sha256::digest(serde_json::to_vec(&runs)?));
         step.state = "adopted".into();
-        step.body["adoption"] = json!({"command_id":last_command});
+        step.body["adoption"] = json!({"command_id":last_command,"result":"pass"});
         write_step(&tx, owner, &step)?;
         tx.execute("INSERT INTO pipeline_goal_completions(goal_id,project_id,goal_branch_head,goal_check_run,runs_sha256,completed_epoch,body) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![goal.id.to_string(),goal.project_id.to_string(),run.head_commit,run.id,runs_sha256,owner.epoch,serde_json::to_string(&json!({"runs":runs}))?])?;
         run.state = "completed".into();
@@ -1437,15 +1435,98 @@ fn admitted_profile(
     c: &Connection,
     goal: GoalId,
 ) -> Result<crate::execution::verification::AdmittedProfile> {
-    use crate::execution::verification::{AdmittedProfile, hash};
     let (digest,body):(String,String)=c.query_row("SELECT p.digest,p.body FROM goal_execution_profiles g JOIN verification_profiles p ON p.project_id=g.project_id AND p.digest=g.tests_profile_digest WHERE g.goal_id=?1 AND length(CAST(p.body AS BLOB))<=1048576",[goal.to_string()],|r|Ok((r.get(0)?,r.get(1)?)))?;
+    decode_tests_profile(&digest, &body)
+}
+
+fn decode_tests_profile(
+    digest: &str,
+    body: &str,
+) -> Result<crate::execution::verification::AdmittedProfile> {
+    use crate::execution::verification::{AdmittedProfile, hash};
     ensure!(
         hash(body.as_bytes()) == digest,
         "pipeline TestsProfile body/digest mismatch"
     );
-    let profile: AdmittedProfile = serde_json::from_str(&body)?;
+    let profile: AdmittedProfile = serde_json::from_str(body)?;
     profile.validate()?;
     Ok(profile)
+}
+
+fn check_test_profile(
+    tx: &Transaction<'_>,
+    owner: &RuntimeOwner,
+    run: &mut PipelineRun,
+    step: &mut PipelineStep,
+) -> Result<Option<crate::execution::verification::AdmittedProfile>> {
+    let result = admitted_profile(tx, run.goal_id).and_then(|profile| {
+        crate::execution::pipeline::tests_runner::selected(&profile, step)?;
+        ensure!(step.step_base == run.head_commit, "test commit changed");
+        Ok(profile)
+    });
+    match result {
+        Ok(profile) => Ok(Some(profile)),
+        Err(_) => {
+            step.state = "held".into();
+            step.body["reason"] = json!("tests_profile_changed");
+            if step.cookie.is_none() {
+                step.body["death_confirmed"] = json!(true);
+            }
+            write_step(tx, owner, step)?;
+            held(tx, owner, run, step, "tests_profile_changed")?;
+            Ok(None)
+        }
+    }
+}
+
+/// A bounded but incomplete capture is a known failure only after timeout or overflow.
+pub(crate) fn test_pass(step: &PipelineStep) -> Result<bool> {
+    use crate::execution::verification::StreamEvidence;
+    certifying_exit(step)?;
+    let exit = &step.body["exit"];
+    let out: StreamEvidence = serde_json::from_value(exit["stdout"].clone())?;
+    let err: StreamEvidence = serde_json::from_value(exit["stderr"].clone())?;
+    let timeout = exit["timed_out"]
+        .as_bool()
+        .context("test timeout observation missing")?;
+    let overflow = exit["overflow"]
+        .as_bool()
+        .context("test overflow observation missing")?;
+    ensure!(
+        exit["exit_code"].as_i64().is_some() || exit["signal"].as_i64().is_some(),
+        "test exit observation missing"
+    );
+    ensure!(
+        (out.complete && err.complete) || timeout || overflow,
+        "test stream observation incomplete"
+    );
+    Ok(exit["exit_code"] == 0 && !timeout && !overflow)
+}
+
+impl Store {
+    /// Reads and checks the pinned catalog at the planning/launch boundary, holding on corruption.
+    pub(crate) fn pipeline_test_context(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+    ) -> Result<Option<crate::execution::verification::AdmittedProfile>> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        pipeline_owner_current(&tx, owner)?;
+        let (mut run, mut step) = cursor_rows(&tx, owner, cursor, true)?;
+        require_last_step(&tx, &step)?;
+        check_wait(&tx, owner, cursor.wait_version)?;
+        ensure!(
+            run.state == "running"
+                && step.kind == "test"
+                && matches!(step.state.as_str(), "planned" | "exited"),
+            "test context state changed"
+        );
+        let profile = check_test_profile(&tx, owner, &mut run, &mut step)?;
+        tx.commit()?;
+        Ok(profile)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1616,6 +1697,10 @@ impl Store {
                 evidence.workspace_verified,
                 "pipeline recovery workspace not verified"
             );
+            if step.kind == "test" {
+                let profile = admitted_profile(&tx, run.goal_id)?;
+                crate::execution::pipeline::tests_runner::selected(&profile, &step)?;
+            }
         }
         let mut settled = None;
         let release_applied = if !retry {
@@ -1694,8 +1779,7 @@ impl Store {
             next.birth = None;
             next.result_commit = None;
             next.result_tree = None;
-            next.body =
-                json!({"recovery":request.request_id,"command_id":step.body.get("command_id")});
+            next.body = json!({"recovery":request.request_id,"command_id":step.body.get("command_id"),"command_index":step.body.get("command_index")});
             insert_step(&tx, owner, &next)?;
         }
         append_event(
@@ -1855,6 +1939,10 @@ impl Store {
             "pipeline launch state changed"
         );
         let wait = check_wait(&tx, owner, cursor.wait_version)?;
+        if step.kind == "test" && check_test_profile(&tx, owner, &mut run, &mut step)?.is_none() {
+            tx.commit()?;
+            return Ok(PipelineLaunch::Held);
+        }
         let internal = matches!(step.kind.as_str(), "prepare" | "release");
         if !native_exhaustion(&tx)?.is_empty() {
             step.state = "held".into();
@@ -2143,6 +2231,8 @@ impl Store {
                 "held"
             } else if reason == "interrupted" {
                 "interrupted"
+            } else if step.kind == "test" && reason != "record_failed" {
+                "held"
             } else {
                 "rejected"
             }
@@ -2282,6 +2372,15 @@ impl Store {
             certifying_exit(&step)?;
         }
         if step.kind == "test" {
+            if check_test_profile(&tx, owner, &mut run, &mut step)?.is_none() {
+                tx.commit()?;
+                return Ok(());
+            }
+            let pass = test_pass(&step)?;
+            ensure!(
+                evidence["result"].as_str() == Some(if pass { "pass" } else { "fail" }),
+                "test result classification changed"
+            );
             ensure!(
                 step.body["command_id"].as_str().is_some()
                     && step.body["command_id"].as_str() == evidence["command_id"].as_str(),

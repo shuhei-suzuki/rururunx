@@ -485,6 +485,12 @@ fn print_control(response: ControlResponse, json: bool, metadata: bool) -> Resul
 }
 #[derive(Subcommand)]
 enum ProjectCommand {
+    /// Admit an immutable operator-authored TestsProfile JSON catalog.
+    AdmitTests {
+        project: String,
+        #[arg(long)]
+        profile: PathBuf,
+    },
     /// Register an exact repository root; repeat to validate recovery/reactivation.
     Add {
         path: PathBuf,
@@ -609,6 +615,41 @@ fn run(cli: Cli) -> Result<ExitCode> {
             );
         }
         Some(Command::Project { command }) => {
+            if let ProjectCommand::AdmitTests { project, profile } = &command {
+                ensure!(
+                    cli.project_config.is_none(),
+                    "--project-config is not accepted by project admit-tests"
+                );
+                let state = cli
+                    .state
+                    .clone()
+                    .map(Ok)
+                    .unwrap_or_else(default_state_path)?;
+                use std::io::Read;
+                let mut bytes = Vec::new();
+                std::fs::File::open(profile)?
+                    .take(1024 * 1024 + 1)
+                    .read_to_end(&mut bytes)?;
+                ensure!(bytes.len() <= 1024 * 1024, "TestsProfile exceeds bound");
+                let profile: rrx::execution::verification::TestsProfile =
+                    serde_json::from_slice(&bytes)?;
+                let rt = tokio::runtime::Runtime::new()?;
+                let response = rt.block_on(async {
+                    let (project, expected_project) =
+                        resolve_project(&state, Some(project.clone())).await?;
+                    client::request(
+                        &state,
+                        ControlAction::ProjectAdmitTests {
+                            project,
+                            expected_project,
+                            profile,
+                        },
+                    )
+                    .await
+                })?;
+                println!("{}", serde_json::to_string_pretty(&response)?);
+                return Ok(ExitCode::SUCCESS);
+            }
             // C-S2d: refused before reconcile and before Store::open writes.
             if let ProjectCommand::Add {
                 max_tasks: Some(requested),
@@ -630,6 +671,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 std::fs::create_dir_all(parent)?;
             }
             let request = match command {
+                ProjectCommand::AdmitTests { .. } => unreachable!("admission handled above"),
                 ProjectCommand::Add {
                     path,
                     name,
@@ -855,5 +897,30 @@ fn main() -> ExitCode {
             eprintln!("rrx: {error:#}");
             ExitCode::from(service::exit_code(&error))
         }
+    }
+}
+
+#[cfg(test)]
+mod b6_tests {
+    use super::*;
+
+    /// The CLI requires an explicit Project selector and operator profile file for admission.
+    #[test]
+    fn b6_cli_admit_tests() {
+        let cli = Cli::try_parse_from([
+            "rrx",
+            "project",
+            "admit-tests",
+            "operator-project",
+            "--profile",
+            "catalog.json",
+        ])
+        .unwrap();
+        assert!(
+            matches!(cli.command, Some(Command::Project { command:ProjectCommand::AdmitTests { project, profile } }) if project == "operator-project" && profile == Path::new("catalog.json"))
+        );
+        assert!(
+            Cli::try_parse_from(["rrx", "project", "admit-tests", "operator-project"]).is_err()
+        );
     }
 }

@@ -1,5 +1,18 @@
 use super::*;
 
+/// Test custody consumes every admitted command bound instead of Agent defaults.
+#[test]
+fn b6_custody_limits() {
+    let mut c = crate::execution::pipeline::tests_runner::tests::proposal("/usr/bin/true".into())
+        .commands
+        .remove(0);
+    c.timeout_seconds = 3;
+    c.drain_seconds = 2;
+    c.stdout_bytes = 31;
+    c.stderr_bytes = 47;
+    assert_eq!(MonitorKind::Test(c).limits(), (3, 2, 31, 47));
+}
+
 /// Last-message evidence records the exact retained bytes for adoption revalidation.
 #[test]
 fn b5_last_receipt() {

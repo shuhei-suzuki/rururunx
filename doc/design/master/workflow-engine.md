@@ -474,6 +474,25 @@ A Goal may define minimum workflow constraints for all child Tasks, but project-
 
 ## 17. Implemented Rust contract
 
+Pipeline test commands use detached clean checkouts of the selected run head.
+`Runtime::launch_pipeline_test` prepares the checkout with `PipelineGit` driver,
+attribute, index and registration checks, then uses `StepLauncher` and
+`StepCustody`. Each command has its own `pipeline_steps` receipt with exit code,
+signal and retained stdout/stderr digests. Tests do not create native verification
+runs. Zero exit without timeout or output overflow passes; nonzero exit, timeout
+and overflow are adopted failures. Missing observations hold the run. Adoption
+shares `control_admission` with controls and rechecks owner, Goal state and both
+run and step versions. Scheduling subsequent commands remains a separate caller
+responsibility.
+
+The immutable Project catalog is read by the Goal's pinned profile digest at
+planning, launch intent and adoption. Every read hashes the stored body before
+decoding and validating it. A changed catalog holds the step with
+`tests_profile_changed`; each launch also rechecks the admitted executable bytes.
+Tests execute through `/usr/bin/sandbox-exec` with network denied and writes
+restricted to the checkout, step TMPDIR and operator-declared caches. Their
+environment is built from the pipeline allowlist without `CODEX_HOME`.
+
 `workflow::WorkflowEngine` initializes one exact Task workflow, then `step` reserves
 and dispatches a phase or polls its stable native Session. QUICK, STANDARD and
 STRICT execute against `AgentAdapter`; formal requirements/design/impact phases

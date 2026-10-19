@@ -27,6 +27,9 @@ pub struct PipelineConfig {
     pub work_root: PathBuf,
     #[serde(default)]
     pub path_prefix: Vec<PathBuf>,
+    /// Operator-declared writable caches for sandboxed test commands.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub test_cache_dirs: Vec<PathBuf>,
     pub clis: PipelineClis,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -77,6 +80,11 @@ impl PipelineConfig {
         Ok(())
     }
     pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.test_cache_dirs.len() <= 32
+                && self.test_cache_dirs.iter().all(|p| p.is_absolute()),
+            "invalid pipeline test cache directories"
+        );
         let root = self.work_root.as_os_str().as_encoded_bytes();
         ensure!(
             self.work_root.is_absolute()

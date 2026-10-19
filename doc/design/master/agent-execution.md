@@ -285,6 +285,27 @@ SIGKILL is claimed. Restart fences old authority and reconciles durable intents.
 
 ## 5. Integration and evidence
 
+The local `ProjectAdmitTests` control accepts an operator-authored `TestsProfile`
+through `ManagedVerifier::admit_tests`. The CLI entry is
+`rrx project admit-tests <project> --profile <file>`. Admission requires the
+authenticated OS peer, current owner epoch and observed Project version; the
+catalog remains immutable for that Project. Committed repository files and Task
+text cannot activate commands.
+
+In pipeline mode, each admitted command runs under the existing pipeline process
+custody against a checked detached checkout. Seatbelt allows file reads, denies
+network and permits writes only within that checkout, its private TMPDIR and
+`pipeline.test_cache_dirs`. Cache paths must be canonical absolute directories
+whose literals cannot change the profile syntax. Grants overlapping registered
+Project roots, Task worktree namespaces, common Git data, state directories or
+the pipeline work root are refused; HOME itself cannot be granted. Tests inherit
+only the fixed pipeline environment and never `CODEX_HOME`. Profile body hashes,
+decoded policy and executable hashes are checked before execution. Stream limits,
+timeout and drain bounds come from the admitted command. Complete failed results
+are adopted as failures; incomplete I/O or process-death observations hold the
+run. Test evidence is retained in pipeline step records, independently of native
+verification tables.
+
 Session remains transport state; Task/attempt is execution authority; reservation
 is unit-specific; Workflow still owns phase truth; Context/ReviewBundle bind actual
 snapshot content; Review Engine/Approval Broker bind artifact and generation;

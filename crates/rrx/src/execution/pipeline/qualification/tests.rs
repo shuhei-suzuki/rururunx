@@ -17,6 +17,7 @@ impl Fixture {
         let codex = FakeCli::new(&root, true);
         let claude = FakeCli::new(&root, false);
         let config = PipelineConfig {
+            test_cache_dirs: vec![],
             work_root: root,
             path_prefix: vec![],
             clis: PipelineClis {

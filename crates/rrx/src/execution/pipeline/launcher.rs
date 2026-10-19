@@ -51,8 +51,32 @@ impl StepLauncher {
     pub(crate) async fn launch(
         self,
         boundary: OwnedMutexGuard<()>,
+        cursor: PipelineCursor,
+        input: StepInput,
+    ) -> Result<LaunchResult> {
+        self.launch_inner(boundary, cursor, input, None).await
+    }
+
+    pub(crate) async fn launch_test(
+        self,
+        boundary: OwnedMutexGuard<()>,
+        cursor: PipelineCursor,
+        test: super::PreparedTest,
+    ) -> Result<LaunchResult> {
+        let input = StepInput {
+            work: test.checkout.clone(),
+            prompt: vec![],
+            schema: String::new(),
+        };
+        self.launch_inner(boundary, cursor, input, Some(test)).await
+    }
+
+    async fn launch_inner(
+        self,
+        boundary: OwnedMutexGuard<()>,
         mut cursor: PipelineCursor,
         input: StepInput,
+        test: Option<super::PreparedTest>,
     ) -> Result<LaunchResult> {
         let (run, step) = self
             .owner
@@ -66,6 +90,7 @@ impl StepLauncher {
         );
         // Tests require the admitted/Seatbelt producer; internal steps never spawn here.
         let (role, codex) = match step.kind.as_str() {
+            "test" if test.is_some() => (PipelineRole::Implement, false),
             "implement" => (PipelineRole::Implement, true),
             "fix" => (PipelineRole::Fix, true),
             "confirm" => (PipelineRole::Confirm, true),
@@ -73,7 +98,12 @@ impl StepLauncher {
             _ => anyhow::bail!("pipeline step has no Agent launch template"),
         };
         ensure!(
-            step.provider.as_deref() == Some(if codex { "codex" } else { "claude" }),
+            step.provider.as_deref()
+                == if test.is_some() {
+                    None
+                } else {
+                    Some(if codex { "codex" } else { "claude" })
+                },
             "pipeline provider differs from kind"
         );
         ensure!(
@@ -97,7 +127,26 @@ impl StepLauncher {
         } else {
             &self.config.clis.claude
         };
-        let args = step_arguments(role, cli, &input.work, &attempt, &input.schema)?;
+        let args = if let Some(test) = &test {
+            let mut args = vec![
+                "-f".into(),
+                attempt
+                    .join("test.sb")
+                    .to_str()
+                    .context("profile encoding")?
+                    .into(),
+                "--".into(),
+                test.command
+                    .program
+                    .to_str()
+                    .context("program encoding")?
+                    .into(),
+            ];
+            args.extend(test.command.args.clone());
+            args
+        } else {
+            step_arguments(role, cli, &input.work, &attempt, &input.schema)?
+        };
         let env = qualification::environment(&self.config, &tmp, &cookie, cli, codex)?;
         let env_bytes: Vec<_> = env.iter().map(|(k, v)| (k, v.as_encoded_bytes())).collect();
         let intent = json!({"attempt_dir":attempt,"tmpdir":tmp,
@@ -130,7 +179,9 @@ impl StepLauncher {
         let prepared = (|| -> Result<_> {
             CliQualifier::before_launch(&self.owner, &self.config)?;
             ensure!(
-                input.prompt.len() <= 512 * 1024 && hash(&input.prompt) == step.input_sha256,
+                test.is_some()
+                    || (input.prompt.len() <= 512 * 1024
+                        && hash(&input.prompt) == step.input_sha256),
                 "pipeline prompt differs from plan"
             );
             ensure!(
@@ -139,7 +190,7 @@ impl StepLauncher {
                     && input.work != self.config.work_root,
                 "pipeline workspace escaped private root"
             );
-            if matches!(role, PipelineRole::Implement | PipelineRole::Fix) {
+            if test.is_none() && matches!(role, PipelineRole::Implement | PipelineRole::Fix) {
                 ensure!(
                     run.worktree.as_deref() == input.work.to_str(),
                     "pipeline workspace differs from run"
@@ -163,13 +214,33 @@ impl StepLauncher {
                     input.schema.as_bytes(),
                 )?;
             }
-            if !codex {
+            if test.is_none() && !codex {
                 write_input(&attempt.join("mcp.json"), b"{\"mcpServers\":{}}")?;
             }
+            if let Some(test) = &test {
+                let policy = super::tests_runner::seatbelt(
+                    &test.checkout,
+                    &tmp,
+                    &self.config.test_cache_dirs,
+                    &self.config.work_root,
+                    &test.forbidden,
+                )?;
+                write_input(&attempt.join("test.sb"), policy.as_bytes())?;
+            }
+            let cwd = if let Some(test) = &test {
+                let cwd = test.checkout.join(&test.command.cwd).canonicalize()?;
+                ensure!(
+                    cwd.starts_with(&test.checkout) && cwd.is_dir(),
+                    "test cwd escaped checkout"
+                );
+                cwd
+            } else {
+                input.work.clone()
+            };
             // Recheck last, after materialization and immediately before spawn.
-            CliQualifier::before_launch(&self.owner, &self.config)
+            Ok((CliQualifier::before_launch(&self.owner, &self.config)?, cwd))
         })();
-        let images = match prepared {
+        let (images, cwd) = match prepared {
             Ok(images) => images,
             Err(_) => {
                 self.owner
@@ -184,10 +255,15 @@ impl StepLauncher {
         let image = &images[usize::from(!codex)];
         #[cfg(all(test, target_os = "macos"))]
         super::test_support::launch_checkpoint(super::test_support::LaunchPhase::Verified).await;
-        let mut command = tokio::process::Command::new(&image.realpath);
+        let program = if test.is_some() {
+            PathBuf::from("/usr/bin/sandbox-exec")
+        } else {
+            image.realpath.clone()
+        };
+        let mut command = tokio::process::Command::new(program);
         command
             .args(args)
-            .current_dir(&input.work)
+            .current_dir(cwd)
             .env_clear()
             .envs(env)
             .process_group(0)
@@ -195,6 +271,18 @@ impl StepLauncher {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if let Some(test) = &test {
+            // No file materialization or qualification may intervene between recheck and spawn.
+            if test.profile.recheck(&test.command).is_err() {
+                self.owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .pipeline_reject(&self.owner, &cursor, "tests_program_changed")?;
+                self.wake.notify_one();
+                return Ok(LaunchResult::Held);
+            }
+        }
         let child = match rrx_spawn_hygiene::spawn_tokio(command) {
             Ok(child) => child,
             Err(_) => {
@@ -230,7 +318,7 @@ impl StepLauncher {
                         &cursor,
                         &dead.evidence,
                         PipelineExit {
-                            outcome: Some("other"),
+                            outcome: if test.is_some() { None } else { Some("other") },
                             evidence: &json!({"issue":"record_failed"}),
                             issue: Some("record_failed"),
                         },
@@ -253,8 +341,11 @@ impl StepLauncher {
                 cookie,
                 attempt,
                 prompt: input.prompt,
-                pin,
-                role,
+                kind: if let Some(test) = test {
+                    custody::MonitorKind::Test(test.command)
+                } else {
+                    custody::MonitorKind::Agent { pin, role }
+                },
             },
         )))
     }

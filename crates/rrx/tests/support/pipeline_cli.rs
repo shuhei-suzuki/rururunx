@@ -88,6 +88,7 @@ pub fn config(
     let work_root = std::fs::canonicalize(owner.ipc_path().parent().unwrap()).unwrap();
     std::fs::set_permissions(&work_root, std::fs::Permissions::from_mode(0o700)).unwrap();
     crate::config::PipelineConfig {
+        test_cache_dirs: vec![],
         // Reuse the existing owner/IPC fixture's short, private directory.
         work_root,
         path_prefix: vec![],
