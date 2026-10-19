@@ -178,9 +178,12 @@ impl Monitor {
         let mut input_done = false;
         let mut observed_exit = false;
         let mut issue = None;
-        let input = timeout(Duration::from_secs(30), async {
-            stdin.write_all(&self.prompt).await?;
-            stdin.shutdown().await
+        let prompt = &self.prompt;
+        let input = timeout(Duration::from_secs(30), async move {
+            let result = stdin.write_all(prompt).await;
+            // ChildStdin::shutdown does not close the pipe; EOF requires drop.
+            drop(stdin);
+            result
         });
         tokio::pin!(input);
         let seconds = match self.role {

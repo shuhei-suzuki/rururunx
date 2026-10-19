@@ -61,5 +61,6 @@ int main(int argc,char **argv) {
     }
     if(exists("exec-pause")){while(!exists("exec-release"))usleep(10000);}
     FILE *in=file("stdin","w");int c;while((c=getchar())!=EOF)fputc(c,in);fclose(in);
+    fclose(file("stdin-eof","w"));
     output("exec-output");return status("exec-status");
 }

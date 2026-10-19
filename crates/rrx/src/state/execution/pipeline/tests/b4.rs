@@ -120,6 +120,38 @@ async fn b4_launch_receipt_and_death() {
     h.close().await;
 }
 
+/// The native CLI receives stdin EOF and exits successfully without a stop request.
+#[tokio::test]
+async fn b4_stdin_eof() {
+    let h = Harness::new("implement").await;
+    let custody = h.started().await;
+    // Bound the regression test well below the production input and step deadlines.
+    let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !h.fake.directory.join("stdin-eof").exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    if result.is_err() {
+        // Clean up the stalled child only on failure, never to produce success.
+        custody.request_stop();
+        custody.wait().await.unwrap();
+        h.close().await;
+        panic!("native CLI did not receive stdin EOF and finish");
+    }
+    custody.wait().await.unwrap();
+    let step = h.step();
+    assert_eq!(step.state, "exited");
+    assert_eq!(step.body["exit"]["code"], 0);
+    assert!(step.body["exit"]["issue"].is_null());
+    assert_eq!(step.body["provider_outcome"], "success");
+    assert_eq!(
+        std::fs::read(h.fake.directory.join("stdin")).unwrap(),
+        h.prompt
+    );
+    h.close().await;
+}
+
 /// Agent launches never inherit credentials or environment keys outside the allowlist.
 #[tokio::test]
 async fn b4_launch_environment_subset() {
