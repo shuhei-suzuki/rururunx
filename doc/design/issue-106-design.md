@@ -701,7 +701,8 @@ PID の割当ての順序や再利用までの間隔は、上の論証に使わ�
 | ZB16 | 1 巡目で p が zombie。2 巡目の一覧で p の要素の key が変わり、identity1 が失敗し、照会は短い長さを返す。3 巡目の fake は、呼ばれれば p を成功で返す | `identity_unavailable=1`、limited。3 巡目の一覧は呼ばれない |
 | ZB17 | 一覧の sysctl が、ENOMEM で倍数の長さ / 長さが倍数でない / 同じ `p_pid` が 2 つ、を返す | 順に、返った要素を走査して `truncated` / `Err` / `Err` |
 | ZB18 | 一覧の zombie の key（`p_starttime`）が 0 | 照合されず毎巡新しい不在になり、`time_exceeded` で limited |
-| ZB19 | 1 巡目に `reused` が 1 つあり、2 巡目の一覧は 1 巡目と同じ key だけになる | `relistings=1`。2 巡目は何も読まず、limited でない |
+| ZB19 | 1 巡目の一覧は p（key K_p）と q（key K_q）。p は cookie が一致せず、identity2 も等しく、検査済みになる。q は identity1 の birth が K_q と違い、`reused` になる。2 巡目の一覧に q の PID はない。残る要素は p だけで、記録済みの 0 でない同じ key K_p を持つ | `reused=1`、`relistings=1`。2 巡目は何も読まない（p の identity・環境の読取りがない）。3 巡目の一覧は呼ばれず、limited でない |
+| ZB20 | 1 巡目の一覧は p（key K）だけ。identity1 の birth は K と等しく、環境は一致しない。identity2 の読取りは 1 度だけ失敗する（fake の一時的な失敗）。2 巡目の一覧にも p が同じ key K で残る。2 巡目の fake は、identity の読取りがすべて成功して birth K を返し、環境は一致しない | 1 巡目は `reused=1`。p の key は記録しない。2 巡目は `relistings=1` で、p に全部の検査をもう一度行う（identity を 2 回・環境を 1 回読む）。終わりに `inspected=2`・`same_user=2`・`reused=1`。3 巡目の一覧は呼ばれず、limited でなく、`processes` は空 |
 
 macOS の実機テスト（`#[cfg(target_os = "macos")]`）では、zombie を自分で作る。
 
@@ -741,6 +742,8 @@ macOS の実機テスト（`#[cfg(target_os = "macos")]`）では、zombie を�
 | 一覧の長さの検査や重複の検査を外す | ZB17 |
 | key が 0 の要素も照合する | ZB18 |
 | 照合された PID も毎巡全部の検査にする | ZB6、ZB19（読取りの記録） |
+| 記録した key ではなく、前の一覧にあった key で照合する（`reused` の PID も照合済みにする） | ZB20（2 巡目に p の読取りがない。`inspected=1`・`same_user=1`） |
+| 一致しなかったとき、identity2 が読めなくても検査済みとして key を記録する | ZB20（`reused=0`・`relistings=0`） |
 | 環境の読取りが失敗したとき、照会せずに zombie にする | ZB11 |
 | cookie の一致後の失敗にも分類を当てる | ZB12 |
 | zombie を `processes` に入れる | ZB6、実機テストの 4 |
