@@ -730,9 +730,12 @@ async fn b3_q_removed_project() {
     )
     .unwrap();
     let config = crate::execution::pipeline::test_support::config(&owner, dir.path());
-    for root in [dir.path().join("deleted"), config.work_root.clone()] {
+    for (identity, root) in [
+        ("deleted", dir.path().join("deleted")),
+        ("overlapping", config.work_root.clone()),
+    ] {
         let mut project =
-            crate::domain::Project::new("removed".into(), root, "fixture".into(), "main".into());
+            crate::domain::Project::new("removed".into(), root, identity.into(), "main".into());
         project.state = crate::domain::ProjectState::Removed;
         owner
             .store

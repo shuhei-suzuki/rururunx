@@ -204,7 +204,7 @@ async fn fixture_with_modes(
     if pipeline_owner {
         let pins = crate::execution::pipeline::test_support::config(&owner, dir.path());
         if fresh {
-            crate::execution::pipeline::CliQualifier::qualify(&owner, &pins)
+            crate::execution::pipeline::test_support::qualify_fixture(&owner, &pins)
                 .await
                 .unwrap();
         }

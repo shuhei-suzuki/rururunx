@@ -10,6 +10,16 @@ pub struct FakeCli {
     pub cli: PipelineCli,
 }
 
+pub async fn qualify_fixture(
+    owner: &crate::execution::RuntimeOwner,
+    config: &crate::config::PipelineConfig,
+) -> anyhow::Result<()> {
+    // Bound harness process contention during fixture setup; this is not a product lock.
+    static SETUP_PERMITS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+    let _permit = SETUP_PERMITS.acquire().await.unwrap();
+    crate::execution::pipeline::CliQualifier::qualify(owner, config).await
+}
+
 pub fn config(
     owner: &crate::execution::RuntimeOwner,
     root: &Path,
