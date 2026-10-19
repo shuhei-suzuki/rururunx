@@ -1,4 +1,14 @@
 use super::*;
+/// Git returns bounded output after verified cleanup of an exited leader's group.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn b5_git_exited_group_cleanup() {
+    let root = tempfile::tempdir().unwrap();
+    let git = PipelineGit::new(&root.path().canonicalize().unwrap()).unwrap();
+    let output = git.run(&["--version"]).await.unwrap();
+    assert!(output.starts_with(b"git version "));
+}
+
 /// Blob writes consume stdin bytes with filters explicitly disabled.
 #[test]
 fn b5_blob_filter_boundary() {

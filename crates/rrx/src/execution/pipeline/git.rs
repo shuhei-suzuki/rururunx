@@ -117,7 +117,7 @@ impl PipelineGit {
             Ok::<_, anyhow::Error>(out)
         })
         .await;
-        let receipt = child.stop_and_reap().await?;
+        let receipt = child.stop_and_reap_probe().await?;
         ensure!(
             receipt.group_error.is_none(),
             "Git group cleanup unconfirmed"

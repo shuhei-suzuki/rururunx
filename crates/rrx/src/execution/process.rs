@@ -278,6 +278,32 @@ impl OwnedProcess {
             group_error,
         })
     }
+    /// Resolve zombie-only macOS groups with the startup-probe inspector before reaping.
+    pub(crate) async fn stop_and_reap_probe(self) -> Result<ProcessReceipt> {
+        self.stop_and_reap_probe_with_kill(kill_process_group).await
+    }
+    async fn stop_and_reap_probe_with_kill(
+        self,
+        kill: impl FnOnce(Pid, Signal) -> std::result::Result<(), rustix::io::Errno> + Send + 'static,
+    ) -> Result<ProcessReceipt> {
+        // Inspection may block; retain unreaped custody in the worker until it finishes.
+        let (mut child, cleanup) = tokio::task::spawn_blocking(move || {
+            let cleanup = signal_probe_group(&self, kill, inspect_probe_group);
+            (self, cleanup)
+        })
+        .await
+        .context("owned probe cleanup worker failed")?;
+        let group_error = cleanup.err().map(|e| format!("{e:#}"));
+        if group_error.is_some() {
+            let _ = child.child.start_kill();
+        }
+        let status = tokio::time::timeout(Duration::from_secs(10), child.child.wait()).await??;
+        child.unreaped = false;
+        Ok(ProcessReceipt {
+            status,
+            group_error,
+        })
+    }
 }
 impl Drop for OwnedProcess {
     fn drop(&mut self) {
@@ -525,6 +551,45 @@ async fn capture_probe_with_spawn(
 #[cfg(test)]
 mod probe_tests {
     use super::*;
+
+    /// Verified owned cleanup accepts only zombie-confirmed EPERM and still reaps on refusal.
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn b5_owned_probe_cleanup() {
+        for live in [false, true] {
+            let command = if live {
+                let mut command = Command::new("/bin/sleep");
+                command.arg("10");
+                command
+            } else {
+                Command::new("/usr/bin/true")
+            };
+            let child = OwnedProcess::spawn(command).unwrap();
+            let pid = child.pid;
+            if !live {
+                child.exited().await.unwrap();
+            }
+            let receipt = child
+                .stop_and_reap_probe_with_kill(|_, _| Err(rustix::io::Errno::PERM))
+                .await
+                .unwrap();
+            assert_eq!(
+                receipt.group_error.is_some(),
+                live,
+                "cleanup: {:?}",
+                receipt.group_error
+            );
+            assert_eq!(receipt.status.success(), !live);
+            assert_eq!(
+                waitid(
+                    WaitId::Pid(pid),
+                    WaitIdOptions::EXITED | WaitIdOptions::NOHANG
+                )
+                .unwrap_err(),
+                rustix::io::Errno::CHILD
+            );
+        }
+    }
 
     /// The default probe inspector refuses live-group EPERM and accepts confirmed-dead EPERM.
     #[cfg(target_os = "macos")]

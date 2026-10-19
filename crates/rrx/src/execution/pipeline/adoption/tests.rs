@@ -1,6 +1,6 @@
 use super::*;
 fn root() -> tempfile::TempDir {
-    tempfile::tempdir().unwrap()
+    tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap()
 }
 fn status(path: &str) -> Vec<u8> {
     format!("? {path}\0").into_bytes()
@@ -28,7 +28,7 @@ fn b5_scope_whole_path() {
     assert!(glob_match("src/**", "src/nested/file.rs"));
     assert!(!glob_match("src/*", "src/nested/file.rs"));
 }
-/// Broad scope cannot authorize protected instruction and Git paths.
+/// Protected instruction and Git paths require an explicit literal scope.
 #[test]
 fn b5_protected_paths() {
     for path in [
