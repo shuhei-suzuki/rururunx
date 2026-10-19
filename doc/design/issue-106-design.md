@@ -671,7 +671,7 @@ StepCustody の監視タスクは、次を 1 つの `tokio::select!` で並行�
 - **R1（一覧の後、最初の読取りの前の PID の再利用）**: 最後の巡の、記録のない PID p について、次がすべて起きる場合である。
   1. cookie を持つ A が t0 に p で生きていて、一覧に入る。
   2. A が、cookie を持つ子 C を作る。C は t0 に作成中だったか、t0 の後に作られる。
-  3. A が t0 の後に exit して回収され、その巡で p を最初に読む前に、p が別のプロセス Q に割り当てられる。Q は読取りに一貫して答え（identity1 と identity2 が等しい）、cookie を持たないか、実効 uid が違う。
+  3. A が t0 の後に exit して回収され、その巡で p を最初に読む前に、p が別のプロセス Q に割り当てられる。Q の実効 uid が自分と同じなら、Q は cookie を持たず、identity1 と identity2 が等しい。Q の実効 uid が違えば、identity1 の時点で検査を終える（identity2 は読まない）。
   4. C か C の子孫が走査の終わりまで生きていて、最後の巡で検査されない。
 
   **R1 に要る条件**: P5 の割当て器では、3 は、A が回収された後に PID の counter が p まで進んだときだけ起きる。counter は A の誕生のときに p にあった。そのため、A の誕生から p の最初の読取りまでに、counter は 100 から PID_MAX（記憶では 99999）までを一巡しなければならない。そのうち、t0 の counter の値から p までの分は、t0 から最初の読取りまでの間、つまり 1 回の `discover` の中（`limits.time`。既定 500 ms）で進まなければならない。
@@ -736,7 +736,7 @@ StepCustody の監視タスクは、次を 1 つの `tokio::select!` で並行�
 | ZB10 | 毎巡、新しい消えた PID が出る | `time_exceeded` で limited |
 | ZB11 | 環境の読取りが失敗し、照会は「生きている」を返す | `environment_unavailable`（limited） |
 | ZB12 | cookie の一致後に identity2 が失敗し、照会は zombie を返す | `identity_changed`（limited） |
-| ZB13 | 1 巡目は p と q。p は検査済み（生の記録 K_A）で、q は消えた PID。2 巡目の一覧は p だけで、p の identity は birth K_B（同じ uid、cookie なし、identity2 も K_B）。3 巡目の一覧も p だけで、identity は K_B | 2 巡目は `reused=1` で、p の環境を 1 回読み、K_B を記録する。3 巡目は p の identity を 1 回だけ読み、環境は読まない。4 巡目の一覧は呼ばれない。終わりの値は `relistings=2`・`inspected=2`・`same_user=2` で、limited でない |
+| ZB13 | 1 巡目は p と q。p は検査済み（生の記録 K_A）で、q は消えた PID。2 巡目の一覧は p だけで、p の identity は birth K_B（同じ uid、cookie なし、identity2 も K_B）。3 巡目の一覧も p だけで、identity は K_B | 2 巡目は `reused=1` で、p の環境を 1 回読み、K_B を記録する。3 巡目は p の identity を 1 回だけ読み、環境は読まない。4 巡目の一覧は呼ばれない。終わりの値は `relistings=2`・`inspected=3`・`same_user=2` で、limited でない |
 | ZB14 | identity1 が読め、環境は一致しない。identity2 は別の birth を返す。2 巡目に cookie を持つ C がある | `reused=1`。再列挙して、C が `processes` に入る |
 | ZB15 | identity1 が失敗し、照会も失敗する。fake の環境・identity2 は、呼ばれれば成功を返す。同じ巡に、新しい不在を作る別の PID もある | `identity_unavailable=1`、limited。p の環境は読まない。`relistings=0`（次の巡を行わない） |
 | ZB16 | 1 巡目で p が zombie（記録 K）。2 巡目は identity1 が失敗し、照会は短い長さを返す。3 巡目の fake は、呼ばれれば p を成功で返す | `identity_unavailable=1`、limited。3 巡目の一覧は呼ばれない |
