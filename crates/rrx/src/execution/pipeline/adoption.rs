@@ -50,6 +50,7 @@ impl AdoptionChecker {
         work.git.reject_drivers(&step.step_base).await?;
         evidence(step, attempt)?;
         work.git.reject_index_gitlinks().await?;
+        work.git.reject_ignored_protected().await?;
         let status = work
             .git
             .run(&[
@@ -398,9 +399,18 @@ fn changes(root: &Path, status: &[u8], scope: &[String]) -> Result<Vec<Change>> 
     }
     Ok(changes)
 }
+pub(super) fn reject_ignored_entries(status: &[u8]) -> Result<()> {
+    for row in status.split(|b| *b == 0) {
+        if let Some(path) = row.strip_prefix(b"!! ") {
+            let path = std::str::from_utf8(path).context("invalid path encoding")?;
+            ensure!(!protected(path), "protected_path");
+        }
+    }
+    Ok(())
+}
 fn protected(path: &str) -> bool {
     path.split('/').any(|p| {
-        let p = p.to_ascii_lowercase();
+        let p = super::git::fold_name(p);
         p.starts_with(".git")
             || matches!(
                 p.as_str(),

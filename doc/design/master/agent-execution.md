@@ -73,7 +73,7 @@ Prepare inspects the selected tree and common `info/attributes`, registers the T
 with `--no-checkout`, then inspects its own conditional includes and attributes before
 checkout. Only Task worktrees receive a recursive working-file attribute scan.
 Gitlinks in trees or the Task index, driver attributes, `binary` and `ident` are refused before status;
-attribute filenames are matched without ASCII case distinctions. Every status ignores
+attribute filenames use ASCII and Unicode upper-then-lower folding. Every status ignores
 submodules. Global attributes/ignore files and lazy fetching are disabled.
 
 Adoption re-reads retained stdout, stderr and last-message evidence, validating
@@ -81,7 +81,9 @@ recorded length, SHA-256 and completeness before secret scanning. The Executor
 requires an issue-free successful exit with confirmed death, symbolic Task HEAD
 at step base, unchanged Git controls and full-path scope matches. Protected Git
 and instruction paths (including `.mcp.json`, `AGENTS.override.md` and `CLAUDE.local.md`)
-require explicit scope, with ASCII case-insensitive protection. Only regular nonbinary files are
+require explicit scope with ASCII and Unicode upper-then-lower folding. Build/clean checks
+refuse ignored protected components without counting ignored output as changes or drift.
+Only regular nonbinary files are
 captured: at most 200 changes, one MiB per file and eight MiB of captured additions.
 Captured bytes feed filter-free plumbing through a temporary index, never Git
 add/commit. Added diff lines are scanned before the eight-MiB diff is retained.

@@ -501,8 +501,8 @@ global/system Git configuration and system attributes disabled, fixed hook and
 automatic-maintenance overrides, bounded output and a ten-second observation
 deadline. Repository configuration and tree/worktree attributes are inspected for
 drivers before checkout, reset, status or adoption. Gitlinks in trees or the Task index and the `binary`
-and `ident` attributes are refused; attribute filenames are matched without ASCII
-case distinctions. All status calls ignore submodules and recursion is disabled.
+and `ident` attributes are refused; attribute filenames use ASCII and Unicode upper-then-lower
+folding. All status calls ignore submodules and recursion is disabled.
 Global attribute/ignore files are redirected to `/dev/null` and lazy fetching is disabled.
 Diff commands force text and disable external diff and text conversion; hunk additions
 are distinguished from file headers. Blob hashing uses `--no-filters` on captured bytes.
@@ -523,8 +523,9 @@ the SHA and tree before branch ref-CAS and index refresh; adoption requires the
 recorded commit's tree/parent and a matching clean checkout. Trailers never grant
 adoption authority. Symbolic Task and Goal refs are refused, ref-CAS uses `--no-deref`,
 and unrelated ref movement is held. Protected paths include Git metadata, instruction
-overrides and MCP configuration, with ASCII case-insensitive protection unless scoped
-explicitly. Executable file mode follows the owner execute bit. Diff evidence is synced
+overrides and MCP configuration, with ASCII and Unicode upper-then-lower folding unless scoped
+explicitly; build/clean checks refuse ignored protected components without counting ordinary
+ignored output as changes or drift. Executable file mode follows the owner execute bit. Diff evidence is synced
 and sealed to 0400 in a same-directory temporary file, then atomically renamed; exited
 recovery rebuilds missing or incomplete artifacts. Committed recovery verifies the retained
 diff length, digest and readonly mode before ref publication. Secret-bearing blobs and commits can

@@ -258,6 +258,98 @@ async fn b5_f1_binary_tree() {
     }
 }
 
+/// Agent-created self-ignore rules cannot hide protected paths from adoption or move the ref.
+#[tokio::test]
+async fn b5_f2_ignored_build() {
+    let f = Fixture::new().await;
+    f.change();
+    file(
+        f.work.git.root(),
+        ".gitignore",
+        b"/.gitignore\n/AGENTS.override.md\n",
+    );
+    file(f.work.git.root(), "AGENTS.override.md", b"instruction\n");
+    assert_eq!(f.build().await.err().unwrap().to_string(), "protected_path");
+    assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
+    assert!(!f.attempt.join("diff.patch").exists());
+}
+
+/// Base-tree ignores cannot hide a local instruction file from the clean check.
+#[tokio::test]
+async fn b5_f2_ignored_clean() {
+    let mut f = Fixture::new().await;
+    let rules = b"/CLAUDE.local.md\n";
+    let oid = f.blob(rules).await;
+    f.set_base(format!("100644 blob {oid}\t.gitignore\n").as_bytes())
+        .await;
+    file(f.work.git.root(), ".gitignore", rules);
+    f.work.clean_at(&f.step.step_base).await.unwrap();
+    file(f.work.git.root(), "CLAUDE.local.md", b"instruction\n");
+    assert_eq!(
+        f.work
+            .clean_at(&f.step.step_base)
+            .await
+            .unwrap_err()
+            .to_string(),
+        "protected_path"
+    );
+    assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
+}
+
+/// Ordinary ignored build output is neither a captured change nor worktree drift.
+#[tokio::test]
+async fn b5_f2_ignored_build_output() {
+    let mut f = Fixture::new().await;
+    let rules = b"/target/\n";
+    let oid = f.blob(rules).await;
+    f.set_base(format!("100644 blob {oid}\t.gitignore\n").as_bytes())
+        .await;
+    file(f.work.git.root(), ".gitignore", rules);
+    file(
+        f.work.git.root(),
+        "target/debug/output",
+        b"ordinary output\n",
+    );
+    f.work.clean_at(&f.step.step_base).await.unwrap();
+    f.change();
+    let candidate = f.build().await.unwrap();
+    assert!(
+        f.work
+            .git
+            .run(&["ls-tree", "-r", &candidate.tree, "--", "target"])
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    f.step.state = "committed".into();
+    f.step.result_commit = Some(candidate.commit);
+    f.step.result_tree = Some(candidate.tree);
+    AdoptionChecker::finish(&f.work, &f.step).await.unwrap();
+    assert_eq!(
+        std::fs::read(f.work.git.root().join("target/debug/output")).unwrap(),
+        b"ordinary output\n"
+    );
+}
+
+/// Unicode attribute aliases in the selected tree are inspected even before materialization.
+#[tokio::test]
+async fn b5_f2_tree_attribute_unicode() {
+    let mut f = Fixture::new().await;
+    let oid = f.blob(b"* ident\n").await;
+    f.set_base(format!("100644 blob {oid}\t.gitattributeſ\n").as_bytes())
+        .await;
+    assert_eq!(
+        f.work
+            .git
+            .reject_tree_drivers(&f.step.step_base)
+            .await
+            .unwrap_err()
+            .to_string(),
+        "git_driver_declared"
+    );
+    assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
+}
+
 /// A tiny binary threshold cannot omit secret-bearing text from the scan diff.
 #[tokio::test]
 async fn b5_f1_bigfile_secret() {

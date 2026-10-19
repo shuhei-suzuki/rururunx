@@ -187,6 +187,20 @@ impl PipelineGit {
         let entries = self.run(&["ls-files", "--stage", "-z"]).await?;
         reject_index_entries(&entries)
     }
+    /// Ignored instruction/control paths must not survive into the next step.
+    pub(crate) async fn reject_ignored_protected(&self) -> Result<()> {
+        let status = self
+            .run(&[
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--ignored=matching",
+                "--untracked-files=all",
+                "--ignore-submodules=all",
+            ])
+            .await?;
+        super::adoption::reject_ignored_entries(&status)
+    }
     /// Project working files are not inputs to materializing the selected tree.
     pub(crate) async fn reject_tree_drivers(&self, tree: &str) -> Result<()> {
         let config = self.local_config().await?;
@@ -203,7 +217,7 @@ impl PipelineGit {
             if path
                 .rsplit(|b| *b == b'/')
                 .next()
-                .is_some_and(|name| name.eq_ignore_ascii_case(b".gitattributes"))
+                .is_some_and(|name| fold_name(&String::from_utf8_lossy(name)) == ".gitattributes")
             {
                 let oid = std::str::from_utf8(header)?
                     .split_whitespace()
@@ -235,6 +249,10 @@ impl PipelineGit {
         ensure!(status.code() == Some(1), "symbolic_pipeline_ref");
         Ok(())
     }
+}
+/// Compare control names with ASCII casing and Unicode upper-then-lower folding.
+pub(super) fn fold_name(name: &str) -> String {
+    name.to_uppercase().to_lowercase()
 }
 fn reject_index_entries(entries: &[u8]) -> Result<()> {
     for entry in entries.split(|b| *b == 0).filter(|s| !s.is_empty()) {
@@ -356,11 +374,7 @@ fn scan_attributes(root: &Path) -> Result<()> {
                 continue;
             }
             let meta = std::fs::symlink_metadata(entry.path())?;
-            if entry
-                .file_name()
-                .as_encoded_bytes()
-                .eq_ignore_ascii_case(b".gitattributes")
-            {
+            if fold_name(&entry.file_name().to_string_lossy()) == ".gitattributes" {
                 reject_attributes(&super::adoption::read_regular(&entry.path(), OUTPUT_BYTES)?)?;
             }
             if meta.is_dir() {

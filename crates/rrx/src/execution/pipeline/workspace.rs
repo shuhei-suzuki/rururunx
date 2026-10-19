@@ -130,6 +130,7 @@ impl TaskWorkspace {
             "worktree_drift"
         );
         self.git.reject_index_gitlinks().await?;
+        self.git.reject_ignored_protected().await?;
         ensure!(
             self.git
                 .run(&[

@@ -268,3 +268,29 @@ fn b5_f1_worktree_attribute_case() {
 
 #[cfg(target_os = "macos")]
 mod host;
+
+/// Control-name folding covers long s and Kelvin while retaining ordinary Unicode names.
+#[test]
+fn b5_f2_name_folding() {
+    assert_eq!(fold_name("AGENTſ.MD"), "agents.md");
+    assert_eq!(fold_name(".gitattributeſ"), ".gitattributes");
+    assert_eq!(fold_name("K"), "k");
+    assert_eq!(fold_name("日本語"), "日本語");
+}
+
+/// Unicode attribute aliases are scanned without interpreting ordinary Unicode files as attributes.
+#[test]
+fn b5_f2_worktree_attribute_unicode() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("日本語"), b"* binary\n").unwrap();
+    std::fs::write(dir.path().join("K"), b"* ident\n").unwrap();
+    scan_attributes(dir.path()).unwrap();
+    let path = dir.path().join(".gitattributeſ");
+    std::fs::write(&path, b"* ident\n").unwrap();
+    assert_eq!(
+        scan_attributes(dir.path()).unwrap_err().to_string(),
+        "git_driver_declared"
+    );
+    std::fs::write(path, b"* text\n").unwrap();
+    scan_attributes(dir.path()).unwrap();
+}

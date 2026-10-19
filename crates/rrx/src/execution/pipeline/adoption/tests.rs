@@ -58,6 +58,56 @@ fn b5_protected_paths() {
         );
     }
 }
+/// Unicode aliases and protected components require explicit scope without banning ordinary Unicode.
+#[test]
+fn b5_f2_protected_unicode() {
+    for path in [
+        "AGENTſ.md",
+        "src/agentſ.override.md",
+        ".gitattributeſ",
+        "K/AGENTS.md",
+    ] {
+        let root = root();
+        file(root.path(), path, b"data");
+        assert_eq!(
+            changes(root.path(), &status(path), &["**".into()])
+                .err()
+                .unwrap()
+                .to_string(),
+            "protected_path",
+            "{path}"
+        );
+        assert!(changes(root.path(), &status(path), &[path.into()]).is_ok());
+    }
+    for path in ["src/日本語.rs", "src/Kelvin.rs", "src/agentſ.txt"] {
+        let root = root();
+        file(root.path(), path, b"data");
+        assert!(changes(root.path(), &status(path), &["**".into()]).is_ok());
+    }
+}
+/// Every ignored protected component is refused while ordinary ignored output is accepted.
+#[test]
+fn b5_f2_ignored_components() {
+    reject_ignored_entries("?? AGENTS.md\0 M CLAUDE.md\0!! target/\0!! 日本語/\0".as_bytes())
+        .unwrap();
+    for path in [
+        ".gitignore",
+        "AGENTS.override.md",
+        "src/CLAUDE.local.md",
+        "src/.claude/",
+        ".CoDeX/",
+        "src/AGENTſ.md",
+    ] {
+        let rows = format!("!! target/\0!! {path}\0");
+        assert_eq!(
+            reject_ignored_entries(rows.as_bytes())
+                .unwrap_err()
+                .to_string(),
+            "protected_path",
+            "{path}"
+        );
+    }
+}
 /// Only a regular file enters the captured change set.
 #[test]
 fn b5_symlink_refused() {
