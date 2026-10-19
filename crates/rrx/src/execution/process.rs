@@ -400,8 +400,29 @@ pub(crate) async fn capture_probe_until(
     bound: Duration,
     overall: tokio::time::Instant,
 ) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
-    capture_probe_with_cleanup(command, bound, overall, |owned| {
-        signal_probe_group(owned, kill_process_group, inspect_probe_group)
+    capture_probe_until_with_kill(command, bound, overall, |pid, signal, kill| {
+        kill(pid, signal)
+    })
+    .await
+}
+type ProbeKill = fn(Pid, Signal) -> std::result::Result<(), rustix::io::Errno>;
+
+async fn capture_probe_until_with_kill(
+    command: Command,
+    bound: Duration,
+    overall: tokio::time::Instant,
+    kill: impl FnOnce(Pid, Signal, ProbeKill) -> std::result::Result<(), rustix::io::Errno>
+    + Send
+    + 'static,
+) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
+    // Keep the platform defaults in one place; EPERM tests replace only the
+    // signal outcome while exercising this same kill/inspection wiring.
+    capture_probe_with_cleanup(command, bound, overall, move |owned| {
+        signal_probe_group(
+            owned,
+            |pid, signal| kill(pid, signal, kill_process_group),
+            inspect_probe_group,
+        )
     })
     .await
 }
@@ -504,6 +525,64 @@ async fn capture_probe_with_spawn(
 #[cfg(test)]
 mod probe_tests {
     use super::*;
+
+    /// The default probe inspector refuses live-group EPERM and accepts confirmed-dead EPERM.
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn b3_probe_default_signal_wiring() {
+        for live in [false, true] {
+            let pid = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
+            let observed_pid = pid.clone();
+            let mut command = if live {
+                let mut command = Command::new("/bin/sleep");
+                command.arg("10");
+                command
+            } else {
+                Command::new("/usr/bin/true")
+            };
+            command.env_clear();
+            let result = capture_probe_until_with_kill(
+                command,
+                Duration::from_millis(500),
+                tokio::time::Instant::now() + Duration::from_secs(5),
+                move |pid, signal, kill| {
+                    assert_eq!(signal, Signal::KILL);
+                    observed_pid.store(
+                        pid.as_raw_nonzero().get(),
+                        std::sync::atomic::Ordering::SeqCst,
+                    );
+                    if !live {
+                        match kill(pid, signal) {
+                            Ok(()) | Err(rustix::io::Errno::SRCH) => {}
+                            Err(error) => return Err(error),
+                        }
+                    }
+                    Err(rustix::io::Errno::PERM)
+                },
+            )
+            .await;
+            if live {
+                assert!(
+                    result
+                        .err()
+                        .expect("live-group EPERM must refuse")
+                        .to_string()
+                        .contains("probe group cleanup failed")
+                );
+            } else {
+                assert!(result.unwrap().0.status.success());
+            }
+            let pid = Pid::from_raw(pid.load(std::sync::atomic::Ordering::SeqCst)).unwrap();
+            assert_eq!(
+                waitid(
+                    WaitId::Pid(pid),
+                    WaitIdOptions::EXITED | WaitIdOptions::NOHANG
+                )
+                .unwrap_err(),
+                rustix::io::Errno::CHILD
+            );
+        }
+    }
 
     /// Blocking launch preparation neither spends child observation time nor stalls async work.
     #[tokio::test]

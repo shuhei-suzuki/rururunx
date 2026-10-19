@@ -219,6 +219,22 @@ impl Runtime {
         let _admission = self.control_admission.lock().await;
         let (instance, epoch) = (self.owner.instance_id().to_owned(), self.owner.epoch());
         let stopping = self.stopping.clone();
+        let planned = project.clone();
+        // Resolve filesystem paths without holding the Store lock or transaction.
+        // The transaction below fails closed if its current row requires a check
+        // that this snapshot did not perform.
+        let checked_root = if let Some(pipeline) = &self.config.pipeline
+            && (planned.state == ProjectState::Registered
+                || self
+                    .project_snapshot()?
+                    .iter()
+                    .any(|row| row.id == planned.id && row.root != planned.root))
+        {
+            pipeline.check_project_root(&planned.root.canonicalize()?)?;
+            Some(planned.root.clone())
+        } else {
+            None
+        };
         // M1: the in-flight set stays locked until the write has committed,
         // so no preflight for this Project can register between the check
         // and the write. Lock order: in-flight set, then Store.
@@ -227,7 +243,6 @@ impl Runtime {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let in_flight = flights.contains(&project.id);
-        let planned = project.clone();
         let written = self
             .owner
             .store
@@ -247,11 +262,12 @@ impl Runtime {
                 if in_flight {
                     return Err(InFlight.into());
                 }
-                if let Some(pipeline) = &self.config.pipeline
+                if self.config.pipeline.is_some()
                     && (planned.state == ProjectState::Registered
                         || current.is_some_and(|row| row.root != planned.root))
+                    && checked_root.as_ref() != Some(&planned.root)
                 {
-                    pipeline.check_project_root(&planned.root.canonicalize()?)?;
+                    return Err(CurrencyChanged.into());
                 }
                 match (current, expected) {
                     (None, None) => Ok(()),
@@ -822,6 +838,45 @@ mod tests {
 #[cfg(all(test, target_os = "macos"))]
 mod b3_fix2_tests {
     use super::*;
+
+    /// A Blocked root change still checks pipeline overlap before any Store write.
+    #[tokio::test]
+    async fn b3_project_checked_root_overlap() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner =
+            crate::execution::RuntimeOwner::open(&dir.path().join("state/state.db")).unwrap();
+        let pipeline = crate::execution::pipeline::test_support::config(&owner, dir.path());
+        let config = crate::config::Config {
+            pipeline: Some(pipeline.clone()),
+            ..Default::default()
+        };
+        let runtime = Runtime::new(owner, config).unwrap();
+        let root = dir.path().join("source");
+        std::fs::create_dir(&root).unwrap();
+        let mut project = Project::new(
+            "source".into(),
+            root.canonicalize().unwrap(),
+            "fixture".into(),
+            "main".into(),
+        );
+        runtime.commit_project(&mut project, None).await.unwrap();
+        let before = serde_json::to_value(runtime.project_snapshot().unwrap()).unwrap();
+        project.state = ProjectState::Blocked;
+        project.root = pipeline.work_root.clone();
+        let expected = project.version;
+        assert!(
+            runtime
+                .commit_project(&mut project, Some(expected))
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("Project overlaps")
+        );
+        assert_eq!(
+            serde_json::to_value(runtime.project_snapshot().unwrap()).unwrap(),
+            before
+        );
+    }
 
     async fn missing_root(remove: bool) {
         let dir = tempfile::tempdir().unwrap();

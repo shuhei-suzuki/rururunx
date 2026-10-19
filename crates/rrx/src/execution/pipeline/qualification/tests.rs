@@ -748,6 +748,95 @@ async fn b3_q_removed_project() {
     CliQualifier::before_launch(&owner, &config).unwrap();
 }
 
+/// Only absent Blocked roots are omitted; live roots and resolution errors still fence Q.
+#[tokio::test]
+async fn b3_q_blocked_project_root() {
+    use crate::domain::{Project, ProjectState};
+    let dir = tempfile::tempdir().unwrap();
+    let owner = RuntimeOwner::open_mode(
+        &dir.path().join("state/state.db"),
+        crate::config::ExecutionMode::CliPipeline,
+    )
+    .unwrap();
+    let config = crate::execution::pipeline::test_support::config(&owner, dir.path());
+    let deleted = dir.path().canonicalize().unwrap().join("deleted");
+    let normal = dir.path().join("normal");
+    std::fs::create_dir(&deleted).unwrap();
+    std::fs::create_dir(&normal).unwrap();
+    let mut blocked = Project::new(
+        "deleted".into(),
+        deleted.clone(),
+        "deleted".into(),
+        "main".into(),
+    );
+    let mut normal = Project::new(
+        "normal".into(),
+        normal.canonicalize().unwrap(),
+        "normal".into(),
+        "main".into(),
+    );
+    {
+        let mut store = owner.store.lock().unwrap();
+        store.put_project(&mut blocked).unwrap();
+        store.put_project(&mut normal).unwrap();
+    }
+    std::fs::remove_dir(&deleted).unwrap();
+    blocked.state = ProjectState::Blocked;
+    owner
+        .store
+        .lock()
+        .unwrap()
+        .put_project(&mut blocked)
+        .unwrap();
+    CliQualifier::qualify(&owner, &config).await.unwrap();
+    CliQualifier::before_launch(&owner, &config).unwrap();
+
+    // A symlink loop reliably produces an error other than NotFound, even as root.
+    std::os::unix::fs::symlink(&deleted, &deleted).unwrap();
+    assert_ne!(
+        deleted.canonicalize().unwrap_err().kind(),
+        std::io::ErrorKind::NotFound
+    );
+    assert!(CliQualifier::check_layout(&owner, &config).is_err());
+    assert!(CliQualifier::check_launch_paths(&owner, &config).is_err());
+    assert!(CliQualifier::before_launch(&owner, &config).is_err());
+    std::fs::remove_file(&deleted).unwrap();
+
+    blocked.root = config.work_root.clone();
+    owner
+        .store
+        .lock()
+        .unwrap()
+        .put_project(&mut blocked)
+        .unwrap();
+    assert!(
+        CliQualifier::check_layout(&owner, &config)
+            .unwrap_err()
+            .to_string()
+            .contains("Project overlaps")
+    );
+    blocked.root = config
+        .clis
+        .claude
+        .executable
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    owner
+        .store
+        .lock()
+        .unwrap()
+        .put_project(&mut blocked)
+        .unwrap();
+    assert!(
+        CliQualifier::check_launch_paths(&owner, &config)
+            .unwrap_err()
+            .to_string()
+            .contains("launch path overlaps")
+    );
+    assert!(CliQualifier::before_launch(&owner, &config).is_err());
+}
+
 /// Agent writable and state paths cannot supply PATH entries or executable images.
 #[tokio::test]
 async fn b3_q_launch_path_separation() {
@@ -834,4 +923,23 @@ async fn b3_q_sequential_probe_budget() {
     let row = f.q(false).await;
     assert_eq!(row.state, "qualified", "{row:?}");
     assert!(start.elapsed() > PROBE_BOUND);
+}
+
+/// Q refuses a delayed native probe at the overall CLI bound, before version validation.
+#[tokio::test]
+async fn b3_q_overall_cli_bound() {
+    let f = Fixture::new();
+    assert_eq!(f.q(true).await.state, "qualified");
+    assert!(CLI_BOUND <= Duration::from_secs(35));
+    f.codex.control("delay-ms", "1500");
+    let row = qualify_cli_with_bound(
+        &f.config,
+        "codex",
+        &f.codex.cli,
+        f._dir.path(),
+        Duration::from_millis(500),
+    )
+    .await;
+    assert_eq!(row.state, "refused", "{row:?}");
+    assert_eq!(row.body["stage"], "version_probe", "{row:?}");
 }

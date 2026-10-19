@@ -196,6 +196,16 @@ async fn qualify_cli(
     cli: &PipelineCli,
     tmp: &Path,
 ) -> PipelineQualification {
+    qualify_cli_with_bound(config, subject, cli, tmp, CLI_BOUND).await
+}
+
+async fn qualify_cli_with_bound(
+    config: &PipelineConfig,
+    subject: &str,
+    cli: &PipelineCli,
+    tmp: &Path,
+    bound: Duration,
+) -> PipelineQualification {
     let mut row = PipelineQualification {
         subject: subject.into(),
         state: "refused".into(),
@@ -207,7 +217,7 @@ async fn qualify_cli(
         "{:x}",
         Sha256::digest(serde_json::to_vec(config).expect("serializable pipeline config"))
     ));
-    let deadline = Instant::now() + CLI_BOUND;
+    let deadline = Instant::now() + bound;
     let result = async {
         row.body["stage"] = json!("executable");
         let pinned = executable_until(&cli.executable, deadline)?;
@@ -316,6 +326,24 @@ impl QualificationRecord {
 }
 
 pub struct CliQualifier;
+
+fn project_root_for_exclusion(project: &crate::domain::Project) -> Result<Option<PathBuf>> {
+    use crate::domain::ProjectState;
+    if project.state == ProjectState::Removed {
+        return Ok(None);
+    }
+    match project.root.canonicalize() {
+        Ok(root) => Ok(Some(root)),
+        Err(error)
+            if project.state == ProjectState::Blocked
+                && error.kind() == std::io::ErrorKind::NotFound =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
 impl CliQualifier {
     pub(in crate::execution) fn record_quiescence(
         owner: &RuntimeOwner,
@@ -427,11 +455,9 @@ impl CliQualifier {
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .projects()?
         {
-            if project.state == crate::domain::ProjectState::Removed {
-                continue;
+            if let Some(root) = project_root_for_exclusion(&project)? {
+                config.check_project_root(&root)?;
             }
-            let project = project.root.canonicalize()?;
-            config.check_project_root(&project)?;
         }
         Self::check_launch_paths(owner, config)?;
         trusted_path_prefix(config)?;
@@ -459,8 +485,8 @@ impl CliQualifier {
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .projects()?
         {
-            if project.state != crate::domain::ProjectState::Removed {
-                excluded.push(project.root.canonicalize()?);
+            if let Some(root) = project_root_for_exclusion(&project)? {
+                excluded.push(root);
             }
         }
         for path in config.path_prefix.iter().chain([
