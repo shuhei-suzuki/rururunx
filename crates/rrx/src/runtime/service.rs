@@ -87,6 +87,14 @@ impl Runtime {
             )
             .await?;
         }
+        self.start_qualified_service().await
+    }
+
+    /// Starts the service only after current-epoch qualification has completed.
+    pub(crate) async fn start_qualified_service(self: &Arc<Self>) -> Result<()> {
+        if self.config.execution.mode == crate::config::ExecutionMode::CliPipeline {
+            self.check_pipeline_currency()?;
+        }
         let _admission = self.control_admission.lock().await;
         ensure!(
             !self.stopping.load(Ordering::SeqCst),

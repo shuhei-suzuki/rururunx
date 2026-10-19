@@ -53,6 +53,13 @@ int main(int argc,char **argv) {
         while((c=fgetc(expected))!=EOF && c!=0 && n+1<sizeof value)value[n++]=(char)c;
         value[n]=0;if(c!=0 || strcmp(value,argv[i])){fclose(expected);return 96;}}
     if(fgetc(expected)!=EOF){fclose(expected);return 97;}fclose(expected);
+    fclose(file("exec-entered","w"));
+    if(exists("exec-pre-output")){output("exec-pre-output");fflush(stdout);}
+    if(exists("exec-stderr")){
+        FILE *err=file("exec-stderr","r");int ch;
+        while((ch=fgetc(err))!=EOF)fputc(ch,stderr);fclose(err);fflush(stderr);
+    }
+    if(exists("exec-pause")){while(!exists("exec-release"))usleep(10000);}
     FILE *in=file("stdin","w");int c;while((c=getchar())!=EOF)fputc(c,in);fclose(in);
     output("exec-output");return status("exec-status");
 }

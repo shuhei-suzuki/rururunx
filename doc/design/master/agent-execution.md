@@ -102,6 +102,26 @@ No credential inspection, copying or transfer is introduced.
 
 ## 2. Authority and durable results
 
+The CLI pipeline launches through the Runtime's `control_admission` boundary.
+Inside that boundary, launch checks service/stopping state; its intent transaction
+checks current owner/epoch, independent run and step versions, a Running Goal,
+current qualification, native exhaustion and the daemon-wide process and provider
+wait gates. `StepLauncher` releases the Store mutex before directory work,
+qualification rechecks and `rrx_spawn_hygiene::spawn_tokio`. It records an intent
+before spawning, then records the owned leader's PID, equal PGID and tracker birth
+before sending input. Spawn errors become unknown; only pre-spawn failures can
+be launch rejections. Failed running receipts retain launching unless death is
+proved, in which case the exit records `killed_after_record_failure`.
+
+Process steps count globally across Projects, including unknown and held without
+confirmed death. Prepare and release do not count. Native Exhausted observations
+block launches until native observation replacement; elapsed time cannot clear
+them. One durable provider-wait row gates all Agent providers and Projects, while
+test steps are exempt. A due wait permits one probe; only its classified known
+success clears the wait. Other probe outcomes extend backoff. The Runtime's
+post-exit limit transition also takes `control_admission` and rechecks stopping;
+the Store revalidates Running Goal, epoch and both versions in its final tx.
+
 Workflow authority binds Scope, execution unit, Task generation, Runtime epoch,
 Session/native turn, artifact and record versions. Natural completion closes Native
 effect/grant authority while Runtime result-finalization remains open. Cancellation
@@ -148,6 +168,22 @@ remains success. This staged
 producer policy is covered by local protocol controls, not actual account recovery.
 
 ## 4. Cleanup and outcome reporting
+
+CLI pipeline `StepCustody` concurrently handles stdin, bounded stdout/stderr,
+leader exit, deadlines and stop notifications after releasing the control boundary.
+Captured evidence is retained as private read-only files and read back with its
+length and SHA-256 before provider classification. Stdout overflow rejects the
+result after death confirmation; stderr retains its bounded tail and records
+truncation. Observation writes never take `control_admission`, so a controller can
+wait for custody while holding that boundary.
+
+`adapter::ProcessGroup` keeps the leader unreaped through group cleanup for native
+adapters and Codex preparation/transport. Pipeline `StepCustody` wraps its existing
+observe/cleanup/reap API. Pipeline settlement additionally requires observed leader
+exit, delivered group cleanup, leader reap, observed empty group and complete cookie discovery
+with zero matches. A deadline cannot supply any of those facts. Incomplete proof
+holds the running step; monitor failure records unknown. No discovered PID is
+signalled on macOS.
 
 Work success/failure/unknown and cleanup reclaimed/leftovers/unknown are independent
 axes. Reclaimed describes observed tracked resources at a time, not whole workload

@@ -215,7 +215,7 @@ pub(super) async fn collect(
 }
 
 /// Independent exclusive retained files; children never receive these handles.
-pub(super) fn retain(root: &Path, name: &str, bytes: &[u8]) -> Result<()> {
+pub(crate) fn retain(root: &Path, name: &str, bytes: &[u8]) -> Result<()> {
     ensure!(
         matches!(name, "stdout" | "stderr") && bytes.len() <= STREAM_BYTES,
         "invalid verification evidence object"
@@ -237,7 +237,7 @@ pub(super) fn retain(root: &Path, name: &str, bytes: &[u8]) -> Result<()> {
     std::fs::File::open(root)?.sync_all()?;
     Ok(())
 }
-pub(super) fn inspect(
+pub(crate) fn inspect(
     root: &Path,
     name: &str,
     reference: &StreamEvidence,

@@ -1743,6 +1743,21 @@ pub enum PipelineLaunch {
 }
 
 impl Store {
+    /// Read exactly the caller's launch snapshot without extending its authority.
+    pub fn pipeline_launch_snapshot(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+    ) -> Result<(PipelineRun, PipelineStep)> {
+        let tx = self.connection.transaction()?;
+        pipeline_owner_current(&tx, owner)?;
+        let rows = cursor_rows(&tx, owner, cursor, true)?;
+        check_wait(&tx, owner, cursor.wait_version)?;
+        require_last_step(&tx, &rows.1)?;
+        tx.commit()?;
+        Ok(rows)
+    }
+
     /// The intent transaction only; the caller retains the execution boundary.
     pub fn pipeline_begin_launch(
         &mut self,
@@ -1835,6 +1850,7 @@ impl Store {
         step.state = "running".into();
         step.pid = Some(pid);
         step.birth = Some(birth.into());
+        step.body["pgid"] = json!(pid);
         write_step(&tx, owner, &step)?;
         tx.commit()?;
         Ok(())

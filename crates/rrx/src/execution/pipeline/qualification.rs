@@ -151,7 +151,7 @@ fn codex_config(home: &Path, deadline: Instant) -> Result<()> {
     Ok(())
 }
 
-fn environment(
+pub(super) fn environment(
     config: &PipelineConfig,
     tmp: &Path,
     cookie: &str,

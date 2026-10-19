@@ -8,6 +8,7 @@ pub(crate) mod installation;
 pub(crate) mod phase_effect_admission;
 mod phase_handoffs;
 mod phase_jobs;
+mod pipeline;
 mod project_control;
 #[cfg(test)]
 pub(crate) use phase_jobs::{

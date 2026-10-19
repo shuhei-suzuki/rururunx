@@ -13,6 +13,37 @@ use crate::runtime::{
 };
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
 
+/// Death proof requires every observation and zero matching cookie processes.
+#[test]
+fn b4_death_requires_every_observation() {
+    let complete = PipelineDeathEvidence {
+        leader_exit_observed: true,
+        group_kill_delivered: true,
+        leader_reaped: true,
+        group_empty: true,
+        discovery_complete: true,
+        matching_processes: 0,
+    };
+    complete.validate().unwrap();
+    for field in [
+        "leader_exit_observed",
+        "group_kill_delivered",
+        "leader_reaped",
+        "group_empty",
+        "discovery_complete",
+        "matching_processes",
+    ] {
+        let mut broken = serde_json::to_value(&complete).unwrap();
+        broken[field] = if field == "matching_processes" {
+            json!(1)
+        } else {
+            json!(false)
+        };
+        let broken: PipelineDeathEvidence = serde_json::from_value(broken).unwrap();
+        assert!(broken.validate().is_err(), "{field}");
+    }
+}
+
 fn historical(path: &Path, version: i64) {
     let mut c = Connection::open(path).unwrap();
     let _permits = register_writer_contract(&c).unwrap();
@@ -154,6 +185,7 @@ fn b2_rollback_v11() {
 
 #[cfg(target_os = "macos")]
 struct Fixture {
+    config: Config,
     accepted: ControlRequest,
     validated: ValidatedGoalPlan,
     profile: PipelineProfile,
@@ -185,6 +217,15 @@ async fn fixture_with_modes(
     pipeline_owner: bool,
     shared: Option<std::sync::Arc<RuntimeOwner>>,
 ) -> Fixture {
+    fixture_with_service(pipeline, pipeline_owner, shared, None).await
+}
+#[cfg(target_os = "macos")]
+async fn fixture_with_service(
+    pipeline: bool,
+    pipeline_owner: bool,
+    shared: Option<std::sync::Arc<RuntimeOwner>>,
+    service: Option<(&Runtime, &Config)>,
+) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("source");
     std::fs::create_dir(&root).unwrap();
@@ -200,8 +241,10 @@ async fn fixture_with_modes(
         )
         .unwrap()
     });
-    let mut config = Config::default();
-    if pipeline_owner {
+    let mut config = service
+        .map(|(_, config)| config.clone())
+        .unwrap_or_default();
+    if pipeline_owner && service.is_none() {
         let pins = crate::execution::pipeline::test_support::config(&owner, dir.path());
         if fresh {
             crate::execution::pipeline::test_support::qualify_fixture(&owner, &pins)
@@ -227,9 +270,15 @@ async fn fixture_with_modes(
             ..Default::default()
         },
     );
-    let runtime = Runtime::new(owner.clone(), config.clone()).unwrap();
+    let owned_runtime = service
+        .is_none()
+        .then(|| Runtime::new(owner.clone(), config.clone()).unwrap());
+    let runtime = service
+        .map(|(runtime, _)| runtime)
+        .or(owned_runtime.as_ref())
+        .unwrap();
     let (stream, _peer) = tokio::net::UnixStream::pair().unwrap();
-    let ingress = HumanIngress::from_connection(&runtime, &stream).unwrap();
+    let ingress = HumanIngress::from_connection(runtime, &stream).unwrap();
     let mut store = owner.store.lock().unwrap();
     let mut project = Project::new(
         "pipeline".into(),
@@ -327,6 +376,7 @@ async fn fixture_with_modes(
     let task = store.tasks(project.id, Some(goal)).unwrap()[0].id;
     drop(store);
     Fixture {
+        config,
         accepted: request,
         validated,
         profile,
@@ -344,6 +394,9 @@ impl Fixture {
         self.owner.store.lock().unwrap()
     }
     fn claim(&self) -> String {
+        self.claim_in(None)
+    }
+    fn claim_in(&self, worktree: Option<&Path>) -> String {
         let id = Uuid::new_v4().to_string();
         let run = PipelineRun {
             id: id.clone(),
@@ -357,7 +410,11 @@ impl Fixture {
             round: 0,
             base_commit: "a".repeat(40),
             head_commit: "a".repeat(40),
-            worktree: Some(format!("/pipeline/{id}")),
+            worktree: Some(
+                worktree
+                    .map(|p| p.to_str().unwrap().to_owned())
+                    .unwrap_or_else(|| format!("/pipeline/{id}")),
+            ),
             branch: Some(format!("rrx/pipeline/{id}")),
             body: json!({}),
         };
@@ -433,6 +490,9 @@ impl Fixture {
             .unwrap();
     }
 }
+
+#[cfg(target_os = "macos")]
+mod b4;
 #[cfg(target_os = "macos")]
 fn fixture_profile(digest: String) -> PipelineProfile {
     let mut profile = PipelineProfile {

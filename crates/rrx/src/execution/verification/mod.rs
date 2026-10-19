@@ -9,6 +9,7 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 pub(crate) use collector::CollectedCommand;
 pub use collector::{CaptureIssue, CommandObservation, StreamEvidence};
+pub(crate) use collector::{inspect, retain};
 pub(crate) use plan::{AdmittedProfile, hash, json_hash};
 pub use plan::{Applicability, Category, TestCommand, TestsProfile};
 use serde::{Deserialize, Serialize};
