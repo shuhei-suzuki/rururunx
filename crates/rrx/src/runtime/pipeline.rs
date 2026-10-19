@@ -1,4 +1,5 @@
 //! Pipeline entry points share the control service's actual admission boundary.
+mod executor;
 use super::Runtime;
 use crate::{
     config::ExecutionMode,

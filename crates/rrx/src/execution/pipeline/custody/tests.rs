@@ -1,5 +1,19 @@
 use super::*;
 
+/// Last-message evidence records the exact retained bytes for adoption revalidation.
+#[test]
+fn b5_last_receipt() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("last.md"), b"done\n").unwrap();
+    let receipt = check_last(dir.path(), false).unwrap().unwrap();
+    assert_eq!(receipt.bytes, 5);
+    assert_eq!(
+        receipt.sha256,
+        crate::execution::pipeline::launcher::hash(b"done\n")
+    );
+    assert!(receipt.complete);
+}
+
 fn discovery(limited: bool, matching_processes: usize) -> DeathDiscovery {
     let mut observation = DeathDiscovery::from(rrx_process_tracker::Discovery {
         processes: Vec::new(),

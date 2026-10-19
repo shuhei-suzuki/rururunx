@@ -345,9 +345,13 @@ impl Monitor {
                 return Ok(());
             }
         };
-        if check_last(&self.attempt, matches!(self.role, PipelineRole::Confirm)).is_err() {
-            issue.get_or_insert("last_output_invalid");
-        }
+        let last = match check_last(&self.attempt, matches!(self.role, PipelineRole::Confirm)) {
+            Ok(last) => last,
+            Err(_) => {
+                issue.get_or_insert("last_output_invalid");
+                None
+            }
+        };
         let outcome = if issue.is_some() || !out_done {
             ProviderOutcome::Other
         } else if codex {
@@ -373,7 +377,7 @@ impl Monitor {
                 PipelineExit {
                     outcome: Some(outcome),
                     evidence: &json!({
-                    "code":dead.status.code(),"issue":issue,"stdout":stdout,"stderr":stderr,
+                    "code":dead.status.code(),"issue":issue,"stdout":stdout,"stderr":stderr,"last":last,
                     "stdout_truncated":out.truncated,"stderr_truncated":err.truncated
                     }),
                     issue,
@@ -467,12 +471,12 @@ impl Capture {
     }
 }
 
-fn check_last(root: &Path, confirm: bool) -> Result<()> {
+fn check_last(root: &Path, confirm: bool) -> Result<Option<StreamEvidence>> {
     use std::{io::Read, os::unix::fs::PermissionsExt};
     let path = root.join(if confirm { "last.json" } else { "last.md" });
     let meta = match std::fs::symlink_metadata(&path) {
         Ok(meta) => meta,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
     };
     ensure!(
@@ -485,7 +489,11 @@ fn check_last(root: &Path, confirm: bool) -> Result<()> {
         .read_to_end(&mut bytes)?;
     ensure!(bytes.len() <= LAST_BYTES, "last output grew beyond bound");
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o400))?;
-    Ok(())
+    Ok(Some(StreamEvidence {
+        bytes: bytes.len() as u64,
+        sha256: super::launcher::hash(&bytes),
+        complete: true,
+    }))
 }
 
 #[cfg(test)]

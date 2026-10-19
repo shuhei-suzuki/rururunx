@@ -62,5 +62,18 @@ int main(int argc,char **argv) {
     if(exists("exec-pause")){while(!exists("exec-release"))usleep(10000);}
     FILE *in=file("stdin","w");int c;while((c=getchar())!=EOF)fputc(c,in);fclose(in);
     fclose(file("stdin-eof","w"));
+    if(exists("exec-source")){
+        if(mkdir("src",0700) && access("src",F_OK))return 100;
+        FILE *source=file("exec-source","r"), *out=fopen("src/output.rs","w");
+        if(!source || !out)return 101;
+        int ch;while((ch=fgetc(source))!=EOF)fputc(ch,out);fclose(source);fclose(out);
+    }
+    if(exists("exec-last")){
+        for(int i=1;i+1<argc;i++)if(!strcmp(argv[i],"-o")){
+            FILE *source=file("exec-last","r"), *out=fopen(argv[i+1],"w");
+            if(!source || !out)return 102;
+            int ch;while((ch=fgetc(source))!=EOF)fputc(ch,out);fclose(source);fclose(out);
+        }
+    }
     output("exec-output");return status("exec-status");
 }

@@ -362,6 +362,14 @@ The result may be resume, reconnect, retry, fail, or human escalation.
 
 ## 10. Safety boundaries
 
+Pipeline Executor progress is serialized with controls under `control_admission`.
+Store commit/adoption APIs recheck owner epoch, Goal Running and run/step versions;
+process results additionally require certified death and an issue-free exit.
+Retained Executor stdout, stderr and last-message bytes are re-read against their
+recorded lengths and SHA-256 before adoption. Scope, regular-file, binary, size,
+Git control and secret checks precede commit publication. An unresolved accepted
+Task scope is refused rather than inferred from a Task title or version.
+
 rururunx must not:
 
 - bypass native agent permission controls
@@ -484,6 +492,24 @@ format evolve together; typed snapshots reject unknown fields instead of droppin
 them during read/write. Free-form extension payloads retain their fields.
 
 ## 14. Scoped Git/worktree implementation
+
+The CLI pipeline uses `execution::pipeline::PipelineGit`, separate from the native
+`WorktreeManager`. Every call uses spawn hygiene, a cleared environment with
+global/system Git configuration and system attributes disabled, fixed hook and
+automatic-maintenance overrides, bounded output and a ten-second observation
+deadline. Repository configuration and tree/worktree attributes are inspected for
+drivers before checkout, reset, status or adoption. Diff commands disable external
+diff and text conversion; blob hashing uses `--no-filters` on captured bytes.
+
+Prepare consumes the durable Goal-creation journal, creates an absent Task branch
+and registered private worktree, then verifies symbolic HEAD, base and clean state.
+Partial artifacts are held and retained; an absent recovered prepare is interrupted.
+Executor retry initialization resets and cleans only the bound private Task
+worktree after certified death and a matching control inventory. Commit objects
+are assembled using a temporary index and fixed rrx identity. The Store records
+the SHA and tree before branch ref-CAS and index refresh; adoption requires the
+recorded commit's tree/parent and a matching clean checkout. Trailers never grant
+adoption authority. Unrelated ref movement is held.
 
 `git::WorktreeManager` creates independent task worktrees and attached branches,
 checks exact canonical Project root/worktree top-level and common-dir, rejects

@@ -53,12 +53,38 @@ and re-registration also reject overlaps before publication. Other Codex layers
 operator-controlled residual risk. Probe cookies are not recorded; escaped
 probe descendants are outside the durable mode cookie inventory.
 
-The pipeline sweep has no step executor and never enters native reconciliation
+The pipeline sweep does not yet schedule Executor steps and never enters native reconciliation
 or admission. A stale Q ends the sweep and appears as
 `pipeline_qualification_error` in RuntimeStatus. The pipeline CreateGoal control
 returns typed `PipelineGoalAcceptanceUnavailable` (pipeline Goal acceptance is
 not available yet) without publishing pipeline Goals.
 Native S is unchanged.
+
+Pipeline Executor entry points perform prepare, launch preflight, adoption and
+retry initialization under the Runtime's actual control boundary. The existing
+StepLauncher supplies fixed Executor argv/environment and StepCustody retains
+process ownership; `ProcessGroup` remains in its shared native location. Before
+launch, the Executor scans its prompt, verifies the private bound checkout and
+saved Git controls, and rejects repository/worktree driver declarations.
+
+Adoption re-reads retained stdout, stderr and last-message evidence, validating
+recorded length, SHA-256 and completeness before secret scanning. The Executor
+requires an issue-free successful exit with confirmed death, symbolic Task HEAD
+at step base, unchanged Git controls and full-path scope matches. Protected Git
+and instruction paths require explicit scope. Only regular nonbinary files are
+captured: at most 200 changes, one MiB per file and eight MiB of captured additions.
+Captured bytes feed filter-free plumbing through a temporary index, never Git
+add/commit. Added diff lines are scanned before the eight-MiB diff is retained.
+The Store records commit SHA/tree before ref-CAS; committed recovery trusts only
+that identity and verifies tree, parent, symbolic HEAD and clean index/worktree.
+Any exit issue or missing death confirmation is refused by the Store itself.
+
+Prepare never removes pre-existing artifacts. Complete recovered task worktrees
+are verified before adoption, partial materialization is held, and absent recovered
+materialization is interrupted. Retry reset/clean is restricted to the recorded
+private Task worktree and saved control image. A single Task and a single accepted
+scope key have an unambiguous binding. Multiple Task/key bindings are refused
+until Goal acceptance retains their correspondence.
 
 The six functions delegate to their corresponding original methods. Tokio
 output/status spawn synchronously before returning the future. Stdio defaults,

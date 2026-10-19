@@ -1,0 +1,388 @@
+use super::*;
+use crate::execution::pipeline::PipelineGit;
+
+struct Fixture {
+    _dir: tempfile::TempDir,
+    work: TaskWorkspace,
+    step: PipelineStep,
+    attempt: std::path::PathBuf,
+}
+impl Fixture {
+    async fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let project = root.join("project");
+        let private = root.join("private");
+        std::fs::create_dir(&project).unwrap();
+        std::fs::create_dir(&private).unwrap();
+        let git = PipelineGit::new(&project).unwrap();
+        git.run(&["init", "-b", "main"]).await.unwrap();
+        let tree = git.text(&["mktree"]).await.unwrap();
+        let base = String::from_utf8(
+            git.invoke(&["commit-tree", &tree], b"base\n", None, true, 4096)
+                .await
+                .unwrap(),
+        )
+        .unwrap()
+        .trim()
+        .to_owned();
+        git.run(&["update-ref", "refs/heads/main", &base])
+            .await
+            .unwrap();
+        let task = private.join("task");
+        git.run(&[
+            "worktree",
+            "add",
+            "-b",
+            "rrx/task/fixture",
+            task.to_str().unwrap(),
+            &base,
+        ])
+        .await
+        .unwrap();
+        let work =
+            TaskWorkspace::bound(&project, &private, &task, "rrx/task/fixture", &base).unwrap();
+        let controls = work.controls().await.unwrap();
+        let attempt = private.join("attempt");
+        std::fs::create_dir(&attempt).unwrap();
+        let mut exit = json!({"code":0,"issue":null});
+        for (key, name, bytes) in [
+            ("stdout", "stdout.jsonl", b"{}\n".as_slice()),
+            ("stderr", "stderr.log", b"".as_slice()),
+            ("last", "last.md", b"done\n".as_slice()),
+        ] {
+            std::fs::write(attempt.join(name), bytes).unwrap();
+            exit[key] = json!({"bytes":bytes.len(),"sha256":hash(bytes),"complete":true});
+        }
+        let step = PipelineStep {
+            run_id: "fixture".into(),
+            seq: 2,
+            attempt: 1,
+            kind: "implement".into(),
+            provider: Some("codex".into()),
+            owner_epoch: 1,
+            round: 0,
+            state: "exited".into(),
+            version: 1,
+            cookie: None,
+            pid: None,
+            birth: None,
+            step_base: base,
+            input_sha256: hash(b"prompt"),
+            result_commit: None,
+            result_tree: None,
+            body: json!({"death_confirmed":true,"provider_outcome":"success","exit":exit,"executor_controls":controls}),
+        };
+        Self {
+            _dir: dir,
+            work,
+            step,
+            attempt,
+        }
+    }
+    fn change(&self) {
+        file(self.work.git.root(), "src/file.rs", b"safe code\n");
+    }
+    async fn build(&self) -> Result<Candidate> {
+        AdoptionChecker::build(&self.work, &self.step, &scope(), &self.attempt).await
+    }
+}
+/// Captured bytes become the recorded commit and are adopted with a clean matching checkout.
+#[tokio::test]
+async fn b5_plumbing_adoption() {
+    let mut f = Fixture::new().await;
+    f.change();
+    let candidate = f.build().await.unwrap();
+    assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
+    f.step.state = "committed".into();
+    f.step.result_commit = Some(candidate.commit.clone());
+    f.step.result_tree = Some(candidate.tree);
+    AdoptionChecker::finish(&f.work, &f.step).await.unwrap();
+    assert_eq!(
+        f.work
+            .git
+            .text(&["show", &format!("{}:src/file.rs", candidate.commit)])
+            .await
+            .unwrap(),
+        "safe code"
+    );
+    f.work.clean_at(&candidate.commit).await.unwrap();
+}
+/// An Agent-created commit is refused even with a plausible parent and rrx trailers.
+#[tokio::test]
+async fn b5_agent_commit() {
+    let f = Fixture::new().await;
+    f.change();
+    let tree = f
+        .work
+        .git
+        .text(&["rev-parse", &format!("{}^{{tree}}", f.step.step_base)])
+        .await
+        .unwrap();
+    let spoof = String::from_utf8(
+        f.work
+            .git
+            .invoke(
+                &["commit-tree", &tree, "-p", &f.step.step_base],
+                b"Rrx-Run: fixture\nRrx-Step: 2-1\n",
+                None,
+                true,
+                4096,
+            )
+            .await
+            .unwrap(),
+    )
+    .unwrap()
+    .trim()
+    .to_owned();
+    f.work
+        .git
+        .run(&["update-ref", &f.work.branch, &spoof, &f.step.step_base])
+        .await
+        .unwrap();
+    assert!(f.build().await.is_err());
+    assert!(!f.attempt.join("diff.patch").exists());
+}
+/// Missing changes cannot create an adopted empty Executor result.
+#[tokio::test]
+async fn b5_no_change() {
+    for index_only in [false, true] {
+        let f = Fixture::new().await;
+        if index_only {
+            let blob = String::from_utf8(
+                f.work
+                    .git
+                    .invoke(
+                        crate::execution::pipeline::git::BLOB_ARGS,
+                        b"index only\n",
+                        None,
+                        false,
+                        4096,
+                    )
+                    .await
+                    .unwrap(),
+            )
+            .unwrap()
+            .trim()
+            .to_owned();
+            f.work
+                .git
+                .run(&[
+                    "update-index",
+                    "--add",
+                    "--cacheinfo",
+                    "100644",
+                    &blob,
+                    "src/ghost.rs",
+                ])
+                .await
+                .unwrap();
+        }
+        assert_eq!(f.build().await.err().unwrap().to_string(), "no_change");
+    }
+}
+/// Git control changes after launch prevent blob construction.
+#[tokio::test]
+async fn b5_control_changed() {
+    let f = Fixture::new().await;
+    f.change();
+    f.work
+        .git
+        .run(&["config", "--local", "fixture.changed", "yes"])
+        .await
+        .unwrap();
+    assert!(f.build().await.is_err());
+    assert!(!f.attempt.join("diff.patch").exists());
+}
+/// Declared attribute drivers cannot execute during adoption.
+#[tokio::test]
+async fn b5_driver_precedes_status() {
+    let f = Fixture::new().await;
+    f.change();
+    file(
+        f.work.git.root(),
+        "src/deep/.gitattributes",
+        b"* filter=malicious\n",
+    );
+    assert_eq!(
+        f.build().await.err().unwrap().to_string(),
+        "git_driver_declared"
+    );
+}
+/// Evidence changed after exit cannot be trusted by the adoption caller.
+#[tokio::test]
+async fn b5_evidence_caller() {
+    let f = Fixture::new().await;
+    f.change();
+    std::fs::write(f.attempt.join("stdout.jsonl"), b"xx\n").unwrap();
+    assert!(f.build().await.is_err());
+}
+/// A failed exit cannot produce a commit even when the workspace has valid changes.
+#[tokio::test]
+async fn b5_failed_exit() {
+    let mut f = Fixture::new().await;
+    f.change();
+    f.step.body["exit"]["code"] = json!(1);
+    assert!(f.build().await.is_err());
+}
+/// Commit construction requires certified death and an issue-free exit.
+#[tokio::test]
+async fn b5_uncertified_exit() {
+    let mut f = Fixture::new().await;
+    f.change();
+    f.step.body["death_confirmed"] = json!(false);
+    assert!(f.build().await.is_err());
+    f.step.body["death_confirmed"] = json!(true);
+    f.step.body["exit"]["issue"] = json!("failed");
+    assert!(f.build().await.is_err());
+}
+/// A resumed commit accepts only the recorded SHA with its recorded tree.
+#[tokio::test]
+async fn b5_recorded_identity() {
+    let mut f = Fixture::new().await;
+    f.change();
+    let candidate = f.build().await.unwrap();
+    f.step.state = "committed".into();
+    f.step.result_commit = Some(candidate.commit);
+    f.step.result_tree = Some("f".repeat(40));
+    assert!(AdoptionChecker::finish(&f.work, &f.step).await.is_err());
+}
+/// An unrelated ref move is preserved and held during committed recovery.
+#[tokio::test]
+async fn b5_unrelated_ref() {
+    let mut f = Fixture::new().await;
+    f.change();
+    let candidate = f.build().await.unwrap();
+    f.step.state = "committed".into();
+    f.step.result_commit = Some(candidate.commit);
+    f.step.result_tree = Some(candidate.tree.clone());
+    let unrelated = String::from_utf8(
+        f.work
+            .git
+            .invoke(
+                &["commit-tree", &candidate.tree, "-p", &f.step.step_base],
+                b"other\n",
+                None,
+                true,
+                4096,
+            )
+            .await
+            .unwrap(),
+    )
+    .unwrap()
+    .trim()
+    .to_owned();
+    f.work
+        .git
+        .run(&["update-ref", &f.work.branch, &unrelated, &f.step.step_base])
+        .await
+        .unwrap();
+    assert_eq!(
+        AdoptionChecker::finish(&f.work, &f.step)
+            .await
+            .unwrap_err()
+            .to_string(),
+        "ref_moved"
+    );
+    assert_eq!(f.work.ref_value().await.unwrap(), unrelated);
+}
+/// Initialization discards only the bound Task worktree's unadopted changes.
+#[tokio::test]
+async fn b5_initialize() {
+    let f = Fixture::new().await;
+    f.change();
+    let tree = f
+        .work
+        .git
+        .text(&["rev-parse", &format!("{}^{{tree}}", f.step.step_base)])
+        .await
+        .unwrap();
+    let agent_commit = String::from_utf8(
+        f.work
+            .git
+            .invoke(
+                &["commit-tree", &tree, "-p", &f.step.step_base],
+                b"unadopted Agent commit\n",
+                None,
+                true,
+                4096,
+            )
+            .await
+            .unwrap(),
+    )
+    .unwrap()
+    .trim()
+    .to_owned();
+    f.work
+        .git
+        .run(&[
+            "update-ref",
+            &f.work.branch,
+            &agent_commit,
+            &f.step.step_base,
+        ])
+        .await
+        .unwrap();
+    let controls = serde_json::from_value(f.step.body["executor_controls"].clone()).unwrap();
+    f.work.initialize(&controls).await.unwrap();
+    f.work.clean_at(&f.step.step_base).await.unwrap();
+    assert!(!f.work.git.root().join("src/file.rs").exists());
+}
+
+/// A detached HEAD at the expected base still cannot identify the Task branch.
+#[tokio::test]
+async fn b5_symbolic_head() {
+    let f = Fixture::new().await;
+    f.change();
+    f.work
+        .git
+        .run(&["update-ref", "--no-deref", "HEAD", &f.step.step_base])
+        .await
+        .unwrap();
+    assert!(f.build().await.is_err());
+    assert!(!f.attempt.join("diff.patch").exists());
+}
+
+/// A secret added to source never reaches published diff evidence or a ref.
+#[tokio::test]
+async fn b5_candidate_secret() {
+    let f = Fixture::new().await;
+    file(
+        f.work.git.root(),
+        "src/file.rs",
+        b"EXAMPLE_SECRET=fixture\n",
+    );
+    assert!(
+        f.build()
+            .await
+            .err()
+            .unwrap()
+            .chain()
+            .any(|error| error.to_string() == "secret_detected")
+    );
+    assert!(!f.attempt.join("diff.patch").exists());
+    assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
+}
+
+/// A committed step resumes after ref-CAS using the recorded SHA and tree.
+#[tokio::test]
+async fn b5_recorded_ref_resume() {
+    let mut f = Fixture::new().await;
+    f.change();
+    let candidate = f.build().await.unwrap();
+    f.step.state = "committed".into();
+    f.step.result_commit = Some(candidate.commit.clone());
+    f.step.result_tree = Some(candidate.tree);
+    f.work
+        .git
+        .run(&[
+            "update-ref",
+            &f.work.branch,
+            &candidate.commit,
+            &f.step.step_base,
+        ])
+        .await
+        .unwrap();
+    AdoptionChecker::finish(&f.work, &f.step).await.unwrap();
+    f.work.clean_at(&candidate.commit).await.unwrap();
+}

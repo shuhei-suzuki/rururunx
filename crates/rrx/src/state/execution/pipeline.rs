@@ -1325,6 +1325,7 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         pipeline_owner_current(&tx, owner)?;
         let (mut run, mut step) = cursor_rows(&tx, owner, cursor, true)?;
+        certifying_exit(&step)?;
         ensure!(
             run.kind == "goal"
                 && run.state == "running"
@@ -1751,7 +1752,75 @@ pub struct PipelineExit<'a> {
     pub issue: Option<&'a str>,
 }
 
+fn certifying_exit(step: &PipelineStep) -> Result<()> {
+    ensure!(
+        step.body["death_confirmed"] == true,
+        "pipeline adoption death unconfirmed"
+    );
+    ensure!(
+        step.body["exit"].is_object() && step.body["exit"]["issue"].is_null(),
+        "pipeline adoption exit issue"
+    );
+    Ok(())
+}
+
 impl Store {
+    /// Operator-defined scopes are read from the immutable accepted policy, never Task.version.
+    pub(crate) fn pipeline_executor_context(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+    ) -> Result<(Project, Vec<String>, Option<Value>)> {
+        let tx = self.connection.transaction()?;
+        pipeline_owner_current(&tx, owner)?;
+        let (run, step) = cursor_rows(&tx, owner, cursor, true)?;
+        require_last_step(&tx, &step)?;
+        let project: Project = read_tx(&tx, "projects", &run.project_id.to_string())?
+            .context("pipeline Project missing")?;
+        let policy: String = tx.query_row(
+            "SELECT body FROM goal_execution_profiles WHERE goal_id=?1",
+            [run.goal_id.to_string()],
+            |r| r.get(0),
+        )?;
+        let policy: Value = serde_json::from_str(&policy)?;
+        let goal = pipeline_goal(&tx, &run, true)?;
+        let scopes = executor_scopes(
+            &policy,
+            &goal.dag.nodes,
+            run.task_id.context("Executor requires Task")?,
+        )?;
+        let controls: Option<String> = tx.query_row("SELECT json_extract(body,'$.adoption.controls') FROM pipeline_steps WHERE run_id=?1 AND kind='prepare' AND state='adopted'", [&run.id], |r| r.get(0)).optional()?.flatten();
+        let controls = controls.map(|s| serde_json::from_str(&s)).transpose()?;
+        tx.commit()?;
+        Ok((project, scopes, controls))
+    }
+
+    /// Pre-spawn control inventory is fenced by the same owner, Goal and versions as launch.
+    pub(crate) fn pipeline_executor_preflight(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+        controls: &Value,
+    ) -> Result<()> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        pipeline_owner_current(&tx, owner)?;
+        let (run, mut step) = cursor_rows(&tx, owner, cursor, true)?;
+        require_last_step(&tx, &step)?;
+        ensure!(
+            run.state == "running"
+                && step.state == "planned"
+                && matches!(step.kind.as_str(), "implement" | "fix"),
+            "Executor preflight state changed"
+        );
+        ensure!(controls.is_object(), "Executor controls missing");
+        step.body["executor_controls"] = controls.clone();
+        write_step(&tx, owner, &step)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Read exactly the caller's launch snapshot without extending its authority.
     pub fn pipeline_launch_snapshot(
         &mut self,
@@ -1898,6 +1967,19 @@ impl Store {
     ) -> Result<()> {
         self.pipeline_observe_stop(owner, cursor, "interrupted", "interrupted", Some(death))
     }
+    /// An internal prepare has no process; absence is recorded without inventing death evidence.
+    pub(crate) fn pipeline_prepare_absent(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+    ) -> Result<()> {
+        let (_, step) = self.pipeline_launch_snapshot(owner, cursor)?;
+        ensure!(
+            step.kind == "prepare" && step.state == "running",
+            "prepare absence state changed"
+        );
+        self.pipeline_observe_stop(owner, cursor, "interrupted", "prepare_absent", None)
+    }
     fn pipeline_observe_stop(
         &mut self,
         owner: &RuntimeOwner,
@@ -1905,6 +1987,32 @@ impl Store {
         state: &str,
         reason: &str,
         death: Option<&PipelineDeathEvidence>,
+    ) -> Result<()> {
+        self.pipeline_observe_stop_detail(owner, cursor, state, reason, death, None)
+    }
+    pub(crate) fn pipeline_hold_secret(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+        evidence: &Value,
+    ) -> Result<()> {
+        self.pipeline_observe_stop_detail(
+            owner,
+            cursor,
+            "held",
+            "secret_detected",
+            None,
+            Some(evidence),
+        )
+    }
+    fn pipeline_observe_stop_detail(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+        state: &str,
+        reason: &str,
+        death: Option<&PipelineDeathEvidence>,
+        detail: Option<&Value>,
     ) -> Result<()> {
         let tx = self
             .connection
@@ -1943,6 +2051,9 @@ impl Store {
             step.body["death_confirmed"] = json!(confirmed);
         }
         step.body["reason"] = json!(if at_limit { "attempt_limit" } else { reason });
+        if let Some(detail) = detail {
+            step.body["secret"] = detail.clone();
+        }
         let wait = check_wait(&tx, owner, cursor.wait_version)?;
         write_step(&tx, owner, &step)?;
         settle_wait(&tx, owner, wait, &step)?;
@@ -2111,6 +2222,7 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         pipeline_owner_current(&tx, owner)?;
         let (run, mut step) = cursor_rows(&tx, owner, cursor, true)?;
+        certifying_exit(&step)?;
         ensure!(
             run.state == "running"
                 && step.state == "exited"
@@ -2160,6 +2272,9 @@ impl Store {
                 );
             }
             _ => bail!("pipeline release is adopted only by journal settlement"),
+        }
+        if !matches!(step.kind.as_str(), "prepare" | "release") {
+            certifying_exit(&step)?;
         }
         if step.kind == "test" {
             ensure!(
@@ -2279,6 +2394,31 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+}
+
+fn executor_scopes(policy: &Value, tasks: &[TaskId], task: TaskId) -> Result<Vec<String>> {
+    let scopes = policy["task_scopes"]
+        .as_object()
+        .context("task_scope_unresolved")?;
+    // A single Task and a single operator key are unambiguous. Multiple keys require
+    // a durable plan-key binding, which existing Goal acceptance does not retain.
+    ensure!(
+        tasks == [task] && scopes.len() == 1,
+        "task_scope_unresolved"
+    );
+    let scope = scopes.values().next().context("task_scope_unresolved")?;
+    let scope: Vec<String> =
+        serde_json::from_value(scope.clone()).context("task_scope_unresolved")?;
+    ensure!(
+        !scope.is_empty()
+            && scope.len() <= 64
+            && scope.iter().all(|s| !s.is_empty()
+                && s.len() <= 512
+                && !s.starts_with('/')
+                && !s.split('/').any(|p| p == "..")),
+        "task_scope_unresolved"
+    );
+    Ok(scope)
 }
 
 #[cfg(test)]

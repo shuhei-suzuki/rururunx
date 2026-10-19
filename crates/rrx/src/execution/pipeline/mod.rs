@@ -1,4 +1,13 @@
-//! Qualified CLI launch and evidence-based process custody. No scheduler or adoption.
+//! Qualified CLI launch, process custody and checked Executor adoption.
+mod git;
+pub use git::PipelineGit;
+pub(crate) mod adoption;
+pub use adoption::AdoptionChecker;
+pub(crate) mod workspace;
+pub use workspace::TaskWorkspace;
+mod secret;
+pub(crate) use secret::SecretHit;
+pub use secret::SecretScanner;
 mod launcher;
 pub use launcher::{LaunchResult, StepInput, StepLauncher};
 mod custody;
