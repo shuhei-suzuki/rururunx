@@ -145,7 +145,7 @@ async fn hostile_subrepo(f: &Fixture) -> std::path::PathBuf {
     git.run(&["init", "-b", "main"]).await.unwrap();
     file(&sub, "file", b"initial\n");
     git.run(&["add", "file"]).await.unwrap();
-    file(&sub, "file", b"changed length\n");
+    file(&sub, "file", b"changed\n");
     let marker = f.attempt.join("filter-marker");
     git.run(&[
         "config",
