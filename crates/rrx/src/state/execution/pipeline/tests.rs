@@ -227,6 +227,16 @@ async fn fixture_with_service(
     shared: Option<std::sync::Arc<RuntimeOwner>>,
     service: Option<(&Runtime, &Config)>,
 ) -> Fixture {
+    fixture_with_service_and_alias(pipeline, pipeline_owner, shared, service, false).await
+}
+#[cfg(target_os = "macos")]
+async fn fixture_with_service_and_alias(
+    pipeline: bool,
+    pipeline_owner: bool,
+    shared: Option<std::sync::Arc<RuntimeOwner>>,
+    service: Option<(&Runtime, &Config)>,
+    alias: bool,
+) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("source");
     std::fs::create_dir(&root).unwrap();
@@ -246,7 +256,12 @@ async fn fixture_with_service(
         .map(|(_, config)| config.clone())
         .unwrap_or_default();
     if pipeline_owner && service.is_none() {
-        let pins = crate::execution::pipeline::test_support::config(&owner, dir.path());
+        let mut pins = crate::execution::pipeline::test_support::config(&owner, dir.path());
+        if alias {
+            let path = pins.clis.codex.executable.with_file_name("alias");
+            std::os::unix::fs::symlink(&pins.clis.codex.executable, &path).unwrap();
+            pins.clis.codex.executable = path;
+        }
         if fresh {
             crate::execution::pipeline::test_support::qualify_fixture(&owner, &pins)
                 .await

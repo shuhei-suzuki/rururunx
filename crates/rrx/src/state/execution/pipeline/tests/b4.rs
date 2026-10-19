@@ -20,16 +20,11 @@ impl Harness {
         Self::with_alias(kind, prompt, false).await
     }
     async fn with_alias(kind: &str, prompt: &[u8], alias: bool) -> Self {
-        let mut f = fixture().await;
-        if alias {
-            let pins = f.config.pipeline.as_mut().unwrap();
-            let path = pins.clis.codex.executable.with_file_name("alias");
-            std::os::unix::fs::symlink(&pins.clis.codex.executable, &path).unwrap();
-            pins.clis.codex.executable = path;
-            crate::execution::pipeline::test_support::qualify_fixture(&f.owner, pins)
-                .await
-                .unwrap();
-        }
+        let f = if alias {
+            fixture_with_service_and_alias(true, true, None, None, true).await
+        } else {
+            fixture().await
+        };
         let runtime = Arc::new(Runtime::new(f.owner.clone(), f.config.clone()).unwrap());
         runtime.start_qualified_service().await.unwrap();
         let pins = f.config.pipeline.as_ref().unwrap();
