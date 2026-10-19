@@ -1720,6 +1720,8 @@ pub struct PipelineDeathEvidence {
     pub group_empty: bool,
     pub discovery_complete: bool,
     pub matching_processes: u32,
+    #[serde(default)]
+    pub discovery_attempts: u32,
 }
 impl PipelineDeathEvidence {
     fn validate(&self) -> Result<()> {

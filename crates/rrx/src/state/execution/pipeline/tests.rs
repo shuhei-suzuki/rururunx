@@ -23,6 +23,7 @@ fn b4_death_requires_every_observation() {
         group_empty: true,
         discovery_complete: true,
         matching_processes: 0,
+        discovery_attempts: 1,
     };
     complete.validate().unwrap();
     for field in [
@@ -543,6 +544,7 @@ fn death() -> PipelineDeathEvidence {
         group_empty: true,
         discovery_complete: true,
         matching_processes: 0,
+        discovery_attempts: 1,
     }
 }
 #[cfg(target_os = "macos")]

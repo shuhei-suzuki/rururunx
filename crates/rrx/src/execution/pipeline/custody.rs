@@ -28,6 +28,51 @@ const CODEX_BYTES: usize = 16 * 1024 * 1024;
 const CLAUDE_BYTES: usize = 1024 * 1024;
 const LAST_BYTES: usize = 256 * 1024;
 const DEATH_BOUND: Duration = Duration::from_secs(2);
+const DISCOVERY_RETRY_PAUSE: Duration = Duration::from_millis(5);
+
+/// Observation metadata only; this carries no authority to signal a process.
+struct DeathDiscovery {
+    coverage: rrx_process_tracker::Coverage,
+    matching_processes: usize,
+}
+
+impl From<rrx_process_tracker::Discovery> for DeathDiscovery {
+    fn from(discovery: rrx_process_tracker::Discovery) -> Self {
+        Self {
+            coverage: discovery.coverage,
+            matching_processes: discovery.processes.len(),
+        }
+    }
+}
+
+/// Only a complete empty scan before the shared deadline proves disappearance.
+async fn discover_death<F, Fut>(deadline: Instant, mut scan: F) -> Result<u32>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<DeathDiscovery>>,
+{
+    let mut attempts = 0;
+    loop {
+        ensure!(
+            Instant::now() < deadline,
+            "cookie death unconfirmed: deadline"
+        );
+        attempts += 1;
+        let discovery = tokio::time::timeout_at(deadline, scan()).await??;
+        ensure!(
+            discovery.matching_processes == 0,
+            "cookie death unconfirmed: matching process"
+        );
+        ensure!(
+            Instant::now() < deadline,
+            "cookie death unconfirmed: deadline"
+        );
+        if !discovery.coverage.limited() {
+            return Ok(attempts);
+        }
+        tokio::time::sleep_until(deadline.min(Instant::now() + DISCOVERY_RETRY_PAUSE)).await;
+    }
+}
 
 /// A retained monitor: dropping this handle closes the stop channel, never custody.
 pub struct StepCustody {
@@ -123,15 +168,18 @@ pub(super) async fn confirm_death(
         );
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    let cookie = rrx_process_tracker::Cookie::new(cookie)?;
-    let discovery = tokio::task::spawn_blocking(move || {
-        rrx_process_tracker::discover(&cookie, Default::default())
+    let cookie = Arc::new(rrx_process_tracker::Cookie::new(cookie)?);
+    let discovery_attempts = discover_death(deadline, || {
+        let cookie = Arc::clone(&cookie);
+        async move {
+            let discovery = tokio::task::spawn_blocking(move || {
+                rrx_process_tracker::discover(&cookie, Default::default())
+            })
+            .await??;
+            Ok(discovery.into())
+        }
     })
-    .await??;
-    ensure!(
-        !discovery.coverage.limited() && discovery.processes.is_empty(),
-        "cookie death unconfirmed"
-    );
+    .await?;
     Ok(DeathReceipt {
         status,
         evidence: PipelineDeathEvidence {
@@ -141,6 +189,7 @@ pub(super) async fn confirm_death(
             group_empty: true,
             discovery_complete: true,
             matching_processes: 0,
+            discovery_attempts,
         },
     })
 }

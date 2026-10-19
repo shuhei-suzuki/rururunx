@@ -23,5 +23,8 @@ tempfile.workspace = true
 rrx-process-tracker = { path = "../rrx-process-tracker", version = "0.1.0" }
 rrx-spawn-hygiene = { path = "../rrx-spawn-hygiene", version = "0.1.0" }
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
 [lints]
 workspace = true
