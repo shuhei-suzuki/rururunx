@@ -160,11 +160,14 @@ fn he05_platform_escape() {
     let pid = line.trim().parse::<u32>().unwrap();
     let birth = query_key(pid);
     wait_for(|| query_birth(group, &query_pid(group), true).is_some_and(|p| p.zombie));
-    rustix::process::kill_process_group(
+    match rustix::process::kill_process_group(
         rustix::process::Pid::from_raw(group as i32).unwrap(),
         rustix::process::Signal::KILL,
-    )
-    .unwrap();
+    ) {
+        Err(rustix::io::Errno::PERM)
+            if query_birth(group, &query_pid(group), true).is_some_and(|p| p.zombie) => {}
+        result => result.unwrap(),
+    }
     leader.0.wait().unwrap();
     wait_for(|| {
         rustix::process::test_kill_process_group(
@@ -238,7 +241,12 @@ fn he06_observable_escape() {
     wait_for(|| {
         query_birth(leader.0.id(), &query_pid(leader.0.id()), true).is_some_and(|p| p.zombie)
     });
-    rustix::process::kill_process_group(group, rustix::process::Signal::KILL).unwrap();
+    match rustix::process::kill_process_group(group, rustix::process::Signal::KILL) {
+        Err(rustix::io::Errno::PERM)
+            if query_birth(leader.0.id(), &query_pid(leader.0.id()), true)
+                .is_some_and(|p| p.zombie) => {}
+        result => result.unwrap(),
+    }
     leader.0.wait().unwrap();
     wait_for(|| rustix::process::test_kill_process_group(group) == Err(rustix::io::Errno::SRCH));
     wait_for(|| identity(pid).is_ok_and(|i| i.ppid == 1));
