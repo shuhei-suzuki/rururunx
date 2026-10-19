@@ -84,6 +84,7 @@ at step base, unchanged Git controls and full-path scope matches. Protected Git
 and instruction paths (including `.mcp.json`, `AGENTS.override.md` and `CLAUDE.local.md`)
 require explicit scope with ASCII and Unicode upper-then-lower folding. Build/clean checks
 refuse ignored protected components without counting ignored output as changes or drift.
+`.gitignore` changes are refused regardless of scope, so effective ignore rules come from the Goal base.
 Only regular nonbinary files are
 captured: at most 200 changes, one MiB per file and eight MiB of captured additions.
 Captured bytes feed filter-free plumbing through a temporary index, never Git

@@ -525,7 +525,8 @@ recorded commit's tree/parent and a matching clean checkout. Trailers never gran
 adoption authority. Symbolic Task and Goal refs are refused, ref-CAS uses `--no-deref`,
 and unrelated ref movement is held. Protected paths include Git metadata, instruction
 overrides and MCP configuration, with ASCII and Unicode upper-then-lower folding unless scoped
-explicitly; build/clean checks refuse ignored protected components without counting ordinary
+explicitly, and `.gitignore` changes are refused regardless of scope; build/clean checks refuse
+ignored protected components without counting ordinary
 ignored output as changes or drift. Executable file mode follows the owner execute bit. Diff evidence is synced
 and sealed to 0400 in a same-directory temporary file, then atomically renamed; exited
 recovery rebuilds missing or incomplete artifacts. Committed recovery verifies the retained
