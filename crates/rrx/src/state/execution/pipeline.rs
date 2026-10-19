@@ -14,16 +14,16 @@ pub const PIPELINE_TABLES: &[&str] = &[
     "pipeline_limit_wait",
 ];
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 thread_local! { static WAIT_CLOCK: std::cell::Cell<Option<i64>> = const { std::cell::Cell::new(None) }; }
 fn pipeline_now_ms() -> i64 {
-    #[cfg(test)]
+    #[cfg(all(test, target_os = "macos"))]
     if let Some(now) = WAIT_CLOCK.with(|clock| clock.get()) {
         return now;
     }
     now_ms()
 }
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 fn with_pipeline_clock<T>(now: i64, run: impl FnOnce() -> T) -> T {
     struct Reset(Option<i64>);
     impl Drop for Reset {
