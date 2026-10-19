@@ -10,7 +10,7 @@ async fn b2_fix3_cancel_interrupted_prepare() {
         let id = f.claim();
         let c = f.cursor(&id);
         f.store()
-            .pipeline_begin_launch(&f.owner, &c, None, &json!({}))
+            .pipeline_begin_launch(&f.owner, &c, None, None, &json!({}))
             .unwrap();
         let c = f.cursor(&id);
         f.store()

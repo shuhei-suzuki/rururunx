@@ -159,8 +159,14 @@ checks current owner/epoch, independent run and step versions, a Running Goal,
 current qualification, native exhaustion and the daemon-wide process and provider
 wait gates. `StepLauncher` releases the Store mutex before directory work,
 qualification rechecks and `rrx_spawn_hygiene::spawn_tokio`. It records an intent
-before spawning, then records the owned leader's PID, equal PGID and tracker birth
-before sending input. Spawn errors become unknown. A launch is rejected before
+before spawning, including a wall-clock launch mark and optional boot identity.
+The mark is immutable after writing. It then records the owned leader's PID,
+equal PGID and PID-based birth before sending input. On macOS, the birth comes
+from an exact-size, matching-PID `KERN_PROC_PID` query with a nonzero start time
+and a running, sleeping, stopped or zombie state. A separate environment read
+must match the cookie or be absent; an unreadable environment is accepted only
+after a same-birth zombie query. Zombies need no environment read. Spawn errors
+become unknown. A launch is rejected before
 spawn only when the failure is known to precede spawn. A failed running receipt
 keeps the step launching unless death is proved; with proof, one Store commit
 records the death evidence, rejects the step with `record_failed` and holds the run.
@@ -235,8 +241,11 @@ wait for custody while holding that boundary.
 `adapter::ProcessGroup` keeps the leader unreaped through group cleanup for native
 adapters and Codex preparation/transport. Pipeline `StepCustody` wraps its existing
 observe/cleanup/reap API. Pipeline settlement additionally requires observed leader
-exit, delivered group cleanup, leader reap, observed empty group and complete cookie discovery
-with zero matches. A deadline cannot supply any of those facts. Incomplete proof
+exit, delivered group cleanup, a same-birth zombie observation before leader reap,
+leader reap, observed empty group and complete launch-aware cookie discovery
+with zero matches. `launch_checked` is required for process death evidence;
+`leader_birth_matched` is additionally required when a birth was recorded.
+A deadline cannot supply any of those facts. Incomplete proof
 holds the running step; monitor failure records unknown. No discovered PID is
 signalled on macOS.
 
@@ -256,7 +265,7 @@ nonmatching environments require equal identities before and after the read.
 A changed or unreadable second identity after a match limits coverage; after a
 nonmatch it counts as reuse and requires another pass.
 
-Completed live checks and zombies retain nonzero start-time keys and their kind.
+Observable completed live checks and zombies retain nonzero start-time keys and their kind.
 Later passes reconcile these records using one identity read, plus one query for
 an unreadable recorded zombie; mismatches discard the record and receive a full
 check. Records outside the new membership list cause no reads or new absence.
@@ -266,14 +275,41 @@ and the re-listing count do not themselves limit coverage; unknown results,
 truncation and deadline exhaustion do. Zombies and vanished PIDs never become
 tracked processes or signal targets. Linux discovery is unchanged.
 
-Complete coverage with zero matches excludes live cookie-bearing processes only
+Launch-aware macOS discovery distinguishes matching, nonmatching and absent
+environments. Its sole clock boundary is the earlier of the recorded launch wall
+time and leader birth, minus sixty seconds. A confirmed different boot bypasses
+the clock and absent-environment checks; otherwise a current clock before that
+boundary limits coverage. An absent environment born before the boundary can
+be recorded as excluded. Recent absent environments receive path, environment,
+path and second identity reads, in that order. A changed path or a second
+environment that is not absent limits coverage. Equal paths whose exact parent
+directory is outside `/bin`, `/usr/bin`, `/sbin` and `/usr/sbin` are excluded.
+Unreadable paths remain candidates.
+
+For remaining absent candidates, an ancestor walk of at most 32 parents can
+exclude only through a live, untraced ancestor born before the boundary.
+Every parent query is followed by a reread of the child from its original source,
+checking birth, parent PID, tracing and, for ancestors, live state. Reaching pid 1,
+the daemon itself, a cycle, an unreadable or nonliving ancestor, or the depth
+limit leaves ancestry unconfirmed and coverage limited. At most sixteen target
+identities are retained as unconfirmed metadata. Location and lineage exclusions
+never create reusable records; each later pass repeats their full checks.
+These reads share the original deadline and never grant signal authority.
+
+Launch-aware complete coverage with zero matches excludes live cookie-bearing processes only
 under cooperative cookie inheritance and stable same-user/birth identity
 assumptions, with two accepted residual races. In R1, a previously unrecorded PID may
 be reused between the final listing and its first identity read after its former
 cookie-bearing process leaves an unlisted child. In R2, the kernel may truncate
 membership at its internal capacity below the supplied buffer size without a
-detectable full-buffer return. These residuals apply to both step death evidence
-and owner quiescence; neither is a whole-workload containment guarantee.
+detectable full-buffer return. Additional accepted limits are wall-clock rollback
+beyond sixty seconds, argument-area spoofing, platform descendants outside the
+four directories, and two execs returning to the same path inside the read window.
+Delegated launches through a pre-existing service remain outside cookie inheritance.
+Native cleanup and owner quiescence continue using ordinary `discover`, which
+counts absent environments as nonmatches and cannot guarantee absence even of
+observable descendants of an absent ancestor. Neither API is whole-workload
+containment.
 
 Work success/failure/unknown and cleanup reclaimed/leftovers/unknown are independent
 axes. Reclaimed describes observed tracked resources at a time, not whole workload

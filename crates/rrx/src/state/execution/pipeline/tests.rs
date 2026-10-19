@@ -1,6 +1,8 @@
 use super::*;
 mod b6;
 #[cfg(target_os = "macos")]
+mod d20;
+#[cfg(target_os = "macos")]
 use crate::config::{AgentConfig, Config, WorkflowClass};
 #[cfg(target_os = "macos")]
 use crate::execution::verification::{
@@ -18,6 +20,8 @@ use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
 #[test]
 fn b4_death_requires_every_observation() {
     let complete = PipelineDeathEvidence {
+        launch_checked: true,
+        leader_birth_matched: true,
         leader_exit_observed: true,
         group_kill_delivered: true,
         leader_reaped: true,
@@ -26,8 +30,10 @@ fn b4_death_requires_every_observation() {
         matching_processes: 0,
         discovery_attempts: 1,
     };
-    complete.validate().unwrap();
+    complete.validate(true).unwrap();
     for field in [
+        "launch_checked",
+        "leader_birth_matched",
         "leader_exit_observed",
         "group_kill_delivered",
         "leader_reaped",
@@ -42,7 +48,7 @@ fn b4_death_requires_every_observation() {
             json!(false)
         };
         let broken: PipelineDeathEvidence = serde_json::from_value(broken).unwrap();
-        assert!(broken.validate().is_err(), "{field}");
+        assert!(broken.validate(true).is_err(), "{field}");
     }
 }
 
@@ -469,7 +475,7 @@ impl Fixture {
     fn advance_prepare(&self, id: &str) {
         let cursor = self.cursor(id);
         self.store()
-            .pipeline_begin_launch(&self.owner, &cursor, None, &json!({}))
+            .pipeline_begin_launch(&self.owner, &cursor, None, None, &json!({}))
             .unwrap();
         let create = self
             .store()
@@ -507,7 +513,13 @@ impl Fixture {
         self.process_step(id, kind);
         let cursor = self.cursor(id);
         self.store()
-            .pipeline_begin_launch(&self.owner, &cursor, Some("0123456789abcdef"), &json!({}))
+            .pipeline_begin_launch(
+                &self.owner,
+                &cursor,
+                Some("0123456789abcdef"),
+                Some(&rrx_process_tracker::launch_mark().unwrap()),
+                &json!({}),
+            )
             .unwrap();
     }
     fn unknown(&self, id: &str) {
@@ -566,6 +578,8 @@ fn planned(run: &str, seq: u32, attempt: u32, kind: &str) -> PipelineStep {
 #[cfg(target_os = "macos")]
 fn death() -> PipelineDeathEvidence {
     PipelineDeathEvidence {
+        launch_checked: true,
+        leader_birth_matched: true,
         leader_exit_observed: true,
         group_kill_delivered: true,
         leader_reaped: true,
@@ -653,7 +667,13 @@ fn complete_goal(f: &Fixture) {
         wait_version: None,
     };
     f.store()
-        .pipeline_begin_launch(&f.owner, &cursor, Some("0123456789abcdef"), &json!({}))
+        .pipeline_begin_launch(
+            &f.owner,
+            &cursor,
+            Some("0123456789abcdef"),
+            Some(&rrx_process_tracker::launch_mark().unwrap()),
+            &json!({}),
+        )
         .unwrap();
     let mut cursor = cursor;
     cursor.step_version = 2;
@@ -1213,7 +1233,13 @@ async fn b2_wait_probe_success_clears() {
     }
     let cursor = f.cursor(&id);
     f.store()
-        .pipeline_begin_launch(&f.owner, &cursor, Some("0123456789abcdef"), &json!({}))
+        .pipeline_begin_launch(
+            &f.owner,
+            &cursor,
+            Some("0123456789abcdef"),
+            Some(&rrx_process_tracker::launch_mark().unwrap()),
+            &json!({}),
+        )
         .unwrap();
     let cursor = f.cursor(&id);
     f.store()
@@ -1250,7 +1276,13 @@ async fn b2_wait_probe_other_extends() {
     }
     let cursor = f.cursor(&id);
     f.store()
-        .pipeline_begin_launch(&f.owner, &cursor, Some("0123456789abcdef"), &json!({}))
+        .pipeline_begin_launch(
+            &f.owner,
+            &cursor,
+            Some("0123456789abcdef"),
+            Some(&rrx_process_tracker::launch_mark().unwrap()),
+            &json!({}),
+        )
         .unwrap();
     let cursor = f.cursor(&id);
     f.store()

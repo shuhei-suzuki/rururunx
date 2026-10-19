@@ -1258,7 +1258,7 @@ impl Store {
             }
             "running" => {
                 if let Some(death) = death {
-                    death.validate()?;
+                    death.validate(step.birth.is_some())?;
                     step.state = "exited".into();
                     step.body["death_confirmed"] = json!(true);
                     step.body["death_evidence"] = serde_json::to_value(death)?;
@@ -1799,6 +1799,8 @@ impl Store {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PipelineDeathEvidence {
+    pub launch_checked: bool,
+    pub leader_birth_matched: bool,
     pub leader_exit_observed: bool,
     pub group_kill_delivered: bool,
     pub leader_reaped: bool,
@@ -1809,9 +1811,11 @@ pub struct PipelineDeathEvidence {
     pub discovery_attempts: u32,
 }
 impl PipelineDeathEvidence {
-    fn validate(&self) -> Result<()> {
+    fn validate(&self, has_birth: bool) -> Result<()> {
         ensure!(
-            self.leader_exit_observed
+            self.launch_checked
+                && (!has_birth || self.leader_birth_matched)
+                && self.leader_exit_observed
                 && self.group_kill_delivered
                 && self.leader_reaped
                 && self.group_empty
@@ -1926,6 +1930,7 @@ impl Store {
         owner: &RuntimeOwner,
         cursor: &PipelineCursor,
         cookie: Option<&str>,
+        launch: Option<&rrx_process_tracker::Launch>,
         intent: &Value,
     ) -> Result<PipelineLaunch> {
         let tx = self
@@ -1992,6 +1997,12 @@ impl Store {
         step.state = if internal { "running" } else { "launching" }.into();
         step.cookie = cookie.map(str::to_owned);
         step.body["intent"] = intent.clone();
+        if !internal {
+            let launch = launch.context("pipeline launch mark missing")?;
+            ensure!(launch.wall.1 < 1_000_000, "invalid launch microseconds");
+            step.body["launch"] =
+                json!({"wall":format!("{}:{}",launch.wall.0,launch.wall.1),"boot":launch.boot});
+        }
         write_step(&tx, owner, &step)?;
         tx.commit()?;
         Ok(PipelineLaunch::Started)
@@ -2116,7 +2127,7 @@ impl Store {
         );
         ensure!(!reason.trim().is_empty(), "pipeline stop reason missing");
         if let Some(death) = death {
-            death.validate()?;
+            death.validate(step.birth.is_some())?;
         }
         let internal = matches!(step.kind.as_str(), "prepare" | "release");
         let confirmed = internal
@@ -2190,7 +2201,7 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         pipeline_owner_current(&tx, owner)?;
         let (mut run, mut step) = cursor_rows(&tx, owner, cursor, false)?;
-        death.validate()?;
+        death.validate(step.birth.is_some())?;
         ensure!(run.state == "running", "pipeline exit run is not Running");
         ensure!(
             matches!(step.state.as_str(), "running" | "launching"),

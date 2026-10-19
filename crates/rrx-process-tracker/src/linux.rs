@@ -109,6 +109,7 @@ pub(super) fn discover(cookie: &Cookie, limits: Limits, started: Instant) -> io:
     let mut result = Discovery {
         processes: Vec::new(),
         coverage: Coverage::default(),
+        unconfirmed: Vec::new(),
     };
     for entry in fs::read_dir("/proc")? {
         if started.elapsed() >= limits.time {
@@ -185,6 +186,60 @@ pub(super) fn discover(cookie: &Cookie, limits: Limits, started: Instant) -> io:
         });
     }
     Ok(result)
+}
+
+pub(super) fn boot_id() -> Option<String> {
+    fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .ok()
+        .map(|s| s.trim().to_owned())
+}
+pub(super) fn discover_launched(
+    cookie: &Cookie,
+    limits: Limits,
+    started: Instant,
+    _: &Launch,
+) -> io::Result<Discovery> {
+    discover(cookie, limits, started)
+}
+pub(super) fn owned_leader(pid: u32, cookie: &Cookie) -> io::Result<OwnedLeader> {
+    let before = identity(pid)?;
+    let stat = bounded_metadata(&format!("/proc/{pid}/stat"))?;
+    let zombie = stat
+        .rsplit_once(')')
+        .and_then(|(_, s)| s.split_whitespace().next())
+        == Some("Z");
+    if !zombie {
+        let env = File::open(format!("/proc/{pid}/environ")).and_then(|file| {
+            read_environment(
+                file,
+                Limits::default().environment_bytes,
+                EnvironmentBuffer::new(Vec::new()),
+            )
+        });
+        match env {
+            Ok(env)
+                if matches_environment(&env.bytes, cookie) || env.bytes.iter().all(|b| *b == 0) => {
+            }
+            Ok(_) => return Err(io::Error::other("owned leader cookie mismatch")),
+            Err(error) => {
+                let stat = bounded_metadata(&format!("/proc/{pid}/stat"))?;
+                let now_zombie = stat
+                    .rsplit_once(')')
+                    .and_then(|(_, s)| s.split_whitespace().next())
+                    == Some("Z");
+                if !now_zombie || identity(pid)? != before {
+                    return Err(error);
+                }
+            }
+        }
+    }
+    if identity(pid)? != before {
+        return Err(io::Error::other("owned leader identity changed"));
+    }
+    Ok(OwnedLeader {
+        birth: before.birth,
+        zombie,
+    })
 }
 
 #[cfg(test)]

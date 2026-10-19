@@ -1,5 +1,121 @@
 use super::*;
 
+/// A platform orphan prevents the production death discovery from accepting an empty cookie scan.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn he05_platform_death_refused() {
+    host_platform_discovery(false).await;
+}
+
+/// Short-lived unrelated platform descendants clear through independent bounded scans.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn he07_short_lived_platform() {
+    host_platform_discovery(true).await;
+}
+
+/// A recorded birth mismatch refuses confirmation before the owned leader can be reaped.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn leader_birth_mismatch() {
+    for mismatch in [false, true] {
+        let launch = rrx_process_tracker::launch_mark().unwrap();
+        let value = format!("birth-match-fixture-{}", std::process::id());
+        let cookie = rrx_process_tracker::Cookie::new(&value).unwrap();
+        let mut command = tokio::process::Command::new("/usr/bin/perl");
+        command
+            .args(["-e", "$|=1; print 'r'; sleep 30"])
+            .env("RRX_PROCESS_COOKIE", &value)
+            .process_group(0)
+            .kill_on_drop(true)
+            .stdout(std::process::Stdio::piped());
+        let mut child = rrx_spawn_hygiene::spawn_tokio(command).unwrap();
+        let mut ready = [0];
+        child
+            .stdout
+            .take()
+            .unwrap()
+            .read_exact(&mut ready)
+            .await
+            .unwrap();
+        assert_eq!(&ready, b"r");
+        let mut birth = rrx_process_tracker::owned_leader(child.id().unwrap(), &cookie)
+            .unwrap()
+            .birth;
+        if mismatch {
+            birth.0 += 1;
+        }
+        let process =
+            ProcessGroup::new(child, Arc::new(std::sync::atomic::AtomicBool::new(true))).unwrap();
+        let result = confirm_death(process, &value, &launch, Some(birth), true).await;
+        assert_eq!(result.is_err(), mismatch);
+        if let Ok(receipt) = result {
+            assert!(receipt.evidence.launch_checked && receipt.evidence.leader_birth_matched);
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn host_platform_discovery(short: bool) {
+    let launch = rrx_process_tracker::launch_mark().unwrap();
+    let value = format!("he-death-cookie-{}-{}", std::process::id(), u8::from(short));
+    let mut command = tokio::process::Command::new("/usr/bin/perl");
+    command.arg("-e").arg(if short {
+        "$|=1; use POSIX; if (fork) { exit } POSIX::setsid(); if (fork) { exit } print \"$$\\n\"; close STDOUT; select undef,undef,undef,0.3;"
+    } else {
+        "$|=1; use POSIX; if (fork) { exit } POSIX::setsid(); print \"$$\\n\"; close STDOUT; sleep 30"
+    }).process_group(0).stdout(std::process::Stdio::piped()).kill_on_drop(true);
+    if !short {
+        command.env("RRX_PROCESS_COOKIE", &value);
+    } else {
+        command.env_remove("RRX_PROCESS_COOKIE");
+    }
+    let mut leader = rrx_spawn_hygiene::spawn_tokio(command).unwrap();
+    let mut line = String::new();
+    use tokio::io::AsyncBufReadExt;
+    tokio::io::BufReader::new(leader.stdout.take().unwrap())
+        .read_line(&mut line)
+        .await
+        .unwrap();
+    let pid = line.trim().parse::<u32>().unwrap();
+    let cookie = Arc::new(rrx_process_tracker::Cookie::new(&value).unwrap());
+    let birth = rrx_process_tracker::owned_leader(pid, &cookie)
+        .unwrap()
+        .birth;
+    leader.wait().await.unwrap();
+    let deadline = Instant::now() + DEATH_BOUND;
+    let result = discover_death(deadline, || {
+        let cookie = cookie.clone();
+        let launch = launch.clone();
+        async move {
+            Ok(tokio::task::spawn_blocking(move || {
+                rrx_process_tracker::discover_launched(&cookie, Default::default(), &launch)
+            })
+            .await??
+            .into())
+        }
+    })
+    .await;
+    if short {
+        let attempts = result.unwrap();
+        eprintln!("HE7 discovery_attempts={attempts}");
+        assert!(attempts >= 1);
+    } else {
+        assert_eq!(
+            rrx_process_tracker::owned_leader(pid, &cookie)
+                .unwrap()
+                .birth,
+            birth
+        );
+        rustix::process::kill_process(
+            Pid::from_raw(pid as i32).unwrap(),
+            rustix::process::Signal::KILL,
+        )
+        .unwrap();
+        assert!(result.is_err());
+    }
+}
+
 /// Test custody consumes every admitted command bound instead of Agent defaults.
 #[test]
 fn b6_custody_limits() {
@@ -91,6 +207,7 @@ fn b5_f1_last_chmod_race() {
 fn discovery(limited: bool, matching_processes: usize) -> DeathDiscovery {
     let mut observation = DeathDiscovery::from(rrx_process_tracker::Discovery {
         processes: Vec::new(),
+        unconfirmed: Vec::new(),
         coverage: rrx_process_tracker::Coverage {
             environment_unavailable: usize::from(limited),
             ..Default::default()
@@ -114,6 +231,8 @@ async fn b4_discovery_retry_complete() {
     assert!(scans.next().is_none());
     assert!(Instant::now() >= start + DISCOVERY_RETRY_PAUSE * 2);
     let evidence = PipelineDeathEvidence {
+        launch_checked: true,
+        leader_birth_matched: true,
         leader_exit_observed: true,
         group_kill_delivered: true,
         leader_reaped: true,

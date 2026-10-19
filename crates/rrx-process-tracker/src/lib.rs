@@ -84,6 +84,35 @@ pub struct Identity {
     pub uid: u32,
     pub birth: (u64, u64),
 }
+/// Wall-clock launch boundary and boot identity, recorded before spawning.
+#[derive(Clone, Debug)]
+pub struct Launch {
+    pub wall: (u64, u64),
+    pub boot: Option<String>,
+    pub leader_birth: Option<(u64, u64)>,
+}
+pub fn launch_mark() -> io::Result<Launch> {
+    Ok(Launch {
+        wall: wall_time()?,
+        boot: platform::boot_id(),
+        leader_birth: None,
+    })
+}
+fn wall_time() -> io::Result<(u64, u64)> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(io::Error::other)?;
+    Ok((now.as_secs(), u64::from(now.subsec_micros())))
+}
+/// Observation of an unreaped child owned by the caller; no signal authority.
+#[derive(Clone, Copy, Debug)]
+pub struct OwnedLeader {
+    pub birth: (u64, u64),
+    pub zombie: bool,
+}
+pub fn owned_leader(pid: u32, cookie: &Cookie) -> io::Result<OwnedLeader> {
+    platform::owned_leader(pid, cookie)
+}
 #[derive(Default, Debug)]
 pub struct Coverage {
     pub inspected: usize,
@@ -98,6 +127,12 @@ pub struct Coverage {
     pub relistings: usize,
     pub truncated: bool,
     pub time_exceeded: bool,
+    pub environment_absent: usize,
+    pub environment_absent_elsewhere: usize,
+    pub ancestry_unconfirmed: usize,
+    pub ancestors_read: usize,
+    pub clock_behind: bool,
+    pub other_boot: bool,
 }
 impl Coverage {
     /// Completeness of this bounded observation only; never full Task membership.
@@ -108,6 +143,8 @@ impl Coverage {
             || self.handle_unavailable != 0
             || self.truncated
             || self.time_exceeded
+            || self.ancestry_unconfirmed != 0
+            || self.clock_behind
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,6 +189,15 @@ impl std::fmt::Debug for TrackedProcess {
 pub struct Discovery {
     pub processes: Vec<TrackedProcess>,
     pub coverage: Coverage,
+    pub unconfirmed: Vec<Identity>,
+}
+pub fn discover_launched(
+    cookie: &Cookie,
+    limits: Limits,
+    launch: &Launch,
+) -> io::Result<Discovery> {
+    limits.validate()?;
+    platform::discover_launched(cookie, limits, Instant::now(), launch)
 }
 pub fn discover(cookie: &Cookie, limits: Limits) -> io::Result<Discovery> {
     limits.validate()?;

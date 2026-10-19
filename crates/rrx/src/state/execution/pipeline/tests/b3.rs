@@ -171,7 +171,7 @@ async fn b3_native_owner_launch_refused() {
     // A foreign owner is rejected by identity before its mode is inspected.
     let error = accepted
         .store()
-        .pipeline_begin_launch(&f.owner, &cursor, None, &json!({}))
+        .pipeline_begin_launch(&f.owner, &cursor, None, None, &json!({}))
         .unwrap_err();
     assert!(
         error.to_string().contains("pipeline owner retired"),
@@ -181,7 +181,7 @@ async fn b3_native_owner_launch_refused() {
     // identity. It must refuse before even looking up the supplied cursor.
     let error = f
         .store()
-        .pipeline_begin_launch(&f.owner, &cursor, None, &json!({}))
+        .pipeline_begin_launch(&f.owner, &cursor, None, None, &json!({}))
         .unwrap_err();
     assert!(
         error
@@ -198,7 +198,7 @@ async fn b3_native_owner_launch_refused() {
     assert!(matches!(
         accepted
             .store()
-            .pipeline_begin_launch(&accepted.owner, &cursor, None, &json!({}))
+            .pipeline_begin_launch(&accepted.owner, &cursor, None, None, &json!({}))
             .unwrap(),
         PipelineLaunch::Started
     ));
@@ -363,7 +363,13 @@ async fn b3_owner_probing_wait() {
     let cursor = f.cursor(&id);
     assert!(matches!(
         f.store()
-            .pipeline_begin_launch(&f.owner, &cursor, Some("probe-cookie-012345"), &json!({}))
+            .pipeline_begin_launch(
+                &f.owner,
+                &cursor,
+                Some("probe-cookie-012345"),
+                Some(&rrx_process_tracker::launch_mark().unwrap()),
+                &json!({})
+            )
             .unwrap(),
         PipelineLaunch::Started
     ));
@@ -587,7 +593,7 @@ async fn b3_q_blocks_internal_launch() {
     };
     assert!(
         store
-            .pipeline_begin_launch(&owner, &cursor, None, &json!({}))
+            .pipeline_begin_launch(&owner, &cursor, None, None, &json!({}))
             .unwrap_err()
             .to_string()
             .contains("pipeline startup Q is not current")

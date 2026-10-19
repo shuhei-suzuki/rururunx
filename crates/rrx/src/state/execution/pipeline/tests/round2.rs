@@ -336,13 +336,19 @@ async fn b2_cookie_assignment_and_retention() {
             c,
             &update(
                 "pipeline_steps",
-                ",state='launching',cookie='0123456789abcdef',body=json_set(body,'$.version',version+1,'$.state','launching')",
+                ",state='launching',cookie='0123456789abcdef',body=json_set(body,'$.version',version+1,'$.state','launching','$.launch',json_object('wall','1000:0','boot',NULL))",
             ),
         );
     }
     let cursor = f.cursor(&id);
     f.store()
-        .pipeline_begin_launch(&f.owner, &cursor, Some("0123456789abcdef"), &json!({}))
+        .pipeline_begin_launch(
+            &f.owner,
+            &cursor,
+            Some("0123456789abcdef"),
+            Some(&rrx_process_tracker::launch_mark().unwrap()),
+            &json!({}),
+        )
         .unwrap();
     let store = f.store();
     for change in [",cookie=NULL", ",cookie='fedcba9876543210'"] {
@@ -474,7 +480,7 @@ async fn b2_process_column_bounds() {
             &update(
                 "pipeline_steps",
                 &format!(
-                    ",state='launching',cookie={cookie},body=json_set(body,'$.version',version+1,'$.state','launching')"
+                    ",state='launching',cookie={cookie},body=json_set(body,'$.version',version+1,'$.state','launching','$.launch',json_object('wall','1000:0','boot',NULL))"
                 ),
             ),
             "CHECK constraint failed",
@@ -483,7 +489,13 @@ async fn b2_process_column_bounds() {
     drop(store);
     let cursor = f.cursor(&id);
     f.store()
-        .pipeline_begin_launch(&f.owner, &cursor, Some("0123456789abcdef"), &json!({}))
+        .pipeline_begin_launch(
+            &f.owner,
+            &cursor,
+            Some("0123456789abcdef"),
+            Some(&rrx_process_tracker::launch_mark().unwrap()),
+            &json!({}),
+        )
         .unwrap();
     {
         let store = f.store();
@@ -543,7 +555,7 @@ async fn b2_cross_project_process_exclusion() {
             c.execute(&format!("UPDATE pipeline_steps SET state='{state}',version=version+1,body=json_set(body,'$.state','{state}','$.version',version+1) WHERE run_id='{ar}' AND seq=2"), []).unwrap();
         }
         let sql = format!(
-            "UPDATE pipeline_steps SET state='launching',cookie='fedcba9876543210',version=version+1,body=json_set(body,'$.version',version+1,'$.state','launching') WHERE run_id='{br}' AND seq=2"
+            "UPDATE pipeline_steps SET state='launching',cookie='fedcba9876543210',version=version+1,body=json_set(body,'$.version',version+1,'$.state','launching','$.launch',json_object('wall','1000:0','boot',NULL)) WHERE run_id='{br}' AND seq=2"
         );
         rejected(c, &sql, "invalid pipeline step transition");
         c.execute_batch("ROLLBACK TO b2_incumbent; RELEASE b2_incumbent")
@@ -1150,7 +1162,7 @@ async fn b2_wait_gates_other_project_agents() {
     let store = a.store();
     let c = &store.connection;
     let launch = format!(
-        "UPDATE pipeline_steps SET version=version+1,state='launching',cookie='0123456789abcdef',body=json_set(body,'$.version',version+1,'$.state','launching') WHERE run_id='{br}' AND seq=2"
+        "UPDATE pipeline_steps SET version=version+1,state='launching',cookie='0123456789abcdef',body=json_set(body,'$.version',version+1,'$.state','launching','$.launch',json_object('wall','1000:0','boot',NULL)) WHERE run_id='{br}' AND seq=2"
     );
     permitted(c, &launch);
     drop(store);

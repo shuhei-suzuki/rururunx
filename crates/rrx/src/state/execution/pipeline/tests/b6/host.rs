@@ -65,6 +65,13 @@ fn corrupt(f: &Fixture) {
 async fn b6_test_flow() {
     let (f, runtime, id) = planned_test("print 'ok'; exit 0;", 10, 1024, 1024).await;
     finish(&f, &runtime, &id, true).await;
+    let before = f.store().pipeline_goal_view(f.goal).unwrap();
+    let exited = before.steps.last().unwrap();
+    assert_eq!(exited.state, "exited");
+    assert!(exited.birth.as_ref().is_some_and(|b| b.contains(':')));
+    assert!(exited.body["launch"]["wall"].is_string());
+    assert_eq!(exited.body["death_evidence"]["launch_checked"], true);
+    assert_eq!(exited.body["death_evidence"]["leader_birth_matched"], true);
     assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     let step = view.steps.last().unwrap();
@@ -81,6 +88,44 @@ async fn b6_test_flow() {
         .query_row("SELECT count(*) FROM verification_runs", [], |r| r.get(0))
         .unwrap();
     assert_eq!(n, 0);
+    runtime.shutdown().await.unwrap();
+}
+
+/// A platform test descendant escaping the group keeps pipeline death unconfirmed.
+#[tokio::test]
+async fn he08_platform_escape_held() {
+    let (f,runtime,id)=planned_test("use POSIX; pipe(my $r, my $w) or die; defined(my $g = fork) or die; if ($g) { close $w; sysread($r, my $b, 1) == 1 or die; exit } close $r; POSIX::setsid() >= 0 or die; open(my $f, '>', 'escaped.pid') or die; print $f \"$$\\n\"; close $f; syswrite($w, 'r') == 1 or die; close $w; close STDOUT; close STDERR; sleep 30;",10,1024,1024).await;
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let checkout = PipelineTestRunner::checkout(
+        f.config.pipeline.as_ref().unwrap(),
+        view.steps.last().unwrap(),
+    )
+    .unwrap();
+    finish(&f, &runtime, &id, true).await;
+    let pid = std::fs::read_to_string(checkout.join("escaped.pid"))
+        .unwrap()
+        .trim()
+        .parse::<u32>()
+        .unwrap();
+    let cookie = rrx_process_tracker::Cookie::new("he8-fixture-cookie-1234").unwrap();
+    let birth = rrx_process_tracker::owned_leader(pid, &cookie)
+        .unwrap()
+        .birth;
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let step = view.steps.last().unwrap();
+    let held = step.state == "held" && step.body["reason"] == "death_unconfirmed";
+    assert_eq!(
+        rrx_process_tracker::owned_leader(pid, &cookie)
+            .unwrap()
+            .birth,
+        birth
+    );
+    rustix::process::kill_process(
+        rustix::process::Pid::from_raw(pid as i32).unwrap(),
+        rustix::process::Signal::KILL,
+    )
+    .unwrap();
+    assert!(held);
     runtime.shutdown().await.unwrap();
 }
 
@@ -165,7 +210,7 @@ async fn b6_plan_profile_changed() {
     let cursor = f.cursor(&id);
     // The fixture's prepare is an internal step with no child.
     f.store()
-        .pipeline_begin_launch(&f.owner, &cursor, None, &json!({}))
+        .pipeline_begin_launch(&f.owner, &cursor, None, None, &json!({}))
         .unwrap();
     let cursor = f.cursor(&id);
     let j = f.store().pipeline_goal_view(f.goal).unwrap().journals[0].clone();
@@ -196,7 +241,13 @@ async fn b6_tx1_profile_changed() {
     let cursor = f.cursor(&id);
     assert_eq!(
         f.store()
-            .pipeline_begin_launch(&f.owner, &cursor, Some("b6-cookie-123456789"), &json!({}))
+            .pipeline_begin_launch(
+                &f.owner,
+                &cursor,
+                Some("b6-cookie-123456789"),
+                Some(&rrx_process_tracker::launch_mark().unwrap()),
+                &json!({})
+            )
             .unwrap(),
         PipelineLaunch::Held
     );
@@ -411,7 +462,13 @@ async fn b6_test_io_held() {
     let (f, runtime, id) = planned_test("exit 0;", 10, 1024, 1024).await;
     let cursor = f.cursor(&id);
     f.store()
-        .pipeline_begin_launch(&f.owner, &cursor, Some("b6-io-cookie-123456"), &json!({}))
+        .pipeline_begin_launch(
+            &f.owner,
+            &cursor,
+            Some("b6-io-cookie-123456"),
+            Some(&rrx_process_tracker::launch_mark().unwrap()),
+            &json!({}),
+        )
         .unwrap();
     let cursor = f.cursor(&id);
     f.store()
@@ -467,7 +524,13 @@ async fn b6_test_pause() {
     runtime.shutdown().await.unwrap();
 }
 
-fn admission_fixture() -> (tempfile::TempDir, Runtime, Project, tokio::net::UnixStream) {
+fn admission_fixture() -> (
+    tempfile::TempDir,
+    Runtime,
+    Project,
+    tokio::net::UnixStream,
+    tokio::net::UnixStream,
+) {
     let dir = tempfile::tempdir().unwrap();
     let owner = RuntimeOwner::open(&dir.path().join("state/state.db")).unwrap();
     let runtime = Runtime::new(owner.clone(), Config::default()).unwrap();
@@ -485,8 +548,8 @@ fn admission_fixture() -> (tempfile::TempDir, Runtime, Project, tokio::net::Unix
         .unwrap()
         .put_project(&mut project)
         .unwrap();
-    let (socket, _peer) = tokio::net::UnixStream::pair().unwrap();
-    (dir, runtime, project, socket)
+    let (socket, peer) = tokio::net::UnixStream::pair().unwrap();
+    (dir, runtime, project, socket, peer)
 }
 fn admission_request(runtime: &Runtime, project: &Project) -> ControlRequest {
     let identity = runtime.control_identity();
@@ -505,7 +568,7 @@ fn admission_request(runtime: &Runtime, project: &Project) -> ControlRequest {
 /// The authenticated ProjectAdmitTests control reaches ManagedVerifier admission.
 #[tokio::test]
 async fn b6_admission_wiring() {
-    let (_dir, runtime, project, socket) = admission_fixture();
+    let (_dir, runtime, project, socket, _peer) = admission_fixture();
     let response = runtime
         .handle_control(&socket, admission_request(&runtime, &project))
         .await
@@ -533,7 +596,7 @@ async fn b6_admission_wiring() {
 /// Admission rejects stale owner epochs and stale Project versions without activating a catalog.
 #[tokio::test]
 async fn b6_admission_fenced() {
-    let (_dir, runtime, project, socket) = admission_fixture();
+    let (_dir, runtime, project, socket, _peer) = admission_fixture();
     let mut stale = admission_request(&runtime, &project);
     stale.epoch += 1;
     assert!(runtime.handle_control(&socket, stale).await.is_err());
@@ -557,7 +620,7 @@ async fn b6_admission_fenced() {
 /// An admitted catalog cannot be replaced through the control command.
 #[tokio::test]
 async fn b6_admission_immutable() {
-    let (_dir, runtime, project, socket) = admission_fixture();
+    let (_dir, runtime, project, socket, _peer) = admission_fixture();
     runtime
         .handle_control(&socket, admission_request(&runtime, &project))
         .await
@@ -650,7 +713,13 @@ async fn b6_goal_timeout() {
         wait_version: None,
     };
     f.store()
-        .pipeline_begin_launch(&f.owner, &cursor, Some("b6-goal-cookie-12345"), &json!({}))
+        .pipeline_begin_launch(
+            &f.owner,
+            &cursor,
+            Some("b6-goal-cookie-12345"),
+            Some(&rrx_process_tracker::launch_mark().unwrap()),
+            &json!({}),
+        )
         .unwrap();
     cursor.step_version += 1;
     let mut exit = observed().body["exit"].clone();

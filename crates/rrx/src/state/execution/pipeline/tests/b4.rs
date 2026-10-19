@@ -142,7 +142,7 @@ async fn b4_launch_receipt_and_death() {
     assert_eq!(step.body["provider_outcome"], "success");
     let proof: PipelineDeathEvidence =
         serde_json::from_value(step.body["death_evidence"].clone()).unwrap();
-    proof.validate().unwrap();
+    proof.validate(true).unwrap();
     assert_eq!(
         std::fs::read(h.fake.directory.join("stdin")).unwrap(),
         b"pipeline\n"
@@ -364,6 +364,7 @@ async fn b4_limit_is_daemon_wide() {
                 &other.owner,
                 &cursor,
                 Some("b4-other-cookie-1234"),
+                Some(&rrx_process_tracker::launch_mark().unwrap()),
                 &json!({})
             )
             .unwrap(),
@@ -407,7 +408,7 @@ async fn b4_prepare_not_counted() {
     let cursor = other.cursor(&id);
     other
         .store()
-        .pipeline_begin_launch(&other.owner, &cursor, None, &json!({}))
+        .pipeline_begin_launch(&other.owner, &cursor, None, None, &json!({}))
         .unwrap();
     h.started().await.wait().await.unwrap();
     assert_eq!(h.step().body["provider_outcome"], "success");
@@ -435,7 +436,7 @@ async fn b4_release_not_counted() {
     let cursor = other.cursor(&id);
     other
         .store()
-        .pipeline_begin_launch(&other.owner, &cursor, None, &json!({}))
+        .pipeline_begin_launch(&other.owner, &cursor, None, None, &json!({}))
         .unwrap();
     h.started().await.wait().await.unwrap();
     assert_eq!(h.step().body["provider_outcome"], "success");

@@ -132,7 +132,7 @@ async fn b2_fix1_settle_internal_scope() {
             .is_err()
     );
     f.store()
-        .pipeline_begin_launch(&f.owner, &c, None, &json!({}))
+        .pipeline_begin_launch(&f.owner, &c, None, None, &json!({}))
         .unwrap();
     let c = f.cursor(&id);
     f.store()
@@ -261,7 +261,7 @@ async fn b2_fix1_abandon_held_prepare() {
     let id = f.claim();
     let c = f.cursor(&id);
     f.store()
-        .pipeline_begin_launch(&f.owner, &c, None, &json!({}))
+        .pipeline_begin_launch(&f.owner, &c, None, None, &json!({}))
         .unwrap();
     let c = f.cursor(&id);
     f.store()
@@ -298,7 +298,7 @@ async fn b2_fix1_prepare_requires_create_done() {
     let id = f.claim();
     let c = f.cursor(&id);
     f.store()
-        .pipeline_begin_launch(&f.owner, &c, None, &json!({}))
+        .pipeline_begin_launch(&f.owner, &c, None, None, &json!({}))
         .unwrap();
     let c = f.cursor(&id);
     assert!(f.store().pipeline_adopt(&f.owner, &c, &json!({})).is_err());
@@ -322,7 +322,7 @@ async fn b2_fix1_internal_process_gate() {
             }
             let c = a.cursor(&ar);
             a.store()
-                .pipeline_begin_launch(&a.owner, &c, None, &json!({}))
+                .pipeline_begin_launch(&a.owner, &c, None, None, &json!({}))
                 .unwrap();
             if hold {
                 let c = a.cursor(&ar);
@@ -334,7 +334,13 @@ async fn b2_fix1_internal_process_gate() {
             let c = b.cursor(&br);
             assert_eq!(
                 b.store()
-                    .pipeline_begin_launch(&b.owner, &c, Some("0123456789abcdef"), &json!({}))
+                    .pipeline_begin_launch(
+                        &b.owner,
+                        &c,
+                        Some("0123456789abcdef"),
+                        Some(&rrx_process_tracker::launch_mark().unwrap()),
+                        &json!({})
+                    )
                     .unwrap(),
                 PipelineLaunch::Started
             );
@@ -411,7 +417,13 @@ async fn b2_fix1_terminal_rewrite() {
     f.process_step(&id, "test");
     let c = f.cursor(&id);
     f.store()
-        .pipeline_begin_launch(&f.owner, &c, Some("0123456789abcdef"), &json!({}))
+        .pipeline_begin_launch(
+            &f.owner,
+            &c,
+            Some("0123456789abcdef"),
+            Some(&rrx_process_tracker::launch_mark().unwrap()),
+            &json!({}),
+        )
         .unwrap();
     let c = f.cursor(&id);
     f.store()
@@ -452,7 +464,13 @@ async fn b2_fix1_command_identity() {
     );
     let c = f.cursor(&id);
     f.store()
-        .pipeline_begin_launch(&f.owner, &c, Some("0123456789abcdef"), &json!({}))
+        .pipeline_begin_launch(
+            &f.owner,
+            &c,
+            Some("0123456789abcdef"),
+            Some(&rrx_process_tracker::launch_mark().unwrap()),
+            &json!({}),
+        )
         .unwrap();
     let c = f.cursor(&id);
     f.store()
@@ -733,7 +751,13 @@ async fn b2_fix1_complete_command_identity() {
         wait_version: None,
     };
     f.store()
-        .pipeline_begin_launch(&f.owner, &c, Some("0123456789abcdef"), &json!({}))
+        .pipeline_begin_launch(
+            &f.owner,
+            &c,
+            Some("0123456789abcdef"),
+            Some(&rrx_process_tracker::launch_mark().unwrap()),
+            &json!({}),
+        )
         .unwrap();
     c.step_version = 2;
     f.store()

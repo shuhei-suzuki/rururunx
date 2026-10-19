@@ -9,6 +9,14 @@ use std::mem::{MaybeUninit, size_of};
 const PROC_UID_ONLY: u32 = 4;
 // macOS SDK sys/proc.h: SZOMB (the only state classified as a zombie).
 const SZOMB: i8 = 5;
+const SRUN: i8 = 2;
+const SSLEEP: i8 = 3;
+const SSTOP: i8 = 4;
+const P_TRACED: i32 = 0x800;
+const PROC_FLAG_TRACED: u32 = 2;
+const LAUNCH_CLOCK_MARGIN: u64 = 60;
+const ANCESTRY_DEPTH: usize = 32;
+const UNCONFIRMED_LIMIT: usize = 16;
 
 // Public SDK sys/sysctl.h kinfo_proc and sys/proc.h extern_proc, LP64 ABI
 // (both supported macOS architectures). libc does not expose kinfo_proc.
@@ -23,7 +31,9 @@ struct KinfoProc {
     flag: i32,
     stat: i8,
     pid: i32,
-    rest: [u8; 604],
+    rest: [u8; 516],
+    ppid: i32,
+    tail: [u8; 84],
 }
 
 struct Query {
@@ -84,6 +94,156 @@ fn query_pid(pid: u32) -> Query {
     };
     Query { status, len, info }
 }
+
+fn query_birth(pid: u32, query: &Query, zombie_allowed: bool) -> Option<OwnedLeader> {
+    if query.status != 0
+        || query.len != size_of::<KinfoProc>()
+        || query.info.pid != pid as i32
+        || !(matches!(query.info.stat, SRUN | SSLEEP | SSTOP)
+            || zombie_allowed && query.info.stat == SZOMB)
+    {
+        return None;
+    }
+    let birth = (
+        query.info.start.tv_sec as u64,
+        query.info.start.tv_usec as u64,
+    );
+    (birth != (0, 0)).then_some(OwnedLeader {
+        birth,
+        zombie: query.info.stat == SZOMB,
+    })
+}
+pub(super) fn owned_leader(pid: u32, cookie: &Cookie) -> io::Result<OwnedLeader> {
+    read_owned_leader(pid, cookie, &mut System(Instant::now()))
+}
+fn read_owned_leader(
+    pid: u32,
+    cookie: &Cookie,
+    source: &mut impl Source,
+) -> io::Result<OwnedLeader> {
+    let leader = query_birth(pid, &source.query(pid), true)
+        .ok_or_else(|| io::Error::other("owned leader unavailable"))?;
+    if !leader.zombie {
+        match source.environment(pid, cookie, Limits::default().environment_bytes) {
+            Ok(Environment::Match | Environment::Absent) => {}
+            Ok(Environment::NonMatch) => {
+                return Err(io::Error::other("owned leader cookie mismatch"));
+            }
+            Err(_) => {
+                let after = query_birth(pid, &source.query(pid), true);
+                if !after.is_some_and(|a| a.zombie && a.birth == leader.birth) {
+                    return Err(io::Error::other("owned leader cookie unavailable"));
+                }
+            }
+        }
+    }
+    Ok(leader)
+}
+pub(super) fn boot_id() -> Option<String> {
+    let mut bytes = [0u8; 64];
+    let mut len = bytes.len();
+    // SAFETY: name is NUL terminated and bytes/len describe writable storage.
+    let status = unsafe {
+        libc::sysctlbyname(
+            c"kern.bootsessionuuid".as_ptr(),
+            bytes.as_mut_ptr().cast(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if status != 0 || len > bytes.len() {
+        return None;
+    }
+    let value = std::str::from_utf8(&bytes[..len])
+        .ok()?
+        .trim_end_matches('\0');
+    (value.len() == 36).then(|| value.to_owned())
+}
+fn process_path(pid: u32) -> io::Result<std::path::PathBuf> {
+    use std::os::unix::ffi::OsStrExt;
+    let mut bytes = [0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    // SAFETY: bytes owns the exact writable size supplied to libproc.
+    let count =
+        unsafe { libc::proc_pidpath(pid as i32, bytes.as_mut_ptr().cast(), bytes.len() as u32) };
+    if count <= 0 || count as usize >= bytes.len() {
+        return Err(io::Error::last_os_error());
+    }
+    let end = bytes
+        .iter()
+        .position(|b| *b == 0)
+        .ok_or_else(|| io::Error::other("invalid process path"))?;
+    Ok(std::path::PathBuf::from(std::ffi::OsStr::from_bytes(
+        &bytes[..end],
+    )))
+}
+fn platform_directory(path: &std::path::Path) -> bool {
+    path.parent().is_some_and(|parent| {
+        ["/bin", "/usr/bin", "/sbin", "/usr/sbin"]
+            .iter()
+            .any(|dir| parent == std::path::Path::new(dir))
+    })
+}
+
+/// Every parent observation is bound to the child by a subsequent child read.
+fn exclude_ancestry(
+    x: Observation,
+    boundary: (u64, u64),
+    limits: Limits,
+    source: &mut impl Source,
+    coverage: &mut Coverage,
+) -> Option<bool> {
+    macro_rules! check_time {
+        () => {
+            if source.elapsed() >= limits.time {
+                coverage.time_exceeded = true;
+                return None;
+            }
+        };
+    }
+    if x.flags & PROC_FLAG_TRACED != 0 {
+        return Some(false);
+    }
+    let mut visited = HashSet::from([x.pid]);
+    let mut child_pid = x.pid;
+    let mut child_birth = x.birth;
+    let mut parent = x.ppid;
+    for depth in 0..ANCESTRY_DEPTH {
+        if parent <= 1 || parent == std::process::id() || !visited.insert(parent) {
+            return Some(false);
+        }
+        check_time!();
+        let q = source.query(parent);
+        coverage.ancestors_read += 1;
+        let Some(ancestor) = query_birth(parent, &q, false) else {
+            return Some(false);
+        };
+        if q.info.flag & P_TRACED != 0 {
+            return Some(false);
+        }
+        check_time!();
+        let stable = if depth == 0 {
+            source.identity(child_pid).is_ok_and(|c| {
+                c.identity == x.identity && c.ppid == parent && c.flags & PROC_FLAG_TRACED == 0
+            })
+        } else {
+            let c = source.query(child_pid);
+            query_birth(child_pid, &c, false).is_some_and(|b| b.birth == child_birth)
+                && c.info.ppid == parent as i32
+                && c.info.flag & P_TRACED == 0
+        };
+        if !stable {
+            return Some(false);
+        }
+        if ancestor.birth < boundary {
+            return Some(true);
+        }
+        child_pid = parent;
+        child_birth = ancestor.birth;
+        parent = q.info.ppid as u32;
+    }
+    Some(false)
+}
 #[link(name = "proc")]
 unsafe extern "C" {}
 
@@ -99,7 +259,19 @@ impl Handle {
         Ok(None)
     }
 }
-fn identity(pid: u32) -> io::Result<Identity> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Observation {
+    identity: Identity,
+    ppid: u32,
+    flags: u32,
+}
+impl std::ops::Deref for Observation {
+    type Target = Identity;
+    fn deref(&self) -> &Identity {
+        &self.identity
+    }
+}
+fn identity(pid: u32) -> io::Result<Observation> {
     let mut info = MaybeUninit::<libc::proc_bsdinfo>::uninit();
     // SAFETY: the destination points to one full writable proc_bsdinfo. No field
     // is read unless the kernel reports the exact struct size.
@@ -123,10 +295,14 @@ fn identity(pid: u32) -> io::Result<Identity> {
             "process identity changed",
         ));
     }
-    Ok(Identity {
-        pid,
-        uid: info.pbi_uid,
-        birth: (info.pbi_start_tvsec, info.pbi_start_tvusec),
+    Ok(Observation {
+        identity: Identity {
+            pid,
+            uid: info.pbi_uid,
+            birth: (info.pbi_start_tvsec, info.pbi_start_tvusec),
+        },
+        ppid: info.pbi_ppid,
+        flags: info.pbi_flags,
     })
 }
 fn environment_offset(bytes: &[u8]) -> Option<usize> {
@@ -145,7 +321,22 @@ fn environment_offset(bytes: &[u8]) -> Option<usize> {
     }
     Some(at)
 }
-fn cookie_matches(pid: u32, cookie: &Cookie, cap: usize) -> io::Result<bool> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Environment {
+    Match,
+    NonMatch,
+    Absent,
+}
+fn environment_result(bytes: &[u8], cookie: &Cookie) -> Environment {
+    if bytes.iter().all(|b| *b == 0) {
+        Environment::Absent
+    } else if matches_environment(bytes, cookie) {
+        Environment::Match
+    } else {
+        Environment::NonMatch
+    }
+}
+fn cookie_matches(pid: u32, cookie: &Cookie, cap: usize) -> io::Result<Environment> {
     let mut mib = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid as i32];
     let mut buffer = EnvironmentBuffer::new(vec![0_u8; cap]);
     let bytes = &mut buffer.bytes;
@@ -167,7 +358,7 @@ fn cookie_matches(pid: u32, cookie: &Cookie, cap: usize) -> io::Result<bool> {
     } else {
         bytes.truncate(count);
         environment_offset(bytes)
-            .map(|at| matches_environment(&bytes[at..], cookie))
+            .map(|at| environment_result(&bytes[at..], cookie))
             .ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -182,9 +373,12 @@ fn cookie_matches(pid: u32, cookie: &Cookie, cap: usize) -> io::Result<bool> {
 // this module can turn a completed scan into a TrackedProcess.
 trait Source {
     fn list(&mut self, uid: u32, pids: &mut [i32]) -> i32;
-    fn identity(&mut self, pid: u32) -> io::Result<Identity>;
-    fn environment(&mut self, pid: u32, cookie: &Cookie, cap: usize) -> io::Result<bool>;
+    fn identity(&mut self, pid: u32) -> io::Result<Observation>;
+    fn environment(&mut self, pid: u32, cookie: &Cookie, cap: usize) -> io::Result<Environment>;
     fn query(&mut self, pid: u32) -> Query;
+    fn path(&mut self, pid: u32) -> io::Result<std::path::PathBuf>;
+    fn boot(&mut self) -> Option<String>;
+    fn wall(&mut self) -> io::Result<(u64, u64)>;
     fn elapsed(&mut self) -> Duration;
 }
 struct System(Instant);
@@ -201,14 +395,23 @@ impl Source for System {
             )
         }
     }
-    fn identity(&mut self, pid: u32) -> io::Result<Identity> {
+    fn identity(&mut self, pid: u32) -> io::Result<Observation> {
         identity(pid)
     }
-    fn environment(&mut self, pid: u32, cookie: &Cookie, cap: usize) -> io::Result<bool> {
+    fn environment(&mut self, pid: u32, cookie: &Cookie, cap: usize) -> io::Result<Environment> {
         cookie_matches(pid, cookie, cap)
     }
     fn query(&mut self, pid: u32) -> Query {
         query_pid(pid)
+    }
+    fn path(&mut self, pid: u32) -> io::Result<std::path::PathBuf> {
+        process_path(pid)
+    }
+    fn boot(&mut self) -> Option<String> {
+        boot_id()
+    }
+    fn wall(&mut self) -> io::Result<(u64, u64)> {
+        wall_time()
     }
     fn elapsed(&mut self) -> Duration {
         self.0.elapsed()
@@ -251,10 +454,35 @@ fn scan(
     uid: u32,
     source: &mut impl Source,
 ) -> io::Result<Discovery> {
+    scan_launched(cookie, limits, uid, source, None)
+}
+fn scan_launched(
+    cookie: &Cookie,
+    limits: Limits,
+    uid: u32,
+    source: &mut impl Source,
+    launch: Option<&Launch>,
+) -> io::Result<Discovery> {
     let mut result = Discovery {
         processes: Vec::new(),
         coverage: Coverage::default(),
+        unconfirmed: Vec::new(),
     };
+    let boundary = launch.map(|l| {
+        let first = l.leader_birth.map_or(l.wall, |b| b.min(l.wall));
+        (first.0.saturating_sub(LAUNCH_CLOCK_MARGIN), first.1)
+    });
+    if let Some(launch) = launch {
+        let boot = source.boot();
+        result.coverage.other_boot = launch
+            .boot
+            .as_ref()
+            .zip(boot.as_ref())
+            .is_some_and(|(a, b)| a != b);
+        if !result.coverage.other_boot {
+            result.coverage.clock_behind = source.wall()? < boundary.unwrap();
+        }
+    }
     let mut pids = vec![0_i32; limits.processes];
     let mut records = HashMap::new();
     // A single deadline covers listing, reconciliation and all full checks.
@@ -350,20 +578,73 @@ fn scan(
                     continue;
                 }
             };
+            let additional = matched == Environment::Absent
+                && boundary.is_some_and(|f| before.birth >= f)
+                && !result.coverage.other_boot;
+            let locations = if additional {
+                check_time!();
+                let l1 = source.path(pid);
+                check_time!();
+                let env2 = source.environment(pid, cookie, limits.environment_bytes);
+                check_time!();
+                let l2 = source.path(pid);
+                Some((l1, env2, l2))
+            } else {
+                None
+            };
             check_time!();
-            let stable = source.identity(pid).is_ok_and(|after| after == before);
+            // D17 compares incarnation, not parentage, across the environment read.
+            let after = source.identity(pid);
+            let stable = after
+                .as_ref()
+                .is_ok_and(|after| after.identity == before.identity);
             if !stable {
-                if matched {
+                if matched == Environment::Match {
                     result.coverage.identity_changed += 1;
                 } else {
                     result.coverage.reused += 1;
                 }
                 continue;
             }
+            if matched == Environment::Absent {
+                result.coverage.environment_absent += 1;
+            }
+            if let Some((l1, env2, l2)) = locations {
+                let same_path = l1.as_ref().ok().zip(l2.as_ref().ok());
+                let inconsistent = !matches!(env2, Ok(Environment::Absent))
+                    || same_path.is_some_and(|(a, b)| a != b);
+                let elsewhere = same_path.is_some_and(|(a, b)| a == b && !platform_directory(a));
+                if !inconsistent && elsewhere {
+                    result.coverage.environment_absent_elsewhere += 1;
+                    continue;
+                }
+                let excluded = if inconsistent {
+                    false
+                } else {
+                    match exclude_ancestry(
+                        after.unwrap(),
+                        boundary.unwrap(),
+                        limits,
+                        source,
+                        &mut result.coverage,
+                    ) {
+                        Some(excluded) => excluded,
+                        None => return Ok(result),
+                    }
+                };
+                if !excluded {
+                    result.coverage.ancestry_unconfirmed += 1;
+                    if result.unconfirmed.len() < UNCONFIRMED_LIMIT {
+                        result.unconfirmed.push(before.identity);
+                    }
+                }
+                // Location and lineage exclusions are never reusable records.
+                continue;
+            }
             remember(&mut records, pid, Record::Live(before.birth));
-            if matched {
+            if matched == Environment::Match {
                 result.processes.push(TrackedProcess {
-                    identity: before,
+                    identity: before.identity,
                     handle: Handle,
                 });
             }
@@ -387,6 +668,24 @@ pub(super) fn discover(cookie: &Cookie, limits: Limits, started: Instant) -> io:
         &mut System(started),
     )
 }
+pub(super) fn discover_launched(
+    cookie: &Cookie,
+    limits: Limits,
+    started: Instant,
+    launch: &Launch,
+) -> io::Result<Discovery> {
+    scan_launched(
+        cookie,
+        limits,
+        rustix::process::geteuid().as_raw(),
+        &mut System(started),
+        Some(launch),
+    )
+}
+#[cfg(test)]
+mod d20;
+#[cfg(test)]
+mod host;
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,22 +733,36 @@ mod tests {
             }
             count
         }
-        fn identity(&mut self, pid: u32) -> io::Result<Identity> {
+        fn identity(&mut self, pid: u32) -> io::Result<Observation> {
             self.calls.push(format!("identity:{pid}"));
             let Some(Step::Identity(expected, value)) = self.steps.pop_front() else {
                 panic!("unexpected identity {pid}");
             };
             assert_eq!(pid, expected);
-            value.ok_or_else(|| io::Error::other("fake identity unavailable"))
+            value
+                .map(|identity| Observation {
+                    identity,
+                    ppid: 1,
+                    flags: 0,
+                })
+                .ok_or_else(|| io::Error::other("fake identity unavailable"))
         }
-        fn environment(&mut self, pid: u32, _: &Cookie, cap: usize) -> io::Result<bool> {
+        fn environment(&mut self, pid: u32, _: &Cookie, cap: usize) -> io::Result<Environment> {
             assert_eq!(cap, bounds().environment_bytes);
             self.calls.push(format!("environment:{pid}"));
             let Some(Step::Environment(expected, value)) = self.steps.pop_front() else {
                 panic!("unexpected environment {pid}");
             };
             assert_eq!(pid, expected);
-            value.ok_or_else(|| io::Error::other("fake environment unavailable"))
+            value
+                .map(|m| {
+                    if m {
+                        Environment::Match
+                    } else {
+                        Environment::NonMatch
+                    }
+                })
+                .ok_or_else(|| io::Error::other("fake environment unavailable"))
         }
         fn query(&mut self, pid: u32) -> Query {
             self.calls.push(format!("query:{pid}"));
@@ -458,6 +771,15 @@ mod tests {
             };
             assert_eq!(pid, expected);
             *value
+        }
+        fn path(&mut self, _: u32) -> io::Result<std::path::PathBuf> {
+            panic!("unexpected path")
+        }
+        fn boot(&mut self) -> Option<String> {
+            panic!("unexpected boot")
+        }
+        fn wall(&mut self) -> io::Result<(u64, u64)> {
+            panic!("unexpected wall")
         }
         fn elapsed(&mut self) -> Duration {
             self.ticks += 1;

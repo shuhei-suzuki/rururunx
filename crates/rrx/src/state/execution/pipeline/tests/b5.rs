@@ -516,7 +516,7 @@ async fn b5_prepare_absence() {
     let (f, runtime, id) = prepare_fixture().await;
     let cursor = f.cursor(&id);
     f.store()
-        .pipeline_begin_launch(&f.owner, &cursor, None, &json!({}))
+        .pipeline_begin_launch(&f.owner, &cursor, None, None, &json!({}))
         .unwrap();
     assert!(!runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
     let view = f.store().pipeline_goal_view(f.goal).unwrap();

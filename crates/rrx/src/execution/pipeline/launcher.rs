@@ -152,14 +152,20 @@ impl StepLauncher {
         let intent = json!({"attempt_dir":attempt,"tmpdir":tmp,
             "argv_sha256":hash(&serde_json::to_vec(&args)?),
             "env_sha256":hash(&serde_json::to_vec(&env_bytes)?)});
+        let launch = rrx_process_tracker::launch_mark()?;
         let started = {
             let mut store = self
                 .owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            let result =
-                store.pipeline_begin_launch(&self.owner, &cursor, Some(&cookie), &intent)?;
+            let result = store.pipeline_begin_launch(
+                &self.owner,
+                &cursor,
+                Some(&cookie),
+                Some(&launch),
+                &intent,
+            )?;
             if result == PipelineLaunch::Started {
                 cursor.step_version += 1;
                 cursor.wait_version = store
@@ -297,8 +303,14 @@ impl StepLauncher {
         };
         let process = ProcessGroup::new(child, Arc::new(AtomicBool::new(true)))?;
         let pid = process.child.id().context("owned child PID missing")?;
-        let birth = custody::birth(&cookie, pid).await;
-        let recorded = birth.and_then(|birth| {
+        let leader_cookie = rrx_process_tracker::Cookie::new(&cookie)?;
+        let birth = tokio::task::spawn_blocking(move || {
+            rrx_process_tracker::owned_leader(pid, &leader_cookie)
+        })
+        .await?;
+        let recorded_birth = birth.as_ref().ok().map(|leader| leader.birth);
+        let recorded = birth.map_err(anyhow::Error::from).and_then(|leader| {
+            let birth = format!("{}:{}", leader.birth.0, leader.birth.1);
             self.owner
                 .store
                 .lock()
@@ -307,7 +319,9 @@ impl StepLauncher {
         });
         if recorded.is_err() {
             // Failure after spawn can never become a pre-spawn rejection.
-            if let Ok(dead) = custody::confirm_death(process, &cookie, true).await {
+            if let Ok(dead) =
+                custody::confirm_death(process, &cookie, &launch, recorded_birth, true).await
+            {
                 let _ = self
                     .owner
                     .store
@@ -339,6 +353,8 @@ impl StepLauncher {
                 cursor,
                 process,
                 cookie,
+                launch,
+                birth: recorded_birth.context("recorded leader birth missing")?,
                 attempt,
                 prompt: input.prompt,
                 kind: if let Some(test) = test {

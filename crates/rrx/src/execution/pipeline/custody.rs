@@ -129,6 +129,8 @@ pub(super) struct Monitor {
     pub cursor: PipelineCursor,
     pub process: ProcessGroup,
     pub cookie: String,
+    pub launch: rrx_process_tracker::Launch,
+    pub birth: (u64, u64),
     pub attempt: PathBuf,
     pub prompt: Vec<u8>,
     pub kind: MonitorKind,
@@ -170,25 +172,12 @@ pub(super) struct DeathReceipt {
     status: std::process::ExitStatus,
 }
 
-pub(super) async fn birth(cookie: &str, pid: u32) -> Result<String> {
-    let cookie = rrx_process_tracker::Cookie::new(cookie)?;
-    tokio::task::spawn_blocking(move || -> Result<String> {
-        let found = rrx_process_tracker::discover(&cookie, Default::default())?;
-        let identity = found
-            .processes
-            .iter()
-            .map(|p| p.identity())
-            .find(|id| id.pid == pid)
-            .context("owned leader birth unavailable")?;
-        Ok(format!("{}:{}", identity.birth.0, identity.birth.1))
-    })
-    .await?
-}
-
 /// Every true field is derived from an observation; expiration only refuses proof.
 pub(super) async fn confirm_death(
     mut process: ProcessGroup,
     cookie: &str,
+    launch: &rrx_process_tracker::Launch,
+    birth: Option<(u64, u64)>,
     terminate: bool,
 ) -> Result<DeathReceipt> {
     let pid = Pid::from_raw(process.child.id().context("leader PID missing")? as i32)
@@ -198,6 +187,23 @@ pub(super) async fn confirm_death(
     }
     timeout(DEATH_BOUND, process.observe_exit()).await??;
     process = cleanup_group(process).await?; // Leader is still unreaped here.
+    let cookie = Arc::new(rrx_process_tracker::Cookie::new(cookie)?);
+    let leader_birth_matched = if let Some(birth) = birth {
+        let cookie = Arc::clone(&cookie);
+        let leader = tokio::task::spawn_blocking(move || {
+            rrx_process_tracker::owned_leader(pid.as_raw_nonzero().get() as u32, &cookie)
+        })
+        .await??;
+        ensure!(
+            leader.zombie && leader.birth == birth,
+            "owned leader birth mismatch before reap"
+        );
+        true
+    } else {
+        false
+    };
+    let mut launch = launch.clone();
+    launch.leader_birth = birth;
     let status = timeout(DEATH_BOUND, process.reap()).await??;
     let deadline = Instant::now() + DEATH_BOUND;
     loop {
@@ -210,12 +216,12 @@ pub(super) async fn confirm_death(
         );
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    let cookie = Arc::new(rrx_process_tracker::Cookie::new(cookie)?);
     let discovery_attempts = discover_death(deadline, || {
         let cookie = Arc::clone(&cookie);
+        let launch = launch.clone();
         async move {
             let discovery = tokio::task::spawn_blocking(move || {
-                rrx_process_tracker::discover(&cookie, Default::default())
+                rrx_process_tracker::discover_launched(&cookie, Default::default(), &launch)
             })
             .await??;
             Ok(discovery.into())
@@ -225,6 +231,8 @@ pub(super) async fn confirm_death(
     Ok(DeathReceipt {
         status,
         evidence: PipelineDeathEvidence {
+            launch_checked: true,
+            leader_birth_matched,
             leader_exit_observed: true,
             group_kill_delivered: true,
             leader_reaped: true,
@@ -334,7 +342,14 @@ impl Monitor {
         }
         drop(stdout);
         drop(stderr);
-        let death = confirm_death(self.process, &self.cookie, !observed_exit).await;
+        let death = confirm_death(
+            self.process,
+            &self.cookie,
+            &self.launch,
+            Some(self.birth),
+            !observed_exit,
+        )
+        .await;
         let dead = match death {
             Ok(dead) => dead,
             Err(_) => {

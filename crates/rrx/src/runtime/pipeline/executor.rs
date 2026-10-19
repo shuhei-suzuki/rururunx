@@ -349,6 +349,7 @@ impl Runtime {
                     &self.owner,
                     &cursor,
                     None,
+                    None,
                     &json!({"worktree":work_path,"branch":branch}),
                 )?;
             if started != PipelineLaunch::Started {

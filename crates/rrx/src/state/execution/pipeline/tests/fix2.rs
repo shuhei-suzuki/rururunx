@@ -5,7 +5,7 @@ use super::*;
 fn begin_prepare(f: &Fixture, id: &str) {
     let c = f.cursor(id);
     f.store()
-        .pipeline_begin_launch(&f.owner, &c, None, &json!({}))
+        .pipeline_begin_launch(&f.owner, &c, None, None, &json!({}))
         .unwrap();
 }
 fn create(f: &Fixture) -> PipelineJournal {
@@ -431,6 +431,7 @@ async fn b2_fix2_recovery_then_retries() {
                     &f.owner,
                     &c,
                     Some(&format!("retry-cookie-{attempt:016}")),
+                    Some(&rrx_process_tracker::launch_mark().unwrap()),
                     &json!({}),
                 )
                 .unwrap();
