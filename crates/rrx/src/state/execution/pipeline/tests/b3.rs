@@ -166,8 +166,20 @@ async fn b3_native_owner_launch_refused() {
     let cursor = accepted.cursor(&id);
     let f = fixture_mode(false).await;
     let before = accepted.store().pipeline_goal_view(accepted.goal).unwrap();
+    let native_before = f.store().pipeline_goal_view(f.goal).unwrap();
     assert_eq!(before.steps[0].state, "planned");
+    // A foreign owner is rejected by identity before its mode is inspected.
     let error = accepted
+        .store()
+        .pipeline_begin_launch(&f.owner, &cursor, None, &json!({}))
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("pipeline owner retired"),
+        "{error:#}"
+    );
+    // Use the native owner's own Store to reach the mode guard with a current
+    // identity. It must refuse before even looking up the supplied cursor.
+    let error = f
         .store()
         .pipeline_begin_launch(&f.owner, &cursor, None, &json!({}))
         .unwrap_err();
@@ -177,6 +189,7 @@ async fn b3_native_owner_launch_refused() {
             .contains("pipeline requires CliPipeline owner"),
         "{error:#}"
     );
+    assert_eq!(f.store().pipeline_goal_view(f.goal).unwrap(), native_before);
     assert_eq!(
         accepted.store().pipeline_goal_view(accepted.goal).unwrap(),
         before

@@ -24,7 +24,8 @@ an arbitrary JSON body cannot authorize a qualified quiescence observation.
 
 Pipeline Q reuses `execution::process::OwnedProcess` and `bounded_read`: spawn
 hygiene, unreaped identity, group signaling before reap and direct-child fallback.
-Each probe has a fresh five-second deadline, capped by a 35-second overall
+Each probe starts its five-second observation deadline immediately after spawn
+on a blocking worker, capped by a 35-second overall
 CLI qualification observation deadline covering image/config reads and all probes,
 with four KiB combined output per probe. Nonblocking open and descriptor
 checks refuse special files. Probe-only macOS EPERM resolution accepts only a

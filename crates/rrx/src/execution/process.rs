@@ -390,33 +390,59 @@ fn inspect_probe_group(pid: Pid) -> std::io::Result<bool> {
 pub(crate) async fn capture_probe(command: Command) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
     capture_probe_until(
         command,
+        Duration::from_secs(5),
         tokio::time::Instant::now() + Duration::from_secs(5),
     )
     .await
 }
 pub(crate) async fn capture_probe_until(
     command: Command,
-    deadline: tokio::time::Instant,
+    bound: Duration,
+    overall: tokio::time::Instant,
 ) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
-    capture_probe_with_cleanup(command, deadline, |owned| {
+    capture_probe_with_cleanup(command, bound, overall, |owned| {
         signal_probe_group(owned, kill_process_group, inspect_probe_group)
     })
     .await
 }
 async fn capture_probe_with_cleanup(
+    command: Command,
+    bound: Duration,
+    overall: tokio::time::Instant,
+    cleanup: impl FnOnce(&OwnedProcess) -> Result<()> + Send + 'static,
+) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
+    capture_probe_with_spawn(command, bound, overall, OwnedProcess::spawn, cleanup).await
+}
+async fn capture_probe_with_spawn(
     mut command: Command,
-    deadline: tokio::time::Instant,
+    bound: Duration,
+    overall: tokio::time::Instant,
+    spawn: impl FnOnce(Command) -> Result<OwnedProcess> + Send + 'static,
     cleanup: impl FnOnce(&OwnedProcess) -> Result<()> + Send + 'static,
 ) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
     ensure!(
-        tokio::time::Instant::now() < deadline,
+        tokio::time::Instant::now() < overall,
         "probe timed out before spawn"
     );
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = OwnedProcess::spawn(command)?;
+    // Spawn includes synchronous platform hygiene and fork/exec contention. Do
+    // not block an async worker or charge that wait to the child's observation
+    // budget. Stamp the deadline in the worker, not after its join is scheduled:
+    // the child is already running while that join waits to be polled.
+    let (mut child, deadline) = tokio::task::spawn_blocking(move || {
+        ensure!(
+            tokio::time::Instant::now() < overall,
+            "probe timed out before spawn"
+        );
+        let child = spawn(command)?;
+        let deadline = (tokio::time::Instant::now() + bound).min(overall);
+        Ok::<_, anyhow::Error>((child, deadline))
+    })
+    .await
+    .context("probe spawn worker failed")??;
     let stdout = child.child.stdout.take().context("probe stdout missing")?;
     let stderr = child.child.stderr.take().context("probe stderr missing")?;
     let readers =
@@ -479,6 +505,78 @@ async fn capture_probe_with_cleanup(
 mod probe_tests {
     use super::*;
 
+    /// Blocking launch preparation neither spends child observation time nor stalls async work.
+    #[tokio::test]
+    async fn b3_q_probe_deadlines() {
+        let (entered, ready) = tokio::sync::oneshot::channel();
+        let (release, released) = std::sync::mpsc::channel();
+        let probe = capture_probe_with_spawn(
+            Command::new("/usr/bin/true"),
+            Duration::from_millis(500),
+            tokio::time::Instant::now() + Duration::from_secs(5),
+            move |command| {
+                entered.send(()).unwrap();
+                released.recv_timeout(Duration::from_secs(3)).unwrap();
+                OwnedProcess::spawn(command)
+            },
+            |child| signal_probe_group(child, kill_process_group, |_| Ok(true)),
+        );
+        let observer = async {
+            ready.await.unwrap();
+            tokio::time::sleep(Duration::from_millis(700)).await;
+            release.send(()).unwrap();
+        };
+        let (result, ()) = tokio::join!(probe, observer);
+        let (receipt, _, _) = result.unwrap();
+        assert!(receipt.status.success());
+    }
+
+    /// Both the child's own bound and the overall CLI deadline stop observation and reap.
+    #[tokio::test]
+    async fn b3_probe_observation_bounds() {
+        for (bound, overall) in [
+            (Duration::from_millis(500), Duration::from_secs(5)),
+            (Duration::from_secs(5), Duration::from_millis(500)),
+        ] {
+            let started = std::time::Instant::now();
+            let pid = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
+            let observed_pid = pid.clone();
+            let mut command = Command::new("/bin/sleep");
+            command.arg("10");
+            let result = capture_probe_with_spawn(
+                command,
+                bound,
+                tokio::time::Instant::now() + overall,
+                OwnedProcess::spawn,
+                move |child| {
+                    observed_pid.store(
+                        child.pid.as_raw_nonzero().get(),
+                        std::sync::atomic::Ordering::SeqCst,
+                    );
+                    signal_probe_group(child, kill_process_group, |_| Ok(true))
+                },
+            )
+            .await;
+            assert!(
+                result
+                    .err()
+                    .expect("sleep must time out")
+                    .to_string()
+                    .contains("probe timed out")
+            );
+            assert!(started.elapsed() < Duration::from_secs(3));
+            let pid = Pid::from_raw(pid.load(std::sync::atomic::Ordering::SeqCst)).unwrap();
+            assert_eq!(
+                waitid(
+                    WaitId::Pid(pid),
+                    WaitIdOptions::EXITED | WaitIdOptions::NOHANG
+                )
+                .unwrap_err(),
+                rustix::io::Errno::CHILD
+            );
+        }
+    }
+
     /// A deadline during blocking cleanup cannot release custody before its result and reap.
     #[tokio::test]
     async fn b3_probe_cleanup_deadline() {
@@ -489,6 +587,7 @@ mod probe_tests {
         let started = std::time::Instant::now();
         let result = capture_probe_with_cleanup(
             Command::new("/usr/bin/true"),
+            Duration::from_millis(500),
             tokio::time::Instant::now() + Duration::from_millis(500),
             move |owned| {
                 observed_pid.store(
@@ -528,6 +627,7 @@ mod probe_tests {
     async fn b3_probe_live_group_refused() {
         let error = capture_probe_with_cleanup(
             Command::new("/usr/bin/true"),
+            Duration::from_secs(5),
             tokio::time::Instant::now() + Duration::from_secs(5),
             |owned| resolve_probe_signal(owned, Err(rustix::io::Errno::PERM), || Ok(false)),
         )
@@ -549,6 +649,7 @@ mod probe_tests {
         ] {
             let error = capture_probe_with_cleanup(
                 Command::new("/usr/bin/true"),
+                Duration::from_secs(5),
                 tokio::time::Instant::now() + Duration::from_secs(5),
                 move |owned| {
                     signal_probe_group(

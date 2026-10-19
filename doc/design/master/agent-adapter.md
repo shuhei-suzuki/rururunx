@@ -204,7 +204,8 @@ the native binary itself; npm Codex uses
 Interpreter scripts cannot pin the image and refuse Q. Codex config permits only
 string `model` and `model_reasoning_effort`; other keys refuse Q.
 
-Probe commands clear the environment. Each probe has a fresh five-second deadline,
+Probe commands clear the environment. Each probe starts its five-second
+observation deadline immediately after spawn on a blocking worker,
 capped by a 35-second overall
 CLI qualification observation deadline covering image/config reads and all probes,
 with four KiB combined output per probe. Nonblocking open and descriptor checks

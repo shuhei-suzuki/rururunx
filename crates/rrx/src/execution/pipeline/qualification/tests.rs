@@ -822,25 +822,6 @@ async fn b3_q_launch_path_separation() {
     }
 }
 
-/// Each probe gets its own five seconds while the CLI has a finite overall budget.
-#[test]
-fn b3_q_probe_deadlines() {
-    let start = Instant::now();
-    let overall = start + CLI_BOUND;
-    let first = probe_deadline(start, overall);
-    let later = start + Duration::from_secs(4);
-    assert_eq!(first, start + Duration::from_secs(5));
-    assert_eq!(
-        probe_deadline(later, overall),
-        later + Duration::from_secs(5)
-    );
-    assert_eq!(
-        probe_deadline(overall - Duration::from_secs(1), overall),
-        overall
-    );
-    assert!(CLI_BOUND > PROBE_BOUND && CLI_BOUND <= Duration::from_secs(35));
-}
-
 /// Successful sequential probes may together exceed one probe's time budget.
 #[tokio::test]
 async fn b3_q_sequential_probe_budget() {

@@ -29,9 +29,6 @@ const PROBE_BOUND: Duration = Duration::from_secs(5);
 // Five Claude probes plus bounded image/config work; cleanup retains custody
 // even after observation expires and must finish before returning a refusal.
 const CLI_BOUND: Duration = Duration::from_secs(35);
-fn probe_deadline(now: Instant, overall: Instant) -> Instant {
-    (now + PROBE_BOUND).min(overall)
-}
 fn regular_file(path: &Path) -> Result<File> {
     let file = OpenOptions::new()
         .read(true)
@@ -234,10 +231,7 @@ async fn qualify_cli(
                 .env_clear()
                 .envs(env.clone())
                 .current_dir(tmp);
-            crate::execution::process::capture_probe_until(
-                command,
-                probe_deadline(Instant::now(), deadline).into(),
-            )
+            crate::execution::process::capture_probe_until(command, PROBE_BOUND, deadline.into())
         };
         row.body["stage"] = json!("version_probe");
         let (receipt, out, _) = probe(&["--version"]).await?;
