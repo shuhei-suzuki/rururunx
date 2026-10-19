@@ -92,6 +92,10 @@ pub struct Coverage {
     pub identity_unavailable: usize,
     pub identity_changed: usize,
     pub handle_unavailable: usize,
+    pub zombie: usize,
+    pub vanished: usize,
+    pub reused: usize,
+    pub relistings: usize,
     pub truncated: bool,
     pub time_exceeded: bool,
 }

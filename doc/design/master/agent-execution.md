@@ -17,7 +17,10 @@ default. Under the exclusive owner lock, startup reads the typed opposite-mode
 inventory before `begin_execution_epoch`. Busy inventories refuse startup.
 Cookie discovery requires every supplied cookie to have complete tracker coverage
 and zero matches; errors and excessive inventories refuse. Epoch advancement is
-never death evidence. Successful pipeline startup records the pre-epoch
+never death evidence. On macOS, independently confirmed zombies and vanished
+PIDs trigger bounded re-listing rather than incomplete coverage; unknown reads
+still refuse. The cookie discovery guarantees and residual races below also
+apply to this quiescence check. Successful pipeline startup records the pre-epoch
 inventory/discovery summary as `mode_quiescence` under its new epoch.
 Its writer consumes a sealed receipt constructed only by `check_mode_inventory`;
 an arbitrary JSON body cannot authorize a qualified quiescence observation.
@@ -184,6 +187,34 @@ exit, delivered group cleanup, leader reap, observed empty group and complete co
 with zero matches. A deadline cannot supply any of those facts. Incomplete proof
 holds the running step; monitor failure records unknown. No discovered PID is
 signalled on macOS.
+
+macOS cookie discovery retains `proc_listpids(PROC_UID_ONLY)` for same-user
+membership. Failed identity or environment reads receive one independent
+`sysctl(KERN_PROC_PID)` query per PID per pass. Only a successful empty query
+proves vanished; only an exact-size, matching-PID `SZOMB` result proves zombie.
+Other results retain the original uncertainty counter. Both matching and
+nonmatching environments require equal identities before and after the read.
+A changed or unreadable second identity after a match limits coverage; after a
+nonmatch it counts as reuse and requires another pass.
+
+Completed live checks and zombies retain nonzero start-time keys and their kind.
+Later passes reconcile these records using one identity read, plus one query for
+an unreadable recorded zombie; mismatches discard the record and receive a full
+check. Records outside the new membership list cause no reads or new absence.
+New zombie, vanished or reused observations trigger re-listing until a pass adds
+none, within one deadline and the same list/environment bounds. These counters
+and the re-listing count do not themselves limit coverage; unknown results,
+truncation and deadline exhaustion do. Zombies and vanished PIDs never become
+tracked processes or signal targets. Linux discovery is unchanged.
+
+Complete coverage with zero matches excludes live cookie-bearing processes only
+under cooperative cookie inheritance and stable same-user/birth identity
+assumptions, with two accepted residual races. In R1, a previously unrecorded PID may
+be reused between the final listing and its first identity read after its former
+cookie-bearing process leaves an unlisted child. In R2, the kernel may truncate
+membership at its internal capacity below the supplied buffer size without a
+detectable full-buffer return. These residuals apply to both step death evidence
+and owner quiescence; neither is a whole-workload containment guarantee.
 
 Work success/failure/unknown and cleanup reclaimed/leftovers/unknown are independent
 axes. Reclaimed describes observed tracked resources at a time, not whole workload

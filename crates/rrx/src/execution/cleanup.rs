@@ -110,14 +110,18 @@ impl CleanupService {
                     observation.coverage.insert(
                         "cookie_scan".into(),
                         format!(
-                            "inspected={},same_user={},limited={},identity_unavailable={},environment_unavailable={},handle_unavailable={},identity_changed={}",
+                            "inspected={},same_user={},limited={},identity_unavailable={},environment_unavailable={},handle_unavailable={},identity_changed={},zombie={},vanished={},reused={},relistings={}",
                             discovery.coverage.inspected,
                             discovery.coverage.same_user,
                             discovery.coverage.limited(),
                             discovery.coverage.identity_unavailable,
                             discovery.coverage.environment_unavailable,
                             discovery.coverage.handle_unavailable,
-                            discovery.coverage.identity_changed
+                            discovery.coverage.identity_changed,
+                            discovery.coverage.zombie,
+                            discovery.coverage.vanished,
+                            discovery.coverage.reused,
+                            discovery.coverage.relistings
                         ),
                     );
                     if discovery.processes.len() > MAX_COOKIE_MATCHES {
