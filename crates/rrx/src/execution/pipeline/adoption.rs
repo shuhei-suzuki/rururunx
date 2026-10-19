@@ -57,7 +57,7 @@ impl AdoptionChecker {
                 "-z",
                 "--untracked-files=all",
                 "--no-renames",
-                "--ignore-submodules=none",
+                "--ignore-submodules=all",
             ])
             .await?;
         let changes = changes(work.git.root(), &status, scope)?;
@@ -170,18 +170,35 @@ impl AdoptionChecker {
         ensure!(work.controls().await? == before, "git_control_changed");
         work.git.reject_drivers(commit).await?;
         // The recorded SHA and tree are identity; trailers and parent alone never identify rrx work.
+        let object = work.git.text(&["cat-file", "commit", commit]).await?;
+        let headers = object
+            .split_once("\n\n")
+            .context("invalid commit object")?
+            .0;
         ensure!(
-            work.git
-                .text(&["show", "-s", "--format=%T %P", commit])
-                .await?
-                == format!("{tree} {}", step.step_base),
+            headers
+                .lines()
+                .filter_map(|l| l.strip_prefix("tree "))
+                .collect::<Vec<_>>()
+                == [tree]
+                && headers
+                    .lines()
+                    .filter_map(|l| l.strip_prefix("parent "))
+                    .collect::<Vec<_>>()
+                    == [step.step_base.as_str()],
             "recorded_commit_changed"
         );
         let current = work.ref_value().await?;
         ensure!(current == step.step_base || current == commit, "ref_moved");
         if current == step.step_base {
             work.git
-                .run(&["update-ref", &work.branch, commit, &step.step_base])
+                .run(&[
+                    "update-ref",
+                    "--no-deref",
+                    &work.branch,
+                    commit,
+                    &step.step_base,
+                ])
                 .await?;
         }
         work.git.run(&["read-tree", commit]).await?;
@@ -251,24 +268,52 @@ pub(crate) fn evidence(step: &PipelineStep, attempt: &Path) -> Result<()> {
     retained(attempt, "last.md", &step.body["exit"]["last"], 256 * 1024)?;
     Ok(())
 }
-pub(crate) fn write_artifact(path: &Path, bytes: &[u8]) -> Result<()> {
-    // A crash may leave the same generated evidence; never follow or replace an alias.
-    if path.try_exists()? {
-        ensure!(
-            read_regular(path, super::git::DIFF_BYTES)? == bytes,
-            "artifact changed"
-        );
-        return Ok(());
-    }
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(path)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    file.set_permissions(std::fs::Permissions::from_mode(0o400))?;
+pub(crate) fn diff_evidence(step: &PipelineStep, attempt: &Path) -> Result<()> {
+    let path = attempt.join("diff.patch");
+    let bytes = read_regular(&path, super::git::DIFF_BYTES).context("output_evidence_changed")?;
+    ensure!(
+        step.body["commit_evidence"]["diff_bytes"].as_u64() == Some(bytes.len() as u64)
+            && step.body["commit_evidence"]["diff_sha256"].as_str() == Some(hash(&bytes).as_str())
+            && std::fs::symlink_metadata(path)?.permissions().mode() & 0o777 == 0o400,
+        "output_evidence_changed"
+    );
     Ok(())
+}
+pub(crate) fn write_artifact(path: &Path, bytes: &[u8]) -> Result<()> {
+    let mut artifact = PendingArtifact::new(path)?;
+    artifact.pending.as_file_mut().write_all(bytes)?;
+    artifact.publish(path)
+}
+struct PendingArtifact {
+    pending: tempfile::NamedTempFile,
+}
+impl PendingArtifact {
+    fn new(path: &Path) -> Result<Self> {
+        // Before committed is recorded, a missing/incomplete artifact is regenerated.
+        // Refuse aliases even though rename itself would not follow the destination.
+        match std::fs::symlink_metadata(path) {
+            Ok(_) => {
+                read_regular(path, super::git::DIFF_BYTES)?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        let parent = path.parent().context("artifact parent missing")?;
+        Ok(Self {
+            pending: tempfile::Builder::new()
+                .prefix("diff-pending-")
+                .tempfile_in(parent)?,
+        })
+    }
+    fn publish(mut self, path: &Path) -> Result<()> {
+        let file = self.pending.as_file_mut();
+        file.sync_all()?;
+        file.set_permissions(std::fs::Permissions::from_mode(0o400))?;
+        file.sync_all()?;
+        self.pending.persist(path)?;
+        std::fs::File::open(path.parent().context("artifact parent missing")?)?.sync_all()?;
+        Ok(())
+    }
 }
 fn changes(root: &Path, status: &[u8], scope: &[String]) -> Result<Vec<Change>> {
     let mut changes = Vec::new();
@@ -336,7 +381,7 @@ fn changes(root: &Path, status: &[u8], scope: &[String]) -> Result<Vec<Change>> 
             total += bytes.len();
             ensure!(total <= TOTAL_BYTES, "files_too_large");
             (
-                if meta.permissions().mode() & 0o111 != 0 {
+                if meta.permissions().mode() & 0o100 != 0 {
                     "100755"
                 } else {
                     "100644"
@@ -356,7 +401,16 @@ fn protected(path: &str) -> bool {
     path.split('/').any(|p| {
         let p = p.to_ascii_lowercase();
         p.starts_with(".git")
-            || matches!(p.as_str(), ".claude" | ".codex" | "agents.md" | "claude.md")
+            || matches!(
+                p.as_str(),
+                ".claude"
+                    | ".codex"
+                    | ".mcp.json"
+                    | "agents.md"
+                    | "agents.override.md"
+                    | "claude.md"
+                    | "claude.local.md"
+            )
     })
 }
 fn explicit(glob: &str, path: &str) -> bool {

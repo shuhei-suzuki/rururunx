@@ -12,6 +12,67 @@ fn b5_last_receipt() {
         crate::execution::pipeline::launcher::hash(b"done\n")
     );
     assert!(receipt.complete);
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(
+        std::fs::metadata(dir.path().join("last.md"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o400
+    );
+}
+
+/// Last-output sealing refuses hardlinked evidence without chmodding its alias.
+#[test]
+fn b5_f1_last_hardlink() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target");
+    std::fs::write(&target, b"result").unwrap();
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::hard_link(&target, dir.path().join("last.md")).unwrap();
+    assert!(check_last(dir.path(), false).is_err());
+    assert_eq!(
+        std::fs::metadata(target).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+}
+
+/// Replacing last-output with a symlink after lstat cannot pass the fd open.
+#[test]
+fn b5_f1_last_open_race() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("last.md");
+    let target = dir.path().join("target");
+    std::fs::write(&path, b"result").unwrap();
+    let meta = std::fs::symlink_metadata(&path).unwrap();
+    std::fs::rename(&path, &target).unwrap();
+    std::os::unix::fs::symlink(&target, &path).unwrap();
+    assert!(open_last(&path, &meta).is_err());
+}
+
+/// Last-output chmod seals the opened inode even if the pathname changes.
+#[test]
+fn b5_f1_last_chmod_race() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("last.md");
+    let retained = dir.path().join("retained");
+    std::fs::write(&path, b"result").unwrap();
+    let file = open_last(&path, &std::fs::symlink_metadata(&path).unwrap()).unwrap();
+    std::fs::rename(&path, &retained).unwrap();
+    std::fs::write(&path, b"replacement").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    seal_last(file).unwrap();
+    assert_eq!(
+        std::fs::metadata(retained).unwrap().permissions().mode() & 0o777,
+        0o400
+    );
+    assert_eq!(
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
 }
 
 fn discovery(limited: bool, matching_processes: usize) -> DeathDiscovery {

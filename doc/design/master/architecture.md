@@ -365,6 +365,8 @@ The result may be resume, reconnect, retry, fail, or human escalation.
 Pipeline Executor progress is serialized with controls under `control_admission`.
 Store commit/adoption APIs recheck owner epoch, Goal Running and run/step versions;
 process results additionally require certified death and an issue-free exit.
+Limited results also require this certification and an Agent step kind. Last-message
+evidence is opened without following symlinks and sealed through its verified descriptor.
 Retained Executor stdout, stderr and last-message bytes are re-read against their
 recorded lengths and SHA-256 before adoption. Scope, regular-file, binary, size,
 Git control and secret checks precede commit publication. An unresolved accepted
@@ -498,21 +500,36 @@ The CLI pipeline uses `execution::pipeline::PipelineGit`, separate from the nati
 global/system Git configuration and system attributes disabled, fixed hook and
 automatic-maintenance overrides, bounded output and a ten-second observation
 deadline. Repository configuration and tree/worktree attributes are inspected for
-drivers before checkout, reset, status or adoption. Diff commands disable external
-diff and text conversion; blob hashing uses `--no-filters` on captured bytes.
+drivers before checkout, reset, status or adoption. Gitlink trees and the `binary`
+and `ident` attributes are refused; attribute filenames are matched without ASCII
+case distinctions. All status calls ignore submodules and recursion is disabled.
+Global attribute/ignore files are redirected to `/dev/null` and lazy fetching is disabled.
+Diff commands force text and disable external diff and text conversion; hunk additions
+are distinguished from file headers. Blob hashing uses `--no-filters` on captured bytes.
 Inspection combines local configuration with worktree configuration only when
 `extensions.worktreeConfig` is enabled in the common local configuration. Read
 failures refuse the operation; the control inventory always covers `config.worktree`.
 
 Prepare consumes the durable Goal-creation journal, creates an absent Task branch
-and registered private worktree, then verifies symbolic HEAD, base and clean state.
+and registered private worktree with `--no-checkout`, inspects that Task context's
+conditional configuration and attributes, then checks out and verifies symbolic HEAD,
+base and clean state. Project working files are not scanned during prepare; selected
+tree attributes and common `info/attributes` are inspected instead.
 Partial artifacts are held and retained; an absent recovered prepare is interrupted.
 Executor retry initialization resets and cleans only the bound private Task
 worktree after certified death and a matching control inventory. Commit objects
 are assembled using a temporary index and fixed rrx identity. The Store records
 the SHA and tree before branch ref-CAS and index refresh; adoption requires the
 recorded commit's tree/parent and a matching clean checkout. Trailers never grant
-adoption authority. Unrelated ref movement is held.
+adoption authority. Symbolic Task and Goal refs are refused, ref-CAS uses `--no-deref`,
+and unrelated ref movement is held. Protected paths include Git metadata, instruction
+overrides and MCP configuration, with ASCII case-insensitive protection unless scoped
+explicitly. Executable file mode follows the owner execute bit. Diff evidence is synced
+and sealed to 0400 in a same-directory temporary file, then atomically renamed; exited
+recovery rebuilds missing or incomplete artifacts. Committed recovery verifies the retained
+diff length, digest and readonly mode before ref publication. Secret-bearing blobs and commits can
+remain as unreferenced loose objects after refusal. Git output limits and deadlines can
+hold large or partially materialized worktrees for operator recovery.
 
 `git::WorktreeManager` creates independent task worktrees and attached branches,
 checks exact canonical Project root/worktree top-level and common-dir, rejects

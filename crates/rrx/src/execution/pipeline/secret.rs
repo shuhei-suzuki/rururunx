@@ -54,9 +54,15 @@ impl SecretScanner {
     }
     pub(super) fn additions(diff: &[u8]) -> Result<()> {
         let mut offset = 0;
+        let mut file_header = false;
         for line in diff.split(|b| *b == b'\n') {
+            if line.starts_with(b"diff --git ") {
+                file_header = true;
+            } else if line.starts_with(b"@@") {
+                file_header = false;
+            }
             if line.starts_with(b"+")
-                && !line.starts_with(b"+++")
+                && !(file_header && line.starts_with(b"+++ "))
                 && let Err(error) = Self::check(&line[1..])
             {
                 let Some(hit) = error.downcast_ref::<SecretHit>() else {

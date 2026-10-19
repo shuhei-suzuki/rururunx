@@ -472,7 +472,6 @@ impl Capture {
 }
 
 fn check_last(root: &Path, confirm: bool) -> Result<Option<StreamEvidence>> {
-    use std::{io::Read, os::unix::fs::PermissionsExt};
     let path = root.join(if confirm { "last.json" } else { "last.md" });
     let meta = match std::fs::symlink_metadata(&path) {
         Ok(meta) => meta,
@@ -483,17 +482,39 @@ fn check_last(root: &Path, confirm: bool) -> Result<Option<StreamEvidence>> {
         meta.is_file() && !meta.file_type().is_symlink() && meta.len() <= LAST_BYTES as u64,
         "last output exceeds bound or aliases"
     );
+    seal_last(open_last(&path, &meta)?).map(Some)
+}
+fn open_last(path: &Path, meta: &std::fs::Metadata) -> Result<std::fs::File> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(
+            rustix::fs::OFlags::NOFOLLOW.bits() as i32 | rustix::fs::OFlags::NONBLOCK.bits() as i32,
+        )
+        .open(path)?;
+    let opened = file.metadata()?;
+    ensure!(
+        opened.is_file()
+            && opened.dev() == meta.dev()
+            && opened.ino() == meta.ino()
+            && opened.nlink() == 1,
+        "last output changed or aliases"
+    );
+    Ok(file)
+}
+fn seal_last(mut file: std::fs::File) -> Result<StreamEvidence> {
+    use std::{io::Read, os::unix::fs::PermissionsExt};
     let mut bytes = Vec::new();
-    std::fs::File::open(&path)?
+    Read::by_ref(&mut file)
         .take((LAST_BYTES + 1) as u64)
         .read_to_end(&mut bytes)?;
     ensure!(bytes.len() <= LAST_BYTES, "last output grew beyond bound");
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o400))?;
-    Ok(Some(StreamEvidence {
+    file.set_permissions(std::fs::Permissions::from_mode(0o400))?;
+    Ok(StreamEvidence {
         bytes: bytes.len() as u64,
         sha256: super::launcher::hash(&bytes),
         complete: true,
-    }))
+    })
 }
 
 #[cfg(test)]

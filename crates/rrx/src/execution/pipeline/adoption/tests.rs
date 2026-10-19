@@ -42,6 +42,9 @@ fn b5_protected_paths() {
         "src/CLAUDE.md",
         "src/AgEnTs.md",
         ".CoDeX/settings.toml",
+        ".McP.JsOn",
+        "src/AGENTS.override.md",
+        "src/CLAUDE.local.md",
     ] {
         let root = root();
         file(root.path(), path, b"data");
@@ -161,8 +164,118 @@ fn b5_output_secret() {
 /// Added diff lines are scanned before evidence publication.
 #[test]
 fn b5_diff_secret() {
-    assert!(SecretScanner::additions(b"+++ b/file\n+EXAMPLE_SECRET=fixture\n").is_err());
+    assert!(
+        SecretScanner::additions(
+            b"diff --git a/file b/file\n+++ b/file\n@@ -0,0 +1 @@\n+EXAMPLE_SECRET=fixture\n"
+        )
+        .is_err()
+    );
     assert!(SecretScanner::additions(b"-EXAMPLE_SECRET=fixture\n+safe\n").is_ok());
+}
+
+/// Hunk additions beginning with pluses cannot masquerade as file headers.
+#[test]
+fn b5_f1_plus_secret() {
+    assert!(
+        SecretScanner::additions(
+            b"diff --git a/file b/file\n+++ b/file\n@@ -0,0 +1 @@\n+++ EXAMPLE_SECRET=fixture\n"
+        )
+        .is_err()
+    );
+    assert!(SecretScanner::additions(b"diff --git a/file b/EXAMPLE_SECRET=fixture\n+++ b/EXAMPLE_SECRET=fixture\n@@ -0,0 +1 @@\n+safe\ndiff --git a/next b/EXAMPLE_SECRET=fixture\n+++ b/EXAMPLE_SECRET=fixture\n@@ -0,0 +1 @@\n+safe\n").is_ok());
+}
+
+/// Git executable mode depends only on the owner execute bit.
+#[test]
+fn b5_f1_owner_executable() {
+    let root = root();
+    file(root.path(), "src/file", b"safe");
+    for (mode, expected) in [(0o654, "100644"), (0o744, "100755")] {
+        std::fs::set_permissions(
+            root.path().join("src/file"),
+            std::fs::Permissions::from_mode(mode),
+        )
+        .unwrap();
+        assert_eq!(
+            changes(root.path(), &status("src/file"), &scope()).unwrap()[0].mode,
+            expected
+        );
+    }
+}
+
+/// Unpublished crash remnants never replace the final complete readonly artifact.
+#[test]
+fn b5_f1_artifact_crash_recovery() {
+    for crash_bytes in [b"".as_slice(), b"com", b"complete patch"] {
+        let root = root();
+        let final_path = root.path().join("diff.patch");
+        // On-disk states after creation, partial write, and full write before chmod.
+        let mut artifact = PendingArtifact::new(&final_path).unwrap();
+        artifact
+            .pending
+            .as_file_mut()
+            .write_all(crash_bytes)
+            .unwrap();
+        let (_, pending_path) = artifact.pending.keep().unwrap();
+        assert_eq!(std::fs::read(&pending_path).unwrap(), crash_bytes);
+        assert!(!final_path.exists());
+        write_artifact(&final_path, b"complete patch").unwrap();
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"complete patch");
+        assert_eq!(
+            std::fs::metadata(&final_path).unwrap().permissions().mode() & 0o777,
+            0o400
+        );
+        // Exited recovery also rebuilds legacy incomplete/writable final artifacts.
+        std::fs::set_permissions(&final_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::write(&final_path, crash_bytes).unwrap();
+        write_artifact(&final_path, b"complete patch").unwrap();
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"complete patch");
+        assert_eq!(
+            std::fs::metadata(&final_path).unwrap().permissions().mode() & 0o777,
+            0o400
+        );
+    }
+}
+
+/// Evidence publication refuses aliases without changing their targets.
+#[test]
+fn b5_f1_artifact_alias() {
+    let root = root();
+    file(root.path(), "target", b"original");
+    let path = root.path().join("diff.patch");
+    std::os::unix::fs::symlink("target", &path).unwrap();
+    assert!(write_artifact(&path, b"patch").is_err());
+    assert_eq!(
+        std::fs::read(root.path().join("target")).unwrap(),
+        b"original"
+    );
+}
+
+/// Committed recovery requires the recorded complete readonly diff evidence.
+#[test]
+fn b5_f1_committed_diff_evidence() {
+    let root = root();
+    let mut step: PipelineStep = serde_json::from_value(json!({"run_id":"fixture","seq":2,"attempt":1,"kind":"implement","provider":"codex","owner_epoch":1,"round":0,"state":"committed","version":1,"cookie":null,"pid":null,"birth":null,"step_base":"a".repeat(40),"input_sha256":"b".repeat(64),"result_commit":"c".repeat(40),"result_tree":"d".repeat(40),"body":{}})).unwrap();
+    let path = root.path().join("diff.patch");
+    step.body["commit_evidence"] = json!({"diff_bytes":5,"diff_sha256":hash(b"patch")});
+    assert!(diff_evidence(&step, root.path()).is_err());
+    write_artifact(&path, b"patch").unwrap();
+    diff_evidence(&step, root.path()).unwrap();
+    step.body["commit_evidence"]["diff_bytes"] = json!(6);
+    assert!(diff_evidence(&step, root.path()).is_err());
+    step.body["commit_evidence"]["diff_bytes"] = json!(5);
+    step.body["commit_evidence"]["diff_sha256"] = json!(hash(b"other"));
+    assert!(diff_evidence(&step, root.path()).is_err());
+    step.body["commit_evidence"]["diff_sha256"] = json!(hash(b"patch"));
+    for bytes in [b"pa".as_slice(), b"other", b"patch"] {
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::write(&path, bytes).unwrap();
+        assert!(diff_evidence(&step, root.path()).is_err());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400)).unwrap();
+        if bytes != b"patch" {
+            assert!(diff_evidence(&step, root.path()).is_err());
+        }
+    }
 }
 
 /// Adoption requires every retained output file rather than a subset of receipts.

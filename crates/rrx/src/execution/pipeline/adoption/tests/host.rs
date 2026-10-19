@@ -86,6 +86,268 @@ impl Fixture {
     async fn build(&self) -> Result<Candidate> {
         AdoptionChecker::build(&self.work, &self.step, &scope(), &self.attempt).await
     }
+    async fn set_base(&mut self, entries: &[u8]) {
+        let tree = String::from_utf8(
+            self.work
+                .git
+                .invoke(&["mktree"], entries, None, false, 4096)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        let commit = String::from_utf8(
+            self.work
+                .git
+                .invoke(&["commit-tree", tree.trim()], b"base\n", None, true, 4096)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        let commit = commit.trim();
+        self.work
+            .git
+            .run(&["update-ref", "--no-deref", &self.work.branch, commit])
+            .await
+            .unwrap();
+        self.work.git.run(&["read-tree", commit]).await.unwrap();
+        self.step.step_base = commit.into();
+        self.work.base = commit.into();
+        self.save_controls().await;
+    }
+    async fn blob(&self, bytes: &[u8]) -> String {
+        String::from_utf8(
+            self.work
+                .git
+                .invoke(
+                    super::super::super::git::BLOB_ARGS,
+                    bytes,
+                    None,
+                    false,
+                    4096,
+                )
+                .await
+                .unwrap(),
+        )
+        .unwrap()
+        .trim()
+        .into()
+    }
+    async fn save_controls(&mut self) {
+        self.step.body["executor_controls"] =
+            serde_json::to_value(self.work.controls().await.unwrap()).unwrap();
+    }
+}
+
+async fn hostile_subrepo(f: &Fixture) -> std::path::PathBuf {
+    let sub = f.work.git.root().join("sub");
+    std::fs::create_dir(&sub).unwrap();
+    let git = PipelineGit::new(&sub).unwrap();
+    git.run(&["init", "-b", "main"]).await.unwrap();
+    file(&sub, "file", b"initial\n");
+    git.run(&["add", "file"]).await.unwrap();
+    file(&sub, "file", b"changed length\n");
+    let marker = f.attempt.join("filter-marker");
+    git.run(&[
+        "config",
+        "--local",
+        "filter.fixture.clean",
+        &format!("touch '{}'; cat", marker.display()),
+    ])
+    .await
+    .unwrap();
+    file(&sub, ".git/info/attributes", b"* filter=fixture\n");
+    git.run(&["status", "--porcelain=v1", "--ignore-submodules=all"])
+        .await
+        .unwrap();
+    assert!(
+        marker.exists(),
+        "the hostile filter fixture must be executable"
+    );
+    std::fs::remove_file(&marker).unwrap();
+    marker
+}
+
+/// A gitlink base cannot enter an Agent-written subrepository or execute its filter.
+#[tokio::test]
+async fn b5_f1_gitlink_filter() {
+    let mut f = Fixture::new().await;
+    f.set_base(format!("160000 commit {}\tsub\n", f.step.step_base).as_bytes())
+        .await;
+    let marker = hostile_subrepo(&f).await;
+    f.change();
+    assert_eq!(
+        f.build().await.err().unwrap().to_string(),
+        "git_driver_declared"
+    );
+    assert!(!marker.exists());
+    assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
+    assert!(f.work.clean_at(&f.step.step_base).await.is_err());
+    assert!(!marker.exists());
+}
+
+/// Status never enters a subrepository introduced only through the Agent's index.
+#[tokio::test]
+async fn b5_f1_index_gitlink_filter() {
+    let f = Fixture::new().await;
+    let marker = hostile_subrepo(&f).await;
+    f.work
+        .git
+        .run(&[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "160000",
+            &f.step.step_base,
+            "sub",
+        ])
+        .await
+        .unwrap();
+    f.change();
+    assert!(f.build().await.is_err());
+    assert!(!marker.exists());
+    assert!(f.work.clean_at(&f.step.step_base).await.is_err());
+    assert!(!marker.exists());
+}
+
+/// The binary macro in any tree attribute casing refuses secret-bearing changes.
+#[tokio::test]
+async fn b5_f1_binary_tree() {
+    for name in [".gitattributes", ".GitAttributes"] {
+        let mut f = Fixture::new().await;
+        let oid = f.blob(b"* binary\n").await;
+        f.set_base(format!("100644 blob {oid}\t{name}\n").as_bytes())
+            .await;
+        file(
+            f.work.git.root(),
+            "src/file.rs",
+            b"EXAMPLE_SECRET=fixture\n",
+        );
+        assert_eq!(
+            f.build().await.err().unwrap().to_string(),
+            "git_driver_declared"
+        );
+        assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
+    }
+}
+
+/// A tiny binary threshold cannot omit secret-bearing text from the scan diff.
+#[tokio::test]
+async fn b5_f1_bigfile_secret() {
+    let mut f = Fixture::new().await;
+    f.work
+        .git
+        .run(&["config", "--local", "core.bigFileThreshold", "1"])
+        .await
+        .unwrap();
+    f.save_controls().await;
+    file(
+        f.work.git.root(),
+        "src/file.rs",
+        b"EXAMPLE_SECRET=fixture\n",
+    );
+    assert!(
+        f.build()
+            .await
+            .err()
+            .unwrap()
+            .chain()
+            .any(|e| e.to_string() == "secret_detected")
+    );
+    assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
+}
+
+/// Ident normalization cannot hide a scope-external rewrite beside an allowed change.
+#[tokio::test]
+async fn b5_f1_ident_scope() {
+    let mut f = Fixture::new().await;
+    let attr = f.blob(b"outside ident\n").await;
+    let original = f.blob(b"$Id$\n").await;
+    f.set_base(
+        format!("100644 blob {attr}\t.gitattributes\n100644 blob {original}\toutside\n").as_bytes(),
+    )
+    .await;
+    file(f.work.git.root(), ".gitattributes", b"outside ident\n");
+    file(
+        f.work.git.root(),
+        "outside",
+        b"$Id: EXAMPLE_SECRET=fixture $\n",
+    );
+    f.change();
+    assert_eq!(
+        f.build().await.err().unwrap().to_string(),
+        "git_driver_declared"
+    );
+    assert_eq!(f.work.ref_value().await.unwrap(), f.step.step_base);
+}
+
+/// Symbolic Task refs cannot redirect adoption to the Goal branch.
+#[tokio::test]
+async fn b5_f1_symbolic_task_ref() {
+    let f = Fixture::new().await;
+    f.change();
+    f.work
+        .git
+        .run(&[
+            "update-ref",
+            "refs/heads/rrx/goal/fixture",
+            &f.step.step_base,
+        ])
+        .await
+        .unwrap();
+    f.work
+        .git
+        .run(&[
+            "symbolic-ref",
+            &f.work.branch,
+            "refs/heads/rrx/goal/fixture",
+        ])
+        .await
+        .unwrap();
+    assert!(f.work.ref_value().await.is_err());
+    assert!(f.build().await.is_err());
+    assert_eq!(
+        f.work
+            .git
+            .text(&["rev-parse", "refs/heads/rrx/goal/fixture"])
+            .await
+            .unwrap(),
+        f.step.step_base
+    );
+}
+
+/// Exited adoption rebuilds interrupted diff publication and finishes with sealed evidence.
+#[tokio::test]
+async fn b5_f1_artifact_resume_adoption() {
+    for crash_point in 0..3 {
+        let mut f = Fixture::new().await;
+        f.change();
+        f.build().await.unwrap();
+        let path = f.attempt.join("diff.patch");
+        let diff = std::fs::read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let mut artifact = PendingArtifact::new(&path).unwrap();
+        let count = [0, diff.len() / 2, diff.len()][crash_point];
+        artifact
+            .pending
+            .as_file_mut()
+            .write_all(&diff[..count])
+            .unwrap();
+        artifact.pending.keep().unwrap();
+        assert!(!path.exists());
+        let candidate = f.build().await.unwrap();
+        f.step.state = "committed".into();
+        f.step.result_commit = Some(candidate.commit.clone());
+        f.step.result_tree = Some(candidate.tree);
+        f.step.body["commit_evidence"] = candidate.evidence;
+        diff_evidence(&f.step, &f.attempt).unwrap();
+        AdoptionChecker::finish(&f.work, &f.step).await.unwrap();
+        assert_eq!(f.work.ref_value().await.unwrap(), candidate.commit);
+        assert_eq!(std::fs::read(&path).unwrap(), diff);
+        assert_eq!(
+            std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o400
+        );
+    }
 }
 /// Captured bytes become the recorded commit and are adopted with a clean matching checkout.
 #[tokio::test]

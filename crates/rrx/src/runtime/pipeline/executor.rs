@@ -119,7 +119,7 @@ impl Runtime {
                 if let Some(evidence) = secret_evidence(&error) {
                     store.pipeline_hold_secret(&self.owner, &cursor, &evidence)?;
                 } else {
-                    store.pipeline_hold(&self.owner, &cursor, "worktree_drift", None)?;
+                    store.pipeline_hold(&self.owner, &cursor, preflight_reason(&error), None)?;
                 }
                 return Ok(LaunchResult::Held);
             }
@@ -203,6 +203,7 @@ impl Runtime {
                     .context("pipeline_progress_write_failed")?
                     .1;
             }
+            adoption::diff_evidence(&step, &attempt)?;
             AdoptionChecker::finish(&work, &step).await?;
             // Re-read retained output even when resuming after the ref update.
             adoption::evidence(&step, &attempt)?;
@@ -374,7 +375,7 @@ impl Runtime {
                             .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))),
                 "materialization_partial"
             );
-            git.reject_drivers(&run.base_commit).await?;
+            git.reject_tree_drivers(&run.base_commit).await?;
             let journals = self
                 .owner
                 .store
@@ -407,6 +408,8 @@ impl Runtime {
             };
             let observed = find(&goal_ref);
             let task_ref = format!("refs/heads/{branch}");
+            git.require_direct_ref(&goal_ref).await?;
+            git.require_direct_ref(&task_ref).await?;
             let registered = git.run(&["worktree", "list", "--porcelain", "-z"]).await?;
             let present = registered
                 .split(|b| *b == 0)
@@ -432,6 +435,7 @@ impl Runtime {
                     );
                     git.run(&[
                         "update-ref",
+                        "--no-deref",
                         &goal_ref,
                         &create.new_commit,
                         &create.old_commit,
@@ -463,6 +467,7 @@ impl Runtime {
                 git.run(&[
                     "worktree",
                     "add",
+                    "--no-checkout",
                     "-b",
                     branch,
                     work_path.to_str().context("work path encoding")?,
@@ -472,6 +477,9 @@ impl Runtime {
             }
             let work = self.task_workspace(&run, &step, &project.root)?;
             work.git.reject_drivers(&step.step_base).await?;
+            if absent {
+                work.git.run(&["reset", "--hard", &run.base_commit]).await?;
+            }
             work.clean_at(&run.base_commit).await?;
             let controls = work.controls().await?;
             self.owner
@@ -511,6 +519,26 @@ impl Runtime {
         Ok(true)
     }
 }
+fn preflight_reason(error: &anyhow::Error) -> &'static str {
+    const REASONS: &[&str] = &[
+        "task_scope_unresolved",
+        "git_control_changed",
+        "git_driver_declared",
+        "symbolic_pipeline_ref",
+        "agent_commit",
+        "worktree_drift",
+        "Git timeout",
+    ];
+    error
+        .chain()
+        .find_map(|cause| {
+            REASONS
+                .iter()
+                .copied()
+                .find(|reason| cause.to_string() == *reason)
+        })
+        .unwrap_or("executor_preflight_failed")
+}
 
 fn secret_evidence(error: &anyhow::Error) -> Option<serde_json::Value> {
     let hit = error.downcast_ref::<SecretHit>()?;
@@ -529,4 +557,29 @@ fn secret_evidence(error: &anyhow::Error) -> Option<serde_json::Value> {
         })
         .unwrap_or_else(|| "output".into());
     Some(json!({"pattern":hit.pattern,"file":file,"offset_sha256":hit.offset_sha256}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    /// Preflight retains fixed actionable reasons and never persists arbitrary error text.
+    #[test]
+    fn b5_f1_preflight_reasons() {
+        for reason in [
+            "task_scope_unresolved",
+            "git_control_changed",
+            "git_driver_declared",
+            "symbolic_pipeline_ref",
+            "agent_commit",
+            "worktree_drift",
+            "Git timeout",
+        ] {
+            let error = anyhow::anyhow!(reason).context("untrusted wrapper");
+            assert_eq!(preflight_reason(&error), reason);
+        }
+        assert_eq!(
+            preflight_reason(&anyhow::anyhow!("untrusted details")),
+            "executor_preflight_failed"
+        );
+    }
 }

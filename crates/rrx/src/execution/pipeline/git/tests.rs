@@ -177,6 +177,8 @@ fn b5_attribute_tokens() {
         "-diff",
         "!merge",
         "working-tree-encoding=UTF-16",
+        "binary",
+        "ident",
     ] {
         assert!(reject_attributes(format!("* {attr}\n").as_bytes()).is_err());
     }
@@ -198,6 +200,7 @@ fn b5_git_environment() {
         "GIT_CONFIG_NOSYSTEM",
         "GIT_CONFIG_GLOBAL",
         "GIT_ATTR_NOSYSTEM",
+        "GIT_NO_LAZY_FETCH",
     ];
     for (key, value) in std.get_envs() {
         assert!(allowed.contains(&key.to_str().unwrap()));
@@ -207,6 +210,7 @@ fn b5_git_environment() {
         ("GIT_CONFIG_GLOBAL", "/dev/null"),
         ("GIT_CONFIG_NOSYSTEM", "1"),
         ("GIT_ATTR_NOSYSTEM", "1"),
+        ("GIT_NO_LAZY_FETCH", "1"),
     ] {
         assert!(
             std.get_envs()
@@ -222,9 +226,24 @@ fn b5_git_environment() {
         "maintenance.auto=false",
         "commit.gpgsign=false",
         "core.autocrlf=false",
+        "diff.ignoreSubmodules=all",
+        "submodule.recurse=false",
+        "core.attributesFile=/dev/null",
+        "core.excludesFile=/dev/null",
     ] {
         assert!(args.contains(&required));
     }
+}
+
+/// Attribute inventory rejects driver declarations under any ASCII filename casing.
+#[test]
+fn b5_f1_worktree_attribute_case() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".GitAttributes");
+    std::fs::write(&path, b"* binary\n").unwrap();
+    assert!(scan_attributes(dir.path()).is_err());
+    std::fs::write(path, b"* text\n").unwrap();
+    scan_attributes(dir.path()).unwrap();
 }
 
 #[cfg(target_os = "macos")]

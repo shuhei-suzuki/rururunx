@@ -20,6 +20,10 @@ const OPTIONS: &[&str] = &[
     "maintenance.auto=false",
     "commit.gpgsign=false",
     "core.autocrlf=false",
+    "diff.ignoreSubmodules=all",
+    "submodule.recurse=false",
+    "core.attributesFile=/dev/null",
+    "core.excludesFile=/dev/null",
 ];
 
 #[derive(Clone)]
@@ -54,6 +58,7 @@ impl PipelineGit {
             .env("LANG", "en_US.UTF-8")
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_NO_LAZY_FETCH", "1")
             .env("GIT_ATTR_NOSYSTEM", "1");
         if let Some(index) = index {
             command.env("GIT_INDEX_FILE", index);
@@ -92,6 +97,18 @@ impl PipelineGit {
         identity: bool,
         limit: usize,
     ) -> Result<Vec<u8>> {
+        let (out, status) = self.execute(args, input, index, identity, limit).await?;
+        ensure!(status.success(), "Git command refused");
+        Ok(out)
+    }
+    async fn execute(
+        &self,
+        args: &[&str],
+        input: &[u8],
+        index: Option<&Path>,
+        identity: bool,
+        limit: usize,
+    ) -> Result<(Vec<u8>, std::process::ExitStatus)> {
         let mut child = OwnedProcess::spawn(self.command(args, index, identity))?;
         let mut stdin = child.child.stdin.take().context("Git stdin missing")?;
         let stdout = child.child.stdout.take().context("Git stdout missing")?;
@@ -123,8 +140,7 @@ impl PipelineGit {
             "Git group cleanup unconfirmed"
         );
         let out = observed.context("Git timeout")??;
-        ensure!(receipt.status.success(), "Git command refused");
-        Ok(out)
+        Ok((out, receipt.status))
     }
     pub(crate) async fn diff(&self, base: &str, commit: &str) -> Result<Vec<u8>> {
         let result = self
@@ -132,6 +148,7 @@ impl PipelineGit {
                 &[
                     "diff-tree",
                     "-p",
+                    "--text",
                     "--no-ext-diff",
                     "--no-textconv",
                     base,
@@ -162,6 +179,11 @@ impl PipelineGit {
         read_local_config(|args| self.run(args)).await
     }
     pub(crate) async fn reject_drivers(&self, tree: &str) -> Result<()> {
+        self.reject_tree_drivers(tree).await?;
+        scan_attributes(&self.root)
+    }
+    /// Project working files are not inputs to materializing the selected tree.
+    pub(crate) async fn reject_tree_drivers(&self, tree: &str) -> Result<()> {
         let config = self.local_config().await?;
         for item in config.split(|b| *b == 0) {
             let key = item.split(|b| *b == b'\n').next().unwrap_or_default();
@@ -172,7 +194,12 @@ impl PipelineGit {
         let entries = self.run(&["ls-tree", "-r", "-z", tree, "--"]).await?;
         for entry in entries.split(|b| *b == 0).filter(|s| !s.is_empty()) {
             let (header, path) = split_entry(entry)?;
-            if path.rsplit(|b| *b == b'/').next() == Some(b".gitattributes") {
+            ensure!(!header.starts_with(b"160000 "), "git_driver_declared");
+            if path
+                .rsplit(|b| *b == b'/')
+                .next()
+                .is_some_and(|name| name.eq_ignore_ascii_case(b".gitattributes"))
+            {
                 let oid = std::str::from_utf8(header)?
                     .split_whitespace()
                     .nth(2)
@@ -180,7 +207,6 @@ impl PipelineGit {
                 reject_attributes(&self.run(&["cat-file", "blob", oid]).await?)?;
             }
         }
-        scan_attributes(&self.root)?;
         let common = self
             .text(&["rev-parse", "--path-format=absolute", "--git-common-dir"])
             .await?;
@@ -188,6 +214,20 @@ impl PipelineGit {
         if info.try_exists()? {
             reject_attributes(&super::adoption::read_regular(&info, OUTPUT_BYTES)?)?;
         }
+        Ok(())
+    }
+    pub(crate) async fn require_direct_ref(&self, name: &str) -> Result<()> {
+        // Exit 1 proves a direct or absent ref; dangling symrefs also exit 0.
+        let (_, status) = self
+            .execute(
+                &["symbolic-ref", "--quiet", "--no-recurse", name],
+                &[],
+                None,
+                false,
+                OUTPUT_BYTES,
+            )
+            .await?;
+        ensure!(status.code() == Some(1), "symbolic_pipeline_ref");
         Ok(())
     }
 }
@@ -281,7 +321,9 @@ fn reject_attributes(bytes: &[u8]) -> Result<()> {
                     b"filter".as_slice(),
                     b"diff",
                     b"merge",
-                    b"working-tree-encoding"
+                    b"working-tree-encoding",
+                    b"binary",
+                    b"ident"
                 ]
                 .contains(&key),
                 "git_driver_declared"
@@ -303,7 +345,11 @@ fn scan_attributes(root: &Path) -> Result<()> {
                 continue;
             }
             let meta = std::fs::symlink_metadata(entry.path())?;
-            if entry.file_name() == ".gitattributes" {
+            if entry
+                .file_name()
+                .as_encoded_bytes()
+                .eq_ignore_ascii_case(b".gitattributes")
+            {
                 reject_attributes(&super::adoption::read_regular(&entry.path(), OUTPUT_BYTES)?)?;
             }
             if meta.is_dir() {

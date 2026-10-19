@@ -91,6 +91,7 @@ impl TaskWorkspace {
         Ok(())
     }
     pub(crate) async fn ref_value(&self) -> Result<String> {
+        self.git.require_direct_ref(&self.branch).await?;
         self.git
             .text(&["rev-parse", "--verify", &self.branch])
             .await
@@ -122,6 +123,7 @@ impl TaskWorkspace {
     }
     pub(crate) async fn clean_at(&self, commit: &str) -> Result<()> {
         self.identity().await?;
+        self.git.reject_drivers(commit).await?;
         ensure!(
             self.ref_value().await? == commit
                 && self.git.text(&["rev-parse", "HEAD"]).await? == commit,
@@ -129,7 +131,13 @@ impl TaskWorkspace {
         );
         ensure!(
             self.git
-                .run(&["status", "--porcelain=v1", "-z", "--untracked-files=all"])
+                .run(&[
+                    "status",
+                    "--porcelain=v1",
+                    "-z",
+                    "--untracked-files=all",
+                    "--ignore-submodules=all",
+                ])
                 .await?
                 .is_empty(),
             "worktree_drift"

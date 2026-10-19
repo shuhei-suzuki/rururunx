@@ -98,3 +98,74 @@ async fn b5_config_linked_with_extension() {
         "git_driver_declared"
     );
 }
+
+/// Default HOME attributes and ignores cannot hide text or untracked changes.
+#[tokio::test]
+async fn b5_f1_global_attributes() {
+    let mut f = Fixture::new().await;
+    let home = f._dir.path().join("home");
+    std::fs::create_dir_all(home.join(".config/git")).unwrap();
+    std::fs::write(home.join(".config/git/attributes"), b"* binary\n").unwrap();
+    std::fs::write(home.join(".config/git/ignore"), b"hidden\n").unwrap();
+    f.git.home = home.into_os_string();
+    std::fs::write(f.git.root().join("hidden"), b"EXAMPLE_SECRET=fixture\n").unwrap();
+    assert_eq!(
+        f.git
+            .run(&["status", "--porcelain=v1", "--ignore-submodules=all"])
+            .await
+            .unwrap(),
+        b"?? hidden\n"
+    );
+    f.git.run(&["add", "hidden"]).await.unwrap();
+    let tree = f.git.text(&["write-tree"]).await.unwrap();
+    let commit = String::from_utf8(
+        f.git
+            .invoke(
+                &["commit-tree", &tree, "-p", &f.base],
+                b"test\n",
+                None,
+                true,
+                4096,
+            )
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    // Without --text this also proves that the global binary attribute is disabled.
+    let diff = f
+        .git
+        .run(&[
+            "diff-tree",
+            "-p",
+            "--no-ext-diff",
+            "--no-textconv",
+            &f.base,
+            commit.trim(),
+            "--",
+        ])
+        .await
+        .unwrap();
+    assert!(crate::execution::pipeline::SecretScanner::additions(&diff).is_err());
+}
+
+/// A dangling symbolic pipeline ref is refused even when enumeration omits it.
+#[tokio::test]
+async fn b5_f1_dangling_symbolic_ref() {
+    let f = Fixture::new().await;
+    f.git.require_direct_ref("refs/heads/absent").await.unwrap();
+    f.git.require_direct_ref("refs/heads/main").await.unwrap();
+    f.git
+        .run(&[
+            "symbolic-ref",
+            "refs/heads/rrx/dangling",
+            "refs/heads/missing",
+        ])
+        .await
+        .unwrap();
+    assert!(
+        f.git
+            .require_direct_ref("refs/heads/rrx/dangling")
+            .await
+            .is_err()
+    );
+}

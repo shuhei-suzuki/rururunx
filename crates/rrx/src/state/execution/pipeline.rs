@@ -2168,9 +2168,14 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         pipeline_owner_current(&tx, owner)?;
         let (mut run, mut step) = cursor_rows(&tx, owner, cursor, true)?;
+        certifying_exit(&step)?;
         ensure!(
             run.state == "running"
                 && step.state == "exited"
+                && matches!(
+                    step.kind.as_str(),
+                    "implement" | "fix" | "review" | "confirm"
+                )
                 && step.body["provider_outcome"] == "limit",
             "pipeline limit requires known limit exit"
         );

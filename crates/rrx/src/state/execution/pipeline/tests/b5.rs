@@ -99,13 +99,46 @@ async fn b5_adopt_api_issue() {
 
 #[cfg(target_os = "macos")]
 async fn prepare_fixture() -> (Fixture, std::sync::Arc<Runtime>, String) {
+    prepare_fixture_with_file(false).await
+}
+#[cfg(target_os = "macos")]
+async fn prepare_fixture_with_file(tracked: bool) -> (Fixture, std::sync::Arc<Runtime>, String) {
     let f = fixture().await;
     let runtime = std::sync::Arc::new(Runtime::new(f.owner.clone(), f.config.clone()).unwrap());
     runtime.start_qualified_service().await.unwrap();
     let project = f.store().project(f.project).unwrap().unwrap();
     let git = crate::execution::pipeline::PipelineGit::new(&project.root).unwrap();
     git.run(&["init", "-b", "main"]).await.unwrap();
-    let tree = git.text(&["mktree"]).await.unwrap();
+    let tree = if tracked {
+        let oid = String::from_utf8(
+            git.invoke(
+                &["hash-object", "-w", "--no-filters", "--stdin"],
+                b"safe\n",
+                None,
+                false,
+                4096,
+            )
+            .await
+            .unwrap(),
+        )
+        .unwrap();
+        String::from_utf8(
+            git.invoke(
+                &["mktree"],
+                format!("100644 blob {}\ttracked\n", oid.trim()).as_bytes(),
+                None,
+                false,
+                4096,
+            )
+            .await
+            .unwrap(),
+        )
+        .unwrap()
+        .trim()
+        .into()
+    } else {
+        git.text(&["mktree"]).await.unwrap()
+    };
     let base = String::from_utf8(
         git.invoke(&["commit-tree", &tree], b"base\n", None, true, 4096)
             .await
@@ -150,6 +183,251 @@ async fn prepare_fixture() -> (Fixture, std::sync::Arc<Runtime>, String) {
         .pipeline_claim_run(&f.owner, &run, 1, &first, Some(&journal))
         .unwrap();
     (f, runtime, id)
+}
+
+/// Task-only conditional config is rejected before any file is checked out.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn b5_f1_prepare_conditional_driver() {
+    use crate::execution::pipeline::PipelineGit;
+    for condition in ["onbranch", "gitdir"] {
+        let (f, runtime, id) = prepare_fixture_with_file(true).await;
+        let project = f.store().project(f.project).unwrap().unwrap();
+        let git = PipelineGit::new(&project.root).unwrap();
+        let view = f.store().pipeline_goal_view(f.goal).unwrap();
+        let branch = view.runs[0].branch.as_ref().unwrap();
+        let work = Path::new(view.runs[0].worktree.as_ref().unwrap());
+        let root = &f.config.pipeline.as_ref().unwrap().work_root;
+        let marker = root.join("smudge-marker");
+        let include = root.join("task.inc");
+        let attributes = root.join("filter-attributes");
+        std::fs::write(&attributes, b"* filter=fixture\n").unwrap();
+        std::fs::write(
+            &include,
+            format!(
+                "[core]\nattributesFile = {}\n[filter \"fixture\"]\nsmudge = touch '{}'; cat\n",
+                attributes.display(),
+                marker.display()
+            ),
+        )
+        .unwrap();
+        let key = if condition == "onbranch" {
+            format!("includeIf.onbranch:{branch}.path")
+        } else {
+            let common = git
+                .text(&["rev-parse", "--path-format=absolute", "--git-common-dir"])
+                .await
+                .unwrap();
+            format!("includeIf.gitdir:{common}/worktrees/**.path")
+        };
+        git.run(&["config", "--local", &key, include.to_str().unwrap()])
+            .await
+            .unwrap();
+        assert!(
+            git.reject_tree_drivers(&view.runs[0].base_commit)
+                .await
+                .is_ok()
+        );
+        assert!(!runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
+        let view = f.store().pipeline_goal_view(f.goal).unwrap();
+        assert_eq!(view.steps[0].state, "held");
+        assert_eq!(view.steps[0].body["reason"], "git_driver_declared");
+        assert!(!marker.exists());
+        assert!(!work.join("tracked").exists());
+        runtime.shutdown().await.unwrap();
+    }
+}
+
+/// Project working attributes are irrelevant to materializing a clean Task tree.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn b5_f1_prepare_ignores_project_files() {
+    let (f, runtime, id) = prepare_fixture().await;
+    let project = f.store().project(f.project).unwrap().unwrap();
+    std::fs::create_dir(project.root.join("node_modules")).unwrap();
+    std::fs::write(
+        project.root.join("node_modules/.gitattributes"),
+        b"* -diff\n",
+    )
+    .unwrap();
+    assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
+    runtime.shutdown().await.unwrap();
+}
+
+/// Prepare refuses symbolic Goal refs without touching their targets.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn b5_f1_prepare_symbolic_goal() {
+    use crate::execution::pipeline::PipelineGit;
+    let (f, runtime, id) = prepare_fixture().await;
+    let project = f.store().project(f.project).unwrap().unwrap();
+    let git = PipelineGit::new(&project.root).unwrap();
+    let goal = format!("refs/heads/rrx/goal/{}", f.goal);
+    git.run(&["symbolic-ref", &goal, "refs/heads/main"])
+        .await
+        .unwrap();
+    let base = git.text(&["rev-parse", "refs/heads/main"]).await.unwrap();
+    assert!(!runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
+    assert_eq!(
+        git.text(&["rev-parse", "refs/heads/main"]).await.unwrap(),
+        base
+    );
+    assert_eq!(
+        f.store().pipeline_goal_view(f.goal).unwrap().steps[0].state,
+        "held"
+    );
+    runtime.shutdown().await.unwrap();
+}
+
+/// Executor preflight persists a declared-driver reason instead of generic worktree drift.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn b5_f1_launch_driver_reason() {
+    use sha2::{Digest, Sha256};
+    let (f, runtime, id) = prepare_fixture().await;
+    assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let work = Path::new(view.runs[0].worktree.as_ref().unwrap());
+    std::fs::write(work.join(".gitattributes"), b"* filter=fixture\n").unwrap();
+    let mut next = planned(&id, 2, 1, "implement");
+    next.step_base = view.runs[0].base_commit.clone();
+    next.input_sha256 = format!("{:x}", Sha256::digest(b"implement\n"));
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_plan_next(&f.owner, &cursor, &next, true)
+        .unwrap();
+    let result = runtime
+        .launch_pipeline_executor(f.cursor(&id), b"implement\n".to_vec())
+        .await
+        .unwrap();
+    if let crate::execution::pipeline::LaunchResult::Started(custody) = result {
+        custody.request_stop();
+        custody.wait().await.unwrap();
+        panic!("declared driver reached launch");
+    }
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    assert_eq!(view.steps.last().unwrap().state, "held");
+    assert_eq!(
+        view.steps.last().unwrap().body["reason"],
+        "git_driver_declared"
+    );
+    runtime.shutdown().await.unwrap();
+}
+
+/// The limited Store API refuses an exited Agent result carrying an exit issue.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn b5_f1_limited_issue() {
+    let f = fixture().await;
+    let id = f.claim();
+    f.launching(&id, "implement");
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_record_exit(
+            &f.owner,
+            &cursor,
+            &death(),
+            Some("limit"),
+            &json!({"issue":"output_io"}),
+        )
+        .unwrap();
+    let cursor = f.cursor(&id);
+    assert!(
+        f.store()
+            .pipeline_record_limited(&f.owner, &cursor)
+            .is_err()
+    );
+    assert_eq!(f.cursor(&id).step_version, cursor.step_version);
+}
+
+/// Secret additions beginning with pluses hold the Runtime step without moving its ref.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn b5_f1_plus_secret_held() {
+    use crate::execution::pipeline::PipelineGit;
+    let (f, runtime, id) = executor_exited_fixture().await;
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let work = Path::new(view.runs[0].worktree.as_ref().unwrap());
+    std::fs::write(work.join("src/output.rs"), b"++ EXAMPLE_SECRET=fixture\n").unwrap();
+    assert!(
+        !runtime
+            .adopt_pipeline_executor(f.cursor(&id))
+            .await
+            .unwrap()
+    );
+    let after = f.store().pipeline_goal_view(f.goal).unwrap();
+    assert_eq!(after.steps.last().unwrap().state, "held");
+    assert_eq!(
+        after.steps.last().unwrap().body["reason"],
+        "secret_detected"
+    );
+    assert_eq!(
+        PipelineGit::new(work)
+            .unwrap()
+            .text(&["rev-parse", "HEAD"])
+            .await
+            .unwrap(),
+        view.runs[0].head_commit
+    );
+    runtime.shutdown().await.unwrap();
+}
+
+/// Committed recovery holds missing diff evidence before applying the recorded ref update.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn b5_f1_missing_committed_diff() {
+    use crate::execution::pipeline::{AdoptionChecker, PipelineGit, TaskWorkspace};
+    let (f, runtime, id) = executor_exited_fixture().await;
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let run = &view.runs[0];
+    let step = view.steps.last().unwrap();
+    let project = f.store().project(f.project).unwrap().unwrap();
+    let config = f.config.pipeline.as_ref().unwrap();
+    let path = Path::new(run.worktree.as_ref().unwrap());
+    let work = TaskWorkspace::bound(
+        &project.root,
+        &config.work_root,
+        path,
+        run.branch.as_ref().unwrap(),
+        &step.step_base,
+    )
+    .unwrap();
+    let attempt = config.work_root.join("runs").join(&id).join("2-1");
+    let candidate = AdoptionChecker::build(&work, step, &["src/**".into()], &attempt)
+        .await
+        .unwrap();
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_record_commit(
+            &f.owner,
+            &cursor,
+            &candidate.commit,
+            &candidate.tree,
+            &candidate.evidence,
+        )
+        .unwrap();
+    std::fs::remove_file(attempt.join("diff.patch")).unwrap();
+    assert!(
+        !runtime
+            .adopt_pipeline_executor(f.cursor(&id))
+            .await
+            .unwrap()
+    );
+    let after = f.store().pipeline_goal_view(f.goal).unwrap();
+    assert_eq!(after.steps.last().unwrap().state, "held");
+    assert_eq!(
+        after.steps.last().unwrap().body["reason"],
+        "output_evidence_changed"
+    );
+    assert_eq!(
+        PipelineGit::new(path)
+            .unwrap()
+            .text(&["rev-parse", "HEAD"])
+            .await
+            .unwrap(),
+        run.head_commit
+    );
+    runtime.shutdown().await.unwrap();
 }
 
 /// Prepare records its journal before creating a clean registered Task worktree.

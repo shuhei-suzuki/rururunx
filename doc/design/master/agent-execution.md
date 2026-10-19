@@ -69,18 +69,33 @@ saved Git controls, and rejects repository/worktree driver declarations.
 Worktree configuration is inspected only when the common local configuration
 enables `extensions.worktreeConfig`; configuration read failures refuse execution.
 The control inventory retains `config.worktree` even while the extension is disabled.
+Prepare inspects the selected tree and common `info/attributes`, registers the Task
+with `--no-checkout`, then inspects its own conditional includes and attributes before
+checkout. Only Task worktrees receive a recursive working-file attribute scan.
+Gitlink trees, driver attributes, `binary` and `ident` are refused before status;
+attribute filenames are matched without ASCII case distinctions. Every status ignores
+submodules. Global attributes/ignore files and lazy fetching are disabled.
 
 Adoption re-reads retained stdout, stderr and last-message evidence, validating
 recorded length, SHA-256 and completeness before secret scanning. The Executor
 requires an issue-free successful exit with confirmed death, symbolic Task HEAD
 at step base, unchanged Git controls and full-path scope matches. Protected Git
-and instruction paths require explicit scope. Only regular nonbinary files are
+and instruction paths (including `.mcp.json`, `AGENTS.override.md` and `CLAUDE.local.md`)
+require explicit scope, with ASCII case-insensitive protection. Only regular nonbinary files are
 captured: at most 200 changes, one MiB per file and eight MiB of captured additions.
 Captured bytes feed filter-free plumbing through a temporary index, never Git
 add/commit. Added diff lines are scanned before the eight-MiB diff is retained.
-The Store records commit SHA/tree before ref-CAS; committed recovery trusts only
+Diffs force text and distinguish file headers from hunk additions. A complete diff
+is synced and sealed to 0400 in a same-directory temporary file before atomic rename;
+exited recovery regenerates missing or incomplete evidence. Committed recovery requires
+the recorded diff length, digest and readonly mode before moving the ref. Last-message sealing opens
+without following symlinks and changes permissions through the verified file descriptor.
+The Store records commit SHA/tree before non-dereferencing ref-CAS; symbolic Task/Goal
+refs are refused. Committed recovery trusts only
 that identity and verifies tree, parent, symbolic HEAD and clean index/worktree.
 Any exit issue or missing death confirmation is refused by the Store itself.
+Limited results require the same certification and an Agent step kind. Preflight
+failures retain fixed actionable reasons, with an opaque fallback for unknown errors.
 
 Prepare never removes pre-existing artifacts. Complete recovered task worktrees
 are verified before adoption, partial materialization is held, and absent recovered
