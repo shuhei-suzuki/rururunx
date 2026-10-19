@@ -458,6 +458,33 @@ async fn b5_prepare_materializes() {
     runtime.shutdown().await.unwrap();
 }
 
+/// Prepare checks out a non-empty base tree as a clean Task worktree holding the tracked bytes.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn b5_f2_prepare_materializes_tracked() {
+    use crate::execution::pipeline::TaskWorkspace;
+    let (f, runtime, id) = prepare_fixture_with_file(true).await;
+    assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let run = &view.runs[0];
+    assert_eq!(view.steps[0].state, "adopted");
+    let project = f.store().project(f.project).unwrap().unwrap();
+    let path = Path::new(run.worktree.as_ref().unwrap());
+    assert_eq!(std::fs::read(path.join("tracked")).unwrap(), b"safe\n");
+    TaskWorkspace::bound(
+        &project.root,
+        &f.config.pipeline.as_ref().unwrap().work_root,
+        path,
+        run.branch.as_ref().unwrap(),
+        &run.base_commit,
+    )
+    .unwrap()
+    .clean_at(&run.base_commit)
+    .await
+    .unwrap();
+    runtime.shutdown().await.unwrap();
+}
+
 /// A partial Task materialization is retained for operator recovery.
 #[cfg(target_os = "macos")]
 #[tokio::test]
