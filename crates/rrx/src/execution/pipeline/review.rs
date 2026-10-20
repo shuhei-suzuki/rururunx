@@ -82,9 +82,9 @@ impl ReviewResult {
             ensure!(ids.insert(&f.id), "verdict_schema");
             ensure!(f.file.chars().count() <= 512, "verdict_schema");
             ensure!((1..=1_000_000).contains(&f.line), "verdict_schema");
+            // Range order is left to finding filtering, which marks the finding invalid.
             ensure!(
-                f.end_line
-                    .is_none_or(|end| (1..=1_000_000).contains(&end) && f.line <= end),
+                f.end_line.is_none_or(|end| (1..=1_000_000).contains(&end)),
                 "verdict_schema"
             );
             ensure!(f.title.chars().count() <= 200, "verdict_schema");

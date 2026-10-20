@@ -1,8 +1,8 @@
 //! Host cases use real authority and the pinned native fixtures, never SQL success seeds.
 use super::*;
 use crate::execution::pipeline::{
-    LaunchResult, PipelineRole, ReviewSeverity, StepInput, review, review_prompt, review_snapshot,
-    step_arguments, test_support::FakeCli,
+    LaunchResult, PipelineGit, PipelineRole, ReviewSeverity, StepInput, review, review_prompt,
+    review_snapshot, step_arguments, test_support::FakeCli,
 };
 use std::{os::unix::fs::PermissionsExt, path::PathBuf, sync::Arc};
 
@@ -16,15 +16,35 @@ pub(super) struct ReviewFixture {
 }
 impl ReviewFixture {
     pub(super) async fn new(output: &str) -> Self {
+        Self::build(output, None).await
+    }
+    /// Plans the review on an adopted Executor commit that adds `source` to the base tree.
+    async fn after_commit(output: &str, source: &str) -> Self {
+        Self::build(output, Some(source)).await
+    }
+    async fn build(output: &str, source: Option<&str>) -> Self {
         let (f, runtime, id) = super::b5::prepare_fixture_from(fixture().await, true).await;
         runtime.wait_pipeline_test_boundary().await;
         assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
+        let seq = match source {
+            Some(source) => {
+                adopt_executor_commit(&f, &runtime, &id, source).await;
+                3
+            }
+            None => 2,
+        };
         let view = f.store().pipeline_goal_view(f.goal).unwrap();
         let task = f.store().task(f.task).unwrap().unwrap();
         let data = json!({"title":task.title,"acceptance_criteria":task.acceptance_criteria,"scope":["src/**"]});
         let nonce = Uuid::new_v4().simple().to_string();
-        let prompt = review_prompt(&nonce, &data, b"").unwrap();
-        let mut next = planned(&id, 2, 1, "review");
+        let project = f.store().project(f.project).unwrap().unwrap();
+        let diff = PipelineGit::new(&project.root)
+            .unwrap()
+            .diff(&view.runs[0].base_commit, &view.runs[0].head_commit)
+            .await
+            .unwrap();
+        let prompt = review_prompt(&nonce, &data, &diff).unwrap();
+        let mut next = planned(&id, seq, 1, "review");
         next.step_base = view.runs[0].head_commit.clone();
         next.input_sha256 = crate::execution::verification::hash(&prompt);
         next.body["review_nonce"] = json!(nonce);
@@ -33,8 +53,12 @@ impl ReviewFixture {
             .pipeline_plan_next(&f.owner, &cursor, &next, true)
             .unwrap();
         let config = f.config.pipeline.as_ref().unwrap();
-        let path = review_snapshot::snapshot_path(&config.work_root, &id, 2, 1).unwrap();
-        let attempt = config.work_root.join("runs").join(&id).join("2-1");
+        let path = review_snapshot::snapshot_path(&config.work_root, &id, seq, 1).unwrap();
+        let attempt = config
+            .work_root
+            .join("runs")
+            .join(&id)
+            .join(format!("{seq}-1"));
         let fake = FakeCli {
             directory: config.clis.claude.executable.parent().unwrap().into(),
             cli: config.clis.claude.clone(),
@@ -153,6 +177,42 @@ impl ReviewFixture {
             }
         }
     }
+}
+
+/// Adopts one real Executor commit so the run head differs from its base.
+async fn adopt_executor_commit(f: &Fixture, runtime: &Runtime, id: &str, source: &str) {
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let work = PathBuf::from(view.runs[0].worktree.as_ref().unwrap());
+    let prompt = b"Implement the accepted Task.\n";
+    let mut next = planned(id, 2, 1, "implement");
+    next.step_base = view.runs[0].base_commit.clone();
+    next.input_sha256 = crate::execution::verification::hash(prompt);
+    let cursor = f.cursor(id);
+    f.store()
+        .pipeline_plan_next(&f.owner, &cursor, &next, true)
+        .unwrap();
+    let config = f.config.pipeline.as_ref().unwrap();
+    let codex = FakeCli {
+        directory: config.clis.codex.executable.parent().unwrap().into(),
+        cli: config.clis.codex.clone(),
+    };
+    let attempt = config.work_root.join("runs").join(id).join("2-1");
+    let args = step_arguments(PipelineRole::Implement, &codex.cli, &work, &attempt, "").unwrap();
+    codex.expect_arguments(&args.iter().map(String::as_str).collect::<Vec<_>>());
+    codex.control("exec-source", source);
+    codex.control("exec-last", "Implementation complete.\n");
+    codex.control("exec-output", "{\"type\":\"turn.completed\"}\n");
+    runtime.wait_pipeline_test_boundary().await;
+    let LaunchResult::Started(custody) = runtime
+        .launch_pipeline_executor(f.cursor(id), prompt.to_vec())
+        .await
+        .unwrap()
+    else {
+        panic!("Executor did not start");
+    };
+    custody.wait().await.unwrap();
+    runtime.wait_pipeline_test_boundary().await;
+    assert!(runtime.adopt_pipeline_executor(f.cursor(id)).await.unwrap());
 }
 
 /// The generic entry point refuses every missing preflight or substituted input before tx1.
@@ -472,6 +532,21 @@ async fn b7_runtime_review_flow() {
     assert_eq!(
         std::fs::metadata(&h.attempt).unwrap().permissions().mode() & 0o777,
         0o700
+    );
+    h.close().await;
+}
+
+/// The Reviewer's stdin carries the base..head diff of the run's adopted commit.
+#[tokio::test]
+async fn b7_runtime_review_diff() {
+    let h = ReviewFixture::after_commit(&success(), "pub fn reviewed() {}\n").await;
+    let view = h.f.store().pipeline_goal_view(h.f.goal).unwrap();
+    assert_ne!(view.runs[0].head_commit, view.runs[0].base_commit);
+    h.exited().await;
+    let stdin = std::fs::read_to_string(h.fake.directory.join("stdin")).unwrap();
+    assert!(
+        stdin.contains("+++ b/src/output.rs\n@@ -0,0 +1 @@\n+pub fn reviewed() {}\n"),
+        "{stdin}"
     );
     h.close().await;
 }

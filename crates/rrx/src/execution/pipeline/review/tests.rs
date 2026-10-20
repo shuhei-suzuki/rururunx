@@ -373,15 +373,16 @@ fn b7_findings_count() {
     assert!(decode(&v).is_err());
 }
 
-/// A finding range cannot end before its starting line.
+/// An inverted finding range is schema-valid and stored intact for later filtering.
 #[test]
-fn b7_line_order() {
+fn b7_inverted_range_kept() {
     let mut v = valid();
     let mut f = finding();
     f["line"] = json!(2);
     f["end_line"] = json!(1);
-    v["structured_output"]["findings"] = json!([f]);
-    assert!(decode(&v).is_err());
+    v["structured_output"]["findings"] = json!([f.clone()]);
+    let stored = decode(&v).unwrap();
+    assert_eq!(stored["verdict"]["findings"], json!([f]));
 }
 /// Finding identities must be unique within the verdict.
 #[test]
