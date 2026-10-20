@@ -1,7 +1,7 @@
 //! Test-step entry points; scheduling remains the caller's responsibility.
 use super::*;
 use crate::execution::{
-    pipeline::{PipelineTestRunner, SecretScanner, tests_runner::selected},
+    pipeline::{PipelineTestRunner, SecretHit, SecretScanner, tests_runner::selected},
     verification::StreamEvidence,
 };
 use crate::state::pipeline::test_pass;
@@ -120,18 +120,30 @@ impl Runtime {
                         && crate::execution::verification::hash(&bytes) == evidence.sha256,
                     "test output evidence changed"
                 );
-                SecretScanner::check(&bytes)?;
+                SecretScanner::check(&bytes).with_context(|| file)?;
             }
             test_pass(&step)
         })();
         let pass = match observed {
             Ok(pass) => pass,
-            Err(_) => {
-                self.owner
+            Err(error) => {
+                let mut store = self
+                    .owner
                     .store
                     .lock()
-                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .pipeline_hold(&self.owner, &cursor, "test_evidence_incomplete", None)?;
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+                if let Some(hit) = error.downcast_ref::<SecretHit>() {
+                    let file = error
+                        .chain()
+                        .map(ToString::to_string)
+                        .find(|text| matches!(text.as_str(), "stdout.log" | "stderr.log"))
+                        .context("test secret evidence file missing")?;
+                    store.pipeline_hold_secret(&self.owner, &cursor, &json!({
+                        "pattern": hit.pattern, "file": file, "offset_sha256": hit.offset_sha256,
+                    }))?;
+                } else {
+                    store.pipeline_hold(&self.owner, &cursor, "test_evidence_incomplete", None)?;
+                }
                 return Ok(false);
             }
         };

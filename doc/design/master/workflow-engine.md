@@ -494,6 +494,9 @@ decoding and validating it. A changed catalog holds the step with
 Tests execute through `/usr/bin/sandbox-exec` with network denied and writes
 restricted to the checkout, step TMPDIR and operator-declared caches. Their
 environment is built from the pipeline allowlist without `CODEX_HOME`.
+Retained-output secret hits hold adoption with `secret_detected` and only fixed
+pattern, filename and offset-digest metadata. Read failures and digest mismatches
+remain `test_evidence_incomplete`.
 
 Checkout paths include the attempt, and reuse checks the exact gitfile registration
 under the common Git directory. SQL keeps both command ID and command index
@@ -516,15 +519,39 @@ Protected namespaces remain subject to overlap checks before creation, by resolv
 the nearest existing canonical ancestor and appending normal components. Traversal,
 dangling aliases and non-NotFound errors are refused; executables and actual write
 grants must still exist.
-Hardlink creation to outside files is denied, but a link planted by an outside
-process inside a write grant (checkout, TMPDIR or cache) allows writes to its target:
-Seatbelt checks paths, not inodes. This Low residual is realistic in shared caches;
-fresh Git checkouts and per-attempt TMPDIRs contain no such links. Like the Agent
-with its existing full-disk-read residual, test commands can read the arguments
-and environments of other same-user processes that are not Apple platform
-binaries, including rrxd. Self-only process-info permission remains the narrowest
-working form and does not block these reads. Operators must start rrxd from an
-environment without secrets. This residual awaits the owner's decision.
+Write grants do not guarantee inode isolation. Creation of hardlinks to files
+outside write grants was refused for ln and Perl link(). Before checkout reuse,
+a filesystem walk without following symlinks covers regular files, including
+ignored and untracked files, excluding the .git gitfile itself. A link count of
+two or more, or any traversal failure, causes registered-worktree removal and
+rebuilding instead of reuse. TMPDIR is newly created for each attempt. Under these
+conditions and without concurrent outside modification, the checkout and TMPDIR
+residual is Low. Caches are disabled by default. Enabling them requires a new
+dedicated cache or removal of existing hardlinks to outside files, and prohibits
+use by outside tools, sharing hardlinks with outside files and concurrent outside
+modification. This operationally dependent cache residual is Medium.
+
+An environment built from scratch prevents direct inheritance of secrets, but does
+not prevent reading arguments and environments available from other processes.
+Under the adopted test Seatbelt profile, a nonsecret marker in the parent
+environment of a same-user Homebrew python3 process was successfully read.
+Apple platform binaries have their environments stripped; their arguments are
+not protected. The same read at the Agent stage remains unverified. Temporary
+credentials are also exposed. Network denial and secret scanning cannot guarantee
+prevention of leaks through output, caches or subsequent Agents. The impact is
+High when credentials are present. Stage 1 requires starting rrxd with only
+allowlisted variables, auxiliary startup refusal of token-like variable names,
+no coexistence with same-user processes carrying credentials in their environments
+or arguments (including short-lived processes), and the owner's written acceptance
+of this residual. Both daemon execution modes refuse names exactly GITHUB_TOKEN,
+GH_TOKEN, GH_ENTERPRISE_TOKEN or GITHUB_ENTERPRISE_TOKEN, names starting with AWS_,
+and names whose ASCII-uppercased form contains TOKEN, SECRET, PASSWORD or API_KEY.
+Errors name variables without values; nothing is unset. This auxiliary refusal is
+not a safety guarantee. A dedicated macOS-user isolation and verification unit is
+mandatory before B13 (the later hardening phase) begins. Completion requires separating Agent
+and test users from token-holding processes and helpers by UID and access rights,
+verifying boundaries with nonsecret markers, and a design that keeps tokens out
+of rrxd's and its children's environments and arguments.
 
 `workflow::WorkflowEngine` initializes one exact Task workflow, then `step` reserves
 and dispatches a phase or polls its stable native Session. QUICK, STANDARD and

@@ -6,6 +6,7 @@ use crate::execution::pipeline::{
 use std::sync::Arc;
 mod r1fix;
 mod r1fix2;
+mod r3fix;
 
 async fn planned_test(
     code: &str,

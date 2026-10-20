@@ -265,6 +265,7 @@ async fn registered(project: &PipelineGit, checkout: &Path) -> Result<()> {
 }
 async fn clean(project: &PipelineGit, checkout: &Path, commit: &str) -> Result<()> {
     registered(project, checkout).await?;
+    check_checkout_links(checkout)?;
     let co = PipelineGit::new(checkout)?;
     co.reject_drivers(commit).await?;
     co.reject_unsafe_index().await?;
@@ -286,6 +287,28 @@ async fn clean(project: &PipelineGit, checkout: &Path, commit: &str) -> Result<(
         .is_empty(),
         "test checkout dirty"
     );
+    Ok(())
+}
+
+// Walk the filesystem, not Git's tracked/status listing: ignored build outputs can alias
+// outside files too. Never follow symlinks; any traversal/metadata error refuses reuse.
+fn check_checkout_links(checkout: &Path) -> Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    let mut pending = vec![checkout.to_path_buf()];
+    while let Some(path) = pending.pop() {
+        let meta = std::fs::symlink_metadata(&path)?;
+        if meta.is_dir() {
+            for entry in std::fs::read_dir(&path)? {
+                let entry = entry?;
+                if path == checkout && entry.file_name() == ".git" {
+                    continue;
+                }
+                pending.push(entry.path());
+            }
+        } else if meta.is_file() {
+            ensure!(meta.nlink() < 2, "test checkout file has multiple links");
+        }
+    }
     Ok(())
 }
 

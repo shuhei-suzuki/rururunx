@@ -2,6 +2,40 @@ use super::*;
 use crate::execution::verification::{Applicability, Category, TestsProfile};
 use std::{collections::BTreeMap, os::unix::fs::PermissionsExt};
 
+/// The checkout walk covers nested untracked files without following symlinks or the gitfile.
+#[test]
+fn b6_f3_checkout_link_walk() {
+    let dir = tempfile::tempdir().unwrap();
+    let checkout = dir.path().join("checkout");
+    std::fs::create_dir_all(checkout.join("nested/build")).unwrap();
+    let outside = dir.path().join("outside");
+    std::fs::write(&outside, b"unchanged").unwrap();
+    std::fs::hard_link(&outside, checkout.join(".git")).unwrap();
+    std::os::unix::fs::symlink(dir.path(), checkout.join("cycle")).unwrap();
+    check_checkout_links(&checkout).unwrap();
+    let link = checkout.join("nested/build/output");
+    std::fs::hard_link(&outside, &link).unwrap();
+    assert!(check_checkout_links(&checkout).is_err());
+    std::fs::remove_file(link).unwrap();
+    check_checkout_links(&checkout).unwrap();
+    assert!(check_checkout_links(&checkout.join("missing")).is_err());
+    assert_eq!(std::fs::read(outside).unwrap(), b"unchanged");
+}
+
+/// An unreadable checkout subdirectory refuses traversal rather than certifying reuse.
+#[cfg(target_os = "macos")]
+#[test]
+fn b6_f3_checkout_unreadable() {
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("unreadable");
+    std::fs::create_dir(&nested).unwrap();
+    std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let result = check_checkout_links(dir.path());
+    std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(result.is_err());
+    check_checkout_links(dir.path()).unwrap();
+}
+
 pub(crate) fn proposal(program: PathBuf) -> TestsProfile {
     TestsProfile {
         commands: vec![TestCommand {

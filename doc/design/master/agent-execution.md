@@ -351,24 +351,50 @@ Protected namespaces that do not exist yet are resolved through their nearest
 existing canonical ancestor and normal suffix; they are still checked for overlap.
 Traversal, dangling aliases and errors other than NotFound fail closed. Executables
 and actual write grants still require existence.
-Seatbelt refuses hardlink creation to outside files, but a link planted by an
-outside process inside the checkout, TMPDIR or a cache permits writes to its target
-because checks use paths rather than inodes. This is a Low residual: fresh Git
-checkouts and per-attempt TMPDIRs contain no such links; shared caches are the
-realistic route. Like the Agent with its existing full-disk-read residual, a test
-command can read arguments and environments of other same-user processes that are
-not Apple platform binaries, including rrxd. Self-only process-info permission is
-the narrowest working form but does not prevent these reads. The operator must
-start rrxd from an environment without secrets. This residual awaits the owner's
-decision.
+Write grants do not guarantee inode isolation. Creation of hardlinks to files
+outside write grants was refused for ln and Perl link(). Before checkout reuse,
+a filesystem walk without following symlinks covers regular files, including
+ignored and untracked files, excluding the .git gitfile itself. A link count of
+two or more, or any traversal failure, causes registered-worktree removal and
+rebuilding instead of reuse. TMPDIR is newly created for each attempt. Under these
+conditions and without concurrent outside modification, the checkout and TMPDIR
+residual is Low. Caches are disabled by default. Enabling them requires a new
+dedicated cache or removal of existing hardlinks to outside files, and prohibits
+use by outside tools, sharing hardlinks with outside files and concurrent outside
+modification. This operationally dependent cache residual is Medium.
+
+An environment built from scratch prevents direct inheritance of secrets, but does
+not prevent reading arguments and environments available from other processes.
+Under the adopted test Seatbelt profile, a nonsecret marker in the parent
+environment of a same-user Homebrew python3 process was successfully read.
+Apple platform binaries have their environments stripped; their arguments are
+not protected. The same read at the Agent stage remains unverified. Temporary
+credentials are also exposed. Network denial and secret scanning cannot guarantee
+prevention of leaks through output, caches or subsequent Agents. The impact is
+High when credentials are present. Stage 1 requires starting rrxd with only
+allowlisted variables, auxiliary startup refusal of token-like variable names,
+no coexistence with same-user processes carrying credentials in their environments
+or arguments (including short-lived processes), and the owner's written acceptance
+of this residual. Both daemon execution modes refuse names exactly GITHUB_TOKEN,
+GH_TOKEN, GH_ENTERPRISE_TOKEN or GITHUB_ENTERPRISE_TOKEN, names starting with AWS_,
+and names whose ASCII-uppercased form contains TOKEN, SECRET, PASSWORD or API_KEY.
+Errors name variables without values; nothing is unset. This auxiliary refusal is
+not a safety guarantee. A dedicated macOS-user isolation and verification unit is
+mandatory before B13 (the later hardening phase) begins. Completion requires separating Agent
+and test users from token-holding processes and helpers by UID and access rights,
+verifying boundaries with nonsecret markers, and a design that keeps tokens out
+of rrxd's and its children's environments and arguments.
+
 Agent leaders require a matching cookie; absent environments are accepted only
 for sandbox-exec test leaders. Stream limits,
 timeout and drain bounds come from the admitted command. Complete failed results
 are adopted as failures in Task runs. In a Goal check run, a failed command holds
 its own step with `goal_check_failed` before any later command is planned, so
 recovery retries that command. Incomplete I/O or process-death observations hold
-the run. Test evidence is retained in pipeline step records, independently of
-native verification tables.
+the run. A retained-output SecretScanner hit holds adoption with `secret_detected`
+and only fixed pattern, filename and offset-digest metadata; read failures and
+digest mismatches remain `test_evidence_incomplete`. Test evidence is retained in
+pipeline step records, independently of native verification tables.
 
 Final command adoption atomically records pending checkout cleanup in the run
 body. The adoption entry point can resume cleanup from adopted steps and completed
