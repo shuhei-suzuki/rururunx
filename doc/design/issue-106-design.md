@@ -1208,7 +1208,7 @@ model = "<model>"
   --tools Read,Grep,Glob
   --disallowedTools Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch,Task
   --strict-mcp-config --mcp-config <A>/mcp.json        # {"mcpServers":{}}
-  --setting-sources "" --disable-slash-commands
+  --setting-sources "" --disable-slash-commands --no-session-persistence
   --model <model> --output-format json --json-schema <schema JSON>
 ```
 

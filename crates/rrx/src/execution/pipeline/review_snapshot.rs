@@ -58,7 +58,7 @@ pub(crate) async fn rebuild(
                 && Path::new(name)
                     .components()
                     .all(|c| matches!(c, Component::Normal(_)))
-                && !name.split('/').any(|n| super::git::fold_name(n) == ".git"),
+                && !name.split('/').any(is_dotgit),
             "review_snapshot_unsupported"
         );
         let mut fields = std::str::from_utf8(header)?.split_whitespace();
@@ -112,12 +112,23 @@ fn seal(path: &Path) -> Result<()> {
 
 fn reject_bare(children: &[String]) -> Result<()> {
     ensure!(
-        !["head", "objects", "refs"]
-            .iter()
-            .all(|name| children.iter().any(|c| c == name)),
+        !(children.iter().any(|c| c == "head")
+            && (children.iter().any(|c| c == "commondir")
+                || ["objects", "refs"]
+                    .iter()
+                    .all(|name| children.iter().any(|c| c == name)))),
         "review_snapshot_unsupported"
     );
     Ok(())
+}
+
+fn is_dotgit(name: &str) -> bool {
+    // Git's next_hfs_char ignores these code points during is_hfs_dotgit.
+    let visible: String = name
+        .chars()
+        .filter(|c| !matches!(c, '\u{200c}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{206a}'..='\u{206f}' | '\u{feff}'))
+        .collect();
+    super::git::fold_name(&visible) == ".git"
 }
 pub(crate) fn remove(path: &Path) -> Result<()> {
     match std::fs::symlink_metadata(path) {
@@ -173,12 +184,12 @@ fn digest(root: &Path, oid_len: usize) -> Result<String> {
         let mut names = Vec::new();
         for entry in std::fs::read_dir(dir)? {
             let path = entry?.path();
-            names.push(super::git::fold_name(
-                &path
-                    .file_name()
-                    .context("review_snapshot_path")?
-                    .to_string_lossy(),
-            ));
+            let name = path
+                .file_name()
+                .context("review_snapshot_path")?
+                .to_string_lossy();
+            ensure!(!is_dotgit(&name), "review_snapshot_unsupported");
+            names.push(super::git::fold_name(&name));
             let meta = std::fs::symlink_metadata(&path)?;
             ensure!(
                 meta.permissions().mode() & 0o222 == 0
@@ -292,6 +303,144 @@ fn object_id(kind: &str, bytes: &[u8], oid_len: usize) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Split bare layouts are refused at every disk depth with case-folded names.
+    #[test]
+    fn b7_snapshot_commondir_disk() {
+        for prefix in ["", "nested/deeper/"] {
+            for (head, common) in [("HEAD", "commondir"), ("Head", "COMMONDIR")] {
+                let dir = tempfile::tempdir().unwrap();
+                let root = dir.path().join(prefix);
+                std::fs::create_dir_all(root.join("c/objects")).unwrap();
+                std::fs::create_dir(root.join("c/refs")).unwrap();
+                for (name, content) in [
+                    (head, "ref: refs/heads/x\n"),
+                    (common, "c\n"),
+                    ("c/config", "[core]\nfsmonitor=untrusted\n"),
+                ] {
+                    let path = root.join(name);
+                    std::fs::write(&path, content).unwrap();
+                    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o444)).unwrap();
+                }
+                seal(dir.path()).unwrap();
+                assert_eq!(
+                    digest(dir.path(), 40).unwrap_err().to_string(),
+                    "review_snapshot_unsupported"
+                );
+                remove(dir.path()).unwrap();
+            }
+        }
+        assert!(reject_bare(&["head".into(), "ordinary".into()]).is_ok());
+        assert!(reject_bare(&["commondir".into(), "ordinary".into()]).is_ok());
+    }
+
+    /// HFS-ignorable aliases of .git are refused on disk at every depth.
+    #[test]
+    fn b7_snapshot_hfs_disk() {
+        for prefix in ["", "nested/deeper/"] {
+            for ignored in [
+                '\u{200c}', '\u{200d}', '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}',
+                '\u{202d}', '\u{202e}', '\u{206a}', '\u{206b}', '\u{206c}', '\u{206d}', '\u{206e}',
+                '\u{206f}', '\u{feff}',
+            ] {
+                let dir = tempfile::tempdir().unwrap();
+                std::fs::create_dir_all(dir.path().join(prefix).join(format!(".g{ignored}it")))
+                    .unwrap();
+                seal(dir.path()).unwrap();
+                assert_eq!(
+                    digest(dir.path(), 40).unwrap_err().to_string(),
+                    "review_snapshot_unsupported"
+                );
+                remove(dir.path()).unwrap();
+            }
+        }
+        assert!(!is_dotgit(".g\u{200c}it-safe"));
+        assert!(!is_dotgit("ordinary\u{200c}"));
+    }
+
+    #[cfg(target_os = "macos")]
+    async fn fixture_blob(git: &PipelineGit, bytes: &[u8]) -> String {
+        let oid = git
+            .invoke(&["hash-object", "-w", "--stdin"], bytes, None, false, 4096)
+            .await
+            .unwrap();
+        std::str::from_utf8(&oid).unwrap().trim().into()
+    }
+
+    #[cfg(target_os = "macos")]
+    async fn fixture_tree(git: &PipelineGit, entries: &str) -> String {
+        let oid = git
+            .invoke(&["mktree"], entries.as_bytes(), None, false, 4096)
+            .await
+            .unwrap();
+        std::str::from_utf8(&oid).unwrap().trim().into()
+    }
+
+    #[cfg(target_os = "macos")]
+    async fn assert_tree_refused(git: &PipelineGit, root: &Path, mut tree: String, nested: bool) {
+        if nested {
+            tree = fixture_tree(git, &format!("040000 tree {tree}\tnested\n")).await;
+        }
+        let commit = git
+            .invoke(&["commit-tree", &tree], b"fixture\n", None, true, 4096)
+            .await
+            .unwrap();
+        let work = root.join("work");
+        let path = snapshot_path(&work, "refused", 2, 1).unwrap();
+        let error = rebuild(
+            git,
+            &work,
+            &path,
+            std::str::from_utf8(&commit).unwrap().trim(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.to_string(), "review_snapshot_unsupported");
+        // Tree preflight must refuse before materializing any untrusted entry.
+        assert_eq!(std::fs::read_dir(&path).unwrap().count(), 0);
+        remove(&path).unwrap();
+    }
+
+    /// Tree preflight refuses split bare repositories before any blob is materialized.
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn b7_snapshot_commondir_tree() {
+        for nested in [false, true] {
+            for (head_name, common_name) in [("HEAD", "commondir"), ("Head", "COMMONDIR")] {
+                let dir = tempfile::tempdir().unwrap();
+                let root = dir.path().canonicalize().unwrap();
+                let project = root.join("project");
+                std::fs::create_dir(&project).unwrap();
+                let git = PipelineGit::new(&project).unwrap();
+                git.run(&["init"]).await.unwrap();
+                let head = fixture_blob(&git, b"ref: refs/heads/x\n").await;
+                let common = fixture_blob(&git, b"c\n").await;
+                let config = fixture_blob(&git, b"[core]\nfsmonitor=untrusted\n").await;
+                let child = fixture_tree(&git, &format!("100644 blob {head}\tentry\n")).await;
+                let c = fixture_tree(&git, &format!("040000 tree {child}\tobjects\n040000 tree {child}\trefs\n100644 blob {config}\tconfig\n")).await;
+                let tree = fixture_tree(&git, &format!("100644 blob {head}\t{head_name}\n100644 blob {common}\t{common_name}\n040000 tree {c}\tc\n")).await;
+                assert_tree_refused(&git, &root, tree, nested).await;
+            }
+        }
+    }
+
+    /// Tree preflight refuses HFS .git aliases before any blob is materialized.
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn b7_snapshot_hfs_tree() {
+        for nested in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path().canonicalize().unwrap();
+            let project = root.join("project");
+            std::fs::create_dir(&project).unwrap();
+            let git = PipelineGit::new(&project).unwrap();
+            git.run(&["init"]).await.unwrap();
+            let blob = fixture_blob(&git, b"safe\n").await;
+            let child = fixture_tree(&git, &format!("100644 blob {blob}\tconfig\n")).await;
+            let tree = fixture_tree(&git, &format!("040000 tree {child}\t.g\u{200c}it\n")).await;
+            assert_tree_refused(&git, &root, tree, nested).await;
+        }
+    }
 
     /// Every directory is checked for case-folded implicit bare-repository names.
     #[test]

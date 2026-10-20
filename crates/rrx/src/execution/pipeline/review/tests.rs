@@ -550,6 +550,7 @@ fn b7_prompt_secret_gate() {
     for (task, diff) in [
         (json!("EXAMPLE_TOKEN=fixture"), b"safe".as_slice()),
         (json!("safe"), b"+EXAMPLE_SECRET=fixture".as_slice()),
+        (json!("safe"), br#"+{"k":"gh\u0070_fixture"}"#.as_slice()),
     ] {
         assert!(
             review_prompt("1234567890abcdef1234567890abcdef", &task, diff)
@@ -576,6 +577,18 @@ fn b7_stream_secret_gate() {
     let mut safe = ReviewStreamScan::default();
     safe.append(b"ordinary diagnostics");
     assert!(safe.hit.is_none());
+}
+
+/// Scanner errors retain a hold marker even when no secret pattern was identified.
+#[test]
+fn b7_stream_scan_error() {
+    let mut scan = ReviewStreamScan::default();
+    scan.append(b"ordinary diagnostics");
+    assert!(scan.hit.is_none());
+    scan.append(&vec![b'x'; REVIEW_BYTES + 1537]);
+    assert_eq!(scan.hit, Some(json!({"pattern":"scan_failed"})));
+    scan.append(b"later safe diagnostics");
+    assert_eq!(scan.hit, Some(json!({"pattern":"scan_failed"})));
 }
 
 fn retained_fixture(result: &[u8], stderr: &[u8]) -> (tempfile::TempDir, PipelineStep) {

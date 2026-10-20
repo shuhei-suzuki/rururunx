@@ -127,7 +127,7 @@ impl StepLauncher {
                     input.schema == super::review::REVIEW_SCHEMA,
                     "review_schema_mismatch"
                 );
-                super::SecretScanner::check(&input.prompt)?;
+                super::review::scan_raw(&input.prompt, 0)?;
                 let git = super::PipelineGit::new(&project.root)?;
                 let diff = git.diff(&run.base_commit, &step.step_base).await?;
                 let prompt = super::review::review_prompt(nonce, &task, &diff)?;

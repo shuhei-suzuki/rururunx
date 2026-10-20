@@ -2657,6 +2657,19 @@ impl Store {
         next: &PipelineStep,
         workspace_verified: bool,
     ) -> Result<()> {
+        if next.kind == "review" {
+            ensure!(
+                [
+                    "review_nonce_verified",
+                    "snapshot_tree",
+                    "adoption",
+                    "secret"
+                ]
+                .iter()
+                .all(|key| next.body.get(key).is_none()),
+                "review_store_fields_reserved"
+            );
+        }
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;

@@ -228,6 +228,7 @@ async fn b7_generic_review_preflight() {
         ("schema", "review_schema_mismatch"),
         ("prompt", "review_input_changed"),
         ("secret", "secret_detected"),
+        ("escaped_secret", "secret_detected"),
     ] {
         let h = ReviewFixture::new(&success()).await;
         h.runtime.wait_pipeline_test_boundary().await;
@@ -269,6 +270,7 @@ async fn b7_generic_review_preflight() {
             "schema" => input.schema = "{}".into(),
             "prompt" => input.prompt = b"substituted prompt".to_vec(),
             "secret" => input.prompt = b"EXAMPLE_TOKEN=fixture".to_vec(),
+            "escaped_secret" => input.prompt = br#"{"k":"gh\u0070_fixture"}"#.to_vec(),
             _ => {}
         }
         h.runtime.wait_pipeline_test_boundary().await;
@@ -870,5 +872,41 @@ async fn b7_store_plan_scan() {
             .is_some()
     );
     assert_eq!(f.store().pipeline_goal_view(f.goal).unwrap().steps.len(), 1);
+    runtime.shutdown().await.unwrap();
+}
+
+/// Planner input cannot claim Store preflight, adoption or secret evidence.
+#[tokio::test]
+async fn b7_store_plan_reserved_fields() {
+    let (f, runtime, id) = super::b5::prepare_fixture_from(fixture().await, true).await;
+    runtime.wait_pipeline_test_boundary().await;
+    assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
+    let before = f.store().pipeline_goal_view(f.goal).unwrap();
+    let mut next = planned(&id, 2, 1, "review");
+    next.step_base = before.runs[0].head_commit.clone();
+    let cursor = f.cursor(&id);
+    for key in [
+        "review_nonce_verified",
+        "snapshot_tree",
+        "adoption",
+        "secret",
+    ] {
+        for value in [Value::Null, json!(true), json!("claimed")] {
+            next.body[key] = value;
+            let error = f
+                .store()
+                .pipeline_plan_next(&f.owner, &cursor, &next, true)
+                .unwrap_err();
+            assert_eq!(error.to_string(), "review_store_fields_reserved", "{key}");
+            let after = f.store().pipeline_goal_view(f.goal).unwrap();
+            assert_eq!(after.steps, before.steps);
+            assert_eq!(after.runs, before.runs);
+            next.body.as_object_mut().unwrap().remove(key);
+        }
+    }
+    f.store()
+        .pipeline_plan_next(&f.owner, &cursor, &next, true)
+        .unwrap();
+    assert_eq!(f.store().pipeline_goal_view(f.goal).unwrap().steps.len(), 2);
     runtime.shutdown().await.unwrap();
 }
