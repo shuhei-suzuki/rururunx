@@ -5,21 +5,74 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   check:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_INCREMENTAL: 0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 2
+      - name: Detect code changes
+        id: changes
+        shell: bash
+        run: |
+          code_changed=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            if git rev-parse --verify 'HEAD^2' > /dev/null 2>&1 &&
+               git diff --name-only --no-renames HEAD^1 HEAD -- > "$RUNNER_TEMP/ci-changed-paths" &&
+               [ -s "$RUNNER_TEMP/ci-changed-paths" ]; then
+              code_changed=false
+              while IFS= read -r path; do
+                case "$path" in
+                  doc/*) ;;
+                  *) code_changed=true ;;
+                esac
+              done < "$RUNNER_TEMP/ci-changed-paths"
+            fi
+          fi
+          printf 'code_changed=%s\n' "$code_changed" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@1.91.1
+        if: steps.changes.outputs.code_changed == 'true'
         with:
           components: rustfmt, clippy
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: cache
+        if: steps.changes.outputs.code_changed == 'true'
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+          restore-keys: cargo-v1-${{ runner.os }}-${{ runner.arch }}-
       - run: cargo fmt --all -- --check
+        if: steps.changes.outputs.code_changed == 'true'
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+        if: steps.changes.outputs.code_changed == 'true'
       - run: cargo test --locked --workspace
-      - run: cargo build --locked --workspace
+        id: test
+        if: steps.changes.outputs.code_changed == 'true'
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: >-
+          steps.changes.outputs.code_changed == 'true' &&
+          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          steps.test.outcome == 'success' && steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ steps.cache.outputs.cache-primary-key }}
       - run: cargo build --locked --release --workspace
+        if: steps.changes.outputs.code_changed == 'true' && github.event_name == 'push'
