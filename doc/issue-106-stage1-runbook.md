@@ -38,6 +38,8 @@ or registration mismatch failures; `tmpdir_remove` identifies TMPDIR removal.
 `cleanup_sweep` identifies an inventory/read failure and reports the derived
 checkout path; it uses the same per-obligation backoff. If recording is unavailable,
 the daemon logs only the fixed failure class and continues with other runs.
+Control-boundary contention is deferred to the next sweep without recording a
+failure, changing an obligation's backoff or logging a cleanup failure.
 Cleanup never holds, abandons or reopens a run, and never changes cursor versions.
 The daemon retries each obligation after an exponential delay (2 to 256 seconds).
 Restore permissions on the reported private path and let the sweep retry; no

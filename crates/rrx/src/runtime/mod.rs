@@ -27,6 +27,12 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum PipelineCleanupOutcome {
+    Complete,
+    BoundaryBusy,
+}
+
 pub struct Runtime {
     owner: Arc<RuntimeOwner>,
     config: Config,

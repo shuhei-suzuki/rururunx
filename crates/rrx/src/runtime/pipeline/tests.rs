@@ -4,6 +4,7 @@ use crate::execution::{
     pipeline::{PipelineTestRunner, SecretHit, SecretScanner, tests_runner::selected},
     verification::StreamEvidence,
 };
+use crate::runtime::PipelineCleanupOutcome;
 use crate::state::pipeline::test_pass;
 use serde_json::json;
 
@@ -19,6 +20,10 @@ impl Runtime {
     #[cfg(all(test, target_os = "macos"))]
     pub(crate) fn pipeline_test_service_running(&self) -> bool {
         self.service_running()
+    }
+    #[cfg(all(test, target_os = "macos"))]
+    pub(crate) async fn hold_pipeline_test_boundary(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        self.control_admission.clone().lock_owned().await
     }
     /// Prepares only a planned step's detached checkout and launches with the shared custody.
     pub async fn launch_pipeline_test(&self, cursor: PipelineCursor) -> Result<LaunchResult> {
@@ -194,16 +199,16 @@ impl Runtime {
         Ok(true)
     }
 
-    pub(crate) async fn sweep_pipeline_test_cleanup(&self) -> Result<()> {
+    pub(crate) async fn sweep_pipeline_test_cleanup(&self) -> Result<PipelineCleanupOutcome> {
         let Ok(_sweep) = self.pipeline_cleanup_sweep.try_lock() else {
-            return Ok(());
+            return Ok(PipelineCleanupOutcome::Complete);
         };
         let runs = {
             let Ok(_boundary) = self.control_admission.try_lock() else {
-                return Ok(());
+                return Ok(PipelineCleanupOutcome::BoundaryBusy);
             };
             if !self.service_running() {
-                return Ok(());
+                return Ok(PipelineCleanupOutcome::Complete);
             }
             self.owner
                 .store
@@ -212,16 +217,22 @@ impl Runtime {
                 .pipeline_test_cleanup_runs(&self.owner)?
         };
         for id in runs {
-            if self.finish_pipeline_test_cleanup(&id).await.is_err() {
-                eprintln!("test cleanup sweep failed: run={id} class=cleanup_sweep");
-                if self.record_pipeline_cleanup_sweep_error(&id).is_err() {
-                    eprintln!(
-                        "test cleanup error could not be recorded: run={id} class=cleanup_sweep"
-                    );
+            match self.finish_pipeline_test_cleanup(&id).await {
+                Ok(PipelineCleanupOutcome::BoundaryBusy) => {
+                    return Ok(PipelineCleanupOutcome::BoundaryBusy);
+                }
+                Ok(PipelineCleanupOutcome::Complete) => {}
+                Err(_) => {
+                    eprintln!("test cleanup sweep failed: run={id} class=cleanup_sweep");
+                    if self.record_pipeline_cleanup_sweep_error(&id).is_err() {
+                        eprintln!(
+                            "test cleanup error could not be recorded: run={id} class=cleanup_sweep"
+                        );
+                    }
                 }
             }
         }
-        Ok(())
+        Ok(PipelineCleanupOutcome::Complete)
     }
 
     fn record_pipeline_cleanup_sweep_error(&self, id: &str) -> Result<()> {
@@ -253,9 +264,11 @@ impl Runtime {
         Ok(())
     }
 
-    async fn finish_pipeline_test_cleanup(&self, id: &str) -> Result<()> {
+    async fn finish_pipeline_test_cleanup(&self, id: &str) -> Result<PipelineCleanupOutcome> {
         let pending = {
-            let _boundary = self.control_admission.try_lock()?;
+            let Ok(_boundary) = self.control_admission.try_lock() else {
+                return Ok(PipelineCleanupOutcome::BoundaryBusy);
+            };
             self.owner
                 .store
                 .lock()
@@ -290,15 +303,18 @@ impl Runtime {
             } else {
                 None
             };
+            // Attempts/cookies have disjoint paths. A launch may proceed during removal;
+            // the result transaction must still revalidate the current owner/epoch.
+            // Shutdown holds this boundary while joining the supervisor: never wait here.
+            let Ok(_boundary) = self.control_admission.try_lock() else {
+                return Ok(PipelineCleanupOutcome::BoundaryBusy);
+            };
             if let Some((class, path)) = &failure {
                 eprintln!(
                     "test cleanup pending: run={id} class={class} path={}",
                     path.display()
                 );
             }
-            // Attempts/cookies have disjoint paths. A launch may proceed during removal;
-            // the result transaction must still revalidate the current owner/epoch.
-            let _boundary = self.control_admission.try_lock()?;
             self.owner
                 .store
                 .lock()
@@ -311,6 +327,6 @@ impl Runtime {
                         .map(|(class, path)| (*class, path.as_path())),
                 )?;
         }
-        Ok(())
+        Ok(PipelineCleanupOutcome::Complete)
     }
 }

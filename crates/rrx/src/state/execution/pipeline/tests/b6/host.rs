@@ -10,6 +10,7 @@ mod r3fix;
 mod r4fix;
 mod r5fix;
 mod r6fix;
+mod r7fix;
 
 async fn planned_test(
     code: &str,
