@@ -4,6 +4,7 @@ use std::{collections::BTreeMap, fs, path::Path};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 mod pipeline;
+pub(crate) use pipeline::resolve_protected_path;
 pub use pipeline::{
     ExecutionConfig, ExecutionMode, PipelineCli, PipelineClis, PipelineConfig, ReasoningEffort,
 };

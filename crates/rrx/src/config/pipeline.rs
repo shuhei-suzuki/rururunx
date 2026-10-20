@@ -1,6 +1,56 @@
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
+
+/// Resolve a protected namespace even before its normal suffix has been created.
+pub(crate) fn resolve_protected_path(path: &Path) -> Result<PathBuf> {
+    ensure!(
+        path.is_absolute()
+            && path
+                .components()
+                .all(|c| matches!(c, Component::RootDir | Component::Normal(_)))
+            && path
+                .as_os_str()
+                .as_encoded_bytes()
+                .split(|b| *b == b'/')
+                .all(|c| c != b"." && c != b".."),
+        "protected path must be absolute with normal components"
+    );
+    let mut ancestor = path;
+    let mut suffix = Vec::new();
+    let mut resolved = loop {
+        match ancestor.canonicalize() {
+            Ok(real) => break real,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                // A dangling symlink is an existing alias, not an absent normal component.
+                match std::fs::symlink_metadata(ancestor) {
+                    Err(missing) if missing.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(other) => return Err(other.into()),
+                    Ok(_) => return Err(error.into()),
+                }
+                suffix.push(
+                    ancestor
+                        .file_name()
+                        .ok_or_else(|| anyhow::anyhow!("protected path has no ancestor"))?,
+                );
+                ancestor = ancestor
+                    .parent()
+                    .ok_or_else(|| anyhow::anyhow!("protected path has no ancestor"))?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    };
+    if !suffix.is_empty() {
+        ensure!(
+            resolved.is_dir(),
+            "protected path ancestor is not a directory"
+        );
+    }
+    for component in suffix.iter().rev() {
+        resolved.push(component);
+    }
+    Ok(resolved)
+}
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -70,10 +120,10 @@ impl PipelineConfig {
     pub(crate) fn test_protected_paths(&self) -> Result<Vec<PathBuf>> {
         let mut paths = Vec::new();
         if let Some(home) = &self.clis.codex.codex_home {
-            paths.push(home.canonicalize()?);
+            paths.push(resolve_protected_path(home)?);
         }
         for prefix in &self.path_prefix {
-            paths.push(prefix.canonicalize()?);
+            paths.push(resolve_protected_path(prefix)?);
         }
         for cli in [&self.clis.codex, &self.clis.claude] {
             let executable = cli.executable.canonicalize()?;
@@ -92,7 +142,7 @@ impl PipelineConfig {
         std::iter::once(&self.work_root)
             .chain(self.test_cache_dirs.iter())
             .chain(self.clis.codex.codex_home.iter())
-            .map(|p| Ok(p.canonicalize()?))
+            .map(|p| resolve_protected_path(p))
             .collect()
     }
 
@@ -101,7 +151,7 @@ impl PipelineConfig {
             .into_iter()
             .flatten()
         {
-            let private = private.canonicalize()?;
+            let private = resolve_protected_path(private)?;
             ensure!(
                 !project.starts_with(&private) && !private.starts_with(project),
                 "Project overlaps pipeline private directory"

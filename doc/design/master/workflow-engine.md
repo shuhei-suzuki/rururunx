@@ -512,6 +512,19 @@ executables' real paths and parents, as well as managed state and repository
 namespaces. Caches remain shared across Projects, so poisoning can affect another
 Project's test results. Admission and recheck reject programs under work_root,
 caches or CODEX_HOME, and compute executable hashes on blocking workers.
+Protected namespaces remain subject to overlap checks before creation, by resolving
+the nearest existing canonical ancestor and appending normal components. Traversal,
+dangling aliases and non-NotFound errors are refused; executables and actual write
+grants must still exist.
+Hardlink creation to outside files is denied, but a link planted by an outside
+process inside a write grant (checkout, TMPDIR or cache) allows writes to its target:
+Seatbelt checks paths, not inodes. This Low residual is realistic in shared caches;
+fresh Git checkouts and per-attempt TMPDIRs contain no such links. Like the Agent
+with its existing full-disk-read residual, test commands can read the arguments
+and environments of other same-user processes that are not Apple platform
+binaries, including rrxd. Self-only process-info permission remains the narrowest
+working form and does not block these reads. Operators must start rrxd from an
+environment without secrets. This residual awaits the owner's decision.
 
 `workflow::WorkflowEngine` initializes one exact Task workflow, then `step` reserves
 and dispatches a phase or polls its stable native Session. QUICK, STANDARD and

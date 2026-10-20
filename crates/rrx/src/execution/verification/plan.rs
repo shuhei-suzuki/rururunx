@@ -243,7 +243,7 @@ pub(crate) fn reject_writable_program(
     let real = program.canonicalize()?;
     for path in forbidden {
         ensure!(
-            !real.starts_with(path.canonicalize()?),
+            !real.starts_with(crate::config::resolve_protected_path(path)?),
             "verification executable is in a test writable namespace"
         );
     }

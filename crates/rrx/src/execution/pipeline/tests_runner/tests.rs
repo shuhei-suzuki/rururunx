@@ -112,6 +112,124 @@ fn b6_seatbelt_paths() {
     assert!(absolute_literal(Path::new("/")).is_err());
 }
 
+/// Absent protected namespaces still refuse descendants and containing grants.
+#[test]
+fn b6_f2_missing_forbidden_descendant() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let forbidden = root.join("not-created/worktree");
+    assert!(!forbidden.exists());
+    // The overlap check also applies before a prospective grant is created.
+    assert!(
+        check_protected_grant(&forbidden.join("cache"), std::slice::from_ref(&forbidden)).is_err()
+    );
+    let work = root.join("work");
+    let checkout = work.join("co");
+    let tmp = work.join("tmp");
+    let cache = root.join("cache");
+    for path in [&checkout, &tmp, &cache] {
+        std::fs::create_dir_all(path).unwrap();
+    }
+    // A real grant containing an absent protected descendant is refused too.
+    assert!(
+        seatbelt(
+            &checkout,
+            &tmp,
+            std::slice::from_ref(&cache),
+            &work,
+            &[cache.join("not-created/worktree")]
+        )
+        .is_err()
+    );
+}
+
+/// An absent protected namespace does not prevent a disjoint real grant.
+#[test]
+fn b6_f2_missing_forbidden_beside() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let work = root.join("work");
+    let checkout = work.join("co");
+    let tmp = work.join("tmp");
+    let cache = root.join("cache");
+    for path in [&checkout, &tmp, &cache] {
+        std::fs::create_dir_all(path).unwrap();
+    }
+    let alias = root.join("alias");
+    std::os::unix::fs::symlink(&root, &alias).unwrap();
+    let forbidden = alias.join("not-created/worktree");
+    assert_eq!(
+        resolve_protected_path(&forbidden).unwrap(),
+        root.join("not-created/worktree")
+    );
+    assert!(seatbelt(&checkout, &tmp, &[cache], &work, &[forbidden]).is_ok());
+}
+
+/// Protected path resolution rejects traversal, dangling aliases and non-NotFound errors.
+#[test]
+fn b6_f2_protected_path_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let file = root.join("file");
+    std::fs::write(&file, b"file").unwrap();
+    let looped = root.join("loop");
+    std::os::unix::fs::symlink(&looped, &looped).unwrap();
+    let dangling = root.join("dangling");
+    std::os::unix::fs::symlink(root.join("absent"), &dangling).unwrap();
+    for path in [
+        PathBuf::from("relative/missing"),
+        root.join("missing/../cache"),
+        root.join("./missing"),
+        file.join("missing"),
+        looped,
+        dangling.join("missing"),
+    ] {
+        assert!(resolve_protected_path(&path).is_err(), "{path:?}");
+    }
+}
+
+/// Missing configured namespaces remain protected without blocking unrelated programs.
+#[tokio::test]
+async fn b6_f2_missing_config_namespaces() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let mut config = protected_config(&root);
+    let home = config.clis.codex.codex_home.as_ref().unwrap();
+    std::fs::remove_dir(home).unwrap();
+    for prefix in &config.path_prefix {
+        std::fs::remove_dir(prefix).unwrap();
+    }
+    let protected = config.test_protected_paths().unwrap();
+    assert!(protected.contains(home));
+    for prefix in &config.path_prefix {
+        assert!(protected.contains(prefix));
+    }
+    config.test_cache_dirs = vec![root.join("cache/missing")];
+    let writable = config.test_writable_paths().unwrap();
+    assert!(writable.contains(&config.work_root));
+    assert!(writable.contains(&config.test_cache_dirs[0]));
+    assert!(writable.contains(home));
+    config.check_project_root(&root.join("project")).unwrap();
+    assert!(
+        config
+            .check_project_root(&config.work_root.join("project"))
+            .is_err()
+    );
+    std::fs::set_permissions(
+        &config.clis.codex.executable,
+        std::fs::Permissions::from_mode(0o700),
+    )
+    .unwrap();
+    let profile = AdmittedProfile::admit(proposal(
+        config.clis.codex.executable.canonicalize().unwrap(),
+    ))
+    .unwrap();
+    profile
+        .recheck_async(&profile.proposal.commands[0], writable)
+        .await
+        .unwrap();
+}
+
 /// Cache grants cannot include managed directories or the operator home itself.
 #[test]
 fn b6_seatbelt_protected() {

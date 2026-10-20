@@ -1,7 +1,7 @@
 //! Detached, filter-checked inputs and fixed Seatbelt policy for admitted commands.
 use super::{PipelineGit, ensure_private_directory};
 use crate::{
-    config::PipelineConfig,
+    config::{PipelineConfig, resolve_protected_path},
     execution::{
         RuntimeOwner,
         verification::{AdmittedProfile, TestCommand},
@@ -70,7 +70,7 @@ impl PipelineTestRunner {
         let task_worktree = run
             .worktree
             .as_deref()
-            .map(|p| Path::new(p).canonicalize())
+            .map(|p| resolve_protected_path(Path::new(p)))
             .transpose()?;
         if let Some(task) = &task_worktree {
             ensure!(
@@ -318,10 +318,6 @@ pub(crate) fn seatbelt(
 ) -> Result<String> {
     let home = std::env::var_os("HOME").context("HOME missing")?;
     let home = Path::new(&home).canonicalize()?;
-    let forbidden = forbidden
-        .iter()
-        .map(|p| p.canonicalize())
-        .collect::<std::io::Result<Vec<_>>>()?;
     let work_root = work_root.canonicalize()?;
     let mut grants = vec![checkout, tmp];
     grants.extend(caches.iter().map(PathBuf::as_path));
@@ -331,12 +327,10 @@ pub(crate) fn seatbelt(
     for (index, path) in grants.into_iter().enumerate() {
         let literal = absolute_literal(path)?;
         ensure!(
-            !home.starts_with(path)
-                && forbidden
-                    .iter()
-                    .all(|p| !p.starts_with(path) && !path.starts_with(p)),
+            !home.starts_with(path),
             "Seatbelt grant overlaps protected directory"
         );
+        check_protected_grant(path, forbidden)?;
         if index >= 2 {
             ensure!(
                 !path.starts_with(&work_root) && !work_root.starts_with(path),
@@ -351,6 +345,17 @@ pub(crate) fn seatbelt(
         policy.push_str(&format!("(allow file-write* (subpath \"{literal}\"))\n"));
     }
     Ok(policy)
+}
+
+fn check_protected_grant(path: &Path, forbidden: &[PathBuf]) -> Result<()> {
+    for protected in forbidden {
+        let protected = resolve_protected_path(protected)?;
+        ensure!(
+            !protected.starts_with(path) && !path.starts_with(&protected),
+            "Seatbelt grant overlaps protected directory"
+        );
+    }
+    Ok(())
 }
 
 #[cfg(all(test, target_os = "macos"))]

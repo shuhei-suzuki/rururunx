@@ -329,12 +329,14 @@ async fn b6_launch_recheck() {
         .unwrap();
     let (release, arrived) = pause_launch(LaunchPhase::Verified);
     let launch = runtime.launch_pipeline_test(f.cursor(&id));
-    let replace = async {
-        arrived.await.unwrap();
-        std::fs::write(program, b"#!/usr/bin/perl\nexit 1;\n").unwrap();
-        release.send(()).unwrap();
-    };
-    let (result, ()) = tokio::join!(launch, replace);
+    tokio::pin!(launch);
+    tokio::select! {
+        _ = &mut launch => panic!("launch completed before Verified checkpoint"),
+        arrival = arrived => arrival.expect("Verified checkpoint sender dropped"),
+    }
+    std::fs::write(program, b"#!/usr/bin/perl\nexit 1;\n").unwrap();
+    release.send(()).unwrap();
+    let result = launch.await;
     assert_held(result.unwrap()).await;
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     let step = view.steps.last().unwrap();

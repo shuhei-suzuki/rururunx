@@ -347,6 +347,20 @@ only the fixed pipeline environment and never `CODEX_HOME`. Profile body hashes,
 decoded policy and executable hashes are checked before execution. Admission and
 recheck refuse programs under work_root, any cache or CODEX_HOME; executable hashes
 are computed on blocking workers. Command IDs and indexes are immutable in SQL.
+Protected namespaces that do not exist yet are resolved through their nearest
+existing canonical ancestor and normal suffix; they are still checked for overlap.
+Traversal, dangling aliases and errors other than NotFound fail closed. Executables
+and actual write grants still require existence.
+Seatbelt refuses hardlink creation to outside files, but a link planted by an
+outside process inside the checkout, TMPDIR or a cache permits writes to its target
+because checks use paths rather than inodes. This is a Low residual: fresh Git
+checkouts and per-attempt TMPDIRs contain no such links; shared caches are the
+realistic route. Like the Agent with its existing full-disk-read residual, a test
+command can read arguments and environments of other same-user processes that are
+not Apple platform binaries, including rrxd. Self-only process-info permission is
+the narrowest working form but does not prevent these reads. The operator must
+start rrxd from an environment without secrets. This residual awaits the owner's
+decision.
 Agent leaders require a matching cookie; absent environments are accepted only
 for sandbox-exec test leaders. Stream limits,
 timeout and drain bounds come from the admitted command. Complete failed results

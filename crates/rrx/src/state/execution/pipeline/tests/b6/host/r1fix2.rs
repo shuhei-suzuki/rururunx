@@ -18,8 +18,12 @@ async fn he08_zombie_leader_before_record() {
     let (f, runtime, id) = planned_script("exit 0", 10, 1024, 1024).await;
     let (release, arrived) = pause_launch(LaunchPhase::Spawned);
     let launch = runtime.launch_pipeline_test(f.cursor(&id));
+    tokio::pin!(launch);
+    tokio::select! {
+        _ = &mut launch => panic!("launch completed before Spawned checkpoint"),
+        arrival = arrived => arrival.expect("Spawned checkpoint sender dropped"),
+    }
     let exited = async {
-        arrived.await.unwrap();
         let pid = spawned_leader().unwrap();
         // A zombie is accepted without reading its environment, so any cookie observes it.
         let cookie = rrx_process_tracker::Cookie::new("he8-zombie-cookie-1234").unwrap();
@@ -34,7 +38,8 @@ async fn he08_zombie_leader_before_record() {
         }
         release.send(()).unwrap();
     };
-    let (result, ()) = tokio::join!(launch, exited);
+    exited.await;
+    let result = launch.await;
     let LaunchResult::Started(custody) = result.unwrap() else {
         panic!("zombie test leader was not recorded");
     };

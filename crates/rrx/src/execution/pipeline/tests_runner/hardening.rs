@@ -258,7 +258,12 @@ fn b6_f1_local_sockets() {
     let owner = RuntimeOwner::open(&s.root.join("state/state.db")).unwrap();
     let socket = owner.ipc_path().with_file_name("control.sock");
     let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
-    let args = ["/usr/bin/nc", "-z", "-U", socket.to_str().unwrap()];
+    let args = [
+        "/usr/bin/perl",
+        "-e",
+        "use Socket; socket(my $s, AF_UNIX, SOCK_STREAM, 0) or exit 1; connect($s, pack_sockaddr_un($ARGV[0])) or exit 2",
+        socket.to_str().unwrap(),
+    ];
     assert!(s.status(UNRESTRICTED, &args));
     s.denied(&args);
     let code = "use Socket; socket(my $s, AF_INET, SOCK_STREAM, 0) or exit 1; bind($s, sockaddr_in(0, inet_aton('127.0.0.1'))) or exit 2; listen($s,1) or exit 3";
@@ -266,27 +271,27 @@ fn b6_f1_local_sockets() {
     s.denied(&["/usr/bin/perl", "-e", code]);
 }
 
-/// A test cannot modify an outside file through a hardlink inside its checkout.
+/// A test cannot create a hardlink to an outside file inside its checkout.
 #[test]
 fn b6_f1_hardlink() {
     let s = Sandbox::new();
     let outside = s.root.join("outside");
     std::fs::write(&outside, b"protected").unwrap();
     let link = s.checkout.join("link");
-    s.denied(&["/bin/ln", outside.to_str().unwrap(), link.to_str().unwrap()]);
-    std::fs::hard_link(&outside, &link).unwrap();
-    s.denied(&["/bin/sh", "-c", "echo changed > link"]);
+    for args in [
+        vec!["/bin/ln", outside.to_str().unwrap(), link.to_str().unwrap()],
+        vec![
+            "/usr/bin/perl",
+            "-e",
+            "link($ARGV[0], $ARGV[1]) or exit 1",
+            outside.to_str().unwrap(),
+            link.to_str().unwrap(),
+        ],
+    ] {
+        assert!(s.status(UNRESTRICTED, &args));
+        std::fs::remove_file(&link).unwrap();
+        s.denied(&args);
+        assert!(!link.exists());
+    }
     assert_eq!(std::fs::read(outside).unwrap(), b"protected");
-}
-
-/// KERN_PROCARGS2 cannot read the environment of the sandboxed command's parent.
-#[test]
-fn b6_f1_parent_environment() {
-    let s = Sandbox::new();
-    let python = python();
-    let pid = std::process::id().to_string();
-    let code = "import ctypes,sys; c=ctypes.CDLL(None); mib=(ctypes.c_int*3)(1,49,int(sys.argv[1])); n=ctypes.c_size_t(262144); b=ctypes.create_string_buffer(n.value); sys.exit(0 if c.sysctl(mib,3,b,ctypes.byref(n),None,0)==0 and n.value>0 else 1)";
-    let args = [python.to_str().unwrap(), "-I", "-c", code, &pid];
-    assert!(s.status(UNRESTRICTED, &args));
-    s.denied(&args);
 }
