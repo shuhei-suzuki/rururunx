@@ -247,12 +247,14 @@ fn he06_observable_escape() {
                 .is_some_and(|p| p.zombie) => {}
         result => result.unwrap(),
     }
+    let stdin = leader.0.stdin.take().unwrap();
     leader.0.wait().unwrap();
     wait_for(|| rustix::process::test_kill_process_group(group) == Err(rustix::io::Errno::SRCH));
     wait_for(|| identity(pid).is_ok_and(|i| i.ppid == 1));
     let found = discover_launched(&cookie, Limits::default(), Instant::now(), &launch).unwrap();
     let matched = found.processes.iter().any(|p| p.identity().pid == pid);
     kill_recorded(pid, birth);
+    drop(stdin);
     assert!(matched);
 }
 
