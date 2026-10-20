@@ -1,5 +1,5 @@
 use super::*;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{PermissionsExt, symlink};
 
 async fn checkout_after_exit() -> (Fixture, Arc<Runtime>, String, std::path::PathBuf) {
     let (f, runtime, id) = planned_test("exit 0;", 10, 1024, 1024).await;
@@ -11,6 +11,32 @@ async fn checkout_after_exit() -> (Fixture, Arc<Runtime>, String, std::path::Pat
     )
     .unwrap();
     (f, runtime, id, checkout)
+}
+
+/// Cleanup preserves a checkout under a nonprivate parent and records maintenance without changing the run.
+#[tokio::test]
+async fn b6_cleanup_parent_private() {
+    let (f, runtime, id, checkout) = checkout_after_exit().await;
+    std::fs::write(checkout.join("keep"), b"keep").unwrap();
+    let parent = checkout.parent().unwrap();
+    std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
+    let before = f.store().pipeline_goal_view(f.goal).unwrap();
+    runtime.sweep_pipeline_test_cleanup().await.unwrap();
+    assert_eq!(std::fs::read(checkout.join("keep")).unwrap(), b"keep");
+    let after = f.store().pipeline_goal_view(f.goal).unwrap();
+    let pending = after
+        .pending_cleanup
+        .iter()
+        .find(|c| c.run_id == id)
+        .expect("refused cleanup must remain pending");
+    assert_eq!(pending.failure_class.as_deref(), Some("checkout_remove"));
+    assert_eq!(pending.path.as_deref(), checkout.to_str());
+    assert_eq!(after.runs, before.runs);
+    assert_eq!(after.steps, before.steps);
+    std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+    wait_clean(&f.owner, f.goal, &id, &checkout, None).await;
+    runtime.shutdown().await.unwrap();
 }
 
 /// Cleanup unlinks a replaced checkout without touching the outside target.

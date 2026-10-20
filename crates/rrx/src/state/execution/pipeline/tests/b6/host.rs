@@ -449,6 +449,8 @@ async fn b6_checkout_rebuild() {
 /// An unregistered path at the checkout location is retained and holds launch.
 #[tokio::test]
 async fn b6_checkout_partial() {
+    use std::os::unix::fs::DirBuilderExt;
+
     let (f, runtime, id) = planned_test("exit 0;", 10, 1024, 1024).await;
     let step = f
         .store()
@@ -460,8 +462,33 @@ async fn b6_checkout_partial() {
         .clone();
     let checkout =
         PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), &step).unwrap();
-    std::fs::create_dir_all(&checkout).unwrap();
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(checkout.parent().unwrap())
+        .unwrap();
+    std::fs::create_dir(&checkout).unwrap();
     std::fs::write(checkout.join("keep"), b"keep").unwrap();
+    let cursor = f.cursor(&id);
+    let (run, step) = f
+        .store()
+        .pipeline_launch_snapshot(&f.owner, &cursor)
+        .unwrap();
+    let profile = f
+        .store()
+        .pipeline_test_context(&f.owner, &cursor)
+        .unwrap()
+        .unwrap();
+    let error = PipelineTestRunner::prepare(
+        &f.owner,
+        f.config.pipeline.as_ref().unwrap(),
+        &run,
+        &step,
+        profile,
+    )
+    .await
+    .err()
+    .expect("unregistered checkout must refuse preparation");
+    assert_eq!(error.to_string(), "test checkout registration missing");
     assert_held(launch_ready(&f, &runtime, f.cursor(&id)).await).await;
     assert_eq!(std::fs::read(checkout.join("keep")).unwrap(), b"keep");
     runtime.shutdown().await.unwrap();
