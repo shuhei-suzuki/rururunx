@@ -9,6 +9,7 @@ mod r1fix2;
 mod r3fix;
 mod r4fix;
 mod r5fix;
+mod r6fix;
 
 async fn planned_test(
     code: &str,
@@ -43,18 +44,59 @@ async fn planned_script(
         .unwrap();
     (f, runtime, id)
 }
-async fn launch_ready(runtime: &Runtime, cursor: PipelineCursor) -> LaunchResult {
+fn step_observation(f: &Fixture, cursor: &PipelineCursor) -> (String, u64) {
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let step = view
+        .steps
+        .iter()
+        .find(|s| s.run_id == cursor.run_id && s.seq == cursor.seq && s.attempt == cursor.attempt)
+        .expect("test cursor step missing");
+    (step.state.clone(), step.version)
+}
+
+async fn launch_ready(f: &Fixture, runtime: &Runtime, cursor: PipelineCursor) -> LaunchResult {
+    let mut waited = false;
     loop {
+        let before = step_observation(f, &cursor);
         match runtime.launch_pipeline_test(cursor.clone()).await.unwrap() {
             LaunchResult::Waiting => {
+                if step_observation(f, &cursor) != before {
+                    return LaunchResult::Waiting;
+                }
+                assert!(
+                    !waited,
+                    "launch returned Waiting with a free boundary and unchanged step"
+                );
                 runtime.wait_pipeline_test_boundary().await;
+                waited = true;
             }
             result => return result,
         }
     }
 }
+
+async fn adopt_ready(
+    f: &Fixture,
+    runtime: &Runtime,
+    cursor: PipelineCursor,
+) -> anyhow::Result<bool> {
+    let mut waited = false;
+    loop {
+        let before = step_observation(f, &cursor);
+        let adopted = runtime.adopt_pipeline_test(cursor.clone()).await?;
+        if adopted || step_observation(f, &cursor) != before {
+            return Ok(adopted);
+        }
+        assert!(
+            !waited,
+            "adoption returned false with a free boundary and unchanged step"
+        );
+        runtime.wait_pipeline_test_boundary().await;
+        waited = true;
+    }
+}
 async fn finish(f: &Fixture, runtime: &Runtime, id: &str, release: bool) {
-    let LaunchResult::Started(custody) = launch_ready(runtime, f.cursor(id)).await else {
+    let LaunchResult::Started(custody) = launch_ready(f, runtime, f.cursor(id)).await else {
         panic!("test did not start");
     };
     if release {
@@ -93,11 +135,14 @@ async fn b6_test_flow() {
     assert!(exited.body["launch"]["wall"].is_string());
     assert_eq!(exited.body["death_evidence"]["launch_checked"], true);
     assert_eq!(exited.body["death_evidence"]["leader_birth_matched"], true);
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     let step = view.steps.last().unwrap();
     assert_eq!(step.state, "adopted");
     assert_eq!(step.body["adoption"]["result"], "pass");
+    let checkout = PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), step).unwrap();
+    let tmp = std::path::PathBuf::from(step.body["intent"]["tmpdir"].as_str().unwrap());
+    r4fix::wait_clean(&f.owner, f.goal, &id, &checkout, Some(&tmp)).await;
     assert!(
         !PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), step)
             .unwrap()
@@ -155,7 +200,7 @@ async fn he08_platform_escape_held() {
 async fn b6_test_nonzero() {
     let (f, runtime, id) = planned_test("exit 3;", 10, 1024, 1024).await;
     finish(&f, &runtime, &id, true).await;
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     assert_eq!(
         view.steps.last().unwrap().body["adoption"]["result"],
@@ -169,7 +214,7 @@ async fn b6_test_nonzero() {
 async fn b6_test_timeout() {
     let (f, runtime, id) = planned_test("exit 0;", 1, 1024, 1024).await;
     finish(&f, &runtime, &id, false).await;
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     let step = view.steps.last().unwrap();
     assert_eq!(step.body["exit"]["timed_out"], true);
@@ -183,7 +228,7 @@ async fn b6_test_overflow() {
     for code in ["print 'x' x 4096;", "print STDERR 'x' x 4096;"] {
         let (f, runtime, id) = planned_test(code, 10, 32, 32).await;
         finish(&f, &runtime, &id, true).await;
-        assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+        assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
         let view = f.store().pipeline_goal_view(f.goal).unwrap();
         let step = view.steps.last().unwrap();
         assert_eq!(step.body["exit"]["overflow"], true);
@@ -209,7 +254,7 @@ async fn b6_test_evidence_changed() {
         .join("2-1/stdout.log");
     std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
     std::fs::write(file, b"no").unwrap();
-    assert!(!runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(!adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     assert_eq!(
         f.store()
             .pipeline_goal_view(f.goal)
@@ -286,7 +331,7 @@ async fn b6_tx1_profile_changed() {
 async fn b6_launch_profile_changed() {
     let (f, runtime, id) = planned_test("exit 0;", 10, 1024, 1024).await;
     corrupt(&f);
-    assert_held(launch_ready(&runtime, f.cursor(&id)).await).await;
+    assert_held(launch_ready(&f, &runtime, f.cursor(&id)).await).await;
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     assert!(
         !PipelineTestRunner::checkout(
@@ -305,7 +350,7 @@ async fn b6_adopt_profile_changed() {
     let (f, runtime, id) = planned_test("exit 0;", 10, 1024, 1024).await;
     finish(&f, &runtime, &id, true).await;
     corrupt(&f);
-    assert!(!runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(!adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     assert_eq!(
         f.store()
             .pipeline_goal_view(f.goal)
@@ -340,7 +385,7 @@ async fn b6_launch_recheck() {
         .pipeline_plan_next(&f.owner, &cursor, &next, true)
         .unwrap();
     let (release, arrived) = pause_launch(LaunchPhase::Verified);
-    let launch = launch_ready(&runtime, f.cursor(&id));
+    let launch = launch_ready(&f, &runtime, f.cursor(&id));
     tokio::pin!(launch);
     tokio::select! {
         _ = &mut launch => panic!("launch completed before Verified checkpoint"),
@@ -396,7 +441,7 @@ async fn b6_checkout_rebuild() {
     std::fs::write(test.checkout.join("drift"), b"dirty").unwrap();
     finish(&f, &runtime, &id, true).await;
     assert!(!test.checkout.join("drift").exists());
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     runtime.shutdown().await.unwrap();
 }
 
@@ -416,7 +461,7 @@ async fn b6_checkout_partial() {
         PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), &step).unwrap();
     std::fs::create_dir_all(&checkout).unwrap();
     std::fs::write(checkout.join("keep"), b"keep").unwrap();
-    assert_held(launch_ready(&runtime, f.cursor(&id)).await).await;
+    assert_held(launch_ready(&f, &runtime, f.cursor(&id)).await).await;
     assert_eq!(std::fs::read(checkout.join("keep")).unwrap(), b"keep");
     runtime.shutdown().await.unwrap();
 }
@@ -441,7 +486,7 @@ async fn b6_checkout_driver() {
     ])
     .await
     .unwrap();
-    assert_held(launch_ready(&runtime, f.cursor(&id)).await).await;
+    assert_held(launch_ready(&f, &runtime, f.cursor(&id)).await).await;
     let step = f
         .store()
         .pipeline_goal_view(f.goal)
@@ -488,7 +533,7 @@ async fn b6_test_environment() {
     ];
     assert!(names.lines().all(|name| allowed.contains(&name)));
     assert!(names.lines().any(|name| name == "RRX_PROCESS_COOKIE"));
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     runtime.shutdown().await.unwrap();
 }
 
@@ -545,7 +590,7 @@ async fn b6_test_pause() {
     };
     runtime.handle_control(&socket, request).await.unwrap();
     let cursor = f.cursor(&id);
-    assert!(runtime.adopt_pipeline_test(cursor.clone()).await.is_err());
+    assert!(adopt_ready(&f, &runtime, cursor.clone()).await.is_err());
     assert_eq!(f.cursor(&id).step_version, cursor.step_version);
     assert_eq!(
         f.store()
@@ -796,10 +841,7 @@ fn goal_cursor(f: &Fixture, id: &str) -> PipelineCursor {
 async fn goal_exited(code: &str) -> (Fixture, Arc<Runtime>, String) {
     let (f, runtime, task_id) = planned_test(code, 10, 1024, 1024).await;
     finish(&f, &runtime, &task_id, true).await;
-    runtime
-        .adopt_pipeline_test(f.cursor(&task_id))
-        .await
-        .unwrap();
+    adopt_ready(&f, &runtime, f.cursor(&task_id)).await.unwrap();
     let mut run = f.store().pipeline_goal_view(f.goal).unwrap().runs[0].clone();
     let mut release = planned(&task_id, 3, 1, "release");
     release.step_base = run.head_commit.clone();
@@ -831,7 +873,7 @@ async fn goal_exited(code: &str) -> (Fixture, Arc<Runtime>, String) {
     f.store()
         .pipeline_claim_run(&f.owner, &run, 1, &first, None)
         .unwrap();
-    let LaunchResult::Started(custody) = launch_ready(&runtime, goal_cursor(&f, &run.id)).await
+    let LaunchResult::Started(custody) = launch_ready(&f, &runtime, goal_cursor(&f, &run.id)).await
     else {
         panic!("Goal test did not start");
     };
@@ -847,8 +889,7 @@ async fn goal_exited(code: &str) -> (Fixture, Arc<Runtime>, String) {
 async fn b6_goal_runtime_complete() {
     let (f, runtime, id) = goal_exited("exit 0;").await;
     assert!(
-        runtime
-            .adopt_pipeline_test(goal_cursor(&f, &id))
+        adopt_ready(&f, &runtime, goal_cursor(&f, &id))
             .await
             .unwrap()
     );
@@ -875,8 +916,7 @@ async fn b6_goal_runtime_complete() {
 async fn b6_goal_runtime_failed() {
     let (f, runtime, id) = goal_exited("exit 3;").await;
     assert!(
-        !runtime
-            .adopt_pipeline_test(goal_cursor(&f, &id))
+        !adopt_ready(&f, &runtime, goal_cursor(&f, &id))
             .await
             .unwrap()
     );

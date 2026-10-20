@@ -1953,11 +1953,7 @@ impl Store {
             request_id: request.request_id,
             run_id: run.id.clone(),
             run_version: next_version(run.version)?,
-            step_version: if matches!(step.state.as_str(), "adopted" | "abandoned") {
-                step.version
-            } else {
-                next_version(step.version)?
-            },
+            step_version: next_version(step.version)?,
             next_attempt: retry.then_some(step.attempt + 1),
             state: state.into(),
             release_applied,
@@ -1968,11 +1964,9 @@ impl Store {
         if let Some(journal) = settled {
             write_journal(&tx, owner, &journal)?;
         }
-        if !matches!(step.state.as_str(), "adopted" | "abandoned") {
-            step.state = "abandoned".into();
-            step.body["death_confirmed"] = json!(true);
-            write_step(&tx, owner, &step)?;
-        }
+        step.state = "abandoned".into();
+        step.body["death_confirmed"] = json!(true);
+        write_step(&tx, owner, &step)?;
         settle_wait(&tx, owner, wait, &step)?;
         record_test_cleanup(&tx, &run.id)?;
         run.state = state.into();

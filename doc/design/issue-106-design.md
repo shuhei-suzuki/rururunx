@@ -1686,7 +1686,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | B6 | `PipelineTestRunner`、Seatbelt、`ProjectAdmitTests`、profile の照合 | AC-3 | — | `workflow-engine.md` §17、`agent-execution.md` §5 |
 | B7 | Reviewer と VerdictDecoder、snapshot、秘密スキャン | AC-4 | — | `workflow-engine.md` §6、`agent-adapter.md` §7 |
 | B8 | ふるい分け、Confirmer、fix のループ、判定 | AC-5 | — | `workflow-engine.md` §6・§7 |
-| B9 | `pipeline_tick`、release の journal、次の Task、Goal run と Goal の完了、読み取り API | AC-6 | (1) release と pause / cancel の交差（F-d4）。(2) Paused / Cancelled の Goal が release も Completed もされない（F-d5）。(3) Goal run の view だけで recover の command を組み立てられる（F-g2） | `goal-runtime.md` §6・§7、`multi-project-runtime.md` §7 |
+| B9 | `pipeline_tick`、release の journal、次の Task、Goal run と Goal の完了、読み取り API | AC-6 | (1) release と pause / cancel の交差（F-d4）。(2) Paused / Cancelled の Goal が release も Completed もされない（F-d5）。(3) Goal run の view だけで recover の command を組み立てられる（F-g2）。(4) Goal/run status に pending cleanup の義務（run/seq/attempt）、失敗区分と rrx 導出パスを表示する | `goal-runtime.md` §6・§7、`multi-project-runtime.md` §7 |
 | B10 | 起動時の照合と復旧表、正常停止、pause / cancel、`pipeline recover` | AC-7、AC-8(c)(d)(e)(f) | — | `goal-runtime.md` §14、`architecture.md` §9 |
 | B11 | 障害注入マトリクスの完了、オーナーが実 Mac で実行するチェックリストの script、受入の記録 | AC-1〜AC-8 | — | `doc/verification/issue-106-acceptance.md` |
 

@@ -22,7 +22,7 @@ async fn b6_f4_cleanup_checkout_symlink() {
     std::fs::write(outside.join("keep"), b"outside").unwrap();
     std::fs::remove_dir_all(&checkout).unwrap();
     symlink(&outside, &checkout).unwrap();
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     wait_clean(&f.owner, f.goal, &id, &checkout, None).await;
     assert!(std::fs::symlink_metadata(&checkout).is_err());
     assert_eq!(std::fs::read(outside.join("keep")).unwrap(), b"outside");
@@ -44,7 +44,7 @@ async fn b6_f4_cleanup_inner_symlink() {
     std::fs::create_dir(&outside).unwrap();
     std::fs::write(outside.join("keep"), b"outside").unwrap();
     symlink(&outside, checkout.join("link")).unwrap();
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     wait_clean(&f.owner, f.goal, &id, &checkout, None).await;
     assert!(!checkout.exists());
     assert_eq!(std::fs::read(outside.join("keep")).unwrap(), b"outside");

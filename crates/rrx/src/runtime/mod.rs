@@ -44,6 +44,8 @@ pub struct Runtime {
     pipeline_qualification_error: std::sync::Mutex<Option<String>>,
     wake: Arc<tokio::sync::Notify>,
     control_admission: Arc<tokio::sync::Mutex<()>>,
+    /// Only one maintenance sweep may remove a given attempt at a time.
+    pipeline_cleanup_sweep: tokio::sync::Mutex<()>,
     /// S3 D5: Projects whose bounded preflight has not yet joined.
     project_preflights: Arc<std::sync::Mutex<std::collections::BTreeSet<crate::domain::ProjectId>>>,
     #[cfg(test)]
@@ -103,6 +105,7 @@ impl Runtime {
             pipeline_qualification_error: std::sync::Mutex::new(None),
             wake: Arc::new(tokio::sync::Notify::new()),
             control_admission,
+            pipeline_cleanup_sweep: tokio::sync::Mutex::new(()),
             project_preflights: Arc::default(),
             #[cfg(test)]
             goal_admission_pause: std::sync::Mutex::new(None),

@@ -154,7 +154,7 @@ async fn b6_f3_test_secret_detected() {
     ] {
         let (f, runtime, id) = planned_test(code, 10, 1024, 1024).await;
         finish(&f, &runtime, &id, true).await;
-        assert!(!runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+        assert!(!adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
         let view = f.store().pipeline_goal_view(f.goal).unwrap();
         let step = view.steps.last().unwrap();
         assert_eq!(step.state, "held");
@@ -195,7 +195,7 @@ async fn b6_f3_test_incomplete_evidence() {
             std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
             std::fs::write(file, b"no").unwrap();
         }
-        assert!(!runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+        assert!(!adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
         let view = f.store().pipeline_goal_view(f.goal).unwrap();
         let step = view.steps.last().unwrap();
         assert_eq!(step.state, "held");

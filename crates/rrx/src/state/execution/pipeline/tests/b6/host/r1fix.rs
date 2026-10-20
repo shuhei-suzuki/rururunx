@@ -118,7 +118,7 @@ async fn b6_f1_cleanup_partial_batch() {
         .pipeline_plan_next(&f.owner, &cursor, &first, true)
         .unwrap();
     finish(&f, &runtime, &id, true).await;
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     let mut second = planned(&id, 3, 1, "test");
     second.step_base = head;
     second.body["command_index"] = json!(1);
@@ -133,7 +133,7 @@ async fn b6_f1_cleanup_partial_batch() {
     let second_co = PipelineTestRunner::checkout(config, &second).unwrap();
     let gitfile = second_co.join(".git");
     std::fs::write(&gitfile, b"gitdir: /nonexistent\n").unwrap();
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     r4fix::wait_clean(&f.owner, f.goal, &id, &second_co, None).await;
     let partial = f.store().pipeline_goal_view(f.goal).unwrap();
     let receipt = partial.steps.last().unwrap().clone();

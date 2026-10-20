@@ -17,7 +17,7 @@ fn tmpdir(f: &Fixture) -> std::path::PathBuf {
 async fn he08_zombie_leader_before_record() {
     let (f, runtime, id) = planned_script("exit 0", 10, 1024, 1024).await;
     let (release, arrived) = pause_launch(LaunchPhase::Spawned);
-    let launch = launch_ready(&runtime, f.cursor(&id));
+    let launch = launch_ready(&f, &runtime, f.cursor(&id));
     tokio::pin!(launch);
     tokio::select! {
         _ = &mut launch => panic!("launch completed before Spawned checkpoint"),
@@ -50,7 +50,7 @@ async fn he08_zombie_leader_before_record() {
     assert!(step.birth.as_ref().is_some_and(|b| b.contains(':')));
     assert_eq!(step.body["death_evidence"]["launch_checked"], true);
     assert_eq!(step.body["death_evidence"]["leader_birth_matched"], true);
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     let step = view.steps.last().unwrap();
     assert_eq!(step.body["adoption"]["result"], "pass");
@@ -65,7 +65,7 @@ async fn b6_s3_tmpdir_reclaimed() {
         finish(&f, &runtime, &id, true).await;
         let tmp = tmpdir(&f);
         assert!(tmp.join("scratch").is_file());
-        assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+        assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
         let view = f.store().pipeline_goal_view(f.goal).unwrap();
         let step = view.steps.last().unwrap();
         assert_eq!(step.body["adoption"]["result"], result);
@@ -135,7 +135,7 @@ fn goal_last(f: &Fixture, id: &str) -> PipelineStep {
     own.max_by_key(|s| (s.seq, s.attempt)).unwrap()
 }
 /// Claims a Goal check run over gated commands after one released Task run.
-async fn goal_commands(ids: &[&str]) -> (Fixture, Arc<Runtime>, String) {
+pub(super) async fn goal_commands(ids: &[&str]) -> (Fixture, Arc<Runtime>, String) {
     let template = proposal("/usr/bin/perl".into()).commands.remove(0);
     let commands = ids
         .iter()
@@ -182,8 +182,8 @@ async fn goal_commands(ids: &[&str]) -> (Fixture, Arc<Runtime>, String) {
     (f, runtime, run.id)
 }
 /// Launches the last planned Goal check; `fail` exists before `go` releases the command.
-async fn run_goal_test(f: &Fixture, runtime: &Runtime, id: &str, fail: bool) {
-    let LaunchResult::Started(custody) = launch_ready(runtime, goal_cursor(f, id)).await else {
+pub(super) async fn run_goal_test(f: &Fixture, runtime: &Runtime, id: &str, fail: bool) {
+    let LaunchResult::Started(custody) = launch_ready(f, runtime, goal_cursor(f, id)).await else {
         panic!("Goal test did not start");
     };
     let config = f.config.pipeline.as_ref().unwrap();
@@ -195,12 +195,9 @@ async fn run_goal_test(f: &Fixture, runtime: &Runtime, id: &str, fail: bool) {
     custody.wait().await.unwrap();
 }
 async fn adopt_goal(f: &Fixture, runtime: &Runtime, id: &str) -> bool {
-    runtime
-        .adopt_pipeline_test(goal_cursor(f, id))
-        .await
-        .unwrap()
+    adopt_ready(f, runtime, goal_cursor(f, id)).await.unwrap()
 }
-fn plan_goal(f: &Fixture, id: &str, seq: u32, index: u64, command: &str) {
+pub(super) fn plan_goal(f: &Fixture, id: &str, seq: u32, index: u64, command: &str) {
     let next = goal_step(id, seq, index, command, &goal_last(f, id).step_base);
     let cursor = goal_cursor(f, id);
     f.store()
@@ -407,7 +404,7 @@ async fn b6_f4_retry_cleanup() {
         .unwrap();
     super::r4fix::wait_clean(&f.owner, f.goal, &id, &checkout, Some(&tmp)).await;
     finish(&f, &runtime, &id, true).await;
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     assert_eq!(view.steps.last().unwrap().attempt, old.attempt + 1);
     assert_eq!(view.steps.last().unwrap().state, "adopted");

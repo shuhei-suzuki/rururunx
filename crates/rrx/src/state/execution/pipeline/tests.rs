@@ -332,6 +332,12 @@ async fn fixture_with_commands(
         .unwrap();
     let (stream, _peer) = tokio::net::UnixStream::pair().unwrap();
     let ingress = HumanIngress::from_connection(runtime, &stream).unwrap();
+    // The ingress records identity only. Drain the temporary Runtime's owner custody
+    // before returning a fixture that may later hand the owner lock to a daemon.
+    if let Some(runtime) = owned_runtime {
+        runtime.shutdown().await.unwrap();
+        drop(runtime);
+    }
     let mut store = owner.store.lock().unwrap();
     let mut project = Project::new(
         "pipeline".into(),

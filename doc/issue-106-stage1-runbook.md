@@ -18,8 +18,11 @@ outside rrxd's arguments/environment; do not add API-key names to the allowlist.
 
 Managed native no longer inherits GROK_*, CODEX_* except CODEX_HOME, BUN_*,
 OPENSSL_*, TZ, COLORTERM, LC_* except LC_ALL/LC_CTYPE/LC_MESSAGES, or
-XDG_RUNTIME_DIR. Move needed tool settings to explicit configuration. The owner
-will confirm this compatibility impact separately; it is not recorded as accepted.
+XDG_RUNTIME_DIR, and API-key variables such as OPENAI_API_KEY no longer reach
+rrxd. Move needed tool settings to explicit configuration. The owner accepted this
+compatibility impact on 2026-10-20. Before resuming managed native, authenticate
+each provider CLI with its own login (for example `codex login`, `claude` login),
+not with API-key environment variables.
 
 For direct `rrx serve`, supply an allowlisted credential-free environment before
 exec. Both modes refuse token-like names before opening state. AWS_ is matched
@@ -27,8 +30,10 @@ after ASCII uppercasing the name. Refusal reports names without values, and does
 not prove that allowed values are secret-free. Proxy URLs and other allowed
 managed-native settings must contain no embedded credentials.
 
-Goal/run status `pending_cleanup` lists each pending run/seq/attempt with its
-last failure class and rrx-derived path. `checkout_remove` includes filesystem
+The Store view's `pending_cleanup` lists each pending run/seq/attempt with its
+last failure class and rrx-derived path. Today operators can see cleanup failures
+in the daemon log; Goal/run status does not yet render these obligations (B9).
+`checkout_remove` includes filesystem
 or registration mismatch failures; `tmpdir_remove` identifies TMPDIR removal.
 `cleanup_sweep` identifies an inventory/read failure and reports the derived
 checkout path; it uses the same per-obligation backoff. If recording is unavailable,

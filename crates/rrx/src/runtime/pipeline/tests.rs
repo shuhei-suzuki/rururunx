@@ -10,8 +10,15 @@ use serde_json::json;
 impl Runtime {
     #[cfg(all(test, target_os = "macos"))]
     pub(crate) async fn wait_pipeline_test_boundary(&self) {
-        assert!(self.service_running());
+        assert!(
+            self.service_running(),
+            "pipeline test helper cannot retry: service stopped"
+        );
         drop(self.control_admission.lock().await);
+    }
+    #[cfg(all(test, target_os = "macos"))]
+    pub(crate) fn pipeline_test_service_running(&self) -> bool {
+        self.service_running()
     }
     /// Prepares only a planned step's detached checkout and launches with the shared custody.
     pub async fn launch_pipeline_test(&self, cursor: PipelineCursor) -> Result<LaunchResult> {
@@ -188,18 +195,22 @@ impl Runtime {
     }
 
     pub(crate) async fn sweep_pipeline_test_cleanup(&self) -> Result<()> {
-        let Ok(_boundary) = self.control_admission.try_lock() else {
+        let Ok(_sweep) = self.pipeline_cleanup_sweep.try_lock() else {
             return Ok(());
         };
-        if !self.service_running() {
-            return Ok(());
-        }
-        let runs = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .pipeline_test_cleanup_runs(&self.owner)?;
+        let runs = {
+            let Ok(_boundary) = self.control_admission.try_lock() else {
+                return Ok(());
+            };
+            if !self.service_running() {
+                return Ok(());
+            }
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .pipeline_test_cleanup_runs(&self.owner)?
+        };
         for id in runs {
             if self.finish_pipeline_test_cleanup(&id).await.is_err() {
                 eprintln!("test cleanup sweep failed: run={id} class=cleanup_sweep");
@@ -214,6 +225,7 @@ impl Runtime {
     }
 
     fn record_pipeline_cleanup_sweep_error(&self, id: &str) -> Result<()> {
+        let _boundary = self.control_admission.try_lock()?;
         let pending = self
             .owner
             .store
@@ -242,12 +254,14 @@ impl Runtime {
     }
 
     async fn finish_pipeline_test_cleanup(&self, id: &str) -> Result<()> {
-        let pending = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .pipeline_test_cleanup(&self.owner, id)?;
+        let pending = {
+            let _boundary = self.control_admission.try_lock()?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .pipeline_test_cleanup(&self.owner, id)?
+        };
         let config = self
             .config
             .pipeline
@@ -255,12 +269,20 @@ impl Runtime {
             .context("pipeline config missing")?;
         for (obligation, step, project) in pending {
             let checkout = PipelineTestRunner::checkout(config, &step)?;
-            let failure = if PipelineTestRunner::remove(&project, config, &step)
-                .await
-                .is_err()
-            {
+            let removed = PipelineTestRunner::remove(&project, config, &step).await;
+            let tmp_reclaimed = if removed.is_ok() {
+                let config = config.clone();
+                let step = step.clone();
+                tokio::task::spawn_blocking(move || {
+                    PipelineTestRunner::reclaim_tmpdir(&config, &step)
+                })
+                .await?
+            } else {
+                Ok(())
+            };
+            let failure = if removed.is_err() {
                 Some(("checkout_remove", checkout))
-            } else if PipelineTestRunner::reclaim_tmpdir(config, &step).is_err() {
+            } else if tmp_reclaimed.is_err() {
                 // Only the rrx-derived path is retained; never the test's recorded value.
                 let cookie = step.cookie.as_deref().context("cleanup cookie missing")?;
                 let prefix = cookie.get(..8).context("cleanup cookie short")?;
@@ -274,6 +296,9 @@ impl Runtime {
                     path.display()
                 );
             }
+            // Attempts/cookies have disjoint paths. A launch may proceed during removal;
+            // the result transaction must still revalidate the current owner/epoch.
+            let _boundary = self.control_admission.try_lock()?;
             self.owner
                 .store
                 .lock()

@@ -18,7 +18,7 @@ async fn b6_f5_cleanup_never_holds() {
     let checkout =
         PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), &step).unwrap();
     let tmp = std::path::PathBuf::from(step.body["intent"]["tmpdir"].as_str().unwrap());
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     runtime.sweep_pipeline_test_cleanup().await.unwrap();
     // Wait for the sweep's first filesystem observation, not a fixed launch delay.
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
@@ -470,7 +470,21 @@ async fn b6_f5_daemon_minimal_environment() {
         .join("rrx");
     assert!(binary.is_file(), "build the rrx binary before host cases");
     drop(f.ingress);
+    let released = Arc::downgrade(&f.owner);
     drop(f.owner);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    while released.upgrade().is_some() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "fixture retained RuntimeOwner"
+        );
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(
+        probe_lock(&state),
+        OwnerLock::Free,
+        "fixture owner lock retained"
+    );
     struct Stop {
         binary: std::path::PathBuf,
         state: std::path::PathBuf,
@@ -508,9 +522,18 @@ async fn b6_f5_daemon_minimal_environment() {
         command
     })
     .unwrap();
-    assert!(output.status.success(), "pipeline daemon start failed");
-    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["start"], "running");
+    let diagnostics = format!(
+        "fixture daemon stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.status.success(),
+        "pipeline daemon start failed: {diagnostics}"
+    );
+    let value: Value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|error| panic!("invalid daemon response: {error}; {diagnostics}"));
+    assert_eq!(value["start"], "running", "{diagnostics}");
     let output = rrx_spawn_hygiene::output_std({
         let mut command = Command::new("/usr/bin/pgrep");
         command.args(["-f", &format!("{} --config", state.display())]);

@@ -16,6 +16,7 @@ pub enum LaunchPhase {
     Verified,
     Spawned,
     Recorded,
+    Cleanup,
 }
 
 struct LaunchCheckpoint {

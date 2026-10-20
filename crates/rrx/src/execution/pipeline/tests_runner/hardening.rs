@@ -220,7 +220,14 @@ fn b6_f1_host_services() {
     }
     let _remove = RemoveJob(label.clone());
     // Read-only control succeeds without submitting any job or sharing the denied label.
-    assert!(s.status(UNRESTRICTED, &["/bin/launchctl", "list"]));
+    let mut control = std::process::Command::new("/bin/launchctl");
+    control
+        .arg("list")
+        .env_clear()
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    assert!(rrx_spawn_hygiene::status_std(control).unwrap().success());
     s.denied(&[
         "/bin/launchctl",
         "submit",
