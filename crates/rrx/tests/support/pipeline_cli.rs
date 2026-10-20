@@ -14,6 +14,7 @@ pub struct FakeCli {
 pub enum LaunchPhase {
     Intent,
     Verified,
+    Spawned,
     Recorded,
 }
 
@@ -26,6 +27,7 @@ struct LaunchCheckpoint {
 // These checkpoint tests run on Tokio's current-thread runtime.
 thread_local! {
     static LAUNCH_CHECKPOINT: std::cell::RefCell<Option<LaunchCheckpoint>> = const { std::cell::RefCell::new(None) };
+    static SPAWNED_LEADER: std::cell::Cell<Option<u32>> = const { std::cell::Cell::new(None) };
 }
 
 /// A checkpoint delays execution only; it supplies no launch or Store authority.
@@ -67,6 +69,16 @@ pub async fn launch_checkpoint(phase: LaunchPhase) {
             .expect("checkpoint arrival abandoned");
         checkpoint.wait.await.expect("launch checkpoint abandoned");
     }
+}
+
+/// Records the spawned leader PID for observation only; it supplies no signal authority.
+pub async fn spawned_checkpoint(pid: u32) {
+    SPAWNED_LEADER.set(Some(pid));
+    launch_checkpoint(LaunchPhase::Spawned).await;
+}
+
+pub fn spawned_leader() -> Option<u32> {
+    SPAWNED_LEADER.take()
 }
 
 pub async fn qualify_fixture(

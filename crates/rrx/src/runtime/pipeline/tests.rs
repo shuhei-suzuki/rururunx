@@ -135,26 +135,20 @@ impl Runtime {
                 return Ok(false);
             }
         };
+        let last =
+            step.body["command_index"].as_u64() == Some(profile.proposal.commands.len() as u64 - 1);
         let adopted = {
             let mut store = self
                 .owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            let final_goal = run.kind == "goal"
-                && step.body["command_index"].as_u64()
-                    == Some(profile.proposal.commands.len() as u64 - 1);
-            if final_goal {
-                let view = store.pipeline_goal_view(run.goal_id)?;
-                let prior_failed = view
-                    .steps
-                    .iter()
-                    .filter(|s| s.run_id == run.id && s.kind == "test" && s.state == "adopted")
-                    .any(|s| s.body["adoption"]["result"] != "pass");
-                if !pass || prior_failed {
-                    store.pipeline_hold(&self.owner, &cursor, "goal_tests_failed", None)?;
-                    return Ok(false);
-                }
+            if run.kind == "goal" && !pass {
+                // Recovery acts on the last step, so hold the failing command's own step.
+                store.pipeline_hold(&self.owner, &cursor, "goal_check_failed", None)?;
+                return Ok(false);
+            }
+            if run.kind == "goal" && last {
                 let goal = store.goal(run.goal_id)?.context("test Goal missing")?;
                 store.pipeline_complete_goal(&self.owner, &cursor, goal.version, &command.id)?;
             } else {
@@ -179,7 +173,7 @@ impl Runtime {
             return Ok(false);
         }
         // Keep this commit's checkouts until all catalog commands have finished.
-        if step.body["command_index"].as_u64() != Some(profile.proposal.commands.len() as u64 - 1) {
+        if !last {
             self.wake.notify_one();
             return Ok(true);
         }
@@ -210,6 +204,7 @@ impl Runtime {
         for step in steps {
             let checkout = PipelineTestRunner::checkout(config, &step)?;
             PipelineTestRunner::remove(&project, &checkout).await?;
+            PipelineTestRunner::reclaim_tmpdir(config, &step)?;
         }
         self.owner
             .store

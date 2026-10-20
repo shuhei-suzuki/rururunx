@@ -998,6 +998,7 @@ P9〜P12 の確認が外れたら、実装を止めて設計に戻る。黙っ�
    - tx2 が birth を記録する。
    - `death_evidence.launch_checked`・`leader_birth_matched` が true の exited になる。
    - 合格として採用される。
+   - leader が tx2 の前に zombie になっていても、同じ結果になる（テストは spawn の直後の checkpoint で leader が zombie になるのを待ってから進める）。
    - 同じ形で HE5 のコマンドを test にすると、step は held（`death_unconfirmed`）になる。
 9. **HE9**（受入、オーナーの Mac）: 普段の利用の中で、F を 10 秒・5 分・30 分・60 分前にして `discover_launched` を 20 回ずつ行う。limited になった回数・`ancestry_unconfirmed`・`ancestors_read`・所要時間を記録する。
 10. **HE10**（P9 の 2 文目の前提確認）: テストの実行ファイルが、stdout を pipe にして `/usr/bin/perl -e 'if (my $g = fork) { print "$g\n"; exit } sleep 30'`（親 P）を起動する。P は子 G を作り、G の PID を書いて exit する。テストは P を回収しない（P は zombie のまま残る）。
@@ -1375,6 +1376,8 @@ TestsProfile（`execution/verification/plan.rs:50`）の各コマンドを、そ
 - 上限: `timeout_seconds`・`drain_seconds`・`stdout_bytes`・`stderr_bytes`（`plan.rs:35-45`）。
 - 結果の採用（exited → adopted、規則 G）: 終了コード 0 なら pass、それ以外・timeout・出力の上限超過は fail。fail も、正しく観測できた結果として adopted にする。`body` に終了コード、signal、stdout / stderr の `StreamEvidence` を書く。
 - 観測が欠けた場合（出力の I/O エラー、reap の失敗、死亡を確認できない）は held。
+- Goal run の fail は採用しない。§9 のとおり、その step を held（`goal_check_failed`）にする。
+- 各 step の TMPDIR（tx1 の intent に記録した `<work_root>/t/<cookie の先頭 8 文字>`）は、§7.1 の checkout の削除待ちと同じ記録で、checkout と一緒に消す。対象は死亡を確認した step（`death_confirmed`）だけで、確認できない step の TMPDIR は残す。TMPDIR が link に置き換わっていれば、link を辿らずに link だけを消す。
 
 全コマンドの結果がそろったら、その commit のテストの合否を決める: すべて pass なら合格。
 
@@ -1457,6 +1460,8 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
   - 監査イベント
 
   Goal が Paused なら何も書かず、最後の test の step は exited のまま残り、resume の後の tick が完了をやり直す。Cancelled なら §4.3 で interrupted にし、run は abandoned になる。fail のコマンドがあれば、その step を held（`goal_check_failed`）にする。LLM の出力は完了の判定に使わない。Goal run が completed になると Project の slot が空き、同じ Project の別の Goal が進める。
+
+  fail のコマンドは、その結果を採用する時点で held にし、残りのコマンドを計画しない。回復は最後の step だけを対象にするので、`rrx pipeline recover --then retry` は、失敗したそのコマンドの attempt+1 を作る。合格すれば、残りのコマンドを順に計画する。
 
 ## 10. 読み取り API
 

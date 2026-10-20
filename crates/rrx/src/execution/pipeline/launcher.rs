@@ -309,6 +309,8 @@ impl StepLauncher {
         };
         let process = ProcessGroup::new(child, Arc::new(AtomicBool::new(true)))?;
         let pid = process.child.id().context("owned child PID missing")?;
+        #[cfg(all(test, target_os = "macos"))]
+        super::test_support::spawned_checkpoint(pid).await;
         let leader_cookie = rrx_process_tracker::Cookie::new(&cookie)?;
         let test_leader = test.is_some();
         let birth = tokio::task::spawn_blocking(move || {

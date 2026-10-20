@@ -480,7 +480,9 @@ attribute, index and registration checks, then uses `StepLauncher` and
 `StepCustody`. Each command has its own `pipeline_steps` receipt with exit code,
 signal and retained stdout/stderr digests. Tests do not create native verification
 runs. Zero exit without timeout or output overflow passes; nonzero exit, timeout
-and overflow are adopted failures. Missing observations hold the run. Adoption
+and overflow are adopted failures in Task runs. A Goal check run instead holds the
+failing command's step with `goal_check_failed` before planning another command,
+so recovery retries that command. Missing observations hold the run. Adoption
 shares `control_admission` with controls and rechecks owner, Goal state and both
 run and step versions. Scheduling subsequent commands remains a separate caller
 responsibility.
@@ -499,6 +501,8 @@ immutable. Final command adoption records pending checkout cleanup atomically in
 the run body. The same adoption entry point resumes partial cleanup even for a
 completed Goal, clears the obligation only after all removals, and never reruns a
 test to do so. Pending terminal runs are included in owner takeover.
+The same obligation reclaims each death-confirmed step's private TMPDIR without
+following a replacement link; a step without certified death keeps its TMPDIR.
 
 Seatbelt has no Mach lookup allowance. It permits fork/exec, self process
 information, same-sandbox signals and `/dev/null` data writes. Network denial

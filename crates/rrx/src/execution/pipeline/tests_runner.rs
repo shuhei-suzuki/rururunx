@@ -162,6 +162,32 @@ impl PipelineTestRunner {
         .await?;
         Ok(())
     }
+
+    /// Removes a launched test's private TMPDIR only after its process death is certified.
+    pub(crate) fn reclaim_tmpdir(config: &PipelineConfig, step: &PipelineStep) -> Result<()> {
+        ensure!(
+            step.kind == "test" && step.body["death_confirmed"] == true,
+            "test TMPDIR death unconfirmed"
+        );
+        let Some(recorded) = step.body.pointer("/intent/tmpdir") else {
+            return Ok(());
+        };
+        let cookie = step.cookie.as_deref().context("TMPDIR cookie missing")?;
+        let prefix = cookie.get(..8).context("TMPDIR cookie short")?;
+        let tmp = config.work_root.join("t").join(prefix);
+        ensure!(
+            recorded.as_str() == tmp.to_str(),
+            "test TMPDIR differs from launch"
+        );
+        // A sandboxed test may replace the directory with a link; remove only the link.
+        match std::fs::symlink_metadata(&tmp) {
+            Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(&tmp)?,
+            Ok(_) => std::fs::remove_file(&tmp)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+        Ok(())
+    }
 }
 
 pub(crate) fn selected<'a>(

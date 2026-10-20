@@ -350,15 +350,20 @@ are computed on blocking workers. Command IDs and indexes are immutable in SQL.
 Agent leaders require a matching cookie; absent environments are accepted only
 for sandbox-exec test leaders. Stream limits,
 timeout and drain bounds come from the admitted command. Complete failed results
-are adopted as failures; incomplete I/O or process-death observations hold the
-run. Test evidence is retained in pipeline step records, independently of native
-verification tables.
+are adopted as failures in Task runs. In a Goal check run, a failed command holds
+its own step with `goal_check_failed` before any later command is planned, so
+recovery retries that command. Incomplete I/O or process-death observations hold
+the run. Test evidence is retained in pipeline step records, independently of
+native verification tables.
 
 Final command adoption atomically records pending checkout cleanup in the run
 body. The adoption entry point can resume cleanup from adopted steps and completed
 runs without rerunning commands. The pending record is cleared with an owner and
 version check only after every checkout has been removed; partial removal is safe
 to retry. Terminal runs with pending cleanup remain in the owner takeover inventory.
+The same record reclaims each death-confirmed step's private TMPDIR recorded in its
+launch intent; a TMPDIR replaced by a link is unlinked without being followed, and a
+step without certified death keeps its TMPDIR.
 
 Session remains transport state; Task/attempt is execution authority; reservation
 is unit-specific; Workflow still owns phase truth; Context/ReviewBundle bind actual

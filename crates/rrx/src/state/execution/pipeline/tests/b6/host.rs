@@ -5,6 +5,7 @@ use crate::execution::pipeline::{
 };
 use std::sync::Arc;
 mod r1fix;
+mod r1fix2;
 
 async fn planned_test(
     code: &str,
@@ -12,11 +13,18 @@ async fn planned_test(
     out: usize,
     err: usize,
 ) -> (Fixture, Arc<Runtime>, String) {
+    let script = format!("while (!-e 'go') {{ select undef,undef,undef,0.01; }} {code}");
+    planned_script(&script, timeout, out, err).await
+}
+/// Runs the script directly as the leader; gated callers create `go` themselves.
+async fn planned_script(
+    script: &str,
+    timeout: u64,
+    out: usize,
+    err: usize,
+) -> (Fixture, Arc<Runtime>, String) {
     let mut command = proposal("/usr/bin/perl".into()).commands.remove(0);
-    command.args = vec![
-        "-e".into(),
-        format!("while (!-e 'go') {{ select undef,undef,undef,0.01; }} {code}"),
-    ];
+    command.args = vec!["-e".into(), script.into()];
     command.timeout_seconds = timeout;
     command.stdout_bytes = out;
     command.stderr_bytes = err;
