@@ -314,7 +314,9 @@ Paused Goals, retired owners and stale cursors return without changing the step;
 resuming permits preparation, launch or adoption to continue.
 Snapshot blobs are read in one bounded Git batch; blob and tree IDs are computed in
 process for SHA-1 and SHA-256 repositories. Directories shaped like implicit bare Git
-repositories are refused at any depth using the control-name case folding.
+repositories are refused at any depth after removing HFS-ignorable code points and
+applying the control-name case folding. Review prompts above 512 KiB hold before
+launch with `review_prompt_too_large`; snapshot budget failures use `review_snapshot_limit`.
 
 The decoded `rrx.review.v1` verdict is stored in `step.body.adoption.verdict` for later
 decision processing. Finding IDs must be unique. An `approve` verdict containing an
@@ -325,7 +327,8 @@ receipts contain only a pattern ID and an offset digest. This adoption records a
 review result; it does not release a branch or schedule confirmation or repairs.
 Verdict evidence carries its source result SHA-256, which the Store compares with the
 stdout receipt. Raw Unicode escapes are scanned before strict decoding can reject a
-frame; secret receipts survive a death-unconfirmed hold.
+frame; secret receipts survive a death-unconfirmed hold. A stream scanner failure
+holds with `secret_scan_failed` and stores only a `scan_failed` pattern marker.
 
 Review policy is data, not hard-coded Triple Review logic.
 

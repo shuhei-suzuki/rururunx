@@ -561,6 +561,28 @@ fn b7_prompt_secret_gate() {
     }
 }
 
+/// Oversized review prompts fail with a named reason before raw scanning.
+#[test]
+fn b7_prompt_size_gate() {
+    let nonce = "1234567890abcdef1234567890abcdef";
+    let task = json!("safe");
+    let overhead = review_prompt(nonce, &task, b"").unwrap().len();
+    assert_eq!(
+        review_prompt(nonce, &task, &vec![b'x'; 512 * 1024 - overhead])
+            .unwrap()
+            .len(),
+        512 * 1024
+    );
+    for len in [512 * 1024 - overhead + 1, 2 * 1024 * 1024] {
+        assert_eq!(
+            review_prompt(nonce, &task, &vec![b'x'; len])
+                .unwrap_err()
+                .to_string(),
+            "review_prompt_too_large"
+        );
+    }
+}
+
 /// Split secret patterns are detected even when the retained stderr tail excludes them.
 #[test]
 fn b7_stream_secret_gate() {
@@ -589,6 +611,14 @@ fn b7_stream_scan_error() {
     assert_eq!(scan.hit, Some(json!({"pattern":"scan_failed"})));
     scan.append(b"later safe diagnostics");
     assert_eq!(scan.hit, Some(json!({"pattern":"scan_failed"})));
+    assert_eq!(
+        stream_scan_reason(scan.hit.as_ref().unwrap()),
+        "secret_scan_failed"
+    );
+    assert_eq!(
+        stream_scan_reason(&json!({"pattern":"fixed_secret","offset_sha256":"0".repeat(64)})),
+        "secret_detected"
+    );
 }
 
 fn retained_fixture(result: &[u8], stderr: &[u8]) -> (tempfile::TempDir, PipelineStep) {

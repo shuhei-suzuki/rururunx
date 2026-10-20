@@ -229,6 +229,7 @@ async fn b7_generic_review_preflight() {
         ("prompt", "review_input_changed"),
         ("secret", "secret_detected"),
         ("escaped_secret", "secret_detected"),
+        ("oversized_prompt", "review_prompt_too_large"),
     ] {
         let h = ReviewFixture::new(&success()).await;
         h.runtime.wait_pipeline_test_boundary().await;
@@ -271,6 +272,7 @@ async fn b7_generic_review_preflight() {
             "prompt" => input.prompt = b"substituted prompt".to_vec(),
             "secret" => input.prompt = b"EXAMPLE_TOKEN=fixture".to_vec(),
             "escaped_secret" => input.prompt = br#"{"k":"gh\u0070_fixture"}"#.to_vec(),
+            "oversized_prompt" => input.prompt = vec![b'x'; 2 * 1024 * 1024],
             _ => {}
         }
         h.runtime.wait_pipeline_test_boundary().await;
@@ -290,6 +292,131 @@ async fn b7_generic_review_preflight() {
         assert!(!h.fake.directory.join("exec-entered").exists(), "{case}");
         h.close().await;
     }
+}
+
+/// Executor prompt escapes cannot conceal secrets from the pre-launch scan.
+#[tokio::test]
+async fn b7_executor_prompt_escaped_secret() {
+    let (f, runtime, id) = super::b5::prepare_fixture_from(fixture().await, true).await;
+    runtime.wait_pipeline_test_boundary().await;
+    assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
+    let prompt = br#"{"k":"gh\u0070_fixture"}"#;
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let mut next = planned(&id, 2, 1, "implement");
+    next.step_base = view.runs[0].head_commit.clone();
+    next.input_sha256 = crate::execution::verification::hash(prompt);
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_plan_next(&f.owner, &cursor, &next, true)
+        .unwrap();
+    runtime.wait_pipeline_test_boundary().await;
+    assert!(matches!(
+        runtime
+            .launch_pipeline_executor(f.cursor(&id), prompt.to_vec())
+            .await
+            .unwrap(),
+        LaunchResult::Held
+    ));
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let step = view.steps.last().unwrap();
+    assert_eq!(step.state, "held");
+    assert_eq!(step.body["reason"], "secret_detected");
+    assert_eq!(step.body["secret"]["pattern"], "fixed_secret");
+    assert!(step.cookie.is_none() && step.pid.is_none() && step.body["intent"].is_null());
+    assert!(
+        !serde_json::to_string(&step.body)
+            .unwrap()
+            .contains("fixture")
+    );
+    let cli = f
+        .config
+        .pipeline
+        .as_ref()
+        .unwrap()
+        .clis
+        .codex
+        .executable
+        .parent()
+        .unwrap();
+    assert!(!cli.join("exec-entered").exists());
+    runtime.shutdown().await.unwrap();
+}
+
+/// A large review diff holds during preparation with its prompt budget reason.
+#[tokio::test]
+async fn b7_runtime_prompt_size_reason() {
+    let (f, runtime, id) = super::b5::prepare_fixture_from(fixture().await, true).await;
+    runtime.wait_pipeline_test_boundary().await;
+    assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
+    // Added-line prefixes produce a ~2 MiB diff within the 1 MiB file budget.
+    adopt_executor_commit(&f, &runtime, &id, &"\n".repeat(1024 * 1024 - 1024)).await;
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let project = f.store().project(f.project).unwrap().unwrap();
+    let diff = PipelineGit::new(&project.root)
+        .unwrap()
+        .diff(&view.runs[0].base_commit, &view.runs[0].head_commit)
+        .await
+        .unwrap();
+    assert!((1900 * 1024..2100 * 1024).contains(&diff.len()));
+    let mut next = planned(&id, 3, 1, "review");
+    next.step_base = view.runs[0].head_commit.clone();
+    next.body["review_nonce"] = json!(Uuid::new_v4().simple().to_string());
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_plan_next(&f.owner, &cursor, &next, true)
+        .unwrap();
+    runtime.wait_pipeline_test_boundary().await;
+    assert!(
+        runtime
+            .prepare_pipeline_review(f.cursor(&id))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let step = view.steps.last().unwrap();
+    assert_eq!(step.state, "held");
+    assert_eq!(step.body["reason"], "review_prompt_too_large");
+    assert!(step.cookie.is_none() && step.pid.is_none() && step.body["intent"].is_null());
+    let path =
+        review_snapshot::snapshot_path(&f.config.pipeline.as_ref().unwrap().work_root, &id, 3, 1)
+            .unwrap();
+    assert!(!path.exists());
+    runtime.shutdown().await.unwrap();
+}
+
+/// Stream scan failures hold the review with only their distinct failure marker.
+#[tokio::test]
+async fn b7_store_stream_scan_failure() {
+    let f = fixture().await;
+    let id = f.claim();
+    f.launching(&id, "review");
+    let mut scan = review::ReviewStreamScan::default();
+    scan.append(&vec![b'x'; review::REVIEW_BYTES + 1537]);
+    let marker = scan.hit.unwrap();
+    let reason = review::stream_scan_reason(&marker);
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_finish_step(
+            &f.owner,
+            &cursor,
+            &death(),
+            PipelineExit {
+                outcome: Some("other"),
+                evidence: &json!({"issue":reason,"secret":marker}),
+                issue: Some(reason),
+            },
+        )
+        .unwrap();
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let step = view.steps.last().unwrap();
+    assert_eq!(step.state, "held");
+    assert_eq!(step.body["reason"], "secret_scan_failed");
+    assert_eq!(step.body["secret"], json!({"pattern":"scan_failed"}));
+    assert_eq!(
+        step.body["exit"]["secret"],
+        json!({"pattern":"scan_failed"})
+    );
 }
 
 /// Preparation returns an input only after recording evidence accepted by generic launch.

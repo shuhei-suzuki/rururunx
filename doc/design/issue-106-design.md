@@ -1239,7 +1239,7 @@ attempt ディレクトリは `<work_root>/runs/<run>/<seq>-<attempt>/`（0700�
 
 | ファイル | 上限 | 超えたとき |
 |---|---|---|
-| `prompt.md`（sha256 = `input_sha256`） | 512 KiB | 起動しない（launching → rejected） |
+| `prompt.md`（sha256 = `input_sha256`） | 512 KiB | 起動しない（Reviewer は prepare / launch の前検査で planned → held、`review_prompt_too_large`。他の Agent は launching → rejected） |
 | `stdout.jsonl`（codex `--json`）/ `result.json`（claude） | 16 MiB / 1 MiB | group を kill し、rejected（`output_overflow`） |
 | `stderr.log` | 1 MiB | 末尾を残し、`truncated` を記録する（不合格にはしない） |
 | `last.md` / `last.json` | 256 KiB | rejected |
@@ -1689,8 +1689,10 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | B7 | Reviewer と VerdictDecoder、snapshot、秘密スキャン | AC-4 | — | `workflow-engine.md` §6、`agent-adapter.md` §7 |
 | B8 | ふるい分け、Confirmer、fix のループ、判定 | AC-5 | — | `workflow-engine.md` §6・§7 |
 | B9 | `pipeline_tick`、release の journal、次の Task、Goal run と Goal の完了、読み取り API | AC-6 | (1) release と pause / cancel の交差（F-d4）。(2) Paused / Cancelled の Goal が release も Completed もされない（F-d5）。(3) Goal run の view だけで recover の command を組み立てられる（F-g2）。(4) Goal/run status に pending cleanup の義務（run/seq/attempt）、失敗区分と rrx 導出パスを表示する | `goal-runtime.md` §6・§7、`multi-project-runtime.md` §7 |
-| B10 | 起動時の照合と復旧表、正常停止、pause / cancel、`pipeline recover` | AC-7、AC-8(c)(d)(e)(f) | — | `goal-runtime.md` §14、`architecture.md` §9 |
+| B10 | 起動時の照合と復旧表、正常停止、pause / cancel、`pipeline recover` | AC-7、AC-8(c)(d)(e)(f) | review 境界で pause し、同じモードの pipeline Goal を resume すると review が進む | `goal-runtime.md` §14、`architecture.md` §9 |
 | B11 | 障害注入マトリクスの完了、オーナーが実 Mac で実行するチェックリストの script、受入の記録 | AC-1〜AC-8 | — | `doc/verification/issue-106-acceptance.md` |
+
+B10 設計入力: lifecycle Resume は Runtime config hash（`runtime/control.rs` の `policy_digest`）でなく、pipeline の受入済み policy（`PipelineProfile.policy_sha256`、`state/execution/pipeline.rs`）と照合する。
 
 ## 16. 承認済みの計画との相違
 

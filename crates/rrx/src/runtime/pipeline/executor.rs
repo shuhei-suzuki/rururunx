@@ -1,7 +1,7 @@
 //! Rule-G entry points; the scheduler selects steps, these methods perform one fenced action.
 use crate::execution::pipeline::{
-    AdoptionChecker, LaunchResult, PipelineGit, SecretHit, SecretScanner, StepInput, StepLauncher,
-    TaskWorkspace, adoption, workspace::ControlImage,
+    AdoptionChecker, LaunchResult, PipelineGit, SecretHit, StepInput, StepLauncher, TaskWorkspace,
+    adoption, review, workspace::ControlImage,
 };
 use crate::{
     config::ExecutionMode,
@@ -91,7 +91,7 @@ impl Runtime {
             "Executor launch state changed"
         );
         let preflight = async {
-            SecretScanner::check(&prompt).context("prompt.md")?;
+            review::scan_raw(&prompt, 0).context("prompt.md")?;
             let (project, _, controls) = self
                 .owner
                 .store

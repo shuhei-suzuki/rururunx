@@ -264,25 +264,7 @@ impl Runtime {
                 &json!({"pattern":hit.pattern,"offset_sha256":hit.offset_sha256}),
             )?;
         } else {
-            let reasons = [
-                "verdict_schema",
-                "review_envelope_mismatch",
-                "review_model_mismatch",
-                "review_snapshot_changed",
-                "review_agent_failed",
-                "review_output_changed",
-                "diff_too_large",
-                "review_storage_limit",
-                "review_nonce_invalid",
-                "review_nonce_collision",
-                "review_nonce_reused",
-                "review_input_changed",
-                "review_snapshot_unsupported",
-            ];
-            let reason = error
-                .chain()
-                .find_map(|cause| reasons.iter().copied().find(|r| cause.to_string() == *r))
-                .unwrap_or("review_validation_failed");
+            let reason = review_failure_reason(error);
             if exited && matches!(reason, "verdict_schema" | "review_agent_failed") {
                 store.pipeline_reject(&self.owner, cursor, reason)?;
             } else {
@@ -291,5 +273,47 @@ impl Runtime {
         }
         self.wake.notify_one();
         Ok(())
+    }
+}
+
+fn review_failure_reason(error: &anyhow::Error) -> &'static str {
+    let reasons = [
+        "verdict_schema",
+        "review_envelope_mismatch",
+        "review_model_mismatch",
+        "review_snapshot_changed",
+        "review_agent_failed",
+        "review_output_changed",
+        "diff_too_large",
+        "review_storage_limit",
+        "review_nonce_invalid",
+        "review_nonce_collision",
+        "review_nonce_reused",
+        "review_input_changed",
+        "review_snapshot_unsupported",
+        "review_snapshot_limit",
+        "review_prompt_too_large",
+    ];
+    error
+        .chain()
+        .find_map(|cause| reasons.iter().copied().find(|r| cause.to_string() == *r))
+        .unwrap_or("review_validation_failed")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Review budget failures retain their named reason through error context.
+    #[test]
+    fn b7_review_budget_reasons() {
+        for reason in ["review_snapshot_limit", "review_prompt_too_large"] {
+            let error = anyhow::anyhow!(reason).context("preflight context");
+            assert_eq!(review_failure_reason(&error), reason);
+        }
+        assert_eq!(
+            review_failure_reason(&anyhow::anyhow!("untrusted detail")),
+            "review_validation_failed"
+        );
     }
 }

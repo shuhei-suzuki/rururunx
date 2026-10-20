@@ -127,6 +127,7 @@ impl StepLauncher {
                     input.schema == super::review::REVIEW_SCHEMA,
                     "review_schema_mismatch"
                 );
+                ensure!(input.prompt.len() <= 512 * 1024, "review_prompt_too_large");
                 super::review::scan_raw(&input.prompt, 0)?;
                 let git = super::PipelineGit::new(&project.root)?;
                 let diff = git.diff(&run.base_commit, &step.step_base).await?;
@@ -164,22 +165,7 @@ impl StepLauncher {
                         &json!({"pattern":hit.pattern,"offset_sha256":hit.offset_sha256}),
                     )?;
                 } else {
-                    let reasons = [
-                        "review_snapshot_missing",
-                        "review_nonce_invalid",
-                        "review_nonce_reused",
-                        "review_nonce_unverified",
-                        "review_snapshot_path",
-                        "review_schema_mismatch",
-                        "review_input_changed",
-                        "review_nonce_collision",
-                        "review_snapshot_changed",
-                        "diff_too_large",
-                    ];
-                    let reason = error
-                        .chain()
-                        .find_map(|e| reasons.iter().copied().find(|r| e.to_string() == *r))
-                        .unwrap_or("review_validation_failed");
+                    let reason = review_preflight_reason(&error);
                     store.pipeline_hold(&self.owner, &cursor, reason, None)?;
                 }
                 return Ok(LaunchResult::Held);
@@ -510,4 +496,43 @@ fn write_input(path: &Path, bytes: &[u8]) -> Result<()> {
     file.sync_all()?;
     file.set_permissions(std::fs::Permissions::from_mode(0o400))?;
     Ok(())
+}
+
+fn review_preflight_reason(error: &anyhow::Error) -> &'static str {
+    let reasons = [
+        "review_snapshot_missing",
+        "review_nonce_invalid",
+        "review_nonce_reused",
+        "review_nonce_unverified",
+        "review_snapshot_path",
+        "review_schema_mismatch",
+        "review_input_changed",
+        "review_nonce_collision",
+        "review_snapshot_changed",
+        "diff_too_large",
+        "review_snapshot_limit",
+        "review_prompt_too_large",
+    ];
+    error
+        .chain()
+        .find_map(|e| reasons.iter().copied().find(|r| e.to_string() == *r))
+        .unwrap_or("review_validation_failed")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Review budget failures retain their named reason through error context.
+    #[test]
+    fn b7_review_budget_reasons() {
+        for reason in ["review_snapshot_limit", "review_prompt_too_large"] {
+            let error = anyhow::anyhow!(reason).context("preflight context");
+            assert_eq!(review_preflight_reason(&error), reason);
+        }
+        assert_eq!(
+            review_preflight_reason(&anyhow::anyhow!("untrusted detail")),
+            "review_validation_failed"
+        );
+    }
 }

@@ -73,7 +73,7 @@ pub(crate) async fn rebuild(
             names
                 .entry(parent.clone())
                 .or_default()
-                .push(super::git::fold_name(part));
+                .push(normalize_name(part));
             parent.push(part);
         }
         inventory.push((name.to_owned(), mode.to_owned(), oid.to_owned()));
@@ -123,12 +123,16 @@ fn reject_bare(children: &[String]) -> Result<()> {
 }
 
 fn is_dotgit(name: &str) -> bool {
+    normalize_name(name) == ".git"
+}
+
+fn normalize_name(name: &str) -> String {
     // Git's next_hfs_char ignores these code points during is_hfs_dotgit.
     let visible: String = name
         .chars()
         .filter(|c| !matches!(c, '\u{200c}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{206a}'..='\u{206f}' | '\u{feff}'))
         .collect();
-    super::git::fold_name(&visible) == ".git"
+    super::git::fold_name(&visible)
 }
 pub(crate) fn remove(path: &Path) -> Result<()> {
     match std::fs::symlink_metadata(path) {
@@ -189,7 +193,7 @@ fn digest(root: &Path, oid_len: usize) -> Result<String> {
                 .context("review_snapshot_path")?
                 .to_string_lossy();
             ensure!(!is_dotgit(&name), "review_snapshot_unsupported");
-            names.push(super::git::fold_name(&name));
+            names.push(normalize_name(&name));
             let meta = std::fs::symlink_metadata(&path)?;
             ensure!(
                 meta.permissions().mode() & 0o222 == 0
@@ -304,11 +308,15 @@ fn object_id(kind: &str, bytes: &[u8], oid_len: usize) -> Result<String> {
 mod tests {
     use super::*;
 
-    /// Split bare layouts are refused at every disk depth with case-folded names.
+    /// Split bare layouts are refused at every disk depth with normalized names.
     #[test]
     fn b7_snapshot_commondir_disk() {
         for prefix in ["", "nested/deeper/"] {
-            for (head, common) in [("HEAD", "commondir"), ("Head", "COMMONDIR")] {
+            for (head, common) in [
+                ("HEAD", "commondir"),
+                ("Head", "COMMONDIR"),
+                ("HE\u{200c}AD", "commondir"),
+            ] {
                 let dir = tempfile::tempdir().unwrap();
                 let root = dir.path().join(prefix);
                 std::fs::create_dir_all(root.join("c/objects")).unwrap();
@@ -406,7 +414,11 @@ mod tests {
     #[tokio::test]
     async fn b7_snapshot_commondir_tree() {
         for nested in [false, true] {
-            for (head_name, common_name) in [("HEAD", "commondir"), ("Head", "COMMONDIR")] {
+            for (head_name, common_name) in [
+                ("HEAD", "commondir"),
+                ("Head", "COMMONDIR"),
+                ("HE\u{200c}AD", "commondir"),
+            ] {
                 let dir = tempfile::tempdir().unwrap();
                 let root = dir.path().canonicalize().unwrap();
                 let project = root.join("project");

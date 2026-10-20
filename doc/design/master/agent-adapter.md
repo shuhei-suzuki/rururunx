@@ -153,6 +153,9 @@ every decoded string saved in the review step are secret-scanned. Raw artifacts 
 private and become mode 0400. Detected secrets hold the step without storing an excerpt.
 Bounded raw scanning decodes Unicode escapes even when JSON parsing will fail. The Store
 binds decoded verdict evidence to the retained result via the stdout receipt SHA-256.
+Executor prompts use the same bounded escape-decoding scan. Review prompts above
+512 KiB hold before scanning or launch with `review_prompt_too_large`. Stream scan
+failures hold with `secret_scan_failed` and retain only the `scan_failed` marker.
 Snapshot contents are compared with the target commit before launch and after confirmed
 death. Unsupported snapshot entries such as symlinks are refused before launch.
 

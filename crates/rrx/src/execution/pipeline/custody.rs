@@ -379,6 +379,7 @@ impl Monitor {
             "result.json"
         };
         let secret = review_out_scan.hit.or(review_err_scan.hit);
+        let secret_reason = secret.as_ref().map(super::review::stream_scan_reason);
         let streams = (|| -> Result<_> {
             let stdout = out.retain(&self.attempt, "stdout", out_done)?;
             let stderr = err.retain(&self.attempt, "stderr", err_done)?;
@@ -403,15 +404,15 @@ impl Monitor {
                         &dead.evidence,
                         PipelineExit {
                             outcome: test.is_none().then_some("other"),
-                            evidence: &json!({"issue":if secret.is_some() {"secret_detected"}else{"output_io"},"secret":secret}),
-                            issue: Some(if secret.is_some() {"secret_detected"}else{"output_io"}),
+                            evidence: &json!({"issue":secret_reason.unwrap_or("output_io"),"secret":secret}),
+                            issue: Some(secret_reason.unwrap_or("output_io")),
                         },
                     )?;
                 return Ok(());
             }
         };
-        if secret.is_some() {
-            issue = Some("secret_detected");
+        if let Some(reason) = secret_reason {
+            issue = Some(reason);
         }
         let last = if test.is_some() || reviewer {
             None
