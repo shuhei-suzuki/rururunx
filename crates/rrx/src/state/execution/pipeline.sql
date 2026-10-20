@@ -115,6 +115,7 @@ WHEN OLD.rowid<>NEW.rowid OR OLD.run_id<>NEW.run_id OR OLD.seq<>NEW.seq OR OLD.a
  OR OLD.provider IS NOT NEW.provider OR OLD.round<>NEW.round OR OLD.step_base<>NEW.step_base
  OR OLD.input_sha256<>NEW.input_sha256 OR NEW.version<>OLD.version+1
  OR json_extract(OLD.body,'$.command_id') IS NOT json_extract(NEW.body,'$.command_id')
+ OR json_extract(OLD.body,'$.command_index') IS NOT json_extract(NEW.body,'$.command_index')
  OR (NEW.kind NOT IN ('prepare','release') AND OLD.state='planned' AND NEW.state='launching'
      AND json_type(NEW.body,'$.launch.wall') IS NOT 'text')
  OR (json_type(OLD.body,'$.launch') IS NOT NULL

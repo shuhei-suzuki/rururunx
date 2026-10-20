@@ -201,7 +201,7 @@ pub(super) fn discover_launched(
 ) -> io::Result<Discovery> {
     discover(cookie, limits, started)
 }
-pub(super) fn owned_leader(pid: u32, cookie: &Cookie) -> io::Result<OwnedLeader> {
+pub(super) fn owned_leader(pid: u32, cookie: &Cookie, test: bool) -> io::Result<OwnedLeader> {
     let before = identity(pid)?;
     let stat = bounded_metadata(&format!("/proc/{pid}/stat"))?;
     let zombie = stat
@@ -218,8 +218,8 @@ pub(super) fn owned_leader(pid: u32, cookie: &Cookie) -> io::Result<OwnedLeader>
         });
         match env {
             Ok(env)
-                if matches_environment(&env.bytes, cookie) || env.bytes.iter().all(|b| *b == 0) => {
-            }
+                if matches_environment(&env.bytes, cookie)
+                    || test && env.bytes.iter().all(|b| *b == 0) => {}
             Ok(_) => return Err(io::Error::other("owned leader cookie mismatch")),
             Err(error) => {
                 let stat = bounded_metadata(&format!("/proc/{pid}/stat"))?;

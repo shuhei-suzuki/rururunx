@@ -1038,13 +1038,13 @@ P9〜P12 の確認が外れたら、実装を止めて設計に戻る。黙っ�
 
 #### 3.5.3 leader の birth と cookie の確認
 
-- **読む場所**: launcher（`launcher.rs:298-300`）は、`ProcessGroup::new` の直後、tx2 の前に `rrx_process_tracker::owned_leader(pid, cookie)` を `spawn_blocking` で呼ぶ。cookie の探索で leader を探す `custody::birth`（`custody.rs:173-186`）は削除する。
+- **読む場所**: launcher は、`ProcessGroup::new` の直後、tx2 の前に、test の step なら `rrx_process_tracker::owned_test_leader(pid, cookie)`、Agent の step なら `owned_leader(pid, cookie)` を `spawn_blocking` で呼ぶ。cookie の探索で leader を探す `custody::birth` は使わない。
 - **読み方（macOS）**:
   - `query_pid(pid)`（`KERN_PROC_PID`）を読む。受け入れるのは、状態 0・長さが一致・`p_pid == pid`・`p_stat` が SRUN / SSLEEP / SSTOP / SZOMB・開始が 0 でない、の全部を満たす場合だけである。birth は `p_starttime`、`zombie` は SZOMB で返す。それ以外は Err にする。
   - 記録の形（`"<sec>:<usec>"`）は変えない。`b4_host_listed_start_time_matches_identity` により、`proc_bsdinfo` の値と等しい。
 - **cookie の確認（既存の確認を残す）**: 今の読取りは、cookie が leader の環境に届いたことも確かめている。zombie でなければ、leader の `KERN_PROCARGS2` を 1 回読む。
   - 一致: 受け入れる。
-  - absent（platform binary の leader。sandbox-exec の test）: 受け入れる。
+  - absent（platform binary の leader。sandbox-exec の test）: test の step だけ受け入れる。Agent の step は Err にする。
   - 不一致: Err にする。
   - 読めない: 照会し直す。zombie になっていれば受け入れ、そうでなければ Err にする。
   - zombie（すぐ exit した test）: 環境を読まずに受け入れる。exit したプロセスは何も実行しない。子孫は死亡確認が探す。
@@ -1357,9 +1357,10 @@ attempt ディレクトリは `<work_root>/runs/<run>/<seq>-<attempt>/`（0700�
 
 ### 7.1 clean checkout
 
-- 検査対象の commit（Task run は run の head、Goal run は Goal branch の head）ごとに、tick が test の step を計画するとき、`git worktree add --detach <work_root>/co/<run>-<seq> <commit>` で checkout を作る（driver の拒否 §6.1 を通した repo だけ）。作った後、HEAD == commit かつ status が空であることを確かめる。
+- 検査対象の commit（Task run は run の head、Goal run は Goal branch の head）ごとに、tick が test の step を計画するとき、`git worktree add --detach <work_root>/co/<run>-<seq>-<attempt> <commit>` で checkout を作る（driver の拒否 §6.1 を通した repo だけ）。作った後、HEAD == commit かつ status が空であることを確かめる。
 - checkout のパスは決定的で、rrx だけが作る。再起動時に、step を起動する前のパスが残っていれば、検証に合格すれば使い、不合格なら `git worktree remove --force` で消して作り直す（どの step もまだ起動していないことを、step の状態で確かめてから行う）。
-- その commit のすべてのコマンドが終わったら、checkout を消す。
+- 再利用の前に、通常ファイルの gitfile が `<common>/worktrees/<checkout の名前>` を直接指すことを確かめる。別 attempt の checkout は再利用しない。
+- その commit のすべてのコマンドが終わったら、checkout を消す。最後の採用と同じ transaction で run body に削除待ちを保存し、削除が全部終わった後だけ消す。adoption の入口は、adopted / completed からもこの削除を再開する（テストは再実行しない）。
 
 ### 7.2 各コマンドの実行
 
@@ -1368,7 +1369,8 @@ TestsProfile（`execution/verification/plan.rs:50`）の各コマンドを、そ
 - **profile の読み戻し**: test step を計画するときと tx1 で、`verification_profiles` の行を `(project_id, digest = goal_execution_profiles.tests_profile_digest)` で読み、`hash(body) == digest`（既存の `profile` `state/execution/verification.rs:77-80` と同じ照合）、`AdmittedProfile` への decode、`validate`（`plan.rs:205-215`）を行う。どれかが失敗すれば step を held（`tests_profile_changed`）にする。同じ key のまま body を変えた REPLACE もここで拒否される（§2.3）。
 - **起動前の照合**: 各コマンドの起動の直前に `AdmittedProfile::recheck`（`plan.rs:216-223`）を呼び、コマンドが admit 時の一覧にあり、program の hash が一致することを確かめる（§3.3-3）。admit の後に実行ファイルが差し替わっていれば、起動せず rejected にし、run を held にする。
 - argv: `/usr/bin/sandbox-exec -f <A>/test.sb -- <program> <args…>`。program は admit 済みの絶対パス、cwd は checkout の中のコマンドの `cwd`。
-- Seatbelt の profile: network を拒否する。書込みは checkout・TMPDIR・運用者が宣言したキャッシュディレクトリだけ。
+- Seatbelt の profile: Mach lookup の許可は設けず、process は fork・exec と自己の情報だけ、signal は same-sandbox だけを許可する。network は localhost の bind / listen と AF_UNIX（rrx control socket を含む）も拒否する。テストはローカルソケットを使えない。書込みは checkout・TMPDIR・運用者が宣言したキャッシュディレクトリと `/dev/null` の data write だけ。
+- checkout・TMPDIR・cache の grant は、既存の保護対象に加え、canonicalize した CODEX_HOME・全 PATH prefix・両 CLI の実体とその親との重なりを拒否する。cache は全 Project で共有する。program は work_root・cache・CODEX_HOME の下では admission / recheck とも拒否し、hash は `spawn_blocking` で計算する。
 - 環境変数は §5.4 と同じ集合（`CODEX_HOME` を除く）。
 - 上限: `timeout_seconds`・`drain_seconds`・`stdout_bytes`・`stderr_bytes`（`plan.rs:35-45`）。
 - 結果の採用（exited → adopted、規則 G）: 終了コード 0 なら pass、それ以外・timeout・出力の上限超過は fail。fail も、正しく観測できた結果として adopted にする。`body` に終了コード、signal、stdout / stderr の `StreamEvidence` を書く。
@@ -1515,7 +1517,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | Agent が自分で commit・ref の変更・hook の設置を行う | 採用するのは、記録した SHA の rrx commit だけ。HEAD・ref・`.git` の digest を照合する。trailer は根拠にしない | なし |
 | 環境変数からの秘密の漏洩 | 空から組み立てる（§5.4）。渡した集合 ⊆ 許可した集合を、テストで検査する | なし |
 | **Agent がユーザーの読めるファイルを何でも読む**（`~/.aws` などを provider に送る） | v1: すべての出力経路の秘密スキャン（§11）と、オーナーの書面による受入 | **残る**。workspace-write も read-only も、ディスク全体を読める。provider への送信そのものは止められない。根本の対策は後続（#98）: (A) 専用の macOS ユーザーで Agent を動かす。(B) Codex の管理設定 `requirements.toml` の `[permissions.filesystem] deny_read`（0.162.1 で使えるかは未確認）。(C) Claude の `--settings` の `permissions.deny` で Read を制限する（部分的）。 |
-| テストが、Agent の書いたコードをオーナーの権限で実行する | clean checkout で実行する。`/usr/bin/sandbox-exec` の Seatbelt profile（network 拒否、書込みは checkout・TMPDIR・運用者が宣言したキャッシュディレクトリだけ）で包む。空から組み立てた環境 | 読み取りは制限されない。secret を読んで stdout に出す経路は秘密スキャンで部分的に検出する（受け入れる） |
+| テストが、Agent の書いたコードをオーナーの権限で実行する | clean checkout で実行する。`/usr/bin/sandbox-exec` の Seatbelt profile（Mach lookup の許可なし、network / ローカルソケット拒否、書込みは checkout・TMPDIR・運用者が宣言した cache と `/dev/null` の data write だけ）で包む。空から組み立てた環境 | ファイルの読み取りは制限されない。secret を読んで stdout に出す経路は秘密スキャンで部分的に検出する。cache は全 Project で共有し、汚染で別 Project のテスト結果に影響しうる（受け入れる） |
 | admit 後のテストの差し替え | TestsProfile を読むたびに body と digest を照合し、各起動の直前に `recheck` でコマンドと実行ファイルの hash を照合する（§7.2） | 照合から exec までの短い窓での差し替え（既存の経路と同じ） |
 | network | Codex のツールは network を拒否する。Claude には Bash も web もない。テストは Seatbelt で拒否する | CLI 自身が provider と通信する（仕様どおり） |
 | 信頼しない verdict JSON | strict decode と上限、未知フィールドの拒否、ID の一意性、ラベル集合の一致、存在しない file / line は invalid、quote と行の照合 | なし |

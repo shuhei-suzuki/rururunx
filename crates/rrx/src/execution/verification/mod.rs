@@ -224,13 +224,25 @@ impl ManagedVerifier {
     }
     /// Trusted operator integration explicitly admits this catalog before Workflow
     /// activation. Task text/config is never passed through this method implicitly.
-    pub fn admit_tests(
+    pub async fn admit_tests(
         &self,
         project: ProjectId,
         expected_version: u64,
         profile: TestsProfile,
     ) -> Result<String> {
-        let admitted = AdmittedProfile::admit(profile)?;
+        let forbidden = self
+            .sources
+            .pipeline_config()
+            .map(|c| c.test_writable_paths())
+            .transpose()?
+            .unwrap_or_default();
+        let admitted = tokio::task::spawn_blocking(move || {
+            for command in &profile.commands {
+                plan::reject_writable_program(&command.program, &forbidden)?;
+            }
+            AdmittedProfile::admit(profile)
+        })
+        .await??;
         let registered = self
             .owner
             .store
@@ -305,7 +317,16 @@ impl ManagedVerifier {
             .verification_profile_for(claim.record)?;
         admitted.validate()?;
         for c in &admitted.proposal.commands {
-            admitted.recheck(c)?;
+            admitted
+                .recheck_async(
+                    c,
+                    self.sources
+                        .pipeline_config()
+                        .map(|p| p.test_writable_paths())
+                        .transpose()?
+                        .unwrap_or_default(),
+                )
+                .await?;
         }
         let observed = self
             .sources
@@ -494,7 +515,16 @@ impl ManagedVerifier {
         let mut bytes = 0u64;
         for (index, c) in admitted.proposal.commands.iter().enumerate() {
             snapshot.verify().await?;
-            admitted.recheck(c)?;
+            admitted
+                .recheck_async(
+                    c,
+                    self.sources
+                        .pipeline_config()
+                        .map(|p| p.test_writable_paths())
+                        .transpose()?
+                        .unwrap_or_default(),
+                )
+                .await?;
             let cwd_observation = CommandCwdObservation::observe(grant, c, snapshot.source())?;
             let cwd = cwd_observation.bind(grant, c)?;
             let operation = OperationId::new();

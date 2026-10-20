@@ -255,6 +255,25 @@ async fn fixture_with_catalog(
     alias: bool,
     command: Option<TestCommand>,
 ) -> Fixture {
+    fixture_with_commands(
+        pipeline,
+        pipeline_owner,
+        shared,
+        service,
+        alias,
+        command.map(|c| vec![c]),
+    )
+    .await
+}
+#[cfg(target_os = "macos")]
+async fn fixture_with_commands(
+    pipeline: bool,
+    pipeline_owner: bool,
+    shared: Option<std::sync::Arc<RuntimeOwner>>,
+    service: Option<(&Runtime, &Config)>,
+    alias: bool,
+    commands: Option<Vec<TestCommand>>,
+) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("source");
     std::fs::create_dir(&root).unwrap();
@@ -322,17 +341,19 @@ async fn fixture_with_catalog(
     );
     store.put_project(&mut project).unwrap();
     let proposal = TestsProfile {
-        commands: vec![command.unwrap_or(TestCommand {
-            id: "test".into(),
-            category: Category::Tests,
-            program: "/usr/bin/true".into(),
-            args: vec![project.id.to_string()],
-            cwd: ".".into(),
-            timeout_seconds: 1,
-            drain_seconds: 1,
-            stdout_bytes: 1024,
-            stderr_bytes: 1024,
-        })],
+        commands: commands.unwrap_or_else(|| {
+            vec![TestCommand {
+                id: "test".into(),
+                category: Category::Tests,
+                program: "/usr/bin/true".into(),
+                args: vec![project.id.to_string()],
+                cwd: ".".into(),
+                timeout_seconds: 1,
+                drain_seconds: 1,
+                stdout_bytes: 1024,
+                stderr_bytes: 1024,
+            }]
+        }),
         applicability: BTreeMap::from([
             (Category::Tests, Applicability::Required),
             (

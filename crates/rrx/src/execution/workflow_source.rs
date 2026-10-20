@@ -312,6 +312,9 @@ impl InitialWorkflowExecutor {
     }
 }
 impl ManagedWorkflowSources {
+    pub(crate) fn pipeline_config(&self) -> Option<&crate::config::PipelineConfig> {
+        self.runtime.pipeline.as_ref()
+    }
     pub(crate) fn belongs_to(&self, owner: &Arc<RuntimeOwner>) -> bool {
         Arc::ptr_eq(&self.owner, owner)
     }

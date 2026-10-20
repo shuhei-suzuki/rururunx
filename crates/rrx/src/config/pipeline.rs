@@ -66,6 +66,36 @@ impl std::fmt::Display for ReasoningEffort {
     }
 }
 impl PipelineConfig {
+    /// Runtime controls and executable search paths must never become test write grants.
+    pub(crate) fn test_protected_paths(&self) -> Result<Vec<PathBuf>> {
+        let mut paths = Vec::new();
+        if let Some(home) = &self.clis.codex.codex_home {
+            paths.push(home.canonicalize()?);
+        }
+        for prefix in &self.path_prefix {
+            paths.push(prefix.canonicalize()?);
+        }
+        for cli in [&self.clis.codex, &self.clis.claude] {
+            let executable = cli.executable.canonicalize()?;
+            paths.push(
+                executable
+                    .parent()
+                    .ok_or_else(|| anyhow::anyhow!("CLI parent missing"))?
+                    .to_path_buf(),
+            );
+            paths.push(executable);
+        }
+        Ok(paths)
+    }
+
+    pub(crate) fn test_writable_paths(&self) -> Result<Vec<PathBuf>> {
+        std::iter::once(&self.work_root)
+            .chain(self.test_cache_dirs.iter())
+            .chain(self.clis.codex.codex_home.iter())
+            .map(|p| Ok(p.canonicalize()?))
+            .collect()
+    }
+
     pub(crate) fn check_project_root(&self, project: &std::path::Path) -> Result<()> {
         for private in [Some(&self.work_root), self.clis.codex.codex_home.as_ref()]
             .into_iter()

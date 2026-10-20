@@ -649,7 +649,9 @@ impl Runtime {
             );
             let verifier =
                 crate::execution::verification::ManagedVerifier::new(self.owner.clone(), sources)?;
-            let digest = verifier.admit_tests(*project, *expected_project, profile.clone())?;
+            let digest = verifier
+                .admit_tests(*project, *expected_project, profile.clone())
+                .await?;
             return Ok(ControlResponse::ProjectTestsAdmitted {
                 project: *project,
                 digest,

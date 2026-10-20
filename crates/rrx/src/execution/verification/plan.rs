@@ -190,6 +190,19 @@ pub(crate) fn program_hash(program: &Path) -> Result<String> {
 }
 
 impl AdmittedProfile {
+    pub(crate) async fn recheck_async(
+        &self,
+        command: &TestCommand,
+        forbidden: Vec<std::path::PathBuf>,
+    ) -> Result<()> {
+        let admitted = self.clone();
+        let command = command.clone();
+        tokio::task::spawn_blocking(move || {
+            reject_writable_program(&command.program, &forbidden)?;
+            admitted.recheck(&command)
+        })
+        .await?
+    }
     pub(crate) fn admit(mut proposal: TestsProfile) -> Result<Self> {
         proposal.validate()?;
         let mut programs = BTreeMap::new();
@@ -221,4 +234,18 @@ impl AdmittedProfile {
         );
         Ok(())
     }
+}
+
+pub(crate) fn reject_writable_program(
+    program: &Path,
+    forbidden: &[std::path::PathBuf],
+) -> Result<()> {
+    let real = program.canonicalize()?;
+    for path in forbidden {
+        ensure!(
+            !real.starts_with(path.canonicalize()?),
+            "verification executable is in a test writable namespace"
+        );
+    }
+    Ok(())
 }

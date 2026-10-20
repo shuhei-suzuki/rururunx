@@ -39,7 +39,7 @@ async fn leader_birth_mismatch() {
             .await
             .unwrap();
         assert_eq!(&ready, b"r");
-        let mut birth = rrx_process_tracker::owned_leader(child.id().unwrap(), &cookie)
+        let mut birth = rrx_process_tracker::owned_test_leader(child.id().unwrap(), &cookie)
             .unwrap()
             .birth;
         if mismatch {
@@ -79,7 +79,7 @@ async fn host_platform_discovery(short: bool) {
         .unwrap();
     let pid = line.trim().parse::<u32>().unwrap();
     let cookie = Arc::new(rrx_process_tracker::Cookie::new(&value).unwrap());
-    let birth = rrx_process_tracker::owned_leader(pid, &cookie)
+    let birth = rrx_process_tracker::owned_test_leader(pid, &cookie)
         .unwrap()
         .birth;
     leader.wait().await.unwrap();
@@ -102,7 +102,7 @@ async fn host_platform_discovery(short: bool) {
         assert!(attempts >= 1);
     } else {
         assert_eq!(
-            rrx_process_tracker::owned_leader(pid, &cookie)
+            rrx_process_tracker::owned_test_leader(pid, &cookie)
                 .unwrap()
                 .birth,
             birth

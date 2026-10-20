@@ -717,7 +717,7 @@ fn ea28_exact_parent() {
     }
 }
 
-/// Leader registration accepts matches, absent environments and zombies but refuses nonmatches.
+/// Leader registration accepts absent environments only for sandboxed test steps.
 #[test]
 fn leader_cookie() {
     for state in [
@@ -725,17 +725,23 @@ fn leader_cookie() {
         Environment::Absent,
         Environment::NonMatch,
     ] {
-        let mut f = Fake::new(vec![query(10, q(10, 1000, 1)), env(10, state)]);
-        assert_eq!(
-            read_owned_leader(10, &cookie(), &mut f).is_ok(),
-            state != Environment::NonMatch
-        );
-        assert!(f.ops.is_empty());
+        for test in [false, true] {
+            let mut f = Fake::new(vec![query(10, q(10, 1000, 1)), env(10, state)]);
+            assert_eq!(
+                read_owned_leader(10, &cookie(), test, &mut f).is_ok(),
+                state == Environment::Match || test && state == Environment::Absent
+            );
+            assert!(f.ops.is_empty());
+        }
     }
     let mut zombie = q(10, 1000, 1);
     zombie.info.stat = SZOMB;
     let mut f = Fake::new(vec![query(10, zombie)]);
-    assert!(read_owned_leader(10, &cookie(), &mut f).unwrap().zombie);
+    assert!(
+        read_owned_leader(10, &cookie(), true, &mut f)
+            .unwrap()
+            .zombie
+    );
     assert!(f.ops.is_empty());
     for kind in 0..4 {
         let mut after = q(10, 1000, 1);
@@ -753,7 +759,10 @@ fn leader_cookie() {
             Op::Env(10, None),
             query(10, after),
         ]);
-        assert_eq!(read_owned_leader(10, &cookie(), &mut f).is_ok(), kind == 1);
+        assert_eq!(
+            read_owned_leader(10, &cookie(), true, &mut f).is_ok(),
+            kind == 1
+        );
         assert!(f.ops.is_empty());
     }
 }

@@ -153,6 +153,192 @@ fn b6_seatbelt_protected() {
     assert!(seatbelt(&checkout, &tmp, &[home], &work, &[]).is_err());
 }
 
+fn protected_config(root: &Path) -> PipelineConfig {
+    use crate::config::{PipelineCli, PipelineClis};
+    let cli = |name: &str| {
+        let executable = root.join(name).join("cli");
+        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        let real = root.join(format!("{name}-real")).join("cli");
+        std::fs::create_dir(real.parent().unwrap()).unwrap();
+        std::fs::write(&real, b"fixture").unwrap();
+        std::os::unix::fs::symlink(&real, &executable).unwrap();
+        PipelineCli {
+            executable,
+            version: "fixture".into(),
+            model: "fixture".into(),
+            effort: None,
+            codex_home: None,
+        }
+    };
+    let mut codex = cli("codex-bin");
+    let home = root.join("codex-home");
+    let prefix = root.join("prefix");
+    let prefix2 = root.join("prefix2");
+    for p in [&home, &prefix, &prefix2] {
+        std::fs::create_dir(p).unwrap();
+    }
+    codex.codex_home = Some(home);
+    PipelineConfig {
+        work_root: root.join("work"),
+        path_prefix: vec![prefix, prefix2],
+        test_cache_dirs: vec![],
+        clis: PipelineClis {
+            codex,
+            claude: cli("claude-bin"),
+        },
+    }
+}
+
+fn reject_control_grants(which: usize) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let config = protected_config(&root);
+    let checkout = config.work_root.join("co");
+    let tmp = config.work_root.join("tmp");
+    for p in [&checkout, &tmp] {
+        std::fs::create_dir_all(p).unwrap();
+    }
+    let target = match which {
+        0 => config.clis.codex.codex_home.clone().unwrap(),
+        1 => config.path_prefix[0].clone(),
+        2 => config.path_prefix[1].clone(),
+        3 => config
+            .clis
+            .codex
+            .executable
+            .canonicalize()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf(),
+        _ => config
+            .clis
+            .claude
+            .executable
+            .canonicalize()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf(),
+    };
+    let alias = root.join("alias");
+    std::os::unix::fs::symlink(&target, &alias).unwrap();
+    let mut forbidden = config.test_protected_paths().unwrap();
+    // Compare canonical protected paths even if the caller supplies a symlink.
+    forbidden.retain(|p| p != &target);
+    forbidden.push(alias);
+    assert!(
+        seatbelt(
+            &checkout,
+            &tmp,
+            &[target.to_path_buf()],
+            &config.work_root,
+            &forbidden
+        )
+        .is_err()
+    );
+    let nested = target.join("nested-cache");
+    std::fs::create_dir(&nested).unwrap();
+    assert!(
+        seatbelt(
+            &checkout,
+            &tmp,
+            &[nested],
+            &config.work_root,
+            &config.test_protected_paths().unwrap()
+        )
+        .is_err()
+    );
+    assert!(
+        seatbelt(
+            &checkout,
+            &tmp,
+            &[target.to_path_buf()],
+            &config.work_root,
+            &config.test_protected_paths().unwrap()
+        )
+        .is_err()
+    );
+    for (co, temp) in [
+        (target.as_path(), tmp.as_path()),
+        (checkout.as_path(), target.as_path()),
+    ] {
+        assert!(
+            seatbelt(
+                co,
+                temp,
+                &[],
+                &root,
+                &config.test_protected_paths().unwrap()
+            )
+            .is_err()
+        );
+    }
+}
+
+/// CODEX_HOME cannot become any test write grant.
+#[test]
+fn b6_f1_grant_codex_home() {
+    reject_control_grants(0);
+}
+/// Every PATH prefix directory is protected from test writes.
+#[test]
+fn b6_f1_grant_path_prefix() {
+    reject_control_grants(1);
+    reject_control_grants(2);
+}
+/// The real Codex executable and its parent are protected from test writes.
+#[test]
+fn b6_f1_grant_codex_executable() {
+    reject_control_grants(3);
+}
+/// The real Claude executable and its parent are protected from test writes.
+#[test]
+fn b6_f1_grant_claude_executable() {
+    reject_control_grants(4);
+}
+
+/// Recovery attempts never share a writable checkout with an earlier attempt.
+#[test]
+fn b6_f1_attempt_checkout() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = protected_config(&dir.path().canonicalize().unwrap());
+    let mut step: PipelineStep = serde_json::from_value(serde_json::json!({"run_id":"fixture","seq":1,"attempt":1,"kind":"test","provider":null,"owner_epoch":1,"round":0,"state":"planned","version":1,"cookie":null,"pid":null,"birth":null,"step_base":"a".repeat(40),"input_sha256":"b".repeat(64),"result_commit":null,"result_tree":null,"body":{}})).unwrap();
+    let first = PipelineTestRunner::checkout(&config, &step).unwrap();
+    step.attempt += 1;
+    assert_ne!(first, PipelineTestRunner::checkout(&config, &step).unwrap());
+}
+
+/// Executable rechecks refuse writable namespaces even when admitted bytes still match.
+#[tokio::test]
+async fn b6_f1_recheck_writable_program() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let mut config = protected_config(&root);
+    std::fs::create_dir(&config.work_root).unwrap();
+    let cache = root.join("cache");
+    std::fs::create_dir(&cache).unwrap();
+    config.test_cache_dirs = vec![cache];
+    for namespace in [
+        config.work_root.clone(),
+        config.test_cache_dirs[0].clone(),
+        config.clis.codex.codex_home.clone().unwrap(),
+    ] {
+        let program = namespace.join("program");
+        std::fs::write(&program, b"fixture").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let profile = AdmittedProfile::admit(proposal(program)).unwrap();
+        let command = &profile.proposal.commands[0];
+        profile.recheck_async(command, vec![]).await.unwrap();
+        assert!(
+            profile
+                .recheck_async(command, config.test_writable_paths().unwrap())
+                .await
+                .is_err()
+        );
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod host {
     use super::*;

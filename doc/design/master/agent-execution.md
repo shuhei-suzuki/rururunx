@@ -329,18 +329,36 @@ catalog remains immutable for that Project. Committed repository files and Task
 text cannot activate commands.
 
 In pipeline mode, each admitted command runs under the existing pipeline process
-custody against a checked detached checkout. Seatbelt allows file reads, denies
-network and permits writes only within that checkout, its private TMPDIR and
-`pipeline.test_cache_dirs`. Cache paths must be canonical absolute directories
+custody against a checked detached checkout whose path includes the run, sequence
+and attempt. Reuse requires a regular gitfile pointing directly to the expected
+common-directory worktree registration. Earlier attempts are never reused.
+Seatbelt allows file reads, fork/exec, self process information and same-sandbox
+signals, with no Mach lookup allowance. It denies network, including localhost
+bind/listen and UNIX sockets such as the Runtime control socket; tests cannot use
+local sockets. Writes are limited to that checkout, its private TMPDIR,
+`pipeline.test_cache_dirs` and data writes to `/dev/null`. Cache paths must be canonical absolute directories
 whose literals cannot change the profile syntax. Grants overlapping registered
 Project roots, Task worktree namespaces, common Git data, state directories or
-the pipeline work root are refused; HOME itself cannot be granted. Tests inherit
+the pipeline work root are refused; HOME itself cannot be granted. All grants also
+refuse overlap with canonical CODEX_HOME, every PATH prefix, and both CLI real
+executables and their parents. Caches are shared across Projects; cache poisoning
+can affect another Project's test results. Tests inherit
 only the fixed pipeline environment and never `CODEX_HOME`. Profile body hashes,
-decoded policy and executable hashes are checked before execution. Stream limits,
+decoded policy and executable hashes are checked before execution. Admission and
+recheck refuse programs under work_root, any cache or CODEX_HOME; executable hashes
+are computed on blocking workers. Command IDs and indexes are immutable in SQL.
+Agent leaders require a matching cookie; absent environments are accepted only
+for sandbox-exec test leaders. Stream limits,
 timeout and drain bounds come from the admitted command. Complete failed results
 are adopted as failures; incomplete I/O or process-death observations hold the
 run. Test evidence is retained in pipeline step records, independently of native
 verification tables.
+
+Final command adoption atomically records pending checkout cleanup in the run
+body. The adoption entry point can resume cleanup from adopted steps and completed
+runs without rerunning commands. The pending record is cleared with an owner and
+version check only after every checkout has been removed; partial removal is safe
+to retry. Terminal runs with pending cleanup remain in the owner takeover inventory.
 
 Session remains transport state; Task/attempt is execution authority; reservation
 is unit-specific; Workflow still owns phase truth; Context/ReviewBundle bind actual

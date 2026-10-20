@@ -4,6 +4,7 @@ use crate::execution::pipeline::{
     test_support::{LaunchPhase, pause_launch},
 };
 use std::sync::Arc;
+mod r1fix;
 
 async fn planned_test(
     code: &str,
@@ -108,14 +109,14 @@ async fn he08_platform_escape_held() {
         .parse::<u32>()
         .unwrap();
     let cookie = rrx_process_tracker::Cookie::new("he8-fixture-cookie-1234").unwrap();
-    let birth = rrx_process_tracker::owned_leader(pid, &cookie)
+    let birth = rrx_process_tracker::owned_test_leader(pid, &cookie)
         .unwrap()
         .birth;
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     let step = view.steps.last().unwrap();
     let held = step.state == "held" && step.body["reason"] == "death_unconfirmed";
     assert_eq!(
-        rrx_process_tracker::owned_leader(pid, &cookie)
+        rrx_process_tracker::owned_test_leader(pid, &cookie)
             .unwrap()
             .birth,
         birth

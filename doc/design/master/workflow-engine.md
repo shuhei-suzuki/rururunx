@@ -493,6 +493,22 @@ Tests execute through `/usr/bin/sandbox-exec` with network denied and writes
 restricted to the checkout, step TMPDIR and operator-declared caches. Their
 environment is built from the pipeline allowlist without `CODEX_HOME`.
 
+Checkout paths include the attempt, and reuse checks the exact gitfile registration
+under the common Git directory. SQL keeps both command ID and command index
+immutable. Final command adoption records pending checkout cleanup atomically in
+the run body. The same adoption entry point resumes partial cleanup even for a
+completed Goal, clears the obligation only after all removals, and never reruns a
+test to do so. Pending terminal runs are included in owner takeover.
+
+Seatbelt has no Mach lookup allowance. It permits fork/exec, self process
+information, same-sandbox signals and `/dev/null` data writes. Network denial
+includes localhost bind/listen and UNIX sockets; tests cannot use local sockets.
+All write grants exclude canonical CODEX_HOME, every PATH prefix and both CLI
+executables' real paths and parents, as well as managed state and repository
+namespaces. Caches remain shared across Projects, so poisoning can affect another
+Project's test results. Admission and recheck reject programs under work_root,
+caches or CODEX_HOME, and compute executable hashes on blocking workers.
+
 `workflow::WorkflowEngine` initializes one exact Task workflow, then `step` reserves
 and dispatches a phase or polls its stable native Session. QUICK, STANDARD and
 STRICT execute against `AgentAdapter`; formal requirements/design/impact phases

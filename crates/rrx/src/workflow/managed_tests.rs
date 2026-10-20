@@ -433,6 +433,7 @@ async fn managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_i
                 ]),
             },
         )
+        .await
         .unwrap();
     sources.prepare(task.id, "codex").await.unwrap();
     let engine = WorkflowEngine::new(

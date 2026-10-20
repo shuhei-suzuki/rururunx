@@ -69,6 +69,12 @@ impl Runtime {
         if !self.service_running() || self.stopping.load(Ordering::SeqCst) {
             return Ok(false);
         }
+        if self
+            .finish_pipeline_test_cleanup(&cursor.run_id, Some(&cursor))
+            .await?
+        {
+            return Ok(true);
+        }
         let profile = self
             .owner
             .store
@@ -177,34 +183,39 @@ impl Runtime {
             self.wake.notify_one();
             return Ok(true);
         }
-        let view = self
+        self.finish_pipeline_test_cleanup(&run.id, None).await?;
+        self.wake.notify_one();
+        Ok(true)
+    }
+
+    async fn finish_pipeline_test_cleanup(
+        &self,
+        id: &str,
+        cursor: Option<&PipelineCursor>,
+    ) -> Result<bool> {
+        let pending = self
             .owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .pipeline_goal_view(run.goal_id)?;
-        let mut checkouts = std::collections::BTreeSet::new();
-        for tested in view
-            .steps
-            .iter()
-            .filter(|s| s.run_id == run.id && s.kind == "test" && s.step_base == step.step_base)
-        {
-            ensure!(
-                tested.body["death_confirmed"] == true,
-                "test cleanup death unconfirmed"
-            );
-            checkouts.insert(PipelineTestRunner::checkout(config, tested)?);
+            .pipeline_test_cleanup(&self.owner, id, cursor)?;
+        let Some((run, steps, project)) = pending else {
+            return Ok(false);
+        };
+        let config = self
+            .config
+            .pipeline
+            .as_ref()
+            .context("pipeline config missing")?;
+        for step in steps {
+            let checkout = PipelineTestRunner::checkout(config, &step)?;
+            PipelineTestRunner::remove(&project, &checkout).await?;
         }
-        let project = self
-            .owner
+        self.owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .project(run.project_id)?
-            .context("test Project missing")?;
-        for checkout in checkouts {
-            PipelineTestRunner::remove(&project.root, &checkout).await?;
-        }
+            .pipeline_test_cleanup_done(&self.owner, &run)?;
         self.wake.notify_one();
         Ok(true)
     }

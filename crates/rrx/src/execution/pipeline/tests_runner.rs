@@ -32,7 +32,7 @@ impl PipelineTestRunner {
         Ok(config
             .work_root
             .join("co")
-            .join(format!("{}-{}", step.run_id, step.seq)))
+            .join(format!("{}-{}-{}", step.run_id, step.seq, step.attempt)))
     }
 
     pub(crate) async fn prepare(
@@ -126,6 +126,7 @@ impl PipelineTestRunner {
         for p in projects {
             forbidden.extend([p.root, p.worktree_root]);
         }
+        forbidden.extend(config.test_protected_paths()?);
         Ok(PreparedTest {
             profile,
             command,
@@ -196,6 +197,31 @@ async fn registered(project: &PipelineGit, checkout: &Path) -> Result<()> {
         "test checkout registration missing"
     );
     let co = PipelineGit::new(checkout)?;
+    let common = PathBuf::from(
+        project
+            .text(&["rev-parse", "--path-format=absolute", "--git-common-dir"])
+            .await?,
+    )
+    .canonicalize()?;
+    let gitfile = checkout.join(".git");
+    ensure!(
+        std::fs::symlink_metadata(&gitfile)?.file_type().is_file(),
+        "test gitfile is not regular"
+    );
+    let contents = std::fs::read_to_string(&gitfile)?;
+    let gitdir = PathBuf::from(
+        contents
+            .trim_end()
+            .strip_prefix("gitdir: ")
+            .context("test gitfile malformed")?,
+    );
+    let expected = common
+        .join("worktrees")
+        .join(checkout.file_name().context("checkout name missing")?);
+    ensure!(
+        gitdir == expected && gitdir.canonicalize()? == expected,
+        "test gitfile changed"
+    );
     ensure!(
         co.text(&["rev-parse", "--path-format=absolute", "--git-common-dir"])
             .await?
@@ -266,10 +292,15 @@ pub(crate) fn seatbelt(
 ) -> Result<String> {
     let home = std::env::var_os("HOME").context("HOME missing")?;
     let home = Path::new(&home).canonicalize()?;
+    let forbidden = forbidden
+        .iter()
+        .map(|p| p.canonicalize())
+        .collect::<std::io::Result<Vec<_>>>()?;
+    let work_root = work_root.canonicalize()?;
     let mut grants = vec![checkout, tmp];
     grants.extend(caches.iter().map(PathBuf::as_path));
     let mut policy = String::from(
-        "(version 1)\n(deny default)\n(allow process*)\n(allow signal (target same-sandbox))\n(allow sysctl-read)\n(allow mach-lookup)\n(allow file-read*)\n(deny network*)\n",
+        "(version 1)\n(deny default)\n(allow process-fork)\n(allow process-exec*)\n(allow process-info* (target self))\n(allow signal (target same-sandbox))\n(allow sysctl-read)\n(allow file-read*)\n(deny network*)\n(allow file-write-data (literal \"/dev/null\"))\n",
     );
     for (index, path) in grants.into_iter().enumerate() {
         let literal = absolute_literal(path)?;
@@ -282,12 +313,12 @@ pub(crate) fn seatbelt(
         );
         if index >= 2 {
             ensure!(
-                !path.starts_with(work_root) && !work_root.starts_with(path),
+                !path.starts_with(&work_root) && !work_root.starts_with(path),
                 "Seatbelt cache overlaps work_root"
             );
         } else {
             ensure!(
-                path.starts_with(work_root) && path != work_root,
+                path.starts_with(&work_root) && path != work_root,
                 "Seatbelt grant outside work_root"
             );
         }
@@ -296,5 +327,7 @@ pub(crate) fn seatbelt(
     Ok(policy)
 }
 
+#[cfg(all(test, target_os = "macos"))]
+mod hardening;
 #[cfg(test)]
 pub(crate) mod tests;

@@ -279,7 +279,13 @@ impl StepLauncher {
             .stderr(Stdio::piped());
         if let Some(test) = &test {
             // No file materialization or qualification may intervene between recheck and spawn.
-            if test.profile.recheck(&test.command).is_err() {
+            let checked = async {
+                test.profile
+                    .recheck_async(&test.command, self.config.test_writable_paths()?)
+                    .await
+            }
+            .await;
+            if checked.is_err() {
                 self.owner
                     .store
                     .lock()
@@ -304,8 +310,13 @@ impl StepLauncher {
         let process = ProcessGroup::new(child, Arc::new(AtomicBool::new(true)))?;
         let pid = process.child.id().context("owned child PID missing")?;
         let leader_cookie = rrx_process_tracker::Cookie::new(&cookie)?;
+        let test_leader = test.is_some();
         let birth = tokio::task::spawn_blocking(move || {
-            rrx_process_tracker::owned_leader(pid, &leader_cookie)
+            if test_leader {
+                rrx_process_tracker::owned_test_leader(pid, &leader_cookie)
+            } else {
+                rrx_process_tracker::owned_leader(pid, &leader_cookie)
+            }
         })
         .await?;
         let recorded_birth = birth.as_ref().ok().map(|leader| leader.birth);

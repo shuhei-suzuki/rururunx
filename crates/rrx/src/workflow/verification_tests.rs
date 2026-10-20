@@ -60,6 +60,7 @@ async fn refused(provider: &str, proposal: Option<TestsProfile>) {
             .version;
         verifier
             .admit_tests(f.task.project_id, version, proposal)
+            .await
             .unwrap();
     }
     let engine = f.production_engine("pass").with_verifier(verifier).unwrap();

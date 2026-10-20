@@ -111,7 +111,11 @@ pub struct OwnedLeader {
     pub zombie: bool,
 }
 pub fn owned_leader(pid: u32, cookie: &Cookie) -> io::Result<OwnedLeader> {
-    platform::owned_leader(pid, cookie)
+    platform::owned_leader(pid, cookie, false)
+}
+/// A sandbox-exec test leader may have its environment removed by the platform.
+pub fn owned_test_leader(pid: u32, cookie: &Cookie) -> io::Result<OwnedLeader> {
+    platform::owned_leader(pid, cookie, true)
 }
 #[derive(Default, Debug)]
 pub struct Coverage {

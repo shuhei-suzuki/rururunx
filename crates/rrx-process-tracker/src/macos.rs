@@ -113,20 +113,22 @@ fn query_birth(pid: u32, query: &Query, zombie_allowed: bool) -> Option<OwnedLea
         zombie: query.info.stat == SZOMB,
     })
 }
-pub(super) fn owned_leader(pid: u32, cookie: &Cookie) -> io::Result<OwnedLeader> {
-    read_owned_leader(pid, cookie, &mut System(Instant::now()))
+pub(super) fn owned_leader(pid: u32, cookie: &Cookie, test: bool) -> io::Result<OwnedLeader> {
+    read_owned_leader(pid, cookie, test, &mut System(Instant::now()))
 }
 fn read_owned_leader(
     pid: u32,
     cookie: &Cookie,
+    test: bool,
     source: &mut impl Source,
 ) -> io::Result<OwnedLeader> {
     let leader = query_birth(pid, &source.query(pid), true)
         .ok_or_else(|| io::Error::other("owned leader unavailable"))?;
     if !leader.zombie {
         match source.environment(pid, cookie, Limits::default().environment_bytes) {
-            Ok(Environment::Match | Environment::Absent) => {}
-            Ok(Environment::NonMatch) => {
+            Ok(Environment::Match) => {}
+            Ok(Environment::Absent) if test => {}
+            Ok(Environment::NonMatch | Environment::Absent) => {
                 return Err(io::Error::other("owned leader cookie mismatch"));
             }
             Err(_) => {

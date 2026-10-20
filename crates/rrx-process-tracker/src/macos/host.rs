@@ -133,12 +133,13 @@ fn he04_exec_premise() {
         process_path(pid).unwrap(),
         std::path::Path::new("/usr/bin/perl")
     );
-    let b0 = owned_leader(pid, &cookie).unwrap().birth;
+    assert!(crate::owned_leader(pid, &cookie).is_err());
+    let b0 = crate::owned_test_leader(pid, &cookie).unwrap().birth;
     child.0.stdin.as_mut().unwrap().write_all(b"x").unwrap();
     wait_for(|| process_path(pid).is_ok_and(|p| p == std::path::Path::new("/bin/sleep")));
-    let b1 = owned_leader(pid, &cookie).unwrap().birth;
+    let b1 = crate::owned_test_leader(pid, &cookie).unwrap().birth;
     wait_for(|| query_birth(pid, &query_pid(pid), true).is_some_and(|p| p.zombie));
-    let b2 = owned_leader(pid, &cookie).unwrap();
+    let b2 = crate::owned_test_leader(pid, &cookie).unwrap();
     assert!(b2.zombie);
     assert_eq!(b0, b1);
     assert_eq!(b1, b2.birth);

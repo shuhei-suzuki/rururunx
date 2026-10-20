@@ -2,6 +2,7 @@
 use super::*;
 use crate::execution::RuntimeOwner;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 pub const PIPELINE_TABLES: &[&str] = &[
     "goal_execution_profiles",
@@ -644,7 +645,7 @@ fn insert_journal(tx: &Transaction<'_>, owner: &RuntimeOwner, j: &PipelineJourna
 }
 fn takeover_rows(c: &Connection) -> Result<PipelineTakeover> {
     let mut q = c.prepare(&format!(
-        "SELECT {RUN_COLUMNS} FROM pipeline_runs WHERE state IN ('running','held') ORDER BY id"
+        "SELECT {RUN_COLUMNS} FROM pipeline_runs WHERE state IN ('running','held') OR json_type(body,'$.test_cleanup')='object' ORDER BY id"
     ))?;
     let runs = q
         .query_map([], run_row)?
@@ -1400,6 +1401,8 @@ impl Store {
         step.state = "adopted".into();
         step.body["adoption"] = json!({"command_id":last_command,"result":"pass"});
         write_step(&tx, owner, &step)?;
+        run.body["test_cleanup"] =
+            json!({"seq":step.seq,"attempt":step.attempt,"step_base":step.step_base});
         tx.execute("INSERT INTO pipeline_goal_completions(goal_id,project_id,goal_branch_head,goal_check_run,runs_sha256,completed_epoch,body) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![goal.id.to_string(),goal.project_id.to_string(),run.head_commit,run.id,runs_sha256,owner.epoch,serde_json::to_string(&json!({"runs":runs}))?])?;
         run.state = "completed".into();
         write_run(&tx, owner, &run)?;
@@ -1504,6 +1507,91 @@ pub(crate) fn test_pass(step: &PipelineStep) -> Result<bool> {
 }
 
 impl Store {
+    /// Cleanup is an observation of already adopted, dead tests, including terminal runs.
+    pub(crate) fn pipeline_test_cleanup(
+        &mut self,
+        owner: &RuntimeOwner,
+        id: &str,
+        cursor: Option<&PipelineCursor>,
+    ) -> Result<Option<(PipelineRun, Vec<PipelineStep>, PathBuf)>> {
+        let tx = self.connection.transaction()?;
+        pipeline_owner_current(&tx, owner)?;
+        let run = read_run(&tx, id)?;
+        ensure!(
+            run.owner_epoch == owner.epoch,
+            "pipeline cleanup owner retired"
+        );
+        if run.body["test_cleanup"].is_null() {
+            return Ok(None);
+        }
+        if let Some(cursor) = cursor {
+            ensure!(cursor.run_id == id, "cleanup cursor run changed");
+            cursor_rows(&tx, owner, cursor, false)?;
+            check_wait(&tx, owner, cursor.wait_version)?;
+        }
+        let pending = &run.body["test_cleanup"];
+        let step = read_step(
+            &tx,
+            id,
+            u32::try_from(pending["seq"].as_u64().context("cleanup seq missing")?)?,
+            u32::try_from(
+                pending["attempt"]
+                    .as_u64()
+                    .context("cleanup attempt missing")?,
+            )?,
+        )?;
+        ensure!(
+            step.kind == "test"
+                && step.state == "adopted"
+                && step.step_base
+                    == pending["step_base"]
+                        .as_str()
+                        .context("cleanup base missing")?,
+            "cleanup adoption missing"
+        );
+        let mut q = tx.prepare(&format!("SELECT {STEP_COLUMNS} FROM pipeline_steps WHERE run_id=?1 AND kind='test' AND step_base=?2 ORDER BY seq,attempt"))?;
+        let steps = q
+            .query_map(params![id, step.step_base], step_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        drop(q);
+        ensure!(
+            steps.iter().all(|s| s.body["death_confirmed"] == true),
+            "test cleanup death unconfirmed"
+        );
+        let project = tx.query_row(
+            "SELECT body FROM projects WHERE id=?1",
+            [run.project_id.to_string()],
+            |r| r.get::<_, String>(0),
+        )?;
+        let project: crate::domain::Project = serde_json::from_str(&project)?;
+        tx.commit()?;
+        Ok(Some((run, steps, project.root)))
+    }
+
+    pub(crate) fn pipeline_test_cleanup_done(
+        &mut self,
+        owner: &RuntimeOwner,
+        expected: &PipelineRun,
+    ) -> Result<()> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        pipeline_owner_current(&tx, owner)?;
+        let mut run = current_run(&tx, owner, &expected.id, expected.version, false)?;
+        ensure!(
+            run.body["test_cleanup"] == expected.body["test_cleanup"]
+                && !run.body["test_cleanup"].is_null(),
+            "test cleanup changed"
+        );
+        run.body
+            .as_object_mut()
+            .context("run body missing")?
+            .remove("test_cleanup");
+        write_run(&tx, owner, &run)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Reads and checks the pinned catalog at the planning/launch boundary, holding on corruption.
     pub(crate) fn pipeline_test_context(
         &mut self,
@@ -2383,10 +2471,10 @@ impl Store {
             certifying_exit(&step)?;
         }
         if step.kind == "test" {
-            if check_test_profile(&tx, owner, &mut run, &mut step)?.is_none() {
+            let Some(profile) = check_test_profile(&tx, owner, &mut run, &mut step)? else {
                 tx.commit()?;
                 return Ok(());
-            }
+            };
             let pass = test_pass(&step)?;
             ensure!(
                 evidence["result"].as_str() == Some(if pass { "pass" } else { "fail" }),
@@ -2397,6 +2485,13 @@ impl Store {
                     && step.body["command_id"].as_str() == evidence["command_id"].as_str(),
                 "pipeline adoption command differs from plan"
             );
+            if step.body["command_index"].as_u64()
+                == Some(profile.proposal.commands.len() as u64 - 1)
+            {
+                run.body["test_cleanup"] =
+                    json!({"seq":step.seq,"attempt":step.attempt,"step_base":step.step_base});
+                write_run(&tx, owner, &run)?;
+            }
         }
         step.state = "adopted".into();
         step.body["adoption"] = evidence.clone();
