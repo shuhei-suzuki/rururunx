@@ -3,6 +3,7 @@ use super::*;
 use crate::execution::RuntimeOwner;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+mod review;
 
 pub const PIPELINE_TABLES: &[&str] = &[
     "goal_execution_profiles",
@@ -388,6 +389,9 @@ fn insert_step(tx: &Transaction<'_>, owner: &RuntimeOwner, step: &PipelineStep) 
         step.version == 0 && step.state == "planned",
         "new step requires absent version"
     );
+    if step.kind == "review" {
+        crate::execution::pipeline::review::scan_strings(&step.body).context("review.body")?;
+    }
     let body = stamped(&step.body, 1, "planned", owner.epoch)?;
     tx.execute("INSERT INTO pipeline_steps(run_id,seq,attempt,kind,provider,owner_epoch,round,state,version,cookie,pid,birth,step_base,input_sha256,result_commit,result_tree,body) VALUES(?1,?2,?3,?4,?5,?6,?7,'planned',1,NULL,NULL,NULL,?8,?9,NULL,NULL,?10)",params![step.run_id,step.seq,step.attempt,step.kind,step.provider,owner.epoch,step.round,step.step_base,step.input_sha256,body])?;
     if step.kind == "test" {
@@ -398,6 +402,9 @@ fn insert_step(tx: &Transaction<'_>, owner: &RuntimeOwner, step: &PipelineStep) 
     Ok(())
 }
 fn write_step(tx: &Transaction<'_>, owner: &RuntimeOwner, step: &PipelineStep) -> Result<()> {
+    if step.kind == "review" {
+        crate::execution::pipeline::review::scan_strings(&step.body).context("review.body")?;
+    }
     let version = next_version(step.version)?;
     let body = stamped(&step.body, version, &step.state, owner.epoch)?;
     cas(tx.execute("UPDATE pipeline_steps SET owner_epoch=?1,version=?2,state=?3,cookie=?4,pid=?5,birth=?6,result_commit=?7,result_tree=?8,body=?9 WHERE run_id=?10 AND seq=?11 AND attempt=?12 AND version=?13",params![owner.epoch,version,step.state,step.cookie,step.pid,step.birth,step.result_commit,step.result_tree,body,step.run_id,step.seq,step.attempt,step.version])?,"pipeline_steps",&format!("{}/{}/{}",step.run_id,step.seq,step.attempt),step.version)
@@ -2445,7 +2452,9 @@ impl Store {
                 "held"
             } else if reason == "interrupted" {
                 "interrupted"
-            } else if step.kind == "test" && reason != "record_failed" {
+            } else if (step.kind == "review" && reason == "secret_detected")
+                || (step.kind == "test" && reason != "record_failed")
+            {
                 "held"
             } else {
                 "rejected"
@@ -2453,6 +2462,9 @@ impl Store {
             .into();
             let reason = if at_limit { "attempt_limit" } else { reason };
             step.body["reason"] = json!(reason);
+            if step.kind == "review" && reason == "secret_detected" {
+                step.body["secret"] = exit.evidence["secret"].clone();
+            }
             write_step(&tx, owner, &step)?;
             if step.state != "interrupted" {
                 held(&tx, owner, &mut run, &step, reason)?;
@@ -2601,6 +2613,19 @@ impl Store {
                 "pipeline adoption command differs from plan"
             );
             record_test_cleanup(&tx, &run.id)?;
+        }
+        if step.kind == "review" {
+            let policy: String = tx.query_row(
+                "SELECT body FROM goal_execution_profiles WHERE goal_id=?1",
+                [run.goal_id.to_string()],
+                |r| r.get(0),
+            )?;
+            let policy: Value = serde_json::from_str(&policy)?;
+            review::review_adoption(
+                &step,
+                evidence,
+                serde_json::from_value(policy["blocking_severity"].clone())?,
+            )?;
         }
         step.state = "adopted".into();
         step.body["adoption"] = evidence.clone();

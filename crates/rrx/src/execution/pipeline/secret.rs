@@ -15,6 +15,9 @@ impl std::error::Error for SecretHit {}
 pub struct SecretScanner;
 impl SecretScanner {
     pub fn check(bytes: &[u8]) -> Result<()> {
+        Self::check_from(bytes, 0)
+    }
+    pub(crate) fn check_from(bytes: &[u8], base: usize) -> Result<()> {
         let text = String::from_utf8_lossy(bytes);
         let found = [
             "PRIVATE KEY-----",
@@ -43,6 +46,7 @@ impl SecretScanner {
                 })
         });
         if let Some((pattern, offset)) = found {
+            let offset = base.saturating_add(offset);
             return Err(SecretHit {
                 pattern,
                 offset_sha256: super::launcher::hash(&offset.to_le_bytes()),

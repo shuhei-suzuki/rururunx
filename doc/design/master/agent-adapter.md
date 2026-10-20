@@ -127,6 +127,28 @@ Fields:
 
 ## 7. Review contract
 
+The CLI pipeline's Reviewer runs in a newly rebuilt, read-only commit snapshot, with
+the diff and Task text framed as untrusted data using a unique step nonce. Its fixed
+Claude argv permits only `Read,Grep,Glob`, explicitly refuses execution, write, web
+and delegation tools, supplies an empty strict MCP configuration, disables slash
+commands and sets `--setting-sources ""`. Qualification checks that the pinned CLI
+accepts the empty settings-source value. The environment is assembled from the
+pipeline allowlist; the prompt is delivered over stdin through shared process custody.
+
+`result.json` is bounded to 1 MiB. Strict JSON decoding enforces depth 8, 4,096 nodes,
+64 KiB strings and duplicate-key rejection before conversion to inner DTOs with
+`deny_unknown_fields`. The inner schema checks enums, finding IDs, lengths and line
+ranges. A successful outer envelope must identify the configured main model in its
+`model` field and contain `structured_output`; usage-model entries are diagnostics,
+never proof of the main model. Unknown outer fields are retained as scanned diagnostics.
+Unrecognized envelopes remain held rather than inferring a model from usage data.
+
+The prompt, retained result, all stderr bytes (including discarded prefixes), and
+every decoded string saved in the review step are secret-scanned. Raw artifacts remain
+private and become mode 0400. Detected secrets hold the step without storing an excerpt.
+Snapshot contents are compared with the target commit before launch and after confirmed
+death. Unsupported snapshot entries such as symlinks are refused before launch.
+
 Input should include only the context needed for the review:
 
 - task/phase

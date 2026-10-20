@@ -88,6 +88,30 @@ impl StepLauncher {
             run.state == "running" && step.state == "planned",
             "pipeline launch state changed"
         );
+        if step.kind == "review" && step.body.get("snapshot_tree").is_some() {
+            let project = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .project(run.project_id)?
+                .context("review Project missing")?;
+            let checked = super::review_snapshot::verify(
+                &super::PipelineGit::new(&project.root)?,
+                &self.config.work_root,
+                &input.work,
+                &step.step_base,
+            )
+            .await;
+            if !checked.is_ok_and(|tree| step.body["snapshot_tree"] == tree) {
+                self.owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .pipeline_hold(&self.owner, &cursor, "review_snapshot_changed", None)?;
+                return Ok(LaunchResult::Held);
+            }
+        }
         // Tests require the admitted/Seatbelt producer; internal steps never spawn here.
         let (role, codex) = match step.kind.as_str() {
             "test" if test.is_some() => (PipelineRole::Implement, false),

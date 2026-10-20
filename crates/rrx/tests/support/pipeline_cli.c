@@ -54,6 +54,8 @@ int main(int argc,char **argv) {
         value[n]=0;if(c!=0 || strcmp(value,argv[i])){fclose(expected);return 96;}}
     if(fgetc(expected)!=EOF){fclose(expected);return 97;}fclose(expected);
     fclose(file("exec-entered","w"));
+    char cwd[PATH_MAX]; if(!getcwd(cwd,sizeof cwd))return 103;
+    FILE *cwd_file=file("cwd","w");fputs(cwd,cwd_file);fclose(cwd_file);
     if(exists("exec-pre-output")){output("exec-pre-output");fflush(stdout);}
     if(exists("exec-stderr")){
         FILE *err=file("exec-stderr","r");int ch;

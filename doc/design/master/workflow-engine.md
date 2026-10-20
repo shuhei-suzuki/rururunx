@@ -298,6 +298,23 @@ Each phase declares:
 
 ## 6. Review policy
 
+The CLI pipeline exposes separate Runtime entry points to prepare, launch and adopt a
+Reviewer step. Preparation rebuilds a private snapshot from the selected commit through
+filter-checked Git plumbing, seals files and directories against writes, and verifies
+its Git tree digest. Launch uses the fixed Claude plan-mode template and the shared
+Agent custody, including a matching leader cookie and a 1,800-second wall-clock bound.
+Adoption requires certified death, retained output receipts and a second snapshot tree
+check under the control-admission boundary. The final Store transaction revalidates
+the owner, epoch, Goal lifecycle and run/step versions.
+
+The decoded `rrx.review.v1` verdict is stored in `step.body.adoption.verdict` for later
+decision processing. Finding IDs must be unique. An `approve` verdict containing an
+explicit blocking finding or a finding at the Goal's immutable severity threshold is
+normalized to `request_changes`. Schema failures reject the step; envelope/model
+mismatches, snapshot drift and detected secrets hold it with fixed reasons. Secret
+receipts contain only a pattern ID and an offset digest. This adoption records a
+review result; it does not release a branch or schedule confirmation or repairs.
+
 Review policy is data, not hard-coded Triple Review logic.
 
 Example:

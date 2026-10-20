@@ -1,6 +1,8 @@
 use super::*;
 mod b6;
 #[cfg(target_os = "macos")]
+mod b7;
+#[cfg(target_os = "macos")]
 mod d20;
 #[cfg(target_os = "macos")]
 use crate::config::{AgentConfig, Config, WorkflowClass};
@@ -567,7 +569,7 @@ fn fixture_profile(digest: String) -> PipelineProfile {
         policy_sha256: String::new(),
         clis_sha256: "b".repeat(64),
         tests_profile_digest: digest,
-        body: json!({"max_fix_rounds":2,"max_limit_waits":3,"task_scopes":{"task":["src/**"]}}),
+        body: json!({"max_fix_rounds":2,"max_limit_waits":3,"blocking_severity":"high","task_scopes":{"task":["src/**"]}}),
     };
     profile.policy_sha256 = profile.policy_digest().unwrap();
     profile

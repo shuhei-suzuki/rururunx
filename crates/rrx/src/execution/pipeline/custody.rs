@@ -269,6 +269,9 @@ impl Monitor {
             MonitorKind::Test(command) => (None, "", Some(command)),
         };
         let codex = role.is_some_and(|r| !matches!(r, PipelineRole::Review));
+        let reviewer = matches!(role, Some(PipelineRole::Review));
+        let mut review_out_scan = super::review::ReviewStreamScan::default();
+        let mut review_err_scan = super::review::ReviewStreamScan::default();
         let (seconds, drain_seconds, out_limit, err_limit) = self.kind.limits();
         let mut out = Capture::new(out_limit, false);
         let mut err = Capture::new(err_limit, test.is_none());
@@ -302,22 +305,22 @@ impl Monitor {
                 read = stdout.read(&mut out_buffer), if !out_done => {
                     match read {
                         Ok(0) => out_done = true,
-                        Ok(n) => match out.append(&out_buffer[..n]) {
+                        Ok(n) => { if reviewer {review_out_scan.append(&out_buffer[..n]);} match out.append(&out_buffer[..n]) {
                             Ok(true) => {},
                             Ok(false) => { issue = Some("output_overflow"); break; },
                             Err(_) => { issue = Some("output_io"); break; }
-                        },
+                        } },
                         Err(_) => { issue = Some("output_io"); break; }
                     }
                 },
                 read = stderr.read(&mut err_buffer), if !err_done => {
                     match read {
                         Ok(0) => err_done = true,
-                        Ok(n) => match err.append(&err_buffer[..n]) {
+                        Ok(n) => { if reviewer {review_err_scan.append(&err_buffer[..n]);} match err.append(&err_buffer[..n]) {
                             Ok(true) => {},
                             Ok(false) => { issue = Some("output_overflow"); break; },
                             Err(_) => { issue = Some("output_io"); break; }
-                        },
+                        } },
                         Err(_) => { issue = Some("output_io"); break; }
                     }
                 },
@@ -368,6 +371,7 @@ impl Monitor {
         } else {
             "result.json"
         };
+        let secret = review_out_scan.hit.or(review_err_scan.hit);
         let streams = (|| -> Result<_> {
             let stdout = out.retain(&self.attempt, "stdout", out_done)?;
             let stderr = err.retain(&self.attempt, "stderr", err_done)?;
@@ -392,14 +396,17 @@ impl Monitor {
                         &dead.evidence,
                         PipelineExit {
                             outcome: test.is_none().then_some("other"),
-                            evidence: &json!({"issue":"output_io"}),
-                            issue: Some("output_io"),
+                            evidence: &json!({"issue":if secret.is_some() {"secret_detected"}else{"output_io"},"secret":secret}),
+                            issue: Some(if secret.is_some() {"secret_detected"}else{"output_io"}),
                         },
                     )?;
                 return Ok(());
             }
         };
-        let last = if test.is_some() {
+        if secret.is_some() {
+            issue = Some("secret_detected");
+        }
+        let last = if test.is_some() || reviewer {
             None
         } else {
             match check_last(&self.attempt, matches!(role, Some(PipelineRole::Confirm))) {
@@ -447,7 +454,7 @@ impl Monitor {
                     outcome,
                     evidence: &json!({
                     "code":dead.status.code(),"exit_code":dead.status.code(),"signal":dead.status.signal(),"timed_out":timed_out,"overflow":overflow,"issue":issue,"stdout":stdout,"stderr":stderr,"last":last,
-                    "stdout_truncated":out.truncated,"stderr_truncated":err.truncated
+                    "stdout_truncated":out.truncated,"stderr_truncated":err.truncated,"secret":secret
                     }),
                     issue,
                 },
