@@ -116,7 +116,9 @@ async fn accepted(
         let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_rrx"));
         command
             .env_clear()
-            .envs(rrx::cli::daemon::environment())
+            .envs(rrx::cli::daemon::environment(
+                rrx::config::ExecutionMode::ManagedNative,
+            ))
             .arg("--state")
             .arg(&db)
             .arg("--config")

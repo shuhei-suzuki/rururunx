@@ -123,7 +123,9 @@ impl Fixture {
     }
     fn command(&self, cwd: &Path) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
-        command.env_clear().envs(rrx::cli::daemon::environment());
+        command.env_clear().envs(rrx::cli::daemon::environment(
+            rrx::config::ExecutionMode::ManagedNative,
+        ));
         command
             .current_dir(cwd)
             .arg("--state")

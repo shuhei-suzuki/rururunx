@@ -26,8 +26,24 @@ const READINESS_BYTES: u64 = 4096;
 const POLL: Duration = Duration::from_millis(20);
 
 /// Fixed daemon inputs; child-specific settings and credentials are not inherited.
-pub fn environment() -> Vec<(OsString, OsString)> {
-    const NAMES: &[&str] = &[
+pub fn environment(mode: crate::config::ExecutionMode) -> Vec<(OsString, OsString)> {
+    const PIPELINE_NAMES: &[&str] = &[
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "PATH",
+        "TMPDIR",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "LC_MESSAGES",
+        "TERM",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+        "XDG_CACHE_HOME",
+    ];
+    const NATIVE_NAMES: &[&str] = &[
         "HOME",
         "USER",
         "LOGNAME",
@@ -70,7 +86,11 @@ pub fn environment() -> Vec<(OsString, OsString)> {
         "DOCKER_CONFIG",
         "DOCKER_HOST",
     ];
-    NAMES
+    let names = match mode {
+        crate::config::ExecutionMode::CliPipeline => PIPELINE_NAMES,
+        crate::config::ExecutionMode::ManagedNative => NATIVE_NAMES,
+    };
+    names
         .iter()
         .filter_map(|name| std::env::var_os(name).map(|value| ((*name).into(), value)))
         .collect()
@@ -467,6 +487,10 @@ async fn spawn(launch: &Launch, state: &Path, config: Option<&Path>) -> StartOut
         Ok(config) => config,
         Err(error) => return failed(&log, error),
     };
+    let mode = match crate::config::Config::load(config.as_deref(), None) {
+        Ok(config) => config.execution.mode,
+        Err(error) => return failed(&log, error),
+    };
     let mut command = tokio::process::Command::new(&launch.program);
     command.args(&launch.leading).arg("--state").arg(&state);
     if let Some(config) = &config {
@@ -475,7 +499,7 @@ async fn spawn(launch: &Launch, state: &Path, config: Option<&Path>) -> StartOut
     command
         .args(["serve", "--detached"])
         .env_clear()
-        .envs(environment())
+        .envs(environment(mode))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::from(file))

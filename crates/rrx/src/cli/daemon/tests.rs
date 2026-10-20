@@ -332,7 +332,7 @@ async fn c_s1d_serve_exits_unsuccessfully_after_a_pending_stop() {
                 &state,
                 crate::config::Config::default(),
                 false,
-                environment(),
+                environment(crate::config::ExecutionMode::ManagedNative),
             )
             .await
         })

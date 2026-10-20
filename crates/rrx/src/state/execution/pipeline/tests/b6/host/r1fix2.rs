@@ -17,7 +17,7 @@ fn tmpdir(f: &Fixture) -> std::path::PathBuf {
 async fn he08_zombie_leader_before_record() {
     let (f, runtime, id) = planned_script("exit 0", 10, 1024, 1024).await;
     let (release, arrived) = pause_launch(LaunchPhase::Spawned);
-    let launch = runtime.launch_pipeline_test(f.cursor(&id));
+    let launch = launch_ready(&runtime, f.cursor(&id));
     tokio::pin!(launch);
     tokio::select! {
         _ = &mut launch => panic!("launch completed before Spawned checkpoint"),
@@ -40,7 +40,7 @@ async fn he08_zombie_leader_before_record() {
     };
     exited.await;
     let result = launch.await;
-    let LaunchResult::Started(custody) = result.unwrap() else {
+    let LaunchResult::Started(custody) = result else {
         panic!("zombie test leader was not recorded");
     };
     custody.wait().await.unwrap();
@@ -69,7 +69,18 @@ async fn b6_s3_tmpdir_reclaimed() {
         let view = f.store().pipeline_goal_view(f.goal).unwrap();
         let step = view.steps.last().unwrap();
         assert_eq!(step.body["adoption"]["result"], result);
-        assert!(view.runs[0].body["test_cleanup"].is_null());
+        r4fix::wait_clean(
+            &f.owner,
+            f.goal,
+            &id,
+            &PipelineTestRunner::checkout(
+                f.config.pipeline.as_ref().unwrap(),
+                view.steps.last().unwrap(),
+            )
+            .unwrap(),
+            Some(&tmp),
+        )
+        .await;
         assert!(!tmp.exists());
         runtime.shutdown().await.unwrap();
     }
@@ -172,11 +183,7 @@ async fn goal_commands(ids: &[&str]) -> (Fixture, Arc<Runtime>, String) {
 }
 /// Launches the last planned Goal check; `fail` exists before `go` releases the command.
 async fn run_goal_test(f: &Fixture, runtime: &Runtime, id: &str, fail: bool) {
-    let LaunchResult::Started(custody) = runtime
-        .launch_pipeline_test(goal_cursor(f, id))
-        .await
-        .unwrap()
-    else {
+    let LaunchResult::Started(custody) = launch_ready(runtime, goal_cursor(f, id)).await else {
         panic!("Goal test did not start");
     };
     let config = f.config.pipeline.as_ref().unwrap();
@@ -288,11 +295,11 @@ async fn b6_f4_goal_abandon_restart_cleanup() {
             .unwrap();
         assert!(
             f.store()
-                .pipeline_takeover_view()
+                .pipeline_goal_view(f.goal)
                 .unwrap()
-                .runs
+                .pending_cleanup
                 .iter()
-                .any(|r| r.id == id && r.body["test_cleanup"].is_object())
+                .any(|c| c.run_id == id)
         );
         let state = f.owner.state_path().to_path_buf();
         let config = f.config.clone();
@@ -314,6 +321,36 @@ async fn b6_f4_goal_abandon_restart_cleanup() {
         )
         .await
         .unwrap();
+        if action == "retry" {
+            let inventory = owner
+                .store
+                .lock()
+                .unwrap()
+                .pipeline_takeover_view()
+                .unwrap();
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .pipeline_take_over_test_cleanup(&owner)
+                .unwrap();
+            assert_eq!(
+                owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .pipeline_takeover_view()
+                    .unwrap(),
+                inventory
+            );
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .pipeline_take_over(&owner, &inventory)
+                .unwrap();
+        }
+        let work_root = config.pipeline.as_ref().unwrap().work_root.clone();
         let runtime = Arc::new(Runtime::new(owner.clone(), config).unwrap());
         runtime.start_qualified_service().await.unwrap();
         super::r4fix::wait_clean(&owner, goal, &id, &checkout, Some(&tmp)).await;
@@ -335,6 +372,7 @@ async fn b6_f4_goal_abandon_restart_cleanup() {
             assert!(retried.cookie.is_none());
         }
         runtime.shutdown().await.unwrap();
+        std::fs::remove_dir_all(work_root).unwrap();
     }
 }
 

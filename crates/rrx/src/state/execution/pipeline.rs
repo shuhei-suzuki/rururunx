@@ -13,6 +13,7 @@ pub const PIPELINE_TABLES: &[&str] = &[
     "pipeline_qualifications",
     "pipeline_goal_completions",
     "pipeline_limit_wait",
+    "pipeline_test_cleanup",
 ];
 
 #[cfg(all(test, target_os = "macos"))]
@@ -47,6 +48,7 @@ pub(in crate::state) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
         "owner_epoch=NEW.owner_epoch AND subject=NEW.subject",
         "goal_id=NEW.goal_id OR goal_check_run=NEW.goal_check_run",
         "singleton=NEW.singleton",
+        "run_id=NEW.run_id AND seq=NEW.seq AND attempt=NEW.attempt",
     ];
     for (table, collision) in PIPELINE_TABLES.iter().zip(collisions) {
         // BEFORE INSERT sees an unspecified rowid for implicit allocation (-1 in
@@ -59,6 +61,9 @@ pub(in crate::state) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
         ))?;
         for action in ["INSERT", "UPDATE", "DELETE"] {
             tx.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>12 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;"))?;
+        }
+        if *table == "pipeline_test_cleanup" {
+            continue; // Run ownership fences its independent maintenance writes below.
         }
         if matches!(
             *table,
@@ -81,6 +86,9 @@ pub(in crate::state) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
                 tx.execute_batch(&format!("CREATE TRIGGER {table}_run_epoch_{action} BEFORE {action} ON {table} WHEN (SELECT owner_epoch FROM pipeline_runs WHERE id=NEW.run_id) IS NOT (SELECT epoch FROM runtime_epoch WHERE singleton=1) BEGIN SELECT RAISE(ABORT,'pipeline run owner retired'); END;"))?;
             }
         }
+    }
+    for action in ["INSERT", "UPDATE"] {
+        tx.execute_batch(&format!("CREATE TRIGGER cleanup_writer_{action} BEFORE {action} ON pipeline_test_cleanup WHEN rrx_writer_contract_version()<>12 OR (SELECT owner_epoch FROM pipeline_runs WHERE id=NEW.run_id) IS NOT (SELECT epoch FROM runtime_epoch WHERE singleton=1) BEGIN SELECT RAISE(ABORT,'test cleanup owner retired'); END;"))?;
     }
     Ok(())
 }
@@ -178,7 +186,18 @@ pub struct PipelineLimitWait {
     pub body: Value,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PipelineCleanup {
+    pub run_id: String,
+    pub seq: u32,
+    pub attempt: u32,
+    pub failures: u32,
+    pub not_before: i64,
+    pub failure_class: Option<String>,
+    pub path: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PipelineView {
+    pub pending_cleanup: Vec<PipelineCleanup>,
     pub runs: Vec<PipelineRun>,
     pub steps: Vec<PipelineStep>,
     pub journals: Vec<PipelineJournal>,
@@ -645,7 +664,7 @@ fn insert_journal(tx: &Transaction<'_>, owner: &RuntimeOwner, j: &PipelineJourna
 }
 fn takeover_rows(c: &Connection) -> Result<PipelineTakeover> {
     let mut q = c.prepare(&format!(
-        "SELECT {RUN_COLUMNS} FROM pipeline_runs WHERE state IN ('running','held') OR json_type(body,'$.test_cleanup')='object' ORDER BY id"
+        "SELECT {RUN_COLUMNS} FROM pipeline_runs WHERE state IN ('running','held') ORDER BY id"
     ))?;
     let runs = q
         .query_map([], run_row)?
@@ -1033,7 +1052,12 @@ impl Store {
             .query_map([goal.to_string()], journal_row)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         drop(q);
+        let mut pending_cleanup = Vec::new();
+        for run in &runs {
+            pending_cleanup.extend(cleanup_rows(&tx, &run.id)?);
+        }
         let view = PipelineView {
+            pending_cleanup,
             runs,
             steps,
             journals,
@@ -1289,6 +1313,7 @@ impl Store {
             _ => {}
         }
         settle_wait(&tx, owner, wait, &step)?;
+        record_test_cleanup(&tx, &run.id)?;
         let unsafe_step:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE run_id=?1 AND (state IN ('planned','launching','running','exited','committed','unknown') OR (state='held' AND kind NOT IN ('prepare','release') AND json_extract(body,'$.death_confirmed') IS NOT 1)))",[&run.id],|r|r.get(0))?;
         let open_journal:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_ref_journal WHERE (run_id=?1 OR (goal_id=?2 AND kind='goal_create')) AND state IN ('pending','held'))",params![run.id,run.goal_id.to_string()],|r|r.get(0))?;
         if unsafe_step || open_journal {
@@ -1401,8 +1426,7 @@ impl Store {
         step.state = "adopted".into();
         step.body["adoption"] = json!({"command_id":last_command,"result":"pass"});
         write_step(&tx, owner, &step)?;
-        run.body["test_cleanup"] =
-            json!({"seq":step.seq,"attempt":step.attempt,"step_base":step.step_base});
+        record_test_cleanup(&tx, &run.id)?;
         tx.execute("INSERT INTO pipeline_goal_completions(goal_id,project_id,goal_branch_head,goal_check_run,runs_sha256,completed_epoch,body) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![goal.id.to_string(),goal.project_id.to_string(),run.head_commit,run.id,runs_sha256,owner.epoch,serde_json::to_string(&json!({"runs":runs}))?])?;
         run.state = "completed".into();
         write_run(&tx, owner, &run)?;
@@ -1506,14 +1530,36 @@ pub(crate) fn test_pass(step: &PipelineStep) -> Result<bool> {
     Ok(exit["exit_code"] == 0 && !timeout && !overflow)
 }
 
+// Receipts are cumulative, including done rows, so later adoption cannot requeue or
+// overwrite an earlier attempt. The caller's adoption/abandon transaction owns this write.
+fn record_test_cleanup(tx: &Transaction<'_>, id: &str) -> Result<()> {
+    tx.execute("INSERT INTO pipeline_test_cleanup(run_id,seq,attempt) SELECT s.run_id,s.seq,s.attempt FROM pipeline_steps s WHERE s.run_id=?1 AND s.kind='test' AND json_extract(s.body,'$.death_confirmed') IS 1 AND NOT EXISTS(SELECT 1 FROM pipeline_test_cleanup c WHERE (c.run_id,c.seq,c.attempt)=(s.run_id,s.seq,s.attempt))", [id])?;
+    Ok(())
+}
+
+fn cleanup_rows(c: &Connection, id: &str) -> Result<Vec<PipelineCleanup>> {
+    let mut q = c.prepare("SELECT run_id,seq,attempt,failures,not_before,failure_class,path FROM pipeline_test_cleanup WHERE run_id=?1 AND state='pending' ORDER BY seq,attempt")?;
+    Ok(q.query_map([id], |r| {
+        Ok(PipelineCleanup {
+            run_id: r.get(0)?,
+            seq: r.get(1)?,
+            attempt: r.get(2)?,
+            failures: r.get(3)?,
+            not_before: r.get(4)?,
+            failure_class: r.get(5)?,
+            path: r.get(6)?,
+        })
+    })?
+    .collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
 impl Store {
-    /// Cleanup is an observation of already adopted, dead tests, including terminal runs.
+    /// Due maintenance is fenced by run ownership, independently of cursor versions.
     pub(crate) fn pipeline_test_cleanup(
         &mut self,
         owner: &RuntimeOwner,
         id: &str,
-        cursor: Option<&PipelineCursor>,
-    ) -> Result<Option<(PipelineRun, Vec<PipelineStep>, PathBuf)>> {
+    ) -> Result<Vec<(PipelineCleanup, PipelineStep, PathBuf)>> {
         let tx = self.connection.transaction()?;
         pipeline_owner_current(&tx, owner)?;
         let run = read_run(&tx, id)?;
@@ -1521,104 +1567,116 @@ impl Store {
             run.owner_epoch == owner.epoch,
             "pipeline cleanup owner retired"
         );
-        if run.body["test_cleanup"].is_null() || run.body["held"]["reason"] == "test_cleanup_failed"
-        {
-            return Ok(None);
+        let live: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE run_id=?1 AND state IN ('launching','running'))", [id], |r| r.get(0))?;
+        if live {
+            return Ok(Vec::new());
         }
-        if let Some(cursor) = cursor {
-            ensure!(cursor.run_id == id, "cleanup cursor run changed");
-            cursor_rows(&tx, owner, cursor, false)?;
-            check_wait(&tx, owner, cursor.wait_version)?;
-        }
-        let pending = &run.body["test_cleanup"];
-        let recovery = pending["recovery"] == true;
-        let mut steps = if recovery {
-            let mut q = tx.prepare(&format!("SELECT {STEP_COLUMNS} FROM pipeline_steps WHERE run_id=?1 AND kind='test' AND json_extract(body,'$.death_confirmed') IS 1 ORDER BY seq,attempt"))?;
-            q.query_map([id], step_row)?
-                .collect::<rusqlite::Result<Vec<_>>>()?
-        } else {
-            let step = read_step(
-                &tx,
-                id,
-                u32::try_from(pending["seq"].as_u64().context("cleanup seq missing")?)?,
-                u32::try_from(
-                    pending["attempt"]
-                        .as_u64()
-                        .context("cleanup attempt missing")?,
-                )?,
-            )?;
+        let pending = cleanup_rows(&tx, id)?;
+        let mut rows = Vec::new();
+        for obligation in pending {
+            if obligation.not_before > pipeline_now_ms() {
+                continue;
+            }
+            let step = read_step(&tx, id, obligation.seq, obligation.attempt)?;
             ensure!(
-                step.kind == "test"
-                    && step.state == "adopted"
-                    && step.step_base
-                        == pending["step_base"]
-                            .as_str()
-                            .context("cleanup base missing")?,
-                "cleanup adoption missing"
+                step.kind == "test" && step.body["death_confirmed"] == true,
+                "test cleanup death unconfirmed"
             );
-            let mut q = tx.prepare(&format!("SELECT {STEP_COLUMNS} FROM pipeline_steps WHERE run_id=?1 AND kind='test' AND step_base=?2 ORDER BY seq,attempt"))?;
-            q.query_map(params![id, step.step_base], step_row)?
-                .collect::<rusqlite::Result<Vec<_>>>()?
-        };
-        ensure!(
-            steps.iter().all(|s| s.body["death_confirmed"] == true),
-            "test cleanup death unconfirmed"
-        );
-        // Stable order makes a partial batch restartable; paths already absent are harmless.
-        steps.sort_by_key(|s| (s.seq, s.attempt));
-        let project = tx.query_row(
-            "SELECT body FROM projects WHERE id=?1",
-            [run.project_id.to_string()],
-            |r| r.get::<_, String>(0),
-        )?;
-        let project: crate::domain::Project = serde_json::from_str(&project)?;
+            let project = tx.query_row(
+                "SELECT body FROM projects WHERE id=?1",
+                [run.project_id.to_string()],
+                |r| r.get::<_, String>(0),
+            )?;
+            let project: crate::domain::Project = serde_json::from_str(&project)?;
+            rows.push((obligation, step, project.root));
+        }
         tx.commit()?;
-        Ok(Some((run, steps, project.root)))
+        Ok(rows)
     }
 
-    /// Persist a typed hold without rewriting terminal step receipts.
-    pub(crate) fn pipeline_test_cleanup_failed(
+    pub(crate) fn pipeline_test_cleanup_runs(&self, owner: &RuntimeOwner) -> Result<Vec<String>> {
+        let mut q = self.connection.prepare("SELECT DISTINCT r.id FROM pipeline_runs r JOIN pipeline_test_cleanup c ON c.run_id=r.id WHERE r.owner_epoch=?1 AND c.state='pending' ORDER BY r.id")?;
+        Ok(q.query_map([owner.epoch], |r| r.get(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Metadata-only fallback when a sweep cannot read a step or Project inventory.
+    pub(crate) fn pipeline_test_cleanup_pending(
+        &self,
+        owner: &RuntimeOwner,
+        id: &str,
+    ) -> Result<Vec<PipelineCleanup>> {
+        let tx = self.connection.unchecked_transaction()?;
+        pipeline_owner_current(&tx, owner)?;
+        ensure!(
+            read_run(&tx, id)?.owner_epoch == owner.epoch,
+            "pipeline cleanup owner retired"
+        );
+        let live: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE run_id=?1 AND state IN ('launching','running'))", [id], |r| r.get(0))?;
+        if live {
+            return Ok(vec![]);
+        }
+        let now = pipeline_now_ms();
+        let pending = cleanup_rows(&tx, id)?
+            .into_iter()
+            .filter(|c| c.not_before <= now)
+            .collect();
+        tx.commit()?;
+        Ok(pending)
+    }
+
+    /// Record only a fixed class and derived path; no process or file contents.
+    pub(crate) fn pipeline_test_cleanup_result(
         &mut self,
         owner: &RuntimeOwner,
-        expected: &PipelineRun,
+        obligation: &PipelineCleanup,
+        failure: Option<(&str, &std::path::Path)>,
     ) -> Result<()> {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         pipeline_owner_current(&tx, owner)?;
-        let mut run = current_run(&tx, owner, &expected.id, expected.version, false)?;
+        let run = read_run(&tx, &obligation.run_id)?;
         ensure!(
-            run.body["test_cleanup"] == expected.body["test_cleanup"]
-                && run.body["test_cleanup"].is_object(),
-            "test cleanup changed"
+            run.owner_epoch == owner.epoch,
+            "pipeline cleanup owner retired"
         );
-        if matches!(run.state.as_str(), "completed" | "abandoned") {
-            run.body["cleanup_terminal_state"] = json!(run.state);
-        }
-        let mut step = tx.query_row(&format!("SELECT {STEP_COLUMNS} FROM pipeline_steps WHERE run_id=?1 ORDER BY seq DESC,attempt DESC LIMIT 1"), [&run.id], step_row)?;
-        if matches!(step.state.as_str(), "planned" | "exited" | "committed") {
-            step.state = "held".into();
-            step.body["reason"] = json!("test_cleanup_failed");
-            step.body["death_confirmed"] = json!(true);
-            write_step(&tx, owner, &step)?;
-        }
-        run.state = "held".into();
-        run.body["held"] =
-            json!({"reason":"test_cleanup_failed","seq":step.seq,"attempt":step.attempt});
-        write_run(&tx, owner, &run)?;
+        let (state, failures, not_before, class, path) = match failure {
+            Some((class, path)) => {
+                ensure!(
+                    matches!(class, "checkout_remove" | "tmpdir_remove" | "cleanup_sweep"),
+                    "invalid cleanup class"
+                );
+                let failures = obligation.failures.saturating_add(1).min(32);
+                let backoff = (1000i64 << failures.min(8)).min(300_000);
+                (
+                    "pending",
+                    failures,
+                    pipeline_now_ms().saturating_add(backoff),
+                    Some(class),
+                    Some(path.to_string_lossy().into_owned()),
+                )
+            }
+            None => ("done", obligation.failures, 0, None, None),
+        };
+        ensure!(tx.execute("UPDATE pipeline_test_cleanup SET state=?4,failures=?5,not_before=?6,failure_class=?7,path=?8 WHERE run_id=?1 AND seq=?2 AND attempt=?3 AND state='pending' AND failures=?9 AND not_before=?10", params![obligation.run_id,obligation.seq,obligation.attempt,state,failures,not_before,class,path,obligation.failures,obligation.not_before])? == 1, "test cleanup changed");
         tx.commit()?;
         Ok(())
     }
 
-    /// Take over pending cleanup only when no step can still own a process.
+    /// Active runs, journals and limit waits remain with the full takeover protocol.
     pub(crate) fn pipeline_take_over_test_cleanup(&mut self, owner: &RuntimeOwner) -> Result<()> {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         pipeline_owner_current(&tx, owner)?;
-        let inventory = takeover_rows(&tx)?;
-        for run in inventory.runs {
-            if run.owner_epoch == owner.epoch || !run.body["test_cleanup"].is_object() {
+        let mut q = tx.prepare(&format!("SELECT {RUN_COLUMNS} FROM pipeline_runs r WHERE state IN ('completed','abandoned') AND EXISTS(SELECT 1 FROM pipeline_test_cleanup c WHERE c.run_id=r.id AND c.state='pending') ORDER BY id"))?;
+        let runs = q
+            .query_map([], run_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        drop(q);
+        for run in runs {
+            if run.owner_epoch == owner.epoch {
                 continue;
             }
             ensure!(
@@ -1632,44 +1690,18 @@ impl Store {
                 .query_map([&run.id], step_row)?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             drop(q);
-            if !steps.iter().all(|s| {
-                matches!(s.kind.as_str(), "prepare" | "release")
-                    || (s.state == "planned" && s.cookie.is_none())
-                    || (s.body["death_confirmed"] == true
-                        && !matches!(s.state.as_str(), "launching" | "running" | "unknown"))
-            }) {
-                continue;
-            }
+            ensure!(
+                !steps
+                    .iter()
+                    .any(|s| matches!(s.state.as_str(), "launching" | "running")),
+                "terminal cleanup has live step"
+            );
             pipeline_goal(&tx, &run, false)?;
             write_run(&tx, owner, &run)?;
             for step in steps {
                 write_step(&tx, owner, &step)?;
             }
         }
-        tx.commit()?;
-        Ok(())
-    }
-
-    pub(crate) fn pipeline_test_cleanup_done(
-        &mut self,
-        owner: &RuntimeOwner,
-        expected: &PipelineRun,
-    ) -> Result<()> {
-        let tx = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        pipeline_owner_current(&tx, owner)?;
-        let mut run = current_run(&tx, owner, &expected.id, expected.version, false)?;
-        ensure!(
-            run.body["test_cleanup"] == expected.body["test_cleanup"]
-                && !run.body["test_cleanup"].is_null(),
-            "test cleanup changed"
-        );
-        run.body
-            .as_object_mut()
-            .context("run body missing")?
-            .remove("test_cleanup");
-        write_run(&tx, owner, &run)?;
         tx.commit()?;
         Ok(())
     }
@@ -1789,13 +1821,7 @@ fn recovery_rows(
     let retry = request.then_action == "retry";
     let (run, step) = cursor_rows(tx, owner, &request.cursor, retry)?;
     ensure!(
-        run.state == "held"
-            && (matches!(step.state.as_str(), "unknown" | "held" | "rejected")
-                || (!retry
-                    && run.body["held"]["reason"] == "test_cleanup_failed"
-                    && run.body["test_cleanup"].is_object()
-                    && step.body["death_confirmed"] == true
-                    && matches!(step.state.as_str(), "adopted" | "abandoned"))),
+        run.state == "held" && matches!(step.state.as_str(), "unknown" | "held" | "rejected"),
         "pipeline recovery needs held run and recoverable step"
     );
     let later: bool = tx.query_row(
@@ -1918,7 +1944,7 @@ impl Store {
         };
         let state = if retry {
             "running"
-        } else if release_applied || run.body["cleanup_terminal_state"] == "completed" {
+        } else if release_applied {
             "completed"
         } else {
             "abandoned"
@@ -1948,11 +1974,7 @@ impl Store {
             write_step(&tx, owner, &step)?;
         }
         settle_wait(&tx, owner, wait, &step)?;
-        // Record the obligation in the same transaction that certifies abandonment.
-        let dead_tests: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE run_id=?1 AND kind='test' AND json_extract(body,'$.death_confirmed') IS 1)", [&run.id], |r| r.get(0))?;
-        if dead_tests {
-            run.body["test_cleanup"] = json!({"recovery":true});
-        }
+        record_test_cleanup(&tx, &run.id)?;
         run.state = state.into();
         run.body["held"] = Value::Null;
         write_run(&tx, owner, &run)?;
@@ -2570,7 +2592,7 @@ impl Store {
             certifying_exit(&step)?;
         }
         if step.kind == "test" {
-            let Some(profile) = check_test_profile(&tx, owner, &mut run, &mut step)? else {
+            let Some(_) = check_test_profile(&tx, owner, &mut run, &mut step)? else {
                 tx.commit()?;
                 return Ok(());
             };
@@ -2584,13 +2606,7 @@ impl Store {
                     && step.body["command_id"].as_str() == evidence["command_id"].as_str(),
                 "pipeline adoption command differs from plan"
             );
-            if step.body["command_index"].as_u64()
-                == Some(profile.proposal.commands.len() as u64 - 1)
-            {
-                run.body["test_cleanup"] =
-                    json!({"seq":step.seq,"attempt":step.attempt,"step_base":step.step_base});
-                write_run(&tx, owner, &run)?;
-            }
+            record_test_cleanup(&tx, &run.id)?;
         }
         step.state = "adopted".into();
         step.body["adoption"] = evidence.clone();

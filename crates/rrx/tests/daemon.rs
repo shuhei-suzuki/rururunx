@@ -40,7 +40,9 @@ impl Fixture {
     fn daemon(&self, verb: &str) -> (Output, Value) {
         let output = rrx_spawn_hygiene::output_std({
             let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
-            command.env_clear().envs(rrx::cli::daemon::environment());
+            command.env_clear().envs(rrx::cli::daemon::environment(
+                rrx::config::ExecutionMode::ManagedNative,
+            ));
             command
                 .arg("--state")
                 .arg(&self.state)
@@ -67,7 +69,9 @@ impl Fixture {
     fn read(&self, args: &[&str]) -> Output {
         rrx_spawn_hygiene::output_std({
             let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
-            command.env_clear().envs(rrx::cli::daemon::environment());
+            command.env_clear().envs(rrx::cli::daemon::environment(
+                rrx::config::ExecutionMode::ManagedNative,
+            ));
             command
                 .arg("--state")
                 .arg(&self.state)
@@ -213,7 +217,9 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         let Ok(mut child) = rrx_spawn_hygiene::spawn_std({
             let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
-            command.env_clear().envs(rrx::cli::daemon::environment());
+            command.env_clear().envs(rrx::cli::daemon::environment(
+                rrx::config::ExecutionMode::ManagedNative,
+            ));
             command
                 .arg("--state")
                 .arg(&self.state)
@@ -248,7 +254,9 @@ fn b6_f4_daemon_environment() {
         let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
         command
             .env_clear()
-            .envs(rrx::cli::daemon::environment())
+            .envs(rrx::cli::daemon::environment(
+                rrx::config::ExecutionMode::ManagedNative,
+            ))
             .envs(names.map(|name| (name, "nonsecret-fixture")))
             .arg("--state")
             .arg(&f.state)

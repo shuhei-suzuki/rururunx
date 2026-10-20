@@ -1,7 +1,7 @@
 use super::*;
 use std::os::unix::fs::MetadataExt;
 
-async fn prepare_again(
+pub(super) async fn prepare_again(
     f: &Fixture,
     id: &str,
 ) -> crate::execution::pipeline::tests_runner::PreparedTest {

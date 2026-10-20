@@ -845,7 +845,9 @@ async fn recorded_new_cli_refuses_old_service_without_downgrade_or_writes() {
     f.child = Some(
         rrx_spawn_hygiene::spawn_std({
             let mut command = Command::new(binary);
-            command.env_clear().envs(rrx::cli::daemon::environment());
+            command.env_clear().envs(rrx::cli::daemon::environment(
+                rrx::config::ExecutionMode::ManagedNative,
+            ));
             command
                 .arg("--state")
                 .arg(&f.state)

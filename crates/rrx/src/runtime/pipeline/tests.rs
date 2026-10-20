@@ -8,6 +8,11 @@ use crate::state::pipeline::test_pass;
 use serde_json::json;
 
 impl Runtime {
+    #[cfg(all(test, target_os = "macos"))]
+    pub(crate) async fn wait_pipeline_test_boundary(&self) {
+        assert!(self.service_running());
+        drop(self.control_admission.lock().await);
+    }
     /// Prepares only a planned step's detached checkout and launches with the shared custody.
     pub async fn launch_pipeline_test(&self, cursor: PipelineCursor) -> Result<LaunchResult> {
         ensure!(
@@ -18,12 +23,6 @@ impl Runtime {
             return Ok(LaunchResult::Waiting);
         };
         if !self.service_running() || self.stopping.load(Ordering::SeqCst) {
-            return Ok(LaunchResult::Waiting);
-        }
-        if self
-            .finish_pipeline_test_cleanup(&cursor.run_id, Some(&cursor))
-            .await?
-        {
             return Ok(LaunchResult::Waiting);
         }
         let profile = self
@@ -74,12 +73,6 @@ impl Runtime {
         };
         if !self.service_running() || self.stopping.load(Ordering::SeqCst) {
             return Ok(false);
-        }
-        if self
-            .finish_pipeline_test_cleanup(&cursor.run_id, Some(&cursor))
-            .await?
-        {
-            return Ok(true);
         }
         let profile = self
             .owner
@@ -190,17 +183,11 @@ impl Runtime {
         if !adopted {
             return Ok(false);
         }
-        // Keep this commit's checkouts until all catalog commands have finished.
-        if !last {
-            self.wake.notify_one();
-            return Ok(true);
-        }
-        self.finish_pipeline_test_cleanup(&run.id, None).await?;
         self.wake.notify_one();
         Ok(true)
     }
 
-    pub(in crate::runtime) async fn sweep_pipeline_test_cleanup(&self) -> Result<()> {
+    pub(crate) async fn sweep_pipeline_test_cleanup(&self) -> Result<()> {
         let Ok(_boundary) = self.control_admission.try_lock() else {
             return Ok(());
         };
@@ -212,56 +199,93 @@ impl Runtime {
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .pipeline_takeover_view()?
-            .runs;
-        for run in runs {
-            if run.owner_epoch == self.owner.epoch && run.body["test_cleanup"]["recovery"] == true {
-                self.finish_pipeline_test_cleanup(&run.id, None).await?;
+            .pipeline_test_cleanup_runs(&self.owner)?;
+        for id in runs {
+            if self.finish_pipeline_test_cleanup(&id).await.is_err() {
+                eprintln!("test cleanup sweep failed: run={id} class=cleanup_sweep");
+                if self.record_pipeline_cleanup_sweep_error(&id).is_err() {
+                    eprintln!(
+                        "test cleanup error could not be recorded: run={id} class=cleanup_sweep"
+                    );
+                }
             }
         }
         Ok(())
     }
 
-    async fn finish_pipeline_test_cleanup(
-        &self,
-        id: &str,
-        cursor: Option<&PipelineCursor>,
-    ) -> Result<bool> {
+    fn record_pipeline_cleanup_sweep_error(&self, id: &str) -> Result<()> {
         let pending = self
             .owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .pipeline_test_cleanup(&self.owner, id, cursor)?;
-        let Some((run, steps, project)) = pending else {
-            return Ok(false);
-        };
+            .pipeline_test_cleanup_pending(&self.owner, id)?;
         let config = self
             .config
             .pipeline
             .as_ref()
             .context("pipeline config missing")?;
-        for step in steps {
-            let removed = async {
-                PipelineTestRunner::remove(&project, config, &step).await?;
-                PipelineTestRunner::reclaim_tmpdir(config, &step)
-            }
-            .await;
-            if removed.is_err() {
-                self.owner
-                    .store
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .pipeline_test_cleanup_failed(&self.owner, &run)?;
-                return Ok(true);
-            }
+        for obligation in pending {
+            let path =
+                PipelineTestRunner::checkout_path(config, id, obligation.seq, obligation.attempt)?;
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .pipeline_test_cleanup_result(
+                    &self.owner,
+                    &obligation,
+                    Some(("cleanup_sweep", &path)),
+                )?;
         }
-        self.owner
+        Ok(())
+    }
+
+    async fn finish_pipeline_test_cleanup(&self, id: &str) -> Result<()> {
+        let pending = self
+            .owner
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .pipeline_test_cleanup_done(&self.owner, &run)?;
-        self.wake.notify_one();
-        Ok(true)
+            .pipeline_test_cleanup(&self.owner, id)?;
+        let config = self
+            .config
+            .pipeline
+            .as_ref()
+            .context("pipeline config missing")?;
+        for (obligation, step, project) in pending {
+            let checkout = PipelineTestRunner::checkout(config, &step)?;
+            let failure = if PipelineTestRunner::remove(&project, config, &step)
+                .await
+                .is_err()
+            {
+                Some(("checkout_remove", checkout))
+            } else if PipelineTestRunner::reclaim_tmpdir(config, &step).is_err() {
+                // Only the rrx-derived path is retained; never the test's recorded value.
+                let cookie = step.cookie.as_deref().context("cleanup cookie missing")?;
+                let prefix = cookie.get(..8).context("cleanup cookie short")?;
+                Some(("tmpdir_remove", config.work_root.join("t").join(prefix)))
+            } else {
+                None
+            };
+            if let Some((class, path)) = &failure {
+                eprintln!(
+                    "test cleanup pending: run={id} class={class} path={}",
+                    path.display()
+                );
+            }
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .pipeline_test_cleanup_result(
+                    &self.owner,
+                    &obligation,
+                    failure
+                        .as_ref()
+                        .map(|(class, path)| (*class, path.as_path())),
+                )?;
+        }
+        Ok(())
     }
 }

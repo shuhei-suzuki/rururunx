@@ -8,6 +8,7 @@ mod r1fix;
 mod r1fix2;
 mod r3fix;
 mod r4fix;
+mod r5fix;
 
 async fn planned_test(
     code: &str,
@@ -42,9 +43,18 @@ async fn planned_script(
         .unwrap();
     (f, runtime, id)
 }
+async fn launch_ready(runtime: &Runtime, cursor: PipelineCursor) -> LaunchResult {
+    loop {
+        match runtime.launch_pipeline_test(cursor.clone()).await.unwrap() {
+            LaunchResult::Waiting => {
+                runtime.wait_pipeline_test_boundary().await;
+            }
+            result => return result,
+        }
+    }
+}
 async fn finish(f: &Fixture, runtime: &Runtime, id: &str, release: bool) {
-    let LaunchResult::Started(custody) = runtime.launch_pipeline_test(f.cursor(id)).await.unwrap()
-    else {
+    let LaunchResult::Started(custody) = launch_ready(runtime, f.cursor(id)).await else {
         panic!("test did not start");
     };
     if release {
@@ -276,7 +286,7 @@ async fn b6_tx1_profile_changed() {
 async fn b6_launch_profile_changed() {
     let (f, runtime, id) = planned_test("exit 0;", 10, 1024, 1024).await;
     corrupt(&f);
-    assert_held(runtime.launch_pipeline_test(f.cursor(&id)).await.unwrap()).await;
+    assert_held(launch_ready(&runtime, f.cursor(&id)).await).await;
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     assert!(
         !PipelineTestRunner::checkout(
@@ -330,7 +340,7 @@ async fn b6_launch_recheck() {
         .pipeline_plan_next(&f.owner, &cursor, &next, true)
         .unwrap();
     let (release, arrived) = pause_launch(LaunchPhase::Verified);
-    let launch = runtime.launch_pipeline_test(f.cursor(&id));
+    let launch = launch_ready(&runtime, f.cursor(&id));
     tokio::pin!(launch);
     tokio::select! {
         _ = &mut launch => panic!("launch completed before Verified checkpoint"),
@@ -339,7 +349,7 @@ async fn b6_launch_recheck() {
     std::fs::write(program, b"#!/usr/bin/perl\nexit 1;\n").unwrap();
     release.send(()).unwrap();
     let result = launch.await;
-    assert_held(result.unwrap()).await;
+    assert_held(result).await;
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     let step = view.steps.last().unwrap();
     assert_eq!(step.state, "rejected");
@@ -406,7 +416,7 @@ async fn b6_checkout_partial() {
         PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), &step).unwrap();
     std::fs::create_dir_all(&checkout).unwrap();
     std::fs::write(checkout.join("keep"), b"keep").unwrap();
-    assert_held(runtime.launch_pipeline_test(f.cursor(&id)).await.unwrap()).await;
+    assert_held(launch_ready(&runtime, f.cursor(&id)).await).await;
     assert_eq!(std::fs::read(checkout.join("keep")).unwrap(), b"keep");
     runtime.shutdown().await.unwrap();
 }
@@ -431,7 +441,7 @@ async fn b6_checkout_driver() {
     ])
     .await
     .unwrap();
-    assert_held(runtime.launch_pipeline_test(f.cursor(&id)).await.unwrap()).await;
+    assert_held(launch_ready(&runtime, f.cursor(&id)).await).await;
     let step = f
         .store()
         .pipeline_goal_view(f.goal)
@@ -821,10 +831,7 @@ async fn goal_exited(code: &str) -> (Fixture, Arc<Runtime>, String) {
     f.store()
         .pipeline_claim_run(&f.owner, &run, 1, &first, None)
         .unwrap();
-    let LaunchResult::Started(custody) = runtime
-        .launch_pipeline_test(goal_cursor(&f, &run.id))
-        .await
-        .unwrap()
+    let LaunchResult::Started(custody) = launch_ready(&runtime, goal_cursor(&f, &run.id)).await
     else {
         panic!("Goal test did not start");
     };

@@ -67,7 +67,7 @@ async fn b6_f1_forged_gitdir() {
     runtime.shutdown().await.unwrap();
 }
 
-/// Committed adoption retains a cleanup obligation that the same entry point can finish.
+/// Committed adoption retains a cleanup obligation that the sweep finishes without rewriting receipts.
 #[tokio::test]
 async fn b6_f1_cleanup_after_adoption() {
     let (f, runtime, id) = planned_test("exit 0;", 10, 1024, 1024).await;
@@ -85,11 +85,11 @@ async fn b6_f1_cleanup_after_adoption() {
     let checkout =
         PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), &receipt).unwrap();
     assert!(checkout.is_dir());
-    assert!(view.runs[0].body["test_cleanup"].is_object());
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(view.pending_cleanup.iter().any(|c| c.run_id == id));
+    r4fix::wait_clean(&f.owner, f.goal, &id, &checkout, None).await;
     let after = f.store().pipeline_goal_view(f.goal).unwrap();
     assert_eq!(after.steps.last().unwrap(), &receipt);
-    assert!(after.runs[0].body["test_cleanup"].is_null());
+    assert!(after.pending_cleanup.is_empty());
     assert!(!checkout.exists());
     runtime.shutdown().await.unwrap();
 }
@@ -134,15 +134,16 @@ async fn b6_f1_cleanup_partial_batch() {
     let gitfile = second_co.join(".git");
     std::fs::write(&gitfile, b"gitdir: /nonexistent\n").unwrap();
     assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    r4fix::wait_clean(&f.owner, f.goal, &id, &second_co, None).await;
     let partial = f.store().pipeline_goal_view(f.goal).unwrap();
     let receipt = partial.steps.last().unwrap().clone();
     assert_eq!(receipt.state, "adopted");
     assert!(!first_co.exists());
     assert!(!second_co.exists());
-    assert!(partial.runs[0].body["test_cleanup"].is_null());
+    assert!(partial.pending_cleanup.is_empty());
     let after = f.store().pipeline_goal_view(f.goal).unwrap();
     assert_eq!(after.steps.last().unwrap(), &receipt);
-    assert!(after.runs[0].body["test_cleanup"].is_null());
+    assert!(after.pending_cleanup.is_empty());
     assert!(!second_co.exists());
     let project = f.store().project(f.project).unwrap().unwrap();
     let listing = PipelineGit::new(&project.root)
@@ -155,7 +156,7 @@ async fn b6_f1_cleanup_partial_batch() {
     runtime.shutdown().await.unwrap();
 }
 
-/// Terminal cleanup remains in the takeover inventory and needs no Goal advancement.
+/// Terminal cleanup needs no Goal advancement or repeated adoption.
 #[tokio::test]
 async fn b6_f1_terminal_cleanup() {
     let (f, runtime, id) = goal_exited("exit 0;").await;
@@ -164,30 +165,11 @@ async fn b6_f1_terminal_cleanup() {
     f.store()
         .pipeline_complete_goal(&f.owner, &cursor, version, "test")
         .unwrap();
-    let inventory = f.store().pipeline_takeover_view().unwrap();
-    assert!(
-        inventory
-            .runs
-            .iter()
-            .any(|r| r.id == id && r.state == "completed" && r.body["test_cleanup"].is_object())
-    );
-    assert!(
-        runtime
-            .adopt_pipeline_test(goal_cursor(&f, &id))
-            .await
-            .unwrap()
-    );
-    assert!(
-        f.store()
-            .pipeline_goal_view(f.goal)
-            .unwrap()
-            .runs
-            .iter()
-            .find(|r| r.id == id)
-            .unwrap()
-            .body["test_cleanup"]
-            .is_null()
-    );
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    assert!(view.pending_cleanup.iter().any(|c| c.run_id == id));
+    let step = view.steps.iter().find(|s| s.run_id == id).unwrap();
+    let checkout = PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), step).unwrap();
+    r4fix::wait_clean(&f.owner, f.goal, &id, &checkout, None).await;
     assert_eq!(
         f.store().goal(f.goal).unwrap().unwrap().state,
         GoalState::Completed

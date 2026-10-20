@@ -118,7 +118,7 @@ fn check_startup_environment(
         if matches!(
             bytes,
             b"GITHUB_TOKEN" | b"GH_TOKEN" | b"GH_ENTERPRISE_TOKEN" | b"GITHUB_ENTERPRISE_TOKEN"
-        ) || bytes.starts_with(b"AWS_")
+        ) || upper.starts_with(b"AWS_")
             || [b"TOKEN".as_slice(), b"SECRET", b"PASSWORD", b"API_KEY"]
                 .iter()
                 .any(|part| upper.windows(part.len()).any(|window| window == *part))
@@ -268,6 +268,7 @@ mod startup_tests {
                 "GH_ENTERPRISE_TOKEN",
                 "GITHUB_ENTERPRISE_TOKEN",
                 "AWS_REGION",
+                "aws_access_key_id",
                 "AWS_",
                 "prefixToKeNsuffix",
                 "prefixSeCrEtsuffix",

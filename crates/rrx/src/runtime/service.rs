@@ -130,7 +130,9 @@ impl Runtime {
                 }
                 if runtime.config.execution.mode == crate::config::ExecutionMode::CliPipeline {
                     runtime.check_pipeline_currency()?;
-                    runtime.sweep_pipeline_test_cleanup().await?;
+                    if runtime.sweep_pipeline_test_cleanup().await.is_err() {
+                        eprintln!("test cleanup sweep failed: class=cleanup_sweep");
+                    }
                     // B3 installs startup only. B9 supplies pipeline_tick here;
                     // this mode cannot enter any native admission/reconciliation.
                     let wake = runtime.wake.clone();

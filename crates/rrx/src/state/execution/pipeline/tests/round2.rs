@@ -55,7 +55,7 @@ pub(super) fn copy(c: &Connection, table: &str, changes: &[(&str, &str)]) -> Str
 
 pub(super) async fn populated(table: &str) -> Fixture {
     let f = fixture().await;
-    if table == "pipeline_goal_completions" {
+    if matches!(table, "pipeline_goal_completions" | "pipeline_test_cleanup") {
         complete_goal(&f);
     } else {
         let id = f.claim();
@@ -122,7 +122,26 @@ async fn b2_all_records_no_update() {
 async fn b2_all_insert_epochs() {
     for table in PIPELINE_TABLES {
         let f = populated(table).await;
-        let store = f.store();
+        let mut store = f.store();
+        if *table == "pipeline_test_cleanup" {
+            rejected(
+                &store.connection,
+                &copy(&store.connection, table, &[]),
+                "pipeline row cannot be replaced",
+            );
+            store.begin_execution_epoch().unwrap();
+            rejected(
+                &store.connection,
+                &copy(&store.connection, table, &[]),
+                "test cleanup owner retired",
+            );
+            rejected(
+                &store.connection,
+                "UPDATE pipeline_test_cleanup SET state=state",
+                "test cleanup owner retired",
+            );
+            continue;
+        }
         let c = &store.connection;
         let epoch = match *table {
             "goal_execution_profiles" | "pipeline_recoveries" => "accepted_epoch",

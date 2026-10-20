@@ -364,24 +364,38 @@ use by outside tools, sharing hardlinks with outside files and concurrent outsid
 modification. This operationally dependent cache residual is Medium.
 
 Tests cannot use POSIX IPC (for example Python multiprocessing.Lock) or /dev/tty.
-Cleanup removes the derived entry under the canonical private work_root/co parent
-without following symlinks or trusting the checkout's gitfile, then prunes Git
-registrations from the Project side. Failure durably holds the run with
-test_cleanup_failed; operator recovery resumes cleanup without rewriting terminal
-step receipts. A terminal run can enter this hold only with pending cleanup;
-a previously completed run returns to completed after recovery. Recovery records
-cleanup for dead tests in the abandonment/retry transaction. Runtime sweeps reclaim
-their checkouts and TMPDIRs without later adoption, including obligations
-after owner restart when every step is never launched or confirmed dead.
-Unconfirmed deaths retain TMPDIR; new retry attempts are excluded.
+Cleanup never changes run state, cursor versions or terminal step receipts.
+Adoption, abandonment, retry and prelaunch abandonment atomically accumulate every
+death-confirmed test attempt in pipeline_test_cleanup, keyed by run/seq/attempt.
+Done rows remain receipts; a later commit cannot overwrite or requeue them.
+Runtime sweeps only runs with no launching/running step. Each obligation retries
+with exponential backoff from 2 seconds to 256 seconds, recording only the fixed
+checkout_remove/tmpdir_remove/cleanup_sweep class and rrx-derived path. Goal/run views expose
+pending_cleanup and its last failure class. Inventory errors record cleanup_sweep
+with the derived checkout path and the same backoff. Recording errors are logged;
+processing continues with other runs; the service loop continues. Adoption and launch do not
+perform cleanup. Terminal runs remain terminal. Only completed/abandoned runs
+use cleanup epoch takeover; running/held runs use full takeover with journals and
+limit waits. The independent table never changes launch/monitor CAS versions.
+Cleanup unlinks the derived entry under canonical private work_root/co without
+following links or trusting checkout gitfiles. Only its derived common-dir
+worktrees registration is removed, after checking a real directory and regular
+gitdir containing exactly the checkout .git path plus Git's newline. Mismatches
+retain the registration and record checkout_remove. Project-wide prune is never
+used. The same obligation reclaims its death-confirmed TMPDIR without following
+replacement links; unconfirmed deaths and new retry attempts retain their TMPDIR.
 
-Daemon start constructs the service environment with env_clear and a fixed allowlist
-in both modes. Direct rrx serve relies on the operator's environment and auxiliary
-startup refusal. No arbitrary environment prefix or token-like name is inherited.
+Daemon start uses env_clear and a mode-specific fixed allowlist. Pipeline mode
+inherits only HOME, USER, LOGNAME, PATH, TMPDIR, LANG, LC_ALL, LC_CTYPE, LC_MESSAGES,
+TERM and XDG_CONFIG_HOME/XDG_DATA_HOME/XDG_STATE_HOME/XDG_CACHE_HOME. Managed native
+keeps its existing fixed list. The rrx CLI and direct serve must also start in a
+credential-free environment; startup name refusal remains an auxiliary check.
 
 An environment built from scratch prevents direct inheritance of secrets, but does
 not prevent reading arguments and environments available from other processes.
-The read goes through the unconditioned (allow sysctl-read). Host measurements
+Self-targeted process-info rules do not establish isolation from other processes:
+libproc proc_pidinfo(PROC_PIDTASKALLINFO) on the parent succeeded. Argument and
+environment reads go through the unconditioned (allow sysctl-read). Host measurements
 found that a subsequent deny for kern.procargs2, kern.procargs and the kern.proc.
 prefix, and an allowlist of sysctl-read names excluding kern.proc*, did not block
 MIB reads of KERN_PROCARGS2 or KERN_PROC_PID. Removing sysctl-read breaks Homebrew
@@ -397,7 +411,7 @@ allowlisted variables, auxiliary startup refusal of token-like variable names,
 no coexistence with same-user processes carrying credentials in their environments
 or arguments (including short-lived processes), and the owner's written acceptance
 of this residual. Both daemon execution modes refuse names exactly GITHUB_TOKEN,
-GH_TOKEN, GH_ENTERPRISE_TOKEN or GITHUB_ENTERPRISE_TOKEN, names starting with AWS_,
+GH_TOKEN, GH_ENTERPRISE_TOKEN or GITHUB_ENTERPRISE_TOKEN, names whose ASCII-uppercased form starts with AWS_,
 and names whose ASCII-uppercased form contains TOKEN, SECRET, PASSWORD or API_KEY.
 Errors name variables without values; nothing is unset. This auxiliary refusal is
 not a safety guarantee. A dedicated macOS-user isolation and verification unit is
@@ -417,14 +431,9 @@ and only fixed pattern, filename and offset-digest metadata; read failures and
 digest mismatches remain `test_evidence_incomplete`. Test evidence is retained in
 pipeline step records, independently of native verification tables.
 
-Final command adoption atomically records pending checkout cleanup in the run
-body. The adoption entry point can resume cleanup from adopted steps and completed
-runs without rerunning commands. The pending record is cleared with an owner and
-version check only after every checkout has been removed; partial removal is safe
-to retry. Terminal runs with pending cleanup remain in the owner takeover inventory.
-The same record reclaims each death-confirmed step's private TMPDIR recorded in its
-launch intent; a TMPDIR replaced by a link is unlinked without being followed, and a
-step without certified death keeps its TMPDIR.
+Each test adoption atomically records a cumulative independent cleanup obligation.
+The Runtime sweep described above processes it without rerunning commands or
+changing run or step versions.
 
 Session remains transport state; Task/attempt is execution authority; reservation
 is unit-specific; Workflow still owns phase truth; Context/ReviewBundle bind actual

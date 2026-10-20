@@ -21,10 +21,18 @@ pub(crate) struct PreparedTest {
 
 impl PipelineTestRunner {
     pub(crate) fn checkout(config: &PipelineConfig, step: &PipelineStep) -> Result<PathBuf> {
+        Self::checkout_path(config, &step.run_id, step.seq, step.attempt)
+    }
+
+    pub(crate) fn checkout_path(
+        config: &PipelineConfig,
+        run: &str,
+        seq: u32,
+        attempt: u32,
+    ) -> Result<PathBuf> {
         ensure!(
-            !step.run_id.is_empty()
-                && step
-                    .run_id
+            !run.is_empty()
+                && run
                     .bytes()
                     .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b)),
             "invalid test run component"
@@ -32,7 +40,7 @@ impl PipelineTestRunner {
         Ok(config
             .work_root
             .join("co")
-            .join(format!("{}-{}-{}", step.run_id, step.seq, step.attempt)))
+            .join(format!("{run}-{seq}-{attempt}")))
     }
 
     pub(crate) async fn prepare(
@@ -143,11 +151,23 @@ impl PipelineTestRunner {
     ) -> Result<()> {
         let checkout = Self::checkout(config, step)?;
         let parent = config.work_root.join("co");
-        ensure_private_directory(&parent)?;
-        ensure!(
-            parent.canonicalize()? == parent,
-            "test cleanup parent aliases"
-        );
+        match std::fs::symlink_metadata(&parent) {
+            Ok(_) => {
+                ensure_private_directory(&parent)?;
+                ensure!(
+                    parent.canonicalize()? == parent,
+                    "test cleanup parent aliases"
+                );
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                ensure_private_directory(&config.work_root)?;
+                ensure!(
+                    config.work_root.canonicalize()? == config.work_root,
+                    "test cleanup root aliases"
+                );
+            }
+            Err(e) => return Err(e.into()),
+        }
         match std::fs::symlink_metadata(&checkout) {
             Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(&checkout)?,
             Ok(_) => std::fs::remove_file(&checkout)?,
@@ -155,7 +175,42 @@ impl PipelineTestRunner {
             Err(e) => return Err(e.into()),
         }
         let git = PipelineGit::new(project)?;
-        git.run(&["worktree", "prune", "--expire=now"]).await?;
+        let common = git
+            .text(&["rev-parse", "--path-format=absolute", "--git-common-dir"])
+            .await?;
+        let common = Path::new(&common).canonicalize()?;
+        let registrations = common.join("worktrees");
+        // These are Project-owned administrative directories, never checkout metadata.
+        let parent_meta = match std::fs::symlink_metadata(&registrations) {
+            Ok(meta) => meta,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e.into()),
+        };
+        ensure!(
+            parent_meta.is_dir() && !parent_meta.file_type().is_symlink(),
+            "test registration parent changed"
+        );
+        let admin = registrations.join(checkout.file_name().context("checkout name missing")?);
+        match std::fs::symlink_metadata(&admin) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e.into()),
+            Ok(meta) => ensure!(
+                meta.is_dir() && !meta.file_type().is_symlink(),
+                "test registration directory changed"
+            ),
+        }
+        let gitdir = admin.join("gitdir");
+        let meta = std::fs::symlink_metadata(&gitdir)?;
+        ensure!(
+            meta.is_file() && !meta.file_type().is_symlink(),
+            "test registration gitdir changed"
+        );
+        let expected = format!("{}\n", checkout.join(".git").display());
+        ensure!(
+            std::fs::read(&gitdir)? == expected.as_bytes(),
+            "test registration path changed"
+        );
+        std::fs::remove_dir_all(admin)?;
         Ok(())
     }
 

@@ -231,6 +231,7 @@ async fn b2_fix1_rowid_replace() {
                 ("goal_check_run", &check),
             ],
             "pipeline_limit_wait" => vec![], // INTEGER PRIMARY KEY is the rowid itself.
+            "pipeline_test_cleanup" => vec![("seq", "256")],
             _ => unreachable!(),
         };
         for alias in ["rowid", "_rowid_", "oid"] {

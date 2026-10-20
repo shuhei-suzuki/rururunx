@@ -46,12 +46,7 @@ WHEN OLD.rowid<>NEW.rowid OR OLD.id<>NEW.id OR OLD.kind<>NEW.kind OR OLD.task_id
  OR NEW.round<OLD.round OR NEW.round>OLD.round+1
  OR NOT (NEW.state=OLD.state
    OR (OLD.state='running' AND NEW.state IN ('held','completed','abandoned'))
-   OR (OLD.state='held' AND NEW.state IN ('running','abandoned','completed'))
-   OR (OLD.state IN ('completed','abandoned') AND NEW.state='held'
-       AND json_type(OLD.body,'$.test_cleanup') IS 'object'
-       AND json_extract(NEW.body,'$.held.reason') IS 'test_cleanup_failed'
-       AND json_extract(NEW.body,'$.cleanup_terminal_state') IS OLD.state
-       AND json_extract(NEW.body,'$.test_cleanup') IS json_extract(OLD.body,'$.test_cleanup')))
+   OR (OLD.state='held' AND NEW.state IN ('running','abandoned','completed')))
  -- held から running・completed へは、回復の記録があるときだけ（completed は release 済みの journal を決着させた abandon-run。§4.4）
  OR (OLD.state='held' AND NEW.state IN ('running','completed') AND NOT EXISTS(
      SELECT 1 FROM pipeline_recoveries r WHERE r.run_id=NEW.id AND r.consumed_version=NEW.version
@@ -188,6 +183,25 @@ WHEN OLD.rowid<>NEW.rowid OR OLD.run_id<>NEW.run_id OR OLD.seq<>NEW.seq OR OLD.a
  OR (OLD.state IN ('adopted','interrupted','limited','abandoned') AND NEW.state<>OLD.state)
 BEGIN SELECT RAISE(ABORT,'invalid pipeline step transition'); END;
 
+-- Independent maintenance receipts: never update a launch/monitor cursor version.
+CREATE TABLE pipeline_test_cleanup (
+ run_id TEXT NOT NULL, seq INTEGER NOT NULL, attempt INTEGER NOT NULL,
+ state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','done')),
+ failures INTEGER NOT NULL DEFAULT 0 CHECK(failures BETWEEN 0 AND 32),
+ not_before INTEGER NOT NULL DEFAULT 0,
+ failure_class TEXT CHECK(failure_class IN ('checkout_remove','tmpdir_remove','cleanup_sweep')),
+ path TEXT,
+ PRIMARY KEY(run_id,seq,attempt),
+ FOREIGN KEY(run_id,seq,attempt) REFERENCES pipeline_steps(run_id,seq,attempt)
+);
+CREATE TRIGGER pipeline_test_cleanup_insert BEFORE INSERT ON pipeline_test_cleanup
+WHEN NEW.state<>'pending' OR NEW.failures<>0 OR NEW.not_before<>0 OR NEW.failure_class IS NOT NULL OR NEW.path IS NOT NULL
+ OR NOT EXISTS(SELECT 1 FROM pipeline_steps s WHERE s.run_id=NEW.run_id AND s.seq=NEW.seq AND s.attempt=NEW.attempt
+   AND s.kind='test' AND json_extract(s.body,'$.death_confirmed') IS 1)
+BEGIN SELECT RAISE(ABORT,'invalid test cleanup obligation'); END;
+CREATE TRIGGER pipeline_test_cleanup_update BEFORE UPDATE ON pipeline_test_cleanup
+WHEN OLD.rowid<>NEW.rowid OR OLD.run_id<>NEW.run_id OR OLD.seq<>NEW.seq OR OLD.attempt<>NEW.attempt OR OLD.state='done'
+BEGIN SELECT RAISE(ABORT,'invalid test cleanup update'); END;
 CREATE TABLE pipeline_recoveries (            -- 運用者の放棄記録。追記だけ
  id TEXT PRIMARY KEY NOT NULL, run_id TEXT NOT NULL, seq INTEGER NOT NULL, attempt INTEGER NOT NULL,
  request_id TEXT NOT NULL UNIQUE REFERENCES runtime_control_acks(request_id),  -- ack を同じ tx で先に書く（§4.4）
