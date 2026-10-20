@@ -342,6 +342,49 @@ async fn b7_executor_prompt_escaped_secret() {
     runtime.shutdown().await.unwrap();
 }
 
+/// Oversized Executor prompts are rejected by launch preflight without entering the CLI.
+#[tokio::test]
+async fn b7_executor_oversized_prompt_rejected() {
+    let (f, runtime, id) = super::b5::prepare_fixture_from(fixture().await, true).await;
+    runtime.wait_pipeline_test_boundary().await;
+    assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
+    let prompt = vec![b'x'; 2 * 1024 * 1024];
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let mut next = planned(&id, 2, 1, "implement");
+    next.step_base = view.runs[0].head_commit.clone();
+    next.input_sha256 = crate::execution::verification::hash(&prompt);
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_plan_next(&f.owner, &cursor, &next, true)
+        .unwrap();
+    runtime.wait_pipeline_test_boundary().await;
+    assert!(matches!(
+        runtime
+            .launch_pipeline_executor(f.cursor(&id), prompt)
+            .await
+            .unwrap(),
+        LaunchResult::Held
+    ));
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let step = view.steps.last().unwrap();
+    assert_eq!(step.state, "rejected");
+    assert_eq!(step.body["reason"], "launch_preflight_failed");
+    let config = f.config.pipeline.as_ref().unwrap();
+    let cli = config.clis.codex.executable.parent().unwrap();
+    assert!(!cli.join("exec-entered").exists());
+    assert!(step.cookie.is_some() && step.pid.is_none());
+    assert!(step.body["intent"].is_object());
+    assert!(
+        !config
+            .work_root
+            .join("runs")
+            .join(&id)
+            .join("2-1/prompt.md")
+            .exists()
+    );
+    runtime.shutdown().await.unwrap();
+}
+
 /// A large review diff holds during preparation with its prompt budget reason.
 #[tokio::test]
 async fn b7_runtime_prompt_size_reason() {

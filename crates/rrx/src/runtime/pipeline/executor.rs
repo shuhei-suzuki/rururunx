@@ -91,7 +91,10 @@ impl Runtime {
             "Executor launch state changed"
         );
         let preflight = async {
-            review::scan_raw(&prompt, 0).context("prompt.md")?;
+            // Oversized prompts reach launcher rejection before prompt storage or CLI spawn.
+            if prompt.len() <= 512 * 1024 {
+                review::scan_raw(&prompt, 0).context("prompt.md")?;
+            }
             let (project, _, controls) = self
                 .owner
                 .store
