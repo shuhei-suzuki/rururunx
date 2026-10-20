@@ -394,13 +394,15 @@ Cloud execution, web dashboards, and long-term memory are outside MVP and should
 
 Rust 2024 / minimum Rust 1.91 is the core standard; development and CI pin 1.91.1.
 Rust CI checks pull requests and pushes to main on Ubuntu and macOS. Code changes
-run fmt, all-targets workspace clippy with warnings denied, and locked workspace
-tests. Only nonempty PR merge diffs entirely under `doc/` skip those steps;
+run fmt, all-targets workspace clippy with warnings denied, locked workspace
+tests, and locked release workspace builds on both PRs and pushes.
+Only nonempty PR merge diffs entirely under `doc/` skip those steps;
 uncertain diffs and README changes run them. Jobs still report success for
-documentation-only PRs. Main pushes also build the locked release workspace.
+documentation-only PRs. All workflow actions use full 40-character SHA pins.
 OS/architecture/toolchain/lockfile-keyed Cargo caches are restored for code
 checks and saved only after successful main push tests, before release builds.
-Superseded PR runs are cancelled; main push runs are not cancelled.
+Superseded PR runs share a group per PR and are cancelled; main push runs use
+unique run-ID groups and are not cancelled.
 The Cargo workspace contains `crates/rrx` with a library and a CLI binary,
 `crates/rrx-process-tracker` for cooperative discovery, and
 `crates/rrx-spawn-hygiene` for consuming process launch boundaries.

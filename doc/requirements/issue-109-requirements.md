@@ -21,15 +21,16 @@ runtime behavior changes belong here.
 - First-party SHA-pinned cache restore/save covers Cargo registry index/cache, Git databases and `target/`, with OS/architecture/toolchain-and-lockfile keys and matching prefix restoration.
 - Only successful main push tests may save a missing cache, before release compilation; PRs including forks never save and release artifacts never enter the cache.
 - Superseded PR runs are cancelled by workflow and PR number, while pushes to main are never cancelled.
-- Release workspace builds remain locked and run only on pushes; the redundant debug workspace build is removed.
-- Local actionlint and real-merge detection tests pass, and an all-doc-only detection mutant fails the tests.
+- Release workspace builds remain locked and run for every code change on PRs and pushes; the redundant debug workspace build is removed.
+- Normal local actionlint (with ShellCheck enabled) and real-merge detection tests pass, and an all-doc-only detection mutant fails the tests.
 
 ## Constraints
 
 This is a public repository: no secrets, tokens, real resource IDs or raw logs
-are recorded. First-party actions are pinned by full commit SHA. Cache actions
+are recorded. All actions are pinned by full 40-character commit SHA. Cache actions
 use `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` (v6.1.0); no third-party
-action is added. The existing toolchain action remains at `1.91.1`.
+action is added. The existing toolchain action is pinned to
+`8632757d5a758c452f724e9d837848c694a7bb48`, which installs Rust `1.91.1`.
 Keep `permissions: contents: read`, checkout `persist-credentials: false`, both
 triggers and both OSes. Set job-wide `CARGO_INCREMENTAL: 0`. Cache misses and
 uncertain path classification must never remove a code check.

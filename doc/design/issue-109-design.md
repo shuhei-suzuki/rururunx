@@ -6,17 +6,19 @@
 on `ubuntu-latest` and `macos-latest`. Checkout and change detection always run.
 For code changes, the sequence is Rust 1.91.1 setup, cache restore, fmt,
 all-targets workspace clippy with `-D warnings`, locked workspace tests, optional
-cache save, then a locked release workspace build on pushes only. Clippy and
+cache save, then a locked release workspace build on both PRs and pushes. Clippy and
 tests already compile the targets, so a separate debug build adds no coverage.
 Every heavy step has a step-level code-change guard; the job itself is never
 skipped. `contents: read` and checkout's disabled credential persistence remain.
-Checkout and the new cache actions use full SHA pins; no third-party action is
-added and the existing pinned Rust toolchain version stays unchanged.
+Every action uses a full 40-character SHA pin; no third-party action is added.
+The existing toolchain action uses
+`8632757d5a758c452f724e9d837848c694a7bb48`, which installs Rust 1.91.1.
 
 The workflow concurrency group combines `github.workflow` with the PR number,
-falling back to `github.ref`. Cancellation is enabled only for `pull_request`.
-New main pushes do not cancel an in-progress push run. GitHub's concurrency
-scheduler can still replace a pending run in the same group.
+falling back to the unique `github.run_id` for pushes. Cancellation is enabled
+only for `pull_request`: superseded PR runs share a group and are cancelled.
+Main push runs never share a group, so neither pending nor in-progress main
+push runs are cancelled by concurrency.
 
 ## Documentation-only detection
 
@@ -52,7 +54,8 @@ Paths are `~/.cargo/registry/index/`, `~/.cargo/registry/cache/`,
 `cargo-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}`;
 the fallback prefix omits only the hash. OS and architecture isolate native
 artifacts, and toolchain/lock changes select a new primary key. `cargo-v1` is the
-cache namespace/version and must change if the cache contract changes.
+cache namespace/version and must be bumped for any cache-contract change,
+including changes to action pins.
 
 Restore runs for every code-check job, including fork PRs. Only a push to
 `refs/heads/main`, after successful tests and without an exact cache hit, saves
@@ -109,7 +112,7 @@ namespace bumped; no remote cache operation is part of local verification.
 ## Local verification
 
 Run `/opt/homebrew/bin/actionlint .github/workflows/ci.yml` and
-`bash .rrx/ci/detect_test.sh`. The latter compares the shared reference snippet
+`python3 .rrx/ci/detect_test.py`. The latter compares the shared reference snippet
 with the workflow and tests doc-only, code, mixed, cross-boundary rename, empty
 diff, non-merge HEAD and README-only cases. Additional controls cover pushes
 and a failed diff. Its mutation control changes the snippet to classify every
@@ -117,12 +120,12 @@ change as doc-only and requires the same assertions to reject it. Throwaway
 repositories exist only under `.rrx/ci/tmp/` and are removed on exit. No network,
 hosted Actions execution or writes to the working branch's Git state are needed.
 
-Local results on the unchanged source base `79e4d273`: nine detection controls
-passed, and six cases rejected the all-doc-only mutant; the temporary tree was
-removed. `git diff --check` passed. The exact actionlint command stalled with
-its ShellCheck integration enabled and was interrupted. Running
-`/opt/homebrew/bin/actionlint -shellcheck= .github/workflows/ci.yml` passed;
-`python3 .rrx/ci/shellcheck_workflow.py` independently checked all five inline
-Bash scripts with ShellCheck and passed. These separate checks preserve the
-local lint coverage, but the requested normal actionlint invocation remains
-uncompleted and needs confirmation by the orchestrator.
+The orchestrator ran `/opt/homebrew/bin/actionlint .github/workflows/ci.yml`
+with ShellCheck enabled to completion on `92ae7ad6`; it passed. After the
+round-1 fixes based on that HEAD, `python3 .rrx/ci/detect_test.py` passed all nine
+detection controls, rejected the all-doc-only mutant in six cases, and removed
+its temporary tree. The workflow detection snippet remains byte-for-byte equal
+to the tested reference.
+The normal actionlint invocation was also re-run after the fixes in the Sol
+sandbox, but stalled without output and was interrupted (exit 130). That rerun
+did not complete; the orchestrator's passing result above applies to `92ae7ad6`.
