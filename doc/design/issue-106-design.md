@@ -1228,8 +1228,10 @@ model = "<model>"
 | `TERM` / `NO_COLOR` | `dumb` / `1` |
 | `RRX_PROCESS_COOKIE` | step の cookie（`crates/rrx-process-tracker/src/lib.rs:22`） |
 | `CODEX_HOME` | codex のときだけ |
+| `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_0` / `GIT_CONFIG_VALUE_0` | Reviewer のときだけ `1` / `safe.bareRepository` / `explicit`（暗黙の bare repository を Git 自身が拒否する） |
+| `GIT_CONFIG_NOSYSTEM` | Reviewer のときだけ `1` |
 
-GH_TOKEN・GITHUB_TOKEN・SSH_AUTH_SOCK・`AWS_*`・`ANTHROPIC_*`・`OPENAI_*`・`GIT_*` は入れない。テストでは「実際に渡した集合 ⊆ 許可した集合」を検査する。test の step も同じ集合を使う（§7.2）。
+GH_TOKEN・GITHUB_TOKEN・SSH_AUTH_SOCK・`AWS_*`・`ANTHROPIC_*`・`OPENAI_*`・上表以外の `GIT_*` は入れない。テストでは「実際に渡した集合 ⊆ 許可した集合」を検査する。test の step も同じ集合を使う（§7.2）。
 
 ### 5.5 出力の上限とファイル
 
@@ -1694,6 +1696,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 
 | ID | 計画 | この設計 | 根拠 |
 |---|---|---|---|
+| D21 | §5.3 の Reviewer 引数 | `--no-session-persistence` を追加して §5.3 を強化する。Q でも必須 flag として検査する | pin した Claude CLI 2.1.304 は print モードでこの flag を受け付け、session の保存と再開を止める。rrx の秘密スキャンを通らない CLI 自身の transcript 保存を抑止する |
 | D1 | schema v13 | v12 | main は v11（`state/mod.rs:32`）。v12 は M0 branch（`feature/issue-5-m0:crates/rrx/src/state/mod.rs:34`）にしかない。M0 を再開するときは v13 へ番号を振り直す |
 | D2 | `goals.execution_profile` 列、Goal ごとのプロファイル、両 claim 経路での容量の合算 | インストール単位のモードと、不変の表 `goal_execution_profiles`（行がなければ `managed_native`）。容量は合算しない | 1 つの rrxd で 2 経路が同時に動かず、モードの起動にもう一方の静止を要求するので、容量の共有も、2 つの admission の間の競合もなくなる。`goals` 表を変えると、全 catalog の byte 比較（`state/managed_binding/schema.rs:249-281`）と定義の trigger（`state/runtime/schema.sql:21-30`）に波及する |
 | D3 | Q の記録先は `runtime_startup_probes`（kind cli） | `pipeline_qualifications` | `runtime_startup_probes` は M0 にしかない（`startup.sql:1`）。その `step` の CHECK も native 用 |

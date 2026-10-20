@@ -87,8 +87,21 @@ impl Runtime {
         if !self.reviewer_ready()? {
             return Ok(None);
         }
+        self.review_snapshot(&cursor)?;
         match self.prepare_review(&cursor).await {
-            Ok((input, _)) => Ok(Some(input)),
+            Ok((input, tree)) => {
+                let recorded = self
+                    .owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .pipeline_review_preflight(&self.owner, &cursor, &tree);
+                if let Err(error) = recorded {
+                    self.review_failure(&cursor, &error, false)?;
+                    return Ok(None);
+                }
+                Ok(Some(input))
+            }
             Err(e) => {
                 self.review_failure(&cursor, &e, false)?;
                 Ok(None)
@@ -103,6 +116,7 @@ impl Runtime {
         if !self.reviewer_ready()? {
             return Ok(LaunchResult::Waiting);
         }
+        self.review_snapshot(&cursor)?;
         let (input, tree) = match self.prepare_review(&cursor).await {
             Ok(prepared) => prepared,
             Err(e) => {
@@ -241,6 +255,8 @@ impl Runtime {
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+        // Lifecycle, retired-owner and CAS failures must never become review failures.
+        store.pipeline_launch_snapshot(&self.owner, cursor)?;
         if let Some(hit) = error.downcast_ref::<SecretHit>() {
             store.pipeline_hold_secret(
                 &self.owner,

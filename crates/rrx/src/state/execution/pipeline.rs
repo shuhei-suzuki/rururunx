@@ -2314,6 +2314,14 @@ impl Store {
             Some(evidence),
         )
     }
+    pub(crate) fn pipeline_hold_death_unconfirmed(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+        secret: Option<&Value>,
+    ) -> Result<()> {
+        self.pipeline_observe_stop_detail(owner, cursor, "held", "death_unconfirmed", None, secret)
+    }
     fn pipeline_observe_stop_detail(
         &mut self,
         owner: &RuntimeOwner,

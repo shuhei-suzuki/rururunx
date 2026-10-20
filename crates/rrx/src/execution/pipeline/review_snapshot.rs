@@ -43,7 +43,8 @@ pub(crate) async fn rebuild(
     git.reject_tree_drivers(commit).await?;
     ensure_private_directory(path)?;
     let entries = git.run(&["ls-tree", "-r", "-z", commit, "--"]).await?;
-    let mut total = 0;
+    let mut inventory = Vec::new();
+    let mut names: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
     for (index, entry) in entries
         .split(|b| *b == 0)
         .filter(|e| !e.is_empty())
@@ -57,7 +58,7 @@ pub(crate) async fn rebuild(
                 && Path::new(name)
                     .components()
                     .all(|c| matches!(c, Component::Normal(_)))
-                && !name.split('/').any(|n| n.eq_ignore_ascii_case(".git")),
+                && !name.split('/').any(|n| super::git::fold_name(n) == ".git"),
             "review_snapshot_unsupported"
         );
         let mut fields = std::str::from_utf8(header)?.split_whitespace();
@@ -67,9 +68,25 @@ pub(crate) async fn rebuild(
             "review_snapshot_unsupported"
         );
         let oid = fields.next().context("review_snapshot_unsupported")?;
-        let bytes = git.run(&["cat-file", "blob", oid]).await?;
-        total += bytes.len();
-        ensure!(total <= 64 * 1024 * 1024, "review_snapshot_limit");
+        let mut parent = PathBuf::new();
+        for part in name.split('/') {
+            names
+                .entry(parent.clone())
+                .or_default()
+                .push(super::git::fold_name(part));
+            parent.push(part);
+        }
+        inventory.push((name.to_owned(), mode.to_owned(), oid.to_owned()));
+    }
+    for children in names.values() {
+        reject_bare(children)?;
+    }
+    let oids = inventory
+        .iter()
+        .map(|(_, _, oid)| oid.clone())
+        .collect::<Vec<_>>();
+    let blobs = git.blobs(&oids).await?;
+    for ((name, mode, _), bytes) in inventory.into_iter().zip(blobs) {
         let file = path.join(name);
         std::fs::create_dir_all(file.parent().context("review_snapshot_path")?)?;
         super::adoption::write_artifact(&file, &bytes)?;
@@ -90,6 +107,16 @@ fn seal(path: &Path) -> Result<()> {
         }
     }
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o555))?;
+    Ok(())
+}
+
+fn reject_bare(children: &[String]) -> Result<()> {
+    ensure!(
+        !["head", "objects", "refs"]
+            .iter()
+            .all(|name| children.iter().any(|c| c == name)),
+        "review_snapshot_unsupported"
+    );
     Ok(())
 }
 pub(crate) fn remove(path: &Path) -> Result<()> {
@@ -123,14 +150,14 @@ pub(crate) async fn verify(
             && path.parent() == Some(root.join("ro").as_path()),
         "review_snapshot_changed"
     );
-    let actual = digest(git, path).await.context("review_snapshot_changed")?;
     let expected = git
         .text(&["rev-parse", &format!("{commit}^{{tree}}")])
         .await?;
+    let actual = digest(path, expected.len()).context("review_snapshot_changed")?;
     ensure!(actual == expected, "review_snapshot_changed");
     Ok(actual)
 }
-async fn digest(git: &PipelineGit, root: &Path) -> Result<String> {
+fn digest(root: &Path, oid_len: usize) -> Result<String> {
     let mut dirs = vec![root.to_path_buf()];
     let mut files = Vec::new();
     let mut index = 0;
@@ -143,8 +170,15 @@ async fn digest(git: &PipelineGit, root: &Path) -> Result<String> {
                 && meta.permissions().mode() & 0o222 == 0,
             "review_snapshot_changed"
         );
+        let mut names = Vec::new();
         for entry in std::fs::read_dir(dir)? {
             let path = entry?.path();
+            names.push(super::git::fold_name(
+                &path
+                    .file_name()
+                    .context("review_snapshot_path")?
+                    .to_string_lossy(),
+            ));
             let meta = std::fs::symlink_metadata(&path)?;
             ensure!(
                 meta.permissions().mode() & 0o222 == 0
@@ -169,6 +203,7 @@ async fn digest(git: &PipelineGit, root: &Path) -> Result<String> {
             }
             ensure!(dirs.len() + files.len() <= 100_000, "review_snapshot_limit");
         }
+        reject_bare(&names)?;
         index += 1;
     }
     let mut children: BTreeMap<PathBuf, Vec<(Vec<u8>, String, String)>> = BTreeMap::new();
@@ -177,18 +212,7 @@ async fn digest(git: &PipelineGit, root: &Path) -> Result<String> {
         let bytes = read_regular(&path, 4 * 1024 * 1024)?;
         total += bytes.len();
         ensure!(total <= 64 * 1024 * 1024, "review_snapshot_limit");
-        let oid = String::from_utf8(
-            git.invoke(
-                &["hash-object", "--no-filters", "--stdin"],
-                &bytes,
-                None,
-                false,
-                4096,
-            )
-            .await?,
-        )?
-        .trim()
-        .to_owned();
+        let oid = object_id("blob", &bytes, oid_len)?;
         children
             .entry(path.parent().context("review_snapshot_path")?.into())
             .or_default()
@@ -220,18 +244,7 @@ async fn digest(git: &PipelineGit, root: &Path) -> Result<String> {
                 bytes.push(u8::from_str_radix(std::str::from_utf8(pair)?, 16)?);
             }
         }
-        let oid = String::from_utf8(
-            git.invoke(
-                &["hash-object", "-t", "tree", "--stdin"],
-                &bytes,
-                None,
-                false,
-                4096,
-            )
-            .await?,
-        )?
-        .trim()
-        .to_owned();
+        let oid = object_id("tree", &bytes, oid_len)?;
         if dir == root {
             return Ok(oid);
         }
@@ -248,4 +261,215 @@ async fn digest(git: &PipelineGit, root: &Path) -> Result<String> {
             ));
     }
     anyhow::bail!("review_snapshot_changed")
+}
+
+fn object_id(kind: &str, bytes: &[u8], oid_len: usize) -> Result<String> {
+    let header = format!("{kind} {}\0", bytes.len());
+    match oid_len {
+        40 => {
+            use sha1::Digest;
+            use std::fmt::Write;
+            let mut hash = sha1::Sha1::new();
+            hash.update(header.as_bytes());
+            hash.update(bytes);
+            let mut oid = String::with_capacity(40);
+            for byte in hash.finalize() {
+                write!(oid, "{byte:02x}")?;
+            }
+            Ok(oid)
+        }
+        64 => {
+            use sha2::Digest;
+            let mut hash = sha2::Sha256::new();
+            hash.update(header.as_bytes());
+            hash.update(bytes);
+            Ok(format!("{:x}", hash.finalize()))
+        }
+        _ => anyhow::bail!("review_snapshot_unsupported"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every directory is checked for case-folded implicit bare-repository names.
+    #[test]
+    fn b7_bare_snapshot_names() {
+        for prefix in ["", "nested/deeper/"] {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path().join(prefix);
+            std::fs::create_dir_all(root.join("OBJECTſ")).unwrap();
+            std::fs::create_dir(root.join("REFſ")).unwrap();
+            std::fs::write(root.join("Head"), b"ref: refs/heads/main\n").unwrap();
+            std::fs::write(root.join("config"), b"[core]\nfsmonitor=untrusted\n").unwrap();
+            // seal also seals the ancestors, matching a materialized snapshot.
+            seal(dir.path()).unwrap();
+            for name in ["Head", "config"] {
+                std::fs::set_permissions(root.join(name), std::fs::Permissions::from_mode(0o444))
+                    .unwrap();
+            }
+            let error = digest(dir.path(), 40).unwrap_err();
+            assert_eq!(error.to_string(), "review_snapshot_unsupported");
+            remove(dir.path()).unwrap();
+        }
+        assert!(reject_bare(&["head".into(), "objects".into(), "ordinary".into()]).is_ok());
+    }
+
+    /// Object headers and both repository hash formats match known Git object IDs.
+    #[test]
+    fn b7_object_formats() {
+        assert_eq!(
+            object_id("blob", b"", 40).unwrap(),
+            "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+        );
+        assert_eq!(
+            object_id("tree", b"", 40).unwrap(),
+            "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+        );
+        assert_eq!(
+            object_id("blob", b"", 64).unwrap(),
+            "473a0f4c3be8a93681a267e3b1e9a7dcda1185436fe141f7749120a303721813"
+        );
+        assert_eq!(
+            object_id("tree", b"", 64).unwrap(),
+            "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"
+        );
+    }
+
+    /// Snapshot plumbing spawns are bounded independently of the tree entry count.
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn b7_snapshot_batch_spawns() {
+        for format in ["sha1", "sha256"] {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path().canonicalize().unwrap();
+            let project = root.join("project");
+            std::fs::create_dir(&project).unwrap();
+            let git = PipelineGit::new(&project).unwrap();
+            git.run(&["init", &format!("--object-format={format}")])
+                .await
+                .unwrap();
+            let blob = git
+                .invoke(
+                    &["hash-object", "-w", "--stdin"],
+                    b"safe\n",
+                    None,
+                    false,
+                    4096,
+                )
+                .await
+                .unwrap();
+            let blob = std::str::from_utf8(&blob).unwrap().trim();
+            let mut input = Vec::new();
+            for i in 0..2048 {
+                input.extend_from_slice(format!("100644 blob {blob}\tf{i:04}\n").as_bytes());
+            }
+            let tree = git
+                .invoke(&["mktree"], &input, None, false, 4096)
+                .await
+                .unwrap();
+            let tree = std::str::from_utf8(&tree).unwrap().trim();
+            // Include subtrees and executable mode in the independent Git comparison.
+            let tree_input =
+                format!("100755 blob {blob}\texecutable\n040000 tree {tree}\tnested\n");
+            let tree = git
+                .invoke(&["mktree"], tree_input.as_bytes(), None, false, 4096)
+                .await
+                .unwrap();
+            let tree = std::str::from_utf8(&tree).unwrap().trim();
+            let commit = git
+                .invoke(&["commit-tree", tree], b"fixture\n", None, true, 4096)
+                .await
+                .unwrap();
+            let commit = std::str::from_utf8(&commit).unwrap().trim();
+            let work = root.join("work");
+            let path = snapshot_path(&work, "batch", 2, 1).unwrap();
+            let before = git.spawn_count();
+            assert_eq!(rebuild(&git, &work, &path, commit).await.unwrap(), tree);
+            assert!(
+                git.spawn_count() - before <= 10,
+                "per-entry Git spawn regression"
+            );
+            let before = git.spawn_count();
+            assert_eq!(verify(&git, &work, &path, commit).await.unwrap(), tree);
+            assert_eq!(git.spawn_count() - before, 1);
+            remove(&path).unwrap();
+        }
+    }
+
+    /// Materialization rejects implicit bare repositories before launching a Reviewer.
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn b7_snapshot_bare_preflight() {
+        for nested in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path().canonicalize().unwrap();
+            let project = root.join("project");
+            std::fs::create_dir(&project).unwrap();
+            let git = PipelineGit::new(&project).unwrap();
+            git.run(&["init"]).await.unwrap();
+            let blob = git
+                .invoke(
+                    &["hash-object", "-w", "--stdin"],
+                    b"safe\n",
+                    None,
+                    false,
+                    4096,
+                )
+                .await
+                .unwrap();
+            let blob = std::str::from_utf8(&blob).unwrap().trim();
+            let child = git
+                .invoke(
+                    &["mktree"],
+                    format!("100644 blob {blob}\tentry\n").as_bytes(),
+                    None,
+                    false,
+                    4096,
+                )
+                .await
+                .unwrap();
+            let child = std::str::from_utf8(&child).unwrap().trim();
+            let input = format!(
+                "100644 blob {blob}\tHead\n040000 tree {child}\tOBJECTſ\n040000 tree {child}\tREFſ\n100644 blob {blob}\tconfig\n"
+            );
+            let mut tree = git
+                .invoke(&["mktree"], input.as_bytes(), None, false, 4096)
+                .await
+                .unwrap();
+            if nested {
+                let input = format!(
+                    "040000 tree {}\tnested\n",
+                    std::str::from_utf8(&tree).unwrap().trim()
+                );
+                tree = git
+                    .invoke(&["mktree"], input.as_bytes(), None, false, 4096)
+                    .await
+                    .unwrap();
+            }
+            let commit = git
+                .invoke(
+                    &["commit-tree", std::str::from_utf8(&tree).unwrap().trim()],
+                    b"fixture\n",
+                    None,
+                    true,
+                    4096,
+                )
+                .await
+                .unwrap();
+            let work = root.join("work");
+            let path = snapshot_path(&work, "bare", 2, 1).unwrap();
+            let error = rebuild(
+                &git,
+                &work,
+                &path,
+                std::str::from_utf8(&commit).unwrap().trim(),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.to_string(), "review_snapshot_unsupported");
+            remove(&path).unwrap();
+        }
+    }
 }

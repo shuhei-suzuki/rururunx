@@ -142,7 +142,7 @@ impl FakeCli {
         let flags = if codex {
             "--sandbox <MODE>\n-c, --config <VALUE>\n-m, --model <MODEL>\n-C, --cd <PATH>\n-o, --output-last-message <FILE>\n--json\n--color <WHEN>\n--output-schema <FILE>\n"
         } else {
-            "-p, --print\n--permission-mode <MODE>\n--tools <TOOLS>\n--disallowedTools <TOOLS>\n--strict-mcp-config\n--mcp-config <FILE>\n--setting-sources <SOURCES>\n--disable-slash-commands\n--model <MODEL>\n--output-format <FORMAT>\n--json-schema <SCHEMA>\n"
+            "-p, --print\n--permission-mode <MODE>\n--tools <TOOLS>\n--disallowedTools <TOOLS>\n--strict-mcp-config\n--mcp-config <FILE>\n--setting-sources <SOURCES>\n--disable-slash-commands\n--no-session-persistence\n--model <MODEL>\n--output-format <FORMAT>\n--json-schema <SCHEMA>\n"
         };
         for (file, content) in [
             ("version", version.as_str()),

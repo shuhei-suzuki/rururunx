@@ -20,6 +20,21 @@ impl Harness {
         Self::with_alias(kind, prompt, false).await
     }
     async fn with_alias(kind: &str, prompt: &[u8], alias: bool) -> Self {
+        if kind == "review" {
+            let h = super::b7::ReviewFixture::new(
+                "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false}",
+            )
+            .await;
+            let input = h.prepare().await.unwrap();
+            return Self {
+                f: h.f,
+                runtime: h.runtime,
+                id: h.id,
+                work: h.path,
+                fake: h.fake,
+                prompt: input.prompt,
+            };
+        }
         let f = if alias {
             fixture_with_service_and_alias(true, true, None, None, true).await
         } else {
@@ -73,10 +88,23 @@ impl Harness {
         StepInput {
             work: self.work.clone(),
             prompt: self.prompt.clone(),
-            schema: "{}".into(),
+            schema: if self.step().kind == "review" {
+                crate::execution::pipeline::review::REVIEW_SCHEMA
+            } else {
+                "{}"
+            }
+            .into(),
         }
     }
     async fn launch(&self) -> LaunchResult {
+        if self.step().kind == "review" {
+            self.runtime.wait_pipeline_test_boundary().await;
+            return self
+                .runtime
+                .launch_pipeline_review(self.f.cursor(&self.id))
+                .await
+                .unwrap();
+        }
         self.runtime
             .launch_pipeline_step(self.f.cursor(&self.id), self.input())
             .await
@@ -100,6 +128,35 @@ impl Harness {
     }
     async fn close(self) {
         self.runtime.shutdown().await.unwrap();
+        if self.step().kind == "review" {
+            crate::execution::pipeline::review_snapshot::remove(&self.work).unwrap();
+            let step = self.step();
+            let path = crate::execution::pipeline::review_snapshot::snapshot_path(
+                &self.f.config.pipeline.as_ref().unwrap().work_root,
+                &self.id,
+                step.seq,
+                step.attempt,
+            )
+            .unwrap();
+            crate::execution::pipeline::review_snapshot::remove(&path).unwrap();
+        }
+    }
+
+    fn review_retry(&self) -> PipelineStep {
+        let cursor = self.f.cursor(&self.id);
+        let (_, task, _) = self
+            .f
+            .store()
+            .pipeline_review_context(&self.f.owner, &cursor)
+            .unwrap();
+        let step = self.step();
+        let nonce = Uuid::new_v4().simple().to_string();
+        let prompt = crate::execution::pipeline::review_prompt(&nonce, &task, b"").unwrap();
+        let mut retry = planned(&self.id, 2, 2, "review");
+        retry.step_base = step.step_base;
+        retry.body["review_nonce"] = json!(nonce);
+        retry.input_sha256 = digest(&prompt);
+        retry
     }
 }
 fn digest(bytes: &[u8]) -> String {
@@ -321,19 +378,26 @@ async fn b4_record_failure_death() {
 }
 
 /// A spawn error remains unknown even when the executable's qualified bytes match.
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn b4_spawn_error_is_unknown() {
-    let h = Harness::new("review").await;
-    let mut input = h.input();
-    // Exceeds macOS ARG_MAX without changing Q, filesystem identity or authority.
-    input.schema = "x".repeat(2 * 1024 * 1024);
-    let result = h
-        .runtime
-        .launch_pipeline_step(h.f.cursor(&h.id), input)
-        .await
-        .unwrap();
+    use crate::execution::pipeline::test_support::{LaunchPhase, pause_launch};
+    let h = Harness::new("implement").await;
+    let result = {
+        let (release, arrived) = pause_launch(LaunchPhase::Verified);
+        let launch = h.runtime.launch_pipeline_step(h.f.cursor(&h.id), h.input());
+        tokio::pin!(launch);
+        tokio::select! {
+            _ = &mut launch => panic!("launch bypassed Verified checkpoint"),
+            arrival = arrived => arrival.unwrap(),
+        }
+        // Remove only this fixture's empty cwd after qualification to force spawn failure.
+        std::fs::remove_dir(&h.work).unwrap();
+        release.send(()).unwrap();
+        launch.await.unwrap()
+    };
     assert!(matches!(result, LaunchResult::Unknown));
     assert_eq!(h.step().state, "unknown");
+    assert_eq!(h.step().body["reason"], "launch_unknown");
     assert_eq!(h.step().body["death_confirmed"], false);
     assert!(!h.fake.directory.join("exec-entered").exists());
     h.close().await;
@@ -559,9 +623,7 @@ async fn b4_probe_known_success() {
     let cursor = h.f.cursor(&h.id);
     assert!(h.runtime.record_pipeline_limit(&cursor).await.unwrap());
     let cursor = h.f.cursor(&h.id);
-    let mut retry = planned(&h.id, 2, 2, "review");
-    retry.input_sha256 = digest(b"pipeline\n");
-    assert_eq!(std::fs::read_dir(&h.work).unwrap().count(), 0);
+    let retry = h.review_retry();
     h.f.store()
         .pipeline_plan_next(&h.f.owner, &cursor, &retry, true)
         .unwrap();
@@ -580,7 +642,21 @@ async fn b4_probe_known_success() {
             .join("runs")
             .join(&h.id)
             .join("2-2");
-    let args = step_arguments(PipelineRole::Review, &h.fake.cli, &h.work, &attempt, "{}").unwrap();
+    let snapshot = crate::execution::pipeline::review_snapshot::snapshot_path(
+        &h.f.config.pipeline.as_ref().unwrap().work_root,
+        &h.id,
+        2,
+        2,
+    )
+    .unwrap();
+    let args = step_arguments(
+        PipelineRole::Review,
+        &h.fake.cli,
+        &snapshot,
+        &attempt,
+        crate::execution::pipeline::review::REVIEW_SCHEMA,
+    )
+    .unwrap();
     h.fake
         .expect_arguments(&args.iter().map(String::as_str).collect::<Vec<_>>());
     h.fake.control("exec-status", "0\n");
@@ -633,8 +709,7 @@ async fn b4_probe_output_io_atomic() {
             .await
             .unwrap()
     );
-    let mut retry = planned(&h.id, 2, 2, "review");
-    retry.input_sha256 = digest(&h.prompt);
+    let retry = h.review_retry();
     let cursor = h.f.cursor(&h.id);
     h.f.store()
         .pipeline_plan_next(&h.f.owner, &cursor, &retry, true)
@@ -654,7 +729,21 @@ async fn b4_probe_output_io_atomic() {
             .join("runs")
             .join(&h.id)
             .join("2-2");
-    let args = step_arguments(PipelineRole::Review, &h.fake.cli, &h.work, &attempt, "{}").unwrap();
+    let snapshot = crate::execution::pipeline::review_snapshot::snapshot_path(
+        &h.f.config.pipeline.as_ref().unwrap().work_root,
+        &h.id,
+        2,
+        2,
+    )
+    .unwrap();
+    let args = step_arguments(
+        PipelineRole::Review,
+        &h.fake.cli,
+        &snapshot,
+        &attempt,
+        crate::execution::pipeline::review::REVIEW_SCHEMA,
+    )
+    .unwrap();
     h.fake
         .expect_arguments(&args.iter().map(String::as_str).collect::<Vec<_>>());
     h.fake.control("exec-pause", "");

@@ -30,6 +30,8 @@ const OPTIONS: &[&str] = &[
 pub struct PipelineGit {
     root: PathBuf,
     home: OsString,
+    #[cfg(all(test, target_os = "macos"))]
+    spawns: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 impl PipelineGit {
     pub fn new(root: &Path) -> Result<Self> {
@@ -37,6 +39,8 @@ impl PipelineGit {
         Ok(Self {
             root: root.into(),
             home: std::env::var_os("HOME").context("HOME missing")?,
+            #[cfg(all(test, target_os = "macos"))]
+            spawns: Default::default(),
         })
     }
     pub(crate) fn root(&self) -> &Path {
@@ -109,6 +113,9 @@ impl PipelineGit {
         identity: bool,
         limit: usize,
     ) -> Result<(Vec<u8>, std::process::ExitStatus)> {
+        #[cfg(all(test, target_os = "macos"))]
+        self.spawns
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let mut child = OwnedProcess::spawn(self.command(args, index, identity))?;
         let mut stdin = child.child.stdin.take().context("Git stdin missing")?;
         let stdout = child.child.stdout.take().context("Git stdout missing")?;
@@ -141,6 +148,65 @@ impl PipelineGit {
         );
         let out = observed.context("Git timeout")??;
         Ok((out, receipt.status))
+    }
+    #[cfg(all(test, target_os = "macos"))]
+    pub(crate) fn spawn_count(&self) -> usize {
+        self.spawns.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// One bounded plumbing process reads the entire blob inventory without filters.
+    pub(crate) async fn blobs(&self, oids: &[String]) -> Result<Vec<Vec<u8>>> {
+        ensure!(oids.len() <= 100_000, "review_snapshot_limit");
+        let mut input = Vec::new();
+        for oid in oids {
+            ensure!(
+                matches!(oid.len(), 40 | 64) && oid.bytes().all(|b| b.is_ascii_hexdigit()),
+                "review_snapshot_unsupported"
+            );
+            input.extend_from_slice(oid.as_bytes());
+            input.push(b'\n');
+        }
+        let output = self
+            .invoke(
+                &["cat-file", "--batch"],
+                &input,
+                None,
+                false,
+                80 * 1024 * 1024,
+            )
+            .await?;
+        let mut rest = output.as_slice();
+        let mut blobs = Vec::with_capacity(oids.len());
+        let mut total = 0usize;
+        for oid in oids {
+            let end = rest
+                .iter()
+                .position(|b| *b == b'\n')
+                .context("review_snapshot_unsupported")?;
+            let mut header = std::str::from_utf8(&rest[..end])?.split_whitespace();
+            ensure!(
+                header.next() == Some(oid.as_str()) && header.next() == Some("blob"),
+                "review_snapshot_unsupported"
+            );
+            let len: usize = header
+                .next()
+                .context("review_snapshot_unsupported")?
+                .parse()?;
+            total = total.saturating_add(len);
+            ensure!(
+                len <= 4 * 1024 * 1024 && total <= 64 * 1024 * 1024 && header.next().is_none(),
+                "review_snapshot_limit"
+            );
+            rest = &rest[end + 1..];
+            ensure!(
+                rest.len() > len && rest[len] == b'\n',
+                "review_snapshot_unsupported"
+            );
+            blobs.push(rest[..len].to_vec());
+            rest = &rest[len + 1..];
+        }
+        ensure!(rest.is_empty(), "review_snapshot_unsupported");
+        Ok(blobs)
     }
     pub(crate) async fn diff(&self, base: &str, commit: &str) -> Result<Vec<u8>> {
         let result = self
@@ -214,6 +280,7 @@ impl PipelineGit {
         }
         // No checkout/status is allowed before inspecting every tree attribute blob.
         let entries = self.run(&["ls-tree", "-r", "-z", tree, "--"]).await?;
+        let mut attributes = Vec::new();
         for entry in entries.split(|b| *b == 0).filter(|s| !s.is_empty()) {
             let (header, path) = split_entry(entry)?;
             ensure!(!header.starts_with(b"160000 "), "git_driver_declared");
@@ -226,7 +293,12 @@ impl PipelineGit {
                     .split_whitespace()
                     .nth(2)
                     .context("tree oid missing")?;
-                reject_attributes(&self.run(&["cat-file", "blob", oid]).await?)?;
+                attributes.push(oid.to_owned());
+            }
+        }
+        if !attributes.is_empty() {
+            for bytes in self.blobs(&attributes).await? {
+                reject_attributes(&bytes)?;
             }
         }
         let common = self

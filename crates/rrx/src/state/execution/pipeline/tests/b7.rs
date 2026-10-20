@@ -1,21 +1,21 @@
 //! Host cases use real authority and the pinned native fixtures, never SQL success seeds.
 use super::*;
 use crate::execution::pipeline::{
-    LaunchResult, PipelineGit, PipelineRole, ReviewSeverity, StepInput, review, review_prompt,
-    review_snapshot, step_arguments, test_support::FakeCli,
+    LaunchResult, PipelineRole, ReviewSeverity, StepInput, review, review_prompt, review_snapshot,
+    step_arguments, test_support::FakeCli,
 };
 use std::{os::unix::fs::PermissionsExt, path::PathBuf, sync::Arc};
 
-struct ReviewFixture {
-    f: Fixture,
-    runtime: Arc<Runtime>,
-    id: String,
-    fake: FakeCli,
-    path: PathBuf,
-    attempt: PathBuf,
+pub(super) struct ReviewFixture {
+    pub(super) f: Fixture,
+    pub(super) runtime: Arc<Runtime>,
+    pub(super) id: String,
+    pub(super) fake: FakeCli,
+    pub(super) path: PathBuf,
+    pub(super) attempt: PathBuf,
 }
 impl ReviewFixture {
-    async fn new(output: &str) -> Self {
+    pub(super) async fn new(output: &str) -> Self {
         let (f, runtime, id) = super::b5::prepare_fixture_from(fixture().await, true).await;
         runtime.wait_pipeline_test_boundary().await;
         assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
@@ -69,7 +69,7 @@ impl ReviewFixture {
             .unwrap()
             .clone()
     }
-    async fn prepare(&self) -> Option<StepInput> {
+    pub(super) async fn prepare(&self) -> Option<StepInput> {
         let before = self.step();
         if let Some(input) = self
             .runtime
@@ -134,11 +134,292 @@ impl ReviewFixture {
     }
     async fn close(self) {
         self.runtime.shutdown().await.unwrap();
-        review_snapshot::remove(&self.path).unwrap();
+        let steps = self
+            .f
+            .store()
+            .pipeline_goal_view(self.f.goal)
+            .unwrap()
+            .steps;
+        for step in steps {
+            if step.run_id == self.id && step.kind == "review" {
+                let path = review_snapshot::snapshot_path(
+                    &self.f.config.pipeline.as_ref().unwrap().work_root,
+                    &self.id,
+                    step.seq,
+                    step.attempt,
+                )
+                .unwrap();
+                review_snapshot::remove(&path).unwrap();
+            }
+        }
     }
 }
+
+/// The generic entry point refuses every missing preflight or substituted input before tx1.
+#[tokio::test]
+async fn b7_generic_review_preflight() {
+    for (case, reason) in [
+        ("unprepared", "review_snapshot_missing"),
+        ("tree_type", "review_snapshot_missing"),
+        ("tree_mismatch", "review_snapshot_changed"),
+        ("nonce_missing", "review_nonce_invalid"),
+        ("unverified", "review_nonce_unverified"),
+        ("work", "review_snapshot_path"),
+        ("schema", "review_schema_mismatch"),
+        ("prompt", "review_input_changed"),
+        ("secret", "secret_detected"),
+    ] {
+        let h = ReviewFixture::new(&success()).await;
+        h.runtime.wait_pipeline_test_boundary().await;
+        let mut input = if case == "unprepared" {
+            StepInput {
+                work: h.f.config.pipeline.as_ref().unwrap().work_root.clone(),
+                prompt: vec![],
+                schema: "{}".into(),
+            }
+        } else {
+            h.prepare().await.unwrap()
+        };
+        if matches!(
+            case,
+            "tree_type" | "tree_mismatch" | "nonce_missing" | "unverified"
+        ) {
+            let mut step = h.step();
+            match case {
+                "tree_type" => step.body["snapshot_tree"] = json!(7),
+                "tree_mismatch" => step.body["snapshot_tree"] = json!("0".repeat(40)),
+                "nonce_missing" => {
+                    step.body.as_object_mut().unwrap().remove("review_nonce");
+                }
+                "unverified" => {
+                    step.body
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("review_nonce_verified");
+                }
+                _ => unreachable!(),
+            }
+            let mut store = h.f.store();
+            let tx = store.connection.transaction().unwrap();
+            write_step(&tx, &h.f.owner, &step).unwrap();
+            tx.commit().unwrap();
+        }
+        match case {
+            "work" => input.work = h.f.config.pipeline.as_ref().unwrap().work_root.clone(),
+            "schema" => input.schema = "{}".into(),
+            "prompt" => input.prompt = b"substituted prompt".to_vec(),
+            "secret" => input.prompt = b"EXAMPLE_TOKEN=fixture".to_vec(),
+            _ => {}
+        }
+        h.runtime.wait_pipeline_test_boundary().await;
+        let result = h
+            .runtime
+            .launch_pipeline_step(h.f.cursor(&h.id), input)
+            .await
+            .unwrap();
+        assert!(matches!(result, LaunchResult::Held), "{case}");
+        let step = h.step();
+        assert_eq!(step.state, "held", "{case}");
+        assert_eq!(step.body["reason"], reason, "{case}");
+        assert!(
+            step.cookie.is_none() && step.pid.is_none() && step.body["intent"].is_null(),
+            "{case}"
+        );
+        assert!(!h.fake.directory.join("exec-entered").exists(), "{case}");
+        h.close().await;
+    }
+}
+
+/// Preparation returns an input only after recording evidence accepted by generic launch.
+#[tokio::test]
+async fn b7_prepared_generic_launch() {
+    let h = ReviewFixture::new(&success()).await;
+    let input = h.prepare().await.unwrap();
+    let step = h.step();
+    assert!(step.body["snapshot_tree"].is_string());
+    assert_eq!(
+        step.body["review_nonce_verified"],
+        step.body["review_nonce"]
+    );
+    h.runtime.wait_pipeline_test_boundary().await;
+    let LaunchResult::Started(custody) = h
+        .runtime
+        .launch_pipeline_step(h.f.cursor(&h.id), input)
+        .await
+        .unwrap()
+    else {
+        panic!("prepared generic review did not launch");
+    };
+    custody.wait().await.unwrap();
+    assert!(h.adopt().await);
+    h.close().await;
+}
+
+async fn lifecycle(h: &ReviewFixture, pause: bool) {
+    let goal = h.f.store().goal(h.f.goal).unwrap().unwrap();
+    let request = ControlRequest {
+        request_id: Uuid::new_v4(),
+        instance: h.f.owner.instance.clone(),
+        epoch: h.f.owner.epoch,
+        action: ControlAction::SetGoalLifecycle {
+            project: h.f.project,
+            goal: h.f.goal,
+            expected_goal: goal.version,
+            target: if pause {
+                crate::runtime::control::GoalControl::Pause
+            } else {
+                crate::runtime::control::GoalControl::Resume
+            },
+            reason: "review lifecycle test".into(),
+        },
+    };
+    let (socket, _peer) = tokio::net::UnixStream::pair().unwrap();
+    h.runtime.wait_pipeline_test_boundary().await;
+    h.runtime.handle_control(&socket, request).await.unwrap();
+}
+
+/// Pausing at each review boundary leaves the step unchanged and resuming permits progress.
+#[tokio::test]
+async fn b7_paused_boundaries_resume() {
+    for phase in ["prepare", "launch", "adopt"] {
+        let h = ReviewFixture::new(&success()).await;
+        if phase == "adopt" {
+            h.exited().await;
+        }
+        let before = h.step();
+        lifecycle(&h, true).await;
+        h.runtime.wait_pipeline_test_boundary().await;
+        let cursor = h.f.cursor(&h.id);
+        let error = match phase {
+            "prepare" => h.runtime.prepare_pipeline_review(cursor).await.err(),
+            "launch" => h.runtime.launch_pipeline_review(cursor).await.err(),
+            _ => h.runtime.adopt_pipeline_review(cursor).await.err(),
+        }
+        .expect("paused review must fail without mutation");
+        assert_eq!(error.to_string(), "pipeline Goal is not Running");
+        assert_eq!(h.step(), before, "{phase}");
+        lifecycle(&h, false).await;
+        if phase == "prepare" {
+            assert!(h.prepare().await.is_some());
+        }
+        if phase != "adopt" {
+            h.exited().await;
+        }
+        assert!(h.adopt().await);
+        h.close().await;
+    }
+}
+
+/// Stale cursors fail at every review boundary without converting CAS loss to held.
+#[tokio::test]
+async fn b7_stale_review_boundaries() {
+    let h = ReviewFixture::new(&success()).await;
+    let stale = h.f.cursor(&h.id);
+    assert!(h.prepare().await.is_some());
+    let before = h.step();
+    h.runtime.wait_pipeline_test_boundary().await;
+    assert!(
+        h.runtime
+            .prepare_pipeline_review(stale.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        h.runtime
+            .launch_pipeline_review(stale.clone())
+            .await
+            .is_err()
+    );
+    assert!(h.runtime.adopt_pipeline_review(stale).await.is_err());
+    assert_eq!(h.step(), before);
+    h.close().await;
+}
+
+/// The Store refuses a decoded verdict whose source bytes differ from the stdout receipt.
+#[tokio::test]
+async fn b7_store_result_digest() {
+    let h = ReviewFixture::new(&success()).await;
+    h.exited().await;
+    let before = h.step();
+    let mut bytes = success()
+        .replace("PINNED_MODEL", &h.fake.cli.model)
+        .into_bytes();
+    bytes.push(b' ');
+    let mut evidence =
+        review::VerdictDecoder::decode(&bytes, &h.fake.cli.model, ReviewSeverity::High).unwrap();
+    evidence["snapshot_tree"] = before.body["snapshot_tree"].clone();
+    let cursor = h.f.cursor(&h.id);
+    let error =
+        h.f.store()
+            .pipeline_adopt(&h.f.owner, &cursor, &evidence)
+            .unwrap_err();
+    assert_eq!(error.to_string(), "review_output_changed");
+    assert_eq!(h.step(), before);
+    assert!(h.adopt().await);
+    h.close().await;
+}
+
+/// Escaped secrets in malformed streamed output hold the review with a receipt.
+#[tokio::test]
+async fn b7_runtime_escaped_secret() {
+    let h =
+        ReviewFixture::new(r#"{"summary":"EXAMPLE\u005fTOKEN=fixture","summary":"safe"}"#).await;
+    h.exited().await;
+    assert_eq!(h.step().state, "held");
+    assert_eq!(h.step().body["reason"], "secret_detected");
+    assert_eq!(h.step().body["secret"]["pattern"], "secret_assignment");
+    h.close().await;
+}
+
+/// An uncertain death keeps the secret receipt while retaining the death-unconfirmed reason.
+#[tokio::test]
+async fn b7_death_unconfirmed_receipt() {
+    let h = ReviewFixture::new(&success()).await;
+    let receipt = json!({"pattern":"secret_assignment","offset_sha256":"0".repeat(64)});
+    let cursor = h.f.cursor(&h.id);
+    h.f.store()
+        .pipeline_hold_death_unconfirmed(&h.f.owner, &cursor, Some(&receipt))
+        .unwrap();
+    assert_eq!(h.step().state, "held");
+    assert_eq!(h.step().body["reason"], "death_unconfirmed");
+    assert_eq!(h.step().body["secret"], receipt);
+    h.close().await;
+}
+
+/// A prior nonce cannot be reused by changing its case in stored history.
+#[tokio::test]
+async fn b7_nonce_reuse_casefold() {
+    let h = ReviewFixture::new(&success()).await;
+    h.exited().await;
+    let mut prior = h.step();
+    let nonce = "abcdef1234567890abcdef1234567890".to_owned();
+    prior.body["review_nonce"] = json!(nonce.to_ascii_uppercase());
+    {
+        let mut store = h.f.store();
+        let tx = store.connection.transaction().unwrap();
+        write_step(&tx, &h.f.owner, &prior).unwrap();
+        tx.commit().unwrap();
+    }
+    assert!(h.adopt().await);
+    let cursor = h.f.cursor(&h.id);
+    let (_, task, _) =
+        h.f.store()
+            .pipeline_review_context(&h.f.owner, &cursor)
+            .unwrap();
+    let mut next = planned(&h.id, 3, 1, "review");
+    next.step_base = prior.step_base;
+    next.body["review_nonce"] = json!(nonce);
+    next.input_sha256 =
+        crate::execution::verification::hash(&review_prompt(&nonce, &task, b"").unwrap());
+    h.f.store()
+        .pipeline_plan_next(&h.f.owner, &cursor, &next, true)
+        .unwrap();
+    assert!(matches!(h.launch().await, LaunchResult::Held));
+    assert_eq!(h.step().body["reason"], "review_nonce_reused");
+    h.close().await;
+}
 fn success() -> String {
-    serde_json::to_string(&json!({"type":"result","subtype":"success","is_error":false,"model":"PINNED_MODEL",
+    serde_json::to_string(&json!({"type":"result","subtype":"success","is_error":false,"modelUsage":{"PINNED_MODEL":{}},
         "structured_output":{"schema":"rrx.review.v1","verdict":"approve","summary":"safe","findings":[]}})).unwrap()
 }
 
@@ -161,6 +442,15 @@ async fn b7_runtime_review_flow() {
         std::fs::read_to_string(h.fake.directory.join("cwd")).unwrap(),
         h.path.to_str().unwrap()
     );
+    let environment = std::fs::read_to_string(h.fake.directory.join("environment")).unwrap();
+    for entry in [
+        "GIT_CONFIG_COUNT=1",
+        "GIT_CONFIG_KEY_0=safe.bareRepository",
+        "GIT_CONFIG_VALUE_0=explicit",
+        "GIT_CONFIG_NOSYSTEM=1",
+    ] {
+        assert!(environment.lines().any(|line| line == entry));
+    }
     assert_eq!(
         std::fs::read(h.attempt.join("prompt.md")).unwrap(),
         std::fs::read(h.fake.directory.join("stdin")).unwrap()
@@ -226,7 +516,13 @@ async fn b7_runtime_snapshot_digest() {
 /// An unexpected envelope cannot become an adopted or rejected schema result.
 #[tokio::test]
 async fn b7_runtime_envelope() {
-    for key in ["type", "subtype", "is_error", "model", "structured_output"] {
+    for key in [
+        "type",
+        "subtype",
+        "is_error",
+        "modelUsage",
+        "structured_output",
+    ] {
         let mut v: Value = serde_json::from_str(&success()).unwrap();
         v.as_object_mut().unwrap().remove(key);
         let h = ReviewFixture::new(&serde_json::to_string(&v).unwrap()).await;
@@ -235,7 +531,7 @@ async fn b7_runtime_envelope() {
         assert_eq!(h.step().state, "held");
         assert_eq!(
             h.step().body["reason"],
-            if key == "model" {
+            if key == "modelUsage" {
                 "review_model_mismatch"
             } else {
                 "review_envelope_mismatch"
@@ -363,17 +659,6 @@ async fn b7_runtime_rule_g() {
 async fn b7_launcher_snapshot_guard() {
     let h = ReviewFixture::new(&success()).await;
     let input = h.prepare().await.unwrap();
-    let project = h.f.store().project(h.f.project).unwrap().unwrap();
-    let git = PipelineGit::new(&project.root).unwrap();
-    let step = h.step();
-    let tree = git
-        .text(&["rev-parse", &format!("{}^{{tree}}", step.step_base)])
-        .await
-        .unwrap();
-    let cursor = h.f.cursor(&h.id);
-    h.f.store()
-        .pipeline_review_preflight(&h.f.owner, &cursor, &tree)
-        .unwrap();
     let file = h.path.join("tracked");
     std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
     std::fs::write(&file, b"changed").unwrap();
@@ -445,7 +730,7 @@ async fn b7_store_body_scan() {
     h.close().await;
 }
 
-/// Escaped secrets in decoded envelope diagnostics hold without persisting those diagnostics.
+/// Escaped secrets in envelope diagnostics hold before adoption without storing diagnostics.
 #[tokio::test]
 async fn b7_runtime_decoded_secret() {
     let mut v: Value = serde_json::from_str(&success()).unwrap();
@@ -455,8 +740,6 @@ async fn b7_runtime_decoded_secret() {
         .replace("EXAMPLE_TOKEN", r"EXAMPLE\u005fTOKEN");
     let h = ReviewFixture::new(&bytes).await;
     h.exited().await;
-    assert_eq!(h.step().state, "exited");
-    assert!(!h.adopt().await);
     assert_eq!(h.step().state, "held");
     assert_eq!(h.step().body["reason"], "secret_detected");
     assert!(h.step().body["adoption"].is_null());

@@ -307,6 +307,15 @@ Adoption requires certified death, retained output receipts and a second snapsho
 check under the control-admission boundary. The final Store transaction revalidates
 the owner, epoch, Goal lifecycle and run/step versions.
 
+The common launch boundary requires the exact snapshot path, a string tree digest,
+a verified lowercase nonce, the reconstructed and secret-scanned prompt, and the fixed
+schema before recording launch intent. Generic launches cannot bypass these checks.
+Paused Goals, retired owners and stale cursors return without changing the step;
+resuming permits preparation, launch or adoption to continue.
+Snapshot blobs are read in one bounded Git batch; blob and tree IDs are computed in
+process for SHA-1 and SHA-256 repositories. Directories shaped like implicit bare Git
+repositories are refused at any depth using the control-name case folding.
+
 The decoded `rrx.review.v1` verdict is stored in `step.body.adoption.verdict` for later
 decision processing. Finding IDs must be unique. An `approve` verdict containing an
 explicit blocking finding or a finding at the Goal's immutable severity threshold is
@@ -314,6 +323,9 @@ normalized to `request_changes`. Schema failures reject the step; envelope/model
 mismatches, snapshot drift and detected secrets hold it with fixed reasons. Secret
 receipts contain only a pattern ID and an offset digest. This adoption records a
 review result; it does not release a branch or schedule confirmation or repairs.
+Verdict evidence carries its source result SHA-256, which the Store compares with the
+stdout receipt. Raw Unicode escapes are scanned before strict decoding can reject a
+frame; secret receipts survive a death-unconfirmed hold.
 
 Review policy is data, not hard-coded Triple Review logic.
 

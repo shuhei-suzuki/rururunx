@@ -88,27 +88,100 @@ impl StepLauncher {
             run.state == "running" && step.state == "planned",
             "pipeline launch state changed"
         );
-        if step.kind == "review" && step.body.get("snapshot_tree").is_some() {
-            let project = self
+        if step.kind == "review" {
+            let (project, task, _) = self
                 .owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                .project(run.project_id)?
-                .context("review Project missing")?;
-            let checked = super::review_snapshot::verify(
-                &super::PipelineGit::new(&project.root)?,
-                &self.config.work_root,
-                &input.work,
-                &step.step_base,
-            )
-            .await;
-            if !checked.is_ok_and(|tree| step.body["snapshot_tree"] == tree) {
+                .pipeline_review_context(&self.owner, &cursor)?;
+            let checked = async {
+                ensure!(
+                    step.body["snapshot_tree"].is_string(),
+                    "review_snapshot_missing"
+                );
                 self.owner
                     .store
                     .lock()
                     .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .pipeline_hold(&self.owner, &cursor, "review_snapshot_changed", None)?;
+                    .pipeline_review_nonce_check(&self.owner, &cursor)?;
+                let nonce = step.body["review_nonce"]
+                    .as_str()
+                    .context("review_nonce_invalid")?;
+                super::review::validate_nonce(nonce)?;
+                ensure!(
+                    step.body["review_nonce_verified"].as_str() == Some(nonce),
+                    "review_nonce_unverified"
+                );
+                ensure!(
+                    input.work
+                        == super::review_snapshot::snapshot_path(
+                            &self.config.work_root,
+                            &run.id,
+                            step.seq,
+                            step.attempt
+                        )?,
+                    "review_snapshot_path"
+                );
+                ensure!(
+                    input.schema == super::review::REVIEW_SCHEMA,
+                    "review_schema_mismatch"
+                );
+                super::SecretScanner::check(&input.prompt)?;
+                let git = super::PipelineGit::new(&project.root)?;
+                let diff = git.diff(&run.base_commit, &step.step_base).await?;
+                let prompt = super::review::review_prompt(nonce, &task, &diff)?;
+                ensure!(
+                    input.prompt == prompt && hash(&prompt) == step.input_sha256,
+                    "review_input_changed"
+                );
+                let tree = super::review_snapshot::verify(
+                    &git,
+                    &self.config.work_root,
+                    &input.work,
+                    &step.step_base,
+                )
+                .await
+                .context("review_snapshot_changed")?;
+                ensure!(
+                    step.body["snapshot_tree"] == tree,
+                    "review_snapshot_changed"
+                );
+                Ok::<_, anyhow::Error>(())
+            }
+            .await;
+            if let Err(error) = checked {
+                let mut store = self
+                    .owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+                store.pipeline_launch_snapshot(&self.owner, &cursor)?;
+                if let Some(hit) = error.downcast_ref::<super::SecretHit>() {
+                    store.pipeline_hold_secret(
+                        &self.owner,
+                        &cursor,
+                        &json!({"pattern":hit.pattern,"offset_sha256":hit.offset_sha256}),
+                    )?;
+                } else {
+                    let reasons = [
+                        "review_snapshot_missing",
+                        "review_nonce_invalid",
+                        "review_nonce_reused",
+                        "review_nonce_unverified",
+                        "review_snapshot_path",
+                        "review_schema_mismatch",
+                        "review_input_changed",
+                        "review_nonce_collision",
+                        "review_snapshot_changed",
+                        "diff_too_large",
+                    ];
+                    let reason = error
+                        .chain()
+                        .find_map(|e| reasons.iter().copied().find(|r| e.to_string() == *r))
+                        .unwrap_or("review_validation_failed");
+                    store.pipeline_hold(&self.owner, &cursor, reason, None)?;
+                }
                 return Ok(LaunchResult::Held);
             }
         }
@@ -171,7 +244,14 @@ impl StepLauncher {
         } else {
             step_arguments(role, cli, &input.work, &attempt, &input.schema)?
         };
-        let env = qualification::environment(&self.config, &tmp, &cookie, cli, codex)?;
+        let env = qualification::environment(
+            &self.config,
+            &tmp,
+            &cookie,
+            cli,
+            codex,
+            step.kind == "review",
+        )?;
         let env_bytes: Vec<_> = env.iter().map(|(k, v)| (k, v.as_encoded_bytes())).collect();
         let intent = json!({"attempt_dir":attempt,"tmpdir":tmp,
             "argv_sha256":hash(&serde_json::to_vec(&args)?),

@@ -157,6 +157,7 @@ pub(super) fn environment(
     cookie: &str,
     cli: &PipelineCli,
     codex: bool,
+    reviewer: bool,
 ) -> Result<Vec<(String, std::ffi::OsString)>> {
     let mut env = Vec::new();
     for key in ["HOME", "USER", "LOGNAME"] {
@@ -186,6 +187,16 @@ pub(super) fn environment(
                 .as_os_str()
                 .into(),
         ));
+    }
+    if reviewer {
+        for (key, value) in [
+            ("GIT_CONFIG_COUNT", "1"),
+            ("GIT_CONFIG_KEY_0", "safe.bareRepository"),
+            ("GIT_CONFIG_VALUE_0", "explicit"),
+            ("GIT_CONFIG_NOSYSTEM", "1"),
+        ] {
+            env.push((key.into(), value.into()));
+        }
     }
     Ok(env)
 }
@@ -233,7 +244,7 @@ async fn qualify_cli_with_bound(
         }
         let cookie = uuid::Uuid::new_v4().simple().to_string();
         row.body["stage"] = json!("environment");
-        let env = environment(config, tmp, &cookie, cli, codex)?;
+        let env = environment(config, tmp, &cookie, cli, codex, !codex)?;
         let probe = |args: &[&str]| {
             let mut command = tokio::process::Command::new(&pinned.realpath);
             command

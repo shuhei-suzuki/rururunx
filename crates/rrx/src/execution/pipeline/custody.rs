@@ -332,7 +332,7 @@ impl Monitor {
                         Ok(process) => process,
                         Err(_) => {
                             return self.owner.store.lock().map_err(|_| anyhow::anyhow!("state poisoned"))?
-                                .pipeline_hold(&self.owner, &self.cursor, "death_unconfirmed", None);
+                                .pipeline_hold_death_unconfirmed(&self.owner, &self.cursor, review_out_scan.hit.as_ref().or(review_err_scan.hit.as_ref()));
                         }
                     };
                     deadline = Instant::now() + Duration::from_secs(drain_seconds);
@@ -361,7 +361,14 @@ impl Monitor {
                     .store
                     .lock()
                     .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .pipeline_hold(&self.owner, &self.cursor, "death_unconfirmed", None);
+                    .pipeline_hold_death_unconfirmed(
+                        &self.owner,
+                        &self.cursor,
+                        review_out_scan
+                            .hit
+                            .as_ref()
+                            .or(review_err_scan.hit.as_ref()),
+                    );
             }
         };
         let stdout_name = if test.is_some() {

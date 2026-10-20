@@ -136,6 +136,10 @@ async fn b3_q_environment() {
             "NO_COLOR",
             "RRX_PROCESS_COOKIE",
             "CODEX_HOME",
+            "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_KEY_0",
+            "GIT_CONFIG_VALUE_0",
+            "GIT_CONFIG_NOSYSTEM",
         ];
         assert!(
             environment
@@ -148,14 +152,44 @@ async fn b3_q_environment() {
             "0123456789abcdef",
             &fake.cli,
             codex,
+            !codex,
         )
         .unwrap();
-        assert!(
-            env.iter()
-                .all(|(key, _)| allowed[..10].contains(&key.as_str()))
-        );
+        assert!(env.iter().all(|(key, _)| allowed.contains(&key.as_str())));
         assert_eq!(env.iter().any(|(key, _)| key == "CODEX_HOME"), codex);
+        for (key, value) in [
+            ("GIT_CONFIG_COUNT", "1"),
+            ("GIT_CONFIG_KEY_0", "safe.bareRepository"),
+            ("GIT_CONFIG_VALUE_0", "explicit"),
+            ("GIT_CONFIG_NOSYSTEM", "1"),
+        ] {
+            assert_eq!(
+                env.iter()
+                    .find(|(k, _)| k == key)
+                    .map(|(_, v)| v.as_os_str()),
+                (!codex).then_some(std::ffi::OsStr::new(value))
+            );
+            if !codex {
+                assert!(
+                    environment
+                        .lines()
+                        .any(|line| line == format!("{key}={value}"))
+                );
+            }
+        }
     }
+}
+
+/// Qualification refuses Claude when session-persistence suppression is unavailable.
+#[tokio::test]
+async fn b7_q_no_session_persistence() {
+    let f = Fixture::new();
+    let help = std::fs::read_to_string(f.claude.directory.join("help")).unwrap();
+    f.claude
+        .control("help", &help.replace("--no-session-persistence\n", ""));
+    let row = f.q(false).await;
+    assert_eq!(row.state, "refused");
+    assert_eq!(row.body["stage"], "help_check");
 }
 /// Unapproved Codex configuration cannot activate hooks, MCP or profiles.
 #[tokio::test]
@@ -283,6 +317,7 @@ async fn b3_fake_exec_interface() {
                 "--setting-sources",
                 "",
                 "--disable-slash-commands",
+                "--no-session-persistence",
                 "--model",
                 "fixture-model",
                 "--output-format",

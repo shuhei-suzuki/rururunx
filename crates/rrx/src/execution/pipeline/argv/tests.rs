@@ -106,6 +106,7 @@ fn b3_readonly_templates() {
             "--setting-sources",
             "",
             "--disable-slash-commands",
+            "--no-session-persistence",
             "--model",
             "model",
             "--output-format",

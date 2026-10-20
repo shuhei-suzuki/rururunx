@@ -46,6 +46,19 @@ impl Store {
         Ok((project, data, threshold))
     }
 
+    pub(crate) fn pipeline_review_nonce_check(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+    ) -> Result<()> {
+        let tx = self.connection.transaction()?;
+        pipeline_owner_current(&tx, owner)?;
+        let (_, step) = cursor_rows(&tx, owner, cursor, true)?;
+        check_nonce(&tx, &step)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub(crate) fn pipeline_review_preflight(
         &mut self,
         owner: &RuntimeOwner,
@@ -69,16 +82,26 @@ impl Store {
             matches!(tree.len(), 40 | 64) && tree.bytes().all(|b| b.is_ascii_hexdigit()),
             "review_snapshot_changed"
         );
+        check_nonce(&tx, &step)?;
         let nonce = step.body["review_nonce"]
             .as_str()
             .context("review_nonce_invalid")?;
-        let reused: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE kind='review' AND json_extract(body,'$.review_nonce')=?1 AND NOT(run_id=?2 AND seq=?3 AND attempt=?4))", params![nonce,step.run_id,step.seq,step.attempt], |r| r.get(0))?;
-        ensure!(!reused, "review_nonce_reused");
+        step.body["review_nonce_verified"] = json!(nonce);
         step.body["snapshot_tree"] = json!(tree);
         write_step(&tx, owner, &step)?;
         tx.commit()?;
         Ok(())
     }
+}
+
+fn check_nonce(tx: &Transaction<'_>, step: &PipelineStep) -> Result<()> {
+    let nonce = step.body["review_nonce"]
+        .as_str()
+        .context("review_nonce_invalid")?;
+    crate::execution::pipeline::review::validate_nonce(nonce)?;
+    let reused: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pipeline_steps WHERE kind='review' AND lower(json_extract(body,'$.review_nonce'))=lower(?1) AND NOT(run_id=?2 AND seq=?3 AND attempt=?4))", params![nonce,step.run_id,step.seq,step.attempt], |r| r.get(0))?;
+    ensure!(!reused, "review_nonce_reused");
+    Ok(())
 }
 
 pub(super) fn review_adoption(
@@ -94,6 +117,13 @@ pub(super) fn review_adoption(
         evidence["snapshot_tree"].is_string()
             && evidence["snapshot_tree"] == step.body["snapshot_tree"],
         "review_snapshot_changed"
+    );
+    ensure!(
+        evidence["result_sha256"]
+            .as_str()
+            .is_some_and(|hash| hash.len() == 64)
+            && evidence["result_sha256"] == step.body["exit"]["stdout"]["sha256"],
+        "review_output_changed"
     );
     let mut verdict: ReviewResult =
         serde_json::from_value(evidence["verdict"].clone()).context("verdict_schema")?;

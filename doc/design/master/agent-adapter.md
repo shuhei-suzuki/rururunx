@@ -131,21 +131,28 @@ The CLI pipeline's Reviewer runs in a newly rebuilt, read-only commit snapshot, 
 the diff and Task text framed as untrusted data using a unique step nonce. Its fixed
 Claude argv permits only `Read,Grep,Glob`, explicitly refuses execution, write, web
 and delegation tools, supplies an empty strict MCP configuration, disables slash
-commands and sets `--setting-sources ""`. Qualification checks that the pinned CLI
+commands, sets `--setting-sources ""`, and disables session persistence with
+`--no-session-persistence`. Qualification requires that flag and checks that the pinned CLI
 accepts the empty settings-source value. The environment is assembled from the
 pipeline allowlist; the prompt is delivered over stdin through shared process custody.
+The Reviewer receives `GIT_CONFIG_COUNT=1`, `GIT_CONFIG_KEY_0=safe.bareRepository`,
+`GIT_CONFIG_VALUE_0=explicit`, and `GIT_CONFIG_NOSYSTEM=1`. Snapshot directories shaped
+like bare repositories are also refused before launch. Snapshot file contents are
+explicitly marked as untrusted data in the prompt.
 
 `result.json` is bounded to 1 MiB. Strict JSON decoding enforces depth 8, 4,096 nodes,
 64 KiB strings and duplicate-key rejection before conversion to inner DTOs with
 `deny_unknown_fields`. The inner schema checks enums, finding IDs, lengths and line
 ranges. A successful outer envelope must identify the configured main model in its
-`model` field and contain `structured_output`; usage-model entries are diagnostics,
-never proof of the main model. Unknown outer fields are retained as scanned diagnostics.
-Unrecognized envelopes remain held rather than inferring a model from usage data.
+`modelUsage` object keys and contain `structured_output`. Missing modelUsage or a
+missing pinned key holds with `review_model_mismatch`; other model keys and unknown
+outer fields are retained as scanned diagnostics only.
 
 The prompt, retained result, all stderr bytes (including discarded prefixes), and
 every decoded string saved in the review step are secret-scanned. Raw artifacts remain
 private and become mode 0400. Detected secrets hold the step without storing an excerpt.
+Bounded raw scanning decodes Unicode escapes even when JSON parsing will fail. The Store
+binds decoded verdict evidence to the retained result via the stdout receipt SHA-256.
 Snapshot contents are compared with the target commit before launch and after confirmed
 death. Unsupported snapshot entries such as symlinks are refused before launch.
 

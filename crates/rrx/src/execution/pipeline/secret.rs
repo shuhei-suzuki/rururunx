@@ -4,7 +4,7 @@ use anyhow::Result;
 pub(crate) struct SecretHit {
     pub pattern: &'static str,
     pub offset_sha256: String,
-    offset: usize,
+    pub(super) offset: usize,
 }
 impl std::fmt::Display for SecretHit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
