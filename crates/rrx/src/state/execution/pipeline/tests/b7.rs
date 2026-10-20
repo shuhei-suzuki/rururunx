@@ -340,9 +340,9 @@ async fn lifecycle(h: &ReviewFixture, pause: bool) {
     h.runtime.handle_control(&socket, request).await.unwrap();
 }
 
-/// Pausing at each review boundary leaves the step unchanged and resuming permits progress.
+/// Pausing at each review boundary fails without changing the step (pipeline resume is B10).
 #[tokio::test]
-async fn b7_paused_boundaries_resume() {
+async fn b7_paused_boundaries_unchanged() {
     for phase in ["prepare", "launch", "adopt"] {
         let h = ReviewFixture::new(&success()).await;
         if phase == "adopt" {
@@ -360,14 +360,6 @@ async fn b7_paused_boundaries_resume() {
         .expect("paused review must fail without mutation");
         assert_eq!(error.to_string(), "pipeline Goal is not Running");
         assert_eq!(h.step(), before, "{phase}");
-        lifecycle(&h, false).await;
-        if phase == "prepare" {
-            assert!(h.prepare().await.is_some());
-        }
-        if phase != "adopt" {
-            h.exited().await;
-        }
-        assert!(h.adopt().await);
         h.close().await;
     }
 }
