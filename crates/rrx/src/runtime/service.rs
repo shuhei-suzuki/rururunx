@@ -96,6 +96,13 @@ impl Runtime {
             self.check_pipeline_currency()?;
         }
         let _admission = self.control_admission.lock().await;
+        if self.config.execution.mode == crate::config::ExecutionMode::CliPipeline {
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .pipeline_take_over_test_cleanup(&self.owner)?;
+        }
         ensure!(
             !self.stopping.load(Ordering::SeqCst),
             "Runtime already stopping"
@@ -123,6 +130,7 @@ impl Runtime {
                 }
                 if runtime.config.execution.mode == crate::config::ExecutionMode::CliPipeline {
                     runtime.check_pipeline_currency()?;
+                    runtime.sweep_pipeline_test_cleanup().await?;
                     // B3 installs startup only. B9 supplies pipeline_tick here;
                     // this mode cannot enter any native admission/reconciliation.
                     let wake = runtime.wake.clone();

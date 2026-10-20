@@ -61,7 +61,7 @@ async fn b6_f1_forged_gitdir() {
     assert!(error.to_string().contains("gitfile changed"), "{error:#}");
     std::fs::write(gitfile, original).unwrap();
     let project = f.store().project(f.project).unwrap().unwrap();
-    PipelineTestRunner::remove(&project.root, &prepared.checkout)
+    PipelineTestRunner::remove(&project.root, config, &step)
         .await
         .unwrap();
     runtime.shutdown().await.unwrap();
@@ -94,7 +94,7 @@ async fn b6_f1_cleanup_after_adoption() {
     runtime.shutdown().await.unwrap();
 }
 
-/// A partially removed checkout batch resumes without launching or adopting a test again.
+/// A batch with a rewritten checkout gitfile completes without trusting that gitfile.
 #[tokio::test]
 async fn b6_f1_cleanup_partial_batch() {
     let mut commands = proposal("/usr/bin/perl".into()).commands;
@@ -132,17 +132,14 @@ async fn b6_f1_cleanup_partial_batch() {
     let first_co = PipelineTestRunner::checkout(config, &first).unwrap();
     let second_co = PipelineTestRunner::checkout(config, &second).unwrap();
     let gitfile = second_co.join(".git");
-    let original = std::fs::read(&gitfile).unwrap();
     std::fs::write(&gitfile, b"gitdir: /nonexistent\n").unwrap();
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.is_err());
+    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
     let partial = f.store().pipeline_goal_view(f.goal).unwrap();
     let receipt = partial.steps.last().unwrap().clone();
     assert_eq!(receipt.state, "adopted");
     assert!(!first_co.exists());
-    assert!(second_co.exists());
-    assert!(partial.runs[0].body["test_cleanup"].is_object());
-    std::fs::write(gitfile, original).unwrap();
-    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    assert!(!second_co.exists());
+    assert!(partial.runs[0].body["test_cleanup"].is_null());
     let after = f.store().pipeline_goal_view(f.goal).unwrap();
     assert_eq!(after.steps.last().unwrap(), &receipt);
     assert!(after.runs[0].body["test_cleanup"].is_null());

@@ -219,6 +219,19 @@ fn b6_f1_host_services() {
         }
     }
     let _remove = RemoveJob(label.clone());
+    assert!(s.status(
+        UNRESTRICTED,
+        &[
+            "/bin/launchctl",
+            "submit",
+            "-l",
+            &label,
+            "--",
+            "/usr/bin/true",
+        ]
+    ));
+    // Remove the control's job before testing submission of the same label.
+    drop(RemoveJob(label.clone()));
     s.denied(&[
         "/bin/launchctl",
         "submit",
@@ -227,6 +240,7 @@ fn b6_f1_host_services() {
         "--",
         "/usr/bin/true",
     ]);
+    assert!(s.status(UNRESTRICTED, &["/bin/launchctl", "list"]));
     s.denied(&["/bin/launchctl", "list"]);
     let domain = format!("org.rrx.fixture.{}", uuid::Uuid::new_v4());
     struct DeletePreference(String);
@@ -241,6 +255,18 @@ fn b6_f1_host_services() {
         }
     }
     let _delete = DeletePreference(domain.clone());
+    assert!(s.status(
+        UNRESTRICTED,
+        &[
+            "/usr/bin/defaults",
+            "write",
+            &domain,
+            "fixture",
+            "-string",
+            "value",
+        ]
+    ));
+    drop(DeletePreference(domain.clone()));
     s.denied(&[
         "/usr/bin/defaults",
         "write",
@@ -249,6 +275,20 @@ fn b6_f1_host_services() {
         "-string",
         "value",
     ]);
+}
+
+/// Process-info calls cannot inspect the unsandboxed parent through libproc.
+#[test]
+fn b6_f4_process_info_parent() {
+    let s = Sandbox::new();
+    let python = python();
+    let code = format!(
+        "import ctypes; p=ctypes.CDLL('/usr/lib/libproc.dylib',use_errno=True); b=ctypes.create_string_buffer(136); n=p.proc_pidinfo({},3,0,b,136); raise SystemExit(0 if n==136 else 1)",
+        std::process::id()
+    );
+    let args = [python.to_str().unwrap(), "-I", "-c", &code];
+    assert!(s.status(UNRESTRICTED, &args));
+    s.denied(&args);
 }
 
 /// Both control-style UNIX sockets and localhost server sockets remain denied.

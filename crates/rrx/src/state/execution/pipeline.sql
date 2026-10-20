@@ -46,7 +46,12 @@ WHEN OLD.rowid<>NEW.rowid OR OLD.id<>NEW.id OR OLD.kind<>NEW.kind OR OLD.task_id
  OR NEW.round<OLD.round OR NEW.round>OLD.round+1
  OR NOT (NEW.state=OLD.state
    OR (OLD.state='running' AND NEW.state IN ('held','completed','abandoned'))
-   OR (OLD.state='held' AND NEW.state IN ('running','abandoned','completed')))
+   OR (OLD.state='held' AND NEW.state IN ('running','abandoned','completed'))
+   OR (OLD.state IN ('completed','abandoned') AND NEW.state='held'
+       AND json_type(OLD.body,'$.test_cleanup') IS 'object'
+       AND json_extract(NEW.body,'$.held.reason') IS 'test_cleanup_failed'
+       AND json_extract(NEW.body,'$.cleanup_terminal_state') IS OLD.state
+       AND json_extract(NEW.body,'$.test_cleanup') IS json_extract(OLD.body,'$.test_cleanup')))
  -- held から running・completed へは、回復の記録があるときだけ（completed は release 済みの journal を決着させた abandon-run。§4.4）
  OR (OLD.state='held' AND NEW.state IN ('running','completed') AND NOT EXISTS(
      SELECT 1 FROM pipeline_recoveries r WHERE r.run_id=NEW.id AND r.consumed_version=NEW.version

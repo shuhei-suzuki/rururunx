@@ -7,6 +7,7 @@ use std::sync::Arc;
 mod r1fix;
 mod r1fix2;
 mod r3fix;
+mod r4fix;
 
 async fn planned_test(
     code: &str,
@@ -308,7 +309,7 @@ async fn b6_adopt_profile_changed() {
     runtime.shutdown().await.unwrap();
 }
 
-/// A pre-spawn program replacement is rejected without creating a child.
+/// Rejected program replacements create no child and reclaim private resources on abandonment.
 #[tokio::test]
 async fn b6_launch_recheck() {
     use std::os::unix::fs::PermissionsExt;
@@ -343,6 +344,19 @@ async fn b6_launch_recheck() {
     let step = view.steps.last().unwrap();
     assert_eq!(step.state, "rejected");
     assert!(step.pid.is_none());
+    let checkout = PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), step).unwrap();
+    let tmp = std::path::PathBuf::from(step.body["intent"]["tmpdir"].as_str().unwrap());
+    assert!(checkout.is_dir());
+    let request = PipelineRecoveryRequest {
+        request_id: Uuid::new_v4(),
+        cursor: f.cursor(&id),
+        then_action: "abandon_run".into(),
+        reason: "abandon rejected launch".into(),
+    };
+    f.store()
+        .pipeline_recover(&f.owner, &f.ingress, &request, &recovery_evidence())
+        .unwrap();
+    r4fix::wait_clean(&f.owner, f.goal, &id, &checkout, Some(&tmp)).await;
     runtime.shutdown().await.unwrap();
 }
 

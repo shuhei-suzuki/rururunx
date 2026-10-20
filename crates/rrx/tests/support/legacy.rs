@@ -109,9 +109,26 @@ async fn accepted(
             .map(|(id, _, _)| store.project(*id).unwrap().unwrap())
             .collect::<Vec<_>>()
     };
-    let service = {
+    let mut service = {
         let (db, config) = (db.clone(), config(&plans));
-        tokio::spawn(async move { rrx::cli::service::serve(&db, config, false).await })
+        let config_path = db.with_extension("fixture-service.toml");
+        std::fs::write(&config_path, toml::to_string(&config).unwrap()).unwrap();
+        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_rrx"));
+        command
+            .env_clear()
+            .envs(rrx::cli::daemon::environment())
+            .arg("--state")
+            .arg(&db)
+            .arg("--config")
+            .arg(&config_path)
+            .arg("serve")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .kill_on_drop(true);
+        (
+            rrx_spawn_hygiene::spawn_tokio(command).unwrap(),
+            config_path,
+        )
     };
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
     // Readiness is only "the endpoint accepts and says Hello"; no control
@@ -170,7 +187,8 @@ async fn accepted(
     rrx::cli::client::request(&db, ControlAction::RuntimeStop)
         .await
         .unwrap();
-    service.await.unwrap().unwrap();
+    assert!(service.0.wait().await.unwrap().success());
+    std::fs::remove_file(service.1).unwrap();
     goals
 }
 

@@ -25,6 +25,57 @@ const READINESS_DEADLINE: Duration = Duration::from_secs(30);
 const READINESS_BYTES: u64 = 4096;
 const POLL: Duration = Duration::from_millis(20);
 
+/// Fixed daemon inputs; child-specific settings and credentials are not inherited.
+pub fn environment() -> Vec<(OsString, OsString)> {
+    const NAMES: &[&str] = &[
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "PATH",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "LC_MESSAGES",
+        "TERM",
+        "SHELL",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+        "XDG_CACHE_HOME",
+        "CODEX_HOME",
+        "NODE_OPTIONS",
+        "NODE_PATH",
+        "NODE_EXTRA_CA_CERTS",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+        "OPENAI_BASE_URL",
+        "OPENAI_API_BASE",
+        "SSH_AUTH_SOCK",
+        "SSH_ASKPASS",
+        "EDITOR",
+        "VISUAL",
+        "DOCKER_CONFIG",
+        "DOCKER_HOST",
+    ];
+    NAMES
+        .iter()
+        .filter_map(|name| std::env::var_os(name).map(|value| ((*name).into(), value)))
+        .collect()
+}
+
 /// The owner-lock input L of the decision table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnerLock {
@@ -423,6 +474,8 @@ async fn spawn(launch: &Launch, state: &Path, config: Option<&Path>) -> StartOut
     }
     command
         .args(["serve", "--detached"])
+        .env_clear()
+        .envs(environment())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::from(file))

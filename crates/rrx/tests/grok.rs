@@ -1097,6 +1097,7 @@ async fn c_s3a_project_status_projects_sessions_without_native_ref_or_pid() {
         async move {
             rrx_spawn_hygiene::output_tokio({
                 let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_rrx"));
+                command.env_clear().envs(rrx::cli::daemon::environment());
                 command
                     .arg("--state")
                     .arg(&state)

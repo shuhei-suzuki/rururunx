@@ -134,7 +134,7 @@ fn check_startup_environment(
     Ok(())
 }
 
-async fn serve_with_environment(
+pub(super) async fn serve_with_environment(
     state: &Path,
     config: Config,
     detached: bool,

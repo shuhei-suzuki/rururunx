@@ -135,31 +135,27 @@ impl PipelineTestRunner {
         })
     }
 
-    /// Called after the final command is adopted, under control_admission.
-    pub(crate) async fn remove(project: &Path, checkout: &Path) -> Result<()> {
-        let git = PipelineGit::new(project)?;
-        let listing = git.run(&["worktree", "list", "--porcelain", "-z"]).await?;
-        let field = format!("worktree {}", checkout.display());
-        let owned = listing.split(|b| *b == 0).any(|b| b == field.as_bytes());
-        let exists = match std::fs::symlink_metadata(checkout) {
-            Ok(_) => true,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+    /// Removes only the derived private entry, never trusting test-writable Git metadata.
+    pub(crate) async fn remove(
+        project: &Path,
+        config: &PipelineConfig,
+        step: &PipelineStep,
+    ) -> Result<()> {
+        let checkout = Self::checkout(config, step)?;
+        let parent = config.work_root.join("co");
+        ensure_private_directory(&parent)?;
+        ensure!(
+            parent.canonicalize()? == parent,
+            "test cleanup parent aliases"
+        );
+        match std::fs::symlink_metadata(&checkout) {
+            Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(&checkout)?,
+            Ok(_) => std::fs::remove_file(&checkout)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),
-        };
-        ensure!(owned || !exists, "test cleanup path is not registered");
-        if !owned {
-            return Ok(());
         }
-        if exists {
-            registered(&git, checkout).await?;
-        }
-        git.run(&[
-            "worktree",
-            "remove",
-            "--force",
-            checkout.to_str().context("checkout encoding")?,
-        ])
-        .await?;
+        let git = PipelineGit::new(project)?;
+        git.run(&["worktree", "prune", "--expire=now"]).await?;
         Ok(())
     }
 

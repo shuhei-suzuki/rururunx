@@ -328,7 +328,13 @@ async fn c_s1d_serve_exits_unsuccessfully_after_a_pending_stop() {
     let serve = {
         let state = root.state.clone();
         tokio::spawn(async move {
-            crate::cli::service::serve(&state, crate::config::Config::default(), false).await
+            crate::cli::service::serve_with_environment(
+                &state,
+                crate::config::Config::default(),
+                false,
+                environment(),
+            )
+            .await
         })
     };
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);

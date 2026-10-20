@@ -531,8 +531,29 @@ dedicated cache or removal of existing hardlinks to outside files, and prohibits
 use by outside tools, sharing hardlinks with outside files and concurrent outside
 modification. This operationally dependent cache residual is Medium.
 
+Tests cannot use POSIX IPC (for example Python multiprocessing.Lock) or /dev/tty.
+Cleanup removes the derived entry under the canonical private work_root/co parent
+without following symlinks or trusting the checkout's gitfile, then prunes Git
+registrations from the Project side. Failure durably holds the run with
+test_cleanup_failed; operator recovery resumes cleanup without rewriting terminal
+step receipts. A terminal run can enter this hold only with pending cleanup;
+a previously completed run returns to completed after recovery. Recovery records
+cleanup for dead tests in the abandonment/retry transaction. Runtime sweeps reclaim
+their checkouts and TMPDIRs without later adoption, including obligations
+after owner restart when every step is never launched or confirmed dead.
+Unconfirmed deaths retain TMPDIR; new retry attempts are excluded.
+
+Daemon start constructs the service environment with env_clear and a fixed allowlist
+in both modes. Direct rrx serve relies on the operator's environment and auxiliary
+startup refusal. No arbitrary environment prefix or token-like name is inherited.
+
 An environment built from scratch prevents direct inheritance of secrets, but does
 not prevent reading arguments and environments available from other processes.
+The read goes through the unconditioned (allow sysctl-read). Host measurements
+found that a subsequent deny for kern.procargs2, kern.procargs and the kern.proc.
+prefix, and an allowlist of sysctl-read names excluding kern.proc*, did not block
+MIB reads of KERN_PROCARGS2 or KERN_PROC_PID. Removing sysctl-read breaks Homebrew
+python3 and cargo.
 Under the adopted test Seatbelt profile, a nonsecret marker in the parent
 environment of a same-user Homebrew python3 process was successfully read.
 Apple platform binaries have their environments stripped; their arguments are

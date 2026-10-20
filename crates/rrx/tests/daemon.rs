@@ -40,6 +40,7 @@ impl Fixture {
     fn daemon(&self, verb: &str) -> (Output, Value) {
         let output = rrx_spawn_hygiene::output_std({
             let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+            command.env_clear().envs(rrx::cli::daemon::environment());
             command
                 .arg("--state")
                 .arg(&self.state)
@@ -66,6 +67,7 @@ impl Fixture {
     fn read(&self, args: &[&str]) -> Output {
         rrx_spawn_hygiene::output_std({
             let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+            command.env_clear().envs(rrx::cli::daemon::environment());
             command
                 .arg("--state")
                 .arg(&self.state)
@@ -211,6 +213,7 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         let Ok(mut child) = rrx_spawn_hygiene::spawn_std({
             let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+            command.env_clear().envs(rrx::cli::daemon::environment());
             command
                 .arg("--state")
                 .arg(&self.state)
@@ -228,6 +231,58 @@ impl Drop for Fixture {
         let _ = child.kill();
         let _ = child.wait();
     }
+}
+
+/// Daemon start removes token-like and unlisted names before the service exec.
+#[cfg(target_os = "macos")]
+#[test]
+fn b6_f4_daemon_environment() {
+    let f = Fixture::new();
+    let names = [
+        "GITHUB_TOKEN",
+        "CLAUDE_CODE_MESSAGING_TOKEN",
+        "CLOUDSDK_PROXY_PASSWORD",
+        "RRX_F4_SENTINEL",
+    ];
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new(env!("CARGO_BIN_EXE_rrx"));
+        command
+            .env_clear()
+            .envs(rrx::cli::daemon::environment())
+            .envs(names.map(|name| (name, "nonsecret-fixture")))
+            .arg("--state")
+            .arg(&f.state)
+            .arg("--config")
+            .arg(&f.config)
+            .args(["daemon", "start", "--json"]);
+        command
+    })
+    .unwrap();
+    assert!(
+        output.status.success(),
+        "daemon failed with contaminated parent environment"
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["start"], "running");
+    let output = rrx_spawn_hygiene::output_std({
+        let mut command = Command::new("/bin/ps");
+        command.args(["eww", "-p", &f.service_pid().to_string(), "-o", "command="]);
+        command
+    })
+    .unwrap();
+    assert!(output.status.success(), "environment inspection failed");
+    let environment = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        environment.contains("HOME="),
+        "environment inspection omitted known allowed name"
+    );
+    for name in names {
+        assert!(
+            !environment.contains(&format!("{name}=")),
+            "unexpected name {name}"
+        );
+    }
+    assert_eq!(f.daemon("stop").1["stop"], "completed");
 }
 
 /// C-S1c: one case per non-`valid` cell. Each leaves the epoch row and the

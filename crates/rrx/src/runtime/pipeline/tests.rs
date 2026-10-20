@@ -20,6 +20,12 @@ impl Runtime {
         if !self.service_running() || self.stopping.load(Ordering::SeqCst) {
             return Ok(LaunchResult::Waiting);
         }
+        if self
+            .finish_pipeline_test_cleanup(&cursor.run_id, Some(&cursor))
+            .await?
+        {
+            return Ok(LaunchResult::Waiting);
+        }
         let profile = self
             .owner
             .store
@@ -194,6 +200,28 @@ impl Runtime {
         Ok(true)
     }
 
+    pub(in crate::runtime) async fn sweep_pipeline_test_cleanup(&self) -> Result<()> {
+        let Ok(_boundary) = self.control_admission.try_lock() else {
+            return Ok(());
+        };
+        if !self.service_running() {
+            return Ok(());
+        }
+        let runs = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .pipeline_takeover_view()?
+            .runs;
+        for run in runs {
+            if run.owner_epoch == self.owner.epoch && run.body["test_cleanup"]["recovery"] == true {
+                self.finish_pipeline_test_cleanup(&run.id, None).await?;
+            }
+        }
+        Ok(())
+    }
+
     async fn finish_pipeline_test_cleanup(
         &self,
         id: &str,
@@ -214,9 +242,19 @@ impl Runtime {
             .as_ref()
             .context("pipeline config missing")?;
         for step in steps {
-            let checkout = PipelineTestRunner::checkout(config, &step)?;
-            PipelineTestRunner::remove(&project, &checkout).await?;
-            PipelineTestRunner::reclaim_tmpdir(config, &step)?;
+            let removed = async {
+                PipelineTestRunner::remove(&project, config, &step).await?;
+                PipelineTestRunner::reclaim_tmpdir(config, &step)
+            }
+            .await;
+            if removed.is_err() {
+                self.owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .pipeline_test_cleanup_failed(&self.owner, &run)?;
+                return Ok(true);
+            }
         }
         self.owner
             .store

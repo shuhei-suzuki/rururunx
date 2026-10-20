@@ -240,3 +240,138 @@ async fn b6_s1_goal_middle_failure_retried() {
     );
     runtime.shutdown().await.unwrap();
 }
+
+/// Abandoning a failed Goal reclaims its checkout and written TMPDIR without adoption.
+#[tokio::test]
+async fn b6_f4_goal_abandon_cleanup() {
+    let (f, runtime, id) = goal_exited(&format!("{SCRATCH} exit 3;")).await;
+    assert!(!adopt_goal(&f, &runtime, &id).await);
+    let step = goal_last(&f, &id);
+    let checkout =
+        PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), &step).unwrap();
+    let tmp = std::path::PathBuf::from(step.body["intent"]["tmpdir"].as_str().unwrap());
+    assert!(tmp.join("scratch").is_file());
+    let request = PipelineRecoveryRequest {
+        request_id: Uuid::new_v4(),
+        cursor: goal_cursor(&f, &id),
+        then_action: "abandon_run".into(),
+        reason: "abandon failed Goal".into(),
+    };
+    f.store()
+        .pipeline_recover(&f.owner, &f.ingress, &request, &recovery_evidence())
+        .unwrap();
+    super::r4fix::wait_clean(&f.owner, f.goal, &id, &checkout, Some(&tmp)).await;
+    runtime.shutdown().await.unwrap();
+}
+
+/// Persisted abandon and retry cleanup survives owner takeover and Runtime restart.
+#[tokio::test]
+async fn b6_f4_goal_abandon_restart_cleanup() {
+    for action in ["abandon_run", "retry"] {
+        let (f, runtime, id) = goal_exited(&format!("{SCRATCH} exit 3;")).await;
+        assert!(!adopt_goal(&f, &runtime, &id).await);
+        let step = goal_last(&f, &id);
+        let checkout =
+            PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), &step).unwrap();
+        let tmp = std::path::PathBuf::from(step.body["intent"]["tmpdir"].as_str().unwrap());
+        assert!(tmp.join("scratch").is_file());
+        // Stop the service before the transaction, leaving its durable obligation for a new owner.
+        runtime.shutdown().await.unwrap();
+        let request = PipelineRecoveryRequest {
+            request_id: Uuid::new_v4(),
+            cursor: goal_cursor(&f, &id),
+            then_action: action.into(),
+            reason: "abandon before restart".into(),
+        };
+        f.store()
+            .pipeline_recover(&f.owner, &f.ingress, &request, &recovery_evidence())
+            .unwrap();
+        assert!(
+            f.store()
+                .pipeline_takeover_view()
+                .unwrap()
+                .runs
+                .iter()
+                .any(|r| r.id == id && r.body["test_cleanup"].is_object())
+        );
+        let state = f.owner.state_path().to_path_buf();
+        let config = f.config.clone();
+        let goal = f.goal;
+        let old = Arc::downgrade(&f.owner);
+        drop(runtime);
+        drop(f.ingress);
+        drop(f.owner);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while old.upgrade().is_some() {
+            assert!(Instant::now() < deadline, "old owner retained");
+            tokio::task::yield_now().await;
+        }
+        let owner =
+            RuntimeOwner::open_mode(&state, crate::config::ExecutionMode::CliPipeline).unwrap();
+        crate::execution::pipeline::test_support::qualify_fixture(
+            &owner,
+            config.pipeline.as_ref().unwrap(),
+        )
+        .await
+        .unwrap();
+        let runtime = Arc::new(Runtime::new(owner.clone(), config).unwrap());
+        runtime.start_qualified_service().await.unwrap();
+        super::r4fix::wait_clean(&owner, goal, &id, &checkout, Some(&tmp)).await;
+        if action == "retry" {
+            let view = owner
+                .store
+                .lock()
+                .unwrap()
+                .pipeline_goal_view(goal)
+                .unwrap();
+            let retried = view
+                .steps
+                .iter()
+                .filter(|s| s.run_id == id)
+                .max_by_key(|s| (s.seq, s.attempt))
+                .unwrap();
+            assert_eq!(retried.state, "planned");
+            assert_eq!(retried.attempt, step.attempt + 1);
+            assert!(retried.cookie.is_none());
+        }
+        runtime.shutdown().await.unwrap();
+    }
+}
+
+/// Retry reclaims only dead attempts while its new test produces a fresh receipt.
+#[tokio::test]
+async fn b6_f4_retry_cleanup() {
+    let (f, runtime, id) = planned_test(&format!("{SCRATCH} exit 3;"), 10, 1024, 1024).await;
+    finish(&f, &runtime, &id, true).await;
+    let old = f
+        .store()
+        .pipeline_goal_view(f.goal)
+        .unwrap()
+        .steps
+        .last()
+        .unwrap()
+        .clone();
+    let checkout = PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), &old).unwrap();
+    let tmp = std::path::PathBuf::from(old.body["intent"]["tmpdir"].as_str().unwrap());
+    assert!(tmp.join("scratch").is_file());
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_hold(&f.owner, &cursor, "test_evidence_incomplete", None)
+        .unwrap();
+    let request = PipelineRecoveryRequest {
+        request_id: Uuid::new_v4(),
+        cursor: f.cursor(&id),
+        then_action: "retry".into(),
+        reason: "retry test".into(),
+    };
+    f.store()
+        .pipeline_recover(&f.owner, &f.ingress, &request, &recovery_evidence())
+        .unwrap();
+    super::r4fix::wait_clean(&f.owner, f.goal, &id, &checkout, Some(&tmp)).await;
+    finish(&f, &runtime, &id, true).await;
+    assert!(runtime.adopt_pipeline_test(f.cursor(&id)).await.unwrap());
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    assert_eq!(view.steps.last().unwrap().attempt, old.attempt + 1);
+    assert_eq!(view.steps.last().unwrap().state, "adopted");
+    runtime.shutdown().await.unwrap();
+}
