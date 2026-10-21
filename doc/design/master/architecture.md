@@ -393,6 +393,118 @@ Cloud execution, web dashboards, and long-term memory are outside MVP and should
 ## 12. Implemented Rust foundation
 
 Rust 2024 / minimum Rust 1.91 is the core standard; development and CI pin 1.91.1.
+Rust CI checks pull requests and pushes to main with one Ubuntu job named `check`.
+Code changes run fmt and locked all-targets workspace clippy with warnings denied.
+Actions does not run tests, macOS or release builds; its independent successful
+check covers fmt/clippy only.
+Only nonempty PR merge diffs entirely under `doc/` skip those steps;
+uncertain diffs and README changes run them. The job still reports success for
+documentation-only PRs. All workflow actions use full 40-character SHA pins.
+OS/architecture/toolchain/lockfile-keyed Cargo caches are restored for code
+checks and saved only after successful main push clippy without an exact hit.
+Superseded PR runs share a group per PR and are cancelled; main push runs use
+unique run-ID groups and are not cancelled.
+
+Before push, `bash scripts/local-ci.sh` runs from a clean macOS repository root,
+except for `doc/`-only PRs, which change no code and retain a successful Actions
+documentation check. `--host-only` does not meet the pre-push requirement.
+The script records full HEAD, UTC date, OS and Rust/Cargo/Docker versions. Its
+`main-contained` step obtains the exact ref's object once with
+`git show-ref --verify --hash refs/remotes/origin/main` and peels it with
+`git rev-parse --verify --end-of-options "<sha>^{commit}"`.
+It records `origin/main <sha>` (the commit SHA) in the summary and checks ancestry
+against the captured HEAD SHA. Branches/tags cannot substitute for a missing
+remote-tracking ref. Non-ancestry or a comparison error fails; a missing ref or
+either resolution failure is NOT RUN, failing the run, with errors in
+`main-tip.log`. The final
+local run before merge follows fetch and integration of current `origin/main`
+by merge/rebase if needed, covering integrated code because Actions does not test
+main pushes or PR merge results. Advancing main requires a new final local run.
+Host steps are
+fmt, locked all-targets workspace clippy with warnings denied, locked workspace
+tests and a locked release workspace build. Both host and Linux workspace tests
+use `--no-fail-fast`, so every test target runs and the record shows all failures.
+This does not change PASS/FAIL or the exit status.
+Host Cargo calls remove the four
+GitHub token variables (`GITHUB_TOKEN`, `GH_TOKEN`, `GH_ENTERPRISE_TOKEN`,
+`GITHUB_ENTERPRISE_TOKEN`). Host build scripts, proc macros and tests still run
+with the user's privileges, credentials and network; removing four tokens is not
+isolation. Only commits produced by this workflow or with reviewed diffs may run;
+external PR code requires review or an isolated environment before local execution.
+
+The host archives only tracked content from the captured HEAD SHA with
+`git archive --format=tar <sha>`
+into a fresh per-run log directory. Linux fmt/clippy/tests run in one
+`rust:1.91.1` verification container with `--rm`, label `rururunx-local-ci=1`,
+the host UID/GID, that tar mounted read-only, a writable per-run results mount,
+fixed non-secret HOME/USER/LOGNAME, and no forwarded host environment. The
+worktree and ignored `worktree/`, `.rrx/` and `target/` are not mounted. Before
+extraction or any rustup/Cargo call, a parent flock takes the shared-volume lock
+through `flock --exclusive --close /target/.local-ci.lock bash -c '...'`, holding
+it until all Linux steps finish without passing its descriptor to the step shell
+or checked processes. Open or lock failure exits before later Linux steps can
+PASS. `docker run --rm --init` provides PID 1 signal forwarding and child reaping;
+the step script's exit status becomes the container's exit status.
+All in-container Cargo calls run
+under this lock, serializing Linux verification and shared registry/Git/target
+access across worktrees. Setup then extracts the tar with fresh mtimes into a
+fresh tmpfs at fixed `/src`, invalidating source fingerprints from other worktrees
+while allowing dependency artifact reuse. Overlapping runs of the same worktree
+are unsupported. A Docker VM clock moving backwards between runs is an accepted
+residual risk for mtime-based artifact reuse.
+HOME, TMPDIR and CARGO_HOME use per-run tmpfs, so Cargo configuration cannot
+persist. RUSTUP_HOME is not overridden. The image's `/usr/local/rustup` and toolchain
+directory are world-writable (777), including for the verification UID. After
+extraction, `linux-components` runs `rustup component add rustfmt clippy` in `/src`,
+honoring `rust-toolchain.toml`, before fmt/clippy/tests and while holding the lock.
+Every run installs these components into its container's own writable layer,
+discarded by `--rm`; no toolchain changes or caches persist between runs. Each
+run needs network for these components and for dependencies on cache misses.
+The repo image digest, or image ID if absent, is recorded in metadata and summary.
+
+Named volumes `rururunx-local-ci-registry`, `rururunx-local-ci-git` and
+`rururunx-local-ci-target` are standing project caches for Cargo registry, Git
+databases and Linux target only; registry/Git mount at `$CARGO_HOME/registry`
+and `$CARGO_HOME/git`. A separate auto-removed helper mounts only those volumes,
+uses per-run HOME/TMPDIR tmpfs and sets their root directory permissions for the
+host UID without mounting host files or source. These caches are exempt from
+generic task cleanup and trusted only for trusted commits. After running
+anything untrusted, remove all three when unused with
+`docker volume rm rururunx-local-ci-registry rururunx-local-ci-git rururunx-local-ci-target`.
+All steps are attempted despite failures, except that lock open/acquisition
+failure stops the Linux container before extraction or Cargo work.
+Per-step status/seconds and HEAD are
+printed and retained in `.rrx/local-ci/<sha>.txt`, with logs under
+`.rrx/local-ci/<sha>/run.XXXXXX/`. Linux result files must be exactly one line
+`PASS <digits>` or `FAIL <digits>` plus a single newline. Failed reads, missing
+newlines or any extra fields/lines/bytes produce NOT RUN and fail the run.
+Malicious code under test can forge any marker; the commit trust rule is required.
+Repository and physical working-directory paths retain trailing newlines during
+validation; commas, double quotes or any newlines are refused before file creation,
+Cargo or Docker work to protect Docker mount CSV parsing.
+Failures or missing checks fail the script. A run with any failed or unexecuted
+step does not meet the pre-push verification requirement. Do not push while any
+such failure remains.
+
+`--host-only` reports Linux NOT RUN, including `linux-components` between setup
+and fmt, and requires `--allow-partial` to permit an
+otherwise successful partial exit. Full local commands, SHA, test counts and
+outcomes are committed in `doc/verification/issue-<number>.md` and referenced
+from the PR's Test plan; public PR and issue comments carry only IDs, titles,
+severities and statuses. The record includes commands, SHAs, counts, outcomes,
+the script's metadata (UTC date, OS, Rust/Cargo/Docker versions) and the image
+digest;
+no secrets, tokens, environment dumps, raw logs, real
+resource IDs or absolute home paths (use repository-relative paths).
+Follow-up commits changing only any files under `doc/verification/` keep the
+recorded run valid for the verified SHA without a re-run; nothing in `crates/`,
+`scripts/` or `.github/` reads that directory. Verify this with a successful
+`git diff --name-only --no-renames <verified SHA> HEAD`, requiring every printed
+line to start with `doc/verification/`. This recorded run counts as the final
+pre-merge run only if, after a fresh fetch, `refs/remotes/origin/main` still equals
+its recorded `origin/main <sha>`; otherwise integrate current main and re-run the
+whole script on a clean HEAD. Partial runs do not meet the pre-push policy.
+
 The Cargo workspace contains `crates/rrx` with a library and a CLI binary,
 `crates/rrx-process-tracker` for cooperative discovery, and
 `crates/rrx-spawn-hygiene` for consuming process launch boundaries.
