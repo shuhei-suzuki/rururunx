@@ -350,14 +350,34 @@ fn hold_profile_changed(
     }
 }
 
+/// Every round boundary reads its context here: a catalog mismatch is held and committed
+/// in this transaction before the error returns, so nothing later runs or is adopted.
+fn checked_context<'c>(
+    tx: Transaction<'c>,
+    owner: &RuntimeOwner,
+    cursor: &PipelineCursor,
+) -> Result<(Transaction<'c>, RoundContext)> {
+    match context(&tx, owner, cursor) {
+        Ok(ctx) => Ok((tx, ctx)),
+        Err(error) if error.to_string() == "tests_profile_changed" => {
+            hold_profile_changed(&tx, owner, cursor)?;
+            tx.commit()?;
+            Err(error)
+        }
+        Err(error) => Err(error),
+    }
+}
+
 impl Store {
     pub(crate) fn pipeline_fix_input(
         &mut self,
         owner: &RuntimeOwner,
         cursor: &PipelineCursor,
     ) -> Result<FixInput> {
-        let tx = self.connection.transaction()?;
-        let mut ctx = context(&tx, owner, cursor)?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let (tx, mut ctx) = checked_context(tx, owner, cursor)?;
         ensure!(
             ctx.step.kind == "fix" && ctx.step.state == "planned",
             "fix_context_changed"
@@ -406,18 +426,9 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        match context(&tx, owner, cursor) {
-            Ok(ctx) => {
-                tx.commit()?;
-                Ok(ctx)
-            }
-            Err(error) if error.to_string() == "tests_profile_changed" => {
-                hold_profile_changed(&tx, owner, cursor)?;
-                tx.commit()?;
-                Err(error)
-            }
-            Err(error) => Err(error),
-        }
+        let (tx, ctx) = checked_context(tx, owner, cursor)?;
+        tx.commit()?;
+        Ok(ctx)
     }
     pub(crate) fn pipeline_record_filter(
         &mut self,
@@ -428,7 +439,7 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut ctx = context(&tx, owner, cursor)?;
+        let (tx, mut ctx) = checked_context(tx, owner, cursor)?;
         ensure!(
             ctx.step.kind == "review"
                 && ctx.step.state == "exited"
@@ -454,7 +465,7 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut ctx = context(&tx, owner, cursor)?;
+        let (tx, mut ctx) = checked_context(tx, owner, cursor)?;
         ensure!(
             ctx.step.kind == "confirm" && ctx.step.state == "planned" && valid_oid(tree),
             "confirm_preflight_changed"
@@ -473,8 +484,10 @@ impl Store {
         cursor: &PipelineCursor,
         key: &str,
     ) -> Result<()> {
-        let tx = self.connection.transaction()?;
-        let ctx = context(&tx, owner, cursor)?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let (tx, ctx) = checked_context(tx, owner, cursor)?;
         nonce_check(&tx, &ctx.step, key)?;
         tx.commit()?;
         Ok(())
@@ -490,7 +503,7 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut ctx = context(&tx, owner, cursor)?;
+        let (tx, mut ctx) = checked_context(tx, owner, cursor)?;
         let action = round_action(&ctx)?;
         if let RoundDecision::Hold(reason) = action {
             ensure!(

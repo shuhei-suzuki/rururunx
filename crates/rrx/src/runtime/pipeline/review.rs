@@ -7,7 +7,7 @@ use crate::{
         review::{self, REVIEW_SCHEMA},
         review_snapshot,
     },
-    state::pipeline::{PipelineCursor, PipelineRun, PipelineStep, step_body_fits},
+    state::pipeline::{PipelineCursor, PipelineRun, PipelineStep, staged_body, step_body_fits},
 };
 use anyhow::{Context, Result, ensure};
 use serde_json::json;
@@ -212,21 +212,33 @@ impl Runtime {
                 "review_agent_failed"
             );
             decoded["snapshot_tree"] = json!(tree);
-            let mut stored = step.body.clone();
-            stored["adoption"] = decoded.clone();
-            ensure!(step_body_fits(&stored)?, "review_storage_limit");
+            ensure!(
+                step_body_fits(&staged_body(&step.body, &decoded))?,
+                "review_storage_limit"
+            );
             Ok::<_, anyhow::Error>(Some(decoded))
         }
         .await;
         match checked {
             Ok(Some(evidence)) => {
-                self.owner
+                let staged = self
+                    .owner
                     .store
                     .lock()
                     .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .pipeline_stage_round_result(&self.owner, &cursor, &evidence)?;
-                self.wake.notify_one();
-                Ok(true)
+                    .pipeline_stage_round_result(&self.owner, &cursor, &evidence);
+                match staged {
+                    Ok(()) => {
+                        self.wake.notify_one();
+                        Ok(true)
+                    }
+                    // A Store-side size refusal takes the same named hold, never a bare error.
+                    Err(error) if error.to_string() == "review_storage_limit" => {
+                        self.review_failure(&cursor, &error, true)?;
+                        Ok(false)
+                    }
+                    Err(error) => Err(error),
+                }
             }
             Ok(None) => {
                 self.owner

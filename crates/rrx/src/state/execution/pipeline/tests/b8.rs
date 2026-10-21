@@ -1,8 +1,8 @@
 //! Runtime cases use owned fixtures, admitted tests and native fake CLIs without provider traffic.
 use super::*;
 use crate::execution::pipeline::{
-    LaunchResult, PipelineRole, RoundDecision, confirm, review, review_snapshot, step_arguments,
-    test_support::FakeCli,
+    LaunchResult, PipelineRole, RoundDecision, VerdictDecoder, confirm, review, review_snapshot,
+    step_arguments, test_support::FakeCli,
 };
 use std::{os::unix::fs::PermissionsExt, path::PathBuf, sync::Arc};
 
@@ -222,7 +222,7 @@ impl Harness {
         );
         self.decide().await
     }
-    async fn reviewed(&self, findings: Value, verdict: &str) {
+    async fn review_exit(&self, findings: Value, verdict: &str) {
         assert_eq!(self.step().kind, "review");
         let envelope = json!({"type":"result","subtype":"success","is_error":false,"modelUsage":{&self.claude.cli.model:{}},"structured_output":{"schema":"rrx.review.v1","verdict":verdict,"summary":"reviewed","findings":findings}});
         self.claude
@@ -243,6 +243,9 @@ impl Harness {
             panic!("review did not launch");
         };
         custody.wait().await.unwrap();
+    }
+    async fn reviewed(&self, findings: Value, verdict: &str) {
+        self.review_exit(findings, verdict).await;
         self.runtime.wait_pipeline_test_boundary().await;
         assert!(
             self.runtime
@@ -846,6 +849,60 @@ async fn b8_runtime_agent_failure() {
     h.close().await;
 }
 
+/// A review body that fits only without the staging mark is held with review_storage_limit.
+#[tokio::test]
+async fn b8_r2_review_staging_bound() {
+    let h = Harness::new(1, false).await;
+    assert_eq!(h.test().await, RoundDecision::Review);
+    h.review_exit(json!([]), "approve").await;
+    let mut step = h.step();
+    let cursor = h.f.cursor(&h.id);
+    let (_, _, threshold) =
+        h.f.store()
+            .pipeline_review_context(&h.f.owner, &cursor)
+            .unwrap();
+    let bytes = review::output(&step, &h.attempt()).unwrap();
+    let model = &h.claude.cli.model;
+    let mut evidence = VerdictDecoder::decode(&bytes, model, threshold).unwrap();
+    evidence["snapshot_tree"] = step.body["snapshot_tree"].clone();
+    let unstaged = |n: usize| {
+        let mut body = step.body.clone();
+        body["pad"] = json!("x".repeat(n));
+        body["adoption"] = evidence.clone();
+        body
+    };
+    let (mut low, mut high) = (0usize, 262_144usize);
+    while low < high {
+        let mid = (low + high).div_ceil(2);
+        if step_body_fits(&unstaged(mid)).unwrap() {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    let mut staged = unstaged(low);
+    staged["round_result_validated"] = json!(true);
+    assert!(step_body_fits(&unstaged(low)).unwrap());
+    assert!(!step_body_fits(&staged).unwrap());
+    step.body["pad"] = json!("x".repeat(low));
+    {
+        let mut store = h.f.store();
+        let tx = store.connection.transaction().unwrap();
+        write_step(&tx, &h.f.owner, &step).unwrap();
+        tx.commit().unwrap();
+    }
+    h.runtime.wait_pipeline_test_boundary().await;
+    assert!(
+        !h.runtime
+            .adopt_pipeline_round_review(h.f.cursor(&h.id))
+            .await
+            .unwrap()
+    );
+    assert_eq!(h.step().state, "held");
+    assert_eq!(h.step().body["reason"], "review_storage_limit");
+    h.close().await;
+}
+
 fn passing_exit() -> Value {
     json!({"exit_code":0,"signal":null,"timed_out":false,"overflow":false,"issue":null,
         "stdout":{"bytes":0,"sha256":crate::execution::verification::hash(b""),"complete":true},
@@ -990,6 +1047,65 @@ async fn b8_r1_body_bound_boundary() {
     assert_eq!(held.body["reason"], "confirm_storage_limit");
 }
 
+/// Stages one passing Task-round test result as the round decision source.
+fn staged_test(f: &Fixture) -> String {
+    let id = store_exited(f, "test");
+    let cursor = f.cursor(&id);
+    let evidence = json!({"command_id":"test","result":"pass"});
+    f.store()
+        .pipeline_stage_round_result(&f.owner, &cursor, &evidence)
+        .unwrap();
+    id
+}
+
+/// Changes the stored TestsProfile catalog body so it no longer verifies against its digest.
+fn change_catalog(f: &Fixture) {
+    f.store().connection.execute("INSERT OR REPLACE INTO verification_profiles(project_id,digest,body) SELECT project_id,digest,body || ' ' FROM verification_profiles WHERE project_id=?1", [f.project.to_string()]).unwrap();
+}
+
+/// Asserts the staged test, with no planned successor, is held with its run.
+fn assert_profile_hold(f: &Fixture) {
+    let view = f.store().pipeline_task_view(f.goal, f.task).unwrap();
+    let step = view.steps.last().unwrap();
+    assert_eq!((step.kind.as_str(), step.state.as_str()), ("test", "held"));
+    assert_eq!(step.body["reason"], "tests_profile_changed");
+    assert_eq!(view.runs[0].state, "held");
+}
+
+/// Applying a decision directly after a catalog change holds tests_profile_changed.
+#[tokio::test]
+async fn b8_r2_apply_profile_changed() {
+    let f = fixture().await;
+    let id = staged_test(&f);
+    change_catalog(&f);
+    let cursor = f.cursor(&id);
+    let error = f
+        .store()
+        .pipeline_apply_round(&f.owner, &cursor, None)
+        .unwrap_err();
+    assert_eq!(error.to_string(), "tests_profile_changed");
+    assert_profile_hold(&f);
+}
+
+/// A catalog change after the decision's context read holds at its final transaction.
+#[tokio::test]
+async fn b8_r2_decision_profile_changed() {
+    let f = fixture().await;
+    let id = staged_test(&f);
+    let cursor = f.cursor(&id);
+    let ctx = f.store().pipeline_round_context(&f.owner, &cursor).unwrap();
+    assert_eq!(round_action(&ctx).unwrap(), RoundDecision::Review);
+    let mut next = planned(&id, ctx.step.seq + 1, 1, "review");
+    next.body["review_nonce"] = json!(Uuid::new_v4().simple().to_string());
+    change_catalog(&f);
+    let error = f
+        .store()
+        .pipeline_apply_round(&f.owner, &cursor, Some(&next))
+        .unwrap_err();
+    assert_eq!(error.to_string(), "tests_profile_changed");
+    assert_profile_hold(&f);
+}
+
 /// A catalog mismatch before a re-test plans nothing runnable and holds tests_profile_changed.
 #[tokio::test]
 async fn b8_r1_retest_profile_changed() {
@@ -1014,7 +1130,7 @@ async fn b8_r1_retest_profile_changed() {
     f.store()
         .pipeline_adopt(&f.owner, &cursor, &json!({}))
         .unwrap();
-    f.store().connection.execute("INSERT OR REPLACE INTO verification_profiles(project_id,digest,body) SELECT project_id,digest,body || ' ' FROM verification_profiles WHERE project_id=?1", [f.project.to_string()]).unwrap();
+    change_catalog(&f);
     let cursor = f.cursor(&id);
     let error = f
         .store()

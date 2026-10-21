@@ -262,6 +262,13 @@ pub(crate) fn step_body_fits(body: &Value) -> Result<bool> {
     let stored = stamped(&Value::Object(worst), max, "interrupted", max)?;
     Ok(stored.len() <= STEP_BODY_BYTES)
 }
+/// The body a staged Task round result stores; Runtime size checks use this same body.
+pub(crate) fn staged_body(body: &Value, evidence: &Value) -> Value {
+    let mut staged = body.clone();
+    staged["round_result_validated"] = json!(true);
+    staged["adoption"] = evidence.clone();
+    staged
+}
 fn cas(changed: usize, table: &str, id: &str, expected: u64) -> Result<()> {
     if changed != 1 {
         bail!(StateGuardError::SnapshotChanged {
@@ -2721,11 +2728,11 @@ impl Store {
             rounds::confirm_adoption(&tx, &run, &step, evidence)?;
         }
         if defer {
-            step.body["round_result_validated"] = json!(true);
+            step.body = staged_body(&step.body, evidence);
         } else {
             step.state = "adopted".into();
+            step.body["adoption"] = evidence.clone();
         }
-        step.body["adoption"] = evidence.clone();
         if defer && step.kind != "test" {
             let limit = if step.kind == "review" {
                 "review_storage_limit"

@@ -580,8 +580,10 @@ The immutable Project catalog is read by the Goal's pinned profile digest at
 planning, launch intent and adoption. Every read hashes the stored body before
 decoding and validating it. A changed catalog holds the step with
 `tests_profile_changed`; each launch also rechecks the admitted executable bytes.
-A round context read that finds a changed catalog holds its current step, or the
-re-test it would plan, with the same reason.
+Every Store transaction that reads the round context (decision, filtering, apply,
+fix input, confirmation preflight and launch checks) holds its current step, or the
+re-test it would plan, with the same reason in that transaction, so nothing later
+runs or is adopted.
 Tests execute through `/usr/bin/sandbox-exec` with network denied and writes
 restricted to the checkout, step TMPDIR and operator-declared caches. Their
 environment is built from the pipeline allowlist without `CODEX_HOME`.

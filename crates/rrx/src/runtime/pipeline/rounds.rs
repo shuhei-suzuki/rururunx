@@ -8,7 +8,7 @@ use crate::{
     runtime::Runtime,
     state::pipeline::{
         PipelineCursor, PipelineStep, RoundContext, round_action, round_fix_input,
-        round_source_review, step_body_fits,
+        round_source_review, staged_body, step_body_fits,
     },
 };
 use anyhow::{Context, Result, ensure};
@@ -327,20 +327,30 @@ impl Runtime {
             let mut evidence = confirm::decode(&bytes, &filtered.blocking, &path)?;
             review_snapshot::verify(&git, &config.work_root, &path, &ctx.step.step_base).await?;
             evidence["snapshot_tree"] = json!(tree);
-            let mut stored = ctx.step.body.clone();
-            stored["adoption"] = evidence.clone();
-            ensure!(step_body_fits(&stored)?, "confirm_storage_limit");
+            ensure!(
+                step_body_fits(&staged_body(&ctx.step.body, &evidence))?,
+                "confirm_storage_limit"
+            );
             Ok::<_, anyhow::Error>(Some(evidence))
         }
         .await;
         match checked {
             Ok(Some(evidence)) => {
-                self.owner
+                let staged = self
+                    .owner
                     .store
                     .lock()
                     .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .pipeline_stage_round_result(&self.owner, &cursor, &evidence)?;
-                Ok(true)
+                    .pipeline_stage_round_result(&self.owner, &cursor, &evidence);
+                match staged {
+                    Ok(()) => Ok(true),
+                    // A Store-side size refusal takes the same named hold, never a bare error.
+                    Err(error) if error.to_string() == "confirm_storage_limit" => {
+                        self.round_failure(&cursor, &error, true)?;
+                        Ok(false)
+                    }
+                    Err(error) => Err(error),
+                }
             }
             Ok(None) => {
                 self.owner
