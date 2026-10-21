@@ -33,15 +33,6 @@ pub(crate) async fn rebuild(
         matches!(commit.len(), 40 | 64) && commit.bytes().all(|b| b.is_ascii_hexdigit()),
         "review_snapshot_changed"
     );
-    ensure_private_directory(root)?;
-    ensure!(root.canonicalize()? == root, "review_snapshot_changed");
-    let parent = root.join("ro");
-    ensure_private_directory(&parent)?;
-    ensure!(
-        parent.canonicalize()? == parent && path.parent() == Some(parent.as_path()),
-        "review_snapshot_changed"
-    );
-    remove(path)?;
     // Check the snapshot listing before driver preflight repeats ls-tree, so an
     // oversized inventory keeps its review-specific reason at this boundary.
     let entries = git
@@ -59,16 +50,10 @@ pub(crate) async fn rebuild(
                 error
             }
         })?;
-    git.reject_tree_drivers(commit).await?;
-    ensure_private_directory(path)?;
     let mut inventory = Vec::new();
-    let mut names: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
-    for (index, entry) in entries
-        .split(|b| *b == 0)
-        .filter(|e| !e.is_empty())
-        .enumerate()
-    {
-        ensure!(index < SNAPSHOT_ENTRY_BUDGET, "review_snapshot_limit");
+    // Each key is one distinct directory, including the snapshot root.
+    let mut names: BTreeMap<PathBuf, Vec<String>> = BTreeMap::from([(PathBuf::new(), Vec::new())]);
+    for entry in entries.split(|b| *b == 0).filter(|e| !e.is_empty()) {
         let (header, name) = super::git::split_entry(entry)?;
         let name = std::str::from_utf8(name)?;
         ensure!(
@@ -92,6 +77,10 @@ pub(crate) async fn rebuild(
                 .entry(parent.clone())
                 .or_default()
                 .push(normalize_name(part));
+            ensure!(
+                names.len() + inventory.len() < SNAPSHOT_ENTRY_BUDGET,
+                "review_snapshot_limit"
+            );
             parent.push(part);
         }
         inventory.push((name.to_owned(), mode.to_owned(), oid.to_owned()));
@@ -99,6 +88,18 @@ pub(crate) async fn rebuild(
     for children in names.values() {
         reject_bare(children)?;
     }
+    git.reject_tree_drivers(commit).await?;
+    // All root/directory/file entries have been counted before any snapshot I/O.
+    ensure_private_directory(root)?;
+    ensure!(root.canonicalize()? == root, "review_snapshot_changed");
+    let parent = root.join("ro");
+    ensure_private_directory(&parent)?;
+    ensure!(
+        parent.canonicalize()? == parent && path.parent() == Some(parent.as_path()),
+        "review_snapshot_changed"
+    );
+    remove(path)?;
+    ensure_private_directory(path)?;
     let oids = inventory
         .iter()
         .map(|(_, _, oid)| oid.clone())
@@ -186,7 +187,16 @@ pub(crate) async fn verify(
     let expected = git
         .text(&["rev-parse", &format!("{commit}^{{tree}}")])
         .await?;
-    let actual = digest(path, expected.len()).context("review_snapshot_changed")?;
+    let actual = digest(path, expected.len()).map_err(|error| {
+        if error
+            .chain()
+            .any(|cause| cause.to_string() == "review_snapshot_limit")
+        {
+            error
+        } else {
+            error.context("review_snapshot_changed")
+        }
+    })?;
     ensure!(actual == expected, "review_snapshot_changed");
     Ok(actual)
 }
@@ -426,7 +436,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.to_string(), "review_snapshot_unsupported");
         // Tree preflight must refuse before materializing any untrusted entry.
-        assert_eq!(std::fs::read_dir(&path).unwrap().count(), 0);
+        assert!(!path.exists());
         remove(&path).unwrap();
     }
 

@@ -277,6 +277,12 @@ impl Runtime {
 }
 
 fn review_failure_reason(error: &anyhow::Error) -> &'static str {
+    if error
+        .chain()
+        .any(|cause| cause.to_string() == "review_snapshot_limit")
+    {
+        return "review_snapshot_limit";
+    }
     let reasons = [
         "verdict_schema",
         "review_envelope_mismatch",
@@ -311,6 +317,10 @@ mod tests {
             let error = anyhow::anyhow!(reason).context("preflight context");
             assert_eq!(review_failure_reason(&error), reason);
         }
+        let error = anyhow::anyhow!("review_snapshot_limit")
+            .context("review_snapshot_changed")
+            .context("preflight context");
+        assert_eq!(review_failure_reason(&error), "review_snapshot_limit");
         assert_eq!(
             review_failure_reason(&anyhow::anyhow!("untrusted detail")),
             "review_validation_failed"

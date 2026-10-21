@@ -53,8 +53,9 @@ fi
 printf 'Other same-user processes (PID and executable name only):\n'
 ps -U "$(id -u)" -o pid=,comm= | awk '
     { pid=$1; sub(/^[[:space:]]*[0-9]+[[:space:]]+/, ""); name=$0; sub(/^.*\//,"",name);
-      if(name=="claude" || name=="codex" || name=="node" || name=="Codex") print pid, name }
+      if(name=="claude" || name=="Claude" || name=="codex" || name=="node" || name=="Codex" || index($0,"claude/versions/")>0) print pid, name }
 '
+printf 'This list is incomplete: gh, aws-vault, ssh-agent, browsers and other credential holders are not listed.\n'
 printf 'Stop other Claude/Codex sessions and ALL credential-holding same-user processes.\n'
 printf 'This pass can read other same-user process arguments and environment.\n'
 printf 'Confirm this fresh terminal meets that condition; type yes to run once: '
@@ -91,6 +92,14 @@ RRX_REAL_CLAUDE_MODEL="${RRX_REAL_CLAUDE_MODEL:-claude-opus-5-5}" \
 RRX_REAL_CODEX_HOME="$codex_home" \
 RRX_REAL_CLI_OUT="$out" \
 cargo test --offline --locked -p rrx --lib "$test_name" -- --ignored --exact --test-threads=1 > "$out/run.log" 2>&1 || status=$?
+post_head=$(git rev-parse HEAD) || die 'Cannot read HEAD after the run.'
+post_worktree=$(git status --porcelain=v1 --untracked-files=all) || die 'Cannot check worktree after the run.'
+post_check=PASS
+[[ "$post_head" == "$head" && -z "$post_worktree" ]] || post_check=FAIL
+printf 'target_head=%s\npost_run_head=%s\nhead_unchanged=%s\nworktree_clean=%s\nresult=%s\n' \
+    "$head" "$post_head" "$([[ "$post_head" == "$head" ]] && printf true || printf false)" \
+    "$([[ -z "$post_worktree" ]] && printf true || printf false)" "$post_check" > "$out/post-run-check.txt"
+[[ "$post_check" == PASS ]] || die 'HEAD or worktree changed during the run; inspect post-run-check.txt.'
 printf 'Summary: %s/summary.json\n' "$out"
 if [[ ! -f "$out/summary.json" ]]; then
     die 'No summary was produced; inspect the private run.log. No retry was started.'

@@ -6,6 +6,7 @@ mod b7;
 mod d20;
 #[cfg(target_os = "macos")]
 mod real_cli;
+#[cfg(target_os = "macos")]
 mod snapshot_budget;
 #[cfg(target_os = "macos")]
 use crate::config::{AgentConfig, Config, WorkflowClass};

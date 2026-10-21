@@ -165,6 +165,100 @@ async fn b7_snapshot_listing_bound() {
     }
 }
 
+/// Directory-heavy trees hold before creating a snapshot even when the listing fits.
+#[tokio::test]
+async fn b7_snapshot_directory_bound() {
+    const DEPTH: usize = 32;
+    let f = fixture().await;
+    let project = f.store().project(f.project).unwrap().unwrap();
+    fixture_git(&project.root, &["init", "-b", "main"], &[])
+        .await
+        .unwrap();
+    let blob = object(
+        &project.root,
+        &["hash-object", "-w", "--no-filters", "--stdin"],
+        b"x\n",
+    )
+    .await
+    .unwrap();
+    let mut tree = object(
+        &project.root,
+        &["mktree"],
+        format!("100644 blob {blob}\tf\n").as_bytes(),
+    )
+    .await
+    .unwrap();
+    for _ in 1..DEPTH {
+        tree = object(
+            &project.root,
+            &["mktree"],
+            format!("040000 tree {tree}\td\n").as_bytes(),
+        )
+        .await
+        .unwrap();
+    }
+    let branches = SNAPSHOT_ENTRY_BUDGET / (DEPTH + 1) + 1;
+    assert!(1 + branches * (DEPTH + 1) > SNAPSHOT_ENTRY_BUDGET);
+    let mut rows = Vec::new();
+    for i in 0..branches {
+        rows.extend_from_slice(format!("040000 tree {tree}\tb{i:04}\n").as_bytes());
+    }
+    let tree = object(&project.root, &["mktree"], &rows).await.unwrap();
+    let commit = object(&project.root, &["commit-tree", &tree], b"directory bound\n")
+        .await
+        .unwrap();
+    let listing = fixture_git(&project.root, &["ls-tree", "-r", "-z", &commit, "--"], &[])
+        .await
+        .unwrap();
+    assert!(listing.len() < 4 * 1024 * 1024);
+    assert_eq!(
+        listing.split(|b| *b == 0).filter(|e| !e.is_empty()).count(),
+        branches
+    );
+
+    let (f, runtime, id) = super::b5::prepare_fixture_at(f, commit.clone())
+        .await
+        .unwrap();
+    f.advance_prepare(&id);
+    let task = f.store().task(f.task).unwrap().unwrap();
+    let data = json!({"title":task.title,"acceptance_criteria":task.acceptance_criteria,"scope":["src/**"]});
+    let nonce = Uuid::new_v4().simple().to_string();
+    let prompt = crate::execution::pipeline::review_prompt(&nonce, &data, &[]).unwrap();
+    let mut next = planned(&id, 2, 1, "review");
+    next.step_base = commit;
+    next.input_sha256 = crate::execution::verification::hash(&prompt);
+    next.body["review_nonce"] = json!(nonce);
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_plan_next(&f.owner, &cursor, &next, true)
+        .unwrap();
+    let cursor = f.cursor(&id);
+    runtime.wait_pipeline_test_boundary().await;
+    let mut input = runtime
+        .prepare_pipeline_review(f.cursor(&id))
+        .await
+        .unwrap();
+    if input.is_none() && f.cursor(&id).step_version == cursor.step_version {
+        runtime.wait_pipeline_test_boundary().await;
+        input = runtime
+            .prepare_pipeline_review(f.cursor(&id))
+            .await
+            .unwrap();
+    }
+    assert!(input.is_none());
+    let view = f.store().pipeline_goal_view(f.goal).unwrap();
+    let step = view.steps.last().unwrap();
+    assert_eq!(step.state, "held");
+    assert_eq!(step.body["reason"], "review_snapshot_limit");
+    assert_eq!(view.runs.last().unwrap().state, "held");
+    assert!(step.cookie.is_none() && step.pid.is_none() && step.body["intent"].is_null());
+    let path =
+        review_snapshot::snapshot_path(&f.config.pipeline.as_ref().unwrap().work_root, &id, 2, 1)
+            .unwrap();
+    assert!(!path.exists(), "over-budget snapshot must not be created");
+    runtime.shutdown().await.unwrap();
+}
+
 /// Exact-limit nested trees measure production preparation and post-death verification offline.
 #[tokio::test]
 #[ignore = "owner only: creates a snapshot with the full production entry budget"]

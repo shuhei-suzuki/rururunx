@@ -325,6 +325,42 @@ fn envelope(f: &Fixture, id: &str) -> Value {
     }
 }
 
+// Observe spawn independently of the running-record transaction. Even an error
+// after spawn must retain the input packet, without claiming confirmed delivery.
+async fn launch_recorded(
+    runtime: &Runtime,
+    f: &Fixture,
+    id: &str,
+    kind: &str,
+    prompt: Vec<u8>,
+    summary: &mut Value,
+) -> Result<LaunchResult> {
+    use crate::execution::pipeline::test_support::spawned_leader;
+    spawned_leader();
+    let result = match kind {
+        "implement" => runtime.launch_pipeline_executor(f.cursor(id), prompt).await,
+        "test" => runtime.launch_pipeline_test(f.cursor(id)).await,
+        "review" => runtime.launch_pipeline_review(f.cursor(id)).await,
+        _ => unreachable!(),
+    };
+    let spawned = spawned_leader().is_some();
+    if kind != "test"
+        && (matches!(
+            &result,
+            Ok(LaunchResult::Started(_) | LaunchResult::RecordFailed | LaunchResult::Unknown)
+        ) || (result.is_err() && spawned))
+    {
+        let mut packet = summary["prompts"][kind].clone();
+        packet["status"] = json!(if matches!(&result, Ok(LaunchResult::Started(_))) {
+            "sent"
+        } else {
+            "possibly_sent"
+        });
+        summary["sent_prompts"].as_array_mut().unwrap().push(packet);
+    }
+    result
+}
+
 async fn pass_flow(real: bool, summary: &mut Value) -> Result<()> {
     let probe = tempfile::Builder::new()
         .prefix("rrx-git-probe-")
@@ -419,27 +455,13 @@ async fn pass_flow(real: bool, summary: &mut Value) -> Result<()> {
             if kind != "test" {
                 summary["prompts"][kind] = packet(&format!("{kind}-prompt.md"), &prompt);
             }
-            let launched = match kind {
-                "implement" => runtime.launch_pipeline_executor(f.cursor(&id), prompt).await?,
-                "test" => runtime.launch_pipeline_test(f.cursor(&id)).await?,
-                "review" => runtime.launch_pipeline_review(f.cursor(&id)).await?,
-                _ => unreachable!(),
-            };
+            let launched = launch_recorded(&runtime, &f, &id, kind, prompt.clone(), summary).await?;
             let launched = if matches!(launched, LaunchResult::Waiting) {
                 runtime.wait_pipeline_test_boundary().await;
                 // Waiting does not spawn; retain the same planned attempt and prompt.
-                match kind {
-                    "implement" => runtime.launch_pipeline_executor(f.cursor(&id), IMPLEMENT.to_vec()).await?,
-                    "test" => runtime.launch_pipeline_test(f.cursor(&id)).await?,
-                    "review" => runtime.launch_pipeline_review(f.cursor(&id)).await?,
-                    _ => unreachable!(),
-                }
+                launch_recorded(&runtime, &f, &id, kind, prompt, summary).await?
             } else { launched };
             let LaunchResult::Started(custody) = launched else { return Ok(false); };
-            if kind != "test" {
-                let packet = summary["prompts"][kind].clone();
-                summary["sent_prompts"].as_array_mut().unwrap().push(packet);
-            }
             custody.wait().await?;
             summary["probes"]["git_forwarding"][kind] = git_probe(&f);
             if kind == "review" { summary["probes"]["envelope"] = envelope(&f, &id); }
@@ -523,7 +545,7 @@ async fn run_pass(real: bool, out: &Path) {
     }
     let send_record = json!({"purpose":"Issue #106 synthetic Executor-test-Reviewer verification",
         "destination":if real {"Codex CLI (OpenAI) and Claude CLI (Anthropic)"} else {"local native fake CLIs"},
-        "packets":packets,"content":"Synthetic sample trees and prompts only; no secrets, production data, PII, resource IDs or raw Agent output"});
+        "packets":packets,"content":"Lists only the inputs rrx supplied: prompts, the sample base tree and the reviewed head tree. Uncertain launch outcomes are marked possibly_sent. Does not cover what each CLI loads itself: configuration and instructions under HOME/CODEX_HOME or environment context such as absolute paths. Does not cover what CLI tools read: Reviewer Read/Grep/Glob and the Executor workspace-write sandbox can read files outside the sample."});
     write_json(&out.join("summary.json"), &summary).unwrap();
     write_json(&out.join("send-record.json"), &send_record).unwrap();
     assert!(
@@ -571,7 +593,37 @@ async fn fake_cli_pass() {
     run_pass(false, out.path()).await;
 }
 
-/// Real CLIs require both --ignored --exact and the owner's explicit environment gate.
+/// A failed post-spawn running record still retains the possibly sent prompt packet.
+#[tokio::test]
+async fn fake_cli_post_spawn_packet() {
+    let f = fixture().await;
+    let base = sample_commit(&f).await.unwrap();
+    let (f, runtime, id) = super::b5::prepare_fixture_at(f, base).await.unwrap();
+    runtime.wait_pipeline_test_boundary().await;
+    assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
+    plan(&f, &id, "implement", IMPLEMENT, None).unwrap();
+    fake_step(&f, &id, "implement").unwrap();
+    f.store().connection.execute_batch("CREATE TEMP TRIGGER real_cli_fail_running BEFORE UPDATE ON pipeline_steps WHEN NEW.state='running' BEGIN SELECT RAISE(ABORT,'injected running failure'); END;").unwrap();
+    let expected = packet("implement-prompt.md", IMPLEMENT);
+    let mut summary = json!({"prompts":{"implement":expected},"sent_prompts":[]});
+    runtime.wait_pipeline_test_boundary().await;
+    let result = launch_recorded(
+        &runtime,
+        &f,
+        &id,
+        "implement",
+        IMPLEMENT.to_vec(),
+        &mut summary,
+    )
+    .await;
+    assert!(matches!(result, Ok(LaunchResult::RecordFailed)));
+    let mut expected = expected;
+    expected["status"] = json!("possibly_sent");
+    assert_eq!(summary["sent_prompts"], json!([expected]));
+    runtime.shutdown().await.unwrap();
+}
+
+/// Real CLIs require --ignored and RRX_REAL_CLI_PASS=1; the script also uses --exact.
 #[tokio::test]
 #[ignore = "owner only: real provider calls on a synthetic sample"]
 async fn real_cli_pass() {

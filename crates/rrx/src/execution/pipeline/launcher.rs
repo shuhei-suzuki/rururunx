@@ -397,10 +397,12 @@ impl StepLauncher {
                 return Ok(LaunchResult::Unknown);
             }
         };
+        #[cfg(all(test, target_os = "macos"))]
+        if let Some(pid) = child.id() {
+            super::test_support::spawned_checkpoint(pid).await;
+        }
         let process = ProcessGroup::new(child, Arc::new(AtomicBool::new(true)))?;
         let pid = process.child.id().context("owned child PID missing")?;
-        #[cfg(all(test, target_os = "macos"))]
-        super::test_support::spawned_checkpoint(pid).await;
         let leader_cookie = rrx_process_tracker::Cookie::new(&cookie)?;
         let test_leader = test.is_some();
         let birth = tokio::task::spawn_blocking(move || {
@@ -499,6 +501,12 @@ fn write_input(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 fn review_preflight_reason(error: &anyhow::Error) -> &'static str {
+    if error
+        .chain()
+        .any(|cause| cause.to_string() == "review_snapshot_limit")
+    {
+        return "review_snapshot_limit";
+    }
     let reasons = [
         "review_snapshot_missing",
         "review_nonce_invalid",
@@ -530,6 +538,10 @@ mod tests {
             let error = anyhow::anyhow!(reason).context("preflight context");
             assert_eq!(review_preflight_reason(&error), reason);
         }
+        let error = anyhow::anyhow!("review_snapshot_limit")
+            .context("review_snapshot_changed")
+            .context("preflight context");
+        assert_eq!(review_preflight_reason(&error), "review_snapshot_limit");
         assert_eq!(
             review_preflight_reason(&anyhow::anyhow!("untrusted detail")),
             "review_validation_failed"
