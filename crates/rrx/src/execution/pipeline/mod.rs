@@ -5,8 +5,11 @@ pub(crate) mod adoption;
 pub use adoption::AdoptionChecker;
 pub(crate) mod workspace;
 pub use workspace::TaskWorkspace;
+pub(crate) mod confirm;
 pub(crate) mod review;
 pub(crate) mod review_snapshot;
+pub(crate) mod rounds;
+pub use rounds::RoundDecision;
 mod secret;
 pub use review::{
     ReviewFinding, ReviewResult, ReviewSeverity, ReviewVerdict, VerdictDecoder, review_prompt,
