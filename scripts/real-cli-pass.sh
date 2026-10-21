@@ -5,6 +5,21 @@ umask 077
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
+codex_home_hint() {
+    printf '%s\n' \
+        'Prepare a dedicated directory outside Projects and the rrx state directory:' \
+        '  mkdir -m 700 /absolute/private/rrx-codex-home' \
+        '  CODEX_HOME=/absolute/private/rrx-codex-home codex login' \
+        'Only model and model_reasoning_effort (string values) may appear in its config.toml.' \
+        'Then set RRX_REAL_CODEX_HOME to that directory; this script never prepares it.' >&2
+    die "$1"
+}
+
+physical_dir() (
+    cd -P -- "$1" || return 1
+    pwd -P
+)
+
 [[ $(uname -s) == Darwin ]] || die 'This harness requires macOS.'
 root=$(git rev-parse --show-toplevel 2>/dev/null) || die 'Not a Git worktree.'
 [[ $(pwd -P) == "$root" ]] || die 'Run from the repository toplevel.'
@@ -23,6 +38,17 @@ if (( ${#blocked[@]} )); then
     printf '%s\n' "${blocked[@]}" >&2
     exit 1
 fi
+
+[[ ${RRX_REAL_CODEX_HOME:-} == /* && -d "$RRX_REAL_CODEX_HOME" ]] || \
+    codex_home_hint 'RRX_REAL_CODEX_HOME must name an absolute existing directory.'
+codex_home=$(physical_dir "$RRX_REAL_CODEX_HOME") || codex_home_hint 'Cannot resolve RRX_REAL_CODEX_HOME.'
+default_codex_home="$HOME/.codex"
+if [[ -d "$default_codex_home" ]]; then
+    default_codex_home=$(physical_dir "$default_codex_home") || codex_home_hint 'Cannot resolve the default CODEX_HOME.'
+fi
+[[ "$codex_home" != "$default_codex_home" ]] || codex_home_hint 'The default CODEX_HOME is not dedicated.'
+[[ $(stat -f '%Lp' "$codex_home") == 700 && $(stat -f '%u' "$codex_home") == "$(id -u)" ]] || \
+    codex_home_hint 'RRX_REAL_CODEX_HOME must have mode 0700 and be owned by the current user.'
 
 printf 'Other same-user processes (PID and executable name only):\n'
 ps -U "$(id -u)" -o pid=,comm= | awk '
@@ -50,7 +76,7 @@ codex_version=$(cat "$out/codex-version.txt")
 claude_version=$(cat "$out/claude-version.txt")
 
 printf 'Building the library test harness (offline).\n'
-cargo test --offline -p rrx --lib --no-run > "$out/build.log" 2>&1 || die 'Build failed; inspect the private build.log.'
+cargo test --offline --locked -p rrx --lib --no-run > "$out/build.log" 2>&1 || die 'Build failed; inspect the private build.log.'
 [[ $(git rev-parse HEAD) == "$head" && -z $(git status --porcelain=v1 --untracked-files=all) ]] || die 'HEAD or worktree changed during build.'
 test_name=state::execution::pipeline::tests::real_cli::real_cli_pass
 status=0
@@ -62,9 +88,9 @@ RRX_REAL_CLAUDE_VERSION="$claude_version" \
 RRX_REAL_CODEX_MODEL="${RRX_REAL_CODEX_MODEL:-gpt-6.1-sol}" \
 RRX_REAL_CODEX_EFFORT="${RRX_REAL_CODEX_EFFORT:-medium}" \
 RRX_REAL_CLAUDE_MODEL="${RRX_REAL_CLAUDE_MODEL:-claude-opus-5-5}" \
-RRX_REAL_CODEX_HOME="${RRX_REAL_CODEX_HOME:-$HOME/.codex}" \
+RRX_REAL_CODEX_HOME="$codex_home" \
 RRX_REAL_CLI_OUT="$out" \
-cargo test --offline -p rrx --lib "$test_name" -- --ignored --exact --test-threads=1 > "$out/run.log" 2>&1 || status=$?
+cargo test --offline --locked -p rrx --lib "$test_name" -- --ignored --exact --test-threads=1 > "$out/run.log" 2>&1 || status=$?
 printf 'Summary: %s/summary.json\n' "$out"
 if [[ ! -f "$out/summary.json" ]]; then
     die 'No summary was produced; inspect the private run.log. No retry was started.'
