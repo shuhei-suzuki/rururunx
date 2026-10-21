@@ -48,6 +48,7 @@ fn b8_filter_conditions() {
             },
             ReviewSeverity::High,
             dir.path(),
+            &changed,
             changes,
             scopes,
         )
@@ -96,6 +97,42 @@ fn b8_filter_conditions() {
     let got = run(non, &changed, &scopes);
     assert!(got.blocking.is_empty() && got.invalid.is_empty());
     assert_eq!(got.non_blocking, ["F1"]);
+}
+
+/// Filesystem aliases absent from the exact reviewed tree are invalid before file access.
+#[test]
+fn b8_filter_exact_tree_paths() {
+    let dir = snapshot();
+    let base = finding();
+    let reviewed = BTreeSet::from([base.file.clone(), "src/caf\u{e9}.rs".into()]);
+    for file in ["src/CODE.rs", "src/cafe\u{301}.rs"] {
+        // Materialize an alias too, so this protects membership on case-sensitive hosts.
+        std::fs::write(
+            dir.path().join(file),
+            std::fs::read(dir.path().join(&base.file)).unwrap(),
+        )
+        .unwrap();
+        let filtered = filter(
+            &ReviewResult {
+                schema: "rrx.review.v1".into(),
+                verdict: super::super::ReviewVerdict::RequestChanges,
+                summary: String::new(),
+                findings: vec![ReviewFinding {
+                    file: file.into(),
+                    ..base.clone()
+                }],
+            },
+            ReviewSeverity::High,
+            dir.path(),
+            &reviewed,
+            &BTreeSet::from([file.into()]),
+            &["src/**".into()],
+        )
+        .unwrap();
+        assert!(filtered.blocking.is_empty());
+        assert_eq!(filtered.invalid[0].id, base.id);
+        assert_eq!(filtered.invalid[0].reason, InvalidReason::MissingFile);
+    }
 }
 
 /// Extra, missing and duplicate labels cannot become a partial confirmation.

@@ -462,6 +462,28 @@ async fn b8_runtime_unsupported() {
     h.close().await;
 }
 
+/// Reviewer path aliases are recorded as missing from the reviewed tree before confirmation.
+#[tokio::test]
+async fn b8_runtime_filter_path_alias() {
+    let h = Harness::new(1, false).await;
+    assert_eq!(h.test().await, RoundDecision::Review);
+    let mut findings = h.findings();
+    findings[0]["file"] = json!("src/OUTPUT.rs");
+    h.reviewed(findings, "request_changes").await;
+    assert_eq!(
+        h.decide().await,
+        RoundDecision::Hold("unsupported_request_changes")
+    );
+    let step = h.step();
+    assert_eq!(step.state, "held");
+    assert_eq!(step.body["reason"], "unsupported_request_changes");
+    assert_eq!(
+        step.body["filtering"]["invalid"],
+        json!([{"id":"F1","reason":"missing_file"}])
+    );
+    h.close().await;
+}
+
 /// Failed tests skip review and supply only bounded stored observations to the fix.
 #[tokio::test]
 async fn b8_runtime_failed_test() {
@@ -510,7 +532,7 @@ async fn b8_runtime_label_rejection() {
     h.close().await;
 }
 
-/// Secret-bearing labels and discarded stderr hold with only a pattern and offset digest.
+/// Secrets in confirmation output hold with only a pattern and offset digest.
 #[tokio::test]
 async fn b8_runtime_confirmation_secrets() {
     for source in ["last", "stdout", "stderr"] {
@@ -554,6 +576,58 @@ async fn b8_runtime_confirmation_secrets() {
                 .unwrap()
                 .contains("fixture")
         );
+        h.close().await;
+    }
+}
+
+/// Secrets in fix output hold with only a pattern and offset digest before adoption.
+#[tokio::test]
+async fn b8_runtime_fix_output_secrets() {
+    for source in ["stdout", "stderr"] {
+        let h = Harness::new(1, true).await;
+        assert_eq!(h.test().await, RoundDecision::Fix);
+        h.codex.control(
+            if source == "stdout" {
+                "exec-pre-output"
+            } else {
+                "exec-stderr"
+            },
+            "EXAMPLE_TOKEN=fixture\n",
+        );
+        let work = PathBuf::from(
+            h.f.store().pipeline_goal_view(h.f.goal).unwrap().runs[0]
+                .worktree
+                .as_ref()
+                .unwrap(),
+        );
+        h.expected(&h.codex, PipelineRole::Fix, &work, "");
+        h.runtime.wait_pipeline_test_boundary().await;
+        let LaunchResult::Started(custody) = h
+            .runtime
+            .launch_pipeline_fix(h.f.cursor(&h.id))
+            .await
+            .unwrap()
+        else {
+            panic!("fix did not launch: {:?}", h.step());
+        };
+        custody.wait().await.unwrap();
+        let step = h.step();
+        assert_eq!(step.state, "held");
+        assert_eq!(step.body["reason"], "secret_detected");
+        assert_eq!(
+            step.body["secret"],
+            json!({"pattern":"secret_assignment","offset_sha256":step.body["exit"]["secret"]["offset_sha256"]})
+        );
+        assert_eq!(
+            step.body["secret"]["offset_sha256"].as_str().unwrap().len(),
+            64
+        );
+        assert!(
+            !serde_json::to_string(&step.body)
+                .unwrap()
+                .contains("fixture")
+        );
+        assert!(step.result_commit.is_none());
         h.close().await;
     }
 }

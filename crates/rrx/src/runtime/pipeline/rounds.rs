@@ -89,7 +89,9 @@ impl Runtime {
                 let verdict = serde_json::from_value(ctx.step.body["adoption"]["verdict"].clone())?;
                 let listing = git.run(&["diff-tree", "--no-commit-id", "-r", "--no-renames", "--name-only", "-z", &ctx.run.base_commit, &ctx.run.head_commit, "--"]).await?;
                 let changed = listing.split(|b| *b == 0).filter(|s| !s.is_empty()).map(|s| Ok(std::str::from_utf8(s)?.to_owned())).collect::<Result<BTreeSet<_>>>()?;
-                let filtered = confirm::filter(&verdict, ctx.threshold, &path, &changed, &ctx.scopes)?;
+                let listing = git.run(&["ls-tree", "-r", "--name-only", "-z", &ctx.step.step_base, "--"]).await?;
+                let reviewed = listing.split(|b| *b == 0).filter(|s| !s.is_empty()).map(|s| Ok(std::str::from_utf8(s)?.to_owned())).collect::<Result<BTreeSet<_>>>()?;
+                let filtered = confirm::filter(&verdict, ctx.threshold, &path, &reviewed, &changed, &ctx.scopes)?;
                 // Detect external snapshot drift during filtering as well as at adoption.
                 review_snapshot::verify(&git, &config.work_root, &path, &ctx.step.step_base).await?;
                 self.owner.store.lock().map_err(|_| anyhow::anyhow!("state poisoned"))?.pipeline_record_filter(&self.owner, &cursor, &filtered)?;

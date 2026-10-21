@@ -2506,7 +2506,7 @@ impl Store {
                 "held"
             } else if reason == "interrupted" {
                 "interrupted"
-            } else if (step.kind == "review"
+            } else if (matches!(step.kind.as_str(), "review" | "confirm" | "fix")
                 && matches!(reason, "secret_detected" | "secret_scan_failed"))
                 || (step.kind == "test" && reason != "record_failed")
             {
@@ -2517,7 +2517,9 @@ impl Store {
             .into();
             let reason = if at_limit { "attempt_limit" } else { reason };
             step.body["reason"] = json!(reason);
-            if step.kind == "review" && matches!(reason, "secret_detected" | "secret_scan_failed") {
+            if matches!(step.kind.as_str(), "review" | "confirm" | "fix")
+                && matches!(reason, "secret_detected" | "secret_scan_failed")
+            {
                 step.body["secret"] = exit.evidence["secret"].clone();
             }
             write_step(&tx, owner, &step)?;

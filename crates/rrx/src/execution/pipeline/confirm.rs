@@ -84,6 +84,7 @@ pub(crate) fn filter(
     review: &ReviewResult,
     threshold: ReviewSeverity,
     root: &Path,
+    reviewed: &BTreeSet<String>,
     changed: &BTreeSet<String>,
     scopes: &[String],
 ) -> Result<FilteredReview> {
@@ -99,6 +100,9 @@ pub(crate) fn filter(
         }
         let reason = if !normalized(&f.file) {
             Some(InvalidReason::Path)
+        } else if !reviewed.contains(&f.file) {
+            // Filesystem aliases never grant membership in the reviewed commit.
+            Some(InvalidReason::MissingFile)
         } else if let Some(text) = file_text(root, &f.file)? {
             let count = text.lines().count();
             let end = f.end_line.unwrap_or(f.line);
