@@ -1698,6 +1698,7 @@ B10 設計入力: lifecycle Resume は Runtime config hash（`runtime/control.rs
 
 | ID | 計画 | この設計 | 根拠 |
 |---|---|---|---|
+| D22 | B7 の本物の CLI と snapshot 上限の確認 | 製品機能ではなく検証用の harness を追加する。macOS の通常テストは native fake CLI で Executor → admitted TestsProfile の Seatbelt test → Reviewer の Runtime API を通す。実 CLI は ignored test と `RRX_REAL_CLI_PASS=1` の二重ゲートを要求し、owner が他の資格情報を持つ同一利用者のプロセスを止めた新しい端末から `scripts/real-cli-pass.sh` を実行する | 秘密を含まない合成 Git project で 1 pass だけ行う。要約は各 step の状態・理由・時間、prompt と `git archive` の SHA256・bytes、Reviewer envelope と `modelUsage` のキー、TMPDIR 内の git wrapper による固定 `GIT_CONFIG_*` の転送、probe を除いた PATH の git を記録する。Agent の本文は要約に転記しない。snapshot の時間計測も ignored と専用 gate を要求し、製品と同じ entry budget・rebuild・verify を使う。Q と製品の制約は変えない |
 | D21 | §5.3 の Reviewer 引数 | `--no-session-persistence` を追加して §5.3 を強化する。Q でも必須 flag として検査する | pin した Claude CLI 2.1.304 は print モードでこの flag を受け付け、session の保存と再開を止める。rrx の秘密スキャンを通らない CLI 自身の transcript 保存を抑止する |
 | D1 | schema v13 | v12 | main は v11（`state/mod.rs:32`）。v12 は M0 branch（`feature/issue-5-m0:crates/rrx/src/state/mod.rs:34`）にしかない。M0 を再開するときは v13 へ番号を振り直す |
 | D2 | `goals.execution_profile` 列、Goal ごとのプロファイル、両 claim 経路での容量の合算 | インストール単位のモードと、不変の表 `goal_execution_profiles`（行がなければ `managed_native`）。容量は合算しない | 1 つの rrxd で 2 経路が同時に動かず、モードの起動にもう一方の静止を要求するので、容量の共有も、2 つの admission の間の競合もなくなる。`goals` 表を変えると、全 catalog の byte 比較（`state/managed_binding/schema.rs:249-281`）と定義の trigger（`state/runtime/schema.sql:21-30`）に波及する |

@@ -70,6 +70,12 @@ int main(int argc,char **argv) {
         if(!source || !out)return 101;
         int ch;while((ch=fgetc(source))!=EOF)fputc(ch,out);fclose(source);fclose(out);
     }
+    if(exists("exec-calc")){
+        FILE *source=file("exec-calc","r"), *out=fopen("src/calc.py","w");
+        if(!source || !out)return 104;
+        int ch;while((ch=fgetc(source))!=EOF)fputc(ch,out);fclose(source);fclose(out);
+    }
+    if(exists("exec-git-probe") && system("git --version >/dev/null 2>/dev/null"))return 105;
     if(exists("exec-last")){
         for(int i=1;i+1<argc;i++)if(!strcmp(argv[i],"-o")){
             FILE *source=file("exec-last","r"), *out=fopen(argv[i+1],"w");

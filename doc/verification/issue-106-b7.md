@@ -27,12 +27,30 @@
 
 | ID | 内容 | 扱い |
 |---|---|---|
-| B7-O2-2 | 固定した Claude CLI が、子の git に `GIT_CONFIG_*` を渡すか。Reviewer の PATH で `path_prefix` に git があるとき、どの git が動くか | 本物の CLI での確認で記録する |
-| B7-L-model | `modelUsage` のキーの形を、本物の claude の envelope で確かめていない | 本物の CLI での確認で記録する |
-| B7-L-budget | スナップショットの 100,000 項目の上限での所要時間 | 本物の CLI での確認で測る |
+| B7-O2-2 | 固定した Claude CLI が、子の git に `GIT_CONFIG_*` を渡すか。Reviewer の PATH で `path_prefix` に git があるとき、どの git が動くか | 下の real-CLI harness で記録する道具を追加。owner の実行結果は未取得 |
+| B7-L-model | `modelUsage` のキーの形を、本物の claude の envelope で確かめていない | 下の real-CLI harness でキーだけ記録する道具を追加。owner の実行結果は未取得 |
+| B7-L-budget | スナップショットの 100,000 項目の上限での所要時間 | 下の offline timing test を追加。owner の実行結果は未取得 |
 | B7-L-resume | 一時停止の後の再開のレビューの受け入れ試験、再開で accepted policy を比べること | B10 の受け入れの条件 |
 | B7-L-order | finding の行の順序（`line` と `end_line`）の扱い | B8 の filtering |
 | B7-O2-4 | 入口の検査と handler の guard の重なり | 多層防御として受け入れ |
+
+### owner による real-CLI pass と上限の計測
+
+これは検証用の道具で、製品の起動条件や Q を変更しない。通常の host test の `state::execution::pipeline::tests::real_cli::fake_cli_pass` は、同じ Runtime フローを既存の native fake CLI だけで実行する。実 CLI は `#[ignore]` と `RRX_REAL_CLI_PASS=1` の両方が必要である。この実装作業では実 CLI を起動していない。
+
+1. owner が他の Claude/Codex セッションと、資格情報を持つ同一利用者のプロセスを終了し、新しい端末を開く。Agent は同一利用者の他プロセスの引数・環境を読めるので、この条件を満たさない状態では実行しない。
+2. 検証済みの commit を持つ clean な worktree の toplevel で、PATH の `command -v codex` / `command -v claude` が実行したい native binary を指すことを確認する。npm の script 入口は Q が拒否する。token-like 変数（名前に TOKEN・SECRET・PASSWORD・API_KEY、大文字小文字を問わない。空の値も含む）を端末の環境に残さない。
+3. 必要なら `RRX_REAL_CODEX_MODEL`（既定 `gpt-6.1-sol`）、`RRX_REAL_CODEX_EFFORT`（`medium`）、`RRX_REAL_CLAUDE_MODEL`（`claude-opus-5-5`）、`RRX_REAL_CODEX_HOME` を設定する。HOME の既定 `.codex` は harness の入力既定として維持するが、既存 Q は default CODEX_HOME を拒否する。実 pass には専用の既存 CODEX_HOME（Q に適合する設定・認証済み）が必要であり、harness は認証情報をコピーしない。
+4. `bash scripts/real-cli-pass.sh` を実行する。スクリプトは同一利用者の `claude`・`codex`・`node`・`Codex` の PID と名前だけを表示し、上記の条件を満たすことへの明示的な `yes` を要求する。version を pin として取得し、offline build 後に実テスト 1 本だけを `--ignored --exact --test-threads=1` で起動する。追加 pass や自動再試行はしない。
+5. `.rrx/real-cli/<UTC timestamp>/summary.json` と `send-record.json` を確認する。summary は各 step の kind・state・reason・時間、CLI pin/model、送信した prompt と初期/採用後の sample HEAD の `git archive` の hash・bytes、probe 結果を含む。生の Agent 出力・本文・環境全体は転記しない。git の probe が呼ばれなければ `called=false` として残り、転送を確認済みとはしない。途中で採用されなければ後続は `not_run`、summary を書いた後に失敗とする。Q の拒否も記録し、安全条件を緩めて進めない。通常の Runtime が保持する生の出力は一時 fixture 内だけで、終了時に片付ける。スクリプトの build/run/version のログは private な出力ディレクトリに置き、端末へ Agent 出力を流さない。
+
+snapshot の時間計測は CLI・ネットワークを使わず、別に実行する。出力の親ディレクトリを作り、未使用の絶対ファイルパスを指定する。
+
+```sh
+RRX_SNAPSHOT_BUDGET_TIMING=1 RRX_SNAPSHOT_BUDGET_OUT=/absolute/path/in/worktree/.rrx/snapshot-budget.json cargo test --offline -p rrx --lib state::execution::pipeline::tests::snapshot_budget::snapshot_budget_timing -- --ignored --exact --test-threads=1
+```
+
+production の `SNAPSHOT_ENTRY_BUDGET` を使い、root + 2 個の中間ディレクトリ + 残りの小さい file で正確に上限の commit を作る。production `rebuild` と採用時と同じ `verify` を別々に計測し、失敗も時間・理由とともに JSON に残す。既存の Git plumbing の通常出力上限 4 MiB は、100,000 項目の `ls-tree` の出力より小さいため、現行の production 経路では準備が先に拒否される見込みである。その場合も verifier 自体を上限で測るため、同じ合成 tree の読み取り専用 fixture を別途作り、`verification_fixture` で区別して production `verify` を計測する。準備の失敗は保持し、JSON を書いた後にテストを失敗とする。この道具では製品の上限を広げず、準備に成功した時間を測れたとは扱わない。B7-L-budget の完了には owner の計測と、この制約の判断が必要である。
 
 ## テストの harness の制限
 

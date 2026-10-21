@@ -5,6 +5,9 @@ mod b7;
 #[cfg(target_os = "macos")]
 mod d20;
 #[cfg(target_os = "macos")]
+mod real_cli;
+mod snapshot_budget;
+#[cfg(target_os = "macos")]
 use crate::config::{AgentConfig, Config, WorkflowClass};
 #[cfg(target_os = "macos")]
 use crate::execution::verification::{
@@ -276,35 +279,76 @@ async fn fixture_with_commands(
     alias: bool,
     commands: Option<Vec<TestCommand>>,
 ) -> Fixture {
-    let dir = tempfile::tempdir().unwrap();
+    fixture_build(
+        pipeline,
+        pipeline_owner,
+        shared,
+        service,
+        alias,
+        commands,
+        None,
+    )
+    .await
+    .unwrap()
+}
+#[cfg(target_os = "macos")]
+struct FixtureInputs {
+    clis: Option<crate::config::PipelineClis>,
+    path_prefix: Vec<std::path::PathBuf>,
+    task: TaskDefinition,
+    qualification: std::sync::Arc<std::sync::Mutex<Value>>,
+}
+#[cfg(target_os = "macos")]
+async fn fixture_build(
+    pipeline: bool,
+    pipeline_owner: bool,
+    shared: Option<std::sync::Arc<RuntimeOwner>>,
+    service: Option<(&Runtime, &Config)>,
+    alias: bool,
+    commands: Option<Vec<TestCommand>>,
+    inputs: Option<FixtureInputs>,
+) -> anyhow::Result<Fixture> {
+    let dir = tempfile::tempdir()?;
     let root = dir.path().join("source");
-    std::fs::create_dir(&root).unwrap();
+    std::fs::create_dir(&root)?;
     let fresh = shared.is_none();
-    let owner = shared.unwrap_or_else(|| {
-        RuntimeOwner::open_mode(
+    let owner = match shared {
+        Some(owner) => owner,
+        None => RuntimeOwner::open_mode(
             &dir.path().join("state/state.db"),
             if pipeline_owner {
                 crate::config::ExecutionMode::CliPipeline
             } else {
                 crate::config::ExecutionMode::ManagedNative
             },
-        )
-        .unwrap()
-    });
+        )?,
+    };
     let mut config = service
         .map(|(_, config)| config.clone())
         .unwrap_or_default();
     if pipeline_owner && service.is_none() {
         let mut pins = crate::execution::pipeline::test_support::config(&owner, dir.path());
+        if let Some(inputs) = &inputs {
+            if let Some(clis) = &inputs.clis {
+                pins.clis = clis.clone();
+            }
+            pins.path_prefix = inputs.path_prefix.clone();
+        }
         if alias {
             let path = pins.clis.codex.executable.with_file_name("alias");
-            std::os::unix::fs::symlink(&pins.clis.codex.executable, &path).unwrap();
+            std::os::unix::fs::symlink(&pins.clis.codex.executable, &path)?;
             pins.clis.codex.executable = path;
         }
         if fresh {
-            crate::execution::pipeline::test_support::qualify_fixture(&owner, &pins)
-                .await
-                .unwrap();
+            let qualified =
+                crate::execution::pipeline::test_support::qualify_fixture(&owner, &pins).await;
+            if let Some(inputs) = &inputs {
+                *inputs.qualification.lock().unwrap() = json!(owner.store.lock().unwrap()
+                    .pipeline_qualifications(&owner)?.iter().map(|row| json!({"subject":row.subject,
+                        "state":row.state,"version":row.version_text,"reason":row.body.get("reason"),"stage":row.body.get("stage")}))
+                    .collect::<Vec<_>>());
+            }
+            qualified?;
         }
         config.execution.mode = crate::config::ExecutionMode::CliPipeline;
         config.pipeline = Some(pins);
@@ -327,27 +371,28 @@ async fn fixture_with_commands(
     );
     let owned_runtime = service
         .is_none()
-        .then(|| Runtime::new(owner.clone(), config.clone()).unwrap());
+        .then(|| Runtime::new(owner.clone(), config.clone()))
+        .transpose()?;
     let runtime = service
         .map(|(runtime, _)| runtime)
         .or(owned_runtime.as_ref())
-        .unwrap();
-    let (stream, _peer) = tokio::net::UnixStream::pair().unwrap();
-    let ingress = HumanIngress::from_connection(runtime, &stream).unwrap();
+        .context("fixture runtime missing")?;
+    let (stream, _peer) = tokio::net::UnixStream::pair()?;
+    let ingress = HumanIngress::from_connection(runtime, &stream)?;
     // The ingress records identity only. Drain the temporary Runtime's owner custody
     // before returning a fixture that may later hand the owner lock to a daemon.
     if let Some(runtime) = owned_runtime {
-        runtime.shutdown().await.unwrap();
+        runtime.shutdown().await?;
         drop(runtime);
     }
     let mut store = owner.store.lock().unwrap();
     let mut project = Project::new(
         "pipeline".into(),
-        root.canonicalize().unwrap(),
+        root.canonicalize()?,
         format!("local-{}", Uuid::new_v4()),
         "main".into(),
     );
-    store.put_project(&mut project).unwrap();
+    store.put_project(&mut project)?;
     let proposal = TestsProfile {
         commands: commands.unwrap_or_else(|| {
             vec![TestCommand {
@@ -384,10 +429,9 @@ async fn fixture_with_commands(
             ),
         ]),
     };
-    let admitted = AdmittedProfile::admit(proposal).unwrap();
-    let digest = store
-        .admit_verification_profile(project.id, project.version, owner.epoch, &admitted)
-        .unwrap();
+    let admitted = AdmittedProfile::admit(proposal)?;
+    let digest =
+        store.admit_verification_profile(project.id, project.version, owner.epoch, &admitted)?;
     let plan = GoalPlan {
         definition: GoalDefinition {
             title: "goal".into(),
@@ -401,7 +445,7 @@ async fn fixture_with_commands(
             non_goals: vec![],
             source_refs: vec![],
         },
-        tasks: vec![TaskDefinition {
+        tasks: vec![inputs.map(|i| i.task).unwrap_or(TaskDefinition {
             key: "task".into(),
             title: "task".into(),
             acceptance_criteria: vec!["pass".into()],
@@ -409,10 +453,10 @@ async fn fixture_with_commands(
             reviewers: vec!["claude".into()],
             workflow: WorkflowClass::Standard,
             risk: RiskClass::R2,
-        }],
+        })],
         dependencies: vec![],
     };
-    let validated = plan.clone().validate(&config).unwrap();
+    let validated = plan.clone().validate(&config)?;
     let request = ControlRequest {
         request_id: Uuid::new_v4(),
         instance: owner.instance.clone(),
@@ -425,20 +469,20 @@ async fn fixture_with_commands(
     };
     let profile = fixture_profile(digest);
     let response = if pipeline {
-        store
-            .pipeline_accept_goal(&ingress, &request, &validated, &profile)
-            .unwrap()
+        store.pipeline_accept_goal(&ingress, &request, &validated, &profile)?
     } else {
-        store
-            .accept_runtime_goal(&ingress, &request, &validated, &"a".repeat(64))
-            .unwrap()
+        store.accept_runtime_goal(&ingress, &request, &validated, &"a".repeat(64))?
     };
     let ControlResponse::GoalAccepted { goal, .. } = response else {
-        panic!("Goal acceptance failed")
+        bail!("Goal acceptance failed")
     };
-    let task = store.tasks(project.id, Some(goal)).unwrap()[0].id;
+    let task = store
+        .tasks(project.id, Some(goal))?
+        .first()
+        .context("fixture Task missing")?
+        .id;
     drop(store);
-    Fixture {
+    Ok(Fixture {
         config,
         accepted: request,
         validated,
@@ -449,7 +493,7 @@ async fn fixture_with_commands(
         goal,
         task,
         project: project.id,
-    }
+    })
 }
 #[cfg(target_os = "macos")]
 impl Fixture {

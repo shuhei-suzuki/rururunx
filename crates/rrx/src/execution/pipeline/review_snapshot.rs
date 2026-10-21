@@ -10,6 +10,8 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+pub(crate) const SNAPSHOT_ENTRY_BUDGET: usize = 100_000;
+
 pub(crate) fn snapshot_path(root: &Path, run: &str, seq: u32, attempt: u32) -> Result<PathBuf> {
     ensure!(
         !run.is_empty()
@@ -50,7 +52,7 @@ pub(crate) async fn rebuild(
         .filter(|e| !e.is_empty())
         .enumerate()
     {
-        ensure!(index < 100_000, "review_snapshot_limit");
+        ensure!(index < SNAPSHOT_ENTRY_BUDGET, "review_snapshot_limit");
         let (header, name) = super::git::split_entry(entry)?;
         let name = std::str::from_utf8(name)?;
         ensure!(
@@ -216,7 +218,10 @@ fn digest(root: &Path, oid_len: usize) -> Result<String> {
                     },
                 ));
             }
-            ensure!(dirs.len() + files.len() <= 100_000, "review_snapshot_limit");
+            ensure!(
+                dirs.len() + files.len() <= SNAPSHOT_ENTRY_BUDGET,
+                "review_snapshot_limit"
+            );
         }
         reject_bare(&names)?;
         index += 1;

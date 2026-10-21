@@ -92,6 +92,23 @@ pub async fn qualify_fixture(
     crate::execution::pipeline::CliQualifier::qualify(owner, config).await
 }
 
+/// Observe the actual launcher PATH; this helper never starts a process.
+pub fn reviewer_path(config: &crate::config::PipelineConfig) -> anyhow::Result<Vec<PathBuf>> {
+    let env = super::qualification::environment(
+        config,
+        Path::new("/unused-probe-tmp"),
+        "unused-probe-cookie",
+        &config.clis.claude,
+        false,
+        true,
+    )?;
+    let (_, path) = env
+        .iter()
+        .find(|(name, _)| name == "PATH")
+        .ok_or_else(|| anyhow::anyhow!("reviewer PATH missing"))?;
+    Ok(std::env::split_paths(path).collect())
+}
+
 pub fn config(
     owner: &crate::execution::RuntimeOwner,
     root: &Path,

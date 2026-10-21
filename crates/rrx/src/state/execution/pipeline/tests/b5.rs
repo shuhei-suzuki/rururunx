@@ -110,8 +110,6 @@ pub(super) async fn prepare_fixture_from(
     f: Fixture,
     tracked: bool,
 ) -> (Fixture, std::sync::Arc<Runtime>, String) {
-    let runtime = std::sync::Arc::new(Runtime::new(f.owner.clone(), f.config.clone()).unwrap());
-    runtime.start_qualified_service().await.unwrap();
     let project = f.store().project(f.project).unwrap().unwrap();
     let git = crate::execution::pipeline::PipelineGit::new(&project.root).unwrap();
     git.run(&["init", "-b", "main"]).await.unwrap();
@@ -156,6 +154,17 @@ pub(super) async fn prepare_fixture_from(
     git.run(&["update-ref", "refs/heads/main", &base])
         .await
         .unwrap();
+    prepare_fixture_at(f, base).await.unwrap()
+}
+
+/// Claims the same prepare/run journal for any freshly constructed fixture commit.
+#[cfg(target_os = "macos")]
+pub(super) async fn prepare_fixture_at(
+    f: Fixture,
+    base: String,
+) -> Result<(Fixture, std::sync::Arc<Runtime>, String)> {
+    let runtime = std::sync::Arc::new(Runtime::new(f.owner.clone(), f.config.clone())?);
+    runtime.start_qualified_service().await?;
     let id = Uuid::new_v4().to_string();
     let work = f
         .config
@@ -186,9 +195,8 @@ pub(super) async fn prepare_fixture_from(
     journal.old_commit = "0".repeat(base.len());
     journal.new_commit = base;
     f.store()
-        .pipeline_claim_run(&f.owner, &run, 1, &first, Some(&journal))
-        .unwrap();
-    (f, runtime, id)
+        .pipeline_claim_run(&f.owner, &run, 1, &first, Some(&journal))?;
+    Ok((f, runtime, id))
 }
 
 /// Task-only conditional config is rejected before any file is checked out.
