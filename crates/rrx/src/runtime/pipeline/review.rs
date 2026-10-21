@@ -149,6 +149,15 @@ impl Runtime {
 
     /// Decode only retained, scan-checked output after death and a second target-tree check.
     pub async fn adopt_pipeline_review(&self, cursor: PipelineCursor) -> Result<bool> {
+        self.adopt_review_result(cursor, false).await
+    }
+
+    /// Preserve exited until the round decision can atomically adopt or hold this step.
+    pub async fn adopt_pipeline_round_review(&self, cursor: PipelineCursor) -> Result<bool> {
+        self.adopt_review_result(cursor, true).await
+    }
+
+    async fn adopt_review_result(&self, cursor: PipelineCursor, defer: bool) -> Result<bool> {
         let Ok(_boundary) = self.control_admission.try_lock() else {
             return Ok(false);
         };
@@ -221,11 +230,16 @@ impl Runtime {
         .await;
         match checked {
             Ok(Some(evidence)) => {
-                self.owner
+                let mut store = self
+                    .owner
                     .store
                     .lock()
-                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
-                    .pipeline_adopt(&self.owner, &cursor, &evidence)?;
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+                if defer {
+                    store.pipeline_stage_round_result(&self.owner, &cursor, &evidence)?;
+                } else {
+                    store.pipeline_adopt(&self.owner, &cursor, &evidence)?;
+                }
                 self.wake.notify_one();
                 Ok(true)
             }

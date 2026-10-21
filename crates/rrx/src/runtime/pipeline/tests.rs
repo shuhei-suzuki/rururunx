@@ -76,6 +76,15 @@ impl Runtime {
 
     /// Adopts both passing and failing observations after re-reading retained streams.
     pub async fn adopt_pipeline_test(&self, cursor: PipelineCursor) -> Result<bool> {
+        self.adopt_test_result(cursor, false).await
+    }
+
+    /// Stage the last round result so a hold can still use exited-to-held.
+    pub async fn adopt_pipeline_round_test(&self, cursor: PipelineCursor) -> Result<bool> {
+        self.adopt_test_result(cursor, true).await
+    }
+
+    async fn adopt_test_result(&self, cursor: PipelineCursor, defer: bool) -> Result<bool> {
         ensure!(
             self.config.execution.mode == ExecutionMode::CliPipeline,
             "ExecutionModeMismatch"
@@ -175,11 +184,14 @@ impl Runtime {
                 let goal = store.goal(run.goal_id)?.context("test Goal missing")?;
                 store.pipeline_complete_goal(&self.owner, &cursor, goal.version, &command.id)?;
             } else {
-                store.pipeline_adopt(
-                    &self.owner,
-                    &cursor,
-                    &json!({"command_id":command.id,"result":if pass {"pass"} else {"fail"}}),
-                )?;
+                let evidence =
+                    json!({"command_id":command.id,"result":if pass {"pass"} else {"fail"}});
+                if defer {
+                    ensure!(run.kind == "task", "round_result_kind");
+                    store.pipeline_stage_round_result(&self.owner, &cursor, &evidence)?;
+                } else {
+                    store.pipeline_adopt(&self.owner, &cursor, &evidence)?;
+                }
             }
             store
                 .pipeline_goal_view(run.goal_id)?
@@ -189,7 +201,10 @@ impl Runtime {
                     s.run_id == run.id
                         && s.seq == step.seq
                         && s.attempt == step.attempt
-                        && s.state == "adopted"
+                        && (s.state == "adopted"
+                            || (defer
+                                && s.state == "exited"
+                                && s.body["round_result_validated"] == true))
                 })
         };
         if !adopted {

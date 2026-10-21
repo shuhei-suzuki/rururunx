@@ -451,6 +451,7 @@ async fn pass_flow(mode: PassMode, summary: &mut Value) -> Result<()> {
     };
     let qualification = std::sync::Arc::new(std::sync::Mutex::new(Value::Null));
     let inputs = FixtureInputs {
+        max_fix_rounds: None,
         clis,
         path_prefix: vec![probe_path],
         qualification: qualification.clone(),

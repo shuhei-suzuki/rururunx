@@ -1,0 +1,759 @@
+//! Runtime cases use owned fixtures, admitted tests and native fake CLIs without provider traffic.
+use super::*;
+use crate::execution::pipeline::{
+    LaunchResult, PipelineRole, RoundDecision, confirm, review, review_snapshot, step_arguments,
+    test_support::FakeCli,
+};
+use std::{os::unix::fs::PermissionsExt, path::PathBuf, sync::Arc};
+
+struct Harness {
+    f: Fixture,
+    runtime: Arc<Runtime>,
+    id: String,
+    codex: FakeCli,
+    claude: FakeCli,
+    source: String,
+}
+impl Harness {
+    async fn new(max: u32, fail: bool) -> Self {
+        let qualification = Arc::new(std::sync::Mutex::new(Value::Null));
+        let inputs = FixtureInputs {
+            max_fix_rounds: Some(max),
+            clis: None,
+            path_prefix: vec![],
+            task: TaskDefinition {
+                key: "task".into(),
+                title: "task".into(),
+                acceptance_criteria: vec!["pass".into()],
+                executor: "codex".into(),
+                reviewers: vec!["claude".into()],
+                workflow: WorkflowClass::Standard,
+                risk: RiskClass::R2,
+            },
+            qualification: qualification.clone(),
+        };
+        let mut command = crate::execution::pipeline::tests_runner::tests::proposal(
+            if fail {
+                "/usr/bin/false"
+            } else {
+                "/usr/bin/true"
+            }
+            .into(),
+        )
+        .commands
+        .remove(0);
+        command.timeout_seconds = 10;
+        let f = fixture_build(
+            true,
+            true,
+            None,
+            None,
+            false,
+            Some(vec![command]),
+            Some(inputs),
+        )
+        .await
+        .unwrap_or_else(|error| {
+            panic!(
+                "fixture qualification: {error}; {:?}",
+                qualification.lock().unwrap()
+            )
+        });
+        let (f, runtime, id) = super::b5::prepare_fixture_from(f, true).await;
+        runtime.wait_pipeline_test_boundary().await;
+        assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
+        let config = f.config.pipeline.as_ref().unwrap();
+        let codex = FakeCli {
+            directory: config.clis.codex.executable.parent().unwrap().into(),
+            cli: config.clis.codex.clone(),
+        };
+        let claude = FakeCli {
+            directory: config.clis.claude.executable.parent().unwrap().into(),
+            cli: config.clis.claude.clone(),
+        };
+        let mut h = Self {
+            f,
+            runtime,
+            id,
+            codex,
+            claude,
+            source: String::new(),
+        };
+        h.executor(false, 0).await;
+        h
+    }
+    fn step(&self) -> PipelineStep {
+        self.f
+            .store()
+            .pipeline_goal_view(self.f.goal)
+            .unwrap()
+            .steps
+            .last()
+            .unwrap()
+            .clone()
+    }
+    fn path(&self) -> PathBuf {
+        let step = self.step();
+        review_snapshot::snapshot_path(
+            &self.f.config.pipeline.as_ref().unwrap().work_root,
+            &self.id,
+            step.seq,
+            step.attempt,
+        )
+        .unwrap()
+    }
+    fn attempt(&self) -> PathBuf {
+        let step = self.step();
+        self.f
+            .config
+            .pipeline
+            .as_ref()
+            .unwrap()
+            .work_root
+            .join("runs")
+            .join(&self.id)
+            .join(format!("{}-{}", step.seq, step.attempt))
+    }
+    fn expected(&self, fake: &FakeCli, role: PipelineRole, work: &Path, schema: &str) {
+        let args = step_arguments(role, &fake.cli, work, &self.attempt(), schema).unwrap();
+        fake.expect_arguments(&args.iter().map(String::as_str).collect::<Vec<_>>());
+    }
+    async fn decide(&self) -> RoundDecision {
+        for _ in 0..2 {
+            self.runtime.wait_pipeline_test_boundary().await;
+            if let Some(d) = self
+                .runtime
+                .decide_pipeline_round(self.f.cursor(&self.id))
+                .await
+                .unwrap()
+            {
+                return d;
+            }
+        }
+        panic!("decision remained busy")
+    }
+    async fn executor(&mut self, fix: bool, revision: u32) {
+        self.source = format!("pub fn broken_{revision}() {{}}\n");
+        let prompt = b"Implement the accepted Task.\n";
+        if !fix {
+            let view = self.f.store().pipeline_goal_view(self.f.goal).unwrap();
+            let mut next = planned(&self.id, 2, 1, "implement");
+            next.step_base = view.runs[0].head_commit.clone();
+            next.input_sha256 = crate::execution::verification::hash(prompt);
+            let cursor = self.f.cursor(&self.id);
+            self.f
+                .store()
+                .pipeline_plan_next(&self.f.owner, &cursor, &next, true)
+                .unwrap();
+        }
+        self.codex.control("exec-source", &self.source);
+        self.codex
+            .control("exec-last", "Implementation complete.\n");
+        self.codex
+            .control("exec-output", "{\"type\":\"turn.completed\"}\n");
+        let work = PathBuf::from(
+            self.f.store().pipeline_goal_view(self.f.goal).unwrap().runs[0]
+                .worktree
+                .as_ref()
+                .unwrap(),
+        );
+        self.expected(
+            &self.codex,
+            if fix {
+                PipelineRole::Fix
+            } else {
+                PipelineRole::Implement
+            },
+            &work,
+            "",
+        );
+        self.runtime.wait_pipeline_test_boundary().await;
+        let result = if fix {
+            self.runtime
+                .launch_pipeline_fix(self.f.cursor(&self.id))
+                .await
+        } else {
+            self.runtime
+                .launch_pipeline_executor(self.f.cursor(&self.id), prompt.to_vec())
+                .await
+        }
+        .unwrap();
+        let LaunchResult::Started(custody) = result else {
+            panic!("executor did not launch: {:?}", self.step());
+        };
+        custody.wait().await.unwrap();
+        self.runtime.wait_pipeline_test_boundary().await;
+        assert!(
+            self.runtime
+                .adopt_pipeline_executor(self.f.cursor(&self.id))
+                .await
+                .unwrap(),
+            "{:?}",
+            self.step()
+        );
+        assert!(self.step().result_commit.is_some());
+    }
+    async fn test(&self) -> RoundDecision {
+        self.runtime.wait_pipeline_test_boundary().await;
+        assert!(
+            self.runtime
+                .plan_pipeline_round_test(self.f.cursor(&self.id))
+                .await
+                .unwrap()
+        );
+        self.runtime.wait_pipeline_test_boundary().await;
+        let LaunchResult::Started(custody) = self
+            .runtime
+            .launch_pipeline_test(self.f.cursor(&self.id))
+            .await
+            .unwrap()
+        else {
+            panic!("test did not launch");
+        };
+        custody.wait().await.unwrap();
+        self.runtime.wait_pipeline_test_boundary().await;
+        assert!(
+            self.runtime
+                .adopt_pipeline_round_test(self.f.cursor(&self.id))
+                .await
+                .unwrap(),
+            "{:?}",
+            self.step()
+        );
+        self.decide().await
+    }
+    async fn reviewed(&self, findings: Value, verdict: &str) {
+        assert_eq!(self.step().kind, "review");
+        let envelope = json!({"type":"result","subtype":"success","is_error":false,"modelUsage":{&self.claude.cli.model:{}},"structured_output":{"schema":"rrx.review.v1","verdict":verdict,"summary":"reviewed","findings":findings}});
+        self.claude
+            .control("exec-output", &serde_json::to_string(&envelope).unwrap());
+        self.expected(
+            &self.claude,
+            PipelineRole::Review,
+            &self.path(),
+            review::REVIEW_SCHEMA,
+        );
+        self.runtime.wait_pipeline_test_boundary().await;
+        let LaunchResult::Started(custody) = self
+            .runtime
+            .launch_pipeline_review(self.f.cursor(&self.id))
+            .await
+            .unwrap()
+        else {
+            panic!("review did not launch");
+        };
+        custody.wait().await.unwrap();
+        self.runtime.wait_pipeline_test_boundary().await;
+        assert!(
+            self.runtime
+                .adopt_pipeline_round_review(self.f.cursor(&self.id))
+                .await
+                .unwrap(),
+            "{:?}",
+            self.step()
+        );
+    }
+    fn findings(&self) -> Value {
+        json!([{"id":"F1","severity":"high","blocking":false,"file":"src/output.rs","line":1,"title":"fix this defect","rationale":"source demonstrates defect"}])
+    }
+    fn labels(&self, label: &str) -> Value {
+        json!({"schema":"rrx.confirm.v1","labels":[{"id":"F1","label":label,"evidence":{"file":"src/output.rs","line":1,"quote":self.source.trim_end()},"reason":"checked source"}]})
+    }
+    async fn confirmation_exit(&self, output: &str) {
+        let source = self.codex.directory.join("exec-source");
+        if source.exists() {
+            std::fs::remove_file(source).unwrap();
+        }
+        self.codex.control("exec-last", output);
+        self.codex
+            .control("exec-output", "{\"type\":\"turn.completed\"}\n");
+        self.expected(
+            &self.codex,
+            PipelineRole::Confirm,
+            &self.path(),
+            confirm::CONFIRM_SCHEMA,
+        );
+        self.runtime.wait_pipeline_test_boundary().await;
+        let LaunchResult::Started(custody) = self
+            .runtime
+            .launch_pipeline_confirm(self.f.cursor(&self.id))
+            .await
+            .unwrap()
+        else {
+            panic!("confirm did not launch: {:?}", self.step());
+        };
+        custody.wait().await.unwrap();
+    }
+    async fn confirmed(&self, labels: Value) {
+        self.confirmation_exit(&serde_json::to_string(&labels).unwrap())
+            .await;
+        assert_eq!(self.step().state, "exited", "{:?}", self.step());
+        assert!(self.step().cookie.is_some() && self.step().birth.is_some());
+        self.runtime.wait_pipeline_test_boundary().await;
+        assert!(
+            self.runtime
+                .adopt_pipeline_confirm(self.f.cursor(&self.id))
+                .await
+                .unwrap(),
+            "{:?}",
+            self.step()
+        );
+    }
+    async fn to_confirm(&self) {
+        assert_eq!(self.test().await, RoundDecision::Review);
+        self.reviewed(self.findings(), "request_changes").await;
+        assert_eq!(self.decide().await, RoundDecision::Confirm);
+    }
+    async fn close(self) {
+        self.runtime.shutdown().await.unwrap();
+        let view = self.f.store().pipeline_goal_view(self.f.goal).unwrap();
+        for s in view
+            .steps
+            .iter()
+            .filter(|s| matches!(s.kind.as_str(), "review" | "confirm"))
+        {
+            let path = review_snapshot::snapshot_path(
+                &self.f.config.pipeline.as_ref().unwrap().work_root,
+                &self.id,
+                s.seq,
+                s.attempt,
+            )
+            .unwrap();
+            review_snapshot::remove(&path).unwrap();
+        }
+    }
+}
+
+/// Only confirmed IDs reach a fix, whose rrx commit is re-tested and reviewed before planned release.
+#[tokio::test]
+async fn b8_runtime_fix_flow() {
+    let mut h = Harness::new(1, false).await;
+    assert_eq!(h.test().await, RoundDecision::Review);
+    let mut findings = h.findings();
+    let mut rejected = findings[0].clone();
+    rejected["id"] = json!("F2");
+    rejected["title"] = json!("rejected data");
+    let mut non = findings[0].clone();
+    non["id"] = json!("F3");
+    non["severity"] = json!("low");
+    non["title"] = json!("informational data");
+    let mut invalid = findings[0].clone();
+    invalid["id"] = json!("F4");
+    invalid["file"] = json!("src/missing.rs");
+    findings
+        .as_array_mut()
+        .unwrap()
+        .extend([rejected, non, invalid]);
+    h.reviewed(findings, "request_changes").await;
+    let review_path = h.path();
+    assert_eq!(h.decide().await, RoundDecision::Confirm);
+    let view = h.f.store().pipeline_goal_view(h.f.goal).unwrap();
+    let review = view.steps.iter().find(|s| s.kind == "review").unwrap();
+    assert_eq!(review.body["filtering"]["invalid"][0]["id"], "F4");
+    assert_eq!(review.body["filtering"]["non_blocking"], json!(["F3"]));
+    assert_ne!(review_path, h.path());
+    let mut labels = h.labels("confirmed");
+    let mut rejected = labels["labels"][0].clone();
+    rejected["id"] = json!("F2");
+    rejected["label"] = json!("rejected");
+    labels["labels"].as_array_mut().unwrap().push(rejected);
+    h.confirmed(labels).await;
+    assert_eq!(
+        std::fs::read_to_string(h.path().join("src/output.rs")).unwrap(),
+        h.source
+    );
+    assert_eq!(h.decide().await, RoundDecision::Fix);
+    let fix = h.step();
+    assert_eq!(fix.round, 1);
+    assert_eq!(fix.body["confirmed_ids"], json!(["F1"]));
+    assert_eq!(
+        fix.body["fix_input"]["findings"].as_array().unwrap().len(),
+        1
+    );
+    let input: crate::execution::pipeline::rounds::FixInput =
+        serde_json::from_value(fix.body["fix_input"].clone()).unwrap();
+    assert_eq!(
+        fix.body["fix_input_sha256"],
+        crate::execution::verification::hash(&serde_json::to_vec(&input).unwrap())
+    );
+    let prompt = crate::execution::pipeline::rounds::fix_prompt(
+        fix.body["fix_nonce"].as_str().unwrap(),
+        &input,
+    )
+    .unwrap();
+    assert_eq!(
+        crate::execution::verification::hash(&prompt),
+        fix.input_sha256
+    );
+    assert!(!String::from_utf8(prompt).unwrap().contains("rejected data"));
+    h.executor(true, 1).await;
+    assert_eq!(h.test().await, RoundDecision::Review);
+    h.reviewed(json!([]), "approve").await;
+    assert_eq!(h.decide().await, RoundDecision::Release);
+    assert_eq!(h.step().kind, "release");
+    assert_eq!(h.step().state, "planned");
+    h.close().await;
+}
+
+/// Limits zero through two permit exactly N fixes and retain the final confirmation as held.
+#[tokio::test]
+async fn b8_runtime_round_limits() {
+    for max in 0..=2 {
+        let mut h = Harness::new(max, false).await;
+        for round in 0..=max {
+            h.to_confirm().await;
+            h.confirmed(h.labels("confirmed")).await;
+            if round < max {
+                assert_eq!(h.decide().await, RoundDecision::Fix);
+                h.executor(true, round + 1).await;
+            } else {
+                assert_eq!(h.decide().await, RoundDecision::Hold("round_limit"));
+                assert_eq!(h.step().state, "held");
+                assert_eq!(h.step().body["reason"], "round_limit");
+                assert_eq!(h.step().round, max);
+            }
+        }
+        let view = h.f.store().pipeline_goal_view(h.f.goal).unwrap();
+        assert_eq!(
+            view.steps.iter().filter(|s| s.kind == "fix").count(),
+            max as usize
+        );
+        h.close().await;
+    }
+}
+
+/// A confirmed label without matching source evidence becomes unclear and holds its own step.
+#[tokio::test]
+async fn b8_runtime_unclear() {
+    let h = Harness::new(2, false).await;
+    h.to_confirm().await;
+    let mut labels = h.labels("confirmed");
+    labels["labels"][0]["evidence"]["quote"] = json!("not in the source");
+    h.confirmed(labels).await;
+    assert_eq!(
+        h.step().body["adoption"]["confirmation"]["labels"][0]["label"],
+        "unclear"
+    );
+    assert_eq!(h.decide().await, RoundDecision::Hold("unclear_finding"));
+    assert_eq!(h.step().state, "held");
+    assert_eq!(h.step().body["reason"], "unclear_finding");
+    h.close().await;
+}
+
+/// Invalid findings cannot support request_changes or cause an automatic fix or re-review.
+#[tokio::test]
+async fn b8_runtime_unsupported() {
+    let h = Harness::new(2, false).await;
+    assert_eq!(h.test().await, RoundDecision::Review);
+    let mut findings = h.findings();
+    findings[0]["file"] = json!("src/missing.rs");
+    h.reviewed(findings, "request_changes").await;
+    assert_eq!(
+        h.decide().await,
+        RoundDecision::Hold("unsupported_request_changes")
+    );
+    assert_eq!(h.step().kind, "review");
+    assert_eq!(h.step().state, "held");
+    assert_eq!(h.step().body["reason"], "unsupported_request_changes");
+    assert_eq!(
+        h.step().body["filtering"]["invalid"][0]["reason"],
+        "missing_file"
+    );
+    h.close().await;
+}
+
+/// Failed tests skip review and supply only bounded stored observations to the fix.
+#[tokio::test]
+async fn b8_runtime_failed_test() {
+    let mut h = Harness::new(1, true).await;
+    assert_eq!(h.test().await, RoundDecision::Fix);
+    assert_eq!(h.step().body["fix_input"]["kind"], "test_failure");
+    assert_eq!(h.step().body["fix_input"]["exit_code"], 1);
+    assert_eq!(h.step().body["confirmed_ids"], json!([]));
+    h.executor(true, 1).await;
+    assert_eq!(h.test().await, RoundDecision::Hold("round_limit"));
+    assert_eq!(h.step().kind, "test");
+    assert_eq!(h.step().state, "held");
+    assert_eq!(h.step().body["reason"], "round_limit");
+    assert!(
+        !h.f.store()
+            .pipeline_goal_view(h.f.goal)
+            .unwrap()
+            .steps
+            .iter()
+            .any(|s| matches!(s.kind.as_str(), "review" | "confirm"))
+    );
+    h.close().await;
+}
+
+/// Extra labels reject the confirmation with a fixed reason and no adopted label data.
+#[tokio::test]
+async fn b8_runtime_label_rejection() {
+    let h = Harness::new(1, false).await;
+    h.to_confirm().await;
+    let mut labels = h.labels("confirmed");
+    let mut extra = labels["labels"][0].clone();
+    extra["id"] = json!("F2");
+    labels["labels"].as_array_mut().unwrap().push(extra);
+    h.confirmation_exit(&serde_json::to_string(&labels).unwrap())
+        .await;
+    h.runtime.wait_pipeline_test_boundary().await;
+    assert!(
+        !h.runtime
+            .adopt_pipeline_confirm(h.f.cursor(&h.id))
+            .await
+            .unwrap()
+    );
+    assert_eq!(h.step().state, "rejected");
+    assert_eq!(h.step().body["reason"], "confirm_label_ids");
+    assert!(h.step().body["adoption"].is_null());
+    h.close().await;
+}
+
+/// Secret-bearing labels and discarded stderr hold with only a pattern and offset digest.
+#[tokio::test]
+async fn b8_runtime_confirmation_secrets() {
+    for source in ["last", "stdout", "stderr"] {
+        let h = Harness::new(1, false).await;
+        h.to_confirm().await;
+        let mut labels = h.labels("confirmed");
+        if source == "stderr" {
+            h.codex.control(
+                "exec-stderr",
+                &format!("EXAMPLE_TOKEN=fixture\n{}", "x".repeat(1024 * 1024)),
+            );
+        } else if source == "stdout" {
+            h.codex
+                .control("exec-pre-output", "EXAMPLE_TOKEN=fixture\n");
+        } else {
+            labels["labels"][0]["reason"] = json!("EXAMPLE_TOKEN=fixture");
+        }
+        h.confirmation_exit(&serde_json::to_string(&labels).unwrap())
+            .await;
+        if source == "last" {
+            h.runtime.wait_pipeline_test_boundary().await;
+            assert!(
+                !h.runtime
+                    .adopt_pipeline_confirm(h.f.cursor(&h.id))
+                    .await
+                    .unwrap()
+            );
+        }
+        assert_eq!(h.step().state, "held");
+        assert_eq!(h.step().body["reason"], "secret_detected");
+        assert_eq!(h.step().body["secret"]["pattern"], "secret_assignment");
+        assert_eq!(
+            h.step().body["secret"]["offset_sha256"]
+                .as_str()
+                .unwrap()
+                .len(),
+            64
+        );
+        assert!(
+            !serde_json::to_string(&h.step().body)
+                .unwrap()
+                .contains("fixture")
+        );
+        h.close().await;
+    }
+}
+
+/// Generic confirmation launch cannot bypass a second snapshot digest check.
+#[tokio::test]
+async fn b8_runtime_generic_snapshot_guard() {
+    let h = Harness::new(1, false).await;
+    h.to_confirm().await;
+    h.runtime.wait_pipeline_test_boundary().await;
+    let input = h
+        .runtime
+        .prepare_pipeline_confirm(h.f.cursor(&h.id))
+        .await
+        .unwrap()
+        .unwrap();
+    let file = input.work.join("src/output.rs");
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::write(&file, "changed\n").unwrap();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o444)).unwrap();
+    h.runtime.wait_pipeline_test_boundary().await;
+    assert!(matches!(
+        h.runtime
+            .launch_pipeline_step(h.f.cursor(&h.id), input)
+            .await
+            .unwrap(),
+        LaunchResult::Held
+    ));
+    assert_eq!(h.step().body["reason"], "review_snapshot_changed");
+    h.close().await;
+}
+
+/// Generic Executor launch cannot substitute arbitrary text for the confirmed-only fix input.
+#[tokio::test]
+async fn b8_runtime_fix_input_guard() {
+    let h = Harness::new(1, false).await;
+    h.to_confirm().await;
+    h.confirmed(h.labels("confirmed")).await;
+    assert_eq!(h.decide().await, RoundDecision::Fix);
+    h.runtime.wait_pipeline_test_boundary().await;
+    assert!(matches!(
+        h.runtime
+            .launch_pipeline_executor(h.f.cursor(&h.id), b"substituted prompt".to_vec())
+            .await
+            .unwrap(),
+        LaunchResult::Held
+    ));
+    assert_eq!(h.step().body["reason"], "fix_input_changed");
+    h.close().await;
+}
+
+/// Fix planning permits a single round increment and rejects same-round and skipped-round fixes.
+#[tokio::test]
+async fn b8_runtime_round_increment() {
+    let h = Harness::new(2, false).await;
+    let before = h.f.store().pipeline_goal_view(h.f.goal).unwrap();
+    for round in [0, 2] {
+        let mut next = planned(&h.id, h.step().seq + 1, 1, "fix");
+        next.round = round;
+        next.step_base = before.runs[0].head_commit.clone();
+        let cursor = h.f.cursor(&h.id);
+        assert_eq!(
+            h.f.store()
+                .pipeline_plan_next(&h.f.owner, &cursor, &next, true)
+                .unwrap_err()
+                .to_string(),
+            "invalid pipeline round"
+        );
+        assert_eq!(
+            h.f.store().pipeline_goal_view(h.f.goal).unwrap().runs,
+            before.runs
+        );
+    }
+    h.close().await;
+}
+
+/// Rejected labels remain recorded and never authorize remediation of request_changes.
+#[tokio::test]
+async fn b8_runtime_rejected_only() {
+    let h = Harness::new(2, false).await;
+    h.to_confirm().await;
+    h.confirmed(h.labels("rejected")).await;
+    assert_eq!(
+        h.decide().await,
+        RoundDecision::Hold("unsupported_request_changes")
+    );
+    assert_eq!(h.step().state, "held");
+    assert_eq!(h.step().body["reason"], "unsupported_request_changes");
+    assert_eq!(
+        h.step().body["adoption"]["confirmation"]["labels"][0]["label"],
+        "rejected"
+    );
+    h.close().await;
+}
+
+/// A paused Goal cannot advance a staged confirmation or change its step during decision.
+#[tokio::test]
+async fn b8_runtime_decision_rule_g() {
+    let h = Harness::new(1, false).await;
+    h.to_confirm().await;
+    h.confirmed(h.labels("confirmed")).await;
+    let before = h.step();
+    let goal = h.f.store().goal(h.f.goal).unwrap().unwrap();
+    let request = ControlRequest {
+        request_id: Uuid::new_v4(),
+        instance: h.f.owner.instance.clone(),
+        epoch: h.f.owner.epoch,
+        action: ControlAction::SetGoalLifecycle {
+            project: h.f.project,
+            goal: h.f.goal,
+            expected_goal: goal.version,
+            target: crate::runtime::control::GoalControl::Pause,
+            reason: "pause".into(),
+        },
+    };
+    let (socket, _peer) = tokio::net::UnixStream::pair().unwrap();
+    h.runtime.wait_pipeline_test_boundary().await;
+    h.runtime.handle_control(&socket, request).await.unwrap();
+    h.runtime.wait_pipeline_test_boundary().await;
+    assert!(
+        h.runtime
+            .decide_pipeline_round(h.f.cursor(&h.id))
+            .await
+            .is_err()
+    );
+    assert_eq!(h.step(), before);
+    h.close().await;
+}
+
+/// Secret-bearing confirmation diagnostics cannot enter a staged Store body.
+#[tokio::test]
+async fn b8_runtime_store_scan() {
+    let h = Harness::new(1, false).await;
+    h.to_confirm().await;
+    let labels = h.labels("confirmed");
+    let bytes = serde_json::to_vec(&labels).unwrap();
+    h.confirmation_exit(std::str::from_utf8(&bytes).unwrap())
+        .await;
+    let before = h.step();
+    let findings =
+        serde_json::from_value::<Vec<crate::execution::pipeline::ReviewFinding>>(h.findings())
+            .unwrap();
+    let mut evidence = confirm::decode(&bytes, &findings, &h.path()).unwrap();
+    evidence["snapshot_tree"] = before.body["snapshot_tree"].clone();
+    evidence["diagnostic"] = json!({"nested":["EXAMPLE_TOKEN=fixture"]});
+    let cursor = h.f.cursor(&h.id);
+    let error =
+        h.f.store()
+            .pipeline_stage_round_result(&h.f.owner, &cursor, &evidence)
+            .unwrap_err();
+    assert!(
+        error
+            .downcast_ref::<crate::execution::pipeline::SecretHit>()
+            .is_some()
+    );
+    assert_eq!(h.step(), before);
+    h.close().await;
+}
+
+/// A secret in a planned fix body rolls back both step insertion and the round increment.
+#[tokio::test]
+async fn b8_runtime_plan_scan() {
+    let h = Harness::new(1, false).await;
+    let before = h.f.store().pipeline_goal_view(h.f.goal).unwrap();
+    let mut next = planned(&h.id, h.step().seq + 1, 1, "fix");
+    next.round = 1;
+    next.step_base = before.runs[0].head_commit.clone();
+    next.body["diagnostic"] = json!("EXAMPLE_TOKEN=fixture");
+    let cursor = h.f.cursor(&h.id);
+    let error =
+        h.f.store()
+            .pipeline_plan_next(&h.f.owner, &cursor, &next, true)
+            .unwrap_err();
+    assert!(
+        error
+            .downcast_ref::<crate::execution::pipeline::SecretHit>()
+            .is_some()
+    );
+    let after = h.f.store().pipeline_goal_view(h.f.goal).unwrap();
+    assert_eq!(after.steps, before.steps);
+    assert_eq!(after.runs, before.runs);
+    h.close().await;
+}
+
+/// A nonzero Confirmer exit rejects the step instead of accepting otherwise valid labels.
+#[tokio::test]
+async fn b8_runtime_agent_failure() {
+    let h = Harness::new(1, false).await;
+    h.to_confirm().await;
+    h.codex.control("exec-status", "1\n");
+    h.confirmation_exit(&serde_json::to_string(&h.labels("confirmed")).unwrap())
+        .await;
+    h.runtime.wait_pipeline_test_boundary().await;
+    assert!(
+        !h.runtime
+            .adopt_pipeline_confirm(h.f.cursor(&h.id))
+            .await
+            .unwrap()
+    );
+    assert_eq!(h.step().state, "rejected");
+    assert_eq!(h.step().body["reason"], "confirm_agent_failed");
+    h.close().await;
+}

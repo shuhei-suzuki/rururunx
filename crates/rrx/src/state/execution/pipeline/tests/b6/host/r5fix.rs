@@ -217,8 +217,10 @@ async fn b6_f5_cleanup_cumulative() {
         .unwrap()
         .pending_cleanup;
     let cursor = f.cursor(&id);
+    let mut fix = planned(&id, 3, 1, "fix");
+    fix.round = 1;
     f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &planned(&id, 3, 1, "fix"), true)
+        .pipeline_plan_next(&f.owner, &cursor, &fix, true)
         .unwrap();
     let cursor = f.cursor(&id);
     f.store()
@@ -255,6 +257,7 @@ async fn b6_f5_cleanup_cumulative() {
         .pipeline_adopt(&f.owner, &cursor, &json!({}))
         .unwrap();
     let mut next = planned(&id, 4, 1, "test");
+    next.round = 1;
     next.step_base = "b".repeat(40);
     let cursor = f.cursor(&id);
     f.store()

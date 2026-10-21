@@ -3,6 +3,8 @@ mod b6;
 #[cfg(target_os = "macos")]
 mod b7;
 #[cfg(target_os = "macos")]
+mod b8;
+#[cfg(target_os = "macos")]
 mod d20;
 #[cfg(target_os = "macos")]
 mod real_cli;
@@ -294,6 +296,7 @@ async fn fixture_with_commands(
 }
 #[cfg(target_os = "macos")]
 struct FixtureInputs {
+    max_fix_rounds: Option<u32>,
     clis: Option<crate::config::PipelineClis>,
     path_prefix: Vec<std::path::PathBuf>,
     task: TaskDefinition,
@@ -433,6 +436,7 @@ async fn fixture_build(
     let admitted = AdmittedProfile::admit(proposal)?;
     let digest =
         store.admit_verification_profile(project.id, project.version, owner.epoch, &admitted)?;
+    let max_fix_rounds = inputs.as_ref().and_then(|i| i.max_fix_rounds);
     let plan = GoalPlan {
         definition: GoalDefinition {
             title: "goal".into(),
@@ -468,7 +472,11 @@ async fn fixture_build(
             plan,
         },
     };
-    let profile = fixture_profile(digest);
+    let mut profile = fixture_profile(digest);
+    if let Some(max) = max_fix_rounds {
+        profile.body["max_fix_rounds"] = json!(max);
+        profile.policy_sha256 = profile.policy_digest()?;
+    }
     let response = if pipeline {
         store.pipeline_accept_goal(&ingress, &request, &validated, &profile)?
     } else {
