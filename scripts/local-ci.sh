@@ -84,7 +84,8 @@ run_step metadata metadata
 # Record versions and date in both the retained metadata log and the summary.
 cat "$log_dir/metadata.log" | tee -a "$summary" || failed=1
 
-if main_tip=$(git rev-parse --verify --end-of-options 'refs/remotes/origin/main^{commit}' 2> "$log_dir/main-tip.log"); then
+if main_object=$(git show-ref --verify --hash refs/remotes/origin/main 2> "$log_dir/main-tip.log") &&
+    main_tip=$(git rev-parse --verify --end-of-options "$main_object^{commit}" 2>> "$log_dir/main-tip.log"); then
     printf 'origin/main %s\n' "$main_tip" | tee -a "$log_dir/main-tip.log" "$summary" || failed=1
     run_step main-contained git merge-base --is-ancestor "$main_tip" "$head"
 else
@@ -146,9 +147,10 @@ else
     }
     run_step linux-image image_metadata
     cat "$log_dir/linux-image.log" | tee -a "$log_dir/metadata.log" "$summary" || failed=1
+    # Init forwards signals/reaps children; flock returns the step script's status.
     # The quoted script expands variables inside the container, not on the host.
     # shellcheck disable=SC2016
-    run_step linux-container docker run --rm \
+    run_step linux-container docker run --rm --init \
         --label rururunx-local-ci=1 \
         --cidfile "$log_dir/container.cid" \
         --user "$(id -u):$(id -g)" \
@@ -165,7 +167,7 @@ else
         --env HOME=/home/local-ci --env TMPDIR=/tmp --env USER=local-ci --env LOGNAME=local-ci \
         --env CARGO_HOME=/cargo \
         --env CARGO_TARGET_DIR=/target/target --env CARGO_INCREMENTAL=0 \
-        rust:1.91.1 bash -c '
+        rust:1.91.1 flock --exclusive --close /target/.local-ci.lock bash -c '
             set -u
             failed=0
             run_step() {
@@ -179,10 +181,8 @@ else
                 fi
                 printf "%s %s\n" "$status" "$((SECONDS - start))" > "/results/$name.result" || failed=1
             }
-            # Hold the shared-cache lock in this shell until container exit,
-            # before source mtimes are set and before any Cargo invocation.
-            exec 9> /target/.local-ci.lock || exit 1
-            flock --exclusive 9 || exit 1
+            # The parent flock holds the shared-cache lock for this whole script,
+            # closing its descriptor in this shell and all checked processes.
             # --touch refreshes source fingerprints after the preceding run.
             run_step linux-setup tar --extract --touch --file /source.tar --directory /src
             run_step linux-components rustup component add rustfmt clippy

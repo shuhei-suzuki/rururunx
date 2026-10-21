@@ -12,8 +12,17 @@ the PC through `scripts/local-ci.sh`, with commands, SHA, test counts and outcom
 committed in `doc/verification/issue-<number>.md` and referenced from the PR.
 Because the repository is public, PR and issue comments carry only IDs, titles,
 severities and statuses (owner decision, 2026-10-21). The record is committed after
-the verified SHA; when the diff from that SHA is only the record, the run stays
-valid without a re-run. The trade-off is explicit: the independent GitHub check covers
+the verified SHA; when a successful
+`git diff --name-only --no-renames <verified SHA> HEAD` prints only paths starting
+with `doc/verification/`, changes to any files under that directory keep the run
+valid without a re-run. Nothing in `crates/`, `scripts/` or `.github/` reads that
+directory. This recorded run counts as the final pre-merge run only if, after a
+fresh fetch, `refs/remotes/origin/main` still equals its recorded
+`origin/main <sha>`; otherwise integrate current main and re-run the whole script
+on a clean HEAD. The record contains only commands, SHAs, counts, outcomes and
+the image digest; no secrets, tokens, environment dumps, raw logs, real resource
+IDs or absolute home paths (use repository-relative paths).
+The trade-off is explicit: the independent GitHub check covers
 fmt and clippy only; test and release evidence relies on the local run.
 Every heavy step has a step-level code-change guard; the job itself is never
 skipped. `contents: read` and checkout's disabled credential persistence remain.
@@ -104,12 +113,14 @@ and network on the host. The four-variable removal is not a sandbox. Run the
 script only on commits produced by this workflow or whose diff has been reviewed;
 external PR code is not executed locally without review or an isolated environment.
 
-The `main-contained` step resolves `refs/remotes/origin/main` once with
-`git rev-parse --verify --end-of-options 'refs/remotes/origin/main^{commit}'`,
-records `origin/main <sha>` in the summary, and passes that SHA and the captured
-HEAD SHA to `git merge-base --is-ancestor`. Thus a branch or tag named
-`origin/main` cannot shadow the remote-tracking ref. Ancestry is PASS,
-non-ancestry or an error is FAIL, and a missing/unresolvable ref is NOT RUN. It affects the
+The `main-contained` step obtains the exact ref's object once with
+`git show-ref --verify --hash refs/remotes/origin/main`, then peels that object
+with `git rev-parse --verify --end-of-options "<sha>^{commit}"`.
+It records `origin/main <sha>` (the commit SHA) in the summary, and passes that SHA
+and the captured HEAD SHA to `git merge-base --is-ancestor`. Thus branches or tags
+cannot substitute for a missing remote-tracking ref. Ancestry is PASS,
+non-ancestry or an error is FAIL, and a missing ref or either resolution failure
+is NOT RUN, with errors in `main-tip.log`. It affects the
 overall result like any other step. It does not fetch. Before the final local run
 before merge, fetch first, merge or rebase current `origin/main` into the branch
 if necessary, and run the full script on that clean HEAD. If main advances before
@@ -121,11 +132,15 @@ The host's `linux-archive` step saves only tracked HEAD content using
 `git archive --format=tar --output=<run>/source.tar <captured-head-sha>`. The verification
 container mounts this tar read-only at `/source.tar`, never the worktree.
 Ignored host `worktree/`, `.rrx/` and `target/` content is not visible. `/src` is a
-fresh per-container tmpfs at a fixed path. Before extraction, the container's
-main shell opens `/target/.local-ci.lock` on descriptor 9 and acquires an exclusive
-`flock --exclusive 9`. Both open and lock failures exit the container immediately:
+fresh per-container tmpfs at a fixed path. The container runs its whole step
+script under `flock --exclusive --close /target/.local-ci.lock bash -c '...'`.
+The parent flock acquires the lock before extraction or any rustup/Cargo call.
+Both open and lock failures exit the container immediately:
 no later Linux step can PASS, and missing result markers fail the host run.
-The main shell keeps the descriptor and lock until container exit. Linux
+The parent holds the lock until all Linux steps finish, closing the lock
+descriptor in the step shell and all checked processes. `docker run --rm --init`
+provides PID 1 signal forwarding and child reaping; flock returns the step
+script's exit status as the container's exit status. Linux
 verification from different worktrees is serialized by this shared-target-volume
 lock. No in-container Cargo command runs before it is acquired.
 Linux setup extracts the tar there with
@@ -279,6 +294,11 @@ with Bash and does not require an executable bit.
   credentials and network except for the four removed token variables, so
   reviewed-commit trust is a necessary security boundary. Linux markers are
   reporting aids, not tamper-proof evidence.
+- Inherited descriptors are part of the container test environment:
+  `crates/rrx-spawn-hygiene/src/tests/api_wiring.rs` asserts that fixture
+  descriptors occupy exactly slots 3..=9. The parent flock closes its lock
+  descriptor before executing the step shell, keeping it out of rustup, Cargo
+  and every test process without weakening the shared-cache lock's lifetime.
 - Rust source, Cargo manifests/lockfile/toolchain file, CLI/runtime behavior,
   schema, authorization, dependencies and deployment remain unchanged. The
   README include remains covered by local tests and Actions code detection.
@@ -317,6 +337,11 @@ path. Its negative control restores the old command substitutions and confirms
 that trailing-newline paths are accepted.
 All temporary test directories are created beneath `.rrx/ci/fix4/` and removed
 on exit. These checks do not execute Cargo or Docker.
+Run `python3 .rrx/ci/fix5/ref_test.py` for byte-for-byte extracted ref resolution
+in temporary repositories under `.rrx/ci/fix5/`: an ancestor remote-tracking ref,
+a missing ref with a substitute branch or tag, and an annotated tag object in
+the exact remote-tracking ref. A negative control confirms the old rev-parse
+lookup accepts the substitute branch. The test removes its temporary repositories.
 
 The orchestrator ran `/opt/homebrew/bin/actionlint .github/workflows/ci.yml`
 with ShellCheck enabled to completion on `92ae7ad6`; it passed. After the

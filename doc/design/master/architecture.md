@@ -409,10 +409,14 @@ Before push, `bash scripts/local-ci.sh` runs from a clean macOS repository root,
 except for `doc/`-only PRs, which change no code and retain a successful Actions
 documentation check. `--host-only` does not meet the pre-push requirement.
 The script records full HEAD, UTC date, OS and Rust/Cargo/Docker versions. Its
-`main-contained` step resolves `refs/remotes/origin/main` once to a commit SHA,
-records `origin/main <sha>` in the summary and checks ancestry against the captured
-HEAD SHA. A same-named branch or tag cannot shadow it. Non-ancestry or a comparison
-error fails; a missing/unresolvable ref is NOT RUN, failing the run. The final
+`main-contained` step obtains the exact ref's object once with
+`git show-ref --verify --hash refs/remotes/origin/main` and peels it with
+`git rev-parse --verify --end-of-options "<sha>^{commit}"`.
+It records `origin/main <sha>` (the commit SHA) in the summary and checks ancestry
+against the captured HEAD SHA. Branches/tags cannot substitute for a missing
+remote-tracking ref. Non-ancestry or a comparison error fails; a missing ref or
+either resolution failure is NOT RUN, failing the run, with errors in
+`main-tip.log`. The final
 local run before merge follows fetch and integration of current `origin/main`
 by merge/rebase if needed, covering integrated code because Actions does not test
 main pushes or PR merge results. Advancing main requires a new final local run.
@@ -432,9 +436,13 @@ into a fresh per-run log directory. Linux fmt/clippy/tests run in one
 the host UID/GID, that tar mounted read-only, a writable per-run results mount,
 fixed non-secret HOME/USER/LOGNAME, and no forwarded host environment. The
 worktree and ignored `worktree/`, `.rrx/` and `target/` are not mounted. Before
-extraction, the container's main shell opens `/target/.local-ci.lock` and takes
-an exclusive `flock`, keeping its descriptor until container exit. Open or lock
-failure exits before later Linux steps can PASS. All in-container Cargo calls run
+extraction or any rustup/Cargo call, a parent flock takes the shared-volume lock
+through `flock --exclusive --close /target/.local-ci.lock bash -c '...'`, holding
+it until all Linux steps finish without passing its descriptor to the step shell
+or checked processes. Open or lock failure exits before later Linux steps can
+PASS. `docker run --rm --init` provides PID 1 signal forwarding and child reaping;
+the step script's exit status becomes the container's exit status.
+All in-container Cargo calls run
 under this lock, serializing Linux verification and shared registry/Git/target
 access across worktrees. Setup then extracts the tar with fresh mtimes into a
 fresh tmpfs at fixed `/src`, invalidating source fingerprints from other worktrees
@@ -477,9 +485,17 @@ and fmt, and requires `--allow-partial` to permit an
 otherwise successful partial exit. Full local commands, SHA, test counts and
 outcomes are committed in `doc/verification/issue-<number>.md` and referenced
 from the PR's Test plan; public PR and issue comments carry only IDs, titles,
-severities and statuses. A commit that changes only that record keeps the
-recorded run valid for the verified SHA without a re-run. Partial runs do not
-meet the pre-push policy.
+severities and statuses. The record contains only commands, SHAs, counts, outcomes
+and the image digest; no secrets, tokens, environment dumps, raw logs, real
+resource IDs or absolute home paths (use repository-relative paths).
+Follow-up commits changing only any files under `doc/verification/` keep the
+recorded run valid for the verified SHA without a re-run; nothing in `crates/`,
+`scripts/` or `.github/` reads that directory. Verify this with a successful
+`git diff --name-only --no-renames <verified SHA> HEAD`, requiring every printed
+line to start with `doc/verification/`. This recorded run counts as the final
+pre-merge run only if, after a fresh fetch, `refs/remotes/origin/main` still equals
+its recorded `origin/main <sha>`; otherwise integrate current main and re-run the
+whole script on a clean HEAD. Partial runs do not meet the pre-push policy.
 
 The Cargo workspace contains `crates/rrx` with a library and a CLI binary,
 `crates/rrx-process-tracker` for cooperative discovery, and
