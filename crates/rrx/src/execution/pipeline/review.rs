@@ -225,6 +225,18 @@ pub(crate) fn scan_strings(value: &Value) -> Result<()> {
     Ok(())
 }
 
+/// Scan bounded windows with overlap while retaining the original absolute offsets.
+pub(crate) fn scan_all_raw(bytes: &[u8]) -> Result<()> {
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let end = (offset + 8192).min(bytes.len());
+        let start = offset.saturating_sub(1536);
+        scan_raw(&bytes[start..end], start)?;
+        offset = end;
+    }
+    Ok(())
+}
+
 /// Scan discarded stderr prefixes as well as retained bytes, including split patterns.
 #[derive(Default)]
 pub(crate) struct ReviewStreamScan {

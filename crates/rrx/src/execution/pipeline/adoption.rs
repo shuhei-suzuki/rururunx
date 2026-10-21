@@ -247,7 +247,7 @@ fn retained(attempt: &Path, name: &str, receipt: &Value, maximum: usize) -> Resu
         receipt.bytes == bytes.len() as u64 && receipt.sha256 == hash(&bytes),
         "output_evidence_changed"
     );
-    SecretScanner::check(&bytes).with_context(|| name.to_owned())?;
+    super::review::scan_all_raw(&bytes).with_context(|| name.to_owned())?;
     Ok(bytes)
 }
 pub(crate) fn evidence(step: &PipelineStep, attempt: &Path) -> Result<()> {
@@ -441,7 +441,7 @@ fn explicit(glob: &str, path: &str) -> bool {
             .all(|part| glob.split('/').any(|g| g == part))
 }
 /// Whole-path component matching; unsupported bracket/escape syntax refuses safely.
-fn glob_match(glob: &str, path: &str) -> bool {
+pub(crate) fn glob_match(glob: &str, path: &str) -> bool {
     if glob.is_empty()
         || glob.len() > 512
         || glob.starts_with('/')

@@ -270,6 +270,10 @@ impl Monitor {
         };
         let codex = role.is_some_and(|r| !matches!(r, PipelineRole::Review));
         let reviewer = matches!(role, Some(PipelineRole::Review));
+        let scan_agent = matches!(
+            role,
+            Some(PipelineRole::Review | PipelineRole::Confirm | PipelineRole::Fix)
+        );
         let mut review_out_scan = super::review::ReviewStreamScan::default();
         let mut review_err_scan = super::review::ReviewStreamScan::default();
         let (seconds, drain_seconds, out_limit, err_limit) = self.kind.limits();
@@ -305,7 +309,7 @@ impl Monitor {
                 read = stdout.read(&mut out_buffer), if !out_done => {
                     match read {
                         Ok(0) => out_done = true,
-                        Ok(n) => { if reviewer {review_out_scan.append(&out_buffer[..n]);} match out.append(&out_buffer[..n]) {
+                        Ok(n) => { if scan_agent {review_out_scan.append(&out_buffer[..n]);} match out.append(&out_buffer[..n]) {
                             Ok(true) => {},
                             Ok(false) => { issue = Some("output_overflow"); break; },
                             Err(_) => { issue = Some("output_io"); break; }
@@ -316,7 +320,7 @@ impl Monitor {
                 read = stderr.read(&mut err_buffer), if !err_done => {
                     match read {
                         Ok(0) => err_done = true,
-                        Ok(n) => { if reviewer {review_err_scan.append(&err_buffer[..n]);} match err.append(&err_buffer[..n]) {
+                        Ok(n) => { if scan_agent {review_err_scan.append(&err_buffer[..n]);} match err.append(&err_buffer[..n]) {
                             Ok(true) => {},
                             Ok(false) => { issue = Some("output_overflow"); break; },
                             Err(_) => { issue = Some("output_io"); break; }

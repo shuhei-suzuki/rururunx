@@ -171,6 +171,58 @@ impl StepLauncher {
                 return Ok(LaunchResult::Held);
             }
         }
+        if matches!(step.kind.as_str(), "confirm" | "fix") {
+            let checked = if step.kind == "confirm" {
+                super::confirm::launch_check(&self.owner, &self.config, &cursor, &input).await
+            } else {
+                (|| -> Result<()> {
+                    ensure!(
+                        step.body["executor_controls"].is_object(),
+                        "fix_preflight_missing"
+                    );
+                    let data = self
+                        .owner
+                        .store
+                        .lock()
+                        .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                        .pipeline_fix_input(&self.owner, &cursor)?;
+                    let expected = super::rounds::fix_prompt(
+                        step.body["fix_nonce"]
+                            .as_str()
+                            .context("review_nonce_invalid")?,
+                        &data,
+                    )?;
+                    ensure!(
+                        input.prompt == expected && input.schema.is_empty(),
+                        "fix_input_changed"
+                    );
+                    Ok(())
+                })()
+            };
+            if let Err(error) = checked {
+                let mut store = self
+                    .owner
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+                store.pipeline_launch_snapshot(&self.owner, &cursor)?;
+                if let Some(hit) = error.downcast_ref::<super::SecretHit>() {
+                    store.pipeline_hold_secret(
+                        &self.owner,
+                        &cursor,
+                        &json!({"pattern":hit.pattern,"offset_sha256":hit.offset_sha256}),
+                    )?;
+                } else {
+                    store.pipeline_hold(
+                        &self.owner,
+                        &cursor,
+                        super::confirm::failure_reason(&error),
+                        None,
+                    )?;
+                }
+                return Ok(LaunchResult::Held);
+            }
+        }
         // Tests require the admitted/Seatbelt producer; internal steps never spawn here.
         let (role, codex) = match step.kind.as_str() {
             "test" if test.is_some() => (PipelineRole::Implement, false),
@@ -489,6 +541,7 @@ fn private_parents(root: &Path, path: &Path) -> Result<()> {
     Ok(())
 }
 fn write_input(path: &Path, bytes: &[u8]) -> Result<()> {
+    super::review::scan_all_raw(bytes)?;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)

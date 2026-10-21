@@ -4,6 +4,9 @@ use crate::execution::RuntimeOwner;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 mod review;
+mod rounds;
+pub(crate) use rounds::source_review as round_source_review;
+pub(crate) use rounds::{RoundContext, round_action, round_fix_input};
 
 pub const PIPELINE_TABLES: &[&str] = &[
     "goal_execution_profiles",
@@ -389,7 +392,7 @@ fn insert_step(tx: &Transaction<'_>, owner: &RuntimeOwner, step: &PipelineStep) 
         step.version == 0 && step.state == "planned",
         "new step requires absent version"
     );
-    if step.kind == "review" {
+    if matches!(step.kind.as_str(), "review" | "confirm" | "fix") {
         crate::execution::pipeline::review::scan_strings(&step.body).context("review.body")?;
     }
     let body = stamped(&step.body, 1, "planned", owner.epoch)?;
@@ -402,7 +405,7 @@ fn insert_step(tx: &Transaction<'_>, owner: &RuntimeOwner, step: &PipelineStep) 
     Ok(())
 }
 fn write_step(tx: &Transaction<'_>, owner: &RuntimeOwner, step: &PipelineStep) -> Result<()> {
-    if step.kind == "review" {
+    if matches!(step.kind.as_str(), "review" | "confirm" | "fix") {
         crate::execution::pipeline::review::scan_strings(&step.body).context("review.body")?;
     }
     let version = next_version(step.version)?;
@@ -2578,6 +2581,26 @@ impl Store {
         cursor: &PipelineCursor,
         evidence: &Value,
     ) -> Result<()> {
+        self.pipeline_adopt_result(owner, cursor, evidence, false)
+    }
+
+    /// Validate decoded evidence without closing the decision-producing exited step.
+    pub(crate) fn pipeline_stage_round_result(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+        evidence: &Value,
+    ) -> Result<()> {
+        self.pipeline_adopt_result(owner, cursor, evidence, true)
+    }
+
+    fn pipeline_adopt_result(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+        evidence: &Value,
+        defer: bool,
+    ) -> Result<()> {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -2636,7 +2659,18 @@ impl Store {
                 serde_json::from_value(policy["blocking_severity"].clone())?,
             )?;
         }
-        step.state = "adopted".into();
+        if step.kind == "confirm" {
+            rounds::confirm_adoption(&tx, &run, &step, evidence)?;
+        }
+        if defer {
+            ensure!(
+                matches!(step.kind.as_str(), "test" | "review" | "confirm"),
+                "round_result_kind"
+            );
+            step.body["round_result_validated"] = json!(true);
+        } else {
+            step.state = "adopted".into();
+        }
         step.body["adoption"] = evidence.clone();
         write_step(&tx, owner, &step)?;
         if matches!(step.kind.as_str(), "implement" | "fix") {
@@ -2658,6 +2692,24 @@ impl Store {
         next: &PipelineStep,
         workspace_verified: bool,
     ) -> Result<()> {
+        ensure!(
+            next.body.get("round_result_validated").is_none(),
+            "round_store_fields_reserved"
+        );
+        if matches!(next.kind.as_str(), "confirm" | "fix") {
+            ensure!(
+                [
+                    "adoption",
+                    "snapshot_tree",
+                    "confirm_nonce_verified",
+                    "filtering",
+                    "secret"
+                ]
+                .iter()
+                .all(|key| next.body.get(key).is_none()),
+                "round_store_fields_reserved"
+            );
+        }
         if next.kind == "review" {
             ensure!(
                 [
@@ -2699,7 +2751,11 @@ impl Store {
                 "invalid next pipeline sequence"
             );
             ensure!(
-                next.round == run.round || (next.kind == "fix" && next.round == run.round + 1),
+                if next.kind == "fix" {
+                    next.round == run.round + 1
+                } else {
+                    next.round == run.round
+                },
                 "invalid pipeline round"
             );
             if next.round != run.round {
