@@ -492,11 +492,7 @@ async fn b4_release_not_counted() {
     .await;
     let id = other.claim();
     other.advance_prepare(&id);
-    let cursor = other.cursor(&id);
-    other
-        .store()
-        .pipeline_plan_next(&other.owner, &cursor, &planned(&id, 2, 1, "release"), true)
-        .unwrap();
+    other.seed_next(&id, &planned(&id, 2, 1, "release"));
     let cursor = other.cursor(&id);
     other
         .store()

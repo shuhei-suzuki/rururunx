@@ -609,6 +609,8 @@ async fn b8_runtime_fix_input_guard() {
 #[tokio::test]
 async fn b8_runtime_round_increment() {
     let h = Harness::new(2, false).await;
+    h.to_confirm().await;
+    h.confirmed(h.labels("confirmed")).await;
     let before = h.f.store().pipeline_goal_view(h.f.goal).unwrap();
     for round in [0, 2] {
         let mut next = planned(&h.id, h.step().seq + 1, 1, "fix");
@@ -617,10 +619,10 @@ async fn b8_runtime_round_increment() {
         let cursor = h.f.cursor(&h.id);
         assert_eq!(
             h.f.store()
-                .pipeline_plan_next(&h.f.owner, &cursor, &next, true)
+                .pipeline_apply_round(&h.f.owner, &cursor, Some(&next))
                 .unwrap_err()
                 .to_string(),
-            "invalid pipeline round"
+            "round_next_changed"
         );
         assert_eq!(
             h.f.store().pipeline_goal_view(h.f.goal).unwrap().runs,
@@ -713,19 +715,31 @@ async fn b8_runtime_store_scan() {
     h.close().await;
 }
 
-/// A secret in a planned fix body rolls back both step insertion and the round increment.
+/// A secret in a decided fix body rolls back the step adoption, insertion and round increment.
 #[tokio::test]
 async fn b8_runtime_plan_scan() {
     let h = Harness::new(1, false).await;
+    h.to_confirm().await;
+    h.confirmed(h.labels("confirmed")).await;
     let before = h.f.store().pipeline_goal_view(h.f.goal).unwrap();
+    let cursor = h.f.cursor(&h.id);
+    let ctx =
+        h.f.store()
+            .pipeline_round_context(&h.f.owner, &cursor)
+            .unwrap();
+    let input = round_fix_input(&ctx).unwrap();
+    let nonce = Uuid::new_v4().simple().to_string();
+    let prompt = crate::execution::pipeline::rounds::fix_prompt(&nonce, &input).unwrap();
     let mut next = planned(&h.id, h.step().seq + 1, 1, "fix");
     next.round = 1;
     next.step_base = before.runs[0].head_commit.clone();
-    next.body["diagnostic"] = json!("EXAMPLE_TOKEN=fixture");
-    let cursor = h.f.cursor(&h.id);
+    next.input_sha256 = crate::execution::verification::hash(&prompt);
+    let digest = crate::execution::verification::hash(&serde_json::to_vec(&input).unwrap());
+    next.body = json!({"fix_nonce":nonce,"fix_input":input,"fix_input_sha256":digest,
+        "confirmed_ids":input.confirmed_ids(),"diagnostic":"EXAMPLE_TOKEN=fixture"});
     let error =
         h.f.store()
-            .pipeline_plan_next(&h.f.owner, &cursor, &next, true)
+            .pipeline_apply_round(&h.f.owner, &cursor, Some(&next))
             .unwrap_err();
     assert!(
         error
@@ -756,4 +770,187 @@ async fn b8_runtime_agent_failure() {
     assert_eq!(h.step().state, "rejected");
     assert_eq!(h.step().body["reason"], "confirm_agent_failed");
     h.close().await;
+}
+
+fn passing_exit() -> Value {
+    json!({"exit_code":0,"signal":null,"timed_out":false,"overflow":false,"issue":null,
+        "stdout":{"bytes":0,"sha256":crate::execution::verification::hash(b""),"complete":true},
+        "stderr":{"bytes":0,"sha256":crate::execution::verification::hash(b""),"complete":true}})
+}
+
+/// Exits one step of `kind` after an adopted prepare with a certified passing observation.
+fn store_exited(f: &Fixture, kind: &str) -> String {
+    let id = f.claim();
+    f.launching(&id, kind);
+    let cursor = f.cursor(&id);
+    let outcome = (kind != "test").then_some("success");
+    f.store()
+        .pipeline_record_exit(&f.owner, &cursor, &death(), outcome, &passing_exit())
+        .unwrap();
+    id
+}
+
+/// Task-run test, review and confirmation results cannot be adopted without a decision.
+#[tokio::test]
+async fn b8_r1_round_adoption_refused() {
+    for kind in ["test", "review", "confirm"] {
+        let f = fixture().await;
+        let id = store_exited(&f, kind);
+        let cursor = f.cursor(&id);
+        let evidence = json!({"command_id":"test","result":"pass"});
+        let error = f
+            .store()
+            .pipeline_adopt(&f.owner, &cursor, &evidence)
+            .unwrap_err();
+        assert_eq!(error.to_string(), "round_adoption_required", "{kind}");
+        assert_eq!(f.cursor(&id).step_version, cursor.step_version, "{kind}");
+    }
+}
+
+/// A staged round result cannot be staged a second time.
+#[tokio::test]
+async fn b8_r1_stage_once() {
+    let f = fixture().await;
+    let id = store_exited(&f, "test");
+    let evidence = json!({"command_id":"test","result":"pass"});
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_stage_round_result(&f.owner, &cursor, &evidence)
+        .unwrap();
+    let staged = f.cursor(&id);
+    let error = f
+        .store()
+        .pipeline_stage_round_result(&f.owner, &staged, &evidence)
+        .unwrap_err();
+    assert_eq!(error.to_string(), "round_result_staged");
+    assert_eq!(f.cursor(&id).step_version, staged.step_version);
+}
+
+/// Undecided planning after prepare refuses every step kind except implement.
+#[tokio::test]
+async fn b8_r1_plan_requires_decision() {
+    let f = fixture().await;
+    let id = f.claim();
+    f.advance_prepare(&id);
+    for kind in ["test", "review", "confirm", "fix", "release"] {
+        let mut next = planned(&id, 2, 1, kind);
+        next.round = u32::from(kind == "fix");
+        let cursor = f.cursor(&id);
+        let error = f
+            .store()
+            .pipeline_plan_next(&f.owner, &cursor, &next, true)
+            .unwrap_err();
+        assert_eq!(error.to_string(), "round_decision_required", "{kind}");
+        assert_eq!(f.cursor(&id).step_version, cursor.step_version, "{kind}");
+    }
+}
+
+/// The decision path cannot plan a review that carries caller-supplied filtering.
+#[tokio::test]
+async fn b8_r1_decided_filtering_reserved() {
+    let f = fixture().await;
+    let id = store_exited(&f, "test");
+    let cursor = f.cursor(&id);
+    let evidence = json!({"command_id":"test","result":"pass"});
+    f.store()
+        .pipeline_stage_round_result(&f.owner, &cursor, &evidence)
+        .unwrap();
+    let before = f.store().pipeline_task_view(f.goal, f.task).unwrap();
+    let mut next = planned(&id, 3, 1, "review");
+    next.body["review_nonce"] = json!(Uuid::new_v4().simple().to_string());
+    next.body["filtering"] = json!({"blocking":[],"invalid":[],"non_blocking":[]});
+    let cursor = f.cursor(&id);
+    let error = f
+        .store()
+        .pipeline_apply_round(&f.owner, &cursor, Some(&next))
+        .unwrap_err();
+    assert_eq!(error.to_string(), "review_store_fields_reserved");
+    assert_eq!(
+        f.store().pipeline_task_view(f.goal, f.task).unwrap().steps,
+        before.steps
+    );
+}
+
+/// The largest body the bound admits survives a later hold, and one more byte is refused.
+#[tokio::test]
+async fn b8_r1_body_bound_boundary() {
+    let fits = |n: usize| step_body_fits(&json!({"pad":"x".repeat(n)})).unwrap();
+    let (mut low, mut high) = (0usize, 262_144usize);
+    while low < high {
+        let mid = (low + high).div_ceil(2);
+        if fits(mid) {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    assert!(!fits(low + 1) && (261_000..262_144).contains(&low));
+    let f = fixture().await;
+    let id = f.claim();
+    f.process_step(&id, "implement");
+    let mut step = f
+        .store()
+        .pipeline_task_view(f.goal, f.task)
+        .unwrap()
+        .steps
+        .pop()
+        .unwrap();
+    step.body["pad"] = json!("x".repeat(low));
+    {
+        let mut store = f.store();
+        let tx = store.connection.transaction().unwrap();
+        write_step(&tx, &f.owner, &step).unwrap();
+        tx.commit().unwrap();
+    }
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_hold(&f.owner, &cursor, "confirm_storage_limit", None)
+        .unwrap();
+    let held = f
+        .store()
+        .pipeline_task_view(f.goal, f.task)
+        .unwrap()
+        .steps
+        .pop()
+        .unwrap();
+    assert_eq!(held.body["reason"], "confirm_storage_limit");
+}
+
+/// A catalog mismatch before a re-test plans nothing runnable and holds tests_profile_changed.
+#[tokio::test]
+async fn b8_r1_retest_profile_changed() {
+    let f = fixture().await;
+    let id = f.claim();
+    f.launching(&id, "implement");
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_record_exit(&f.owner, &cursor, &death(), Some("success"), &json!({}))
+        .unwrap();
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_record_commit(
+            &f.owner,
+            &cursor,
+            &"b".repeat(40),
+            &"c".repeat(40),
+            &json!({}),
+        )
+        .unwrap();
+    let cursor = f.cursor(&id);
+    f.store()
+        .pipeline_adopt(&f.owner, &cursor, &json!({}))
+        .unwrap();
+    f.store().connection.execute("INSERT OR REPLACE INTO verification_profiles(project_id,digest,body) SELECT project_id,digest,body || ' ' FROM verification_profiles WHERE project_id=?1", [f.project.to_string()]).unwrap();
+    let cursor = f.cursor(&id);
+    let error = f
+        .store()
+        .pipeline_round_context(&f.owner, &cursor)
+        .err()
+        .unwrap();
+    assert_eq!(error.to_string(), "tests_profile_changed");
+    let view = f.store().pipeline_task_view(f.goal, f.task).unwrap();
+    let step = view.steps.last().unwrap();
+    assert_eq!((step.kind.as_str(), step.state.as_str()), ("test", "held"));
+    assert_eq!(step.body["reason"], "tests_profile_changed");
+    assert_eq!(view.runs[0].state, "held");
 }

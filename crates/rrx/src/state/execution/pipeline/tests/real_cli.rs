@@ -4,8 +4,8 @@ use crate::{
     config::{PipelineCli, PipelineClis},
     execution::{
         pipeline::{
-            LaunchResult, PipelineGit, PipelineRole, review, review_prompt, review_snapshot,
-            step_arguments, test_support::FakeCli,
+            LaunchResult, PipelineGit, PipelineRole, RoundDecision, review, review_prompt,
+            review_snapshot, step_arguments, test_support::FakeCli,
         },
         verification::hash,
     },
@@ -189,7 +189,7 @@ fn record(f: &Fixture, kind: &str, start: Instant, result: &Result<bool>) -> Val
         Ok(step) if step.kind == kind => {
             let mut observation = json!({"kind":kind,"state":step.state,"reason":step.body.get("reason")
             .cloned().unwrap_or_else(|| if result.is_err() { json!("harness_operation_failed") } else { Value::Null }),
-            "duration_ms":start.elapsed().as_millis(),"adopted":matches!(result, Ok(true)) && step.state == "adopted"});
+            "duration_ms":start.elapsed().as_millis(),"adopted":matches!(result, Ok(true)) && (step.state == "adopted" || step.body["round_result_validated"] == true)});
             if observation["adopted"] == true {
                 if kind == "test" {
                     observation["test_result"] =
@@ -222,7 +222,7 @@ fn record(f: &Fixture, kind: &str, start: Instant, result: &Result<bool>) -> Val
     }
 }
 
-fn plan(f: &Fixture, id: &str, kind: &str, prompt: &[u8], nonce: Option<&str>) -> Result<()> {
+fn plan(f: &Fixture, id: &str, kind: &str, prompt: &[u8]) -> Result<()> {
     let view = f.store().pipeline_goal_view(f.goal)?;
     let mut next = planned(
         id,
@@ -232,9 +232,6 @@ fn plan(f: &Fixture, id: &str, kind: &str, prompt: &[u8], nonce: Option<&str>) -
     );
     next.step_base = view.runs[0].head_commit.clone();
     next.input_sha256 = hash(prompt);
-    if let Some(nonce) = nonce {
-        next.body["review_nonce"] = json!(nonce);
-    }
     let cursor = f.cursor(id);
     f.store().pipeline_plan_next(&f.owner, &cursor, &next, true)
 }
@@ -506,12 +503,13 @@ async fn pass_flow(mode: PassMode, summary: &mut Value) -> Result<()> {
                 let task = f.store().task(f.task)?.context("task missing")?;
                 let data = json!({"title":task.title,"acceptance_criteria":task.acceptance_criteria,"scope":["src/**"]});
                 let diff = git.diff(&view.runs[0].base_commit, &view.runs[0].head_commit).await?;
-                let nonce = Uuid::new_v4().simple().to_string();
-                let prompt = review_prompt(&nonce, &data, &diff)?;
-                plan(&f, &id, kind, &prompt, Some(&nonce))?;
-                prompt
+                // The round decision plans the review and its nonce; rebuild the same prompt.
+                let decided = runtime.decide_pipeline_round(f.cursor(&id)).await?;
+                ensure!(decided == Some(RoundDecision::Review), "review_not_decided");
+                let nonce = last_step(&f)?.body["review_nonce"].as_str().context("review nonce missing")?.to_owned();
+                review_prompt(&nonce, &data, &diff)?
             } else { Vec::new() };
-            if kind != "review" { plan(&f, &id, kind, &prompt, None)?; }
+            if kind != "review" { plan(&f, &id, kind, &prompt)?; }
             if let Some(scenario) = fake && kind != "test" { fake_step(&f, &id, kind, scenario)?; }
             if kind != "test" {
                 summary["prompts"][kind] = packet(&format!("{kind}-prompt.md"), &prompt);
@@ -529,8 +527,8 @@ async fn pass_flow(mode: PassMode, summary: &mut Value) -> Result<()> {
             runtime.wait_pipeline_test_boundary().await;
             match kind {
                 "implement" => runtime.adopt_pipeline_executor(f.cursor(&id)).await,
-                "test" => runtime.adopt_pipeline_test(f.cursor(&id)).await,
-                "review" => runtime.adopt_pipeline_review(f.cursor(&id)).await,
+                "test" => runtime.adopt_pipeline_round_test(f.cursor(&id)).await,
+                "review" => runtime.adopt_pipeline_round_review(f.cursor(&id)).await,
                 _ => unreachable!(),
             }
         }.await;
@@ -759,7 +757,7 @@ async fn fake_cli_post_spawn_packet() {
     let (f, runtime, id) = super::b5::prepare_fixture_at(f, base).await.unwrap();
     runtime.wait_pipeline_test_boundary().await;
     assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
-    plan(&f, &id, "implement", IMPLEMENT, None).unwrap();
+    plan(&f, &id, "implement", IMPLEMENT).unwrap();
     fake_step(&f, &id, "implement", FAKE_PASS).unwrap();
     f.store().connection.execute_batch("CREATE TEMP TRIGGER real_cli_fail_running BEFORE UPDATE ON pipeline_steps WHEN NEW.state='running' BEGIN SELECT RAISE(ABORT,'injected running failure'); END;").unwrap();
     let expected = packet("implement-prompt.md", IMPLEMENT);

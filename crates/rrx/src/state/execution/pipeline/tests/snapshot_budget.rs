@@ -123,10 +123,7 @@ async fn b7_snapshot_listing_bound() {
         next.step_base = commit;
         next.input_sha256 = crate::execution::verification::hash(&prompt);
         next.body["review_nonce"] = json!(nonce);
-        let cursor = f.cursor(&id);
-        f.store()
-            .pipeline_plan_next(&f.owner, &cursor, &next, true)
-            .unwrap();
+        f.seed_next(&id, &next);
         let cursor = f.cursor(&id);
         runtime.wait_pipeline_test_boundary().await;
         let mut input = runtime
@@ -228,10 +225,7 @@ async fn b7_snapshot_directory_bound() {
     next.step_base = commit;
     next.input_sha256 = crate::execution::verification::hash(&prompt);
     next.body["review_nonce"] = json!(nonce);
-    let cursor = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &next, true)
-        .unwrap();
+    f.seed_next(&id, &next);
     let cursor = f.cursor(&id);
     runtime.wait_pipeline_test_boundary().await;
     let mut input = runtime

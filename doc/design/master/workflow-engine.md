@@ -423,15 +423,19 @@ The decision is a deterministic ordered rule over stored decoded observations:
 4. Failing tests or confirmed blocking labels plan the next fix while below the
    limit; at the limit they hold with `round_limit`.
 
-Rejected labels are retained as records only. Round-specific test and review
-adoption entry points validate and store evidence while leaving the last step
-exited. The final decision transaction either adopts that step and inserts the next
-planned step, or moves that same exited step to held. It revalidates the current
-owner, epoch, Goal lifecycle and independent run/step versions under control
-admission. Already-terminal adopted results may advance when all required decision
-evidence is present. Adding filtering evidence to an adopted review or holding any
-adopted step is refused; terminal steps are immutable. Callers use the round-specific
-adoption entry points to preserve the filtering and recoverable-hold boundaries.
+Rejected labels are retained as records only. Round-specific test, review and
+confirmation adoption entry points validate and store evidence once while leaving
+the last step exited; the Store refuses immediate adoption of these Task-run steps
+and a second staging. The final decision transaction either adopts that step and
+inserts the next planned step, or moves that same exited step to held. It
+revalidates the current owner, epoch, Goal lifecycle and independent run/step
+versions under control admission. Outside the decision, planning accepts only an
+implement step after prepare, a test after an adopted implement or fix, a Goal
+check after a Goal check, and retries of an interrupted or limited attempt. No
+planner may supply Store-written round evidence such as adoption, filtering,
+snapshot or nonce-verification fields. Review, filtering and confirmation evidence
+is stored only if the body still fits the step limit after every later stamp, hold
+reason and recovery mark; otherwise the step holds with its storage-limit reason.
 
 ## 8. Impact analysis gate
 
@@ -564,17 +568,20 @@ attribute, index and registration checks, then uses `StepLauncher` and
 `StepCustody`. Each command has its own `pipeline_steps` receipt with exit code,
 signal and retained stdout/stderr digests. Tests do not create native verification
 runs. Zero exit without timeout or output overflow passes; nonzero exit, timeout
-and overflow are adopted failures in Task runs. A Goal check run instead holds the
+and overflow are recorded failures. Task runs stage each result for the round
+decision, which alone adopts it. A Goal check run instead holds the
 failing command's step with `goal_check_failed` before planning another command,
 so recovery retries that command. Missing observations hold the run. Adoption
 shares `control_admission` with controls and rechecks owner, Goal state and both
-run and step versions. Scheduling subsequent commands remains a separate caller
-responsibility.
+run and step versions. Later Task-run commands come only from the round decision;
+Goal-run scheduling remains a separate caller responsibility.
 
 The immutable Project catalog is read by the Goal's pinned profile digest at
 planning, launch intent and adoption. Every read hashes the stored body before
 decoding and validating it. A changed catalog holds the step with
 `tests_profile_changed`; each launch also rechecks the admitted executable bytes.
+A round context read that finds a changed catalog holds its current step, or the
+re-test it would plan, with the same reason.
 Tests execute through `/usr/bin/sandbox-exec` with network denied and writes
 restricted to the checkout, step TMPDIR and operator-declared caches. Their
 environment is built from the pipeline allowlist without `CODEX_HOME`.

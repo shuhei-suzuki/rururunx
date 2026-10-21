@@ -8,7 +8,7 @@ use crate::{
     runtime::Runtime,
     state::pipeline::{
         PipelineCursor, PipelineStep, RoundContext, round_action, round_fix_input,
-        round_source_review,
+        round_source_review, step_body_fits,
     },
 };
 use anyhow::{Context, Result, ensure};
@@ -39,7 +39,14 @@ impl Runtime {
         if !self.round_ready()? {
             return Ok(false);
         }
-        let ctx = self.round_context(&cursor)?;
+        let ctx = match self.round_context(&cursor) {
+            // The Store held the planned re-test; nothing runs (§7.2).
+            Err(error) if error.to_string() == "tests_profile_changed" => {
+                self.wake.notify_one();
+                return Ok(false);
+            }
+            ctx => ctx?,
+        };
         ensure!(
             matches!(ctx.step.kind.as_str(), "implement" | "fix") && ctx.step.state == "adopted",
             "round_test_source"
@@ -64,7 +71,13 @@ impl Runtime {
         if !self.round_ready()? {
             return Ok(None);
         }
-        let mut ctx = self.round_context(&cursor)?;
+        let mut ctx = match self.round_context(&cursor) {
+            Err(error) if error.to_string() == "tests_profile_changed" => {
+                self.wake.notify_one();
+                return Ok(Some(RoundDecision::Hold("tests_profile_changed")));
+            }
+            ctx => ctx?,
+        };
         let result = async {
             if ctx.step.kind == "review" && ctx.step.body["filtering"].is_null() {
                 ensure!(ctx.step.state == "exited" && ctx.step.body["round_result_validated"] == true, "round_filter_requires_exited");
@@ -314,10 +327,7 @@ impl Runtime {
             evidence["snapshot_tree"] = json!(tree);
             let mut stored = ctx.step.body.clone();
             stored["adoption"] = evidence.clone();
-            ensure!(
-                serde_json::to_vec(&stored)?.len() <= 260 * 1024,
-                "confirm_storage_limit"
-            );
+            ensure!(step_body_fits(&stored)?, "confirm_storage_limit");
             Ok::<_, anyhow::Error>(Some(evidence))
         }
         .await;

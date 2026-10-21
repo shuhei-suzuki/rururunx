@@ -72,7 +72,7 @@ fn context(
         .query_map(params![run.id, step.seq, step.attempt], step_row)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(RoundContext {
-        profile: admitted_profile(tx, run.goal_id)?,
+        profile: admitted_profile(tx, run.goal_id).context("tests_profile_changed")?,
         run,
         step,
         project,
@@ -303,6 +303,53 @@ fn nonce_check(tx: &Transaction<'_>, step: &PipelineStep, key: &str) -> Result<(
     Ok(())
 }
 
+/// §7.2: a catalog that no longer verifies neither plans nor runs a test; the step is held.
+fn hold_profile_changed(
+    tx: &Transaction<'_>,
+    owner: &RuntimeOwner,
+    cursor: &PipelineCursor,
+) -> Result<()> {
+    let (mut run, mut step) = cursor_rows(tx, owner, cursor, true)?;
+    match step.state.as_str() {
+        "planned" | "exited" => {
+            step.state = "held".into();
+            step.body["reason"] = json!("tests_profile_changed");
+            if step.cookie.is_none() {
+                step.body["death_confirmed"] = json!(true);
+            }
+            write_step(tx, owner, &step)?;
+            if step.kind == "test" {
+                record_test_cleanup(tx, &run.id)?;
+            }
+            held(tx, owner, &mut run, &step, "tests_profile_changed")
+        }
+        "adopted" if matches!(step.kind.as_str(), "implement" | "fix") => {
+            // Planning the re-test holds it at insertion; its placeholder command never runs.
+            let retest = PipelineStep {
+                run_id: run.id.clone(),
+                seq: step.seq + 1,
+                attempt: 1,
+                kind: "test".into(),
+                provider: None,
+                owner_epoch: owner.epoch,
+                round: run.round,
+                state: "planned".into(),
+                version: 0,
+                cookie: None,
+                pid: None,
+                birth: None,
+                step_base: run.head_commit.clone(),
+                input_sha256: crate::execution::verification::hash(b""),
+                result_commit: None,
+                result_tree: None,
+                body: json!({"command_index":0,"command_id":"tests_profile_changed"}),
+            };
+            insert_step(tx, owner, &retest)
+        }
+        _ => bail!("round_context_changed"),
+    }
+}
+
 impl Store {
     pub(crate) fn pipeline_fix_input(
         &mut self,
@@ -350,15 +397,27 @@ impl Store {
         Ok(input)
     }
 
+    /// A catalog mismatch holds the step in this transaction before the error returns.
     pub(crate) fn pipeline_round_context(
         &mut self,
         owner: &RuntimeOwner,
         cursor: &PipelineCursor,
     ) -> Result<RoundContext> {
-        let tx = self.connection.transaction()?;
-        let ctx = context(&tx, owner, cursor)?;
-        tx.commit()?;
-        Ok(ctx)
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        match context(&tx, owner, cursor) {
+            Ok(ctx) => {
+                tx.commit()?;
+                Ok(ctx)
+            }
+            Err(error) if error.to_string() == "tests_profile_changed" => {
+                hold_profile_changed(&tx, owner, cursor)?;
+                tx.commit()?;
+                Err(error)
+            }
+            Err(error) => Err(error),
+        }
     }
     pub(crate) fn pipeline_record_filter(
         &mut self,
@@ -381,10 +440,7 @@ impl Store {
         validate_filter(&result, ctx.threshold, filtered)?;
         ensure!(ctx.step.body["filtering"].is_null(), "round_filter_exists");
         ctx.step.body["filtering"] = serde_json::to_value(filtered)?;
-        ensure!(
-            serde_json::to_vec(&ctx.step.body)?.len() <= 260 * 1024,
-            "confirm_storage_limit"
-        );
+        ensure!(step_body_fits(&ctx.step.body)?, "confirm_storage_limit");
         write_step(&tx, owner, &ctx.step)?;
         tx.commit()?;
         Ok(())
@@ -489,19 +545,7 @@ fn validate_next(
             && next.round == ctx.run.round + u32::from(kind == "fix"),
         "round_next_changed"
     );
-    ensure!(
-        [
-            "adoption",
-            "round_result_validated",
-            "snapshot_tree",
-            "confirm_nonce_verified",
-            "review_nonce_verified",
-            "secret"
-        ]
-        .iter()
-        .all(|k| next.body.get(k).is_none()),
-        "round_store_fields_reserved"
-    );
+    reserved_fields(next)?;
     if kind == "fix" {
         let input = round_fix_input(ctx)?;
         ensure!(

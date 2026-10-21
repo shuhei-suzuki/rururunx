@@ -7,7 +7,7 @@ use crate::{
         review::{self, REVIEW_SCHEMA},
         review_snapshot,
     },
-    state::pipeline::{PipelineCursor, PipelineRun, PipelineStep},
+    state::pipeline::{PipelineCursor, PipelineRun, PipelineStep, step_body_fits},
 };
 use anyhow::{Context, Result, ensure};
 use serde_json::json;
@@ -148,16 +148,9 @@ impl Runtime {
     }
 
     /// Decode only retained, scan-checked output after death and a second target-tree check.
-    pub async fn adopt_pipeline_review(&self, cursor: PipelineCursor) -> Result<bool> {
-        self.adopt_review_result(cursor, false).await
-    }
-
-    /// Preserve exited until the round decision can atomically adopt or hold this step.
+    /// Reviews exist only in Task rounds, so the step stays exited until the round decision
+    /// atomically adopts or holds it.
     pub async fn adopt_pipeline_round_review(&self, cursor: PipelineCursor) -> Result<bool> {
-        self.adopt_review_result(cursor, true).await
-    }
-
-    async fn adopt_review_result(&self, cursor: PipelineCursor, defer: bool) -> Result<bool> {
         let Ok(_boundary) = self.control_admission.try_lock() else {
             return Ok(false);
         };
@@ -221,25 +214,17 @@ impl Runtime {
             decoded["snapshot_tree"] = json!(tree);
             let mut stored = step.body.clone();
             stored["adoption"] = decoded.clone();
-            ensure!(
-                serde_json::to_vec(&stored)?.len() <= 260 * 1024,
-                "review_storage_limit"
-            );
+            ensure!(step_body_fits(&stored)?, "review_storage_limit");
             Ok::<_, anyhow::Error>(Some(decoded))
         }
         .await;
         match checked {
             Ok(Some(evidence)) => {
-                let mut store = self
-                    .owner
+                self.owner
                     .store
                     .lock()
-                    .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-                if defer {
-                    store.pipeline_stage_round_result(&self.owner, &cursor, &evidence)?;
-                } else {
-                    store.pipeline_adopt(&self.owner, &cursor, &evidence)?;
-                }
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .pipeline_stage_round_result(&self.owner, &cursor, &evidence)?;
                 self.wake.notify_one();
                 Ok(true)
             }

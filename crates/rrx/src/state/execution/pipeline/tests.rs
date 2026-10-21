@@ -585,10 +585,39 @@ impl Fixture {
     }
     fn process_step(&self, id: &str, kind: &str) {
         self.advance_prepare(id);
+        let next = planned(id, 2, 1, kind);
+        if kind == "implement" {
+            let cursor = self.cursor(id);
+            self.store()
+                .pipeline_plan_next(&self.owner, &cursor, &next, true)
+                .unwrap();
+        } else {
+            // Other kinds follow an Executor commit or a round decision.
+            self.seed_next(id, &next);
+        }
+    }
+    /// Plans a decision-only step so a test of a later boundary can start there.
+    fn seed_next(&self, id: &str, next: &PipelineStep) {
         let cursor = self.cursor(id);
         self.store()
-            .pipeline_plan_next(&self.owner, &cursor, &planned(id, 2, 1, kind), true)
+            .pipeline_seed_step(&self.owner, &cursor, next)
             .unwrap();
+    }
+    /// Applies the decision's adoption to the staged last step for later-boundary tests.
+    fn adopt_staged(&self, id: &str) {
+        let store = self.store();
+        let step = store
+            .pipeline_task_view(self.goal, self.task)
+            .unwrap()
+            .steps
+            .pop()
+            .unwrap();
+        assert!(
+            step.run_id == id
+                && step.state == "exited"
+                && step.body["round_result_validated"] == true
+        );
+        raw_step(&store, &step, self.owner.epoch, "adopted").unwrap();
     }
 
     fn launching(&self, id: &str, kind: &str) {
@@ -702,10 +731,7 @@ fn recovery_evidence() -> PipelineRecoveryEvidence {
 fn complete_task(f: &Fixture) -> String {
     let id = f.claim();
     f.advance_prepare(&id);
-    let cursor = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &planned(&id, 2, 1, "release"), true)
-        .unwrap();
+    f.seed_next(&id, &planned(&id, 2, 1, "release"));
     let journal = release_journal(f, &id);
     let cursor = f.cursor(&id);
     f.store()
@@ -1416,11 +1442,7 @@ async fn b2_abandon_requires_closed_journal() {
     let f = fixture().await;
     let id = f.claim();
     f.advance_prepare(&id);
-    let next = planned(&id, 2, 1, "release");
-    let cursor = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &next, true)
-        .unwrap();
+    f.seed_next(&id, &planned(&id, 2, 1, "release"));
     let journal = release_journal(&f, &id);
     let cursor = f.cursor(&id);
     f.store()
@@ -1572,12 +1594,9 @@ fn held_release(f: &Fixture) -> (String, PipelineJournal) {
     f.store()
         .pipeline_adopt(&f.owner, &cursor, &json!({}))
         .unwrap();
-    let cursor = f.cursor(&id);
     let mut next = planned(&id, 3, 1, "release");
     next.step_base = "b".repeat(40);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &next, true)
-        .unwrap();
+    f.seed_next(&id, &next);
     let mut j = release_journal(f, &id);
     j.new_commit = "b".repeat(40);
     let cursor = f.cursor(&id);

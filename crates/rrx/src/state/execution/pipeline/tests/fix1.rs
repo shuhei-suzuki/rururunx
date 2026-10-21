@@ -316,10 +316,7 @@ async fn b2_fix1_internal_process_gate() {
             b.process_step(&br, "test");
             if kind == "release" {
                 a.advance_prepare(&ar);
-                let c = a.cursor(&ar);
-                a.store()
-                    .pipeline_plan_next(&a.owner, &c, &planned(&ar, 2, 1, "release"), true)
-                    .unwrap();
+                a.seed_next(&ar, &planned(&ar, 2, 1, "release"));
             }
             let c = a.cursor(&ar);
             a.store()
@@ -432,12 +429,13 @@ async fn b2_fix1_terminal_rewrite() {
         .unwrap();
     let c = f.cursor(&id);
     f.store()
-        .pipeline_adopt(&f.owner, &c, &json!({"command_id":"test","result":"pass"}))
+        .pipeline_stage_round_result(&f.owner, &c, &json!({"command_id":"test","result":"pass"}))
         .unwrap();
+    f.adopt_staged(&id);
     let c = f.cursor(&id);
     assert!(
         f.store()
-            .pipeline_adopt(&f.owner, &c, &json!({"command_id":"unrun"}))
+            .pipeline_stage_round_result(&f.owner, &c, &json!({"command_id":"unrun"}))
             .is_err()
     );
     rejected(
@@ -480,7 +478,7 @@ async fn b2_fix1_command_identity() {
     let c = f.cursor(&id);
     assert!(
         f.store()
-            .pipeline_adopt(&f.owner, &c, &json!({"command_id":"unrun"}))
+            .pipeline_stage_round_result(&f.owner, &c, &json!({"command_id":"unrun"}))
             .is_err()
     );
 }
@@ -528,10 +526,7 @@ async fn b2_fix1_journal_ref_scope() {
     let f = fixture().await;
     let id = f.claim();
     f.advance_prepare(&id);
-    let c = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &c, &planned(&id, 2, 1, "release"), true)
-        .unwrap();
+    f.seed_next(&id, &planned(&id, 2, 1, "release"));
     let mut j = release_journal(&f, &id);
     j.ref_name = "refs/heads/main".into();
     let c = f.cursor(&id);
@@ -788,7 +783,7 @@ async fn b2_fix1_adopt_last_cursor() {
     f.advance_prepare(&id);
     let old = f.cursor(&id);
     f.store()
-        .pipeline_plan_next(&f.owner, &old, &planned(&id, 2, 1, "test"), true)
+        .pipeline_plan_next(&f.owner, &old, &planned(&id, 2, 1, "implement"), true)
         .unwrap();
     let error = f
         .store()

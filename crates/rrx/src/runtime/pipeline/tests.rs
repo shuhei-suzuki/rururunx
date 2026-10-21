@@ -110,6 +110,13 @@ impl Runtime {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .pipeline_launch_snapshot(&self.owner, &cursor)?;
+        // Task results are staged for their round decision (§8.5); Goal checks adopt directly.
+        let reason = if defer {
+            "round_result_kind"
+        } else {
+            "round_adoption_required"
+        };
+        ensure!(defer == (run.kind == "task"), reason);
         let command = selected(&profile, &step)?;
         let config = self
             .config
@@ -187,7 +194,6 @@ impl Runtime {
                 let evidence =
                     json!({"command_id":command.id,"result":if pass {"pass"} else {"fail"}});
                 if defer {
-                    ensure!(run.kind == "task", "round_result_kind");
                     store.pipeline_stage_round_result(&self.owner, &cursor, &evidence)?;
                 } else {
                     store.pipeline_adopt(&self.owner, &cursor, &evidence)?;

@@ -37,13 +37,11 @@ async fn b6_f5_cleanup_never_holds() {
         assert!(tokio::time::Instant::now() < deadline);
         tokio::task::yield_now().await;
     }
+    f.adopt_staged(&id);
     let run = f.store().pipeline_goal_view(f.goal).unwrap().runs[0].clone();
     let mut next = planned(&id, 3, 1, "release");
     next.step_base = run.head_commit.clone();
-    let cursor = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &next, true)
-        .unwrap();
+    f.seed_next(&id, &next);
     let mut journal = release_journal(&f, &id);
     journal.old_commit = run.head_commit.clone();
     journal.new_commit = run.head_commit;
@@ -116,20 +114,18 @@ async fn b6_f5_live_step_cursor() {
             .unwrap();
         let cursor = f.cursor(&id);
         f.store()
-            .pipeline_adopt(
+            .pipeline_stage_round_result(
                 &f.owner,
                 &cursor,
                 &json!({"command_id":"test","result":"pass"}),
             )
             .unwrap();
+        f.adopt_staged(&id);
         let mut next = planned(&id, 3, 1, kind);
         next.step_base = f.store().pipeline_goal_view(f.goal).unwrap().runs[0]
             .head_commit
             .clone();
-        let cursor = f.cursor(&id);
-        f.store()
-            .pipeline_plan_next(&f.owner, &cursor, &next, true)
-            .unwrap();
+        f.seed_next(&id, &next);
         let cursor = f.cursor(&id);
         f.store()
             .pipeline_begin_launch(
@@ -205,23 +201,21 @@ async fn b6_f5_cleanup_cumulative() {
         .unwrap();
     let cursor = f.cursor(&id);
     f.store()
-        .pipeline_adopt(
+        .pipeline_stage_round_result(
             &f.owner,
             &cursor,
             &json!({"command_id":"test","result":"pass"}),
         )
         .unwrap();
+    f.adopt_staged(&id);
     let prior = f
         .store()
         .pipeline_goal_view(f.goal)
         .unwrap()
         .pending_cleanup;
-    let cursor = f.cursor(&id);
     let mut fix = planned(&id, 3, 1, "fix");
     fix.round = 1;
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &fix, true)
-        .unwrap();
+    f.seed_next(&id, &fix);
     let cursor = f.cursor(&id);
     f.store()
         .pipeline_begin_launch(
@@ -279,7 +273,7 @@ async fn b6_f5_cleanup_cumulative() {
         .unwrap();
     let cursor = f.cursor(&id);
     f.store()
-        .pipeline_adopt(
+        .pipeline_stage_round_result(
             &f.owner,
             &cursor,
             &json!({"command_id":"test","result":"pass"}),
@@ -382,7 +376,7 @@ async fn b6_f5_sweep_continues() {
         let cursor = fixture.cursor(&id);
         fixture
             .store()
-            .pipeline_adopt(
+            .pipeline_stage_round_result(
                 &fixture.owner,
                 &cursor,
                 &json!({"command_id":"test","result":"pass"}),
@@ -581,7 +575,7 @@ async fn b6_f5_cleanup_backoff() {
         .unwrap();
     let cursor = f.cursor(&id);
     f.store()
-        .pipeline_adopt(
+        .pipeline_stage_round_result(
             &f.owner,
             &cursor,
             &json!({"command_id":"test","result":"pass"}),

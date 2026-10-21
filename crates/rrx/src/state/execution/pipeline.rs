@@ -243,6 +243,25 @@ fn stamped(body: &Value, version: u64, state: &str, epoch: u64) -> Result<String
     body.insert("epoch".into(), json!(epoch));
     Ok(serde_json::to_string(&body)?)
 }
+/// The `pipeline_steps.body` column bound.
+const STEP_BODY_BYTES: usize = 262_144;
+/// Whether a step body still fits after every later stamp, hold or reject reason, secret
+/// receipt and recovery mark, so no later transition can fail the column CHECK.
+pub(crate) fn step_body_fits(body: &Value) -> Result<bool> {
+    let mut worst = body
+        .as_object()
+        .context("pipeline body must be an object")?
+        .clone();
+    worst.insert("reason".into(), json!("r".repeat(128)));
+    worst.insert(
+        "secret".into(),
+        json!({"pattern":"p".repeat(64),"file":"stdout.log","offset_sha256":"0".repeat(64)}),
+    );
+    worst.insert("death_confirmed".into(), json!(true));
+    let max = i64::MAX as u64;
+    let stored = stamped(&Value::Object(worst), max, "interrupted", max)?;
+    Ok(stored.len() <= STEP_BODY_BYTES)
+}
 fn cas(changed: usize, table: &str, id: &str, expected: u64) -> Result<()> {
     if changed != 1 {
         bail!(StateGuardError::SnapshotChanged {
@@ -387,11 +406,35 @@ fn write_run(tx: &Transaction<'_>, owner: &RuntimeOwner, run: &PipelineRun) -> R
     let body = stamped(&run.body, version, &run.state, owner.epoch)?;
     cas(tx.execute("UPDATE pipeline_runs SET owner_epoch=?1,version=?2,state=?3,round=?4,head_commit=?5,body=?6 WHERE id=?7 AND version=?8",params![owner.epoch,version,run.state,run.round,run.head_commit,body,run.id,run.version])?,"pipeline_runs",&run.id,run.version)
 }
+/// Round evidence only the Store writes; no planner may supply it on a new step.
+const ROUND_STORE_FIELDS: &[&str] = &[
+    "adoption",
+    "round_result_validated",
+    "filtering",
+    "snapshot_tree",
+    "confirm_nonce_verified",
+    "review_nonce_verified",
+    "secret",
+];
+fn reserved_fields(step: &PipelineStep) -> Result<()> {
+    for key in ROUND_STORE_FIELDS {
+        if step.body.get(key).is_some() {
+            let reason = if step.kind == "review" {
+                "review_store_fields_reserved"
+            } else {
+                "round_store_fields_reserved"
+            };
+            bail!(reason);
+        }
+    }
+    Ok(())
+}
 fn insert_step(tx: &Transaction<'_>, owner: &RuntimeOwner, step: &PipelineStep) -> Result<()> {
     ensure!(
         step.version == 0 && step.state == "planned",
         "new step requires absent version"
     );
+    reserved_fields(step)?;
     if matches!(step.kind.as_str(), "review" | "confirm" | "fix") {
         crate::execution::pipeline::review::scan_strings(&step.body).context("review.body")?;
     }
@@ -2629,6 +2672,19 @@ impl Store {
         if !matches!(step.kind.as_str(), "prepare" | "release") {
             certifying_exit(&step)?;
         }
+        let round_kind = matches!(step.kind.as_str(), "test" | "review" | "confirm");
+        ensure!(
+            !defer || (round_kind && run.kind == "task"),
+            "round_result_kind"
+        );
+        if round_kind && run.kind == "task" {
+            // A Task round's deciding result becomes adopted only with its decision (§8.5).
+            ensure!(defer, "round_adoption_required");
+            ensure!(
+                step.body.get("round_result_validated").is_none(),
+                "round_result_staged"
+            );
+        }
         if step.kind == "test" {
             let Some(_) = check_test_profile(&tx, owner, &mut run, &mut step)? else {
                 tx.commit()?;
@@ -2663,15 +2719,19 @@ impl Store {
             rounds::confirm_adoption(&tx, &run, &step, evidence)?;
         }
         if defer {
-            ensure!(
-                matches!(step.kind.as_str(), "test" | "review" | "confirm"),
-                "round_result_kind"
-            );
             step.body["round_result_validated"] = json!(true);
         } else {
             step.state = "adopted".into();
         }
         step.body["adoption"] = evidence.clone();
+        if defer && step.kind != "test" {
+            let limit = if step.kind == "review" {
+                "review_storage_limit"
+            } else {
+                "confirm_storage_limit"
+            };
+            ensure!(step_body_fits(&step.body)?, limit);
+        }
         write_step(&tx, owner, &step)?;
         if matches!(step.kind.as_str(), "implement" | "fix") {
             run.head_commit = step
@@ -2685,6 +2745,7 @@ impl Store {
     }
 
     /// New attempts require caller's workspace verification; no old attempt is restarted.
+    /// Review, confirmation, fix and release steps come only from the round decision.
     pub fn pipeline_plan_next(
         &mut self,
         owner: &RuntimeOwner,
@@ -2692,37 +2753,29 @@ impl Store {
         next: &PipelineStep,
         workspace_verified: bool,
     ) -> Result<()> {
-        ensure!(
-            next.body.get("round_result_validated").is_none(),
-            "round_store_fields_reserved"
-        );
-        if matches!(next.kind.as_str(), "confirm" | "fix") {
-            ensure!(
-                [
-                    "adoption",
-                    "snapshot_tree",
-                    "confirm_nonce_verified",
-                    "filtering",
-                    "secret"
-                ]
-                .iter()
-                .all(|key| next.body.get(key).is_none()),
-                "round_store_fields_reserved"
-            );
-        }
-        if next.kind == "review" {
-            ensure!(
-                [
-                    "review_nonce_verified",
-                    "snapshot_tree",
-                    "adoption",
-                    "secret"
-                ]
-                .iter()
-                .all(|key| next.body.get(key).is_none()),
-                "review_store_fields_reserved"
-            );
-        }
+        self.plan_next(owner, cursor, next, workspace_verified, true)
+    }
+
+    /// Plans a decision-only step so tests of later boundaries can start there.
+    #[cfg(all(test, target_os = "macos"))]
+    pub(crate) fn pipeline_seed_step(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+        next: &PipelineStep,
+    ) -> Result<()> {
+        self.plan_next(owner, cursor, next, true, false)
+    }
+
+    fn plan_next(
+        &mut self,
+        owner: &RuntimeOwner,
+        cursor: &PipelineCursor,
+        next: &PipelineStep,
+        workspace_verified: bool,
+        undecided: bool,
+    ) -> Result<()> {
+        reserved_fields(next)?;
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -2749,6 +2802,10 @@ impl Store {
             ensure!(
                 previous.state == "adopted" && next.seq == previous.seq + 1 && next.attempt == 1,
                 "invalid next pipeline sequence"
+            );
+            ensure!(
+                !undecided || planner_may_plan(&run, &previous, next),
+                "round_decision_required"
             );
             ensure!(
                 if next.kind == "fix" {
@@ -2815,6 +2872,16 @@ impl Store {
         settle_wait(&tx, owner, Some(wait), &step)?;
         tx.commit()?;
         Ok(())
+    }
+}
+
+/// Kinds a caller may plan without a round decision (§8.4, §8.5); retries keep their kind.
+fn planner_may_plan(run: &PipelineRun, previous: &PipelineStep, next: &PipelineStep) -> bool {
+    match (run.kind.as_str(), next.kind.as_str()) {
+        ("task", "implement") => previous.kind == "prepare",
+        ("task", "test") => matches!(previous.kind.as_str(), "implement" | "fix"),
+        ("goal", "test") => previous.kind == "test",
+        _ => false,
     }
 }
 

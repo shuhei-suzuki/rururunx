@@ -152,10 +152,7 @@ pub(super) async fn goal_commands(ids: &[&str]) -> (Fixture, Arc<Runtime>, Strin
     let mut run = f.store().pipeline_goal_view(f.goal).unwrap().runs[0].clone();
     let mut release = planned(&id, 2, 1, "release");
     release.step_base = run.head_commit.clone();
-    let cursor = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &release, true)
-        .unwrap();
+    f.seed_next(&id, &release);
     let mut journal = release_journal(&f, &id);
     journal.old_commit = run.head_commit.clone();
     journal.new_commit = run.head_commit.clone();
@@ -407,6 +404,6 @@ async fn b6_f4_retry_cleanup() {
     assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     assert_eq!(view.steps.last().unwrap().attempt, old.attempt + 1);
-    assert_eq!(view.steps.last().unwrap().state, "adopted");
+    assert_eq!(view.steps.last().unwrap().state, "exited");
     runtime.shutdown().await.unwrap();
 }

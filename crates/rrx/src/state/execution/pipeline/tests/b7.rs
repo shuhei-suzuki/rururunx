@@ -48,10 +48,7 @@ impl ReviewFixture {
         next.step_base = view.runs[0].head_commit.clone();
         next.input_sha256 = crate::execution::verification::hash(&prompt);
         next.body["review_nonce"] = json!(nonce);
-        let cursor = f.cursor(&id);
-        f.store()
-            .pipeline_plan_next(&f.owner, &cursor, &next, true)
-            .unwrap();
+        f.seed_next(&id, &next);
         let config = f.config.pipeline.as_ref().unwrap();
         let path = review_snapshot::snapshot_path(&config.work_root, &id, seq, 1).unwrap();
         let attempt = config
@@ -144,7 +141,7 @@ impl ReviewFixture {
         let before = self.step();
         let result = self
             .runtime
-            .adopt_pipeline_review(self.f.cursor(&self.id))
+            .adopt_pipeline_round_review(self.f.cursor(&self.id))
             .await
             .unwrap();
         if result || self.step() != before {
@@ -152,7 +149,7 @@ impl ReviewFixture {
         }
         self.runtime.wait_pipeline_test_boundary().await;
         self.runtime
-            .adopt_pipeline_review(self.f.cursor(&self.id))
+            .adopt_pipeline_round_review(self.f.cursor(&self.id))
             .await
             .unwrap()
     }
@@ -404,10 +401,7 @@ async fn b7_runtime_prompt_size_reason() {
     let mut next = planned(&id, 3, 1, "review");
     next.step_base = view.runs[0].head_commit.clone();
     next.body["review_nonce"] = json!(Uuid::new_v4().simple().to_string());
-    let cursor = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &next, true)
-        .unwrap();
+    f.seed_next(&id, &next);
     runtime.wait_pipeline_test_boundary().await;
     assert!(
         runtime
@@ -525,7 +519,7 @@ async fn b7_paused_boundaries_unchanged() {
         let error = match phase {
             "prepare" => h.runtime.prepare_pipeline_review(cursor).await.err(),
             "launch" => h.runtime.launch_pipeline_review(cursor).await.err(),
-            _ => h.runtime.adopt_pipeline_review(cursor).await.err(),
+            _ => h.runtime.adopt_pipeline_round_review(cursor).await.err(),
         }
         .expect("paused review must fail without mutation");
         assert_eq!(error.to_string(), "pipeline Goal is not Running");
@@ -554,7 +548,7 @@ async fn b7_stale_review_boundaries() {
             .await
             .is_err()
     );
-    assert!(h.runtime.adopt_pipeline_review(stale).await.is_err());
+    assert!(h.runtime.adopt_pipeline_round_review(stale).await.is_err());
     assert_eq!(h.step(), before);
     h.close().await;
 }
@@ -575,7 +569,7 @@ async fn b7_store_result_digest() {
     let cursor = h.f.cursor(&h.id);
     let error =
         h.f.store()
-            .pipeline_adopt(&h.f.owner, &cursor, &evidence)
+            .pipeline_stage_round_result(&h.f.owner, &cursor, &evidence)
             .unwrap_err();
     assert_eq!(error.to_string(), "review_output_changed");
     assert_eq!(h.step(), before);
@@ -625,6 +619,7 @@ async fn b7_nonce_reuse_casefold() {
         tx.commit().unwrap();
     }
     assert!(h.adopt().await);
+    h.f.adopt_staged(&h.id);
     let cursor = h.f.cursor(&h.id);
     let (_, task, _) =
         h.f.store()
@@ -635,9 +630,7 @@ async fn b7_nonce_reuse_casefold() {
     next.body["review_nonce"] = json!(nonce);
     next.input_sha256 =
         crate::execution::verification::hash(&review_prompt(&nonce, &task, b"").unwrap());
-    h.f.store()
-        .pipeline_plan_next(&h.f.owner, &cursor, &next, true)
-        .unwrap();
+    h.f.seed_next(&h.id, &next);
     assert!(matches!(h.launch().await, LaunchResult::Held));
     assert_eq!(h.step().body["reason"], "review_nonce_reused");
     h.close().await;
@@ -660,7 +653,7 @@ async fn b7_runtime_review_flow() {
     assert!(h.step().cookie.is_some() && h.step().birth.is_some());
     assert!(h.adopt().await);
     let step = h.step();
-    assert_eq!(step.state, "adopted");
+    assert!(step.state == "exited" && step.body["round_result_validated"] == true);
     assert_eq!(step.body["adoption"]["verdict"]["verdict"], "approve");
     assert_eq!(
         std::fs::read_to_string(h.fake.directory.join("cwd")).unwrap(),
@@ -885,7 +878,7 @@ async fn b7_runtime_rule_g() {
     h.runtime.handle_control(&socket, request).await.unwrap();
     assert!(
         h.runtime
-            .adopt_pipeline_review(h.f.cursor(&h.id))
+            .adopt_pipeline_round_review(h.f.cursor(&h.id))
             .await
             .is_err()
     );
@@ -933,7 +926,7 @@ async fn b7_store_adoption_guard() {
     let cursor = h.f.cursor(&h.id);
     assert!(
         h.f.store()
-            .pipeline_adopt(&h.f.owner, &cursor, &evidence)
+            .pipeline_stage_round_result(&h.f.owner, &cursor, &evidence)
             .is_err()
     );
     assert_eq!(h.step().state, "exited");
@@ -958,7 +951,7 @@ async fn b7_store_body_scan() {
     let cursor = h.f.cursor(&h.id);
     let error =
         h.f.store()
-            .pipeline_adopt(&h.f.owner, &cursor, &evidence)
+            .pipeline_stage_round_result(&h.f.owner, &cursor, &evidence)
             .unwrap_err();
     assert!(
         error
@@ -1026,7 +1019,7 @@ async fn b7_store_plan_scan() {
     let cursor = f.cursor(&id);
     let error = f
         .store()
-        .pipeline_plan_next(&f.owner, &cursor, &next, true)
+        .pipeline_seed_step(&f.owner, &cursor, &next)
         .unwrap_err();
     assert!(
         error
@@ -1067,7 +1060,7 @@ async fn b7_store_plan_reserved_fields() {
         }
     }
     f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &next, true)
+        .pipeline_seed_step(&f.owner, &cursor, &next)
         .unwrap();
     assert_eq!(f.store().pipeline_goal_view(f.goal).unwrap().steps.len(), 2);
     runtime.shutdown().await.unwrap();

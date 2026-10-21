@@ -39,10 +39,7 @@ async fn planned_script(
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     let mut step = planned(&id, 2, 1, "test");
     step.step_base = view.runs[0].head_commit.clone();
-    let cursor = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &step, true)
-        .unwrap();
+    f.seed_next(&id, &step);
     (f, runtime, id)
 }
 fn step_observation(f: &Fixture, cursor: &PipelineCursor) -> (String, u64) {
@@ -81,10 +78,22 @@ async fn adopt_ready(
     runtime: &Runtime,
     cursor: PipelineCursor,
 ) -> anyhow::Result<bool> {
+    // Task test results are staged for their round decision; Goal checks adopt directly.
+    let goal = f
+        .store()
+        .pipeline_goal_view(f.goal)
+        .unwrap()
+        .runs
+        .iter()
+        .any(|r| r.id == cursor.run_id && r.kind == "goal");
     let mut waited = false;
     loop {
         let before = step_observation(f, &cursor);
-        let adopted = runtime.adopt_pipeline_test(cursor.clone()).await?;
+        let adopted = if goal {
+            runtime.adopt_pipeline_test(cursor.clone()).await?
+        } else {
+            runtime.adopt_pipeline_round_test(cursor.clone()).await?
+        };
         if adopted || step_observation(f, &cursor) != before {
             return Ok(adopted);
         }
@@ -124,7 +133,7 @@ fn corrupt(f: &Fixture) {
     f.store().connection.execute("INSERT OR REPLACE INTO verification_profiles(project_id,digest,body) SELECT project_id,digest,body || ' ' FROM verification_profiles WHERE project_id=?1", [f.project.to_string()]).unwrap();
 }
 
-/// Runtime test launching uses pipeline custody and adopts a verified passing receipt.
+/// Runtime test launching uses pipeline custody and stages a verified passing receipt.
 #[tokio::test]
 async fn b6_test_flow() {
     let (f, runtime, id) = planned_test("print 'ok'; exit 0;", 10, 1024, 1024).await;
@@ -139,7 +148,7 @@ async fn b6_test_flow() {
     assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     let step = view.steps.last().unwrap();
-    assert_eq!(step.state, "adopted");
+    assert!(step.state == "exited" && step.body["round_result_validated"] == true);
     assert_eq!(step.body["adoption"]["result"], "pass");
     let checkout = PipelineTestRunner::checkout(f.config.pipeline.as_ref().unwrap(), step).unwrap();
     let tmp = std::path::PathBuf::from(step.body["intent"]["tmpdir"].as_str().unwrap());
@@ -289,10 +298,7 @@ async fn b6_plan_profile_changed() {
         .pipeline_adopt(&f.owner, &cursor, &json!({}))
         .unwrap();
     corrupt(&f);
-    let cursor = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &planned(&id, 2, 1, "test"), true)
-        .unwrap();
+    f.seed_next(&id, &planned(&id, 2, 1, "test"));
     let view = f.store().pipeline_goal_view(f.goal).unwrap();
     let step = view.steps.last().unwrap();
     assert_eq!(step.state, "held");
@@ -381,10 +387,7 @@ async fn b6_launch_recheck() {
     next.step_base = f.store().pipeline_goal_view(f.goal).unwrap().runs[0]
         .head_commit
         .clone();
-    let cursor = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &next, true)
-        .unwrap();
+    f.seed_next(&id, &next);
     let (release, arrived) = pause_launch(LaunchPhase::Verified);
     let launch = launch_ready(&f, &runtime, f.cursor(&id));
     tokio::pin!(launch);
@@ -742,7 +745,7 @@ async fn b6_admission_immutable() {
     );
 }
 
-/// Direct Store adoption also holds a catalog replaced after test exit.
+/// Direct Store staging also holds a catalog replaced after test exit.
 #[tokio::test]
 async fn b6_store_adopt_profile() {
     let f = fixture().await;
@@ -755,7 +758,7 @@ async fn b6_store_adopt_profile() {
     corrupt(&f);
     let cursor = f.cursor(&id);
     f.store()
-        .pipeline_adopt(
+        .pipeline_stage_round_result(
             &f.owner,
             &cursor,
             &json!({"command_id":"test","result":"pass"}),
@@ -781,10 +784,7 @@ async fn b6_plan_command_index() {
     f.advance_prepare(&id);
     let mut next = planned(&id, 2, 1, "test");
     next.body["command_index"] = json!(32);
-    let cursor = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &next, true)
-        .unwrap();
+    f.seed_next(&id, &next);
     assert_eq!(
         f.store()
             .pipeline_goal_view(f.goal)
@@ -870,13 +870,11 @@ async fn goal_exited(code: &str) -> (Fixture, Arc<Runtime>, String) {
     let (f, runtime, task_id) = planned_test(code, 10, 1024, 1024).await;
     finish(&f, &runtime, &task_id, true).await;
     adopt_ready(&f, &runtime, f.cursor(&task_id)).await.unwrap();
+    f.adopt_staged(&task_id);
     let mut run = f.store().pipeline_goal_view(f.goal).unwrap().runs[0].clone();
     let mut release = planned(&task_id, 3, 1, "release");
     release.step_base = run.head_commit.clone();
-    let cursor = f.cursor(&task_id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &release, true)
-        .unwrap();
+    f.seed_next(&task_id, &release);
     let mut journal = release_journal(&f, &task_id);
     journal.old_commit = run.head_commit.clone();
     journal.new_commit = run.head_commit.clone();

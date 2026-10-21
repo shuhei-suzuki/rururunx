@@ -74,7 +74,7 @@ async fn b6_f1_cleanup_after_adoption() {
     finish(&f, &runtime, &id, true).await;
     let cursor = f.cursor(&id);
     f.store()
-        .pipeline_adopt(
+        .pipeline_stage_round_result(
             &f.owner,
             &cursor,
             &json!({"command_id":"test","result":"pass"}),
@@ -113,20 +113,15 @@ async fn b6_f1_cleanup_partial_batch() {
         .clone();
     let mut first = planned(&id, 2, 1, "test");
     first.step_base = head.clone();
-    let cursor = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &first, true)
-        .unwrap();
+    f.seed_next(&id, &first);
     finish(&f, &runtime, &id, true).await;
     assert!(adopt_ready(&f, &runtime, f.cursor(&id)).await.unwrap());
     let mut second = planned(&id, 3, 1, "test");
     second.step_base = head;
     second.body["command_index"] = json!(1);
     second.body["command_id"] = json!("second");
-    let cursor = f.cursor(&id);
-    f.store()
-        .pipeline_plan_next(&f.owner, &cursor, &second, true)
-        .unwrap();
+    f.adopt_staged(&id);
+    f.seed_next(&id, &second);
     finish(&f, &runtime, &id, true).await;
     let config = f.config.pipeline.as_ref().unwrap();
     let first_co = PipelineTestRunner::checkout(config, &first).unwrap();
@@ -137,7 +132,7 @@ async fn b6_f1_cleanup_partial_batch() {
     r4fix::wait_clean(&f.owner, f.goal, &id, &second_co, None).await;
     let partial = f.store().pipeline_goal_view(f.goal).unwrap();
     let receipt = partial.steps.last().unwrap().clone();
-    assert_eq!(receipt.state, "adopted");
+    assert_eq!(receipt.state, "exited");
     assert!(!first_co.exists());
     assert!(!second_co.exists());
     assert!(partial.pending_cleanup.is_empty());
