@@ -85,7 +85,10 @@ Run `bash scripts/local-ci.sh` from the repository root of a clean macOS worktre
 at the commit to be pushed/reviewed. Tracked changes and untracked files are
 refused before any Cargo or Docker work. Repository paths containing a comma,
 double quote or newline are also refused with a Docker mount CSV error, since
-the archive and results paths become `--mount` values. The script records the full HEAD,
+the archive and results paths become `--mount` values. A sentinel preserves
+trailing newlines in both `git rev-parse --show-toplevel` and `pwd -P` output;
+only the output delimiter and sentinel are removed. Both paths are checked
+before any file creation, Cargo or Docker work. The script records the full HEAD,
 UTC date, `uname -sm`, rustc/Cargo/Docker versions, then runs host fmt, locked
 workspace/all-target clippy with warnings denied, locked workspace tests, and a
 locked release workspace build. Every host Cargo invocation (including version
@@ -97,9 +100,12 @@ and network on the host. The four-variable removal is not a sandbox. Run the
 script only on commits produced by this workflow or whose diff has been reviewed;
 external PR code is not executed locally without review or an isolated environment.
 
-The `main-contained` step checks whether locally known `origin/main` is an ancestor
-of HEAD: successful `git merge-base --is-ancestor origin/main HEAD` is PASS,
-non-ancestry or an error is FAIL, and a missing ref is NOT RUN. It affects the
+The `main-contained` step resolves `refs/remotes/origin/main` once with
+`git rev-parse --verify --end-of-options 'refs/remotes/origin/main^{commit}'`,
+records `origin/main <sha>` in the summary, and passes that SHA and the captured
+HEAD SHA to `git merge-base --is-ancestor`. Thus a branch or tag named
+`origin/main` cannot shadow the remote-tracking ref. Ancestry is PASS,
+non-ancestry or an error is FAIL, and a missing/unresolvable ref is NOT RUN. It affects the
 overall result like any other step. It does not fetch. Before the final local run
 before merge, fetch first, merge or rebase current `origin/main` into the branch
 if necessary, and run the full script on that clean HEAD. If main advances before
@@ -108,25 +114,43 @@ merge, repeat this integration and final local verification on the new HEAD.
 documentation-only path still supplies a successful check.
 
 The host's `linux-archive` step saves only tracked HEAD content using
-`git archive --format=tar --output=<run>/source.tar HEAD`. The verification
+`git archive --format=tar --output=<run>/source.tar <captured-head-sha>`. The verification
 container mounts this tar read-only at `/source.tar`, never the worktree.
 Ignored host `worktree/`, `.rrx/` and `target/` content is not visible. `/src` is a
-fresh per-container tmpfs at a fixed path. Linux setup extracts the tar there with
+fresh per-container tmpfs at a fixed path. Before extraction, the container's
+main shell opens `/target/.local-ci.lock` on descriptor 9 and acquires an exclusive
+`flock --exclusive 9`. Both open and lock failures exit the container immediately:
+no later Linux step can PASS, and missing result markers fail the host run.
+The main shell keeps the descriptor and lock until container exit. Linux
+verification from different worktrees is serialized by this shared-target-volume
+lock. No in-container Cargo command runs before it is acquired.
+Linux setup extracts the tar there with
 `tar --extract --touch`, giving every tracked source fresh mtimes instead of
-archive timestamps. This invalidates source fingerprints left by another worktree
-in the shared target cache, while the fixed source path permits dependency reuse.
+archive timestamps. Extraction happens after the preceding container has released
+the lock, so sources cannot predate that container's compilation start while
+waiting for Cargo's own build lock. This invalidates source fingerprints left by
+another worktree in the shared target cache, while the fixed source path permits
+dependency reuse. A Docker VM clock moving backwards between runs remains an
+accepted residual risk for mtime-based artifact reuse.
 
 One `docker run --rm` verification container using `rust:1.91.1` runs Linux setup,
-fmt, locked clippy with `-D warnings`, and locked workspace tests. It uses the host
+components, fmt, locked clippy with `-D warnings`, and locked workspace tests, in
+that order and while holding the lock. It uses the host
 UID/GID and label `rururunx-local-ci=1`, with its ID in `container.cid`.
 Only the per-run Linux log directory is a writable host bind at `/results`.
 No host environment is forwarded. Explicit container values are
 `HOME=/home/local-ci`, `TMPDIR=/tmp`, `USER=local-ci`, `LOGNAME=local-ci`,
 `CARGO_HOME=/cargo`, `CARGO_TARGET_DIR=/target/target` and `CARGO_INCREMENTAL=0`.
 HOME, TMPDIR and CARGO_HOME each have a per-run tmpfs. Cargo's `config.toml`
-cannot persist between runs. RUSTUP_HOME is not overridden; the image supplies
-rustfmt/clippy in a root-owned toolchain that the verification UID cannot write.
-There is no rustup install step. Fixed USER/LOGNAME supply a non-secret identity
+cannot persist between runs. RUSTUP_HOME is not overridden. The image's
+`/usr/local/rustup` and toolchain directory are world-writable (mode 777), so the
+verification UID can write them. Its installed components are cargo, rust-std
+and rustc; rustfmt and clippy are absent. After extraction, `linux-components`
+explicitly runs `rustup component add rustfmt clippy` from `/src`, honoring
+`rust-toolchain.toml` rather than relying on rustup auto-install defaults.
+Each run installs the components into the container's own writable layer,
+which `--rm` discards. No toolchain changes or caches persist between runs.
+Fixed USER/LOGNAME supply a non-secret identity
 without depending on a passwd entry for the host UID. GitHub tokens are not passed.
 The `linux-image` step records `docker image inspect --format
 '{{index .RepoDigests 0}}' rust:1.91.1`, falling back to the image ID if no repo
@@ -141,17 +165,23 @@ roots to mode 1777 (no recursive chmod), allowing the host UID to use new volume
 It mounts no host files or source and uses per-run HOME/TMPDIR tmpfs.
 Both containers are auto-removed. The volumes are standing project caches,
 not leftovers subject to generic task cleanup, and are not verification evidence.
+Cargo's package-cache lock files live at the top of the per-run CARGO_HOME,
+so those locks alone do not protect the shared registry/Git volumes. The
+`/target/.local-ci.lock` lock covers all in-container Cargo commands, including
+fmt, clippy and tests, serializing access to these shared caches as well as target.
 They are trusted only for trusted commits: after running anything untrusted,
 ensure no run uses them and remove all three with
 `docker volume rm rururunx-local-ci-registry rururunx-local-ci-git rururunx-local-ci-target`.
 The old `rururunx-local-ci-cargo` volume is no longer mounted or used by the script.
-The first run needs network access for the image and dependencies, not for
-toolchain setup; cache hits do not skip checks. Concurrent runs sharing a
-worktree/summary are unsupported.
+The first run needs network access for the image. Every run needs network access
+for rustfmt/clippy installation, and dependencies need it on cache misses;
+cache hits do not skip checks. Overlapping runs of the same worktree/summary
+are unsupported even though Linux verification across worktrees is serialized.
 
 Each run has a fresh `.rrx/local-ci/<sha>/run.XXXXXX/` log directory, with Linux
 step logs and fresh status markers in its `linux/` subdirectory. Even when setup or an earlier
-check fails, later checks are attempted. Stdout and `.rrx/local-ci/<sha>.txt`
+check fails, later checks are attempted; lock open/acquisition failure instead
+exits before any Linux step. Stdout and `.rrx/local-ci/<sha>.txt`
 contain the same summary: metadata and per-step PASS/FAIL/NOT RUN, seconds and
 full HEAD. A failed Docker launch or a missing/invalid Linux status marker cannot
 pass. The parser requires the entire file to be one line `PASS <digits>` or
@@ -165,7 +195,8 @@ prevent stale markers from passing. A final check verifies
 that HEAD and the worktree remain unchanged. Environment variables are never
 dumped. The script exits nonzero for failures or unexecuted checks.
 
-`--host-only` reports all Linux steps as NOT RUN and exits nonzero unless paired
+`--host-only` reports all Linux steps as NOT RUN (including `linux-components`
+between `linux-setup` and `linux-fmt`) and exits nonzero unless paired
 with `--allow-partial`. The latter acknowledges only that explicit skip; it does
 not mask host failures or allow a non-macOS host. A partial run is diagnostic and
 does not satisfy `CLAUDE.md`'s complete pre-push requirement. The script is invoked
@@ -231,8 +262,16 @@ with Bash and does not require an executable bit.
   not proof of current main coverage: missing fails and freshness requires fetch.
 - Cargo and tests consume the changed Linux HOME/TMPDIR/CARGO_HOME and fixed
   `/src` path. HOME/TMPDIR remain writable per run; source mtimes refresh each
-  run and only registry/Git/target persist. No Cargo config or rustup cache
-  persists. Host build scripts/proc macros/tests retain user privileges,
+  run after taking the shared-target lock, which also protects shared registry/Git
+  caches despite per-run Cargo package-cache locks. Only registry/Git/target
+  persist. No Cargo config, toolchain changes or rustup cache persists;
+  rustfmt/clippy installation needs network every run. The new components
+  step is consumed by both the result-marker loop and host-only NOT RUN list.
+  Ref ancestry and archive creation consume captured SHAs, not ambiguous or
+  moving short refs; the main SHA also appears in the summary. Repository and
+  physical-directory paths are checked without trimming path newlines before
+  those paths reach log creation or Docker mount arguments.
+  Host build scripts/proc macros/tests retain user privileges,
   credentials and network except for the four removed token variables, so
   reviewed-commit trust is a necessary security boundary. Linux markers are
   reporting aids, not tamper-proof evidence.
@@ -266,6 +305,14 @@ byte-for-byte from the script and tests valid PASS/FAIL and malformed files,
 including missing newline, extra line/field, empty and non-digit cases. Its
 negative control removes whole-file byte-length validation and confirms that
 the extra-line case detects the resulting false acceptance.
+Run `python3 .rrx/ci/marker_test.py` and `python3 .rrx/ci/fix4/path_test.py`.
+The latter extracts the path-handling code byte-for-byte and checks a normal path
+plus comma, double quote, embedded newline, one trailing newline and two trailing
+newlines. It also checks physical-directory rejection independently of the Git
+path. Its negative control restores the old command substitutions and confirms
+that trailing-newline paths are accepted.
+All temporary test directories are created beneath `.rrx/ci/fix4/` and removed
+on exit. These checks do not execute Cargo or Docker.
 
 The orchestrator ran `/opt/homebrew/bin/actionlint .github/workflows/ci.yml`
 with ShellCheck enabled to completion on `92ae7ad6`; it passed. After the

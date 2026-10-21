@@ -19,13 +19,19 @@ if $allow_partial && ! $host_only; then
     exit 2
 fi
 
-repo=$(git rev-parse --show-toplevel) || exit 1
-case "$repo" in
-    *','*|*'"'*|*$'\n'*)
-        printf '%s\n' 'Repository path must not contain a comma, double quote or newline (Docker mount CSV).' >&2
-        exit 1 ;;
-esac
-if [[ $(pwd -P) != "$repo" ]]; then
+# Preserve path newlines with a sentinel, then remove only the output delimiter.
+repo=$(git rev-parse --show-toplevel && printf '.') || exit 1
+repo=${repo%$'\n.'}
+physical_pwd=$(pwd -P && printf '.') || exit 1
+physical_pwd=${physical_pwd%$'\n.'}
+for path in "$repo" "$physical_pwd"; do
+    case "$path" in
+        *','*|*'"'*|*$'\n'*)
+            printf '%s\n' 'Repository path must not contain a comma, double quote or newline (Docker mount CSV).' >&2
+            exit 1 ;;
+    esac
+done
+if [[ "$physical_pwd" != "$repo" ]]; then
     printf '%s\n' 'Run from the repository toplevel.' >&2
     exit 1
 fi
@@ -78,8 +84,9 @@ run_step metadata metadata
 # Record versions and date in both the retained metadata log and the summary.
 cat "$log_dir/metadata.log" | tee -a "$summary" || failed=1
 
-if git rev-parse --verify refs/remotes/origin/main > "$log_dir/main-tip.log" 2>&1; then
-    run_step main-contained git merge-base --is-ancestor origin/main HEAD
+if main_tip=$(git rev-parse --verify --end-of-options 'refs/remotes/origin/main^{commit}' 2> "$log_dir/main-tip.log"); then
+    printf 'origin/main %s\n' "$main_tip" | tee -a "$log_dir/main-tip.log" "$summary" || failed=1
+    run_step main-contained git merge-base --is-ancestor "$main_tip" "$head"
 else
     record 'NOT RUN' main-contained 0
     failed=1
@@ -105,13 +112,13 @@ else
 fi
 
 if $host_only; then
-    for name in linux-archive linux-cache-setup linux-image linux-container linux-setup linux-fmt linux-clippy linux-test; do
+    for name in linux-archive linux-cache-setup linux-image linux-container linux-setup linux-components linux-fmt linux-clippy linux-test; do
         record 'NOT RUN' "$name" 0
     done
     $allow_partial || failed=1
 else
     # Only HEAD content enters the container, never the worktree or ignored files.
-    run_step linux-archive git archive --format=tar --output="$log_dir/source.tar" HEAD
+    run_step linux-archive git archive --format=tar --output="$log_dir/source.tar" "$head"
     # Fresh volumes otherwise have root-owned mountpoints. This helper has no
     # host binds or source code and changes only the cache root permissions.
     run_step linux-cache-setup docker run --rm \
@@ -172,9 +179,13 @@ else
                 fi
                 printf "%s %s\n" "$status" "$((SECONDS - start))" > "/results/$name.result" || failed=1
             }
-            # --touch gives tracked sources fresh mtimes at the fixed /src path,
-            # invalidating source fingerprints from other worktrees/runs.
+            # Hold the shared-cache lock in this shell until container exit,
+            # before source mtimes are set and before any Cargo invocation.
+            exec 9> /target/.local-ci.lock || exit 1
+            flock --exclusive 9 || exit 1
+            # --touch refreshes source fingerprints after the preceding run.
             run_step linux-setup tar --extract --touch --file /source.tar --directory /src
+            run_step linux-components rustup component add rustfmt clippy
             run_step linux-fmt cargo fmt --all -- --check
             run_step linux-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
             run_step linux-test cargo test --locked --workspace
@@ -192,7 +203,7 @@ else
         status=$result
         duration=$seconds
     }
-    for name in linux-setup linux-fmt linux-clippy linux-test; do
+    for name in linux-setup linux-components linux-fmt linux-clippy linux-test; do
         status='NOT RUN'
         duration=0
         if [[ -f "$log_dir/linux/$name.result" ]]; then

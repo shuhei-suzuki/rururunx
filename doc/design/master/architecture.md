@@ -409,8 +409,10 @@ Before push, `bash scripts/local-ci.sh` runs from a clean macOS repository root,
 except for `doc/`-only PRs, which change no code and retain a successful Actions
 documentation check. `--host-only` does not meet the pre-push requirement.
 The script records full HEAD, UTC date, OS and Rust/Cargo/Docker versions. Its
-`main-contained` step requires locally known `origin/main` to be an ancestor of
-HEAD; non-ancestry fails and a missing ref is NOT RUN, failing the run. The final
+`main-contained` step resolves `refs/remotes/origin/main` once to a commit SHA,
+records `origin/main <sha>` in the summary and checks ancestry against the captured
+HEAD SHA. A same-named branch or tag cannot shadow it. Non-ancestry or a comparison
+error fails; a missing/unresolvable ref is NOT RUN, failing the run. The final
 local run before merge follows fetch and integration of current `origin/main`
 by merge/rebase if needed, covering integrated code because Actions does not test
 main pushes or PR merge results. Advancing main requires a new final local run.
@@ -423,17 +425,30 @@ with the user's privileges, credentials and network; removing four tokens is not
 isolation. Only commits produced by this workflow or with reviewed diffs may run;
 external PR code requires review or an isolated environment before local execution.
 
-The host archives only tracked HEAD content with `git archive --format=tar HEAD`
+The host archives only tracked content from the captured HEAD SHA with
+`git archive --format=tar <sha>`
 into a fresh per-run log directory. Linux fmt/clippy/tests run in one
 `rust:1.91.1` verification container with `--rm`, label `rururunx-local-ci=1`,
 the host UID/GID, that tar mounted read-only, a writable per-run results mount,
 fixed non-secret HOME/USER/LOGNAME, and no forwarded host environment. The
-worktree and ignored `worktree/`, `.rrx/` and `target/` are not mounted. Setup
-extracts the tar with fresh mtimes into a fresh tmpfs at fixed `/src`, invalidating
-source fingerprints from other worktrees while allowing dependency artifact reuse.
+worktree and ignored `worktree/`, `.rrx/` and `target/` are not mounted. Before
+extraction, the container's main shell opens `/target/.local-ci.lock` and takes
+an exclusive `flock`, keeping its descriptor until container exit. Open or lock
+failure exits before later Linux steps can PASS. All in-container Cargo calls run
+under this lock, serializing Linux verification and shared registry/Git/target
+access across worktrees. Setup then extracts the tar with fresh mtimes into a
+fresh tmpfs at fixed `/src`, invalidating source fingerprints from other worktrees
+while allowing dependency artifact reuse. Overlapping runs of the same worktree
+are unsupported. A Docker VM clock moving backwards between runs is an accepted
+residual risk for mtime-based artifact reuse.
 HOME, TMPDIR and CARGO_HOME use per-run tmpfs, so Cargo configuration cannot
-persist. RUSTUP_HOME is not overridden; the root-owned image toolchain provides
-rustfmt/clippy without installation and is not writable by the verification UID.
+persist. RUSTUP_HOME is not overridden. The image's `/usr/local/rustup` and toolchain
+directory are world-writable (777), including for the verification UID. After
+extraction, `linux-components` runs `rustup component add rustfmt clippy` in `/src`,
+honoring `rust-toolchain.toml`, before fmt/clippy/tests and while holding the lock.
+Every run installs these components into its container's own writable layer,
+discarded by `--rm`; no toolchain changes or caches persist between runs. Each
+run needs network for these components and for dependencies on cache misses.
 The repo image digest, or image ID if absent, is recorded in metadata and summary.
 
 Named volumes `rururunx-local-ci-registry`, `rururunx-local-ci-git` and
@@ -445,15 +460,20 @@ host UID without mounting host files or source. These caches are exempt from
 generic task cleanup and trusted only for trusted commits. After running
 anything untrusted, remove all three when unused with
 `docker volume rm rururunx-local-ci-registry rururunx-local-ci-git rururunx-local-ci-target`.
-All steps are attempted despite failures. Per-step status/seconds and HEAD are
+All steps are attempted despite failures, except that lock open/acquisition
+failure stops the Linux container before extraction or Cargo work.
+Per-step status/seconds and HEAD are
 printed and retained in `.rrx/local-ci/<sha>.txt`, with logs under
 `.rrx/local-ci/<sha>/run.XXXXXX/`. Linux result files must be exactly one line
 `PASS <digits>` or `FAIL <digits>` plus a single newline. Failed reads, missing
 newlines or any extra fields/lines/bytes produce NOT RUN and fail the run.
 Malicious code under test can forge any marker; the commit trust rule is required.
-Repository paths containing commas, double quotes or newlines are refused to
-protect Docker mount CSV parsing. Failures or missing checks fail the script;
-`--host-only` reports Linux NOT RUN and requires `--allow-partial` to permit an
+Repository and physical working-directory paths retain trailing newlines during
+validation; commas, double quotes or any newlines are refused before file creation,
+Cargo or Docker work to protect Docker mount CSV parsing.
+Failures or missing checks fail the script;
+`--host-only` reports Linux NOT RUN, including `linux-components` between setup
+and fmt, and requires `--allow-partial` to permit an
 otherwise successful partial exit. Full local commands, SHA, test counts and
 outcomes are recorded in the PR; partial runs do not meet the pre-push policy.
 
