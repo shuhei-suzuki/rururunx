@@ -423,7 +423,8 @@ main pushes or PR merge results. Advancing main requires a new final local run.
 Host steps are
 fmt, locked all-targets workspace clippy with warnings denied, locked workspace
 tests and a locked release workspace build. Both host and Linux workspace tests
-use `--no-fail-fast`, so a failed test target does not hide later targets.
+use `--no-fail-fast`, so every test target runs and the record shows all failures.
+This does not change PASS/FAIL or the exit status.
 Host Cargo calls remove the four
 GitHub token variables (`GITHUB_TOKEN`, `GH_TOKEN`, `GH_ENTERPRISE_TOKEN`,
 `GITHUB_ENTERPRISE_TOKEN`). Host build scripts, proc macros and tests still run
@@ -481,20 +482,9 @@ Malicious code under test can forge any marker; the commit trust rule is require
 Repository and physical working-directory paths retain trailing newlines during
 validation; commas, double quotes or any newlines are refused before file creation,
 Cargo or Docker work to protect Docker mount CSV parsing.
-Failures or missing checks fail the script;
-when `host-test` or `linux-test` fails, each failed test is re-run alone with
-`cargo test --locked -p <crate> <target selector> -- --exact <name>`.
-A test that passes alone is recorded as load-induced. A test that also fails
-alone may be accepted only if an open issue tracks it and the verification
-record gives evidence that the change cannot affect it. For example,
-`git diff --name-only <base> HEAD` shows no change under `crates/`, `Cargo.toml`,
-`Cargo.lock` or `rust-toolchain.toml`, or the record states why the changed code
-is not exercised. Failures in tests the change can affect are never accepted
-this way, and unexplained failures block push. Every other step must PASS.
-All failures, re-runs, classifications, issue numbers and evidence are recorded
-in `doc/verification/issue-<number>.md`. Acceptance does not change the script's
-FAIL status or nonzero exit; failures that do not meet these acceptance
-conditions block push.
+Failures or missing checks fail the script. A run with any failed or unexecuted
+step does not meet the pre-push verification requirement. Do not push while any
+such failure remains.
 
 `--host-only` reports Linux NOT RUN, including `linux-components` between setup
 and fmt, and requires `--allow-partial` to permit an
@@ -503,7 +493,7 @@ outcomes are committed in `doc/verification/issue-<number>.md` and referenced
 from the PR's Test plan; public PR and issue comments carry only IDs, titles,
 severities and statuses. The record includes commands, SHAs, counts, outcomes,
 the script's metadata (UTC date, OS, Rust/Cargo/Docker versions) and the image
-digest, together with the failure records required above;
+digest;
 no secrets, tokens, environment dumps, raw logs, real
 resource IDs or absolute home paths (use repository-relative paths).
 Follow-up commits changing only any files under `doc/verification/` keep the

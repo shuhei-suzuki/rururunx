@@ -20,8 +20,7 @@ directory. This recorded run counts as the final pre-merge run only if, after a
 fresh fetch, `refs/remotes/origin/main` still equals its recorded
 `origin/main <sha>`; otherwise integrate current main and re-run the whole script
 on a clean HEAD. The record includes commands, SHAs, counts, outcomes, the
-script's metadata (UTC date, OS, Rust/Cargo/Docker versions) and the image digest,
-together with the failure records required below;
+script's metadata (UTC date, OS, Rust/Cargo/Docker versions) and the image digest;
 no secrets, tokens, environment dumps, raw logs, real resource
 IDs or absolute home paths (use repository-relative paths).
 The trade-off is explicit: the independent GitHub check covers
@@ -107,7 +106,8 @@ before any file creation, Cargo or Docker work. The script records the full HEAD
 UTC date, `uname -sm`, rustc/Cargo/Docker versions, then runs host fmt, locked
 workspace/all-target clippy with warnings denied, locked workspace tests, and a
 locked release workspace build. Both host and Linux workspace tests use
-`--no-fail-fast`, so one failing test target does not hide later targets.
+`--no-fail-fast`, so every test target runs and the record shows all failures.
+This does not change PASS/FAIL or the exit status.
 Every host Cargo invocation (including version
 reporting) uses `env -u` for `GITHUB_TOKEN`, `GH_TOKEN`, `GH_ENTERPRISE_TOKEN`,
 and `GITHUB_ENTERPRISE_TOKEN`. This removes those four tokens from Cargo and its
@@ -218,21 +218,15 @@ prevent stale markers from passing. A final check verifies
 that HEAD and the worktree remain unchanged. Environment variables are never
 dumped. The script exits nonzero for failures or unexecuted checks.
 
-The owner's 2026-10-21 decision permits a documented acceptance of test failures
-only after individual diagnosis. When `host-test` or `linux-test` fails, re-run
-each failed test alone with
-`cargo test --locked -p <crate> <target selector> -- --exact <name>`.
-Record a test that passes alone as load-induced. A test that also fails alone
-may be accepted only if an open issue tracks it and the record gives evidence
-that this change cannot affect it. For example,
-`git diff --name-only <base> HEAD` may show no change under `crates/`,
-`Cargo.toml`, `Cargo.lock` or `rust-toolchain.toml`; otherwise state why the
-changed code is not exercised. Failures in tests the change can affect are never
-accepted this way, and unexplained failures still block push. Every other step
-must PASS. All failures, re-runs, classifications, issue numbers and evidence go
-in `doc/verification/issue-<number>.md`. This acceptance does not change the
-script's FAIL status or nonzero exit. Push requires these acceptance conditions
-to be met.
+A run with any failed or unexecuted step does not meet the pre-push verification
+requirement. Do not push while any such failure remains.
+
+Decision (2026-10-21): the general rule for known, change-independent host
+failures is deferred to a separate issue because of F1–F5: unsupported causal
+classification, zero-test success, missing ties to the same SHA/clean tree/environment,
+an undefined base and incomplete impact paths, and unclear final pre-merge status
+and merge gating. A single owner-approved exception for this PR's own merge,
+with its evidence, is recorded in `doc/verification/issue-109.md`.
 
 `--host-only` reports all Linux steps as NOT RUN (including `linux-components`
 between `linux-setup` and `linux-fmt`) and exits nonzero unless paired
