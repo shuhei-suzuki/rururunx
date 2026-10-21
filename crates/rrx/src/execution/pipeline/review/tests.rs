@@ -477,6 +477,15 @@ fn b7_decoder_secrets() {
             .downcast_ref::<super::super::SecretHit>()
             .is_some()
     );
+    // A JSON `\t` escape hides the word boundary from the raw scan; only the decoded strings show it.
+    let mut v = valid();
+    v["diagnostic"] = json!("a=b\tEXAMPLE_SECRET=fixture");
+    assert!(
+        decode(&v)
+            .unwrap_err()
+            .downcast_ref::<super::super::SecretHit>()
+            .is_some()
+    );
 }
 
 /// Raw result bytes are scanned even when they cannot be decoded as JSON.
