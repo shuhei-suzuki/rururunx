@@ -7,7 +7,7 @@ PC（ローカル）でできる確認は PC で行い、GitHub でしか行え�
 ### PC で行う確認（push の前に必ず行う）
 
 - `scripts/local-ci.sh` を、確認したいコミットで、clean な worktree から実行する。中身は次のとおり。
-  - macOS の実機での `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`、`cargo test --locked --workspace`、`cargo build --locked --release --workspace`
+  - macOS の実機での `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`、`cargo test --locked --workspace --no-fail-fast`、`cargo build --locked --release --workspace`
   - Linux（Docker の `rust:1.91.1` の使い捨てコンテナ）での fmt、clippy、test。固定した HEAD の追跡内容だけを `git archive` で保存し、毎回新しい `/src` に新しい mtime で展開する。worktree はマウントせず、無視された `worktree/`・`.rrx/`・`target/` はコンテナに持ち込まない。
   - `git show-ref --verify --hash refs/remotes/origin/main` で完全一致の ref のオブジェクトを一度取得し、`git rev-parse --verify --end-of-options "<sha>^{commit}"` でコミット SHA に peel する。固定した HEAD の祖先であることを `main-contained` で確認し、要約に `origin/main <sha>` を記録する。同名のブランチ・タグには影響されず、ref の欠落・取得・peel 失敗は NOT RUN（エラーは `main-tip.log`）、非包含は FAIL となり、どちらも実行全体を失敗にする。
 - マージ直前の最終ローカル実行では、先に fetch し、現在の `origin/main` を含む HEAD を使う。必要なら main を作業ブランチへ merge または rebase し、clean な最終 HEAD でスクリプト全体を再実行する。Actions では main push と PR の merge 結果のテストを行わないため、この手順で統合後のテストを補う。`main-contained` 自体は fetch しない。
@@ -17,8 +17,9 @@ PC（ローカル）でできる確認は PC で行い、GitHub でしか行え�
 - 検証コンテナは `flock --exclusive --close /target/.local-ci.lock bash -c '...'` で全 Linux 手順を実行する。親の flock が tar 展開・rustup・Cargo より前にロックを取得し、全手順の終了まで保持する。ロック FD は手順のシェルと検査プロセスに継承しない。`docker run --rm --init` で PID 1 のシグナル転送・子プロセス回収を行い、手順の終了ステータスをコンテナの終了ステータスにする。異なる worktree の Linux 検証と共有 registry/Git/target の利用は直列化される。ロックを開けない・取得できない場合は以後の Linux 検査を実行せず、PASS にしない。同じ worktree の重複実行は非対応。実行間で Docker VM の時計が巻き戻る場合の mtime による誤再利用は残余リスクとして受け入れる。
 - `rururunx-local-ci-registry`・`rururunx-local-ci-git`・`rururunx-local-ci-target` は、Cargo registry・Git データベース・Linux target 用の常設プロジェクトキャッシュで、一般の作業後クリーンアップによる削除対象ではない。キャッシュのルート権限だけを準備するソース未マウントの補助コンテナも `--rm` で終了する。キャッシュは信頼済みコミットにだけ使い、信頼できないコードを実行した場合は、利用中でないことを確認して `docker volume rm rururunx-local-ci-registry rururunx-local-ci-git rururunx-local-ci-target` で3つとも削除する。
 - Linux 結果マーカーは厳密な1行の `PASS <数字>` または `FAIL <数字>` と末尾の改行だけを受理し、読み取り失敗・欠落・不正形式は NOT RUN とする。コードが悪意を持つ場合はどのマーカーも偽造できるため、上記のコミット信頼条件が必要。リポジトリパス・物理作業ディレクトリの末尾改行も保持して検査し、カンマ・二重引用符・改行を含む場合は Docker mount の CSV 解釈を避けるため、ファイル作成・Cargo・Docker 実行前に拒否する。
-- 結果（コマンド、対象の SHA、件数、成否）は `doc/verification/issue-<番号>.md` に書いてコミットし、PR の Test plan からそのファイルを参照する。リポジトリは公開なので、PR・Issue のコメントには ID・題名・重大度・状態だけを書き、検証の詳細はこの記録に置く。失敗したままの push はしない。
-- 記録に含めるのはコマンド・SHA・件数・成否・イメージ digest のみ。秘密情報・トークン・環境変数のダンプ・生ログ・実リソース ID・ホームの絶対パスは含めず、パスはリポジトリ相対にする。
+- 結果（コマンド、対象の SHA、件数、成否）は `doc/verification/issue-<番号>.md` に書いてコミットし、PR の Test plan からそのファイルを参照する。リポジトリは公開なので、PR・Issue のコメントには ID・題名・重大度・状態だけを書き、検証の詳細はこの記録に置く。受け入れ条件を満たさない失敗を残したまま push しない。
+- オーナー判断（2026-10-21）: ホストと Linux のテストは `--no-fail-fast` で全ターゲットを試す。`host-test` または `linux-test` が失敗したら、失敗した各テストを `cargo test --locked -p <crate> <target selector> -- --exact <name>` で単独再実行する。単独で成功したものは負荷起因として記録する。単独でも失敗するものを受け入れられるのは、追跡する open Issue があり、今回の変更がそのテストに影響しない根拠を記録できる場合だけとする。根拠は、例えば `git diff --name-only <base> HEAD` で `crates/`・`Cargo.toml`・`Cargo.lock`・`rust-toolchain.toml` に変更がないこと、または変更コードがそのテストで実行されない理由を示す。変更が影響しうるテストの失敗はこの扱いで受け入れず、未説明の失敗も push を止める。他の全手順は PASS が必要。全失敗・単独再実行・分類・Issue 番号・根拠を同じ検証記録に残す。スクリプト自体の FAIL・非ゼロ終了は変更しない。
+- 記録する検証情報はコマンド・SHA・件数・成否・スクリプトのメタデータ（UTC 日時、OS、Rust/Cargo/Docker のバージョン）・イメージ digest とし、上記の失敗の扱いに必要な記録も含める。秘密情報・トークン・環境変数のダンプ・生ログ・実リソース ID・ホームの絶対パスは含めず、パスはリポジトリ相対にする。
 - 記録のコミットは `doc/verification/` 配下の任意のファイルだけを変える（`crates/`・`scripts/`・`.github/` にこのディレクトリの読み手はない）。`git diff --name-only --no-renames <検証した SHA> HEAD` が成功し、出力の全行が `doc/verification/` で始まることを確認すれば、記録した結果を再実行なしで維持できる。ただしマージ直前の最終実行として有効なのは、新たな fetch 後も `refs/remotes/origin/main` が記録済みの `origin/main <sha>` と一致する場合だけ。一致しなければ現在の main を統合し、clean な HEAD でスクリプト全体を再実行する。
 - 個別の試験を実機で 1 件ずつ実行する必要がある変更は、その手順と結果も同じ記録に書く。
 

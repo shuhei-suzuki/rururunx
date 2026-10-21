@@ -26,6 +26,8 @@ runtime behavior changes belong here.
 - Only main pushes with successful clippy and no exact cache hit may save; PRs including forks never save and no release build runs in Actions.
 - Superseded PR runs are cancelled by workflow and PR number, while pushes to main are never cancelled.
 - `bash scripts/local-ci.sh` requires a clean worktree and repository-root invocation, records full HEAD/date/OS/tool versions, and runs macOS fmt, locked clippy/tests and a locked release workspace build. All host Cargo calls remove `GITHUB_TOKEN`, `GH_TOKEN`, `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN`.
+- Both host and Linux workspace test commands use `--no-fail-fast`, so a failed test target does not prevent later targets from running.
+- Owner decision (2026-10-21): when `host-test` or `linux-test` fails, re-run each failed test alone with `cargo test --locked -p <crate> <target selector> -- --exact <name>`. Record tests that pass alone as load-induced. A test that also fails alone may be accepted only when an open issue tracks it and the record gives evidence that the change cannot affect it: for example, `git diff --name-only <base> HEAD` shows no change under `crates/`, `Cargo.toml`, `Cargo.lock` or `rust-toolchain.toml`, or explains why the changed code is not exercised. Failures in tests the change can affect are never accepted this way; unexplained failures block push too. Every other step must PASS. Record all failures, re-runs, classifications, issue numbers and evidence in `doc/verification/issue-<number>.md`. The script still reports FAIL and exits nonzero; acceptance is a documented decision, not a suppressed failure. Do not push with failures that do not meet these acceptance conditions.
 - The script obtains the exact ref's object once with `git show-ref --verify --hash refs/remotes/origin/main`, then peels it to a commit with `git rev-parse --verify --end-of-options "<sha>^{commit}"`, records `origin/main <sha>` in the summary, and checks that commit SHA against the captured HEAD in `main-contained`. Branches/tags cannot substitute for a missing remote-tracking ref. Ancestry is PASS, non-ancestry or a comparison error is FAIL, and a missing ref or either resolution failure is NOT RUN, with errors in `main-tip.log`. This step counts like every other check. The final local run before merge must follow a fetch and use a clean HEAD containing the current `origin/main`; merge or rebase main into the branch first if needed.
 - Host build scripts, proc macros and tests execute with the user's privileges, credentials and network. Removing the four GitHub token variables is not host isolation. Run only commits produced by this workflow or whose diff has been reviewed; external PR code requires review or an isolated environment before local execution.
 - The same script writes tracked content from the captured HEAD SHA with `git archive --format=tar <sha>` to a fresh run log directory, mounts only that tar read-only and the Linux results directory writable, and extracts with fresh mtimes into a fresh fixed `/src`. The worktree and ignored `worktree/`, `.rrx/` and `target/` are not mounted; another worktree's target fingerprints must not bypass source compilation under the concurrency/clock contract below.
@@ -42,8 +44,10 @@ runtime behavior changes belong here.
 
 ## Constraints
 
-This is a public repository: the record contains only commands, SHAs, counts,
-outcomes and the image digest; no secrets, tokens, environment dumps, raw logs,
+This is a public repository: the record includes commands, SHAs, counts,
+outcomes, the script's metadata (UTC date, OS, Rust/Cargo/Docker versions) and
+the image digest, together with the failure records required above;
+no secrets, tokens, environment dumps, raw logs,
 real resource IDs or absolute home paths (use repository-relative paths).
 All actions are pinned by full 40-character commit SHA. Cache actions
 use `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` (v6.1.0); no third-party

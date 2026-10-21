@@ -102,7 +102,7 @@ host_cargo() {
 if [[ $(uname -s) == Darwin ]]; then
     run_step host-fmt host_cargo fmt --all -- --check
     run_step host-clippy host_cargo clippy --locked --workspace --all-targets -- -D warnings
-    run_step host-test host_cargo test --locked --workspace
+    run_step host-test host_cargo test --locked --workspace --no-fail-fast
     run_step host-release host_cargo build --locked --release --workspace
 else
     for name in host-fmt host-clippy host-test host-release; do
@@ -188,7 +188,7 @@ else
             run_step linux-components rustup component add rustfmt clippy
             run_step linux-fmt cargo fmt --all -- --check
             run_step linux-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
-            run_step linux-test cargo test --locked --workspace
+            run_step linux-test cargo test --locked --workspace --no-fail-fast
             exit "$failed"
         '
     # Accept exactly one newline-terminated ASCII marker, with no other bytes.
