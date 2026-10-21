@@ -83,43 +83,85 @@ namespace bumped; no remote cache operation is part of local verification.
 
 Run `bash scripts/local-ci.sh` from the repository root of a clean macOS worktree
 at the commit to be pushed/reviewed. Tracked changes and untracked files are
-refused before any Cargo or Docker work. The script records the full HEAD,
+refused before any Cargo or Docker work. Repository paths containing a comma,
+double quote or newline are also refused with a Docker mount CSV error, since
+the archive and results paths become `--mount` values. The script records the full HEAD,
 UTC date, `uname -sm`, rustc/Cargo/Docker versions, then runs host fmt, locked
 workspace/all-target clippy with warnings denied, locked workspace tests, and a
 locked release workspace build. Every host Cargo invocation (including version
 reporting) uses `env -u` for `GITHUB_TOKEN`, `GH_TOKEN`, `GH_ENTERPRISE_TOKEN`,
 and `GITHUB_ENTERPRISE_TOKEN`. This removes those four tokens from Cargo and its
 children; it does not claim to remove other host configuration or credentials.
+Build scripts, proc macros and tests run with the user's privileges, credentials
+and network on the host. The four-variable removal is not a sandbox. Run the
+script only on commits produced by this workflow or whose diff has been reviewed;
+external PR code is not executed locally without review or an isolated environment.
 
-One `docker run --rm` using `rust:1.91.1` runs Linux setup, fmt, locked clippy
-with `-D warnings`, and locked workspace tests. It uses the host UID/GID and
-label `rururunx-local-ci=1`, with its ID recorded in the run's `container.cid`.
-The worktree is mounted read-only at `/src`; only the per-run Linux log directory
-is separately mounted writable at `/results`. No host environment is forwarded.
-Explicit container values are `HOME=/tmp`, `USER=local-ci`, `LOGNAME=local-ci`,
-`CARGO_HOME=/tmp/cargo`, `RUSTUP_HOME=/tmp/rustup`,
-`CARGO_TARGET_DIR=/var/tmp/target`, and `CARGO_INCREMENTAL=0`. Fixed USER/LOGNAME
-values supply a non-secret identity to tests without depending on a passwd entry
-for the host UID. GitHub token values are not passed into the container.
+The `main-contained` step checks whether locally known `origin/main` is an ancestor
+of HEAD: successful `git merge-base --is-ancestor origin/main HEAD` is PASS,
+non-ancestry or an error is FAIL, and a missing ref is NOT RUN. It affects the
+overall result like any other step. It does not fetch. Before the final local run
+before merge, fetch first, merge or rebase current `origin/main` into the branch
+if necessary, and run the full script on that clean HEAD. If main advances before
+merge, repeat this integration and final local verification on the new HEAD.
+`doc/`-only PRs need no local script: they change no code, and the Actions
+documentation-only path still supplies a successful check.
 
-Named volumes `rururunx-local-ci-cargo` and `rururunx-local-ci-target` are standing
-caches owned by this script and deliberately survive its throwaway container.
-They mount at `/tmp` and `/var/tmp` respectively: Docker initializes fresh volumes
-from those image directories with their world-writable permissions, so the host
-UID can create Cargo/rustup and target subdirectories without a root setup
-container. The minimal image toolchain lacks fmt/clippy, so setup installs Rust
-1.91.1 with both components into the writable rustup cache. The first run needs
-network access for the image, toolchain/components and dependencies; cache hits
-do not skip checks. These volumes contain no injected host tokens. They are
-disposable caches, may be removed when unused, and are not CI evidence. Concurrent
-runs sharing a worktree/result directory are unsupported.
+The host's `linux-archive` step saves only tracked HEAD content using
+`git archive --format=tar --output=<run>/source.tar HEAD`. The verification
+container mounts this tar read-only at `/source.tar`, never the worktree.
+Ignored host `worktree/`, `.rrx/` and `target/` content is not visible. `/src` is a
+fresh per-container tmpfs at a fixed path. Linux setup extracts the tar there with
+`tar --extract --touch`, giving every tracked source fresh mtimes instead of
+archive timestamps. This invalidates source fingerprints left by another worktree
+in the shared target cache, while the fixed source path permits dependency reuse.
 
-Each step logs separately under `.rrx/local-ci/<sha>/`, with Linux step logs and
-fresh status markers in its `linux/` subdirectory. Even when setup or an earlier
+One `docker run --rm` verification container using `rust:1.91.1` runs Linux setup,
+fmt, locked clippy with `-D warnings`, and locked workspace tests. It uses the host
+UID/GID and label `rururunx-local-ci=1`, with its ID in `container.cid`.
+Only the per-run Linux log directory is a writable host bind at `/results`.
+No host environment is forwarded. Explicit container values are
+`HOME=/home/local-ci`, `TMPDIR=/tmp`, `USER=local-ci`, `LOGNAME=local-ci`,
+`CARGO_HOME=/cargo`, `CARGO_TARGET_DIR=/target/target` and `CARGO_INCREMENTAL=0`.
+HOME, TMPDIR and CARGO_HOME each have a per-run tmpfs. Cargo's `config.toml`
+cannot persist between runs. RUSTUP_HOME is not overridden; the image supplies
+rustfmt/clippy in a root-owned toolchain that the verification UID cannot write.
+There is no rustup install step. Fixed USER/LOGNAME supply a non-secret identity
+without depending on a passwd entry for the host UID. GitHub tokens are not passed.
+The `linux-image` step records `docker image inspect --format
+'{{index .RepoDigests 0}}' rust:1.91.1`, falling back to the image ID if no repo
+digest exists, in both `metadata.log` and the summary.
+
+Three named volumes persist: `rururunx-local-ci-registry` at
+`$CARGO_HOME/registry`, `rururunx-local-ci-git` at `$CARGO_HOME/git`, and
+`rururunx-local-ci-target` at `/target`. A separate `linux-cache-setup` helper
+container uses the same image, `--rm` and label, records `cache-container.cid`,
+and mounts only those volumes. It runs as root solely to set the three mount
+roots to mode 1777 (no recursive chmod), allowing the host UID to use new volumes.
+It mounts no host files or source and uses per-run HOME/TMPDIR tmpfs.
+Both containers are auto-removed. The volumes are standing project caches,
+not leftovers subject to generic task cleanup, and are not verification evidence.
+They are trusted only for trusted commits: after running anything untrusted,
+ensure no run uses them and remove all three with
+`docker volume rm rururunx-local-ci-registry rururunx-local-ci-git rururunx-local-ci-target`.
+The old `rururunx-local-ci-cargo` volume is no longer mounted or used by the script.
+The first run needs network access for the image and dependencies, not for
+toolchain setup; cache hits do not skip checks. Concurrent runs sharing a
+worktree/summary are unsupported.
+
+Each run has a fresh `.rrx/local-ci/<sha>/run.XXXXXX/` log directory, with Linux
+step logs and fresh status markers in its `linux/` subdirectory. Even when setup or an earlier
 check fails, later checks are attempted. Stdout and `.rrx/local-ci/<sha>.txt`
 contain the same summary: metadata and per-step PASS/FAIL/NOT RUN, seconds and
 full HEAD. A failed Docker launch or a missing/invalid Linux status marker cannot
-pass; stale result markers are removed before launch. A final check verifies
+pass. The parser requires the entire file to be one line `PASS <digits>` or
+`FAIL <digits>` followed by exactly one newline, with no other bytes. It requires
+a successful newline-terminated read, checks the ASCII fields, and compares byte
+length to the accepted line plus newline (also rejecting embedded NUL bytes).
+Failed reads, missing newlines, extra lines/fields, empty files and non-digit
+durations produce NOT RUN and fail the run. Any marker can still be forged by
+malicious code under test, so the commit trust rule is required. Fresh run paths
+prevent stale markers from passing. A final check verifies
 that HEAD and the worktree remain unchanged. Environment variables are never
 dumped. The script exits nonzero for failures or unexecuted checks.
 
@@ -172,7 +214,7 @@ with Bash and does not require an executable bit.
   not this Actions configuration. The requirements and this issue design
   describe the changed contract without changing product APIs.
 - `scripts/local-ci.sh` is a new tracked developer entry point consumed by the
-  policy in `CLAUDE.md`. Its label identifies the auto-removed container; the two
+  policy in `CLAUDE.md`. Its label identifies the auto-removed containers; the three
   named volumes are intentional standing caches, not task cleanup leftovers.
   `/results` is the only writable bind mount and is scoped to ignored per-run
   logs. No Docker socket, host home or host credential directory is mounted.
@@ -180,6 +222,20 @@ with Bash and does not require an executable bit.
   native-agent/GitHub helpers they might launch; removal applies uniformly to
   all host Cargo steps, while fixed Linux identity values support tests.
   Local caches/results cannot satisfy the remote successful-check requirement.
+- Actions no longer tests main pushes or the synthetic PR merge result. Testing
+  branch HEAD alone would miss integration defects with newer main changes.
+  `CLAUDE.md` therefore requires fetch and integration of current `origin/main`
+  before final local verification/merge; `main-contained` enforces ancestry of
+  the locally known ref. The final local run covers the integrated code, while
+  the Actions check still proves only fmt/clippy. A missing/stale local ref is
+  not proof of current main coverage: missing fails and freshness requires fetch.
+- Cargo and tests consume the changed Linux HOME/TMPDIR/CARGO_HOME and fixed
+  `/src` path. HOME/TMPDIR remain writable per run; source mtimes refresh each
+  run and only registry/Git/target persist. No Cargo config or rustup cache
+  persists. Host build scripts/proc macros/tests retain user privileges,
+  credentials and network except for the four removed token variables, so
+  reviewed-commit trust is a necessary security boundary. Linux markers are
+  reporting aids, not tamper-proof evidence.
 - Rust source, Cargo manifests/lockfile/toolchain file, CLI/runtime behavior,
   schema, authorization, dependencies and deployment remain unchanged. The
   README include remains covered by local tests and Actions code detection.
@@ -205,6 +261,11 @@ hosted Actions execution or writes to the working branch's Git state are needed
 for these static/detection checks. Actual Cargo and Docker execution is reserved
 for the orchestrator on a clean committed SHA; syntax/lint success does not
 establish that the host/container checks have passed.
+An ignored `.rrx/ci/marker_test.py` extracts the exact marker-parser function
+byte-for-byte from the script and tests valid PASS/FAIL and malformed files,
+including missing newline, extra line/field, empty and non-digit cases. Its
+negative control removes whole-file byte-length validation and confirms that
+the extra-line case detects the resulting false acceptance.
 
 The orchestrator ran `/opt/homebrew/bin/actionlint .github/workflows/ci.yml`
 with ShellCheck enabled to completion on `92ae7ad6`; it passed. After the

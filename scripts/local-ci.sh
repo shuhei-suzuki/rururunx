@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Run from a clean macOS repository root: bash scripts/local-ci.sh
-# The two rururunx-local-ci-* named volumes are standing caches, not disposable
-# test resources. /tmp and /var/tmp preserve the image's world-writable directory
-# permissions when Docker initializes them, allowing the host UID to use them.
+# The three rururunx-local-ci-* named volumes are standing project caches.
+# Use only reviewed commits; host code runs with the user's privileges.
 set -u
 set -o pipefail
 
@@ -21,6 +20,11 @@ if $allow_partial && ! $host_only; then
 fi
 
 repo=$(git rev-parse --show-toplevel) || exit 1
+case "$repo" in
+    *','*|*'"'*|*$'\n'*)
+        printf '%s\n' 'Repository path must not contain a comma, double quote or newline (Docker mount CSV).' >&2
+        exit 1 ;;
+esac
 if [[ $(pwd -P) != "$repo" ]]; then
     printf '%s\n' 'Run from the repository toplevel.' >&2
     exit 1
@@ -32,7 +36,8 @@ if [[ -n "$clean" ]]; then
     exit 1
 fi
 
-log_dir="$repo/.rrx/local-ci/$head"
+mkdir -p "$repo/.rrx/local-ci/$head" || exit 1
+log_dir=$(mktemp -d "$repo/.rrx/local-ci/$head/run.XXXXXX") || exit 1
 summary="$repo/.rrx/local-ci/$head.txt"
 mkdir -p "$log_dir/linux" || exit 1
 : > "$summary" || exit 1
@@ -73,6 +78,13 @@ run_step metadata metadata
 # Record versions and date in both the retained metadata log and the summary.
 cat "$log_dir/metadata.log" | tee -a "$summary" || failed=1
 
+if git rev-parse --verify refs/remotes/origin/main > "$log_dir/main-tip.log" 2>&1; then
+    run_step main-contained git merge-base --is-ancestor origin/main HEAD
+else
+    record 'NOT RUN' main-contained 0
+    failed=1
+fi
+
 # Invoked indirectly by run_step.
 # shellcheck disable=SC2329
 host_cargo() {
@@ -93,30 +105,59 @@ else
 fi
 
 if $host_only; then
-    for name in linux-setup linux-fmt linux-clippy linux-test; do
+    for name in linux-archive linux-cache-setup linux-image linux-container linux-setup linux-fmt linux-clippy linux-test; do
         record 'NOT RUN' "$name" 0
     done
     $allow_partial || failed=1
 else
-    # Delete only our previous result markers; missing fresh markers cannot pass.
-    for name in linux-setup linux-fmt linux-clippy linux-test; do
-        rm -f "$log_dir/linux/$name.result" || exit 1
-    done
-    rm -f "$log_dir/container.cid" || exit 1
+    # Only HEAD content enters the container, never the worktree or ignored files.
+    run_step linux-archive git archive --format=tar --output="$log_dir/source.tar" HEAD
+    # Fresh volumes otherwise have root-owned mountpoints. This helper has no
+    # host binds or source code and changes only the cache root permissions.
+    run_step linux-cache-setup docker run --rm \
+        --label rururunx-local-ci=1 \
+        --cidfile "$log_dir/cache-container.cid" \
+        --user 0:0 \
+        --tmpfs /root:rw,exec,mode=700 \
+        --tmpfs /tmp:rw,exec,mode=1777 \
+        --env HOME=/root --env TMPDIR=/tmp \
+        --mount type=volume,src=rururunx-local-ci-registry,dst=/cache/registry \
+        --mount type=volume,src=rururunx-local-ci-git,dst=/cache/git \
+        --mount type=volume,src=rururunx-local-ci-target,dst=/cache/target \
+        rust:1.91.1 chmod 1777 /cache/registry /cache/git /cache/target
+
+    # Invoked indirectly by run_step, after Docker has made the image available.
+    # shellcheck disable=SC2329
+    image_metadata() {
+        local identity
+        identity=$(docker image inspect --format '{{index .RepoDigests 0}}' rust:1.91.1 2>/dev/null) || identity=''
+        if [[ -z "$identity" || "$identity" == '<no value>' ]]; then
+            identity=$(docker image inspect --format '{{.Id}}' rust:1.91.1) || return 1
+        fi
+        [[ -n "$identity" ]] || return 1
+        printf 'Linux image %s\n' "$identity"
+    }
+    run_step linux-image image_metadata
+    cat "$log_dir/linux-image.log" | tee -a "$log_dir/metadata.log" "$summary" || failed=1
     # The quoted script expands variables inside the container, not on the host.
     # shellcheck disable=SC2016
     run_step linux-container docker run --rm \
         --label rururunx-local-ci=1 \
         --cidfile "$log_dir/container.cid" \
         --user "$(id -u):$(id -g)" \
-        --mount "type=bind,src=$repo,dst=/src,readonly" \
+        --mount "type=bind,src=$log_dir/source.tar,dst=/source.tar,readonly" \
         --mount "type=bind,src=$log_dir/linux,dst=/results" \
-        --mount type=volume,src=rururunx-local-ci-cargo,dst=/tmp \
-        --mount type=volume,src=rururunx-local-ci-target,dst=/var/tmp \
+        --tmpfs /src:rw,exec,mode=1777 \
+        --tmpfs /home/local-ci:rw,exec,mode=1777 \
+        --tmpfs /tmp:rw,exec,mode=1777 \
+        --tmpfs /cargo:rw,exec,mode=1777 \
+        --mount type=volume,src=rururunx-local-ci-registry,dst=/cargo/registry \
+        --mount type=volume,src=rururunx-local-ci-git,dst=/cargo/git \
+        --mount type=volume,src=rururunx-local-ci-target,dst=/target \
         --workdir /src \
-        --env HOME=/tmp --env USER=local-ci --env LOGNAME=local-ci \
-        --env CARGO_HOME=/tmp/cargo --env RUSTUP_HOME=/tmp/rustup \
-        --env CARGO_TARGET_DIR=/var/tmp/target --env CARGO_INCREMENTAL=0 \
+        --env HOME=/home/local-ci --env TMPDIR=/tmp --env USER=local-ci --env LOGNAME=local-ci \
+        --env CARGO_HOME=/cargo \
+        --env CARGO_TARGET_DIR=/target/target --env CARGO_INCREMENTAL=0 \
         rust:1.91.1 bash -c '
             set -u
             failed=0
@@ -131,24 +172,31 @@ else
                 fi
                 printf "%s %s\n" "$status" "$((SECONDS - start))" > "/results/$name.result" || failed=1
             }
-            # The stock minimal toolchain lacks fmt/clippy. Install them as the
-            # host UID into the standing cache, never into the root-owned image.
-            run_step linux-setup rustup toolchain install 1.91.1 --profile minimal --component rustfmt --component clippy --no-self-update
+            # --touch gives tracked sources fresh mtimes at the fixed /src path,
+            # invalidating source fingerprints from other worktrees/runs.
+            run_step linux-setup tar --extract --touch --file /source.tar --directory /src
             run_step linux-fmt cargo fmt --all -- --check
             run_step linux-clippy cargo clippy --locked --workspace --all-targets -- -D warnings
             run_step linux-test cargo test --locked --workspace
             exit "$failed"
         '
+    # Accept exactly one newline-terminated ASCII marker, with no other bytes.
+    read_linux_result() {
+        local line bytes result seconds
+        IFS= read -r line < "$1" || return 1
+        [[ "$line" =~ ^(PASS|FAIL)\ ([0-9]+)$ ]] || return 1
+        result=${BASH_REMATCH[1]}
+        seconds=${BASH_REMATCH[2]}
+        bytes=$(LC_ALL=C wc -c < "$1") || return 1
+        [[ "$bytes" -eq $((${#line} + 1)) ]] || return 1
+        status=$result
+        duration=$seconds
+    }
     for name in linux-setup linux-fmt linux-clippy linux-test; do
         status='NOT RUN'
         duration=0
         if [[ -f "$log_dir/linux/$name.result" ]]; then
-            result='' seconds='' extra=''
-            read -r result seconds extra < "$log_dir/linux/$name.result"
-            if [[ ( "$result" == PASS || "$result" == FAIL ) && "$seconds" =~ ^[0-9]+$ && -z "$extra" ]]; then
-                status=$result
-                duration=$seconds
-            fi
+            read_linux_result "$log_dir/linux/$name.result" || :
         fi
         [[ "$status" == PASS ]] || failed=1
         record "$status" "$name" "$duration"

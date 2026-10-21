@@ -406,18 +406,53 @@ Superseded PR runs share a group per PR and are cancelled; main push runs use
 unique run-ID groups and are not cancelled.
 
 Before push, `bash scripts/local-ci.sh` runs from a clean macOS repository root,
-recording full HEAD, UTC date, OS and Rust/Cargo/Docker versions. Host steps are
+except for `doc/`-only PRs, which change no code and retain a successful Actions
+documentation check. `--host-only` does not meet the pre-push requirement.
+The script records full HEAD, UTC date, OS and Rust/Cargo/Docker versions. Its
+`main-contained` step requires locally known `origin/main` to be an ancestor of
+HEAD; non-ancestry fails and a missing ref is NOT RUN, failing the run. The final
+local run before merge follows fetch and integration of current `origin/main`
+by merge/rebase if needed, covering integrated code because Actions does not test
+main pushes or PR merge results. Advancing main requires a new final local run.
+Host steps are
 fmt, locked all-targets workspace clippy with warnings denied, locked workspace
 tests and a locked release workspace build. Host Cargo calls remove the four
 GitHub token variables (`GITHUB_TOKEN`, `GH_TOKEN`, `GH_ENTERPRISE_TOKEN`,
-`GITHUB_ENTERPRISE_TOKEN`). Linux fmt/clippy/tests run in one `rust:1.91.1`
-container with `--rm`, label `rururunx-local-ci=1`, the host UID/GID, a read-only
-`/src`, a writable per-run log mount, fixed non-secret HOME/USER/LOGNAME, and no
-forwarded host environment. Named volumes `rururunx-local-ci-cargo` and
-`rururunx-local-ci-target` are standing Cargo/rustup and target caches.
+`GITHUB_ENTERPRISE_TOKEN`). Host build scripts, proc macros and tests still run
+with the user's privileges, credentials and network; removing four tokens is not
+isolation. Only commits produced by this workflow or with reviewed diffs may run;
+external PR code requires review or an isolated environment before local execution.
+
+The host archives only tracked HEAD content with `git archive --format=tar HEAD`
+into a fresh per-run log directory. Linux fmt/clippy/tests run in one
+`rust:1.91.1` verification container with `--rm`, label `rururunx-local-ci=1`,
+the host UID/GID, that tar mounted read-only, a writable per-run results mount,
+fixed non-secret HOME/USER/LOGNAME, and no forwarded host environment. The
+worktree and ignored `worktree/`, `.rrx/` and `target/` are not mounted. Setup
+extracts the tar with fresh mtimes into a fresh tmpfs at fixed `/src`, invalidating
+source fingerprints from other worktrees while allowing dependency artifact reuse.
+HOME, TMPDIR and CARGO_HOME use per-run tmpfs, so Cargo configuration cannot
+persist. RUSTUP_HOME is not overridden; the root-owned image toolchain provides
+rustfmt/clippy without installation and is not writable by the verification UID.
+The repo image digest, or image ID if absent, is recorded in metadata and summary.
+
+Named volumes `rururunx-local-ci-registry`, `rururunx-local-ci-git` and
+`rururunx-local-ci-target` are standing project caches for Cargo registry, Git
+databases and Linux target only; registry/Git mount at `$CARGO_HOME/registry`
+and `$CARGO_HOME/git`. A separate auto-removed helper mounts only those volumes,
+uses per-run HOME/TMPDIR tmpfs and sets their root directory permissions for the
+host UID without mounting host files or source. These caches are exempt from
+generic task cleanup and trusted only for trusted commits. After running
+anything untrusted, remove all three when unused with
+`docker volume rm rururunx-local-ci-registry rururunx-local-ci-git rururunx-local-ci-target`.
 All steps are attempted despite failures. Per-step status/seconds and HEAD are
 printed and retained in `.rrx/local-ci/<sha>.txt`, with logs under
-`.rrx/local-ci/<sha>/`. Failures or missing checks fail the script;
+`.rrx/local-ci/<sha>/run.XXXXXX/`. Linux result files must be exactly one line
+`PASS <digits>` or `FAIL <digits>` plus a single newline. Failed reads, missing
+newlines or any extra fields/lines/bytes produce NOT RUN and fail the run.
+Malicious code under test can forge any marker; the commit trust rule is required.
+Repository paths containing commas, double quotes or newlines are refused to
+protect Docker mount CSV parsing. Failures or missing checks fail the script;
 `--host-only` reports Linux NOT RUN and requires `--allow-partial` to permit an
 otherwise successful partial exit. Full local commands, SHA, test counts and
 outcomes are recorded in the PR; partial runs do not meet the pre-push policy.
