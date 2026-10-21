@@ -1,4 +1,4 @@
-//! Offline, owner-gated measurements at the production snapshot inventory limit.
+//! Offline snapshot listing boundaries and owner-gated inventory measurements.
 use super::*;
 use crate::execution::pipeline::{
     PipelineGit,
@@ -17,7 +17,8 @@ use tokio::io::AsyncWriteExt;
 // Fixture construction has no production deadline or output cap. Only the
 // measured rebuild/verify below use PipelineGit and its production limits.
 async fn fixture_git(project: &Path, args: &[&str], bytes: &[u8]) -> Result<Vec<u8>> {
-    let mut child = tokio::process::Command::new("/usr/bin/git")
+    let mut command = tokio::process::Command::new("/usr/bin/git");
+    command
         .arg("--no-replace-objects")
         .arg("-C")
         .arg(project)
@@ -38,8 +39,8 @@ async fn fixture_git(project: &Path, args: &[&str], bytes: &[u8]) -> Result<Vec<
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()?;
+        .kill_on_drop(true);
+    let mut child = rrx_spawn_hygiene::spawn_tokio(command)?;
     let mut stdin = child.stdin.take().context("fixture Git stdin missing")?;
     let write = async {
         stdin.write_all(bytes).await?;
@@ -57,6 +58,111 @@ async fn object(project: &Path, args: &[&str], bytes: &[u8]) -> Result<String> {
     Ok(String::from_utf8(fixture_git(project, args, bytes).await?)?
         .trim()
         .into())
+}
+
+/// Listing overflow holds review with its named limit while the adjacent smaller tree prepares.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn b7_snapshot_listing_bound() {
+    const LISTING_LIMIT: usize = 4 * 1024 * 1024;
+    // Long shared directory components keep the materialized file count small,
+    // while each component and the complete snapshot path fit macOS limits.
+    let directory = "d".repeat(180);
+    let prefix = format!("{directory}/{directory}/{directory}/");
+    let suffix = "x".repeat(233);
+    for over in [true, false] {
+        let f = fixture().await;
+        let project = f.store().project(f.project).unwrap().unwrap();
+        fixture_git(&project.root, &["init", "-b", "main"], &[])
+            .await
+            .unwrap();
+        let blob = object(
+            &project.root,
+            &["hash-object", "-w", "--no-filters", "--stdin"],
+            b"x\n",
+        )
+        .await
+        .unwrap();
+        let row_bytes = format!("100644 blob {blob}\t{prefix}f000000{suffix}\0").len();
+        let under = LISTING_LIMIT / row_bytes;
+        // Count the root, three shared directories and the extra file, too.
+        assert!(under + 5 < SNAPSHOT_ENTRY_BUDGET / 10);
+        let mut rows = Vec::new();
+        for i in 0..under + usize::from(over) {
+            rows.extend_from_slice(format!("100644 blob {blob}\tf{i:06}{suffix}\n").as_bytes());
+        }
+        let mut tree = object(&project.root, &["mktree"], &rows).await.unwrap();
+        for _ in 0..3 {
+            tree = object(
+                &project.root,
+                &["mktree"],
+                format!("040000 tree {tree}\t{directory}\n").as_bytes(),
+            )
+            .await
+            .unwrap();
+        }
+        let commit = object(&project.root, &["commit-tree", &tree], b"listing bound\n")
+            .await
+            .unwrap();
+        let listing = fixture_git(&project.root, &["ls-tree", "-r", "-z", &commit, "--"], &[])
+            .await
+            .unwrap();
+        assert_eq!(listing.len() > LISTING_LIMIT, over);
+        assert!(listing.len().abs_diff(LISTING_LIMIT) < row_bytes);
+
+        // No Task checkout is needed: plan review directly on this committed tree.
+        let (f, runtime, id) = super::b5::prepare_fixture_at(f, commit.clone())
+            .await
+            .unwrap();
+        f.advance_prepare(&id);
+        let task = f.store().task(f.task).unwrap().unwrap();
+        let data = json!({"title":task.title,"acceptance_criteria":task.acceptance_criteria,"scope":["src/**"]});
+        let nonce = Uuid::new_v4().simple().to_string();
+        let prompt = crate::execution::pipeline::review_prompt(&nonce, &data, &[]).unwrap();
+        let mut next = planned(&id, 2, 1, "review");
+        next.step_base = commit;
+        next.input_sha256 = crate::execution::verification::hash(&prompt);
+        next.body["review_nonce"] = json!(nonce);
+        let cursor = f.cursor(&id);
+        f.store()
+            .pipeline_plan_next(&f.owner, &cursor, &next, true)
+            .unwrap();
+        let cursor = f.cursor(&id);
+        runtime.wait_pipeline_test_boundary().await;
+        let mut input = runtime
+            .prepare_pipeline_review(f.cursor(&id))
+            .await
+            .unwrap();
+        if input.is_none() && f.cursor(&id).step_version == cursor.step_version {
+            runtime.wait_pipeline_test_boundary().await;
+            input = runtime
+                .prepare_pipeline_review(f.cursor(&id))
+                .await
+                .unwrap();
+        }
+        let view = f.store().pipeline_goal_view(f.goal).unwrap();
+        let step = view.steps.last().unwrap();
+        if over {
+            assert!(input.is_none());
+            assert_eq!(step.state, "held");
+            assert_eq!(step.body["reason"], "review_snapshot_limit");
+            assert_eq!(view.runs.last().unwrap().state, "held");
+        } else {
+            assert!(input.is_some());
+            assert_eq!(step.state, "planned");
+            assert_eq!(step.body["snapshot_tree"], tree);
+        }
+        assert!(step.cookie.is_none() && step.pid.is_none() && step.body["intent"].is_null());
+        let path = review_snapshot::snapshot_path(
+            &f.config.pipeline.as_ref().unwrap().work_root,
+            &id,
+            2,
+            1,
+        )
+        .unwrap();
+        runtime.shutdown().await.unwrap();
+        review_snapshot::remove(&path).unwrap();
+    }
 }
 
 /// Exact-limit nested trees measure production preparation and post-death verification offline.

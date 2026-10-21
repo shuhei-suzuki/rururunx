@@ -316,7 +316,9 @@ Snapshot blobs are read in one bounded Git batch; blob and tree IDs are computed
 process for SHA-1 and SHA-256 repositories. Directories shaped like implicit bare Git
 repositories are refused at any depth after removing HFS-ignorable code points and
 applying the control-name case folding. Review prompts above 512 KiB hold before
-launch with `review_prompt_too_large`; snapshot budget failures use `review_snapshot_limit`.
+launch with `review_prompt_too_large`. The effective snapshot limit is 100,000 entries
+(root, directories and files) or a 4 MiB `git ls-tree -r -z` listing, whichever is reached
+first. Exceeding either limit holds review with `review_snapshot_limit`.
 
 The decoded `rrx.review.v1` verdict is stored in `step.body.adoption.verdict` for later
 decision processing. Finding IDs must be unique. An `approve` verdict containing an

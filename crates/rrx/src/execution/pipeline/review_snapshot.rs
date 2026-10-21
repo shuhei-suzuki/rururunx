@@ -42,9 +42,25 @@ pub(crate) async fn rebuild(
         "review_snapshot_changed"
     );
     remove(path)?;
+    // Check the snapshot listing before driver preflight repeats ls-tree, so an
+    // oversized inventory keeps its review-specific reason at this boundary.
+    let entries = git
+        .run(&["ls-tree", "-r", "-z", commit, "--"])
+        .await
+        .map_err(|error| {
+            if error.chain().any(|cause| {
+                matches!(
+                    cause.to_string().as_str(),
+                    "command output exceeded its bound" | "Git combined output exceeds bound"
+                )
+            }) {
+                error.context("review_snapshot_limit")
+            } else {
+                error
+            }
+        })?;
     git.reject_tree_drivers(commit).await?;
     ensure_private_directory(path)?;
-    let entries = git.run(&["ls-tree", "-r", "-z", commit, "--"]).await?;
     let mut inventory = Vec::new();
     let mut names: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
     for (index, entry) in entries

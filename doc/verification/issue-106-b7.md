@@ -29,7 +29,7 @@
 |---|---|---|
 | B7-O2-2 | 固定した Claude CLI が、子の git に `GIT_CONFIG_*` を渡すか。Reviewer の PATH で `path_prefix` に git があるとき、どの git が動くか | 下の real-CLI harness で記録する道具を追加。owner の実行結果は未取得 |
 | B7-L-model | `modelUsage` のキーの形を、本物の claude の envelope で確かめていない | 下の real-CLI harness でキーだけ記録する道具を追加。owner の実行結果は未取得 |
-| B7-L-budget | スナップショットの 100,000 項目の上限での所要時間 | 下の offline timing test を追加。owner の実行結果は未取得 |
+| B7-L-budget | スナップショットの 100,000 項目の上限での所要時間 | `e0c1307a` の host 計測では準備が 360 ms で出力上限により失敗し、独立した合成 tree の死亡後検証は 111 秒で合格（load average 約 47）。下記のとおり、owner run で低負荷時の上限での検証時間を再計測する |
 | B7-L-resume | 一時停止の後の再開のレビューの受け入れ試験、再開で accepted policy を比べること | B10 の受け入れの条件 |
 | B7-L-order | finding の行の順序（`line` と `end_line`）の扱い | B8 の filtering |
 | B7-O2-4 | 入口の検査と handler の guard の重なり | 多層防御として受け入れ |
@@ -56,7 +56,9 @@ snapshot の時間計測は CLI・ネットワークを使わず、別に実行�
 RRX_SNAPSHOT_BUDGET_TIMING=1 RRX_SNAPSHOT_BUDGET_OUT=/absolute/path/in/worktree/.rrx/snapshot-budget.json cargo test --offline -p rrx --lib state::execution::pipeline::tests::snapshot_budget::snapshot_budget_timing -- --ignored --exact --test-threads=1
 ```
 
-production の `SNAPSHOT_ENTRY_BUDGET` を使い、root + 2 個の中間ディレクトリ + 残りの小さい file で正確に上限の commit を作る。fixture の Git オブジェクト作成と件数の確認には、固定した Git 環境の通常の Git プロセスを使い、production の deadline を掛けない。setup の失敗は `fixture_build_failed` として JSON に残す。production `rebuild` と採用時と同じ `verify` を別々に計測し、失敗も時間・理由とともに JSON に残す。既存の Git plumbing の通常出力上限 4 MiB は、100,000 項目の `ls-tree` の出力より小さいため、現行の production 経路では準備が先に拒否される見込みである。その場合も verifier 自体を上限で測るため、同じ合成 tree の読み取り専用 fixture を別途作り、`verification_fixture` で区別して production `verify` を計測する。準備の失敗は保持し、JSON を書いた後にテストを失敗とする。この道具では製品の上限を広げず、準備に成功した時間を測れたとは扱わない。B7-L-budget の完了には owner の計測と、この制約の判断が必要である。
+production の `SNAPSHOT_ENTRY_BUDGET` を使い、root + 2 個の中間ディレクトリ + 残りの小さい file で正確に上限の commit を作る。fixture の Git オブジェクト作成と件数の確認には、固定した Git 環境の通常の Git プロセスを使い、production の deadline を掛けない。setup の失敗は `fixture_build_failed` として JSON に残す。production `rebuild` と採用時と同じ `verify` を別々に計測し、失敗も時間・理由とともに JSON に残す。既存の Git plumbing の通常出力上限 4 MiB は、100,000 項目の `ls-tree` の出力より小さいため、この fixture は準備で拒否される。その場合も verifier 自体を上限で測るため、同じ合成 tree の読み取り専用 fixture を別途作り、`verification_fixture` で区別して production `verify` を計測する。準備の失敗は保持し、JSON を書いた後にテストを失敗とする。この道具では製品の上限を広げず、準備に成功した時間を測れたとは扱わない。
+
+**B7-L-budget の計測結果**: オーケストレーターの `e0c1307a` の host 実行では、100,000 項目の準備（`review_snapshot::rebuild`）が 360 ms で `command output exceeded its bound` により失敗した。準備失敗後に別途作った同じ合成 tree の死亡後検証（production `verify`）は 111 秒で合格し、load average は約 47 だった。これは準備済み snapshot の測定成功ではない。実効上限は 100,000 項目または 4 MiB の `ls-tree` 一覧出力のうち先に達する方とし、どちらの超過も `review_snapshot_limit` で review を保留する。B7-L-budget の残件として、owner run で低負荷時の 100,000 項目での検証時間を再計測する。
 
 ## テストの harness の制限
 

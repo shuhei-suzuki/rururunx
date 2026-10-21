@@ -1354,6 +1354,8 @@ attempt ディレクトリは `<work_root>/runs/<run>/<seq>-<attempt>/`（0700�
 | prepare | 何もしない（rrx は既存のものを消さない。運用者が片付ける） | branch・worktree のパス・登録がどれもない |
 | release | 何もしない（新しい attempt が ref を読み直す） | — |
 
+snapshot の実効上限は、root・ディレクトリ・ファイルを合わせた 100,000 項目、または `git ls-tree -r -z` の一覧出力 4 MiB のうち、先に達する方である。どちらの上限を超えても review は `review_snapshot_limit` で held にする。一覧の上限は snapshot の呼び出し箇所で名前付き理由に変換し、他の Git 呼び出しの扱いと既存の上限は変えない。driver の検査も同じ一覧を読むため、snapshot の一覧取得をその前に行う。driver の検査はファイルの書き出し前に必ず通す。
+
 検証に失敗したら、新しい attempt を起動しない（§4.2 では held、回復では拒否）。
 
 ## 7. テスト step
@@ -1698,6 +1700,7 @@ B10 設計入力: lifecycle Resume は Runtime config hash（`runtime/control.rs
 
 | ID | 計画 | この設計 | 根拠 |
 |---|---|---|---|
+| D23 | snapshot の 100,000 項目の上限 | 実効上限は 100,000 項目または `ls-tree -r -z` の一覧出力 4 MiB のうち先に達する方とする。どちらの超過も review を `review_snapshot_limit` で held にする | 100,000 項目の計測では、既存の 4 MiB の Git 出力上限で準備が先に失敗した。上限や budget は広げず、snapshot の一覧取得だけで出力超過を名前付き理由に変換する。長いパスを使った、項目数の上限より十分小さい tree で、一覧出力の上限直前は準備でき、直後は名前付き理由で保留することを検査する |
 | D22 | B7 の本物の CLI と snapshot 上限の確認 | 製品機能ではなく検証用の harness を追加する。macOS の通常テストは native fake CLI で Executor → admitted TestsProfile の Seatbelt test → Reviewer の Runtime API を通す。実 CLI は ignored test と `RRX_REAL_CLI_PASS=1` の二重ゲートを要求し、owner が他の資格情報を持つ同一利用者のプロセスを止めた新しい端末から `scripts/real-cli-pass.sh` を実行する | 秘密を含まない合成 Git project で 1 pass だけ行う。要約は各 step の状態・理由・時間、prompt と `git archive` の SHA256・bytes、Reviewer envelope と `modelUsage` のキー、TMPDIR 内の git wrapper による固定 `GIT_CONFIG_*` の転送、probe を除いた PATH の git を記録する。Agent の本文は要約に転記しない。snapshot の時間計測も ignored と専用 gate を要求し、製品と同じ entry budget・rebuild・verify を使う。Q と製品の制約は変えない |
 | D21 | §5.3 の Reviewer 引数 | `--no-session-persistence` を追加して §5.3 を強化する。Q でも必須 flag として検査する | pin した Claude CLI 2.1.304 は print モードでこの flag を受け付け、session の保存と再開を止める。rrx の秘密スキャンを通らない CLI 自身の transcript 保存を抑止する |
 | D1 | schema v13 | v12 | main は v11（`state/mod.rs:32`）。v12 は M0 branch（`feature/issue-5-m0:crates/rrx/src/state/mod.rs:34`）にしかない。M0 を再開するときは v13 へ番号を振り直す |
