@@ -21,6 +21,27 @@ use std::{
 const IMPLEMENT: &[u8] = b"Implement add(a, b) in src/calc.py so add(2, 3) == 5. Scope: src/**. Do not change tests or README, commit, or use the network. Leave the implementation for the runtime to commit.\n";
 const CALC_TEST: &[u8] = b"import importlib.util\nimport unittest\n\nspec = importlib.util.spec_from_file_location('calc', 'src/calc.py')\ncalc = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(calc)\n\nclass CalcTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(calc.add(2, 3), 5)\n";
 
+#[derive(Clone, Copy)]
+struct FakeScenario {
+    implementation: &'static str,
+    verdict: &'static str,
+}
+
+const FAKE_PASS: FakeScenario = FakeScenario {
+    implementation: "def add(a, b):\n    return a + b\n",
+    verdict: "approve",
+};
+
+enum PassMode {
+    Fake(FakeScenario),
+    // Resolve only in the gated entry point, retaining setup failures in summary.json.
+    Real(Result<PipelineClis>),
+}
+
+fn real_pass_enabled(value: Option<&std::ffi::OsStr>) -> bool {
+    value == Some(std::ffi::OsStr::new("1"))
+}
+
 // Values come only from the launcher's fixed reviewer environment. Never log argv beyond
 // the subcommand, nor any unrelated environment. Unexpected values are redacted on read.
 const GIT_PROBE: &str = r##"#!/bin/bash
@@ -166,9 +187,33 @@ fn last_step(f: &Fixture) -> Result<PipelineStep> {
 fn record(f: &Fixture, kind: &str, start: Instant, result: &Result<bool>) -> Value {
     match last_step(f) {
         Ok(step) if step.kind == kind => {
-            json!({"kind":kind,"state":step.state,"reason":step.body.get("reason")
+            let mut observation = json!({"kind":kind,"state":step.state,"reason":step.body.get("reason")
             .cloned().unwrap_or_else(|| if result.is_err() { json!("harness_operation_failed") } else { Value::Null }),
-            "duration_ms":start.elapsed().as_millis(),"adopted":matches!(result, Ok(true)) && step.state == "adopted"})
+            "duration_ms":start.elapsed().as_millis(),"adopted":matches!(result, Ok(true)) && step.state == "adopted"});
+            if observation["adopted"] == true {
+                if kind == "test" {
+                    observation["test_result"] =
+                        json!(match step.body["adoption"]["result"].as_str() {
+                            Some("pass") => "pass",
+                            Some("fail") => "fail",
+                            _ => "other",
+                        });
+                    if observation["test_result"] != "pass" {
+                        observation["reason"] = json!("test_not_passed");
+                    }
+                } else if kind == "review" {
+                    observation["review_verdict"] =
+                        json!(match step.body["adoption"]["verdict"]["verdict"].as_str() {
+                            Some("approve") => "approve",
+                            Some("request_changes") => "request_changes",
+                            _ => "other",
+                        });
+                    if observation["review_verdict"] != "approve" {
+                        observation["reason"] = json!("review_not_approved");
+                    }
+                }
+            }
+            observation
         }
         Ok(_) => json!({"kind":kind,"state":"not_planned","reason":"harness_planning_failed",
             "duration_ms":start.elapsed().as_millis(),"adopted":false}),
@@ -194,7 +239,7 @@ fn plan(f: &Fixture, id: &str, kind: &str, prompt: &[u8], nonce: Option<&str>) -
     f.store().pipeline_plan_next(&f.owner, &cursor, &next, true)
 }
 
-fn fake_step(f: &Fixture, id: &str, kind: &str) -> Result<()> {
+fn fake_step(f: &Fixture, id: &str, kind: &str, scenario: FakeScenario) -> Result<()> {
     let config = f.config.pipeline.as_ref().context("config missing")?;
     let step = last_step(f)?;
     let view = f.store().pipeline_goal_view(f.goal)?;
@@ -244,10 +289,10 @@ fn fake_step(f: &Fixture, id: &str, kind: &str) -> Result<()> {
             "exec-output",
             &serde_json::to_string(&json!({"type":"result","subtype":"success",
             "is_error":false,"modelUsage":{cli.model.clone():{}},"structured_output":{
-            "schema":"rrx.review.v1","verdict":"approve","summary":"safe","findings":[]}}))?,
+            "schema":"rrx.review.v1","verdict":scenario.verdict,"summary":"safe","findings":[]}}))?,
         );
     } else {
-        fake.control("exec-calc", "def add(a, b):\n    return a + b\n");
+        fake.control("exec-calc", scenario.implementation);
         fake.control("exec-last", "Implementation complete.\n");
         fake.control("exec-output", "{\"type\":\"turn.completed\"}\n");
     }
@@ -312,11 +357,23 @@ fn envelope(f: &Fixture, id: &str) -> Value {
         .join("runs")
         .join(id)
         .join(format!("{}-1/result.json", step.seq));
-    let decoded = crate::execution::pipeline::adoption::read_regular(&path, review::REVIEW_BYTES)
-        .ok()
+    match crate::execution::pipeline::adoption::read_regular(&path, review::REVIEW_BYTES) {
+        Ok(bytes) => envelope_keys(&bytes),
+        Err(_) => json!({"state":"absent_or_invalid"}),
+    }
+}
+
+fn envelope_keys(bytes: &[u8]) -> Value {
+    let decoded = Some(bytes)
         .filter(|bytes| review::scan_raw(bytes, 0).is_ok())
-        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
-    match decoded.and_then(|value| value.as_object().cloned()) {
+        .and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok());
+    let Some(value) = decoded else {
+        return json!({"state":"absent_or_invalid"});
+    };
+    if review::scan_strings(&value).is_err() {
+        return json!({"state":"secret_detected"});
+    }
+    match value.as_object() {
         Some(object) => {
             json!({"state":"recorded","top_level_keys":object.keys().collect::<Vec<_>>(),
             "model_usage_keys":object.get("modelUsage").and_then(Value::as_object).map(|o| o.keys().collect::<Vec<_>>())})
@@ -361,14 +418,17 @@ async fn launch_recorded(
     result
 }
 
-async fn pass_flow(real: bool, summary: &mut Value) -> Result<()> {
+async fn pass_flow(mode: PassMode, summary: &mut Value) -> Result<()> {
     let probe = tempfile::Builder::new()
         .prefix("rrx-git-probe-")
         .tempdir()?;
     let probe_path = probe.path().canonicalize()?;
     fs::write(probe_path.join("git"), GIT_PROBE)?;
     fs::set_permissions(probe_path.join("git"), fs::Permissions::from_mode(0o700))?;
-    let clis = if real { Some(real_clis()?) } else { None };
+    let (clis, fake) = match mode {
+        PassMode::Real(clis) => (Some(clis?), None),
+        PassMode::Fake(scenario) => (None, Some(scenario)),
+    };
     if let Some(clis) = &clis {
         summary["clis"] = cli_summary(clis);
     }
@@ -451,7 +511,7 @@ async fn pass_flow(real: bool, summary: &mut Value) -> Result<()> {
                 prompt
             } else { Vec::new() };
             if kind != "review" { plan(&f, &id, kind, &prompt, None)?; }
-            if !real && kind != "test" { fake_step(&f, &id, kind)?; }
+            if let Some(scenario) = fake && kind != "test" { fake_step(&f, &id, kind, scenario)?; }
             if kind != "test" {
                 summary["prompts"][kind] = packet(&format!("{kind}-prompt.md"), &prompt);
             }
@@ -474,7 +534,9 @@ async fn pass_flow(real: bool, summary: &mut Value) -> Result<()> {
             }
         }.await;
         let observation = record(&f, kind, start, &result);
-        active = observation["adopted"] == true;
+        active = observation["adopted"] == true
+            && (kind != "test" || observation["test_result"] == "pass")
+            && (kind != "review" || observation["review_verdict"] == "approve");
         summary["steps"].as_array_mut().unwrap().push(observation);
         if kind == "implement" && active {
             let archived: Result<Vec<u8>> = async {
@@ -503,7 +565,7 @@ async fn pass_flow(real: bool, summary: &mut Value) -> Result<()> {
         )?)?;
     }
     shutdown?;
-    ensure!(active, "one or more steps did not adopt");
+    ensure!(active, "one or more steps did not adopt or did not succeed");
     Ok(())
 }
 
@@ -512,14 +574,15 @@ fn cli_summary(clis: &PipelineClis) -> Value {
         "claude":{"version":clis.claude.version,"model":clis.claude.model}})
 }
 
-async fn run_pass(real: bool, out: &Path) {
+async fn run_pass(mode: PassMode, out: &Path) -> Value {
+    let real = matches!(&mode, PassMode::Real(_));
     let mut summary = json!({"mode":if real {"real"} else {"fake"},"clis":null,"steps":[],
         "prompts":{},"sent_prompts":[],"sample_tree":null,"review_tree":null,
         "probes":{"envelope":{"state":"not_run"},"git_forwarding":{
             "implement":{"state":"not_run","called":false},"test":{"state":"not_run","called":false},
             "review":{"state":"not_run","called":false}},"reviewer_git_without_probe":{"state":"not_run","path":null}}});
     let start = Instant::now();
-    let result = pass_flow(real, &mut summary).await;
+    let result = pass_flow(mode, &mut summary).await;
     for kind in ["prepare", "implement", "test", "review"] {
         if !summary["steps"]
             .as_array()
@@ -531,7 +594,7 @@ async fn run_pass(real: bool, out: &Path) {
                 .as_array_mut()
                 .unwrap()
                 .push(json!({"kind":kind,"state":"not_run",
-                "reason":"previous_step_or_setup_not_adopted","duration_ms":0,"adopted":false}));
+                "reason":"previous_step_or_setup_not_successful","duration_ms":0,"adopted":false}));
         }
     }
     summary["state"] = json!(if result.is_ok() { "adopted" } else { "failed" });
@@ -548,49 +611,143 @@ async fn run_pass(real: bool, out: &Path) {
         "packets":packets,"content":"Lists only the inputs rrx supplied: prompts, the sample base tree and the reviewed head tree. Uncertain launch outcomes are marked possibly_sent. Does not cover what each CLI loads itself: configuration and instructions under HOME/CODEX_HOME or environment context such as absolute paths. Does not cover what CLI tools read: Reviewer Read/Grep/Glob and the Executor workspace-write sandbox can read files outside the sample."});
     write_json(&out.join("summary.json"), &summary).unwrap();
     write_json(&out.join("send-record.json"), &send_record).unwrap();
-    assert!(
-        result.is_ok(),
-        "pass failed; inspect summary.json (Agent output is not printed)"
-    );
-    if !real {
-        assert_eq!(summary["steps"].as_array().unwrap().len(), 4);
-        assert_eq!(
-            summary["probes"]["git_forwarding"]["implement"]["called"],
-            true
-        );
-        assert_eq!(
-            summary["probes"]["git_forwarding"]["review"]["called"],
-            true
-        );
-        assert_eq!(summary["probes"]["envelope"]["state"], "recorded");
-        let calls = summary["probes"]["git_forwarding"]["review"]["calls"]
-            .as_array()
-            .unwrap();
-        for call in calls {
-            for (key, expected) in [
-                ("GIT_CONFIG_COUNT", "1"),
-                ("GIT_CONFIG_KEY_0", "safe.bareRepository"),
-                ("GIT_CONFIG_VALUE_0", "explicit"),
-                ("GIT_CONFIG_NOSYSTEM", "1"),
-            ] {
-                assert_eq!(
-                    call["environment"][key],
-                    json!({"set":true,"value":expected})
-                );
-            }
-        }
-        assert_eq!(
-            summary["probes"]["envelope"]["model_usage_keys"],
-            json!(["fixture-model"])
-        );
-    }
+    summary
 }
 
 /// The normal host suite exercises Executor, admitted Seatbelt tests and Reviewer without real CLIs.
 #[tokio::test]
 async fn fake_cli_pass() {
     let out = tempfile::tempdir().unwrap();
-    run_pass(false, out.path()).await;
+    let summary = run_pass(PassMode::Fake(FAKE_PASS), out.path()).await;
+    assert_eq!(summary["state"], "adopted", "fake pass did not succeed");
+    assert_eq!(summary["steps"].as_array().unwrap().len(), 4);
+    assert_eq!(
+        summary["probes"]["git_forwarding"]["implement"]["called"],
+        true
+    );
+    assert_eq!(
+        summary["probes"]["git_forwarding"]["review"]["called"],
+        true
+    );
+    assert_eq!(summary["probes"]["envelope"]["state"], "recorded");
+    let calls = summary["probes"]["git_forwarding"]["review"]["calls"]
+        .as_array()
+        .unwrap();
+    for call in calls {
+        for (key, expected) in [
+            ("GIT_CONFIG_COUNT", "1"),
+            ("GIT_CONFIG_KEY_0", "safe.bareRepository"),
+            ("GIT_CONFIG_VALUE_0", "explicit"),
+            ("GIT_CONFIG_NOSYSTEM", "1"),
+        ] {
+            assert_eq!(
+                call["environment"][key],
+                json!({"set":true,"value":expected})
+            );
+        }
+    }
+    assert_eq!(
+        summary["probes"]["envelope"]["model_usage_keys"],
+        json!(["fixture-model"])
+    );
+}
+
+/// Decoded secret keys at either recorded envelope level never enter the summary.
+#[test]
+fn envelope_secret_keys_are_redacted() {
+    for bytes in [
+        br#"{"a=b\tEXAMPLE_SECRET=fixture":{},"modelUsage":{"fixture-model":{}}}"#.as_slice(),
+        br#"{"type":"result","modelUsage":{"a=b\tEXAMPLE_SECRET=fixture":{}}}"#.as_slice(),
+    ] {
+        review::scan_raw(bytes, 0).expect("fixture must pass the raw scan");
+        let summary = json!({"probes":{"envelope":envelope_keys(bytes)}});
+        assert_eq!(
+            summary["probes"]["envelope"],
+            json!({"state":"secret_detected"}),
+            "decoded secret keys must produce only the fixed marker"
+        );
+    }
+}
+
+/// A failing admitted unittest stops the pass before any Reviewer launch.
+#[tokio::test]
+async fn fake_cli_wrong_implementation_stops_before_review() {
+    let out = tempfile::tempdir().unwrap();
+    run_pass(
+        PassMode::Fake(FakeScenario {
+            implementation: "def add(a, b):\n    return a - b\n",
+            ..FAKE_PASS
+        }),
+        out.path(),
+    )
+    .await;
+    let summary: Value =
+        serde_json::from_slice(&fs::read(out.path().join("summary.json")).unwrap()).unwrap();
+    assert_eq!(summary["state"], "failed");
+    let test = &summary["steps"][2];
+    assert_eq!(
+        test["adopted"], true,
+        "failure must be an adopted test result"
+    );
+    assert_eq!(test["test_result"], "fail");
+    assert_eq!(test["reason"], "test_not_passed");
+    assert_eq!(summary["steps"][3]["state"], "not_run");
+    assert_eq!(
+        summary["steps"][3]["reason"],
+        "previous_step_or_setup_not_successful"
+    );
+    assert!(
+        summary["prompts"].get("review").is_none(),
+        "a failing unittest must not reach Reviewer planning or launch"
+    );
+    assert_eq!(
+        summary["probes"]["git_forwarding"]["review"]["state"],
+        "not_run"
+    );
+}
+
+/// An adopted request_changes verdict makes the pass fail even after passing tests.
+#[tokio::test]
+async fn fake_cli_request_changes_is_not_success() {
+    let out = tempfile::tempdir().unwrap();
+    run_pass(
+        PassMode::Fake(FakeScenario {
+            verdict: "request_changes",
+            ..FAKE_PASS
+        }),
+        out.path(),
+    )
+    .await;
+    let summary: Value =
+        serde_json::from_slice(&fs::read(out.path().join("summary.json")).unwrap()).unwrap();
+    assert_eq!(summary["state"], "failed");
+    assert_eq!(summary["steps"][2]["test_result"], "pass");
+    let review = &summary["steps"][3];
+    assert_eq!(
+        review["adopted"], true,
+        "rejection must be an adopted verdict"
+    );
+    assert_eq!(review["review_verdict"], "request_changes");
+    assert_eq!(review["reason"], "review_not_approved");
+}
+
+/// Only the exact environment value 1 enables the owner-only real pass.
+#[test]
+fn real_pass_gate_requires_explicit_one() {
+    assert!(
+        !real_pass_enabled(None),
+        "an unset gate must disable the pass"
+    );
+    for value in ["", "0", "true", "01", "1 ", " 1", "1\n"] {
+        assert!(
+            !real_pass_enabled(Some(std::ffi::OsStr::new(value))),
+            "gate value {value:?} must disable the pass"
+        );
+    }
+    assert!(
+        real_pass_enabled(Some(std::ffi::OsStr::new("1"))),
+        "the explicit gate value 1 must enable the pass"
+    );
 }
 
 /// A failed post-spawn running record still retains the possibly sent prompt packet.
@@ -602,7 +759,7 @@ async fn fake_cli_post_spawn_packet() {
     runtime.wait_pipeline_test_boundary().await;
     assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
     plan(&f, &id, "implement", IMPLEMENT, None).unwrap();
-    fake_step(&f, &id, "implement").unwrap();
+    fake_step(&f, &id, "implement", FAKE_PASS).unwrap();
     f.store().connection.execute_batch("CREATE TEMP TRIGGER real_cli_fail_running BEFORE UPDATE ON pipeline_steps WHEN NEW.state='running' BEGIN SELECT RAISE(ABORT,'injected running failure'); END;").unwrap();
     let expected = packet("implement-prompt.md", IMPLEMENT);
     let mut summary = json!({"prompts":{"implement":expected},"sent_prompts":[]});
@@ -627,7 +784,7 @@ async fn fake_cli_post_spawn_packet() {
 #[tokio::test]
 #[ignore = "owner only: real provider calls on a synthetic sample"]
 async fn real_cli_pass() {
-    if std::env::var("RRX_REAL_CLI_PASS").as_deref() != Ok("1") {
+    if !real_pass_enabled(std::env::var_os("RRX_REAL_CLI_PASS").as_deref()) {
         return;
     }
     let names = token_names();
@@ -642,5 +799,9 @@ async fn real_cli_pass() {
         !out.join("summary.json").exists() && !out.join("send-record.json").exists(),
         "output already used"
     );
-    run_pass(true, &out).await;
+    let summary = run_pass(PassMode::Real(real_clis()), &out).await;
+    assert_eq!(
+        summary["state"], "adopted",
+        "pass failed; inspect summary.json (Agent output is not printed)"
+    );
 }
