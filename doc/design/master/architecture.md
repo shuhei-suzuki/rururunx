@@ -475,7 +475,11 @@ Failures or missing checks fail the script;
 `--host-only` reports Linux NOT RUN, including `linux-components` between setup
 and fmt, and requires `--allow-partial` to permit an
 otherwise successful partial exit. Full local commands, SHA, test counts and
-outcomes are recorded in the PR; partial runs do not meet the pre-push policy.
+outcomes are committed in `doc/verification/issue-<number>.md` and referenced
+from the PR's Test plan; public PR and issue comments carry only IDs, titles,
+severities and statuses. A commit that changes only that record keeps the
+recorded run valid for the verified SHA without a re-run. Partial runs do not
+meet the pre-push policy.
 
 The Cargo workspace contains `crates/rrx` with a library and a CLI binary,
 `crates/rrx-process-tracker` for cooperative discovery, and

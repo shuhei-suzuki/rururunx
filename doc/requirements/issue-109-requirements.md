@@ -7,7 +7,9 @@ check for the owner's automatic merge gate. Change `.github/workflows/ci.yml`,
 add `scripts/local-ci.sh`, and document their behavior consistently with
 `CLAUDE.md`. Rust CI has one Ubuntu job named `check`, including for doc-only PRs.
 Actions verifies fmt and clippy only; tests, macOS and the release build are
-verified locally before push/merge, with results recorded in the PR.
+verified locally before push/merge, with results committed in
+`doc/verification/issue-<number>.md` and referenced from the PR (the repository
+is public, so PR and issue comments carry only IDs, titles, severities and statuses).
 
 Old `claude/*` measurement workflow branch cleanup and required-check configuration
 are outside this change. No Rust source, dependency, deployment or
@@ -33,7 +35,7 @@ runtime behavior changes belong here.
 - Accept a Linux result marker only when the entire file is exactly `PASS <digits>` or `FAIL <digits>` followed by one newline. A failed read, missing newline, extra line, extra field, empty value or non-digit duration means NOT RUN and fails the run. Malicious code under test can forge any marker; the commit trust rule remains necessary.
 - Preserve trailing newlines when obtaining the repository and physical working-directory paths. Reject a comma, double quote or any newline in either path with a clear Docker mount CSV error before file creation, Cargo or Docker execution.
 - All steps are attempted despite earlier failures, except that lock open/acquisition failure stops the Linux container before extraction or Cargo work. Per-step status and seconds, HEAD and metadata appear in stdout and `.rrx/local-ci/<sha>.txt`; step logs are retained under `.rrx/local-ci/<sha>/`. A failed or unexecuted step fails the run. `--host-only` explicitly reports Linux NOT RUN, including `linux-components` between setup and fmt, and fails unless `--allow-partial` is also given; partial evidence does not meet the pre-push verification requirement.
-- Release compilation must pass locally for the reviewed SHA before merge; the PR records local commands, SHA, test counts and outcomes. GitHub's independent successful check proves fmt/clippy only (or doc-only classification).
+- Release compilation must pass locally for the reviewed SHA before merge; `doc/verification/issue-<number>.md` records local commands, SHA, test counts and outcomes, and the PR's Test plan references it. A follow-up commit that changes only that record does not require a re-run. GitHub's independent successful check proves fmt/clippy only (or doc-only classification).
 - `doc/`-only PRs need no local script because they change no code and the Actions documentation-only path still reports success.
 - Normal local actionlint (with ShellCheck enabled) and real-merge detection tests pass, and an all-doc-only detection mutant fails the tests.
 - The local script passes `bash -n`, ShellCheck, an ignored test exercising the exact marker parser with valid and invalid files, and an ignored byte-for-byte path-handling test. The path test accepts a normal path, rejects commas, double quotes, embedded and one/two trailing newlines, and confirms that the old command substitutions accept trailing-newline paths as a negative control. Actual Cargo/Docker execution is performed by the orchestrator on the host.

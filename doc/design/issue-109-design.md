@@ -9,7 +9,11 @@ For code changes, the sequence is Rust 1.91.1 setup, cache restore, fmt,
 locked all-targets workspace clippy with `-D warnings`, then optional cache save.
 Actions no longer runs tests, macOS or the release build. Those are verified on
 the PC through `scripts/local-ci.sh`, with commands, SHA, test counts and outcomes
-recorded in the PR. The trade-off is explicit: the independent GitHub check covers
+committed in `doc/verification/issue-<number>.md` and referenced from the PR.
+Because the repository is public, PR and issue comments carry only IDs, titles,
+severities and statuses (owner decision, 2026-10-21). The record is committed after
+the verified SHA; when the diff from that SHA is only the record, the run stays
+valid without a re-run. The trade-off is explicit: the independent GitHub check covers
 fmt and clippy only; test and release evidence relies on the local run.
 Every heavy step has a step-level code-change guard; the job itself is never
 skipped. `contents: read` and checkout's disabled credential persistence remain.
@@ -331,4 +335,5 @@ passing result for this revision. `actionlint -shellcheck=` passed, as did
 all nine controls, rejected the all-doc-only mutant in six cases, confirmed the
 inline snippet byte-for-byte, and removed their temporary repositories. The
 orchestrator must complete normal actionlint and the actual local Cargo/Docker
-run on the final committed SHA before recording full verification in the PR.
+run on the final committed SHA before recording full verification in
+`doc/verification/issue-109.md`.

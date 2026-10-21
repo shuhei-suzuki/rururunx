@@ -17,8 +17,9 @@ PC（ローカル）でできる確認は PC で行い、GitHub でしか行え�
 - 検証コンテナのメインシェルは `/target/.local-ci.lock` の排他 `flock` を tar 展開前に取得し、終了まで保持する。コンテナ内の全 Cargo 呼び出しはこのロックの内側で実行するため、異なる worktree の Linux 検証と共有 registry/Git/target の利用は直列化される。ロックを開けない・取得できない場合は以後の Linux 検査を実行せず、PASS にしない。同じ worktree の重複実行は非対応。実行間で Docker VM の時計が巻き戻る場合の mtime による誤再利用は残余リスクとして受け入れる。
 - `rururunx-local-ci-registry`・`rururunx-local-ci-git`・`rururunx-local-ci-target` は、Cargo registry・Git データベース・Linux target 用の常設プロジェクトキャッシュで、一般の作業後クリーンアップによる削除対象ではない。キャッシュのルート権限だけを準備するソース未マウントの補助コンテナも `--rm` で終了する。キャッシュは信頼済みコミットにだけ使い、信頼できないコードを実行した場合は、利用中でないことを確認して `docker volume rm rururunx-local-ci-registry rururunx-local-ci-git rururunx-local-ci-target` で3つとも削除する。
 - Linux 結果マーカーは厳密な1行の `PASS <数字>` または `FAIL <数字>` と末尾の改行だけを受理し、読み取り失敗・欠落・不正形式は NOT RUN とする。コードが悪意を持つ場合はどのマーカーも偽造できるため、上記のコミット信頼条件が必要。リポジトリパス・物理作業ディレクトリの末尾改行も保持して検査し、カンマ・二重引用符・改行を含む場合は Docker mount の CSV 解釈を避けるため、ファイル作成・Cargo・Docker 実行前に拒否する。
-- 結果（コマンド、対象の SHA、件数、成否）を PR の Test plan に書く。失敗したままの push はしない。
-- 個別の試験を実機で 1 件ずつ実行する必要がある変更は、その手順と結果も PR に書く。
+- 結果（コマンド、対象の SHA、件数、成否）は `doc/verification/issue-<番号>.md` に書いてコミットし、PR の Test plan からそのファイルを参照する。リポジトリは公開なので、PR・Issue のコメントには ID・題名・重大度・状態だけを書き、検証の詳細はこの記録に置く。失敗したままの push はしない。
+- 記録のコミットは `doc/verification/` だけを変える。検証した SHA からの差分がその記録だけなら、記録した結果がそのまま有効で、スクリプトを再実行しなくてよい（差分は `git diff --stat <検証した SHA> HEAD` で確かめる）。
+- 個別の試験を実機で 1 件ずつ実行する必要がある変更は、その手順と結果も同じ記録に書く。
 
 ### GitHub Actions に残すもの
 
