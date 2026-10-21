@@ -326,11 +326,33 @@ explicit blocking finding or a finding at the Goal's immutable severity threshol
 normalized to `request_changes`. Schema failures reject the step; envelope/model
 mismatches, snapshot drift and detected secrets hold it with fixed reasons. Secret
 receipts contain only a pattern ID and an offset digest. This adoption records a
-review result; it does not release a branch or schedule confirmation or repairs.
+review result. Explicit round entry points filter it and plan confirmation, repairs,
+or a release step; release execution and automatic scheduling are separate.
 Verdict evidence carries its source result SHA-256, which the Store compares with the
 stdout receipt. Raw Unicode escapes are scanned before strict decoding can reject a
 frame; secret receipts survive a death-unconfirmed hold. A stream scanner failure
 holds with `secret_scan_failed` and stores only a `scan_failed` pattern marker.
+
+Blocking findings have either an explicit blocking flag or severity at least the
+accepted Goal threshold. Rule filtering records every failing blocking finding as
+invalid with a fixed reason. A candidate needs a normalized relative path present
+in the reviewed snapshot, a valid inclusive line range, membership in the
+base-to-head changed-file set, and whole-path Task scope matching. Imported-file
+inference is not available, so unchanged files are excluded. Nonblocking findings
+remain informational and never enter remediation.
+
+Confirmation rebuilds a separate sealed snapshot of the same commit with the same
+entry budget and tree-digest checks. The fixed Codex template uses `--sandbox
+read-only`, stdin input and an output schema, with a 1,200-second wall clock and
+matching-cookie Agent custody. The common launcher reconstructs the nonce-framed
+findings and diff, checks the schema, input digest and snapshot, and refuses
+substituted inputs. JSON decoding combines a bounded 256 KiB read, strict duplicate-key
+and resource limits, unknown-field rejection, and exact, duplicate-free label-ID
+equality. A confirmed label with a different file, invalid evidence line, fewer than
+eight non-whitespace quote characters, or no quote occurrence starting on the named
+line becomes unclear. Multiline and overlapping occurrences are matched by their
+start line. Raw output, discarded stderr, decoded strings and stored bodies are
+secret-scanned; a hit stores only its pattern ID and offset digest.
 
 Review policy is data, not hard-coded Triple Review logic.
 
@@ -382,6 +404,34 @@ Review
 ```
 
 The workflow keeps round history rather than overwriting previous review results.
+
+The CLI pipeline starts at round zero and accepts a maximum of zero to two fix
+rounds. Planning a fix increments the run round by exactly one. Its nonce-framed
+input contains only confirmed findings and their IDs, or a bounded summary of stored
+test exit observations. Raw test logs do not enter that summary. The fix uses the
+Executor's workspace, fixed argv, 3,600-second custody bound and checked rrx-commit
+adoption. The adopted commit is re-tested with the admitted TestsProfile and, if all
+commands pass, reviewed again. A failed test skips review for its round.
+
+The decision is a deterministic ordered rule over stored decoded observations:
+
+1. Passing all tests, an approve verdict, and no confirmed or unclear blocking
+   labels plan a release step.
+2. Any unclear blocking label holds with `unclear_finding`.
+3. Request changes without a confirmed blocking label holds with
+   `unsupported_request_changes`.
+4. Failing tests or confirmed blocking labels plan the next fix while below the
+   limit; at the limit they hold with `round_limit`.
+
+Rejected labels are retained as records only. Round-specific test and review
+adoption entry points validate and store evidence while leaving the last step
+exited. The final decision transaction either adopts that step and inserts the next
+planned step, or moves that same exited step to held. It revalidates the current
+owner, epoch, Goal lifecycle and independent run/step versions under control
+admission. Already-terminal adopted results may advance when all required decision
+evidence is present. Adding filtering evidence to an adopted review or holding any
+adopted step is refused; terminal steps are immutable. Callers use the round-specific
+adoption entry points to preserve the filtering and recoverable-hold boundaries.
 
 ## 8. Impact analysis gate
 
