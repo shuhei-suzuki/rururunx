@@ -26,6 +26,8 @@ pub struct QualifiedCli {
 thread_local! { static HASH_COUNT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) }; }
 
 const PROBE_BOUND: Duration = Duration::from_secs(5);
+const PROBE_OUTPUT_LIMIT: usize = 4 * 1024;
+const HELP_OUTPUT_LIMIT: usize = 64 * 1024;
 // Five Claude probes plus bounded image/config work; cleanup retains custody
 // even after observation expires and must finish before returning a refusal.
 const CLI_BOUND: Duration = Duration::from_secs(35);
@@ -252,7 +254,17 @@ async fn qualify_cli_with_bound(
                 .env_clear()
                 .envs(env.clone())
                 .current_dir(tmp);
-            crate::execution::process::capture_probe_until(command, PROBE_BOUND, deadline.into())
+            let output_limit = if args.contains(&"--help") {
+                HELP_OUTPUT_LIMIT
+            } else {
+                PROBE_OUTPUT_LIMIT
+            };
+            crate::execution::process::capture_probe_until(
+                command,
+                PROBE_BOUND,
+                deadline.into(),
+                output_limit,
+            )
         };
         row.body["stage"] = json!("version_probe");
         let (receipt, out, _) = probe(&["--version"]).await?;

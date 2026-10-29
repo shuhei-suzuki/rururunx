@@ -210,14 +210,39 @@ async fn b3_q_codex_config() {
         assert_eq!(row.body["stage"], "config");
     }
 }
-/// Probe output over four KiB cannot produce a qualification.
+/// Help output over 64 KiB is refused before flag validation.
 #[tokio::test]
 async fn b3_q_output_bound() {
     let f = Fixture::new();
-    f.codex.control("help", &"x".repeat(4097));
-    let row = f.q(true).await;
-    assert_eq!(row.state, "refused");
-    assert_eq!(row.body["stage"], "help_probe");
+    for (codex, fake) in [(true, &f.codex), (false, &f.claude)] {
+        fake.control("help", &"x".repeat(64 * 1024 + 1));
+        let row = f.q(codex).await;
+        assert_eq!(row.state, "refused");
+        assert_eq!(row.body["stage"], "help_probe", "{row:?}");
+    }
+}
+/// Help output above four KiB with all required flags qualifies both CLIs.
+#[tokio::test]
+async fn b3_q_large_help() {
+    let f = Fixture::new();
+    for (codex, fake) in [(true, &f.codex), (false, &f.claude)] {
+        let flags = std::fs::read_to_string(fake.directory.join("help")).unwrap();
+        let help = format!("{}{flags}", "help text filler\n".repeat(1400));
+        fake.control("help", &help);
+        let row = f.q(codex).await;
+        assert_eq!(row.state, "qualified", "{row:?}");
+    }
+}
+/// Version output over four KiB is refused before pin validation.
+#[tokio::test]
+async fn b3_q_version_output_bound() {
+    let f = Fixture::new();
+    for (codex, fake) in [(true, &f.codex), (false, &f.claude)] {
+        fake.control("version", &"x".repeat(4097));
+        let row = f.q(codex).await;
+        assert_eq!(row.state, "refused");
+        assert_eq!(row.body["stage"], "version_probe", "{row:?}");
+    }
 }
 /// The reusable fake exec interface preserves captured output and exit status.
 #[tokio::test]

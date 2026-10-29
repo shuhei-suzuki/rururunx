@@ -418,6 +418,7 @@ pub(crate) async fn capture_probe(command: Command) -> Result<(ProcessReceipt, V
         command,
         Duration::from_secs(5),
         tokio::time::Instant::now() + Duration::from_secs(5),
+        4096,
     )
     .await
 }
@@ -425,10 +426,15 @@ pub(crate) async fn capture_probe_until(
     command: Command,
     bound: Duration,
     overall: tokio::time::Instant,
+    output_limit: usize,
 ) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
-    capture_probe_until_with_kill(command, bound, overall, |pid, signal, kill| {
-        kill(pid, signal)
-    })
+    capture_probe_until_with_kill(
+        command,
+        bound,
+        overall,
+        output_limit,
+        |pid, signal, kill| kill(pid, signal),
+    )
     .await
 }
 type ProbeKill = fn(Pid, Signal) -> std::result::Result<(), rustix::io::Errno>;
@@ -437,13 +443,14 @@ async fn capture_probe_until_with_kill(
     command: Command,
     bound: Duration,
     overall: tokio::time::Instant,
+    output_limit: usize,
     kill: impl FnOnce(Pid, Signal, ProbeKill) -> std::result::Result<(), rustix::io::Errno>
     + Send
     + 'static,
 ) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
     // Keep the platform defaults in one place; EPERM tests replace only the
     // signal outcome while exercising this same kill/inspection wiring.
-    capture_probe_with_cleanup(command, bound, overall, move |owned| {
+    capture_probe_with_cleanup(command, bound, overall, output_limit, move |owned| {
         signal_probe_group(
             owned,
             |pid, signal| kill(pid, signal, kill_process_group),
@@ -456,14 +463,24 @@ async fn capture_probe_with_cleanup(
     command: Command,
     bound: Duration,
     overall: tokio::time::Instant,
+    output_limit: usize,
     cleanup: impl FnOnce(&OwnedProcess) -> Result<()> + Send + 'static,
 ) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
-    capture_probe_with_spawn(command, bound, overall, OwnedProcess::spawn, cleanup).await
+    capture_probe_with_spawn(
+        command,
+        bound,
+        overall,
+        output_limit,
+        OwnedProcess::spawn,
+        cleanup,
+    )
+    .await
 }
 async fn capture_probe_with_spawn(
     mut command: Command,
     bound: Duration,
     overall: tokio::time::Instant,
+    output_limit: usize,
     spawn: impl FnOnce(Command) -> Result<OwnedProcess> + Send + 'static,
     cleanup: impl FnOnce(&OwnedProcess) -> Result<()> + Send + 'static,
 ) -> Result<(ProcessReceipt, Vec<u8>, Vec<u8>)> {
@@ -492,8 +509,12 @@ async fn capture_probe_with_spawn(
     .context("probe spawn worker failed")??;
     let stdout = child.child.stdout.take().context("probe stdout missing")?;
     let stderr = child.child.stderr.take().context("probe stderr missing")?;
-    let readers =
-        async { tokio::try_join!(bounded_read(stdout, 4096), bounded_read(stderr, 4096)) };
+    let readers = async {
+        tokio::try_join!(
+            bounded_read(stdout, output_limit),
+            bounded_read(stderr, output_limit)
+        )
+    };
     tokio::pin!(readers);
     let mut bytes = None;
     let observed = tokio::time::timeout_at(deadline, async {
@@ -542,7 +563,7 @@ async fn capture_probe_with_spawn(
         .context("probe drain incomplete")??,
     };
     ensure!(
-        out.len() + err.len() <= 4096,
+        out.len() + err.len() <= output_limit,
         "probe output exceeded its bound"
     );
     Ok((receipt, out, err))
@@ -610,6 +631,7 @@ mod probe_tests {
                 command,
                 Duration::from_millis(500),
                 tokio::time::Instant::now() + Duration::from_secs(5),
+                4096,
                 move |pid, signal, kill| {
                     assert_eq!(signal, Signal::KILL);
                     observed_pid.store(
@@ -658,6 +680,7 @@ mod probe_tests {
             Command::new("/usr/bin/true"),
             Duration::from_millis(500),
             tokio::time::Instant::now() + Duration::from_secs(5),
+            4096,
             move |command| {
                 entered.send(()).unwrap();
                 released.recv_timeout(Duration::from_secs(3)).unwrap();
@@ -691,6 +714,7 @@ mod probe_tests {
                 command,
                 bound,
                 tokio::time::Instant::now() + overall,
+                4096,
                 OwnedProcess::spawn,
                 move |child| {
                     observed_pid.store(
@@ -733,6 +757,7 @@ mod probe_tests {
             Command::new("/usr/bin/true"),
             Duration::from_millis(500),
             tokio::time::Instant::now() + Duration::from_millis(500),
+            4096,
             move |owned| {
                 observed_pid.store(
                     owned.pid.as_raw_nonzero().get(),
@@ -773,6 +798,7 @@ mod probe_tests {
             Command::new("/usr/bin/true"),
             Duration::from_secs(5),
             tokio::time::Instant::now() + Duration::from_secs(5),
+            4096,
             |owned| resolve_probe_signal(owned, Err(rustix::io::Errno::PERM), || Ok(false)),
         )
         .await
@@ -795,6 +821,7 @@ mod probe_tests {
                 Command::new("/usr/bin/true"),
                 Duration::from_secs(5),
                 tokio::time::Instant::now() + Duration::from_secs(5),
+                4096,
                 move |owned| {
                     signal_probe_group(
                         owned,

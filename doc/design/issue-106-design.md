@@ -1168,7 +1168,7 @@ model = "<model>"
 
 ### 5.2 起動時の適格性確認（Q）
 
-次の 4 つを確かめ、結果を `pipeline_qualifications` に書く。コマンドは環境を空にしてから組み立て（§5.4）、timeout 5 秒、出力 4 KiB までとする。
+次の 4 つを確かめ、結果を `pipeline_qualifications` に書く。コマンドは環境を空にしてから組み立て（§5.4）、timeout 5 秒、出力は help を表示する probe（`--help` と `--setting-sources` の probe）は 64 KiB まで、それ以外は 4 KiB までとする。
 
 | subject | 内容 |
 |---|---|
@@ -1700,6 +1700,7 @@ B10 設計入力: lifecycle Resume は Runtime config hash（`runtime/control.rs
 
 | ID | 計画 | この設計 | 根拠 |
 |---|---|---|---|
+| D24 | Q の全 probe の出力は 4 KiB まで | help を表示する probe（`--help` と `--setting-sources` の probe）だけ 64 KiB まで、それ以外は 4 KiB までとする | 2026-10-29 の実 CLI 検証で、Claude Code 2.1.312 の help が 22,116 byte あり、必須 flag の検査前に `help_probe` で拒否された。timeout・cleanup・出力を保存しない規則は変えない |
 | D23 | snapshot の 100,000 項目の上限 | 実効上限は 100,000 項目または `ls-tree -r -z` の一覧出力 4 MiB のうち先に達する方とする。どちらの超過も review を `review_snapshot_limit` で held にする | 100,000 項目の計測では、既存の 4 MiB の Git 出力上限で準備が先に失敗した。上限や budget は広げず、snapshot の一覧取得だけで出力超過を名前付き理由に変換する。長いパスを使った、項目数の上限より十分小さい tree で、一覧出力の上限直前は準備でき、直後は名前付き理由で保留することを検査する |
 | D22 | B7 の本物の CLI と snapshot 上限の確認 | 製品機能ではなく検証用の harness を追加する。macOS の通常テストは native fake CLI で Executor → admitted TestsProfile の Seatbelt test → Reviewer の Runtime API を通す。実 CLI は ignored test と `RRX_REAL_CLI_PASS=1` の二重ゲートを要求し、owner が他の資格情報を持つ同一利用者のプロセスを止めた新しい端末から `scripts/real-cli-pass.sh` を実行する | 秘密を含まない合成 Git project で 1 pass だけ行う。要約は各 step の状態・理由・時間、prompt と `git archive` の SHA256・bytes、Reviewer envelope と `modelUsage` のキー、TMPDIR 内の git wrapper による固定 `GIT_CONFIG_*` の転送、probe を除いた PATH の git を記録する。Agent の本文は要約に転記しない。snapshot の時間計測も ignored と専用 gate を要求し、製品と同じ entry budget・rebuild・verify を使う。Q と製品の制約は変えない |
 | D21 | §5.3 の Reviewer 引数 | `--no-session-persistence` を追加して §5.3 を強化する。Q でも必須 flag として検査する | pin した Claude CLI 2.1.304 は print モードでこの flag を受け付け、session の保存と再開を止める。rrx の秘密スキャンを通らない CLI 自身の transcript 保存を抑止する |
