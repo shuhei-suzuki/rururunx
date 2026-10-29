@@ -233,6 +233,19 @@ async fn b3_q_large_help() {
         assert_eq!(row.state, "qualified", "{row:?}");
     }
 }
+/// Exactly 64 KiB of help with required flags at the end qualifies both CLIs.
+#[tokio::test]
+async fn b3_q_help_at_output_bound() {
+    let f = Fixture::new();
+    for (codex, fake) in [(true, &f.codex), (false, &f.claude)] {
+        let flags = std::fs::read_to_string(fake.directory.join("help")).unwrap();
+        let help = format!("{}\n{flags}", "x".repeat(65_536 - flags.len() - 1));
+        assert_eq!(help.len(), 65_536);
+        fake.control("help", &help);
+        let row = f.q(codex).await;
+        assert_eq!(row.state, "qualified", "{row:?}");
+    }
+}
 /// Version output over four KiB is refused before pin validation.
 #[tokio::test]
 async fn b3_q_version_output_bound() {
@@ -481,6 +494,21 @@ async fn b3_q_settings_help_short_circuit() {
     f.claude.control("help", &help);
     let row = f.q(false).await;
     assert_eq!(row.state, "refused");
+    assert_eq!(row.body["reason"], "setting_sources_validation_unproven");
+}
+
+/// Error-like stdout help cannot prove invalid setting sources are validated.
+#[tokio::test]
+async fn b3_q_settings_stdout_help_error() {
+    let f = Fixture::new();
+    assert_eq!(f.q(false).await.state, "qualified");
+    f.claude.control("help-before-validation", "");
+    let mut help = std::fs::read_to_string(f.claude.directory.join("help")).unwrap();
+    help.push_str("Error handling\n");
+    f.claude.control("help", &help);
+    let row = f.q(false).await;
+    assert_eq!(row.state, "refused");
+    assert_eq!(row.body["stage"], "settings_probe", "{row:?}");
     assert_eq!(row.body["reason"], "setting_sources_validation_unproven");
 }
 

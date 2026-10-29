@@ -242,8 +242,9 @@ Probe commands clear the environment. Each probe starts its five-second
 observation deadline immediately after spawn on a blocking worker,
 capped by a 35-second overall
 CLI qualification observation deadline covering image/config reads and all probes,
-with four KiB combined output per probe. Nonblocking open and descriptor checks
-refuse special files. Launch uses
+with 64 KiB combined output per probe requesting help (argv contains `--help`)
+and four KiB for other probes. Nonblocking open and descriptor checks refuse
+special files. Launch uses
 `rrx-spawn-hygiene` with retained process-group custody. Probe cleanup reuses the
 adapter's macOS EPERM resolver/inspector on a blocking worker retaining the
 unreaped leader. Only confirmed all-dead inspection resolves EPERM;

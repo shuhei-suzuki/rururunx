@@ -247,18 +247,13 @@ async fn qualify_cli_with_bound(
         let cookie = uuid::Uuid::new_v4().simple().to_string();
         row.body["stage"] = json!("environment");
         let env = environment(config, tmp, &cookie, cli, codex, !codex)?;
-        let probe = |args: &[&str]| {
+        let probe = |args: &[&str], output_limit: usize| {
             let mut command = tokio::process::Command::new(&pinned.realpath);
             command
                 .args(args)
                 .env_clear()
                 .envs(env.clone())
                 .current_dir(tmp);
-            let output_limit = if args.contains(&"--help") {
-                HELP_OUTPUT_LIMIT
-            } else {
-                PROBE_OUTPUT_LIMIT
-            };
             crate::execution::process::capture_probe_until(
                 command,
                 PROBE_BOUND,
@@ -267,7 +262,7 @@ async fn qualify_cli_with_bound(
             )
         };
         row.body["stage"] = json!("version_probe");
-        let (receipt, out, _) = probe(&["--version"]).await?;
+        let (receipt, out, _) = probe(&["--version"], PROBE_OUTPUT_LIMIT).await?;
         row.body["stage"] = json!("version_check");
         let version = std::str::from_utf8(&out)?.trim();
         // Never persist arbitrary CLI output; retain only the exact approved pin.
@@ -277,11 +272,14 @@ async fn qualify_cli_with_bound(
         );
         row.version_text = Some(version.into());
         row.body["stage"] = json!("help_probe");
-        let (receipt, out, _) = probe(if codex {
-            &["exec", "--help"]
-        } else {
-            &["--help"]
-        })
+        let (receipt, out, _) = probe(
+            if codex {
+                &["exec", "--help"]
+            } else {
+                &["--help"]
+            },
+            HELP_OUTPUT_LIMIT,
+        )
         .await?;
         row.body["stage"] = json!("help_check");
         ensure!(
@@ -295,15 +293,17 @@ async fn qualify_cli_with_bound(
         if !codex {
             // Parser-only qualification: this never supplies -p or a prompt.
             row.body["stage"] = json!("settings_probe");
-            let (invalid, out, err) = probe(&["--setting-sources", "bogus", "--help"]).await?;
-            let rejects_invalid = !invalid.status.success() || reports_parser_error(&out, &err);
+            let (invalid, _, err) =
+                probe(&["--setting-sources", "bogus", "--help"], HELP_OUTPUT_LIMIT).await?;
+            let rejects_invalid = !invalid.status.success() || reports_parser_error(&[], &err);
             row.body["reason"] = json!("setting_sources_validation_unproven");
             ensure!(
                 rejects_invalid,
                 "setting sources value validation not demonstrated"
             );
             row.body.as_object_mut().unwrap().remove("reason");
-            let (receipt, out, err) = probe(&["--setting-sources", "", "--help"]).await?;
+            let (receipt, out, err) =
+                probe(&["--setting-sources", "", "--help"], HELP_OUTPUT_LIMIT).await?;
             row.body["stage"] = json!("settings_check");
             ensure!(
                 receipt.status.success() && !reports_parser_error(&out, &err),
@@ -311,11 +311,14 @@ async fn qualify_cli_with_bound(
             );
         }
         row.body["stage"] = json!("login_probe");
-        let (receipt, _, _) = probe(if codex {
-            &["login", "status"]
-        } else {
-            &["--setting-sources", "", "auth", "status"]
-        })
+        let (receipt, _, _) = probe(
+            if codex {
+                &["login", "status"]
+            } else {
+                &["--setting-sources", "", "auth", "status"]
+            },
+            PROBE_OUTPUT_LIMIT,
+        )
         .await?;
         row.body["stage"] = json!("login_check");
         ensure!(receipt.status.success(), "CLI login status refused");

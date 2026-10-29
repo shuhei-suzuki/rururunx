@@ -30,8 +30,9 @@ hygiene, unreaped identity, group signaling before reap and direct-child fallbac
 Each probe starts its five-second observation deadline immediately after spawn
 on a blocking worker, capped by a 35-second overall
 CLI qualification observation deadline covering image/config reads and all probes,
-with four KiB combined output per probe. Nonblocking open and descriptor
-checks refuse special files. Probe-only macOS EPERM resolution accepts only a
+with 64 KiB combined output per probe requesting help (argv contains `--help`)
+and four KiB for other probes. Nonblocking open and descriptor checks refuse
+special files. Probe-only macOS EPERM resolution accepts only a
 confirmed all-dead group inspection; live/unknown/failed inspection refuses Q.
 The blocking worker's JoinHandle and unreaped custody remain retained when the
 deadline fires. Cleanup result and direct-child reap precede qualification
