@@ -295,6 +295,7 @@ async fn qualify_cli_with_bound(
             row.body["stage"] = json!("settings_probe");
             let (invalid, _, err) =
                 probe(&["--setting-sources", "bogus", "--help"], HELP_OUTPUT_LIMIT).await?;
+            // Stdout is help text and never counts as rejecting the invalid value.
             let rejects_invalid = !invalid.status.success() || reports_parser_error(&[], &err);
             row.body["reason"] = json!("setting_sources_validation_unproven");
             ensure!(

@@ -257,8 +257,9 @@ Idle currency checks read current-epoch rows and the config digest.
 `CliQualifier::before_launch` rechecks images, Codex config, directory separation
 and PATH integrity outside Store transactions, between launch-intent commit and
 spawn. Claude receives differential parser-only `--setting-sources bogus --help`
-and `--setting-sources "" --help` probes: invalid values must fail or report an
-error and the empty value must succeed. Help that bypasses value validation
+and `--setting-sources "" --help` probes: invalid values must exit non-zero or
+report a parser error on stderr; stdout (help text) is never evidence of rejection,
+and the empty value must succeed. Help that bypasses value validation
 refuses with `setting_sources_validation_unproven`. Q sends no `-p` or Agent prompt.
 
 The output classifiers accept complete structured output and fail closed on
