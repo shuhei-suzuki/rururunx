@@ -43,7 +43,10 @@ a probe; the owner flock remains held for the Runtime lifetime.
 Pipeline claims and launch intents require a `CliPipeline` owner and all four
 qualified current-epoch subjects. Idle sweeps check DB rows and config digest;
 `CliQualifier::before_launch` re-hashes both images immediately before launch,
-outside Store transactions, between tx1 and spawn. PATH prefixes and every parent
+outside Store transactions, between tx1 and spawn. Both re-hashes share one
+five-second deadline with the Codex config read and layout checks; exceeding it
+refuses the launch (`launch_preflight_failed`); dev and test builds compile `sha2`
+at `opt-level = 3` so the full re-hash fits that bound. PATH prefixes and every parent
 must be root/current-user owned with no group/world write permission and are
 rechecked there. PATH entries and executable paths (including canonical targets)
 must not overlap work root, CODEX_HOME, non-Removed Projects or the state directory.
