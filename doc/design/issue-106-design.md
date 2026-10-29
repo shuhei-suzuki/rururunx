@@ -1248,17 +1248,62 @@ attempt ディレクトリは `<work_root>/runs/<run>/<seq>-<attempt>/`（0700�
 
 ### 5.6 provider の上限の分類器（既知の終了だけ）
 
-死亡を確認した後に、pin した版ごとにコードへ固定した規則で分類し、`provider_outcome` を書く（§2.6 の 1）。
+死亡を確認した後に、pin から選んだ wire profile の、コードへ固定した規則で分類し、`provider_outcome` を書く（§2.6 の 1）。Q の適格性と wire の対応は別に検査する。Q を通っても、対応のない pin の出力は `other` である。
+
+#### 5.6.1 pin と wire profile
+
+`execution/pipeline/classify.rs` に、provider と pin の完全一致から、閉じた enum の profile を選ぶ表を置く。pin は Q で照合した `cli.version`（`--version` の出力を trim した文字列そのもの）である。prefix・semver の範囲・部分一致・最新版への fallback・設定による追加は使わない。表は outcome を持たず、profile の実装だけが outcome を返す。provider が違う profile は選べない型にし、表にない pin は decode より前に `other` を返す。
+
+| provider | pin（完全一致） | wire profile | 根拠と確認 |
+|---|---|---|---|
+| codex | `rrx-fixture-codex-v1` | `codex-jsonl-v1` | 偽 CLI の既存 fixture 用 |
+| claude | `rrx-fixture-claude-v1` | `claude-result-v1` | 偽 CLI の既存 fixture 用 |
+| codex | `codex-cli 0.164.0` | `codex-jsonl-v1` | 文書化された `exec --json` の形式と、それをモデルにした fixture。次の実 CLI pass で shape を照合する |
+| claude | `2.1.312 (Claude Code)` | `claude-result-v1` | 文書化された `-p --output-format json` の封筒と、それをモデルにした fixture。次の実 CLI pass で shape を照合する |
+
+この 2 つの実 pin は、観測を始めるための初期対応として今回追加する。実 wire との一致を確認済みとは扱わない。既存の「pin した版ごとにコードへ固定する」規則をこの表で具体化するもので、未知の版を許可する変更ではない。既存 fixture は合成データなので、これを実 CLI の保存出力と呼ばない。文書の出典・対象 pin・fixture の対応と、まだ実観測のない分岐を検証記録に残す。
+
+#### 5.6.2 profile の分類規則と安全条件
+
+既存 fixture の規則を上の 2 profile に移す。両方とも、終了コードが得られなければ `other` とし、完全な出力に strict_json の重複キー・深さ・サイズの検査と、profile が読むフィールドの型検査を当てる。codex は JSONL の全非空行、claude は単一の JSON object を対象にする。途中まで parse できたことを成功の根拠にしない。
 
 - `limit`:
-  - codex: `--json` の最後の error / turn 失敗の event の、固定したフィールドと、版の文書にある固定の文字列（利用上限・rate limit）。
-  - claude: 外側の封筒の `is_error=true` と、固定したフィールド（API の status と、利用上限を示す固定の文字列）。
+  - `codex-jsonl-v1`: 最後の event が `error` または `turn.failed` で、`error.code=rate_limit_exceeded`、`error.message=Rate limit reached` が完全一致する。
+  - `claude-result-v1`: 外側の封筒が `type=result`・`is_error=true`・`api_error.status=429` で、`result=Rate limit exceeded` が完全一致する。
+  - 自由文や stderr の部分一致、code / status だけでは上限にしない。実版が異なるエラー形式を使えば `other` になる。
 - `success`（既知の成功。上限待ちの解除に使える唯一の分類）:
-  - codex: 終了コード 0 で、`--json` の最後の event が turn の完了の event で、error / turn 失敗の event がない。
-  - claude: 終了コード 0 で、外側の封筒が `type=result`・`subtype=success`・`is_error=false`。
-- `other`: 上のどれにも当たらないもの（認証の失敗、分類できない失敗、出力の欠落・上限超過を含む）。
+  - `codex-jsonl-v1`: 終了コード 0、最後の event が `turn.completed` で、それが唯一の完了 event であり、全体に `error` / `turn.failed` がない。途中の event は `thread.started`・`turn.started`・`item.started`・`item.updated`・`item.completed` だけを認める。未知の event や完了後の event があれば `other` にする。item の本文にある「成功」の文字列は使わない。
+  - `claude-result-v1`: 終了コード 0、外側の封筒が `type=result`・`subtype=success`・`is_error=false`。`api_error` が非 null、または `errors` が空でないなど、成功と矛盾するエラー情報があれば `other` にする（存在する `errors` は配列に限る）。`result` の本文や structured verdict は成功の根拠にしない。
+- `other`: 上のどれにも当たらないもの（未知の pin / wire、認証の失敗、分類できない失敗、終了コードの欠落、出力の欠落・不正・上限超過を含む）。
 
-`success` は provider の呼び出しが上限なしで終わったことだけを表し、採用の判定（§6〜§8）とは別である。規則は版ごとの fixture（B3 で、偽 CLI と、取得できた実出力から作る）で検査する。どの規則にも当たらない失敗は上限として扱わない（§2.6 の 7）が、上限待ちを解除する根拠にもしない。使用率などの観測は読まない。
+StepCustody の検査を profile で迂回しない。死亡の確認、出力の完全な回収、上限、timeout・I/O・秘密の検出などの issue の不在が前提となる。codex は `last.md`（confirm なら `last.json`）の既存の検査も必要で、`last_output_invalid` があれば、JSONL が成功形でも `other` にする。
+
+`success` は provider の呼び出しが上限なしで終わったことだけを表す。これだけで §2.6 の probe は daemon 全体の上限待ちを解除するので、採用検査が後で落ちることを安全策に数えない。失敗の成功誤認を避けるため、未知・矛盾・不完全な観測は `other` に倒す。Executor の採用はさらに終了コード 0 と `provider_outcome=success`（`AdoptionChecker::build`）、Reviewer / Confirmer はそれに加えて verdict の検査を要求する（§6〜§8）。使用率などの観測は読まない。
+
+#### 5.6.3 実 CLI harness の shape 観測（テスト専用）
+
+`state/execution/pipeline/tests/real_cli.rs` は、各 Agent step / attempt の custody の終了後、採用を試みる前に shape を採取し、`summary.json` のその step に記録する。失敗・rejected でも、回収済みの出力があれば対象にする。先行 step の失敗で未起動なら固定の `not_run`、起動したが観測できなければ固定の状態を残す。prepare と test は Agent の shape 観測の対象にしない。今の pass の implement / review に適用し、fix / confirm を通す pass を足す場合も同じ関門を使う。
+
+読取り先は設定済み `work_root/runs/<run>/<seq>-<attempt>/` の `stdout.jsonl` / `result.json` だけで、run・seq・attempt は Store の step から導出する。symlink をたどらない通常ファイルの bounded read と custody の出力 receipt の照合を使い、stdout は §5.5 の上限を超えて読まない。解析も製品と同じ strict_json の上限と重複キー拒否を使う。Agent の出力に書かれたパスは開かない。
+
+| 対象 | 記録する shape（Agent の本文は記録しない） |
+|---|---|
+| 共通 | receipt の終了コード（数値。signal 等で得られなければ null）、選択した profile の固定名または `unmapped`、`provider_outcome` の固定値。生の issue やエラー文字列を写さない |
+| codex | JSONL の全非空行の `type` を順序どおりに最大 4096 件。文字列は ASCII の `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`、64 byte 以下に限る。`error` / `turn.failed` の位置にだけ、`error.code` が ASCII の `^[a-z][a-z0-9_]{0,63}$` に完全一致すれば値を記録する。欠落は固定の `absent` とし、値があるのに型・pattern が合わなければ shape 全体を固定の `redacted` にする。`error.message`・item・thread ID・usage の値は写さない |
+| claude | 外側の `type`・`subtype`（上の type と同じ pattern・64 byte 以下）、`is_error`（bool）、`api_error.status`（100〜599 の整数）と、辞書順の top-level keys（最大 128 個、各キーは ASCII の `^[A-Za-z_][A-Za-z0-9_]{0,63}$` に完全一致）。任意フィールドの欠落は固定の `absent`、存在する値の型・範囲違いは固定の `redacted` とする。`result`・`structured_output`・errors の本文や各キーの値は写さない。既存のスキャン済み `model_usage_keys` の観測は維持する |
+| last-output | `passed` / `failed` / `not_applicable` / `not_checked` の固定値。codex の有効な last receipt があるときだけ `passed`、custody の issue が `last_output_invalid` なら `failed`、claude は `not_applicable`、確認できなければ `not_checked`。issue がないだけで `passed` と推測しない。ファイルの本文は読取り結果に含めない |
+
+shape 全体は 512 KiB までとする。件数・文字列・全体の bound を超えたら、部分列を完全な観測として残さず `shape_overflow` だけにする。read / parse / receipt の照合の失敗は `absent_or_invalid` だけにする。これらはテスト用の観測上限で、製品の出力上限は広げない。
+
+既存の `envelope_keys` と同じ秘密スキャンを、raw（Unicode escape を含む）と decode 後の全キー・全文字列、最後に組み立てた shape に当てる。codex は bounded な JSONL frame ごとに検査し、frame をまたぐ検出は既存の stream scan と同じ方式で行う。抽出しない本文も検査を省かない。1 件でも検出したら、その shape 全体を `{"state":"secret_detected"}` だけに置き換え、先に集めた値も捨てる。スキャン不能・型違い・曖昧さは固定の状態に倒し、raw・parse error・秘密の一致文字列・Agent の本文を診断に添えない。終了コードと last-output は信頼した receipt から別に記録できるが、出力由来の shape を復元しない。秘密スキャンは未知の秘密をすべて検出する保証ではなく、投影するフィールドと長さも制限する。
+
+次の実 CLI pass は、この shape と製品の outcome、last-output、既存の採用・test・review の結果を合わせて初期対応を検証する。選択した profile の認めない形、秘匿・欠落・上限超過などで検証不能な shape、codex の last-output が `passed` 以外なら pass は失敗とし、後続の Agent を起動しない。harness は outcome を書き換えず、表を自動学習・追加しない。オーナーへ返すのは従来どおり `summary.json` と `send-record.json` だけで、attempt の原本や last の本文をコピーしない。通常のローカルテストで記録器と失敗経路を先に完成させ、実 CLI pass はオーナーが確保する次の 1 つの窓で行う（D22 の gate と開始条件を維持）。
+
+#### 5.6.4 版の追加と fixture
+
+以後の実 pin の追加・対応 profile の変更は、保守担当が通常のコード変更と独立レビューで行う。オーナーが承認した実 CLI pass の、同じ完全一致 pin のスキャン済み shape と終了コード・last-output の証跡、wire の文書の出典、profile の全分岐の fixture / 負の対照を根拠にする。初期の 2 pin 以外には、版番号が近いことや偽 CLI の合格だけで対応を広げない。未知の pin でも harness は観測できるが、製品の分類は `other` のままとし、観測のために採用や後続起動を許可しない。今回の初期対応が次の pass と合わなければ、当該 entry を除くか profile を修正して再検証する。成功条件を緩めて通さない。
+
+fixture は、記録した終了コード・event の順序・固定フィールド・キーの構造を保ち、本文・ID・パス等を固定の合成値で新しく組み立てる。原本の出力を fixture やレビュー資料にコピーしない。実 pin ごとに success / limit / other の組を持ち、共通 profile のデータは共有できるが、その pin を引数に分類器を通す。出典の shape と、文書から補った部分・合成した分岐を区別する。shape は `error.message` / `result` の本文を含まないので、上限の固定文言は文書由来の合成値であり、成功 pass で実版の limit 分岐まで確認したとは扱わない。実際の上限形が異なれば `other` に倒れ、probe の待ちは延長される。上限を起こすための追加の課金・実行はこの設計では要求しない。
 
 ### 5.7 verdict の JSON schema
 
@@ -1533,6 +1578,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | admit 後のテストの差し替え | TestsProfile を読むたびに body と digest を照合し、各起動の直前に `recheck` でコマンドと実行ファイルの hash を照合する（§7.2） | 照合から exec までの短い窓での差し替え（既存の経路と同じ） |
 | network | Codex のツールは network を拒否する。Claude には Bash も web もない。テストは Seatbelt で拒否する | CLI 自身が provider と通信する（仕様どおり） |
 | 信頼しない verdict JSON | strict decode と上限、未知フィールドの拒否、ID の一意性、ラベル集合の一致、存在しない file / line は invalid、quote と行の照合 | なし |
+| 実 pin の wire を成功と誤認し、採用や daemon 全体の上限待ちを進める | exact pin → profile の閉じた表、完全な出力と矛盾の検査、custody の last-output 検査を維持する。未知・不完全な形は `other`。harness で秘匿した shape を観測し、対応を照合する（§5.6、F-w1〜F-w6・F-a7） | 初期の 2 pin は文書と合成 fixture を根拠にし、実 wire との一致は次の pass で確かめる。本文を除いた shape だけでは実版の上限の固定文言まで確認できず、その相違は `other` となって待ちが延長される |
 | 古い owner・二重の rrxd | `owner.lock` の flock（`execution/owner.rs:225`）、全書込み API での現在の owner と version の検査（§2.4）、run・step・journal・上限待ちの記録の行に書いた epoch の trigger（§2.3）、control 要求の epoch の照合（`runtime/control.rs:460-469`） | なし |
 | モードの切替で、もう一方の経路のプロセスが残る | epoch の前の静止の確認（永続状態と cookie の探索。§1.1）。epoch の更新を死亡の根拠にしない | cookie を消した孤児と、group を抜けた子孫は検出できない。環境を消された platform binary の子孫も、`discover` のままなので検出できない（記録して受け入れる。§13.3） |
 | 停止・cancel と起動・採用・release・完了の競合 | `control_admission` による直列化（§1.2）と規則 G（最終 tx での Goal の Running の検査） | なし |
@@ -1569,6 +1615,9 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | 環境変数 | `RRX_PROCESS_COOKIE` | 既存の消費者は `execution/resources.rs:75`、`execution/cleanup.rs:85` | なし（値の空間は UUID で別） | パイプラインの値も UUID から作る。静止の確認は native の cookie を探索するだけで signal を送らない |
 | 環境変数 | `CODEX_HOME`・`TMPDIR`・`PATH`、rrx の Git の `GIT_CONFIG_NOSYSTEM`・`GIT_CONFIG_GLOBAL`・`GIT_ATTR_NOSYSTEM`・`GIT_INDEX_FILE` | 子プロセスの中だけ（rrxd 自身の環境は変えない） | パスの長さ（TMPDIR は 60 byte 以下） | 起動時に検査する |
 | 入力の一覧 | 必須 flag・許可する環境変数・固定の拒否パス・秘密の pattern・上限と成功の分類規則・driver の拒否キー | パイプラインだけ | 安全 | 広がる向きを検出するテストにする |
+| 定数・型・関数 | provider / exact pin → wire profile の閉じた表、profile enum、`classify_codex` / `classify_claude`（`execution/pipeline/classify.rs`） | `execution/pipeline/custody.rs:438-440`、`classify/tests.rs`、既存の fixture pin を使う偽 CLI | 機能・安全（実 pin が分類可能になる） | §5.6.1〜§5.6.2。未知 pin は `other`、enum の profile を通らず outcome を返す表は作らない。既存の合成 pin と fixture を維持し、実 pin でも同じ分岐を検査する |
+| 消費者 | `provider_outcome=success`、custody の `last_output_invalid` と last receipt | `execution/pipeline/adoption.rs:38`、`state/execution/pipeline/review.rs:113`・`rounds.rs:607`、上限待ちの解除 trigger（`state/execution/pipeline.sql:294`）と §2.6 の settle | 採用・安全（成功誤認は、採用前に daemon 全体の待ちを解除する） | 採用・解除の条件は緩めず、profile と custody の正負の検査で守る。last 不正で成功形が `other` になり、probe の待ちが延長されることまで確認する |
+| テスト専用の関数・出力 | `state/execution/pipeline/tests/real_cli.rs` の `envelope_keys`・Agent step の観測・`summary.json` | 同ファイルの `pass_flow` / `run_pass`・偽 CLI pass・秘密の秘匿テスト、`scripts/real-cli-pass.sh` が返す要約 | 検証・秘密保護（出力由来の値が要約に増える） | §5.6.3。採用の前と失敗時にも bounded な shape を採り、raw / decoded / 投影後を scan。`review::scan_raw` / `scan_strings` と通常ファイルの検査を再利用し、製品の分類器・DB schema・Runtime API に観測機能を足さない |
 | 定数 | `global_max_sessions` の既定 12（`config.rs:64`）、`MVP_PROJECT_TASKS`=1（`config.rs:17`）、`PHASE_SLOTS_PER_PROJECT`=4（`runtime/phase_supervisor.rs:22`）、native の上限の既定（`execution/quota.rs:18-20`） | 変えない | | パイプラインは 1 step ずつなので、`MVP_PROJECT_TASKS` だけを使う |
 | 定数 | 上限待ちの backoff（初回 60 秒、倍、上限 30 分）。native の `quota_pools.backoff` の範囲（`quotas.rs:317`、`:508`）と同じ値 | `pipeline_limit_wait` の CHECK と trigger、§2.6 | なし（パイプラインだけ。native の値は読まない・変えない） | trigger とテストで固定する |
 | 関数・型（tracker の公開 API） | `discover_launched`・`launch_mark`・`owned_leader`、`Launch`・`OwnedLeader`（新規） | `execution/pipeline/custody.rs:189-237`、`execution/pipeline/launcher.rs:298-329`、§4.2 の running の行と §4.4 の 4（B10） | 機能・安全 | 追加する |
@@ -1593,6 +1642,7 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 - **`collector::collect`**: 呼ばない。可視性を変えるのは `retain` / `inspect` だけ。
 - **Docker・Grok・`ResultStore`・`AttemptManager`**: パイプラインから呼ばない。
 - **M0 branch**: 今は影響しない。M0 を再開するときは、M0 の schema を v13 へ番号を振り直す（§16 D1）。
+- **D26 の wire 対応**: 製品の変更先は pipeline の分類器とその入力規則だけで、CLI の argv・Q の pin 照合・DB schema・native adapter は変えない。shape は `#[cfg(test)]` の harness が既存の receipt と原本から作る検証用要約で、DB に保存する契約や製品の表示 API を増やさない。送信記録の対象も従来の入力 packet のままとする。
 
 ### 13.3 別 Issue に記録するもの
 
@@ -1648,6 +1698,12 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 | F-m1 | モードの切替の前に、もう一方の作業を 1 種類ずつ残す（native: open な Unit・pending の effect・cookie を持つ残存プロセス・Exhausted の観測（期限を過ぎたものを含む）。pipeline: held の run・unknown の step・開いた journal・waiting（期限を過ぎたものを含む）/ probing の上限待ちの記録） | rrxd は epoch を進めずに起動を失敗させ、何も書かない。片付けた後は起動する |
 | F-t1 | admit の後にテストの実行ファイルを差し替える / 同じ key の REPLACE で profile の body を変える | 起動せず rejected / held。合格として採用しない |
 | F-i1 | `INSERT OR REPLACE` で各表の主キー・UNIQUE・部分 UNIQUE に衝突させる（`recursive_triggers=false`）/ Agent の kind で provider が NULL の step を INSERT する | すべて拒否され、元の行が残る |
+| F-w1 | 未登録 pin、既知 pin の prefix・suffix・大小文字違い、別 provider の pin に、既知の success / limit 出力を渡す | すべて `other`。表は provider と exact pin から実装済み profile だけを選び、pin 単独から success を返せない。登録 entry に profile が欠ける、provider が違う、同じ key が重複する状態を許さない |
+| F-w2 | §5.6.1 の各実 pin を引数に、shape に忠実な success / limit / other fixture を通す（合成 pin の既存テストも維持） | 完全な成功形だけ success、固定した上限形だけ limit、認証の失敗・未知形は other。文書由来と実観測由来の根拠を区別でき、本文を原本から持ち込まない |
+| F-w3 | success fixture を非 0 / 終了コードなし、重複キー、未知の codex event、error / turn.failed の後の完了、完了の重複・後続 event、claude の型違い・エラーとの矛盾、途中切れ・overflow に変える | success にならない。上限の code / status / 固定文言の一つを変えたものも limit にならない。probe での `other` が待ちを解除しないことは F-a7 と合わせて確認する |
+| F-w4 | 実 pin の成功 JSONL と、不正・欠落・上限超過の last-output を custody に渡す / 有効な last receipt を渡す | 前者は `last_output_invalid` と `provider_outcome=other`、採用不可、probe は待ちを延長。後者だけ `passed` を要約に記録する。未確認を passed にせず、claude は `not_applicable`。harness の shape は不採用の attempt にも残る |
+| F-w5 | receipt と許可する shape のフィールドを固定し、本文・ID・パス・error.message・structured_output・modelUsage の値に互いに異なる秘密でない目印を入れる。さらに各段の raw / Unicode escape / decode 後のキー・値に秘密 pattern を注入する | 目印を変えても要約の shape は変わらず、目印は一つも要約に出ない。秘密検出なら shape 全体が固定の `secret_detected` だけになり、検出までに集めた type / key / code も残らない。原本や parse error の診断を要約・console に写さない |
+| F-w6 | 偽 CLI pass で Agent を採用前に失敗させる、未知 pin / shape、観測の不正な型・identifier・status、4096 event / 128 key / 文字列 / 全体の bound の境界、ファイル欠落・symlink・receipt 不一致、観測前の失敗を注入する | 順序を保った許可フィールドだけが recorded。上限超過は部分列を残さず固定状態、読めないものは固定状態、未起動は not_run。検証不能・profile 不一致は pass failed で後続の Agent を起動しない。harness は outcome を上書きしない。実 CLI の二重 gate とオーナーの開始条件も維持される |
 
 - **mutation の対象**（壊したら落ちることを確かめる）。
   - 配線:
@@ -1660,6 +1716,8 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
     - `pipeline_tick` を呼ばないようにする
     - rrx の Git の `GIT_CONFIG_GLOBAL` / `--no-filters` を外す
     - 秘密スキャンを prompt の書込みの前から外す
+    - pin の完全一致を prefix / fallback にする / profile の成功条件から失敗・矛盾の拒否を外す / `last_output_invalid` で成功を返す（F-w1〜F-w4）
+    - shape に本文を混ぜる / raw または decoded の秘密スキャンを外す / 秘密検出前の部分 shape を残す / shape 不明で後続を起動する（F-w5・F-w6）
     - test の起動前の `recheck` / profile の digest 照合を消す
     - 回復で、再送の照会を作業領域の初期化の後に動かす / guard の中と最終 tx の再送の照会を消す
     - `abandon-run` の journal の決着を消す / settle の abandoned の run の検査を消す
@@ -1696,10 +1754,13 @@ blocking の指摘のうち、次をすべて満たすものだけを confirm �
 
 B10 設計入力: lifecycle Resume は Runtime config hash（`runtime/control.rs` の `policy_digest`）でなく、pipeline の受入済み policy（`PipelineProfile.policy_sha256`、`state/execution/pipeline.rs`）と照合する。
 
+D26 の追加作業は、製品の pin → profile 表・分類規則・実 pin の fixture を **B3 の補修**（F-w1〜F-w3）、last-output と上限待ちの消費者の回帰を **B4 / B5 の確認**（F-w4・F-a7）、テスト専用の shape 記録器を **B7 の実 CLI harness の補修**（F-w5・F-w6）に置く。ローカルでこれらを実装・検証してから、**B11 の次の実 CLI pass** で 2 pin の対応と既存の Executor → test → Reviewer の採用を 1 つの窓で確認する。新しい製品 step や Unit は増やさず、設計・実装の途中で追加の実 pass は要求しない。実装時に `agent-adapter.md` の pin と分類規則、`agent-execution.md` の custody と上限待ちの説明、B11 の受入記録を更新する。
+
 ## 16. 承認済みの計画との相違
 
 | ID | 計画 | この設計 | 根拠 |
 |---|---|---|---|
+| D26 | pin した版ごとに固定した分類規則を使う | provider と exact pin から閉じた wire profile を選ぶ。`codex-cli 0.164.0` → `codex-jsonl-v1`、`2.1.312 (Claude Code)` → `claude-result-v1` を初期対応に加え、未知 pin は `other` とする。実 CLI harness は各 Agent の秘匿した shape と last-output の結果を記録し、次の pass で対応を検証する。以後の実 pin の追加には実 pass の shape を要求する（§5.6） | fixture pin だけを受け付ける分類器では、Q を通った実 CLI も常に `other` となり、Executor の採用が `agent_failed` で止まる。文書化された形式と合成 fixture を根拠に初期対応を作り、未知・矛盾・不完全な成功形を拒否して上限待ちの誤解除も防ぐ。本文を持ち出さずに次の 1 窓で wire を照合できるようにする |
 | D25 | 起動直前に両 executable の全体を 5 秒以内に再 hash する | 5 秒の bound と全体の再 hash を維持し、dev profile の sha2 を `opt-level = 3` でビルドする（test profile も継承）。安全性の検査自体は変えない | 2026-10-29 の実 CLI 検証では、Q を通過して prepare を採用した後、implement が Agent の起動前に `launch_preflight_failed` で拒否された。オーナーの Mac で `executable_until` は未最適化だと codex（260 MB）が 13.2 秒、claude（236 MB）が 10.6 秒、sha2 の dev profile を `opt-level = 3` にするとそれぞれ 0.62 秒、0.56 秒だった。両 executable は共有の 5 秒の期限内に再 hash する。実 CLI harness と debug binary は dev profile を使い、release は既に最適化される。各計測値はそれぞれ 1 回の実行によるもので、負荷とページキャッシュの状態は記録しておらず、bound を超えた場合は意図した fail-closed の挙動として起動を拒否する |
 | D24 | Q の全 probe の出力は 4 KiB まで | help を要求する probe（codex `exec --help`、claude `--help`、claude `--setting-sources bogus\|"" --help`）だけ 64 KiB まで、それ以外（`--version`、login status）は 4 KiB までとし、不正値の settings probe の parser error は stderr だけから取る | 2026-10-29 の実 CLI 検証で、Claude Code 2.1.312 の help が 22,116 byte あり、必須 flag の検査前に `help_probe` で拒否された。timeout・cleanup・出力を保存しない規則は変えない |
 | D23 | snapshot の 100,000 項目の上限 | 実効上限は 100,000 項目または `ls-tree -r -z` の一覧出力 4 MiB のうち先に達する方とする。どちらの超過も review を `review_snapshot_limit` で held にする | 100,000 項目の計測では、既存の 4 MiB の Git 出力上限で準備が先に失敗した。上限や budget は広げず、snapshot の一覧取得だけで出力超過を名前付き理由に変換する。長いパスを使った、項目数の上限より十分小さい tree で、一覧出力の上限直前は準備でき、直後は名前付き理由で保留することを検査する |
