@@ -27,6 +27,10 @@ futures-util = { version = "0.3", default-features = false, features = ["std", "
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
+# Pinned CLI executables are re-hashed within the 5-second pre-launch bound; unoptimized hashing is too slow.
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.release]
 lto = "thin"
 strip = "debuginfo"
