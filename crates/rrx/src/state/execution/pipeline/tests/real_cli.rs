@@ -4,9 +4,11 @@ use crate::{
     config::{PipelineCli, PipelineClis},
     execution::{
         pipeline::{
-            LaunchResult, PipelineGit, PipelineRole, RoundDecision, review, review_prompt,
-            review_snapshot, step_arguments, test_support::FakeCli,
+            CODEX_JSONL_BYTES, LaunchResult, PipelineGit, PipelineRole, RoundDecision,
+            WIRE_JSON_LIMITS, WireProvider, review, review_prompt, review_snapshot, step_arguments,
+            test_support::FakeCli, wire_profile,
         },
+        strict_json,
         verification::hash,
     },
 };
@@ -25,11 +27,21 @@ const CALC_TEST: &[u8] = b"import importlib.util\nimport unittest\n\nspec = impo
 struct FakeScenario {
     implementation: &'static str,
     verdict: &'static str,
+    codex_output: &'static str,
+    codex_last: Option<&'static str>,
+    claude_output: Option<&'static str>,
+    pins: Option<(&'static str, &'static str)>,
+    overflow_shape: bool,
 }
 
 const FAKE_PASS: FakeScenario = FakeScenario {
     implementation: "def add(a, b):\n    return a + b\n",
     verdict: "approve",
+    codex_output: "{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n",
+    codex_last: Some("Implementation complete.\n"),
+    claude_output: None,
+    pins: None,
+    overflow_shape: false,
 };
 
 enum PassMode {
@@ -288,10 +300,22 @@ fn fake_step(f: &Fixture, id: &str, kind: &str, scenario: FakeScenario) -> Resul
             "is_error":false,"modelUsage":{cli.model.clone():{}},"structured_output":{
             "schema":"rrx.review.v1","verdict":scenario.verdict,"summary":"safe","findings":[]}}))?,
         );
+        if let Some(output) = scenario.claude_output {
+            fake.control("exec-output", output);
+        }
     } else {
         fake.control("exec-calc", scenario.implementation);
-        fake.control("exec-last", "Implementation complete.\n");
-        fake.control("exec-output", "{\"type\":\"turn.completed\"}\n");
+        if let Some(last) = scenario.codex_last {
+            fake.control("exec-last", last);
+        }
+        fake.control("exec-output", scenario.codex_output);
+        if scenario.overflow_shape {
+            let output = format!(
+                "{{\"type\":\"turn.started\"}}\n{}{{\"type\":\"turn.completed\"}}\n",
+                "{\"type\":\"item.completed\"}\n".repeat(SHAPE_EVENTS)
+            );
+            fake.control("exec-output", &output);
+        }
     }
     Ok(())
 }
@@ -342,41 +366,335 @@ fn git_probe(f: &Fixture) -> Value {
     json!({"state":"recorded","called":!calls.is_empty(),"calls":calls})
 }
 
-fn envelope(f: &Fixture, id: &str) -> Value {
-    let Ok(step) = last_step(f) else {
-        return json!({"state":"step_unavailable"});
-    };
-    let Some(config) = &f.config.pipeline else {
-        return json!({"state":"config_missing"});
-    };
-    let path = config
-        .work_root
-        .join("runs")
-        .join(id)
-        .join(format!("{}-1/result.json", step.seq));
-    match crate::execution::pipeline::adoption::read_regular(&path, review::REVIEW_BYTES) {
-        Ok(bytes) => envelope_keys(&bytes),
-        Err(_) => json!({"state":"absent_or_invalid"}),
+const SHAPE_BYTES: usize = 512 * 1024;
+const SHAPE_EVENTS: usize = 4096;
+const SHAPE_KEYS: usize = 128;
+
+fn marker(state: &str) -> Value {
+    json!({"state":state})
+}
+
+fn decode_state(error: strict_json::Error) -> &'static str {
+    use strict_json::Error::*;
+    match error {
+        FrameBytes | StringBytes | TotalStringBytes | ObjectEntries | ArrayEntries | Depth
+        | Nodes => "strict_json_limit",
+        InvalidJson | DuplicateKey | InvalidLimits => "absent_or_invalid",
     }
 }
 
-fn envelope_keys(bytes: &[u8]) -> Value {
-    let decoded = Some(bytes)
-        .filter(|bytes| review::scan_raw(bytes, 0).is_ok())
-        .and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok());
-    let Some(value) = decoded else {
-        return json!({"state":"absent_or_invalid"});
+fn scan_state(error: &anyhow::Error) -> &'static str {
+    if error
+        .downcast_ref::<crate::execution::pipeline::SecretHit>()
+        .is_some()
+    {
+        "secret_detected"
+    } else {
+        "absent_or_invalid"
+    }
+}
+
+fn identifier(text: &str, dotted: bool, key: bool) -> std::result::Result<(), &'static str> {
+    if text.len() > 64 {
+        return Err("shape_overflow");
+    }
+    let valid = |part: &str| {
+        let mut bytes = part.bytes();
+        bytes.next().is_some_and(|b| {
+            if key {
+                b.is_ascii_alphabetic() || b == b'_'
+            } else {
+                b.is_ascii_lowercase()
+            }
+        }) && bytes.all(|b| {
+            if key {
+                b.is_ascii_alphanumeric() || b == b'_'
+            } else {
+                b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'
+            }
+        })
     };
-    if review::scan_strings(&value).is_err() {
-        return json!({"state":"secret_detected"});
+    if (dotted && text.split('.').all(valid)) || (!dotted && valid(text)) {
+        Ok(())
+    } else {
+        Err("redacted")
     }
-    match value.as_object() {
-        Some(object) => {
-            json!({"state":"recorded","top_level_keys":object.keys().collect::<Vec<_>>(),
-            "model_usage_keys":object.get("modelUsage").and_then(Value::as_object).map(|o| o.keys().collect::<Vec<_>>())})
+}
+
+fn keys(value: &Value, model: bool) -> std::result::Result<Value, &'static str> {
+    let object = value.as_object().ok_or("redacted")?;
+    if object.len() > SHAPE_KEYS {
+        return Err("shape_overflow");
+    }
+    let mut keys: Vec<_> = object.keys().collect();
+    keys.sort();
+    for key in &keys {
+        // Model names retain the existing observation (which allows hyphens/dots).
+        if model {
+            if key.len() > 64 {
+                return Err("shape_overflow");
+            }
+            if key.is_empty()
+                || !key
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"_.:-".contains(&b))
+            {
+                return Err("redacted");
+            }
+        } else {
+            identifier(key, false, true)?;
         }
-        None => json!({"state":"absent_or_invalid"}),
     }
+    Ok(json!(keys))
+}
+
+fn optional_identifier(
+    value: Option<&Value>,
+    dotted: bool,
+) -> std::result::Result<Value, &'static str> {
+    let Some(value) = value else {
+        return Ok(json!("absent"));
+    };
+    let text = value.as_str().ok_or("redacted")?;
+    identifier(text, dotted, false)?;
+    Ok(json!(text))
+}
+
+fn status(value: Option<&Value>) -> std::result::Result<Value, &'static str> {
+    match value {
+        None => Ok(json!("absent")),
+        Some(Value::Null) => Ok(Value::Null),
+        Some(value) if value.as_u64().is_some_and(|n| (100..=599).contains(&n)) => {
+            Ok(value.clone())
+        }
+        _ => Err("redacted"),
+    }
+}
+
+fn codex_event(value: &Value) -> std::result::Result<Value, &'static str> {
+    let kind = optional_identifier(Some(value.get("type").ok_or("redacted")?), true)?;
+    let mut event = json!({"type":kind});
+    if matches!(kind.as_str(), Some("error" | "turn.failed")) {
+        event["top_level_keys"] = keys(value, false)?;
+        event["error_keys"] = match value.get("error") {
+            None => json!("absent"),
+            Some(error) => keys(error, false)?,
+        };
+        event["error_code"] =
+            optional_identifier(value.get("error").and_then(|e| e.get("code")), false)?;
+    }
+    Ok(event)
+}
+
+fn claude_shape(value: &Value) -> std::result::Result<Value, &'static str> {
+    let mut shape = json!({"state":"recorded","top_level_keys":keys(value, false)?,
+        "type":optional_identifier(value.get("type"), true)?,
+        "subtype":optional_identifier(value.get("subtype"), true)?,
+        "api_error_status":status(value.get("api_error_status"))?});
+    shape["is_error"] = match value.get("is_error") {
+        None => json!("absent"),
+        Some(Value::Bool(b)) => json!(b),
+        _ => return Err("redacted"),
+    };
+    shape["api_error_keys"] = match value.get("api_error") {
+        None => json!("absent"),
+        Some(Value::Null) => Value::Null,
+        Some(error) => keys(error, false)?,
+    };
+    shape["api_error_status_nested"] =
+        status(value.get("api_error").and_then(|e| e.get("status")))?;
+    shape["errors_count"] = match value.get("errors") {
+        None => json!("absent"),
+        Some(Value::Array(errors)) if errors.iter().all(Value::is_string) => {
+            if errors.len() > 4096 {
+                return Err("shape_overflow");
+            }
+            json!(errors.len())
+        }
+        _ => return Err("redacted"),
+    };
+    shape["model_usage_keys"] = match value.get("modelUsage") {
+        None => Value::Null,
+        Some(usage) => keys(usage, true)?,
+    };
+    Ok(shape)
+}
+
+// All failures replace the entire projection; no parser diagnostics escape.
+fn wire_shape(provider: WireProvider, bytes: &[u8]) -> Value {
+    let maximum = match provider {
+        WireProvider::Codex => CODEX_JSONL_BYTES,
+        WireProvider::Claude => WIRE_JSON_LIMITS.frame_bytes,
+    };
+    if bytes.len() > maximum {
+        return marker(match provider {
+            WireProvider::Codex => "absent_or_invalid",
+            WireProvider::Claude => "strict_json_limit",
+        });
+    }
+    if let Err(error) = review::scan_all_raw(bytes) {
+        return marker(scan_state(&error));
+    }
+    let mut events = Vec::new();
+    let mut failure = None;
+    let mut claude = None;
+    let mut projected_bytes = 0;
+    let frames: Box<dyn Iterator<Item = &[u8]> + '_> = match provider {
+        WireProvider::Codex => Box::new(
+            bytes
+                .split(|b| *b == b'\n')
+                .filter(|line| !line.iter().all(u8::is_ascii_whitespace)),
+        ),
+        WireProvider::Claude => Box::new(std::iter::once(bytes)),
+    };
+    for frame in frames {
+        let value = match strict_json::decode(frame, WIRE_JSON_LIMITS) {
+            Ok(value) => value,
+            Err(error) => {
+                failure.get_or_insert(decode_state(error));
+                continue;
+            }
+        };
+        // Continue scanning later frames even after projection/decode failure.
+        if let Err(error) = review::scan_strings(&value) {
+            return marker(scan_state(&error));
+        }
+        if failure.is_some() {
+            continue;
+        }
+        let projection = match provider {
+            WireProvider::Codex => codex_event(&value),
+            WireProvider::Claude => claude_shape(&value),
+        };
+        match projection {
+            Ok(value) => match provider {
+                WireProvider::Codex => {
+                    projected_bytes +=
+                        serde_json::to_vec(&value).map_or(SHAPE_BYTES + 1, |b| b.len() + 1);
+                    if events.len() == SHAPE_EVENTS || projected_bytes > SHAPE_BYTES {
+                        failure = Some("shape_overflow");
+                    } else {
+                        events.push(value);
+                    }
+                }
+                WireProvider::Claude => claude = Some(value),
+            },
+            Err(state) => failure = Some(state),
+        }
+    }
+    if let Some(state) = failure {
+        return marker(state);
+    }
+    let shape = match provider {
+        WireProvider::Codex if !events.is_empty() => json!({"state":"recorded","events":events}),
+        WireProvider::Codex => return marker("absent_or_invalid"),
+        WireProvider::Claude => claude.unwrap_or_else(|| marker("absent_or_invalid")),
+    };
+    finish_shape(shape)
+}
+
+fn finish_shape(shape: Value) -> Value {
+    let Ok(bytes) = serde_json::to_vec(&shape) else {
+        return marker("absent_or_invalid");
+    };
+    if let Err(error) = review::scan_all_raw(&bytes).and_then(|()| review::scan_strings(&shape)) {
+        return marker(scan_state(&error));
+    }
+    if bytes.len() > SHAPE_BYTES {
+        return marker("shape_overflow");
+    }
+    shape
+}
+
+fn envelope_keys(bytes: &[u8]) -> Value {
+    wire_shape(WireProvider::Claude, bytes)
+}
+
+fn observed_shape(root: &Path, step: &PipelineStep, provider: WireProvider) -> Value {
+    let exit = &step.body["exit"];
+    let maximum = match provider {
+        WireProvider::Codex => CODEX_JSONL_BYTES,
+        WireProvider::Claude => WIRE_JSON_LIMITS.frame_bytes,
+    };
+    let result = (|| -> Result<Vec<u8>> {
+        ensure!(exit["stdout_truncated"] == false, "incomplete");
+        let receipt: crate::execution::verification::StreamEvidence =
+            serde_json::from_value(exit["stdout"].clone())?;
+        ensure!(
+            receipt.complete && receipt.bytes <= maximum as u64,
+            "incomplete"
+        );
+        ensure!(root.canonicalize()? == root, "aliased attempt");
+        let name = match provider {
+            WireProvider::Codex => "stdout.jsonl",
+            WireProvider::Claude => "result.json",
+        };
+        let bytes = crate::execution::pipeline::adoption::read_regular(&root.join(name), maximum)?;
+        ensure!(
+            receipt.bytes == bytes.len() as u64 && receipt.sha256 == hash(&bytes),
+            "receipt mismatch"
+        );
+        Ok(bytes)
+    })();
+    match result {
+        Ok(bytes) => match provider {
+            WireProvider::Codex => wire_shape(provider, &bytes),
+            WireProvider::Claude => envelope_keys(&bytes),
+        },
+        Err(_) => marker("absent_or_invalid"),
+    }
+}
+
+fn last_output(provider: WireProvider, exit: &Value) -> &'static str {
+    match provider {
+        WireProvider::Claude => "not_applicable",
+        WireProvider::Codex if exit["issue"] == "last_output_invalid" => "failed",
+        WireProvider::Codex => {
+            let receipt = serde_json::from_value::<crate::execution::verification::StreamEvidence>(
+                exit["last"].clone(),
+            );
+            if receipt.is_ok_and(|r| {
+                r.complete
+                    && r.bytes <= 256 * 1024
+                    && r.sha256.len() == 64
+                    && r.sha256.bytes().all(|b| b.is_ascii_hexdigit())
+            }) {
+                "passed"
+            } else {
+                "not_checked"
+            }
+        }
+    }
+}
+
+fn agent_wire(f: &Fixture, step: &PipelineStep) -> Value {
+    let Some(config) = &f.config.pipeline else {
+        return marker("absent_or_invalid");
+    };
+    let (provider, pin) = if step.provider.as_deref() == Some("claude") {
+        (WireProvider::Claude, &config.clis.claude.version)
+    } else {
+        (WireProvider::Codex, &config.clis.codex.version)
+    };
+    let root = config
+        .work_root
+        .join("runs")
+        .join(&step.run_id)
+        .join(format!("{}-{}", step.seq, step.attempt));
+    let exit = &step.body["exit"];
+    json!({"exit_code":exit["code"].as_i64(),
+        "profile":wire_profile(provider, pin).map_or("unmapped", |profile| profile.name()),
+        "provider_outcome":match step.body["provider_outcome"].as_str() {Some("success") => "success", Some("limit") => "limit", _ => "other"},
+        "last_output":last_output(provider, exit),"shape":observed_shape(&root, step, provider)})
+}
+
+fn wire_recordable(wire: &Value) -> bool {
+    wire["shape"]["state"] == "recorded"
+        && wire["provider_outcome"] == "success"
+        && matches!(
+            wire["last_output"].as_str(),
+            Some("passed" | "not_applicable")
+        )
 }
 
 // Observe spawn independently of the running-record transaction. Even an error
@@ -388,6 +706,7 @@ async fn launch_recorded(
     kind: &str,
     prompt: Vec<u8>,
     summary: &mut Value,
+    wire: &mut Value,
 ) -> Result<LaunchResult> {
     use crate::execution::pipeline::test_support::spawned_leader;
     spawned_leader();
@@ -404,6 +723,7 @@ async fn launch_recorded(
             Ok(LaunchResult::Started(_) | LaunchResult::RecordFailed | LaunchResult::Unknown)
         ) || (result.is_err() && spawned))
     {
+        *wire = marker("absent_or_invalid");
         let mut packet = summary["prompts"][kind].clone();
         packet["status"] = json!(if matches!(&result, Ok(LaunchResult::Started(_))) {
             "sent"
@@ -422,9 +742,24 @@ async fn pass_flow(mode: PassMode, summary: &mut Value) -> Result<()> {
     let probe_path = probe.path().canonicalize()?;
     fs::write(probe_path.join("git"), GIT_PROBE)?;
     fs::set_permissions(probe_path.join("git"), fs::Permissions::from_mode(0o700))?;
+    let fake_root = tempfile::tempdir()?;
     let (clis, fake) = match mode {
         PassMode::Real(clis) => (Some(clis?), None),
-        PassMode::Fake(scenario) => (None, Some(scenario)),
+        PassMode::Fake(scenario) => {
+            let clis = scenario.pins.map(|(codex_pin, claude_pin)| {
+                let mut codex = FakeCli::new(fake_root.path(), true);
+                let mut claude = FakeCli::new(fake_root.path(), false);
+                codex.control("version", codex_pin);
+                claude.control("version", claude_pin);
+                codex.cli.version = codex_pin.into();
+                claude.cli.version = claude_pin.into();
+                PipelineClis {
+                    codex: codex.cli,
+                    claude: claude.cli,
+                }
+            });
+            (clis, Some(scenario))
+        }
     };
     if let Some(clis) = &clis {
         summary["clis"] = cli_summary(clis);
@@ -450,6 +785,7 @@ async fn pass_flow(mode: PassMode, summary: &mut Value) -> Result<()> {
     let inputs = FixtureInputs {
         max_fix_rounds: None,
         clis,
+        codex_pin: None,
         path_prefix: vec![probe_path],
         qualification: qualification.clone(),
         task: TaskDefinition {
@@ -495,6 +831,7 @@ async fn pass_flow(mode: PassMode, summary: &mut Value) -> Result<()> {
             continue;
         }
         let start = Instant::now();
+        let mut wire = marker("not_run");
         let result: Result<bool> = async {
             runtime.wait_pipeline_test_boundary().await;
             if kind == "prepare" { return runtime.prepare_pipeline_task(f.cursor(&id)).await; }
@@ -514,25 +851,40 @@ async fn pass_flow(mode: PassMode, summary: &mut Value) -> Result<()> {
             if kind != "test" {
                 summary["prompts"][kind] = packet(&format!("{kind}-prompt.md"), &prompt);
             }
-            let launched = launch_recorded(&runtime, &f, &id, kind, prompt.clone(), summary).await?;
+            let launched = launch_recorded(&runtime, &f, &id, kind, prompt.clone(), summary, &mut wire).await?;
             let launched = if matches!(launched, LaunchResult::Waiting) {
                 runtime.wait_pipeline_test_boundary().await;
                 // Waiting does not spawn; retain the same planned attempt and prompt.
-                launch_recorded(&runtime, &f, &id, kind, prompt, summary).await?
+                launch_recorded(&runtime, &f, &id, kind, prompt, summary, &mut wire).await?
             } else { launched };
             let LaunchResult::Started(custody) = launched else { return Ok(false); };
             custody.wait().await?;
             summary["probes"]["git_forwarding"][kind] = git_probe(&f);
-            if kind == "review" { summary["probes"]["envelope"] = envelope(&f, &id); }
+            if kind != "test" {
+                wire = agent_wire(&f, &last_step(&f)?);
+                if kind == "review" { summary["probes"]["envelope"] = wire["shape"].clone(); }
+            }
             runtime.wait_pipeline_test_boundary().await;
-            match kind {
+            let adopted = match kind {
                 "implement" => runtime.adopt_pipeline_executor(f.cursor(&id)).await,
                 "test" => runtime.adopt_pipeline_round_test(f.cursor(&id)).await,
                 "review" => runtime.adopt_pipeline_round_review(f.cursor(&id)).await,
                 _ => unreachable!(),
-            }
+            }?;
+            Ok(adopted && (kind == "test" || wire_recordable(&wire)))
         }.await;
-        let observation = record(&f, kind, start, &result);
+        if matches!(kind, "implement" | "review")
+            && wire.get("shape").is_none()
+            && let Ok(step) = last_step(&f)
+            && step.kind == kind
+            && !step.body["exit"].is_null()
+        {
+            wire = agent_wire(&f, &step);
+        }
+        let mut observation = record(&f, kind, start, &result);
+        if matches!(kind, "implement" | "review") {
+            observation["wire"] = wire;
+        }
         active = observation["adopted"] == true
             && (kind != "test" || observation["test_result"] == "pass")
             && (kind != "review" || observation["review_verdict"] == "approve");
@@ -589,11 +941,12 @@ async fn run_pass(mode: PassMode, out: &Path) -> Value {
             .iter()
             .any(|step| step["kind"] == kind)
         {
-            summary["steps"]
-                .as_array_mut()
-                .unwrap()
-                .push(json!({"kind":kind,"state":"not_run",
-                "reason":"previous_step_or_setup_not_successful","duration_ms":0,"adopted":false}));
+            let mut step = json!({"kind":kind,"state":"not_run",
+                "reason":"previous_step_or_setup_not_successful","duration_ms":0,"adopted":false});
+            if matches!(kind, "implement" | "review") {
+                step["wire"] = marker("not_run");
+            }
+            summary["steps"].as_array_mut().unwrap().push(step);
         }
     }
     summary["state"] = json!(if result.is_ok() { "adopted" } else { "failed" });
@@ -749,7 +1102,7 @@ fn real_pass_gate_requires_explicit_one() {
     );
 }
 
-/// A failed post-spawn running record still retains the possibly sent prompt packet.
+/// F-w6: A post-spawn record failure retains its prompt and marks wire unavailable rather than not run.
 #[tokio::test]
 async fn fake_cli_post_spawn_packet() {
     let f = fixture().await;
@@ -762,6 +1115,7 @@ async fn fake_cli_post_spawn_packet() {
     f.store().connection.execute_batch("CREATE TEMP TRIGGER real_cli_fail_running BEFORE UPDATE ON pipeline_steps WHEN NEW.state='running' BEGIN SELECT RAISE(ABORT,'injected running failure'); END;").unwrap();
     let expected = packet("implement-prompt.md", IMPLEMENT);
     let mut summary = json!({"prompts":{"implement":expected},"sent_prompts":[]});
+    let mut wire = marker("not_run");
     runtime.wait_pipeline_test_boundary().await;
     let result = launch_recorded(
         &runtime,
@@ -770,12 +1124,14 @@ async fn fake_cli_post_spawn_packet() {
         "implement",
         IMPLEMENT.to_vec(),
         &mut summary,
+        &mut wire,
     )
     .await;
     assert!(matches!(result, Ok(LaunchResult::RecordFailed)));
     let mut expected = expected;
     expected["status"] = json!("possibly_sent");
     assert_eq!(summary["sent_prompts"], json!([expected]));
+    assert_eq!(wire, marker("absent_or_invalid"));
     runtime.shutdown().await.unwrap();
 }
 
@@ -804,3 +1160,5 @@ async fn real_cli_pass() {
         "pass failed; inspect summary.json (Agent output is not printed)"
     );
 }
+
+mod wire_tests;

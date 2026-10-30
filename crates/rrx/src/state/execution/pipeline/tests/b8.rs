@@ -16,10 +16,14 @@ struct Harness {
 }
 impl Harness {
     async fn new(max: u32, fail: bool) -> Self {
+        Self::with_pin(max, fail, None).await
+    }
+    async fn with_pin(max: u32, fail: bool, pin: Option<&str>) -> Self {
         let qualification = Arc::new(std::sync::Mutex::new(Value::Null));
         let inputs = FixtureInputs {
             max_fix_rounds: Some(max),
             clis: None,
+            codex_pin: pin.map(str::to_owned),
             path_prefix: vec![],
             task: TaskDefinition {
                 key: "task".into(),
@@ -149,8 +153,10 @@ impl Harness {
         self.codex.control("exec-source", &self.source);
         self.codex
             .control("exec-last", "Implementation complete.\n");
-        self.codex
-            .control("exec-output", "{\"type\":\"turn.completed\"}\n");
+        self.codex.control(
+            "exec-output",
+            "{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n",
+        );
         let work = PathBuf::from(
             self.f.store().pipeline_goal_view(self.f.goal).unwrap().runs[0]
                 .worktree
@@ -268,8 +274,10 @@ impl Harness {
             std::fs::remove_file(source).unwrap();
         }
         self.codex.control("exec-last", output);
-        self.codex
-            .control("exec-output", "{\"type\":\"turn.completed\"}\n");
+        self.codex.control(
+            "exec-output",
+            "{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n",
+        );
         self.expected(
             &self.codex,
             PipelineRole::Confirm,
@@ -323,6 +331,106 @@ impl Harness {
             )
             .unwrap();
             review_snapshot::remove(&path).unwrap();
+        }
+    }
+}
+
+/// F-w4: Confirmer last-output failures override every wire outcome while absence preserves failures.
+#[tokio::test]
+async fn f_w4_confirmer_last_output() {
+    for output in [
+        "{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n",
+        "{\"type\":\"turn.failed\",\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"Rate limit reached\"}}\n",
+        "{\"type\":\"unknown.event\"}\n",
+    ] {
+        for last in [
+            "missing",
+            "valid",
+            "symlink",
+            "hardlink",
+            "oversized",
+            "directory",
+        ] {
+            let h = Harness::with_pin(1, false, Some("codex-cli 0.164.0")).await;
+            h.to_confirm().await;
+            std::fs::remove_file(h.codex.directory.join("exec-source")).unwrap();
+            std::fs::remove_file(h.codex.directory.join("exec-last")).unwrap();
+            h.codex.control("exec-output", output);
+            h.codex.control("exec-pause", "");
+            h.expected(
+                &h.codex,
+                PipelineRole::Confirm,
+                &h.path(),
+                confirm::CONFIRM_SCHEMA,
+            );
+            h.runtime.wait_pipeline_test_boundary().await;
+            let LaunchResult::Started(custody) = h
+                .runtime
+                .launch_pipeline_confirm(h.f.cursor(&h.id))
+                .await
+                .unwrap()
+            else {
+                panic!("confirm did not launch");
+            };
+            let root = h.attempt();
+            let path = root.join("last.json");
+            match last {
+                "missing" => {}
+                "valid" => {
+                    std::fs::write(&path, serde_json::to_vec(&h.labels("confirmed")).unwrap())
+                        .unwrap()
+                }
+                "symlink" | "hardlink" => {
+                    let target = root.join("target");
+                    std::fs::write(&target, b"{}").unwrap();
+                    if last == "symlink" {
+                        std::os::unix::fs::symlink(&target, &path).unwrap();
+                    } else {
+                        std::fs::hard_link(&target, &path).unwrap();
+                    }
+                }
+                "oversized" => std::fs::write(&path, vec![b'x'; 256 * 1024 + 1]).unwrap(),
+                _ => std::fs::create_dir(&path).unwrap(),
+            }
+            h.codex.control("exec-release", "");
+            custody.wait().await.unwrap();
+            let step = h.step();
+            let success = output.contains("turn.completed");
+            let limit = output.contains("rate_limit_exceeded");
+            let invalid = !matches!(last, "missing" | "valid") || (last == "missing" && success);
+            assert_eq!(
+                step.body["provider_outcome"],
+                if invalid {
+                    "other"
+                } else if success {
+                    "success"
+                } else if limit {
+                    "limit"
+                } else {
+                    "other"
+                },
+                "{last}"
+            );
+            assert_eq!(
+                step.body["exit"]["issue"],
+                if invalid {
+                    json!("last_output_invalid")
+                } else {
+                    Value::Null
+                }
+            );
+            assert_eq!(step.body["exit"]["last"].is_object(), last == "valid");
+            if last == "missing" && limit {
+                h.runtime.wait_pipeline_test_boundary().await;
+                assert!(
+                    !h.runtime
+                        .adopt_pipeline_confirm(h.f.cursor(&h.id))
+                        .await
+                        .unwrap()
+                );
+                assert_eq!(h.step().state, "limited");
+            }
+            h.close().await;
         }
     }
 }

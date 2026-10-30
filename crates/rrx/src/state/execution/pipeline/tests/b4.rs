@@ -20,9 +20,12 @@ impl Harness {
         Self::with_alias(kind, prompt, false).await
     }
     async fn with_alias(kind: &str, prompt: &[u8], alias: bool) -> Self {
+        Self::build(kind, prompt, alias, None).await
+    }
+    async fn build(kind: &str, prompt: &[u8], alias: bool, pin: Option<&str>) -> Self {
         if kind == "review" {
             let h = super::b7::ReviewFixture::new(
-                "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false}",
+                "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"structured_output\":{}}",
             )
             .await;
             let input = h.prepare().await.unwrap();
@@ -35,7 +38,27 @@ impl Harness {
                 prompt: input.prompt,
             };
         }
-        let f = if alias {
+        let f = if let Some(pin) = pin {
+            let inputs = FixtureInputs {
+                max_fix_rounds: None,
+                clis: None,
+                codex_pin: Some(pin.into()),
+                path_prefix: vec![],
+                task: TaskDefinition {
+                    key: "task".into(),
+                    title: "task".into(),
+                    acceptance_criteria: vec!["pass".into()],
+                    executor: "codex".into(),
+                    reviewers: vec!["claude".into()],
+                    workflow: WorkflowClass::Standard,
+                    risk: RiskClass::R2,
+                },
+                qualification: Arc::new(std::sync::Mutex::new(Value::Null)),
+            };
+            fixture_build(true, true, None, None, alias, None, Some(inputs))
+                .await
+                .unwrap()
+        } else if alias {
             fixture_with_service_and_alias(true, true, None, None, true).await
         } else {
             fixture().await
@@ -70,9 +93,9 @@ impl Harness {
         fake.control(
             "exec-output",
             if kind == "review" {
-                "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false}"
+                "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"structured_output\":{}}"
             } else {
-                "{\"type\":\"turn.completed\"}\n"
+                "{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n"
             },
         );
         Self {
@@ -159,6 +182,7 @@ impl Harness {
         retry
     }
 }
+
 fn digest(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     format!("{:x}", Sha256::digest(bytes))
@@ -168,6 +192,7 @@ fn digest(bytes: &[u8]) -> String {
 #[tokio::test]
 async fn b4_launch_receipt_and_death() {
     let h = Harness::new("implement").await;
+    h.fake.control("exec-last", "complete\n");
     h.fake.control("exec-pause", "");
     let custody = h.started().await;
     let running = h.step();
@@ -211,6 +236,7 @@ async fn b4_launch_receipt_and_death() {
 #[tokio::test]
 async fn b4_stdin_eof() {
     let h = Harness::new("implement").await;
+    h.fake.control("exec-last", "complete\n");
     let custody = h.started().await;
     // Bound the regression test well below the production input and step deadlines.
     let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
@@ -270,12 +296,13 @@ async fn b4_launch_environment_subset() {
 #[tokio::test]
 async fn b4_concurrent_input_output() {
     let h = Harness::with_prompt("implement", &vec![b'p'; 512 * 1024]).await;
+    h.fake.control("exec-last", "complete\n");
     h.fake.control("exec-pre-output", &" ".repeat(256 * 1024));
     h.started().await.wait().await.unwrap();
     assert_eq!(h.step().body["provider_outcome"], "success");
     assert_eq!(
         h.step().body["exit"]["stdout"]["bytes"],
-        256 * 1024 + b"{\"type\":\"turn.completed\"}\n".len()
+        256 * 1024 + b"{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n".len()
     );
     h.close().await;
 }
@@ -411,6 +438,7 @@ async fn b4_limit_is_daemon_wide() {
     h.fake.control("exec-status", "1\n");
     h.started().await.wait().await.unwrap();
     assert_eq!(h.step().body["provider_outcome"], "limit");
+    assert!(h.step().body["exit"]["issue"].is_null());
     let other = fixture_with_service(
         true,
         true,
@@ -461,6 +489,7 @@ async fn b4_unknown_blocks_caller() {
 #[tokio::test]
 async fn b4_prepare_not_counted() {
     let h = Harness::new("implement").await;
+    h.fake.control("exec-last", "complete\n");
     let other = fixture_with_service(
         true,
         true,
@@ -483,6 +512,7 @@ async fn b4_prepare_not_counted() {
 #[tokio::test]
 async fn b4_release_not_counted() {
     let h = Harness::new("implement").await;
+    h.fake.control("exec-last", "complete\n");
     let other = fixture_with_service(
         true,
         true,
@@ -536,6 +566,7 @@ async fn b4_native_exhaustion_never_expires() {
 #[tokio::test]
 async fn b4_native_available_replacement() {
     let h = Harness::new("implement").await;
+    h.fake.control("exec-last", "complete\n");
     let mut observation = exhausted();
     h.f.store().observe_quota(&observation).unwrap();
     observation.status = crate::execution::QuotaStatus::Available;
@@ -658,7 +689,7 @@ async fn b4_probe_known_success() {
     h.fake.control("exec-status", "0\n");
     h.fake.control(
         "exec-output",
-        "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false}",
+        "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"structured_output\":{}}",
     );
     let result = {
         let launch = h.launch();
@@ -746,7 +777,7 @@ async fn b4_probe_output_io_atomic() {
     h.fake.control("exec-status", "0\n");
     h.fake.control(
         "exec-output",
-        "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false}",
+        "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"structured_output\":{}}",
     );
     let result = {
         let launch = h.launch();
@@ -931,6 +962,7 @@ async fn b4_spawn_verified_realpath() {
     use crate::execution::pipeline::test_support::{LaunchPhase, pause_launch};
     use std::os::unix::fs::symlink;
     let h = Harness::with_alias("implement", b"pipeline\n", true).await;
+    h.fake.control("exec-last", "complete\n");
     let alias = &h.fake.cli.executable;
     let (release, arrived) = pause_launch(LaunchPhase::Verified);
     let launch = h.runtime.launch_pipeline_step(h.f.cursor(&h.id), h.input());
@@ -949,4 +981,159 @@ async fn b4_spawn_verified_realpath() {
     assert_eq!(h.step().body["provider_outcome"], "success");
     assert!(h.fake.directory.join("exec-entered").exists());
     h.runtime.shutdown().await.unwrap();
+}
+
+/// F-w4: Executor last-output issues refuse success while missing last preserves limit and other.
+#[tokio::test]
+async fn f_w4_executor_last_output() {
+    for output in [
+        "{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n",
+        "{\"type\":\"turn.failed\",\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"Rate limit reached\"}}\n",
+        "{\"type\":\"unknown.event\"}\n",
+    ] {
+        for last in [
+            "missing",
+            "valid",
+            "symlink",
+            "hardlink",
+            "oversized",
+            "directory",
+        ] {
+            let h =
+                Harness::build("implement", b"pipeline\n", false, Some("codex-cli 0.164.0")).await;
+            h.fake.control("exec-output", output);
+            h.fake.control("exec-pause", "");
+            let custody = h.started().await;
+            let root =
+                h.f.config
+                    .pipeline
+                    .as_ref()
+                    .unwrap()
+                    .work_root
+                    .join("runs")
+                    .join(&h.id)
+                    .join("2-1");
+            let path = root.join("last.md");
+            match last {
+                "missing" => {}
+                "valid" => std::fs::write(&path, b"complete").unwrap(),
+                "symlink" | "hardlink" => {
+                    let target = root.join("target");
+                    std::fs::write(&target, b"complete").unwrap();
+                    if last == "symlink" {
+                        std::os::unix::fs::symlink(&target, &path).unwrap();
+                    } else {
+                        std::fs::hard_link(&target, &path).unwrap();
+                    }
+                }
+                "oversized" => std::fs::write(&path, vec![b'x'; 256 * 1024 + 1]).unwrap(),
+                _ => std::fs::create_dir(&path).unwrap(),
+            }
+            h.fake.control("exec-release", "");
+            custody.wait().await.unwrap();
+            let step = h.step();
+            let success = output.contains("turn.completed");
+            let limit = output.contains("rate_limit_exceeded");
+            let invalid = !matches!(last, "missing" | "valid") || (last == "missing" && success);
+            assert_eq!(
+                step.body["provider_outcome"],
+                if invalid {
+                    "other"
+                } else if success {
+                    "success"
+                } else if limit {
+                    "limit"
+                } else {
+                    "other"
+                },
+                "{last}"
+            );
+            assert_eq!(
+                step.body["exit"]["issue"],
+                if invalid {
+                    json!("last_output_invalid")
+                } else {
+                    Value::Null
+                }
+            );
+            assert_eq!(step.body["exit"]["last"].is_object(), last == "valid");
+            h.close().await;
+        }
+    }
+}
+
+/// F-w4/F-a7: Missing Executor last output cannot clear a due daemon probe despite successful JSONL.
+#[tokio::test]
+async fn f_w4_executor_missing_last_extends_probe() {
+    use std::future::Future;
+    let h = Harness::build("implement", b"pipeline\n", false, Some("codex-cli 0.164.0")).await;
+    h.fake.control("exec-output", "{\"type\":\"turn.failed\",\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"Rate limit reached\"}}\n");
+    h.started().await.wait().await.unwrap();
+    assert!(
+        h.runtime
+            .record_pipeline_limit(&h.f.cursor(&h.id))
+            .await
+            .unwrap()
+    );
+    let retry = planned(&h.id, 2, 2, "implement");
+    let mut retry = retry;
+    retry.input_sha256 = digest(&h.prompt);
+    let cursor = h.f.cursor(&h.id);
+    h.f.store()
+        .pipeline_plan_next(&h.f.owner, &cursor, &retry, true)
+        .unwrap();
+    let wait =
+        h.f.store()
+            .pipeline_mode_inventory()
+            .unwrap()
+            .provider_wait
+            .unwrap();
+    let root =
+        h.f.config
+            .pipeline
+            .as_ref()
+            .unwrap()
+            .work_root
+            .join("runs")
+            .join(&h.id)
+            .join("2-2");
+    let args = step_arguments(PipelineRole::Implement, &h.fake.cli, &h.work, &root, "{}").unwrap();
+    h.fake
+        .expect_arguments(&args.iter().map(String::as_str).collect::<Vec<_>>());
+    h.fake.control(
+        "exec-output",
+        "{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n",
+    );
+    let result = {
+        let launch = h.launch();
+        tokio::pin!(launch);
+        std::future::poll_fn(|cx| with_pipeline_clock(wait.not_before, || launch.as_mut().poll(cx)))
+            .await
+    };
+    let LaunchResult::Started(custody) = result else {
+        panic!("probe did not launch");
+    };
+    custody.wait().await.unwrap();
+    let after =
+        h.f.store()
+            .pipeline_mode_inventory()
+            .unwrap()
+            .provider_wait
+            .unwrap();
+    assert_ne!(after.state, "clear");
+    assert!(after.not_before > wait.not_before);
+    assert_eq!(h.step().body["provider_outcome"], "other");
+    assert_eq!(h.step().body["exit"]["issue"], "last_output_invalid");
+    h.close().await;
+}
+
+/// F-w6: Unmapped pins retain fixed exit evidence while their successful wire shape stays other.
+#[tokio::test]
+async fn f_w6_unmapped_exit_evidence() {
+    let h = Harness::build("implement", b"pipeline\n", false, Some("codex-cli unknown")).await;
+    h.fake.control("exec-last", "complete\n");
+    h.started().await.wait().await.unwrap();
+    assert_eq!(h.step().body["provider_outcome"], "other");
+    assert_eq!(h.step().body["exit"]["wire"], "unmapped");
+    h.close().await;
 }

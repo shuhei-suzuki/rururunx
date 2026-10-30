@@ -298,6 +298,7 @@ async fn fixture_with_commands(
 struct FixtureInputs {
     max_fix_rounds: Option<u32>,
     clis: Option<crate::config::PipelineClis>,
+    codex_pin: Option<String>,
     path_prefix: Vec<std::path::PathBuf>,
     task: TaskDefinition,
     qualification: std::sync::Arc<std::sync::Mutex<Value>>,
@@ -335,6 +336,15 @@ async fn fixture_build(
         if let Some(inputs) = &inputs {
             if let Some(clis) = &inputs.clis {
                 pins.clis = clis.clone();
+            }
+            // Set both fake output and expected version before the first qualification.
+            if let Some(pin) = &inputs.codex_pin {
+                let fake = crate::execution::pipeline::test_support::FakeCli {
+                    directory: pins.clis.codex.executable.parent().unwrap().into(),
+                    cli: pins.clis.codex.clone(),
+                };
+                fake.control("version", pin);
+                pins.clis.codex.version = pin.clone();
             }
             pins.path_prefix = inputs.path_prefix.clone();
         }

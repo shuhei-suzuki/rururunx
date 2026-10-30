@@ -24,6 +24,7 @@ pub(crate) use tests_runner::PreparedTest;
 mod custody;
 pub use custody::StepCustody;
 mod classify;
+pub(crate) use classify::{CODEX_JSONL_BYTES, WIRE_JSON_LIMITS, WireProvider, wire_profile};
 pub use classify::{ProviderOutcome, classify_claude, classify_codex};
 mod qualification;
 pub(crate) use qualification::QualificationRecord;

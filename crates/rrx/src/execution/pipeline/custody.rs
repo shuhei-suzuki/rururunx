@@ -1,4 +1,7 @@
-use super::{PipelineRole, ProviderOutcome, classify_claude, classify_codex};
+use super::{
+    CODEX_JSONL_BYTES, PipelineRole, ProviderOutcome, WIRE_JSON_LIMITS, WireProvider,
+    classify_claude, classify_codex, wire_profile,
+};
 use crate::{
     adapter::{ProcessGroup, cleanup_group},
     execution::{
@@ -25,8 +28,8 @@ use tokio::{
 };
 
 const STDERR_BYTES: usize = 1024 * 1024;
-const CODEX_BYTES: usize = 16 * 1024 * 1024;
-const CLAUDE_BYTES: usize = 1024 * 1024;
+const CODEX_BYTES: usize = CODEX_JSONL_BYTES;
+const CLAUDE_BYTES: usize = WIRE_JSON_LIMITS.frame_bytes;
 const LAST_BYTES: usize = 256 * 1024;
 const DEATH_BOUND: Duration = Duration::from_secs(2);
 const DISCOVERY_RETRY_PAUSE: Duration = Duration::from_millis(5);
@@ -270,6 +273,16 @@ impl Monitor {
         };
         let codex = role.is_some_and(|r| !matches!(r, PipelineRole::Review));
         let reviewer = matches!(role, Some(PipelineRole::Review));
+        let unmapped = role.is_some()
+            && wire_profile(
+                if codex {
+                    WireProvider::Codex
+                } else {
+                    WireProvider::Claude
+                },
+                pin,
+            )
+            .is_none();
         let scan_agent = matches!(
             role,
             Some(PipelineRole::Review | PipelineRole::Confirm | PipelineRole::Fix)
@@ -408,7 +421,7 @@ impl Monitor {
                         &dead.evidence,
                         PipelineExit {
                             outcome: test.is_none().then_some("other"),
-                            evidence: &json!({"issue":secret_reason.unwrap_or("output_io"),"secret":secret}),
+                            evidence: &wire_evidence(json!({"issue":secret_reason.unwrap_or("output_io"),"secret":secret}), unmapped),
                             issue: Some(secret_reason.unwrap_or("output_io")),
                         },
                     )?;
@@ -432,13 +445,17 @@ impl Monitor {
         let outcome = if test.is_some() {
             None
         } else {
-            let classified = if issue.is_some() || !out_done {
+            let mut classified = if issue.is_some() || !out_done {
                 ProviderOutcome::Other
             } else if codex {
                 classify_codex(pin, dead.status.code(), &bytes, out.truncated)
             } else {
                 classify_claude(pin, dead.status.code(), &bytes, out.truncated)
             };
+            if codex && classified == ProviderOutcome::Success && last.is_none() {
+                issue.get_or_insert("last_output_invalid");
+                classified = ProviderOutcome::Other;
+            }
             Some(match classified {
                 ProviderOutcome::Success => "success",
                 ProviderOutcome::Limit => "limit",
@@ -464,16 +481,23 @@ impl Monitor {
                 &dead.evidence,
                 PipelineExit {
                     outcome,
-                    evidence: &json!({
+                    evidence: &wire_evidence(json!({
                     "code":dead.status.code(),"exit_code":dead.status.code(),"signal":dead.status.signal(),"timed_out":timed_out,"overflow":overflow,"issue":issue,"stdout":stdout,"stderr":stderr,"last":last,
                     "stdout_truncated":out.truncated,"stderr_truncated":err.truncated,"secret":secret
-                    }),
+                    }), unmapped),
                     issue,
                 },
             )?;
         }
         Ok(())
     }
+}
+
+fn wire_evidence(mut evidence: serde_json::Value, unmapped: bool) -> serde_json::Value {
+    if unmapped {
+        evidence["wire"] = json!("unmapped");
+    }
+    evidence
 }
 
 struct Capture {

@@ -198,7 +198,10 @@ async fn adopt_executor_commit(f: &Fixture, runtime: &Runtime, id: &str, source:
     codex.expect_arguments(&args.iter().map(String::as_str).collect::<Vec<_>>());
     codex.control("exec-source", source);
     codex.control("exec-last", "Implementation complete.\n");
-    codex.control("exec-output", "{\"type\":\"turn.completed\"}\n");
+    codex.control(
+        "exec-output",
+        "{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n",
+    );
     runtime.wait_pipeline_test_boundary().await;
     let LaunchResult::Started(custody) = runtime
         .launch_pipeline_executor(f.cursor(id), prompt.to_vec())

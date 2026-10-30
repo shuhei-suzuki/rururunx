@@ -264,8 +264,32 @@ refuses with `setting_sources_validation_unproven`. Q sends no `-p` or Agent pro
 
 The output classifiers accept complete structured output and fail closed on
 missing, malformed, duplicate-key, overflowed or unrecognized-version output.
-Only synthetic fixture wire versions have rules; no production CLI version has
-been qualified by these fixtures. Native file-controlled executables in
+Provider and exact trimmed version select a closed wire profile; unknown pins
+return `other` before decoding and custody records `wire: "unmapped"` in exit
+evidence. Qualification does not imply wire compatibility.
+
+| Provider | Exact pin | Profile |
+| --- | --- | --- |
+| codex | `rrx-fixture-codex-v1`, `codex-cli 0.164.0` | `codex-jsonl-v1` |
+| claude | `rrx-fixture-claude-v1`, `2.1.312 (Claude Code)` | `claude-result-v1` |
+
+Both profiles require an observed exit code and complete bounded strict JSON,
+rejecting duplicate keys. Codex success requires exit 0, exactly one
+`turn.started` before exactly one final `turn.completed`, no failure events,
+and only `thread.started`, `turn.started`, `item.started`, `item.updated`, or
+`item.completed` in between. Its fixed limit is a final `error` or `turn.failed`
+with `error.code=rate_limit_exceeded` and `error.message=Rate limit reached`.
+Claude success requires exit 0, `type=result`, `subtype=success`,
+`is_error=false` and object `structured_output`; `api_error` and
+`api_error_status` must be absent or null, and any `errors` must be an empty
+string array. Its fixed limit requires `type=result`, `is_error=true`,
+`api_error.status=429` and `result=Rate limit exceeded` exactly. All other
+observations are `other`. Shared decoder budgets are 1 MiB/frame, depth 16,
+32768 nodes, 256 KiB/string, 1 MiB total decoded strings, and 4096 entries per
+object or array; Codex JSONL has a separate 16 MiB capture bound.
+The real pins have documentation-based synthetic fixtures; real wire matching
+and real limit behavior have not been observed. Future real pins require
+owner-authorized pass shapes and independent review. Native file-controlled executables in
 `crates/rrx/tests/support/pipeline_cli.*` implement probes and validate full step
 argv, including empty arguments. Fixed step templates and the scheduler are not
 installed as production execution paths.

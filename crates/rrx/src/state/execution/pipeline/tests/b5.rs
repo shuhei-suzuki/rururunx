@@ -578,7 +578,11 @@ async fn b5_dirty_launch_caller() {
 
 #[cfg(target_os = "macos")]
 async fn executor_exited_fixture() -> (Fixture, std::sync::Arc<Runtime>, String) {
-    executor_exited_with_output("{\"type\":\"turn.completed\"}\n", "0\n").await
+    executor_exited_with_output(
+        "{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n",
+        "0\n",
+    )
+    .await
 }
 #[cfg(target_os = "macos")]
 async fn executor_exited_with_output(

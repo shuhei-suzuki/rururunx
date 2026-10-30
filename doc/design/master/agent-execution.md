@@ -98,6 +98,16 @@ is synced and sealed to 0400 in a same-directory temporary file before atomic re
 exited recovery regenerates missing or incomplete evidence. Committed recovery requires
 the recorded diff length, digest and readonly mode before moving the ref. Last-message sealing opens
 without following symlinks and changes permissions through the verified file descriptor.
+For both Executor and Confirmer, a missing `last.md` / `last.json` is
+`last_output_invalid` only when the complete Codex JSONL classifies as success;
+that issue changes the outcome to `other`. Missing last output preserves
+`limit` or `other` without adding an issue. Invalid, oversized, symlinked or
+hard-linked last output always adds an issue, regardless of wire outcome;
+existing issues are preserved. A provider success is the only outcome that can
+clear the daemon-wide limit wait, before adoption. A probe with `other`,
+including successful JSONL with missing last output, extends the wait instead;
+`limit` retains the limit path. Adoption never compensates for false success
+at classification time.
 The Store records commit SHA/tree before non-dereferencing ref-CAS; symbolic Task/Goal
 refs are refused. Committed recovery trusts only
 that identity and verifies tree, parent, symbolic HEAD and clean index/worktree.

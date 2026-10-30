@@ -367,7 +367,7 @@ fn retained() -> (tempfile::TempDir, PipelineStep) {
         (
             "stdout.jsonl",
             "stdout",
-            b"{\"type\":\"turn.completed\"}\n".to_vec(),
+            b"{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n".to_vec(),
         ),
         ("stderr.log", "stderr", b"diagnostic".to_vec()),
     ] {
