@@ -271,7 +271,7 @@ evidence. Qualification does not imply wire compatibility.
 | Provider | Exact pin | Profile |
 | --- | --- | --- |
 | codex | `rrx-fixture-codex-v1`, `codex-cli 0.164.0` | `codex-jsonl-v1` |
-| claude | `rrx-fixture-claude-v1`, `2.1.312 (Claude Code)` | `claude-result-v1` |
+| claude | `rrx-fixture-claude-v1`, `2.1.312 (Claude Code)`, `2.1.314 (Claude Code)` | `claude-result-v1` |
 
 Both profiles require an observed exit code and complete bounded strict JSON,
 rejecting duplicate keys. Codex success requires exit 0, exactly one
@@ -287,8 +287,10 @@ string array. Its fixed limit requires `type=result`, `is_error=true`,
 observations are `other`. Shared decoder budgets are 1 MiB/frame, depth 16,
 32768 nodes, 256 KiB/string, 1 MiB total decoded strings, and 4096 entries per
 object or array; Codex JSONL has a separate 16 MiB capture bound.
-The real pins have documentation-based synthetic fixtures; real wire matching
-and real limit behavior have not been observed. Future real pins require
+Success-shape evidence covers `codex-cli 0.164.0` and `2.1.314 (Claude Code)`;
+`2.1.312 (Claude Code)` has documentation-based synthetic fixtures only. Limit
+fixtures are documentation-based synthetic shapes; real limit behavior is
+unobserved. Future real pins require
 owner-authorized pass shapes and independent review. Native file-controlled executables in
 `crates/rrx/tests/support/pipeline_cli.*` implement probes and validate full step
 argv, including empty arguments. Fixed step templates and the scheduler are not

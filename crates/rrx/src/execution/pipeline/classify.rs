@@ -44,9 +44,10 @@ pub(crate) fn wire_profile(provider: WireProvider, pin: &str) -> Option<WireProf
         (WireProvider::Codex, CODEX_FIXTURE_PIN | "codex-cli 0.164.0") => {
             Some(WireProfile::CodexJsonlV1)
         }
-        (WireProvider::Claude, CLAUDE_FIXTURE_PIN | "2.1.312 (Claude Code)") => {
-            Some(WireProfile::ClaudeResultV1)
-        }
+        (
+            WireProvider::Claude,
+            CLAUDE_FIXTURE_PIN | "2.1.312 (Claude Code)" | "2.1.314 (Claude Code)",
+        ) => Some(WireProfile::ClaudeResultV1),
         _ => None,
     }
 }

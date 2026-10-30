@@ -5,6 +5,8 @@ const CODEX_SUCCESS: &[u8] =
 const CODEX_LIMIT: &[u8] = include_bytes!("../../../../tests/fixtures/pipeline/codex-limit.jsonl");
 const CLAUDE_SUCCESS: &[u8] =
     include_bytes!("../../../../tests/fixtures/pipeline/claude-success.json");
+const CLAUDE_314_SUCCESS: &[u8] =
+    include_bytes!("../../../../tests/fixtures/pipeline/claude-2.1.314-success.json");
 const CLAUDE_LIMIT: &[u8] = include_bytes!("../../../../tests/fixtures/pipeline/claude-limit.json");
 
 /// Only a zero exit and an error-free final turn completion are known Codex success.
@@ -87,25 +89,32 @@ fn b3_codex_limit() {
 /// Claude limits require an error envelope, API status and exact limit text.
 #[test]
 fn b3_claude_limit() {
-    assert_eq!(
-        classify_claude(CLAUDE_FIXTURE_PIN, Some(1), CLAUDE_LIMIT, false),
-        ProviderOutcome::Limit
-    );
-    for (from, to) in [
-        ("true", "false"),
-        ("429", "401"),
-        ("Rate limit exceeded", "Authentication failed"),
-        ("result\"", "other\""),
+    for pin in [
+        CLAUDE_FIXTURE_PIN,
+        "2.1.312 (Claude Code)",
+        "2.1.314 (Claude Code)",
     ] {
-        let changed = String::from_utf8(CLAUDE_LIMIT.to_vec())
-            .unwrap()
-            .replacen(from, to, 1);
         assert_eq!(
-            classify_claude(CLAUDE_FIXTURE_PIN, Some(1), changed.as_bytes(), false),
-            ProviderOutcome::Other
+            classify_claude(pin, Some(1), CLAUDE_LIMIT, false),
+            ProviderOutcome::Limit
         );
+        for (from, to) in [
+            ("true", "false"),
+            ("429", "401"),
+            ("Rate limit exceeded", "Authentication failed"),
+            ("result\"", "other\""),
+        ] {
+            let changed = String::from_utf8(CLAUDE_LIMIT.to_vec())
+                .unwrap()
+                .replacen(from, to, 1);
+            assert_eq!(
+                classify_claude(pin, Some(1), changed.as_bytes(), false),
+                ProviderOutcome::Other
+            );
+        }
     }
 }
+
 /// Missing, malformed, duplicated and unrecognized wire output never clears a wait.
 #[test]
 fn b3_classifier_unknown_output() {
@@ -159,6 +168,12 @@ fn f_w1_exact_provider_pins() {
             CLAUDE_LIMIT,
         ),
         (
+            WireProvider::Claude,
+            "2.1.314 (Claude Code)",
+            CLAUDE_314_SUCCESS,
+            CLAUDE_LIMIT,
+        ),
+        (
             WireProvider::Codex,
             CODEX_FIXTURE_PIN,
             CODEX_SUCCESS,
@@ -194,6 +209,20 @@ fn f_w1_exact_provider_pins() {
     }
     assert!(wire_profile(WireProvider::Codex, "2.1.312 (Claude Code)").is_none());
     assert!(wire_profile(WireProvider::Claude, "codex-cli 0.164.0").is_none());
+    for (provider, pin) in [
+        (WireProvider::Claude, "2.1.313 (Claude Code)"),
+        (WireProvider::Claude, "2.1.314"),
+        (WireProvider::Claude, "2.1.3140 (Claude Code)"),
+        (WireProvider::Codex, "2.1.314 (Claude Code)"),
+    ] {
+        assert!(wire_profile(provider, pin).is_none());
+        for output in [CLAUDE_314_SUCCESS, CLAUDE_LIMIT] {
+            assert_eq!(
+                classify(provider, pin, Some(0), output, false),
+                ProviderOutcome::Other
+            );
+        }
+    }
 }
 
 /// F-w2: Real and synthetic pins share success, fixed limit and authentication-failure behavior.
@@ -202,14 +231,20 @@ fn f_w2_real_pin_fixtures() {
     for (provider, pins, success, limit) in [
         (
             WireProvider::Codex,
-            [CODEX_FIXTURE_PIN, "codex-cli 0.164.0"],
+            [CODEX_FIXTURE_PIN, "codex-cli 0.164.0"].as_slice(),
             CODEX_SUCCESS,
             CODEX_LIMIT,
         ),
         (
             WireProvider::Claude,
-            [CLAUDE_FIXTURE_PIN, "2.1.312 (Claude Code)"],
+            [CLAUDE_FIXTURE_PIN, "2.1.312 (Claude Code)"].as_slice(),
             CLAUDE_SUCCESS,
+            CLAUDE_LIMIT,
+        ),
+        (
+            WireProvider::Claude,
+            ["2.1.314 (Claude Code)"].as_slice(),
+            CLAUDE_314_SUCCESS,
             CLAUDE_LIMIT,
         ),
     ] {
@@ -294,79 +329,69 @@ fn f_w3_codex_sequence() {
 /// F-w3: Contradictory error fields or nonobject structured output cannot be Claude success.
 #[test]
 fn f_w3_claude_contradictions() {
-    use serde_json::json;
-    let success: Value = serde_json::from_slice(CLAUDE_SUCCESS).unwrap();
-    for (field, values) in [
-        ("type", vec![Value::Null, json!(1), json!("other")]),
-        ("subtype", vec![Value::Null, json!(true), json!("error")]),
-        ("is_error", vec![Value::Null, json!("false"), json!(true)]),
-        (
-            "api_error",
-            vec![
-                json!({}),
-                json!({"status":429}),
-                json!("error"),
-                json!(false),
-            ],
-        ),
-        (
-            "api_error_status",
-            vec![json!(429), json!("429"), json!({}), json!(false)],
-        ),
-        (
-            "errors",
-            vec![
-                json!(["failed"]),
-                json!([1]),
-                json!({}),
-                Value::Null,
-                json!("failed"),
-            ],
-        ),
-        (
-            "structured_output",
-            vec![Value::Null, json!("{}"), json!([]), json!(false)],
-        ),
+    for (pin, fixture) in [
+        ("2.1.312 (Claude Code)", CLAUDE_SUCCESS),
+        ("2.1.314 (Claude Code)", CLAUDE_314_SUCCESS),
     ] {
-        for value in values {
-            let mut changed = success.clone();
-            changed[field] = value;
-            assert_eq!(
-                classify_claude(
-                    "2.1.312 (Claude Code)",
-                    Some(0),
-                    &serde_json::to_vec(&changed).unwrap(),
-                    false
-                ),
-                ProviderOutcome::Other,
-                "{field}"
-            );
+        use serde_json::json;
+        let success: Value = serde_json::from_slice(fixture).unwrap();
+        for (field, values) in [
+            ("type", vec![Value::Null, json!(1), json!("other")]),
+            ("subtype", vec![Value::Null, json!(true), json!("error")]),
+            ("is_error", vec![Value::Null, json!("false"), json!(true)]),
+            (
+                "api_error",
+                vec![
+                    json!({}),
+                    json!({"status":429}),
+                    json!("error"),
+                    json!(false),
+                ],
+            ),
+            (
+                "api_error_status",
+                vec![json!(429), json!("429"), json!({}), json!(false)],
+            ),
+            (
+                "errors",
+                vec![
+                    json!(["failed"]),
+                    json!([1]),
+                    json!({}),
+                    Value::Null,
+                    json!("failed"),
+                ],
+            ),
+            (
+                "structured_output",
+                vec![Value::Null, json!("{}"), json!([]), json!(false)],
+            ),
+        ] {
+            for value in values {
+                let mut changed = success.clone();
+                changed[field] = value;
+                assert_eq!(
+                    classify_claude(pin, Some(0), &serde_json::to_vec(&changed).unwrap(), false),
+                    ProviderOutcome::Other,
+                    "{field}"
+                );
+            }
         }
+        let mut changed = success.clone();
+        changed.as_object_mut().unwrap().remove("structured_output");
+        assert_eq!(
+            classify_claude(pin, Some(0), &serde_json::to_vec(&changed).unwrap(), false),
+            ProviderOutcome::Other
+        );
+        let mut allowed = success;
+        allowed["api_error"] = Value::Null;
+        allowed["api_error_status"] = Value::Null;
+        allowed["errors"] = json!([]);
+        assert_eq!(
+            classify_claude(pin, Some(0), &serde_json::to_vec(&allowed).unwrap(), false),
+            ProviderOutcome::Success
+        );
     }
-    let mut changed = success.clone();
-    changed.as_object_mut().unwrap().remove("structured_output");
-    assert_eq!(
-        classify_claude(
-            "2.1.312 (Claude Code)",
-            Some(0),
-            &serde_json::to_vec(&changed).unwrap(),
-            false
-        ),
-        ProviderOutcome::Other
-    );
-    let mut allowed = success;
-    allowed["api_error"] = Value::Null;
-    allowed["api_error_status"] = Value::Null;
-    allowed["errors"] = json!([]);
-    assert_eq!(
-        classify_claude(
-            "2.1.312 (Claude Code)",
-            Some(0),
-            &serde_json::to_vec(&allowed).unwrap(),
-            false
-        ),
-        ProviderOutcome::Success
-    );
 }
 
 /// F-w3: Raw duplicate keys and decoder budgets apply to both real profiles.
@@ -378,6 +403,11 @@ fn f_w3_invalid_and_bounded_json() {
             WireProvider::Claude,
             "2.1.312 (Claude Code)",
             CLAUDE_SUCCESS,
+        ),
+        (
+            WireProvider::Claude,
+            "2.1.314 (Claude Code)",
+            CLAUDE_314_SUCCESS,
         ),
     ] {
         let duplicate = String::from_utf8(valid.to_vec()).unwrap().replacen(
