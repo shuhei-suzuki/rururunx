@@ -4,7 +4,7 @@ use crate::{
     config::{PipelineCli, PipelineClis},
     execution::{
         pipeline::{
-            CODEX_JSONL_BYTES, LaunchResult, PipelineGit, PipelineRole, RoundDecision,
+            CODEX_JSONL_BYTES, LAST_BYTES, LaunchResult, PipelineGit, PipelineRole, RoundDecision,
             WIRE_JSON_LIMITS, WireProvider, review, review_prompt, review_snapshot, step_arguments,
             test_support::FakeCli, wire_profile,
         },
@@ -30,6 +30,7 @@ struct FakeScenario {
     codex_output: &'static str,
     codex_last: Option<&'static str>,
     claude_output: Option<&'static str>,
+    claude_bad_key: bool,
     pins: Option<(&'static str, &'static str)>,
     overflow_shape: bool,
 }
@@ -40,6 +41,7 @@ const FAKE_PASS: FakeScenario = FakeScenario {
     codex_output: "{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n",
     codex_last: Some("Implementation complete.\n"),
     claude_output: None,
+    claude_bad_key: false,
     pins: None,
     overflow_shape: false,
 };
@@ -294,12 +296,13 @@ fn fake_step(f: &Fixture, id: &str, kind: &str, scenario: FakeScenario) -> Resul
     fake.expect_arguments(&args.iter().map(String::as_str).collect::<Vec<_>>());
     fake.control("exec-git-probe", "");
     if review_step {
-        fake.control(
-            "exec-output",
-            &serde_json::to_string(&json!({"type":"result","subtype":"success",
+        let mut envelope = json!({"type":"result","subtype":"success",
             "is_error":false,"modelUsage":{cli.model.clone():{}},"structured_output":{
-            "schema":"rrx.review.v1","verdict":scenario.verdict,"summary":"safe","findings":[]}}))?,
-        );
+            "schema":"rrx.review.v1","verdict":scenario.verdict,"summary":"safe","findings":[]}});
+        if scenario.claude_bad_key {
+            envelope["bad-key"] = json!(1);
+        }
+        fake.control("exec-output", &serde_json::to_string(&envelope)?);
         if let Some(output) = scenario.claude_output {
             fake.control("exec-output", output);
         }
@@ -655,7 +658,7 @@ fn last_output(provider: WireProvider, exit: &Value) -> &'static str {
             );
             if receipt.is_ok_and(|r| {
                 r.complete
-                    && r.bytes <= 256 * 1024
+                    && r.bytes <= LAST_BYTES as u64
                     && r.sha256.len() == 64
                     && r.sha256.bytes().all(|b| b.is_ascii_hexdigit())
             }) {
@@ -786,6 +789,7 @@ async fn pass_flow(mode: PassMode, summary: &mut Value) -> Result<()> {
         max_fix_rounds: None,
         clis,
         codex_pin: None,
+        claude_pin: None,
         path_prefix: vec![probe_path],
         qualification: qualification.clone(),
         task: TaskDefinition {

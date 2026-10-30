@@ -125,9 +125,6 @@ fn codex_jsonl_v1(exit_code: Option<i32>, stdout: &[u8]) -> ProviderOutcome {
             "error" | "turn.failed" => failed = true,
             _ => success_shape = false,
         }
-        if matches!(kind, "error" | "turn.failed") {
-            failed = true;
-        }
         last = Some(event);
     }
     let Some(last) = last else {

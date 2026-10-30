@@ -23,26 +23,12 @@ impl Harness {
         Self::build(kind, prompt, alias, None).await
     }
     async fn build(kind: &str, prompt: &[u8], alias: bool, pin: Option<&str>) -> Self {
-        if kind == "review" {
-            let h = super::b7::ReviewFixture::new(
-                "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"structured_output\":{}}",
-            )
-            .await;
-            let input = h.prepare().await.unwrap();
-            return Self {
-                f: h.f,
-                runtime: h.runtime,
-                id: h.id,
-                work: h.path,
-                fake: h.fake,
-                prompt: input.prompt,
-            };
-        }
         let f = if let Some(pin) = pin {
             let inputs = FixtureInputs {
                 max_fix_rounds: None,
                 clis: None,
-                codex_pin: Some(pin.into()),
+                codex_pin: (kind == "implement").then(|| pin.into()),
+                claude_pin: (kind == "review").then(|| pin.into()),
                 path_prefix: vec![],
                 task: TaskDefinition {
                     key: "task".into(),
@@ -63,6 +49,22 @@ impl Harness {
         } else {
             fixture().await
         };
+        if kind == "review" {
+            let h = super::b7::ReviewFixture::from_fixture(
+                f,
+                "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"structured_output\":{}}",
+            )
+            .await;
+            let input = h.prepare().await.unwrap();
+            return Self {
+                f: h.f,
+                runtime: h.runtime,
+                id: h.id,
+                work: h.path,
+                fake: h.fake,
+                prompt: input.prompt,
+            };
+        }
         let runtime = Arc::new(Runtime::new(f.owner.clone(), f.config.clone()).unwrap());
         runtime.start_qualified_service().await.unwrap();
         let pins = f.config.pipeline.as_ref().unwrap();
@@ -1098,13 +1100,29 @@ async fn f_w4_executor_missing_last_extends_probe() {
     h.close().await;
 }
 
-/// F-w6: Unmapped pins retain fixed exit evidence while their successful wire shape stays other.
+/// Only unmapped provider pins retain a wire marker on custody exit evidence.
 #[tokio::test]
 async fn f_w6_unmapped_exit_evidence() {
-    let h = Harness::build("implement", b"pipeline\n", false, Some("codex-cli unknown")).await;
-    h.fake.control("exec-last", "complete\n");
-    h.started().await.wait().await.unwrap();
-    assert_eq!(h.step().body["provider_outcome"], "other");
-    assert_eq!(h.step().body["exit"]["wire"], "unmapped");
-    h.close().await;
+    for (kind, pin, mapped) in [
+        ("implement", "codex-cli 0.164.0", true),
+        ("implement", "codex-cli unknown", false),
+        ("review", "2.1.312 (Claude Code)", true),
+        ("review", "claude unknown", false),
+    ] {
+        let h = Harness::build(kind, b"pipeline\n", false, Some(pin)).await;
+        h.fake.control("exec-last", "complete\n");
+        h.started().await.wait().await.unwrap();
+        let step = h.step();
+        assert_eq!(
+            step.body["provider_outcome"],
+            if mapped { "success" } else { "other" },
+            "{kind}: {pin}"
+        );
+        if mapped {
+            assert!(step.body["exit"].get("wire").is_none(), "{kind}: {pin}");
+        } else {
+            assert_eq!(step.body["exit"]["wire"], "unmapped", "{kind}: {pin}");
+        }
+        h.close().await;
+    }
 }

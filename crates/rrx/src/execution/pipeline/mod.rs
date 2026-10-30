@@ -22,6 +22,8 @@ pub use launcher::{LaunchResult, StepInput, StepLauncher};
 pub use tests_runner::PipelineTestRunner;
 pub(crate) use tests_runner::PreparedTest;
 mod custody;
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) use custody::LAST_BYTES;
 pub use custody::StepCustody;
 mod classify;
 pub(crate) use classify::{CODEX_JSONL_BYTES, WIRE_JSON_LIMITS, WireProvider, wire_profile};

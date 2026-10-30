@@ -30,7 +30,7 @@ use tokio::{
 const STDERR_BYTES: usize = 1024 * 1024;
 const CODEX_BYTES: usize = CODEX_JSONL_BYTES;
 const CLAUDE_BYTES: usize = WIRE_JSON_LIMITS.frame_bytes;
-const LAST_BYTES: usize = 256 * 1024;
+pub(crate) const LAST_BYTES: usize = 256 * 1024;
 const DEATH_BOUND: Duration = Duration::from_secs(2);
 const DISCOVERY_RETRY_PAUSE: Duration = Duration::from_millis(5);
 

@@ -24,6 +24,7 @@ impl Harness {
             max_fix_rounds: Some(max),
             clis: None,
             codex_pin: pin.map(str::to_owned),
+            claude_pin: None,
             path_prefix: vec![],
             task: TaskDefinition {
                 key: "task".into(),

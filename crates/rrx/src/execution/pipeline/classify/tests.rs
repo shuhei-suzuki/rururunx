@@ -389,11 +389,27 @@ fn f_w3_invalid_and_bounded_json() {
             classify(provider, pin, Some(0), duplicate.as_bytes(), false),
             ProviderOutcome::Other
         );
-        let huge = serde_json::json!({"type":"result","padding":"x".repeat(WIRE_JSON_LIMITS.string_bytes + 1)}).to_string();
-        assert_eq!(
-            classify(provider, pin, Some(0), huge.as_bytes(), false),
-            ProviderOutcome::Other
-        );
+        for (bytes, outcome) in [
+            (WIRE_JSON_LIMITS.string_bytes, ProviderOutcome::Success),
+            (WIRE_JSON_LIMITS.string_bytes + 1, ProviderOutcome::Other),
+        ] {
+            let padded = match provider {
+                WireProvider::Codex => std::str::from_utf8(valid).unwrap().replacen(
+                    "\"thread_id\":\"fixture\"",
+                    &format!("\"thread_id\":\"{}\"", "x".repeat(bytes)),
+                    1,
+                ),
+                WireProvider::Claude => {
+                    let mut envelope: Value = serde_json::from_slice(valid).unwrap();
+                    envelope["padding"] = serde_json::json!("x".repeat(bytes));
+                    envelope.to_string()
+                }
+            };
+            assert_eq!(
+                classify(provider, pin, Some(0), padded.as_bytes(), false),
+                outcome
+            );
+        }
         assert_eq!(
             classify(
                 provider,

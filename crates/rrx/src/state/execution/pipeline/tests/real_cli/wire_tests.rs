@@ -7,7 +7,7 @@ fn encoded(value: &Value) -> Vec<u8> {
 /// F-w4: Only a complete bounded last receipt can pass, while absence never implies validation.
 #[test]
 fn f_w4_last_receipt_states() {
-    let valid = json!({"complete":true,"bytes":256 * 1024,"sha256":hash(b"last")});
+    let valid = json!({"complete":true,"bytes":LAST_BYTES,"sha256":hash(b"last")});
     assert_eq!(
         last_output(WireProvider::Codex, &json!({"last":valid})),
         "passed"
@@ -15,7 +15,7 @@ fn f_w4_last_receipt_states() {
     for invalid in [
         Value::Null,
         json!({"complete":false,"bytes":1,"sha256":hash(b"last")}),
-        json!({"complete":true,"bytes":256 * 1024 + 1,"sha256":hash(b"last")}),
+        json!({"complete":true,"bytes":LAST_BYTES + 1,"sha256":hash(b"last")}),
         json!({"complete":true,"bytes":1,"sha256":"invalid"}),
         json!({"complete":true,"bytes":1,"sha256":"z".repeat(64)}),
     ] {
@@ -527,9 +527,7 @@ async fn f_w6_fake_wire_passes() {
             ..FAKE_PASS
         },
         FakeScenario {
-            claude_output: Some(
-                "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"structured_output\":{},\"bad-key\":1}",
-            ),
+            claude_bad_key: true,
             ..FAKE_PASS
         },
     ] {
@@ -550,7 +548,7 @@ async fn f_w6_fake_wire_passes() {
             assert_eq!(summary["steps"][3]["wire"]["profile"], "claude-result-v1");
         } else {
             assert_eq!(summary["state"], "failed");
-            if scenario.claude_output.is_none() {
+            if scenario.claude_output.is_none() && !scenario.claude_bad_key {
                 assert_eq!(summary["steps"][3]["wire"], marker("not_run"));
                 assert!(summary["prompts"].get("review").is_none());
             }
@@ -565,6 +563,12 @@ async fn f_w6_fake_wire_passes() {
         }
         if scenario.overflow_shape {
             assert_eq!(implement["wire"]["provider_outcome"], "success");
+        }
+        if scenario.claude_bad_key {
+            let review = &summary["steps"][3];
+            assert_eq!(review["wire"]["provider_outcome"], "success");
+            assert_eq!(review["wire"]["shape"], marker("redacted"));
+            assert_eq!(summary["state"], "failed");
         }
     }
 }

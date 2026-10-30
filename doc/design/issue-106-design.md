@@ -1252,7 +1252,7 @@ attempt ディレクトリは `<work_root>/runs/<run>/<seq>-<attempt>/`（0700�
 
 #### 5.6.1 pin と wire profile
 
-`execution/pipeline/classify.rs` に、provider と pin の完全一致から、閉じた enum の profile を選ぶ `match` の表を置く。pin は Q で照合した `cli.version`（`--version` の出力を trim した文字列そのもの）である。prefix・semver の範囲・部分一致・最新版への fallback・設定による追加は使わない。表は outcome を持たず、profile の実装だけが outcome を返す。provider が違う profile は選べない型にし、未知 pin の arm は decode より前に `other` を返す。Q を通った未対応 pin も観測のための起動は認めるが、課金を伴い、結果は常に `other` となる。custody の exit evidence に固定の `wire: "unmapped"` を残す。未対応 pin による失敗の理由は `agent_failed` のままとし、新しい理由の値は足さない。今回の実装は exit evidence の固定値だけを残す。status の表示 API はまだ実装されておらず、未対応 pin の表示は §15 の B10 / B9 への設計入力とする。状態遷移と理由の閉じた一覧は変えない。観測を理由に採用や後続起動を許可しない。
+`execution/pipeline/classify.rs` に、provider と pin の完全一致から、閉じた enum の profile を選ぶ `match` の表を置く。pin は Q で照合した `cli.version`（`--version` の出力を trim した文字列そのもの）である。prefix・semver の範囲・部分一致・最新版への fallback・設定による追加は使わない。表は outcome を持たず、profile の実装だけが outcome を返す。provider が違う profile は選べない型にし、未知 pin の arm は decode より前に `other` を返す。Q を通った未対応 pin も観測のための起動は認めるが、課金を伴い、結果は常に `other` となる。custody の exit evidence に固定の `wire: "unmapped"` を残す。この marker は custody の exit evidence にだけ記録し、分類を行わない launch-record 失敗時の evidence（`issue: "record_failed"`）には記録しない。未対応 pin による失敗の理由は `agent_failed` のままとし、新しい理由の値は足さない。今回の実装は exit evidence の固定値だけを残す。status の表示 API はまだ実装されておらず、未対応 pin の表示は §15 の B10 / B9 への設計入力とする。状態遷移と理由の閉じた一覧は変えない。観測を理由に採用や後続起動を許可しない。
 
 | provider | pin（完全一致） | wire profile | success の根拠と確認 | limit の根拠と確認 |
 |---|---|---|---|---|
@@ -1300,6 +1300,7 @@ shape 全体は 512 KiB までとする。shape の event・key の件数、文�
 次の実 CLI pass は、この shape と製品の `provider_outcome`、last-output、既存の採用・test・review の結果を合わせて初期対応を検証する。harness の shape 判定は「記録済み（`recorded`）か、検証不能か」だけであり、profile への適合は製品の `provider_outcome` だけで判断する。harness に profile の分類規則を再実装しない。製品が `success` 以外、秘匿・欠落・上限超過などで shape が検証不能、codex の last-output が `passed` 以外なら pass は失敗とし、後続の Agent を起動しない。未知 pin でも shape は記録できるが、製品は `other` と exit evidence の `wire: "unmapped"` を残す。harness は outcome を書き換えず、表を自動学習・追加しない。オーナーへ返すのは従来どおり `summary.json` と `send-record.json` だけで、attempt の原本や last の本文をコピーしない。
 
 次の pass の wire 照合には、(a) codex と claude の両 profile を確認できる、(b) codex が合わず implement が `other` → `agent_failed` で止まり、review は `not_run` で claude の shape は観測できない、(c) codex は合うが claude が合わない、の 3 通りがある。(b) は codex を修正・ローカルで再検証してから claude を観測するもう 1 窓が必要で、(c) も claude の修正後の再確認にもう 1 窓を要しうる。成功条件は緩めない。通常のローカルテストで記録器と失敗経路を先に完成させ、初期対応の照合には最大 2 窓が必要になりうる計画とする。各窓はオーナーが確保し、D22 の二重 gate と開始条件を毎回満たす。2 窓で両 profile を確認できなければ受入を未完了とし、それ以上の窓は使わず、D26 の設計に戻すかオーナーの判断を仰ぐ。B11 の受入記録には、この 3 通りと最大 2 窓の可能性、実際に観測できた provider と未観測の provider、各 pass の結果を明記する。
+B11 の受入記録には、codex の未知 event の `type` identifier も原文のまま（小文字・最大 64 bytes・event 件数の上限内）記録され、既知の pattern を超える秘密スキャンは行わないことを明記する。
 
 #### 5.6.4 版の追加と fixture
 

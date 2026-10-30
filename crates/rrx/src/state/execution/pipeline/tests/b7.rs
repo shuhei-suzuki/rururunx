@@ -23,7 +23,13 @@ impl ReviewFixture {
         Self::build(output, Some(source)).await
     }
     async fn build(output: &str, source: Option<&str>) -> Self {
-        let (f, runtime, id) = super::b5::prepare_fixture_from(fixture().await, true).await;
+        Self::build_from(fixture().await, output, source).await
+    }
+    pub(super) async fn from_fixture(f: Fixture, output: &str) -> Self {
+        Self::build_from(f, output, None).await
+    }
+    async fn build_from(f: Fixture, output: &str, source: Option<&str>) -> Self {
+        let (f, runtime, id) = super::b5::prepare_fixture_from(f, true).await;
         runtime.wait_pipeline_test_boundary().await;
         assert!(runtime.prepare_pipeline_task(f.cursor(&id)).await.unwrap());
         let seq = match source {
