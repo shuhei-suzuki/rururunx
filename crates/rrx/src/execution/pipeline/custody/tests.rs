@@ -1,5 +1,59 @@
 use super::*;
 
+/// Last-output validation preserves failures, requires Codex success evidence, and retains prior issues.
+#[test]
+fn f_w4_last_output_rule() {
+    use ProviderOutcome::{Limit, Other, Success};
+    for codex in [true, false] {
+        for (classified, last, expected, expected_issue) in [
+            (
+                Success,
+                LastOutput::Missing,
+                Other,
+                Some("last_output_invalid"),
+            ),
+            (Success, LastOutput::Present, Success, None),
+            (
+                Success,
+                LastOutput::Invalid,
+                Other,
+                Some("last_output_invalid"),
+            ),
+            (Limit, LastOutput::Missing, Limit, None),
+            (Limit, LastOutput::Present, Limit, None),
+            (
+                Limit,
+                LastOutput::Invalid,
+                Other,
+                Some("last_output_invalid"),
+            ),
+            (Other, LastOutput::Missing, Other, None),
+            (Other, LastOutput::Present, Other, None),
+            (
+                Other,
+                LastOutput::Invalid,
+                Other,
+                Some("last_output_invalid"),
+            ),
+        ] {
+            for issue in [None, Some("timeout"), Some("last_output_invalid")] {
+                let expected = if issue.is_some() {
+                    (Other, issue)
+                } else if codex {
+                    (expected, expected_issue)
+                } else {
+                    (classified, None)
+                };
+                assert_eq!(
+                    apply_last_output(classified, codex, issue, last),
+                    expected,
+                    "{classified:?} / codex={codex} / {issue:?} / {last:?}"
+                );
+            }
+        }
+    }
+}
+
 /// A platform orphan prevents the production death discovery from accepting an empty cookie scan.
 #[cfg(target_os = "macos")]
 #[tokio::test]
@@ -132,24 +186,25 @@ fn b6_custody_limits() {
 /// Last-message evidence records the exact retained bytes for adoption revalidation.
 #[test]
 fn b5_last_receipt() {
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("last.md"), b"done\n").unwrap();
-    let receipt = check_last(dir.path(), false).unwrap().unwrap();
-    assert_eq!(receipt.bytes, 5);
-    assert_eq!(
-        receipt.sha256,
-        crate::execution::pipeline::launcher::hash(b"done\n")
-    );
-    assert!(receipt.complete);
     use std::os::unix::fs::PermissionsExt;
-    assert_eq!(
-        std::fs::metadata(dir.path().join("last.md"))
-            .unwrap()
-            .permissions()
-            .mode()
-            & 0o777,
-        0o400
-    );
+    for confirm in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir
+            .path()
+            .join(if confirm { "last.json" } else { "last.md" });
+        std::fs::write(&path, b"done\n").unwrap();
+        let receipt = check_last(dir.path(), confirm).unwrap().unwrap();
+        assert_eq!(receipt.bytes, 5);
+        assert_eq!(
+            receipt.sha256,
+            crate::execution::pipeline::launcher::hash(b"done\n")
+        );
+        assert!(receipt.complete);
+        assert_eq!(
+            std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o400
+        );
+    }
 }
 
 /// Last-output sealing refuses hardlinked evidence without chmodding its alias.
@@ -361,23 +416,31 @@ fn b4_stderr_tail() {
     assert!(capture.truncated);
 }
 
-/// Both last-output names reject dangling and resolving symlinks.
+/// Both last-output names distinguish absence from aliases, oversized files, and directories.
 #[test]
-fn b4_last_output_refuses_symlinks() {
+fn f_w4_last_output_file_states() {
     use std::os::unix::fs::symlink;
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     for confirm in [false, true] {
         let last = root.join(if confirm { "last.json" } else { "last.md" });
-        assert!(check_last(root, confirm).is_ok());
+        assert!(check_last(root, confirm).unwrap().is_none());
         let target = root.join("target");
         symlink(&target, &last).unwrap();
         assert!(check_last(root, confirm).is_err());
         std::fs::write(&target, b"result").unwrap();
         assert!(check_last(root, confirm).is_err());
         assert_eq!(std::fs::read(&target).unwrap(), b"result");
-        std::fs::remove_file(last).unwrap();
+        std::fs::remove_file(&last).unwrap();
+        std::fs::hard_link(&target, &last).unwrap();
+        assert!(check_last(root, confirm).is_err());
+        std::fs::remove_file(&last).unwrap();
         std::fs::remove_file(target).unwrap();
+        std::fs::write(&last, vec![b'x'; LAST_BYTES + 1]).unwrap();
+        assert!(check_last(root, confirm).is_err());
+        std::fs::remove_file(&last).unwrap();
+        std::fs::create_dir(&last).unwrap();
+        assert!(check_last(root, confirm).is_err());
     }
 }
 

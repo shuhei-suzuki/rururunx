@@ -983,82 +983,53 @@ async fn b4_spawn_verified_realpath() {
     h.runtime.shutdown().await.unwrap();
 }
 
-/// F-w4: Executor last-output issues refuse success while missing last preserves limit and other.
+/// Executor custody wires last validation into outcomes, issues, and receipts.
 #[tokio::test]
 async fn f_w4_executor_last_output() {
-    for output in [
-        "{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n",
-        "{\"type\":\"turn.failed\",\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"Rate limit reached\"}}\n",
-        "{\"type\":\"unknown.event\"}\n",
+    const SUCCESS: &str = "{\"type\":\"turn.started\"}\n{\"type\":\"turn.completed\"}\n";
+    const LIMIT: &str = "{\"type\":\"turn.failed\",\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"Rate limit reached\"}}\n";
+    const OTHER: &str = "{\"type\":\"unknown.event\"}\n";
+    for (output, last, outcome, issue) in [
+        (SUCCESS, "valid", "success", None),
+        (SUCCESS, "missing", "other", Some("last_output_invalid")),
+        (LIMIT, "symlink", "other", Some("last_output_invalid")),
+        (LIMIT, "missing", "limit", None),
+        (OTHER, "missing", "other", None),
     ] {
-        for last in [
-            "missing",
-            "valid",
-            "symlink",
-            "hardlink",
-            "oversized",
-            "directory",
-        ] {
-            let h =
-                Harness::build("implement", b"pipeline\n", false, Some("codex-cli 0.164.0")).await;
-            h.fake.control("exec-output", output);
-            h.fake.control("exec-pause", "");
-            let custody = h.started().await;
-            let root =
-                h.f.config
-                    .pipeline
-                    .as_ref()
-                    .unwrap()
-                    .work_root
-                    .join("runs")
-                    .join(&h.id)
-                    .join("2-1");
-            let path = root.join("last.md");
-            match last {
-                "missing" => {}
-                "valid" => std::fs::write(&path, b"complete").unwrap(),
-                "symlink" | "hardlink" => {
-                    let target = root.join("target");
-                    std::fs::write(&target, b"complete").unwrap();
-                    if last == "symlink" {
-                        std::os::unix::fs::symlink(&target, &path).unwrap();
-                    } else {
-                        std::fs::hard_link(&target, &path).unwrap();
-                    }
-                }
-                "oversized" => std::fs::write(&path, vec![b'x'; 256 * 1024 + 1]).unwrap(),
-                _ => std::fs::create_dir(&path).unwrap(),
+        let h = Harness::build("implement", b"pipeline\n", false, Some("codex-cli 0.164.0")).await;
+        h.fake.control("exec-output", output);
+        h.fake.control("exec-pause", "");
+        let custody = h.started().await;
+        let root =
+            h.f.config
+                .pipeline
+                .as_ref()
+                .unwrap()
+                .work_root
+                .join("runs")
+                .join(&h.id)
+                .join("2-1");
+        let path = root.join("last.md");
+        match last {
+            "missing" => {}
+            "valid" => std::fs::write(&path, b"complete").unwrap(),
+            "symlink" => {
+                let target = root.join("target");
+                std::fs::write(&target, b"complete").unwrap();
+                std::os::unix::fs::symlink(&target, &path).unwrap();
             }
-            h.fake.control("exec-release", "");
-            custody.wait().await.unwrap();
-            let step = h.step();
-            let success = output.contains("turn.completed");
-            let limit = output.contains("rate_limit_exceeded");
-            let invalid = !matches!(last, "missing" | "valid") || (last == "missing" && success);
-            assert_eq!(
-                step.body["provider_outcome"],
-                if invalid {
-                    "other"
-                } else if success {
-                    "success"
-                } else if limit {
-                    "limit"
-                } else {
-                    "other"
-                },
-                "{last}"
-            );
-            assert_eq!(
-                step.body["exit"]["issue"],
-                if invalid {
-                    json!("last_output_invalid")
-                } else {
-                    Value::Null
-                }
-            );
-            assert_eq!(step.body["exit"]["last"].is_object(), last == "valid");
-            h.close().await;
+            _ => unreachable!(),
         }
+        h.fake.control("exec-release", "");
+        custody.wait().await.unwrap();
+        let step = h.step();
+        assert_eq!(step.body["provider_outcome"], outcome, "{last}");
+        assert_eq!(
+            step.body["exit"]["issue"],
+            issue.map_or(Value::Null, |issue| json!(issue))
+        );
+        assert_eq!(step.body["exit"]["last"].is_object(), last == "valid");
+        h.close().await;
     }
 }
 

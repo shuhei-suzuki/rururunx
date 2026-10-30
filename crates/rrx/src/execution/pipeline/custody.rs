@@ -431,31 +431,28 @@ impl Monitor {
         if let Some(reason) = secret_reason {
             issue = Some(reason);
         }
-        let last = if test.is_some() || reviewer {
-            None
+        let (last, last_output) = if test.is_some() || reviewer {
+            (None, LastOutput::Missing)
         } else {
             match check_last(&self.attempt, matches!(role, Some(PipelineRole::Confirm))) {
-                Ok(last) => last,
-                Err(_) => {
-                    issue.get_or_insert("last_output_invalid");
-                    None
-                }
+                Ok(Some(last)) => (Some(last), LastOutput::Present),
+                Ok(None) => (None, LastOutput::Missing),
+                Err(_) => (None, LastOutput::Invalid),
             }
         };
         let outcome = if test.is_some() {
             None
         } else {
-            let mut classified = if issue.is_some() || !out_done {
+            let classified = if issue.is_some() || !out_done {
                 ProviderOutcome::Other
             } else if codex {
                 classify_codex(pin, dead.status.code(), &bytes, out.truncated)
             } else {
                 classify_claude(pin, dead.status.code(), &bytes, out.truncated)
             };
-            if codex && classified == ProviderOutcome::Success && last.is_none() {
-                issue.get_or_insert("last_output_invalid");
-                classified = ProviderOutcome::Other;
-            }
+            let (classified, final_issue) =
+                apply_last_output(classified, codex, issue, last_output);
+            issue = final_issue;
             Some(match classified {
                 ProviderOutcome::Success => "success",
                 ProviderOutcome::Limit => "limit",
@@ -581,6 +578,35 @@ impl Capture {
             complete,
         })
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum LastOutput {
+    Missing,
+    Present,
+    Invalid,
+}
+
+fn apply_last_output(
+    classified: ProviderOutcome,
+    codex: bool,
+    mut issue: Option<&'static str>,
+    last: LastOutput,
+) -> (ProviderOutcome, Option<&'static str>) {
+    if codex
+        && (matches!(last, LastOutput::Invalid)
+            || (classified == ProviderOutcome::Success && matches!(last, LastOutput::Missing)))
+    {
+        issue.get_or_insert("last_output_invalid");
+    }
+    (
+        if issue.is_some() {
+            ProviderOutcome::Other
+        } else {
+            classified
+        },
+        issue,
+    )
 }
 
 fn check_last(root: &Path, confirm: bool) -> Result<Option<StreamEvidence>> {
