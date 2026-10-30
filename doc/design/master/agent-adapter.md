@@ -287,8 +287,12 @@ string array. Its fixed limit requires `type=result`, `is_error=true`,
 observations are `other`. Shared decoder budgets are 1 MiB/frame, depth 16,
 32768 nodes, 256 KiB/string, 1 MiB total decoded strings, and 4096 entries per
 object or array; Codex JSONL has a separate 16 MiB capture bound.
-Success-shape evidence covers `codex-cli 0.164.0` and `2.1.314 (Claude Code)`;
-`2.1.312 (Claude Code)` has documentation-based synthetic fixtures only. Limit
+`codex-cli 0.164.0` has a product-classified success from an owner-authorized
+pass. `2.1.314 (Claude Code)` has a recorded envelope whose projected fields do
+not contradict the success rule; the `structured_output` type is unobserved
+and the fixture body is synthetic, pending confirmation by the next
+owner-authorized pass. `2.1.312 (Claude Code)` has documentation-based synthetic
+fixtures only. Limit
 fixtures are documentation-based synthetic shapes; real limit behavior is
 unobserved. Future real pins require
 owner-authorized pass shapes and independent review. Native file-controlled executables in
