@@ -19,7 +19,25 @@
 
 ## 変異検証
 
-（実行後に記入）
+レビュー用の clean な detached worktree（c84ef638）で、104 個の変異を 1 つずつ入れ、割り当てた試験を流した（`.rrx/planb/b8/mut_run.py`）。試験ごとに変えていない状態で 1 回流し、合格しなければ 1 回だけ流し直した。
+
+| 結果 | 件数 | 内容 |
+|---|---|---|
+| 検出 | 91 | 割り当てた試験が落ちた |
+| コンパイラで検出 | 1 | — |
+| 他の試験で検出 | 2 | `b8-decoder-size`・`b8-decoder-decoded-scan` は、割り当てた `b8_decoder_schema` が拒否の例だけを見るので生き残ったが、`confirm::tests` の全体を流すと `b8_exact_label_set` と `b8_evidence_checks` が落ちた |
+| 流し直しで検出 | 7 | 変えていない状態の試験（`b8_runtime_round_limits`・`b8_runtime_fix_input_guard`・`b8_runtime_confirmation_secrets`・`b8_runtime_plan_scan`）が負荷による既知の揺れで落ちた分。変えていない状態で合格するまで流し直してから変異を入れ、7 個とも、helper の揺れ（`state changed`・`death unconfirmed` など）ではない、性質を確かめる assert の行で落ちた |
+| 試験の穴 | 3 | 77623d8d で試験を足し、3 つとも落ちることを確かめた（下の表） |
+
+| 変異 | 足した試験 |
+|---|---|
+| `filter` で、レビューした tree にあるのにスナップショットのファイルが読めない（無い・UTF-8 でない）指摘を有効にする | `b8_filter_conditions` に、無いファイルと UTF-8 でないファイルが `MissingFile` になる検査 |
+| `validate` のラベルの ID の比較を「部分集合＋件数」にする（指摘に無い ID を受け付ける） | `b8_exact_label_set` で `validate` を直接呼ぶ検査 |
+| 引用の空白を除いた文字数の下限を 8 から 7 にする | `b8_evidence_quote_length_boundary`（7 文字は unclear、8 文字は confirmed） |
+
+足した試験は Opus が承認した（Critical / High / Medium なし）。任意の Low 2 件は、既存の試験の書き方の改善で、対応しない：`b8_evidence_checks` の `"abcdefg "` の例は引用が行に無いことで unclear になっていて、文字数の境界とは別の理由で通る。`b8_exact_label_set` の `extra` の例は、F2 を `confirmed` にしているので、`decoded` 側の assert は `validate` が無くても同じ文字列で落ちる。
+
+confirm の試験のスナップショットは、TMPDIR が正規のパスでないと `review_snapshot_changed` で落ちる（macOS の `/var` は symlink）。変異検証と host での実行では、worktree の中の正規のパスを TMPDIR にした。
 
 ## 既知の限界と残件
 
