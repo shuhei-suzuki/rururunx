@@ -91,6 +91,17 @@ fn b8_filter_conditions() {
         run(base.clone(), &changed, &["src/code".into()]).invalid[0].reason,
         InvalidReason::OutsideScope
     );
+    std::fs::remove_file(dir.path().join(&base.file)).unwrap();
+    for contents in [None, Some(b"\xff".as_slice())] {
+        if let Some(contents) = contents {
+            std::fs::write(dir.path().join(&base.file), contents).unwrap();
+        }
+        let got = run(base.clone(), &changed, &scopes);
+        assert!(got.blocking.is_empty());
+        assert_eq!(got.invalid.len(), 1);
+        assert_eq!(got.invalid[0].id, base.id);
+        assert_eq!(got.invalid[0].reason, InvalidReason::MissingFile);
+    }
     let mut non = base;
     non.severity = ReviewSeverity::Low;
     non.file = "bad/../path".into();
@@ -150,6 +161,11 @@ fn b8_exact_label_set() {
     let mut missing = result();
     missing["labels"] = json!([]);
     for v in [extra, duplicate, missing] {
+        let confirmation: ConfirmResult = serde_json::from_value(v.clone()).unwrap();
+        assert_eq!(
+            confirmation.validate(&[finding()]).unwrap_err().to_string(),
+            "confirm_label_ids"
+        );
         assert_eq!(
             decoded(&v, dir.path()).unwrap_err().to_string(),
             "confirm_label_ids"
@@ -267,6 +283,26 @@ fn b8_evidence_checks() {
         },
         "abcde\nabcde\nabcde\n"
     ));
+}
+
+/// Confirmed evidence requires at least eight non-whitespace characters in a matching quote.
+#[test]
+fn b8_evidence_quote_length_boundary() {
+    let dir = snapshot();
+    std::fs::write(
+        dir.path().join("src/code.rs"),
+        "one\ntwo\nthree\nabc defgh\n",
+    )
+    .unwrap();
+    for (quote, label) in [("abc defg", "unclear"), ("abc defgh", "confirmed")] {
+        let mut v = result();
+        v["labels"][0]["evidence"]["quote"] = json!(quote);
+        assert_eq!(
+            decoded(&v, dir.path()).unwrap()["confirmation"]["labels"][0]["label"],
+            label,
+            "{quote}"
+        );
+    }
 }
 
 /// Raw and escaped secrets are refused before malformed confirmation JSON is decoded or stored.
